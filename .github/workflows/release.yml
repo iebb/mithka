@@ -1,0 +1,127 @@
+name: Release APK
+
+# Builds split-per-ABI **release** APKs on a version tag (or manual dispatch),
+# compiling the native TDLib (tdjson) + static OpenSSL in CI, then publishes the
+# APKs to a GitHub Release.
+#
+# Required repository secrets:
+#   TELEGRAM_API_ID, TELEGRAM_API_HASH   — baked into lib/config/secrets.dart
+#   ANDROID_KEYSTORE_BASE64              — base64 of the upload keystore (.jks)
+#   ANDROID_KEYSTORE_PASSWORD            — store password
+#   ANDROID_KEY_PASSWORD                 — key password
+#   ANDROID_KEY_ALIAS                    — key alias (e.g. nekoko)
+# Without the ANDROID_* secrets the build still runs but is debug-signed
+# (Gradle falls back to the debug key when android/key.properties is absent).
+#
+# Create the base64 keystore secret with:
+#   base64 -i android/app/upload-keystore.jks | pbcopy   # macOS
+#   base64 -w0 android/app/upload-keystore.jks           # linux
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build split-ABI release APKs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build gperf clang libssl-dev
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.2'
+          channel: stable
+          cache: true
+
+      - name: Install Android NDK 28.2.13676358
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;28.2.13676358" >/dev/null 2>&1 || \
+          yes | sdkmanager "ndk;28.2.13676358" >/dev/null 2>&1 || true
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+
+      # Cache the heavy native build (TDLib clone/build + OpenSSL + the .so files)
+      # keyed on the build scripts, so only the first run pays the full cost.
+      - name: Cache native build (.tdlib-build)
+        uses: actions/cache@v4
+        with:
+          path: .tdlib-build
+          key: tdnative-${{ runner.os }}-ndk28-${{ hashFiles('scripts/build-tdjson-android.sh', 'scripts/build-openssl-android.sh') }}
+
+      - name: Cache jniLibs
+        uses: actions/cache@v4
+        with:
+          path: android/app/src/main/jniLibs
+          key: jnilibs-${{ runner.os }}-ndk28-${{ hashFiles('scripts/build-tdjson-android.sh', 'scripts/build-openssl-android.sh') }}
+
+      - name: Build static OpenSSL (per ABI)
+        run: ./scripts/build-openssl-android.sh arm64-v8a armeabi-v7a x86_64
+
+      - name: Build libtdjson.so (per ABI)
+        env:
+          HOST_OPENSSL_ROOT_DIR: /usr
+          TD_ENABLE_LTO: 'OFF'
+        run: ./scripts/build-tdjson-android.sh arm64-v8a armeabi-v7a x86_64
+
+      - name: Flutter dependencies
+        run: flutter pub get
+
+      - name: Write secrets.dart
+        env:
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+        run: |
+          mkdir -p lib/config
+          cat > lib/config/secrets.dart <<EOF
+          class Secrets {
+            static const int apiId = ${TELEGRAM_API_ID:-0};
+            static const String apiHash = '${TELEGRAM_API_HASH}';
+            static bool get isConfigured => apiId != 0 && apiHash.isNotEmpty;
+          }
+          EOF
+
+      - name: Decode signing keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        if: ${{ env.KEYSTORE_B64 != '' }}
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > android/app/upload-keystore.jks
+          cat > android/key.properties <<EOF
+          storePassword=$STORE_PASSWORD
+          keyPassword=$KEY_PASSWORD
+          keyAlias=$KEY_ALIAS
+          storeFile=upload-keystore.jks
+          EOF
+
+      - name: Build split-per-ABI release APKs
+        run: flutter build apk --release --split-per-abi
+
+      - name: List artifacts
+        run: ls -lh build/app/outputs/flutter-apk/
+
+      - name: Upload APKs as workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mithkal-apks
+          path: build/app/outputs/flutter-apk/*-release.apk
+
+      - name: Publish to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/app/outputs/flutter-apk/*-release.apk
+          fail_on_unmatched_files: true
