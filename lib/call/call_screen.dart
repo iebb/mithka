@@ -1,17 +1,20 @@
 //
 //  call_screen.dart
 //
-//  Full-screen 1:1 call HUD driven by a `CallManager`. A dark backdrop with the
-//  peer's avatar, name, a phase-dependent status line (ringing / connecting /
-//  mm:ss timer), the secure-connection emoji row once the call is active, and a
-//  phase-appropriate control row. Port of the Swift `CallScreen`.
+//  Full-screen 1:1 call UI driven by a `CallManager`, styled after QQ's voice /
+//  video call screens: a blurred-avatar backdrop, a large rounded-square avatar
+//  with name + status, the端到端 verification emojis, and a row of frosted
+//  translucent controls (mute / speaker / camera) over a red 挂断 — with
+//  green 接听 / red 拒绝 for an incoming call. Video calls fill the screen with
+//  the remote feed and a small local preview (PiP).
 //
 
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
-import '../components/photo_avatar.dart';
+import '../components/photo_avatar.dart'; // PhotoAvatar + TDImage
 import '../components/sf_symbols.dart';
 import 'call_manager.dart';
 
@@ -43,66 +46,142 @@ class _CallScreenState extends State<CallScreen> {
   @override
   Widget build(BuildContext context) {
     final call = widget.manager.call;
+    if (call == null) return const SizedBox.shrink();
+    final isVideoActive = call.isVideo && call.phase == CallPhase.active;
     return Material(
-      child: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFF1C2530), Color(0xFF0B0F14)],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-        ),
-        child: call == null
-            ? const SizedBox.shrink()
-            : SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 28),
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 60),
-                      _peerHeader(call),
-                      if (call.phase == CallPhase.active &&
-                          call.emojis.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 28),
-                          child: _secureRow(call.emojis),
-                        ),
-                      const Spacer(),
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 48),
-                        child: _controls(call),
-                      ),
-                    ],
+      color: const Color(0xFF0B0F14),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          _backdrop(call, isVideoActive),
+          // Local camera preview (PiP) during a video call.
+          if (isVideoActive) _localPreview(),
+          SafeArea(
+            child: Column(
+              children: [
+                SizedBox(height: isVideoActive ? 12 : 56),
+                _header(call, compact: isVideoActive),
+                if (!isVideoActive &&
+                    call.phase == CallPhase.active &&
+                    call.emojis.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 24),
+                    child: _secureRow(call.emojis),
                   ),
+                const Spacer(),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 40, top: 12),
+                  child: _controls(call),
                 ),
-              ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _peerHeader(ActiveCall call) {
+  /// QQ's blurred-avatar backdrop (falls back to a dark gradient). For an active
+  /// video call this is the (placeholder) remote feed area.
+  Widget _backdrop(ActiveCall call, bool isVideoActive) {
+    final hasPhoto = call.peerPhoto != null;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        if (hasPhoto)
+          ImageFiltered(
+            imageFilter: ImageFilter.blur(sigmaX: 32, sigmaY: 32),
+            child: TDImage(
+              photo: call.peerPhoto,
+              cornerRadius: 0,
+              fit: BoxFit.cover,
+            ),
+          )
+        else
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Color(0xFF20303F), Color(0xFF0B0F14)],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
+            ),
+          ),
+        // Darkening scrim so white text/controls stay legible.
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                Colors.black.withValues(alpha: isVideoActive ? 0.35 : 0.45),
+                Colors.black.withValues(alpha: isVideoActive ? 0.55 : 0.7),
+              ],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _localPreview() {
+    return Positioned(
+      top: 56,
+      right: 16,
+      child: Container(
+        width: 96,
+        height: 132,
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.4),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+        ),
+        alignment: Alignment.center,
+        child: Icon(
+          sfIcon('video.fill'),
+          color: Colors.white.withValues(alpha: 0.5),
+          size: 26,
+        ),
+      ),
+    );
+  }
+
+  Widget _header(ActiveCall call, {required bool compact}) {
+    final name = Text(
+      call.peerName.isEmpty ? ' ' : call.peerName,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        fontSize: compact ? 18 : 26,
+        fontWeight: FontWeight.w600,
+        color: Colors.white,
+      ),
+    );
+    final status = Text(
+      _statusLine(call),
+      style: TextStyle(
+        fontSize: compact ? 13 : 15,
+        color: Colors.white.withValues(alpha: 0.75),
+      ),
+    );
+    if (compact) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Column(children: [name, const SizedBox(height: 4), status]),
+      );
+    }
     return Column(
       children: [
-        PhotoAvatar(title: call.peerName, photo: call.peerPhoto, size: 110),
-        const SizedBox(height: 16),
-        Text(
-          call.peerName.isEmpty ? ' ' : call.peerName,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            fontSize: 28,
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
-          ),
+        PhotoAvatar(
+          title: call.peerName,
+          photo: call.peerPhoto,
+          size: 104,
+          square: true,
         ),
+        const SizedBox(height: 18),
+        name,
         const SizedBox(height: 8),
-        Text(
-          _statusLine(call),
-          style: TextStyle(
-            fontSize: 16,
-            color: Colors.white.withValues(alpha: 0.7),
-          ),
-        ),
+        status,
       ],
     );
   }
@@ -111,7 +190,7 @@ class _CallScreenState extends State<CallScreen> {
     switch (call.phase) {
       case CallPhase.requesting:
       case CallPhase.ringingOutgoing:
-        return '正在呼叫…';
+        return '正在等待对方接受邀请…';
       case CallPhase.ringingIncoming:
         return '邀请你进行${call.isVideo ? "视频" : "语音"}通话';
       case CallPhase.exchangingKeys:
@@ -125,37 +204,32 @@ class _CallScreenState extends State<CallScreen> {
 
   String _durationText(DateTime? startedAt) {
     if (startedAt == null) return '00:00';
-    final elapsed = DateTime.now().difference(startedAt).inSeconds;
-    final e = elapsed < 0 ? 0 : elapsed;
-    return '${(e ~/ 60).toString().padLeft(2, '0')}:${(e % 60).toString().padLeft(2, '0')}';
+    final e = DateTime.now().difference(startedAt).inSeconds;
+    final s = e < 0 ? 0 : e;
+    return '${(s ~/ 60).toString().padLeft(2, '0')}:${(s % 60).toString().padLeft(2, '0')}';
   }
 
   Widget _secureRow(List<String> emojis) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 18),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 14),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(16),
+        color: Colors.white.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(14),
       ),
-      child: Column(
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (final e in emojis.take(4))
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 5),
-                  child: Text(e, style: const TextStyle(fontSize: 30)),
-                ),
-            ],
-          ),
-          const SizedBox(height: 8),
+          for (final e in emojis.take(4))
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 3),
+              child: Text(e, style: const TextStyle(fontSize: 22)),
+            ),
+          const SizedBox(width: 6),
           Text(
-            '此通话已端到端加密',
+            '端到端加密',
             style: TextStyle(
               fontSize: 12,
-              color: Colors.white.withValues(alpha: 0.55),
+              color: Colors.white.withValues(alpha: 0.6),
             ),
           ),
         ],
@@ -164,58 +238,63 @@ class _CallScreenState extends State<CallScreen> {
   }
 
   Widget _controls(ActiveCall call) {
+    final m = widget.manager;
     if (call.phase == CallPhase.ringingIncoming) {
       return Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
           _CallButton(
             icon: 'phone.down.fill',
-            label: '挂断',
+            label: '拒绝',
             background: const Color(0xFFFF3B30),
-            onTap: widget.manager.end,
+            onTap: m.end,
           ),
-          const SizedBox(width: 80),
           _CallButton(
-            icon: 'phone.fill',
+            icon: call.isVideo ? 'video.fill' : 'phone.fill',
             label: '接听',
-            background: const Color(0xFF34C759),
-            onTap: widget.manager.accept,
+            background: const Color(0xFF07C160),
+            onTap: m.accept,
           ),
         ],
       );
     }
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        _CallToggle(
-          icon: 'mic.slash.fill',
-          label: '静音',
-          isOn: widget.manager.isMuted,
-          onTap: widget.manager.toggleMute,
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _CallToggle(
+              icon: m.isMuted ? 'mic.slash.fill' : 'mic.fill',
+              label: '静音',
+              isOn: m.isMuted,
+              onTap: m.toggleMute,
+            ),
+            const SizedBox(width: 26),
+            if (call.isVideo) ...[
+              _CallToggle(
+                icon: 'video.fill',
+                label: '摄像头',
+                isOn: m.isVideoEnabled,
+                onTap: m.toggleVideo,
+              ),
+              const SizedBox(width: 26),
+            ],
+            _CallToggle(
+              icon: 'speaker.wave.2.fill',
+              label: '免提',
+              isOn: m.isSpeaker,
+              onTap: m.toggleSpeaker,
+            ),
+          ],
         ),
-        const SizedBox(width: 28),
-        _CallToggle(
-          icon: 'speaker.wave.2.fill',
-          label: '免提',
-          isOn: widget.manager.isSpeaker,
-          onTap: widget.manager.toggleSpeaker,
-        ),
-        if (call.isVideo) ...[
-          const SizedBox(width: 28),
-          _CallToggle(
-            icon: 'video.fill',
-            label: '摄像头',
-            isOn: widget.manager.isVideoEnabled,
-            onTap: widget.manager.toggleVideo,
-          ),
-        ],
-        const SizedBox(width: 28),
+        const SizedBox(height: 30),
         _CallButton(
           icon: 'phone.down.fill',
           label: '挂断',
           background: const Color(0xFFFF3B30),
-          size: 64,
-          onTap: widget.manager.end,
+          size: 66,
+          onTap: m.end,
         ),
       ],
     );
@@ -227,7 +306,7 @@ class _CallButton extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.background,
-    this.size = 70,
+    this.size = 68,
     required this.onTap,
   });
   final String icon;
@@ -252,7 +331,7 @@ class _CallButton extends StatelessWidget {
               color: background,
               shape: BoxShape.circle,
             ),
-            child: Icon(sfIcon(icon), size: size * 0.4, color: Colors.white),
+            child: Icon(sfIcon(icon), size: size * 0.42, color: Colors.white),
           ),
         ),
         const SizedBox(height: 10),
@@ -268,6 +347,8 @@ class _CallButton extends StatelessWidget {
   }
 }
 
+/// QQ-style frosted translucent toggle (white when active). `hidden` keeps the
+/// row balanced by reserving the slot without drawing the control.
 class _CallToggle extends StatelessWidget {
   const _CallToggle({
     required this.icon,
@@ -289,11 +370,11 @@ class _CallToggle extends StatelessWidget {
           behavior: HitTestBehavior.opaque,
           onTap: onTap,
           child: Container(
-            width: 64,
-            height: 64,
+            width: 60,
+            height: 60,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: isOn ? Colors.white : Colors.white.withValues(alpha: 0.16),
+              color: isOn ? Colors.white : Colors.white.withValues(alpha: 0.18),
               shape: BoxShape.circle,
             ),
             child: Icon(
