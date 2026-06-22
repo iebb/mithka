@@ -57,6 +57,11 @@ abstract class CallMediaEngine {
   /// Outbound signaling the engine emits, to be relayed via TDLib
   /// `sendCallSignalingData`. `CallManager` sets this before `start`.
   set onSignalingData(void Function(Uint8List data)? callback) {}
+
+  /// The media engine's own supported call protocol ({min, max, versions}),
+  /// advertised in createCall so TDLib negotiates a version the engine handles.
+  /// Null = engine has no opinion (use defaults).
+  Future<Map<String, dynamic>?> queryProtocol() async => null;
 }
 
 /// A do-nothing media engine that only logs. Lets the call signaling flow run
@@ -90,4 +95,7 @@ class NoopCallMediaEngine implements CallMediaEngine {
 
   @override
   set onSignalingData(void Function(Uint8List data)? callback) {}
+
+  @override
+  Future<Map<String, dynamic>?> queryProtocol() async => null;
 }

@@ -86,6 +86,16 @@ class TgcallsMediaEngine implements CallMediaEngine {
     _methods.invokeMethod('receiveSignaling', data).catchError((Object _) {});
   }
 
+  @override
+  Future<Map<String, dynamic>?> queryProtocol() async {
+    try {
+      final r = await _methods.invokeMethod('getProtocol');
+      return (r as Map?)?.cast<String, dynamic>();
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// TDLib `callServer` → the flat shape CallMediaPlugin turns into an RTCServer.
   /// TDLib JSON encodes int64 (`id`) as a string and bytes (`peer_tag`) as base64.
   static Map<String, dynamic>? _normalizeServer(Map<String, dynamic> s) {

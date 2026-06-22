@@ -71,13 +71,20 @@ class CallManager extends ChangeNotifier {
   bool isSpeaker = false;
   bool isVideoEnabled = false;
 
+  // Protocol advertised in createCall/acceptCall. Defaults are overwritten at
+  // start() with the media engine's own supported protocol (so TDLib negotiates
+  // a version ntgcalls actually implements).
+  int _minLayer = 65;
+  int _maxLayer = 92;
+  List<String> _libraryVersions = const ['4.0.0', '3.0.0'];
+
   Map<String, dynamic> get _callProtocol => {
     '@type': 'callProtocol',
     'udp_p2p': true,
     'udp_reflector': true,
-    'min_layer': 65,
-    'max_layer': 92,
-    'library_versions': ['4.0.0', '3.0.0'],
+    'min_layer': _minLayer,
+    'max_layer': _maxLayer,
+    'library_versions': _libraryVersions,
   };
 
   // MARK: - Lifecycle
@@ -86,6 +93,18 @@ class CallManager extends ChangeNotifier {
   void start() {
     if (_started) return;
     _started = true;
+    // Advertise the engine's own protocol so TDLib negotiates a compatible version.
+    _engine.queryProtocol().then((p) {
+      if (p == null) return;
+      final v = (p['versions'] as List?)?.whereType<String>().toList();
+      if (v != null && v.isNotEmpty) _libraryVersions = v;
+      if (p['min'] is int) _minLayer = p['min'] as int;
+      if (p['max'] is int) _maxLayer = p['max'] as int;
+      debugPrint(
+        '📞 ntgcalls protocol versions=$_libraryVersions '
+        'min=$_minLayer max=$_maxLayer',
+      );
+    });
     // Outbound media signaling → TDLib. (v3/v4 calls negotiate WebRTC over this.)
     _engine.onSignalingData = _sendSignaling;
     _sub = _client.subscribe().listen((update) {

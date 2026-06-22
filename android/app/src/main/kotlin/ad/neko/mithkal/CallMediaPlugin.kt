@@ -46,6 +46,13 @@ class CallMediaPlugin(
     private var eventSink: EventChannel.EventSink? = null
     private var prevAudioMode = AudioManager.MODE_NORMAL
 
+    companion object {
+        // ntgcalls' Android device metadata is synthetic JSON; only is_microphone
+        // is read (it must match the stream direction).
+        private const val MIC_META = "{\"is_microphone\":true}"
+        private const val SPK_META = "{\"is_microphone\":false}"
+    }
+
     init {
         events.setStreamHandler(object : EventChannel.StreamHandler {
             override fun onListen(args: Any?, sink: EventChannel.EventSink?) {
@@ -59,6 +66,24 @@ class CallMediaPlugin(
         // libntgcalls.so (~20MB WebRTC) loads lazily on the first call, when the
         // NTgCalls instance is constructed — no startup cost for non-callers.
         methods.setMethodCallHandler { call, result ->
+            if (call.method == "getProtocol") {
+                worker.execute {
+                    runCatching {
+                        val p = NTgCalls.getProtocol()
+                        android.util.Log.i(
+                            "CallMedia",
+                            "ntgcalls protocol min=${p.minLayer} max=${p.maxLayer} versions=${p.libraryVersions}",
+                        )
+                        mapOf(
+                            "min" to p.minLayer,
+                            "max" to p.maxLayer,
+                            "versions" to p.libraryVersions,
+                        )
+                    }.onSuccess { v -> main.post { result.success(v) } }
+                        .onFailure { e -> main.post { result.error("call_media", e.message, null) } }
+                }
+                return@setMethodCallHandler
+            }
             when (call.method) {
                 "start" -> worker.execute { runCatching { start(call.argument("config")!!) }
                     .onSuccess { reply(result, null) }
@@ -123,8 +148,11 @@ class CallMediaPlugin(
             emit(mapOf("type" to "state", "state" to info.state.name))
         }
 
+        // Sequence per the Telegram-X reference: create → CAPTURE (mic) →
+        // PLAYBACK (speaker) → skipExchange → connectP2P.
         instance.createP2PCall(chatId)
-        instance.setStreamSources(chatId, StreamMode.CAPTURE, mediaDescription(isVideo))
+        instance.setStreamSources(chatId, StreamMode.CAPTURE, captureMedia(isVideo))
+        instance.setStreamSources(chatId, StreamMode.PLAYBACK, playbackMedia())
         // TDLib already did the DH exchange and handed us the 256-byte shared key.
         instance.skipExchange(chatId, key, isOutgoing)
         instance.connectP2P(chatId, servers.mapNotNull(::toRtcServer), versions, p2pAllowed)
@@ -145,21 +173,26 @@ class CallMediaPlugin(
     }
 
     private fun setVideoEnabled(enabled: Boolean) {
-        ntg?.setStreamSources(chatId, StreamMode.CAPTURE, mediaDescription(enabled))
+        ntg?.setStreamSources(chatId, StreamMode.CAPTURE, captureMedia(enabled))
     }
 
-    /** mic (+ front camera when video). speaker/screen are null for a 1:1 call. */
-    private fun mediaDescription(video: Boolean): MediaDescription {
-        val devices = NTgCalls.getMediaDevices()
-        val micMeta = devices.microphone.firstOrNull()?.metadata ?: ""
-        val mic = AudioDescription(MediaSource.DEVICE, micMeta, false, 48000, 1)
-        val camera = if (video) {
-            val camMeta = devices.camera.firstOrNull()?.metadata ?: ""
-            if (camMeta.isNotEmpty())
-                VideoDescription(MediaSource.DEVICE, camMeta, false, 1280, 720, 30)
-            else null
-        } else null
-        return MediaDescription(mic, null, camera, null)
+    /** CAPTURE media (what we send): the microphone. On Android ntgcalls' device
+     *  metadata is a synthetic JSON string — the default mic is exactly
+     *  {"is_microphone":true} (an empty/invalid string throws "Invalid device
+     *  metadata"). getMediaDevices() isn't needed (it only returns this constant)
+     *  AND avoiding it sidesteps the camera-enumeration SIGABRT (ntgcalls never
+     *  sets the WebRTC app Context). Camera capture is a follow-up once that
+     *  Context init is in place. */
+    private fun captureMedia(video: Boolean): MediaDescription {
+        val mic = AudioDescription(MediaSource.DEVICE, MIC_META, true, 48000, 2)
+        return MediaDescription(mic, null, null, null)
+    }
+
+    /** PLAYBACK media (what we hear): the default speaker, {"is_microphone":false}
+     *  so is_microphone matches the (non-capture) direction. */
+    private fun playbackMedia(): MediaDescription {
+        val speaker = AudioDescription(MediaSource.DEVICE, SPK_META, true, 48000, 2)
+        return MediaDescription(null, speaker, null, null)
     }
 
     // MARK: - Server mapping (TDLib callServer → ntgcalls RTCServer)
