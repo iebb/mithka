@@ -55,35 +55,70 @@ class _VideoStickerViewState extends State<VideoStickerView> {
     widget.onReady?.call();
   }
 
-  /// webm (VP9 + alpha) → animated WebP (alpha preserved). Cached next to the
-  /// source file. Two flags are load-bearing:
-  ///   * `-c:v libvpx-vp9` (BEFORE -i) forces the libvpx decoder — FFmpeg's
-  ///     default *native* vp9 decoder silently drops the alpha layer (decodes
-  ///     yuv420p), which is exactly what produced the opaque/black sticker.
-  ///     libvpx-vp9 decodes the alpha plane → yuva420p.
-  ///   * `-c:v libwebp -loop 0` emits a looping *animated* WebP with alpha.
+  /// webm (VP9 + alpha) → a looping, alpha-correct animation, cached next to the
+  /// source. `-c:v libvpx-vp9` (BEFORE -i) is mandatory: FFmpeg's default native
+  /// vp9 decoder drops the alpha layer (yuv420p), which gave the opaque/black
+  /// sticker; libvpx-vp9 decodes the alpha plane (yuva420p).
+  ///
+  /// The container is chosen by transparency, because each one is wrong for the
+  /// other case:
+  ///   * Transparent stickers → APNG (`-f apng`). FFmpeg's libwebp_anim encoder
+  ///     hard-codes every WebP frame to blend=yes / dispose=none (no AVOption
+  ///     exposes the WebPAnimEncoder knobs), so a moving transparent sticker's
+  ///     earlier frames bleed through later frames' transparent pixels → ghost
+  ///     trails. APNG instead carries proper per-frame dispose ops → no trails.
+  ///   * Opaque stickers (full-frame "video" stickers) → lossy animated WebP.
+  ///     Opaque frames fully overwrite the canvas, so blend=yes never trails,
+  ///     and lossy WebP is a fraction of the size of a lossless APNG of the same
+  ///     photographic clip (which can run to tens of MB).
+  /// Flutter's Image animates both APNG and WebP natively, with alpha, on iOS
+  /// and Android.
   static Future<String?> _transcode(int fileId) async {
     final src = await TdFileCenter.shared.path(fileId);
     if (src == null) return null;
-    final out = '$src.anim.webp';
-    final cached = File(out);
-    if (cached.existsSync() && cached.lengthSync() > 0) return out;
-    final session = await FFmpegKit.execute(
-      '-y -c:v libvpx-vp9 -i "$src" -an -c:v libwebp -loop 0 -lossless 0 '
-      '-compression_level 4 -q:v 70 "$out"',
-    );
+    // Version suffix: bump whenever the ffmpeg recipe changes so stale caches
+    // from an older encoding aren't reused.
+    final apng = File('$src.anim.v3.png');
+    final webp = File('$src.anim.v3.webp');
+    if (apng.existsSync() && apng.lengthSync() > 0) return apng.path;
+    if (webp.existsSync() && webp.lengthSync() > 0) return webp.path;
+
+    final transparent = await _hasTransparency(src);
+    final out = transparent ? apng.path : webp.path;
+    final cmd = transparent
+        ? '-y -c:v libvpx-vp9 -i "$src" -an -f apng -plays 0 "$out"'
+        : '-y -c:v libvpx-vp9 -i "$src" -an -c:v libwebp -q:v 75 -loop 0 "$out"';
+    final session = await FFmpegKit.execute(cmd);
     final rc = await session.getReturnCode();
-    if (ReturnCode.isSuccess(rc) &&
-        cached.existsSync() &&
-        cached.lengthSync() > 0) {
+    final f = File(out);
+    if (ReturnCode.isSuccess(rc) && f.existsSync() && f.lengthSync() > 0) {
       return out;
     }
     debugPrint(
       'VideoSticker: transcode failed rc=${rc?.getValue()} '
-      'out=${cached.existsSync() ? cached.lengthSync() : "missing"}\n'
-      '${await session.getOutput()}',
+      'transparent=$transparent\n${await session.getOutput()}',
     );
     return null;
+  }
+
+  /// Whether any decoded frame has a transparent pixel. Telegram tags both
+  /// transparent character stickers and opaque "video" stickers with alpha_mode,
+  /// so we actually inspect the alpha plane: alphaextract → per-frame YMIN, and
+  /// treat the clip as transparent if the minimum alpha dips below ~opaque.
+  static Future<bool> _hasTransparency(String src) async {
+    final session = await FFmpegKit.execute(
+      '-hide_banner -c:v libvpx-vp9 -i "$src" -vf '
+      '"alphaextract,signalstats,metadata=print:key=lavfi.signalstats.YMIN" '
+      '-f null -',
+    );
+    final out = await session.getOutput() ?? '';
+    var minY = 255;
+    for (final m in RegExp(r'YMIN=(\d+)').allMatches(out)) {
+      final v = int.tryParse(m.group(1)!) ?? 255;
+      if (v < minY) minY = v;
+    }
+    // No YMIN lines → alphaextract found no alpha plane → treat as opaque.
+    return minY < 250;
   }
 
   @override
