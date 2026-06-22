@@ -17,7 +17,7 @@ enum MessageAction {
   reply('arrowshape.turn.up.left', '引用'),
   forward('arrowshape.turn.up.left', '转发'),
   save('star.fill', '收藏'),
-  saveSticker('face.smiling', '存表情'),
+  saveSticker('plus.circle', '添加'),
   delete('trash', '删除');
 
   const MessageAction(this.glyph, this.label);
@@ -54,7 +54,8 @@ class MessageActionMenu extends StatelessWidget {
     result.add(MessageAction.reply);
     result.add(MessageAction.forward);
     result.add(MessageAction.save);
-    if (message.animatedSticker != null) result.add(MessageAction.saveSticker);
+    // 添加 — add any sticker (tgs / webm / webp) to favorites.
+    if (message.stickerFileId != null) result.add(MessageAction.saveSticker);
     result.add(MessageAction.delete);
     return result;
   }

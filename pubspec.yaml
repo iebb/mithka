@@ -55,6 +55,7 @@ dependencies:
   flutter_map: ^7.0.2
   latlong2: ^0.9.1
   apple_maps_flutter: ^1.4.0
+  ffmpeg_kit_flutter_new: ^4.2.1
 
 dev_dependencies:
   flutter_test:

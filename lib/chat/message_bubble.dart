@@ -22,6 +22,7 @@ import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import 'animated_sticker_view.dart';
 import 'custom_emoji.dart';
+import 'video_sticker_view.dart';
 import 'file_opener.dart';
 import 'link_handler.dart';
 import 'voice_audio.dart';
@@ -71,6 +72,7 @@ class _MessageBubbleState extends State<MessageBubble> {
   final GlobalKey _bubbleKey = GlobalKey();
   final List<TapGestureRecognizer> _linkRecognizers = [];
   bool _stickerReady = false;
+  bool _videoStickerReady = false;
   double _swipeX = 0;
 
   void _handleLongPress() {
@@ -328,6 +330,24 @@ class _MessageBubbleState extends State<MessageBubble> {
             AnimatedStickerView(
               file: message.animatedSticker!,
               onReady: () => setState(() => _stickerReady = true),
+            ),
+          ],
+        ),
+      );
+    }
+    if (message.videoSticker != null) {
+      final s = _stickerSize();
+      return SizedBox(
+        width: s.width,
+        height: s.height,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (message.image != null && !_videoStickerReady)
+              TDImage(photo: message.image, cornerRadius: 8),
+            VideoStickerView(
+              file: message.videoSticker!,
+              onReady: () => setState(() => _videoStickerReady = true),
             ),
           ],
         ),

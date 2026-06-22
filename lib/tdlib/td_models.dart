@@ -190,6 +190,8 @@ class ChatMessage {
     this.senderRole,
     this.senderTitle,
     this.animatedSticker,
+    this.videoSticker,
+    this.stickerFileId,
     this.location,
     this.voice,
     this.replyToMessageId,
@@ -213,6 +215,8 @@ class ChatMessage {
   MemberRole? senderRole;
   String? senderTitle;
   TdFileRef? animatedSticker; // .tgs (Lottie) sticker file
+  TdFileRef? videoSticker; // .webm video sticker file
+  int? stickerFileId; // any sticker's file id (for "add to favorites")
   MessageLocation? location;
   MessageVoice? voice;
 
@@ -444,6 +448,8 @@ abstract final class TDParse {
         imageHeight: media.height,
         document: media.document,
         animatedSticker: media.animated,
+        videoSticker: media.videoSticker,
+        stickerFileId: media.stickerFileId,
         location: locationAttachment(content),
         voice: voiceAttachment(content),
         replyToMessageId: replyToMessageId,
@@ -556,18 +562,14 @@ abstract final class TDParse {
           final thumb = fileRef(sticker.obj('thumbnail')?.obj('file'));
           final stickerFile = fileRef(sticker.obj('sticker'));
           final w = sticker.integer('width'), h = sticker.integer('height');
-          if (sticker.obj('format')?.type == 'stickerFormatTgs') {
-            return MediaAttachment(
-              image: thumb ?? stickerFile,
-              width: w,
-              height: h,
-              animated: stickerFile,
-            );
-          }
+          final fmt = sticker.obj('format')?.type;
           return MediaAttachment(
             image: thumb ?? stickerFile,
             width: w,
             height: h,
+            animated: fmt == 'stickerFormatTgs' ? stickerFile : null,
+            videoSticker: fmt == 'stickerFormatWebm' ? stickerFile : null,
+            stickerFileId: stickerFile?.id,
           );
         }
       case 'messageAnimation':
@@ -828,10 +830,14 @@ class MediaAttachment {
     this.height,
     this.document,
     this.animated,
+    this.videoSticker,
+    this.stickerFileId,
   });
   final TdFileRef? image;
   final int? width;
   final int? height;
   final MessageDocument? document;
-  final TdFileRef? animated;
+  final TdFileRef? animated; // .tgs Lottie sticker
+  final TdFileRef? videoSticker; // .webm video sticker
+  final int? stickerFileId; // any sticker's file id (for "add to favorites")
 }

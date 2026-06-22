@@ -164,8 +164,11 @@ class _ChatViewState extends State<ChatView> {
       case MessageAction.save:
         _vm.saveToFavorites(message.id);
       case MessageAction.saveSticker:
-        final id = message.animatedSticker?.id;
-        if (id != null) _vm.saveFavoriteSticker(id);
+        final id = message.stickerFileId ?? message.animatedSticker?.id;
+        if (id != null) {
+          _vm.saveFavoriteSticker(id);
+          showToast(context, '已添加到表情');
+        }
       case MessageAction.delete:
         _vm.deleteMessage(message.id);
     }
