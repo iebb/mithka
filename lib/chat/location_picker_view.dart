@@ -1,17 +1,18 @@
 //
 //  location_picker_view.dart
 //
-//  QQ/WeChat-style location picker: a full-screen OpenStreetMap with a fixed
-//  centre pin. Pan the map to aim the pin; the centre coordinate is what gets
-//  sent. A 我的位置 button recentres on the GPS fix and the current centre's
-//  address is reverse-geocoded (best-effort) into a bottom card. 发送 returns the
-//  chosen LatLng.
+//  QQ/WeChat-style location picker with a fixed centre pin — pan the map to aim
+//  the pin; the centre coordinate is what gets sent. Uses the native Apple Maps
+//  (MapKit) on iOS and flutter_map + OpenStreetMap tiles elsewhere. A 我的位置
+//  button recentres on the GPS fix and the current centre's address is
+//  reverse-geocoded (best-effort) into a bottom card. 发送 returns the chosen LatLng.
 //
 
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:apple_maps_flutter/apple_maps_flutter.dart' as amap;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
@@ -30,7 +31,8 @@ class LocationPickerView extends StatefulWidget {
 }
 
 class _LocationPickerViewState extends State<LocationPickerView> {
-  final MapController _map = MapController();
+  final MapController _map = MapController(); // flutter_map (Android / OSM)
+  amap.AppleMapController? _appleCtrl; // Apple MapKit (iOS)
   late LatLng _center = widget.initial;
   String _address = '';
   bool _geocoding = false;
@@ -100,13 +102,63 @@ class _LocationPickerViewState extends State<LocationPickerView> {
       }
       final pos = await Geolocator.getCurrentPosition();
       final p = LatLng(pos.latitude, pos.longitude);
-      _map.move(p, 16);
+      if (Platform.isIOS) {
+        _appleCtrl?.animateCamera(
+          amap.CameraUpdate.newLatLngZoom(
+            amap.LatLng(p.latitude, p.longitude),
+            16,
+          ),
+        );
+      } else {
+        _map.move(p, 16);
+      }
       _center = p;
       _reverseGeocode(p);
     } catch (_) {}
   }
 
   void _send() => Navigator.of(context).pop(_center);
+
+  /// Native Apple Maps (MapKit) on iOS; flutter_map + OSM tiles elsewhere.
+  Widget _mapWidget() {
+    if (Platform.isIOS) {
+      return amap.AppleMap(
+        initialCameraPosition: amap.CameraPosition(
+          target: amap.LatLng(
+            widget.initial.latitude,
+            widget.initial.longitude,
+          ),
+          zoom: 15,
+        ),
+        myLocationEnabled: true,
+        myLocationButtonEnabled: false,
+        onMapCreated: (c) => _appleCtrl = c,
+        onCameraMove: (pos) =>
+            _center = LatLng(pos.target.latitude, pos.target.longitude),
+        onCameraIdle: () {
+          _debounce?.cancel();
+          _debounce = Timer(
+            const Duration(milliseconds: 350),
+            () => _reverseGeocode(_center),
+          );
+        },
+      );
+    }
+    return FlutterMap(
+      mapController: _map,
+      options: MapOptions(
+        initialCenter: widget.initial,
+        initialZoom: 16,
+        onPositionChanged: _onMove,
+      ),
+      children: [
+        TileLayer(
+          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          userAgentPackageName: 'ad.neko.mithkal',
+        ),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -147,21 +199,7 @@ class _LocationPickerViewState extends State<LocationPickerView> {
           Expanded(
             child: Stack(
               children: [
-                FlutterMap(
-                  mapController: _map,
-                  options: MapOptions(
-                    initialCenter: widget.initial,
-                    initialZoom: 16,
-                    onPositionChanged: _onMove,
-                  ),
-                  children: [
-                    TileLayer(
-                      urlTemplate:
-                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                      userAgentPackageName: 'ad.neko.mithkal',
-                    ),
-                  ],
-                ),
+                _mapWidget(),
                 // Fixed centre pin (its tip marks the chosen point).
                 IgnorePointer(
                   child: Center(

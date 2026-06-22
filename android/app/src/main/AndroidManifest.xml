@@ -1,4 +1,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- TDLib networking -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Voice messages (flutter_sound / permission_handler) -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Camera capture (image_picker) -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Location sharing (geolocator) -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
     <application
         android:label="Mithkal"
         android:name="${applicationName}"
