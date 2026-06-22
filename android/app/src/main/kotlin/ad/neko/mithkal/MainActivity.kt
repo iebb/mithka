@@ -1,4 +1,4 @@
-package com.drachma.drachma
+package ad.neko.mithkal
 
 import io.flutter.embedding.android.FlutterActivity
 

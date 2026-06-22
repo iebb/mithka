@@ -158,7 +158,7 @@ class _LocationPickerViewState extends State<LocationPickerView> {
                     TileLayer(
                       urlTemplate:
                           'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                      userAgentPackageName: 'com.mithkal.app',
+                      userAgentPackageName: 'ad.neko.mithkal',
                     ),
                   ],
                 ),
