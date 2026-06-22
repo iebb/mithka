@@ -1,7 +1,7 @@
 name: mithkal
 description: "Mithkal — a cross-platform Telegram client (Flutter), built on TDLib."
 publish_to: 'none'
-version: 1.0.0+1
+version: 0.1.14+14
 
 environment:
   sdk: ^3.12.2
