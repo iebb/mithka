@@ -40,7 +40,6 @@ class _ChatListViewState extends State<ChatListView> {
   String _meName = '我';
   TdFileRef? _mePhoto;
   int? _openSwipeChat;
-  bool _showPlusMenu = false;
 
   @override
   void initState() {
@@ -102,7 +101,6 @@ class _ChatListViewState extends State<ChatListView> {
             ],
           ),
         ),
-        if (_showPlusMenu) _plusMenuOverlay(),
       ],
     );
   }
@@ -158,10 +156,6 @@ class _ChatListViewState extends State<ChatListView> {
               ],
             ),
             const Spacer(),
-            GestureDetector(
-              onTap: () => setState(() => _showPlusMenu = true),
-              child: Icon(sfIcon('plus'), size: 24, color: c.textPrimary),
-            ),
           ],
         ),
       ),
@@ -277,95 +271,6 @@ class _ChatListViewState extends State<ChatListView> {
   }
 
   // MARK: - "+" dropdown
-
-  Widget _plusMenuOverlay() {
-    return Positioned.fill(
-      child: GestureDetector(
-        onTap: () => setState(() => _showPlusMenu = false),
-        child: Container(
-          color: Colors.black.withValues(alpha: 0.12),
-          padding: EdgeInsets.only(
-            top: MediaQuery.of(context).padding.top + 48,
-            right: 10,
-          ),
-          alignment: Alignment.topRight,
-          child: PlusMenu(
-            onSelect: (label) {
-              setState(() => _showPlusMenu = false);
-              // Create actions land in their own screens (ported separately).
-            },
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Reference-style "+" dropdown of create actions.
-class PlusMenu extends StatelessWidget {
-  const PlusMenu({super.key, required this.onSelect});
-  final ValueChanged<String> onSelect;
-
-  static const _items = [
-    ('plus.circle', '创建群聊'),
-    ('square.grid.2x2.fill', '创建频道'),
-    ('person.badge.plus', '加好友/群'),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    return Material(
-      color: Colors.transparent,
-      child: Container(
-        width: 220,
-        decoration: BoxDecoration(
-          color: c.card,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.15),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final item in _items)
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => onSelect(item.$2),
-                child: SizedBox(
-                  height: 50,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: 24,
-                          child: Icon(
-                            sfIcon(item.$1),
-                            size: 19,
-                            color: c.textPrimary,
-                          ),
-                        ),
-                        const SizedBox(width: 14),
-                        Text(
-                          item.$2,
-                          style: TextStyle(fontSize: 16, color: c.textPrimary),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 // MARK: - QQ-style swipe row

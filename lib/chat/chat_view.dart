@@ -14,6 +14,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../call/call_manager.dart';
+import '../components/photo_avatar.dart';
 import '../components/sf_symbols.dart';
 import '../components/ui_components.dart';
 import '../profile/profile_detail_view.dart';
@@ -272,6 +273,14 @@ class _ChatViewState extends State<ChatView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    // Not a member, joinable, and nothing to preview → a QQ-style join screen
+    // (header + centered card) instead of the transcript + composer.
+    if (!_vm.isMember && _vm.canJoin && _vm.messages.isEmpty) {
+      return Scaffold(
+        backgroundColor: c.groupedBackground,
+        body: _joinScreenBody(),
+      );
+    }
     return Scaffold(
       backgroundColor: c.chatBackground,
       // The input bar manages the keyboard inset itself (see ChatInputBar), so
@@ -306,7 +315,7 @@ class _ChatViewState extends State<ChatView> {
                   ],
                 ),
               ),
-              ChatInputBar(vm: _vm, onStartCall: _startCall),
+              _composerArea(),
             ],
           ),
           if (_actionTarget != null) _actionMenuOverlay(),
@@ -378,6 +387,188 @@ class _ChatViewState extends State<ChatView> {
           ],
         ),
       ),
+    );
+  }
+
+  // MARK: - Composer area (input bar / join bar / disabled bar)
+
+  Widget _composerArea() {
+    if (_vm.canSendMessages) {
+      return ChatInputBar(vm: _vm, onStartCall: _startCall);
+    }
+    if (!_vm.isMember && _vm.canJoin) return _joinBar();
+    // Subscribed to a channel you can't post in → mute/unmute (like official).
+    if (_vm.isChannel && _vm.isMember) return _channelMuteBar();
+    return _disabledComposer(_vm.sendDisabledReason);
+  }
+
+  Widget _channelMuteBar() {
+    final c = context.colors;
+    final muted = _vm.isMuted;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _vm.toggleMute(),
+      child: Container(
+        width: double.infinity,
+        padding: EdgeInsets.fromLTRB(
+          16,
+          14,
+          16,
+          14 + MediaQuery.of(context).padding.bottom,
+        ),
+        decoration: BoxDecoration(
+          color: c.navBar,
+          border: Border(top: BorderSide(color: c.divider, width: 0.5)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(sfIcon('bell.fill'), size: 18, color: AppTheme.brand),
+            const SizedBox(width: 8),
+            Text(
+              muted ? '取消静音' : '静音',
+              style: TextStyle(fontSize: 16, color: AppTheme.brand),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Bottom bar with a 加入 / 申请加入 button for a joinable chat you can preview.
+  Widget _joinBar() {
+    final c = context.colors;
+    final requested = _vm.joinRequested;
+    final label = requested ? '已申请加入' : (_vm.joinByRequest ? '申请加入' : '加入群组');
+    return Container(
+      padding: EdgeInsets.fromLTRB(
+        16,
+        10,
+        16,
+        10 + MediaQuery.of(context).padding.bottom,
+      ),
+      decoration: BoxDecoration(
+        color: c.navBar,
+        border: Border(top: BorderSide(color: c.divider, width: 0.5)),
+      ),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: requested ? null : () => _vm.joinChat(),
+        child: Container(
+          height: 46,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            gradient: requested ? null : AppTheme.brandGradient,
+            color: requested ? c.searchFill : null,
+            borderRadius: BorderRadius.circular(23),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: requested ? c.textSecondary : Colors.white,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Static bar shown when sending is blocked (muted / channel / removed).
+  Widget _disabledComposer(String reason) {
+    final c = context.colors;
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(
+        16,
+        14,
+        16,
+        14 + MediaQuery.of(context).padding.bottom,
+      ),
+      decoration: BoxDecoration(
+        color: c.navBar,
+        border: Border(top: BorderSide(color: c.divider, width: 0.5)),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        reason.isEmpty ? '你无法在此聊天中发送消息' : reason,
+        style: TextStyle(fontSize: 14, color: c.textSecondary),
+      ),
+    );
+  }
+
+  /// QQ-style join screen for a joinable chat with no previewable content.
+  Widget _joinScreenBody() {
+    final c = context.colors;
+    final requested = _vm.joinRequested;
+    final label = requested
+        ? '已申请加入，等待审核'
+        : (_vm.joinByRequest ? '申请加入' : '加入群组');
+    return Column(
+      children: [
+        _header(),
+        Expanded(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 40),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  PhotoAvatar(
+                    title: _vm.peerTitle,
+                    photo: _vm.peerPhoto,
+                    size: 88,
+                    square: _vm.isGroup,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    _vm.peerTitle,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w600,
+                      color: c.textPrimary,
+                    ),
+                  ),
+                  if (_vm.memberCount > 0) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      '${_vm.memberCount} 名成员',
+                      style: TextStyle(fontSize: 14, color: c.textSecondary),
+                    ),
+                  ],
+                  const SizedBox(height: 28),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: requested ? null : () => _vm.joinChat(),
+                    child: Container(
+                      height: 46,
+                      constraints: const BoxConstraints(minWidth: 200),
+                      alignment: Alignment.center,
+                      padding: const EdgeInsets.symmetric(horizontal: 28),
+                      decoration: BoxDecoration(
+                        gradient: requested ? null : AppTheme.brandGradient,
+                        color: requested ? c.searchFill : null,
+                        borderRadius: BorderRadius.circular(23),
+                      ),
+                      child: Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: requested ? c.textSecondary : Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

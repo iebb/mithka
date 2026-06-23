@@ -439,7 +439,8 @@ class _ChatInfoViewState extends State<ChatInfoView> {
       child: Column(
         children: [
           _destructiveRow('清空聊天记录', _vm.clearHistory),
-          if (_vm.isGroup) ...[
+          // Only a confirmed member can quit — hide 退出 for non-joined groups.
+          if (_vm.isGroup && _vm.isMember) ...[
             const InsetDivider(leadingInset: 0),
             _destructiveRow('退出群聊', () {
               _vm.leaveChat();
@@ -484,6 +485,7 @@ class ChatInfoViewModel extends ChangeNotifier {
   List<ChatMember> members = [];
   bool canInvite = false;
   bool canRemove = false;
+  bool isMember = false; // confirmed member → may quit; false hides 退出
   bool _loaded = false;
 
   void load() {
@@ -562,7 +564,14 @@ class ChatInfoViewModel extends ChangeNotifier {
         'member_id': {'@type': 'messageSenderUser', 'user_id': uid},
       });
       final status = member.obj('status');
-      switch (status?.type) {
+      final st = status?.type;
+      isMember =
+          st == 'chatMemberStatusCreator' ||
+          st == 'chatMemberStatusAdministrator' ||
+          st == 'chatMemberStatusMember' ||
+          (st == 'chatMemberStatusRestricted' &&
+              (status?.boolean('is_member') ?? false));
+      switch (st) {
         case 'chatMemberStatusCreator':
           canInvite = true;
           canRemove = true;
@@ -577,6 +586,7 @@ class ChatInfoViewModel extends ChangeNotifier {
     } catch (_) {
       canInvite = defaultInvite;
       canRemove = false;
+      isMember = false;
     }
     notifyListeners();
   }

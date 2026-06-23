@@ -105,8 +105,10 @@ class _AddPeopleViewState extends State<AddPeopleView> {
         if (c != null) byId[id] = c;
       }
     } catch (_) {}
-    final handle = q.startsWith('@') ? q.substring(1) : q;
-    if (RegExp(r'^[A-Za-z0-9_]{3,}$').hasMatch(handle)) {
+    // searchContacts only covers saved contacts; if the input is an exact public
+    // username (or t.me link), resolve it so any user shows up as a candidate.
+    final handle = _usernameOf(q);
+    if (handle != null) {
       try {
         final chat = await _client.query({
           '@type': 'searchPublicChat',
@@ -147,8 +149,47 @@ class _AddPeopleViewState extends State<AddPeopleView> {
         } catch (_) {}
       }
     } catch (_) {}
+    // searchPublicChats won't always surface an exact, lesser-known channel; if
+    // the input is a valid public username/link, resolve it directly.
+    final handle = _usernameOf(q);
+    if (handle != null) {
+      try {
+        final chat = await _client.query({
+          '@type': 'searchPublicChat',
+          'username': handle,
+        });
+        final id = chat.int64('id');
+        final kind = TDParse.chatKind(chat);
+        if (id != null &&
+            (kind == ChatKind.group || kind == ChatKind.channel) &&
+            !hits.any((h) => h.id == id)) {
+          hits.add(
+            _ChatHit(
+              id,
+              chat.str('title') ?? '—',
+              TDParse.smallPhoto(chat.obj('photo')),
+              kind == ChatKind.channel ? '频道' : '群组',
+              true,
+            ),
+          );
+        }
+      } catch (_) {}
+    }
     if (q != _query.trim() || _mode != 1) return;
     _groups = hits;
+  }
+
+  /// Extracts a Telegram public username from raw input — bare handle, `@handle`,
+  /// or a t.me / telegram.me link — or null if it isn't a valid username shape.
+  String? _usernameOf(String q) {
+    var s = q.trim();
+    final link = RegExp(
+      r'(?:https?://)?(?:t\.me|telegram\.me)/(@?[A-Za-z0-9_]+)',
+      caseSensitive: false,
+    ).firstMatch(s);
+    if (link != null) s = link.group(1)!;
+    if (s.startsWith('@')) s = s.substring(1);
+    return RegExp(r'^[A-Za-z0-9_]{3,32}$').hasMatch(s) ? s : null;
   }
 
   Future<Contact?> _contact(int id) async {

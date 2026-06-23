@@ -52,6 +52,19 @@ class ChatViewModel extends ChangeNotifier {
   ChatMessage? pinnedMessage;
   bool pinnedDismissed = false;
 
+  // Membership / send permission. Defaults assume a normal, joined, sendable
+  // chat; refined in _loadChatHeader once the chat type + member status load.
+  bool canSendMessages = true; // composer enabled
+  bool isMember = true; // gates 退出; false → join affordance
+  bool canJoin = false; // not a member but joinable (public super/channel/left)
+  bool joinByRequest = false; // joining needs approval → "申请加入"
+  bool joinRequested = false; // a join request was sent (awaiting approval)
+  bool isChannel = false; // broadcast channel (members can't post)
+  bool isMuted =
+      false; // notifications muted (channel subscribers get a toggle)
+  String sendDisabledReason = ''; // shown in the disabled composer bar
+  bool _chatCanSend = true; // chat-wide default can_send_basic_messages
+
   final TdClient _client = TdClient.shared;
   StreamSubscription? _sub;
   bool _isLoadingOlder = false;
@@ -477,8 +490,20 @@ class ChatViewModel extends ChangeNotifier {
     lastReadOutboxId = chat.int64('last_read_outbox_message_id') ?? 0;
     lastReadInboxId = chat.int64('last_read_inbox_message_id') ?? 0;
     unreadCount = chat.integer('unread_count') ?? 0;
+    isMuted = (chat.obj('notification_settings')?.integer('mute_for') ?? 0) > 0;
     final kind = TDParse.chatKind(chat);
     isGroup = kind == ChatKind.group || kind == ChatKind.channel;
+
+    // Chat-wide default send permission + permissive membership defaults
+    // (refined per type below).
+    _chatCanSend =
+        chat.obj('permissions')?.boolean('can_send_basic_messages') ?? true;
+    canSendMessages = true;
+    isMember = true;
+    canJoin = false;
+    joinByRequest = false;
+    isChannel = false;
+    sendDisabledReason = '';
 
     final type = chat.obj('type');
     switch (type?.type) {
@@ -504,11 +529,21 @@ class ChatViewModel extends ChangeNotifier {
               'basic_group_id': gid,
             });
             memberCount = bg.integer('member_count') ?? 0;
+            _applyGroupStatus(bg.obj('status'));
           } catch (_) {}
         }
       case 'chatTypeSupergroup':
         final sgid = type?.int64('supergroup_id');
         if (sgid != null) {
+          try {
+            final sg = await _client.query({
+              '@type': 'getSupergroup',
+              'supergroup_id': sgid,
+            });
+            isChannel = sg.boolean('is_channel') ?? false;
+            joinByRequest = sg.boolean('join_by_request') ?? false;
+            _applyGroupStatus(sg.obj('status'));
+          } catch (_) {}
           try {
             final full = await _client.query({
               '@type': 'getSupergroupFullInfo',
@@ -520,6 +555,86 @@ class ChatViewModel extends ChangeNotifier {
     }
     notifyListeners();
     _loadPinnedMessage();
+  }
+
+  /// Maps the current user's member status (+ channel-ness / chat defaults) onto
+  /// the send / membership / join flags the chat UI reads.
+  void _applyGroupStatus(Map<String, dynamic>? status) {
+    switch (status?.type) {
+      case 'chatMemberStatusCreator':
+      case 'chatMemberStatusAdministrator':
+        isMember = true;
+        canSendMessages = true;
+      case 'chatMemberStatusMember':
+        isMember = true;
+        canSendMessages = isChannel ? false : _chatCanSend;
+        if (!canSendMessages) {
+          sendDisabledReason = isChannel ? '只有管理员可以发布内容' : '已被全员禁言';
+        }
+      case 'chatMemberStatusRestricted':
+        isMember = status?.boolean('is_member') ?? true;
+        canSendMessages =
+            status?.obj('permissions')?.boolean('can_send_basic_messages') ??
+            false;
+        if (!isMember) canJoin = true;
+        if (!canSendMessages) sendDisabledReason = '您已被禁言';
+      case 'chatMemberStatusLeft':
+        isMember = false;
+        canSendMessages = false;
+        canJoin = true;
+      case 'chatMemberStatusBanned':
+        isMember = false;
+        canSendMessages = false;
+        sendDisabledReason = '您已被移出该群组';
+    }
+  }
+
+  /// Mute / unmute notifications — the bottom-bar action for a channel you're
+  /// subscribed to but can't post in (mirrors the official client).
+  Future<void> toggleMute() async {
+    final target = isMuted;
+    isMuted = !isMuted;
+    notifyListeners();
+    try {
+      await _client.query({
+        '@type': 'setChatNotificationSettings',
+        'chat_id': chatId,
+        'notification_settings': {
+          '@type': 'chatNotificationSettings',
+          'use_default_mute_for': false,
+          'mute_for': target ? 0 : 2147483647, // INT32_MAX = "forever"
+          'use_default_sound': true,
+          'use_default_show_preview': true,
+          'use_default_mute_stories': true,
+          'use_default_story_sound': true,
+          'use_default_show_story_sender': true,
+          'use_default_disable_pinned_message_notifications': true,
+          'use_default_disable_mention_notifications': true,
+        },
+      });
+    } catch (_) {
+      isMuted = target; // revert on failure
+      notifyListeners();
+    }
+  }
+
+  /// Joins (or, for approval-required chats, requests to join) the current chat.
+  /// Optimistically updates membership; TDLib updates refine it.
+  Future<void> joinChat() async {
+    try {
+      await _client.query({'@type': 'joinChat', 'chat_id': chatId});
+      if (joinByRequest) {
+        joinRequested = true;
+      } else {
+        isMember = true;
+        canJoin = false;
+        canSendMessages = isChannel ? false : _chatCanSend;
+        if (!canSendMessages && isChannel) {
+          sendDisabledReason = '只有管理员可以发布内容';
+        }
+      }
+      notifyListeners();
+    } catch (_) {}
   }
 
   Future<void> _loadPinnedMessage() async {

@@ -203,146 +203,207 @@ class _ProfileViewState extends State<ProfileView> {
           if (!ok && mounted) showToast(context, '设置状态失败（需要 Premium）');
         }
 
-        Widget grid(List<int> ids) => GridView.count(
-          crossAxisCount: 6,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          children: [
-            for (final id in ids)
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => pick(id),
-                child: Padding(
-                  padding: const EdgeInsets.all(5),
-                  child: CustomEmojiView(
-                    id: id,
-                    size: 34,
-                    color: c.textPrimary,
+        Widget grid(List<int> ids) {
+          if (ids.isEmpty) {
+            return Center(
+              child: Text(
+                '该表情包暂无可用状态',
+                style: TextStyle(fontSize: 13, color: c.textSecondary),
+              ),
+            );
+          }
+          return GridView.count(
+            crossAxisCount: 6,
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            children: [
+              for (final id in ids)
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => pick(id),
+                  child: Padding(
+                    padding: const EdgeInsets.all(5),
+                    child: CustomEmojiView(
+                      id: id,
+                      size: 34,
+                      color: c.textPrimary,
+                    ),
                   ),
                 ),
-              ),
-          ],
-        );
+            ],
+          );
+        }
 
+        var statusTab = 0; // 0 = 推荐 (suggested); 1..N = custom packs
         return SafeArea(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: maxHeight),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-              child: ListenableBuilder(
-                listenable: EmojiStore.shared,
-                builder: (ctx, _) {
-                  final packs = EmojiStore.shared.isPremium
-                      ? EmojiStore.shared.customPacks
-                      : const <CustomEmojiPack>[];
-                  return Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Text(
-                            '设置状态',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: c.textPrimary,
-                            ),
-                          ),
-                          const Spacer(),
-                          if ((_vm.user?.emojiStatusId ?? 0) != 0)
-                            GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: () => pick(0),
-                              child: Text(
-                                '清除',
+          child: SizedBox(
+            height: maxHeight,
+            child: ListenableBuilder(
+              listenable: EmojiStore.shared,
+              builder: (ctx, _) {
+                final packs = EmojiStore.shared.isPremium
+                    ? EmojiStore.shared.customPacks
+                    : const <CustomEmojiPack>[];
+                return StatefulBuilder(
+                  builder: (ctx2, setSheet) {
+                    if (statusTab > packs.length) statusTab = 0;
+                    return Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+                          child: Row(
+                            children: [
+                              Text(
+                                '设置状态',
                                 style: TextStyle(
-                                  fontSize: 14,
-                                  color: AppTheme.tagRed,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: c.textPrimary,
                                 ),
                               ),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Flexible(
-                        child: SingleChildScrollView(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              FutureBuilder<List<int>>(
-                                future: optionsFuture,
-                                builder: (context, snap) {
-                                  final ids = snap.data ?? const <int>[];
-                                  final loading =
-                                      snap.connectionState !=
-                                      ConnectionState.done;
-                                  if (loading && packs.isEmpty) {
-                                    return const Padding(
-                                      padding: EdgeInsets.all(24),
-                                      child: Center(
-                                        child: SizedBox(
-                                          width: 24,
-                                          height: 24,
-                                          child:
-                                              CircularProgressIndicator.adaptive(
-                                                strokeWidth: 2,
-                                              ),
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                  if (ids.isEmpty && packs.isEmpty) {
-                                    return Padding(
-                                      padding: const EdgeInsets.all(24),
-                                      child: Center(
-                                        child: Text(
-                                          '暂无可用状态（需要 Premium）',
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            color: c.textSecondary,
-                                          ),
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                  return ids.isEmpty
-                                      ? const SizedBox.shrink()
-                                      : grid(ids);
-                                },
-                              ),
-                              for (final pack in packs) ...[
-                                Padding(
-                                  padding: const EdgeInsets.only(
-                                    top: 10,
-                                    bottom: 4,
-                                  ),
+                              const Spacer(),
+                              if ((_vm.user?.emojiStatusId ?? 0) != 0)
+                                GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onTap: () => pick(0),
                                   child: Text(
-                                    pack.title,
+                                    '清除',
                                     style: TextStyle(
-                                      fontSize: 13,
-                                      color: c.textSecondary,
+                                      fontSize: 14,
+                                      color: AppTheme.tagRed,
                                     ),
                                   ),
                                 ),
-                                grid([
-                                  for (final e in pack.emoji)
-                                    if (e.customEmojiId != 0) e.customEmojiId,
-                                ]),
-                              ],
                             ],
                           ),
                         ),
-                      ),
-                    ],
-                  );
-                },
-              ),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: statusTab == 0
+                                ? FutureBuilder<List<int>>(
+                                    future: optionsFuture,
+                                    builder: (context, snap) {
+                                      if (snap.connectionState !=
+                                          ConnectionState.done) {
+                                        return const Center(
+                                          child: SizedBox(
+                                            width: 24,
+                                            height: 24,
+                                            child:
+                                                CircularProgressIndicator.adaptive(
+                                                  strokeWidth: 2,
+                                                ),
+                                          ),
+                                        );
+                                      }
+                                      final ids = snap.data ?? const <int>[];
+                                      if (ids.isEmpty && packs.isEmpty) {
+                                        return Center(
+                                          child: Text(
+                                            '暂无可用状态（需要 Premium）',
+                                            style: TextStyle(
+                                              fontSize: 13,
+                                              color: c.textSecondary,
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                      return grid(ids);
+                                    },
+                                  )
+                                : grid([
+                                    for (final e in packs[statusTab - 1].emoji)
+                                      if (e.customEmojiId != 0) e.customEmojiId,
+                                  ]),
+                          ),
+                        ),
+                        // Tabs: 推荐 + one per installed custom-emoji pack.
+                        if (packs.isNotEmpty)
+                          _statusTabStrip(
+                            c,
+                            packs,
+                            statusTab,
+                            (i) => setSheet(() => statusTab = i),
+                          ),
+                      ],
+                    );
+                  },
+                );
+              },
             ),
           ),
         );
       },
     );
+  }
+
+  /// Bottom tab strip for the status picker: 推荐 + one tab per custom-emoji pack.
+  Widget _statusTabStrip(
+    dynamic c,
+    List<CustomEmojiPack> packs,
+    int selected,
+    ValueChanged<int> onTap,
+  ) {
+    Widget tab(int i, Widget child) {
+      final active = i == selected;
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => onTap(i),
+        child: Container(
+          width: 42,
+          height: 42,
+          margin: const EdgeInsets.symmetric(horizontal: 2),
+          decoration: BoxDecoration(
+            color: active ? c.searchFill : null,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          alignment: Alignment.center,
+          child: child,
+        ),
+      );
+    }
+
+    return Container(
+      height: 54,
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: c.divider, width: 0.5)),
+      ),
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        children: [
+          tab(
+            0,
+            Icon(
+              sfIcon('star.fill'),
+              size: 22,
+              color: selected == 0 ? AppTheme.brand : c.textSecondary,
+            ),
+          ),
+          for (var i = 0; i < packs.length; i++)
+            tab(i + 1, _packTabIcon(packs[i], c)),
+        ],
+      ),
+    );
+  }
+
+  Widget _packTabIcon(CustomEmojiPack pack, dynamic c) {
+    final withId = pack.emoji.where((e) => e.customEmojiId != 0).toList();
+    if (withId.isNotEmpty) {
+      return CustomEmojiView(
+        id: withId.first.customEmojiId,
+        size: 26,
+        color: c.textPrimary,
+      );
+    }
+    if (pack.cover != null) {
+      return SizedBox(
+        width: 26,
+        height: 26,
+        child: TDImage(photo: pack.cover, cornerRadius: 4),
+      );
+    }
+    return Icon(sfIcon('square.grid.2x2'), size: 22, color: c.textSecondary);
   }
 
   @override

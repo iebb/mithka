@@ -6,12 +6,15 @@
 //
 
 import 'package:dlibphonenumber/dlibphonenumber.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../components/sf_symbols.dart';
+import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
+import 'account_store.dart';
 import 'auth_manager.dart';
 import 'country_picker.dart';
 
@@ -25,9 +28,13 @@ class LoginView extends StatefulWidget {
 class _LoginViewState extends State<LoginView> {
   final _phone = TextEditingController(text: '+');
   final _code = TextEditingController();
-  final _password = TextEditingController();
+  final _password = ObscuringController();
   final _firstName = TextEditingController();
   final _lastName = TextEditingController();
+
+  // When true, show the phone-number step even though TDLib is still at a later
+  // auth state — lets the user back out of the code / 2FA step to fix the number.
+  bool _forcePhone = false;
 
   String get _phoneDigits => _phone.text.replaceAll(RegExp(r'[^0-9]'), '');
   Country? get _detectedCountry => Country.match(_phoneDigits);
@@ -71,41 +78,116 @@ class _LoginViewState extends State<LoginView> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthManager>();
     final c = context.colors;
+    final beyondPhone =
+        auth.step is AuthWaitCode ||
+        auth.step is AuthWaitPassword ||
+        auth.step is AuthWaitRegistration;
+    // A back affordance is useful once past the phone step, or whenever another
+    // account exists to switch to.
+    final canGoBack =
+        (beyondPhone && !_forcePhone) ||
+        TdClient.shared.configuredSlots.length > 1;
     return Scaffold(
       backgroundColor: c.background,
-      body: Column(
+      body: Stack(
         children: [
-          _header(),
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _stepFor(auth),
-                  if (auth.errorMessage != null) ...[
-                    const SizedBox(height: 18),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        auth.errorMessage!,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: AppTheme.unreadBadge,
+          Column(
+            children: [
+              _header(),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _stepFor(auth),
+                      if (auth.errorMessage != null) ...[
+                        const SizedBox(height: 18),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            auth.errorMessage!,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: AppTheme.unreadBadge,
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                  ],
-                ],
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (canGoBack)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 6,
+              left: 6,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _showBackOptions(auth),
+                child: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: Icon(
+                    sfIcon('chevron.left'),
+                    size: 26,
+                    color: c.textPrimary,
+                  ),
+                ),
               ),
             ),
-          ),
         ],
       ),
     );
   }
 
+  /// Back affordance for the code / 2FA / registration steps: re-enter the phone
+  /// number, or switch to another configured account.
+  void _showBackOptions(AuthManager auth) {
+    final showReenter =
+        !_forcePhone &&
+        (auth.step is AuthWaitCode ||
+            auth.step is AuthWaitPassword ||
+            auth.step is AuthWaitRegistration);
+    final others = TdClient.shared.configuredSlots
+        .where((s) => s != TdClient.shared.activeSlot)
+        .toList();
+    showCupertinoModalPopup<void>(
+      context: context,
+      builder: (sheet) => CupertinoActionSheet(
+        actions: [
+          if (showReenter)
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.of(sheet).pop();
+                _code.clear();
+                _password.clear();
+                setState(() => _forcePhone = true);
+              },
+              child: const Text('重新输入手机号'),
+            ),
+          if (others.isNotEmpty)
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.of(sheet).pop();
+                context.read<AccountStore>().switchTo(others.first, auth);
+                if (mounted) setState(() => _forcePhone = false);
+              },
+              child: const Text('切换账号'),
+            ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          isDefaultAction: true,
+          onPressed: () => Navigator.of(sheet).pop(),
+          child: const Text('取消'),
+        ),
+      ),
+    );
+  }
+
   Widget _stepFor(AuthManager auth) {
+    if (_forcePhone) return _phoneStep(auth);
     return switch (auth.step) {
       AuthMissingCredentials() => _credentialsNotice(),
       AuthWaitCode(:final info) => _codeStep(auth, info),
@@ -225,12 +307,10 @@ class _LoginViewState extends State<LoginView> {
           ),
         ),
         const SizedBox(height: 20),
-        _primaryButton(
-          auth,
-          '获取验证码',
-          _phoneDigits.length >= 7,
-          () => auth.submitPhone('+$_phoneDigits'),
-        ),
+        _primaryButton(auth, '获取验证码', _phoneDigits.length >= 7, () {
+          auth.submitPhone('+$_phoneDigits');
+          if (_forcePhone) setState(() => _forcePhone = false);
+        }),
         const SizedBox(height: 20),
         Text(
           '我们会向该号码发送一次性登录验证码',
@@ -429,6 +509,30 @@ class _LoginViewState extends State<LoginView> {
   }
 }
 
+/// A TextEditingController that masks its text with dots at render time, so the
+/// field can stay a plain (non-obscured) text field. TextField.obscureText forces
+/// a password input type that some Chinese/ColorOS IMEs render as a numeric
+/// keypad; masking here keeps a real alphanumeric keyboard. Toggle [reveal].
+class ObscuringController extends TextEditingController {
+  bool reveal = false;
+
+  @override
+  TextSpan buildTextSpan({
+    required BuildContext context,
+    TextStyle? style,
+    required bool withComposing,
+  }) {
+    if (reveal) {
+      return super.buildTextSpan(
+        context: context,
+        style: style,
+        withComposing: withComposing,
+      );
+    }
+    return TextSpan(style: style, text: '•' * value.text.length);
+  }
+}
+
 /// A pill-shaped reference text field with a leading glyph. Secure fields get a
 /// full (alphanumeric) keyboard and a show/hide eye toggle — Telegram 2-step
 /// passwords are NOT numeric.
@@ -462,6 +566,12 @@ class _InputFieldState extends State<InputField> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    // Secure fields mask through the controller (dots at render time); reflect
+    // the eye toggle into it so showing/hiding works without obscureText.
+    final maskCtrl = widget.controller is ObscuringController
+        ? widget.controller as ObscuringController
+        : null;
+    maskCtrl?.reveal = !_obscure;
     return Container(
       height: 50,
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -483,12 +593,12 @@ class _InputFieldState extends State<InputField> {
           Expanded(
             child: TextField(
               controller: widget.controller,
-              obscureText: _obscure,
-              // Force a full QWERTY keyboard for secure fields so they're never
-              // numeric. A plain obscured field maps to TYPE_TEXT_VARIATION_PASSWORD,
-              // which Chinese/ColorOS IMEs render as a numeric PIN pad; visiblePassword
-              // (TYPE_TEXT_VARIATION_VISIBLE_PASSWORD) gives a real alphanumeric
-              // keyboard while Flutter still masks the text via obscureText.
+              // Secure fields mask via an ObscuringController (render-time dots)
+              // and keep obscureText FALSE — TextField.obscureText forces a
+              // password input type that some Chinese/ColorOS IMEs render as a
+              // numeric PIN pad, even with visiblePassword. A plain text field +
+              // visiblePassword guarantees a real alphanumeric keyboard.
+              obscureText: maskCtrl == null && _obscure,
               keyboardType:
                   widget.keyboardType ??
                   (widget.secure ? TextInputType.visiblePassword : null),
