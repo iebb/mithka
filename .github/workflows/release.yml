@@ -111,7 +111,7 @@ jobs:
           echo "$KEYSTORE_B64" | base64 -d > android/app/upload-keystore.jks
           cat > android/key.properties <<EOF
           storePassword=$STORE_PASSWORD
-          keyPassword=$KEY_PASSWORD
+          keyPassword=${KEY_PASSWORD:-$STORE_PASSWORD}
           keyAlias=$KEY_ALIAS
           storeFile=upload-keystore.jks
           EOF
