@@ -19,6 +19,7 @@ import '../auth/auth_manager.dart';
 import '../chat/chat_view.dart';
 import '../chat/custom_emoji.dart';
 import '../chat/emoji_store.dart';
+import '../components/confirm_dialog.dart';
 import '../components/drawer_controller.dart' as dc;
 import '../components/photo_avatar.dart';
 import '../components/sf_symbols.dart';
@@ -706,6 +707,9 @@ class _ProfileViewState extends State<ProfileView> {
               behavior: HitTestBehavior.opaque,
               onTap: () =>
                   accounts.switchTo(s.slot, context.read<AuthManager>()),
+              onLongPress: accounts.summaries.length > 1
+                  ? () => _confirmRemoveAccount(accounts, s)
+                  : null,
               child: _accountRow(
                 s.name,
                 s.phone,
@@ -753,6 +757,24 @@ class _ProfileViewState extends State<ProfileView> {
         ],
       ),
     );
+  }
+
+  /// Long-press an account row to remove it from the switcher — for clearing a
+  /// leftover "未登录" entry or a logged-out account you no longer want.
+  Future<void> _confirmRemoveAccount(
+    AccountStore accounts,
+    AccountSummary s,
+  ) async {
+    final label = s.phone.isNotEmpty ? '${s.name}（${s.phone}）' : s.name;
+    final ok = await confirmDialog(
+      context,
+      title: '移除账号',
+      message: '将从账号列表移除 $label。可随时重新登录。',
+      confirmText: '移除',
+      destructive: true,
+    );
+    if (!ok || !mounted) return;
+    accounts.removeAccount(s.slot, context.read<AuthManager>());
   }
 
   Widget _accountRow(

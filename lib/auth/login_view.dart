@@ -77,11 +77,15 @@ class _LoginViewState extends State<LoginView> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthManager>();
+    final accounts = context.watch<AccountStore>();
     final c = context.colors;
     final beyondPhone =
         auth.step is AuthWaitCode ||
         auth.step is AuthWaitPassword ||
         auth.step is AuthWaitRegistration;
+    // True when the phone-entry step is on screen (the natural state, or because
+    // the user chose to re-enter the number).
+    final showingPhone = _forcePhone || auth.step is AuthWaitPhoneNumber;
     // A back affordance is useful once past the phone step, or whenever another
     // account exists to switch to.
     final canGoBack =
@@ -126,7 +130,11 @@ class _LoginViewState extends State<LoginView> {
               left: 6,
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: () => _showBackOptions(auth),
+                // Aborting an add-account at the phone step has nothing to
+                // re-enter, so go straight back to the previous account.
+                onTap: () => accounts.hasPendingAdd && showingPhone
+                    ? accounts.cancelAddAccount(auth)
+                    : _showBackOptions(auth),
                 child: Padding(
                   padding: const EdgeInsets.all(10),
                   child: Icon(
@@ -143,13 +151,17 @@ class _LoginViewState extends State<LoginView> {
   }
 
   /// Back affordance for the code / 2FA / registration steps: re-enter the phone
-  /// number, or switch to another configured account.
+  /// number, abort an add-account back to the previous account, or switch to
+  /// another configured account.
   void _showBackOptions(AuthManager auth) {
+    final accounts = context.read<AccountStore>();
     final showReenter =
         !_forcePhone &&
         (auth.step is AuthWaitCode ||
             auth.step is AuthWaitPassword ||
             auth.step is AuthWaitRegistration);
+    final pendingAdd = accounts.hasPendingAdd;
+    final returnName = accounts.returnAccountName;
     final others = TdClient.shared.configuredSlots
         .where((s) => s != TdClient.shared.activeSlot)
         .toList();
@@ -167,11 +179,22 @@ class _LoginViewState extends State<LoginView> {
               },
               child: const Text('重新输入手机号'),
             ),
-          if (others.isNotEmpty)
+          // Aborting an add-account drops the half-created slot and returns to
+          // the account we came from (no "未登录" left behind).
+          if (pendingAdd)
             CupertinoActionSheetAction(
               onPressed: () {
                 Navigator.of(sheet).pop();
-                context.read<AccountStore>().switchTo(others.first, auth);
+                accounts.cancelAddAccount(auth);
+                if (mounted) setState(() => _forcePhone = false);
+              },
+              child: Text(returnName != null ? '返回 $returnName' : '返回上一账号'),
+            )
+          else if (others.isNotEmpty)
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.of(sheet).pop();
+                accounts.switchTo(others.first, auth);
                 if (mounted) setState(() => _forcePhone = false);
               },
               child: const Text('切换账号'),

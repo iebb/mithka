@@ -158,6 +158,21 @@ class TdClient {
     _persist();
   }
 
+  /// Discards an account slot: closes its TDLib client and forgets it, so it
+  /// no longer appears in the switcher. Used to drop a freshly-added account
+  /// whose login was aborted. Refuses to remove the active slot (switch away
+  /// first) to avoid leaving the UI pointed at a dead client.
+  void removeSlot(int slot) {
+    if (slot == _activeSlot || !_slots.contains(slot)) return;
+    final cid = _clientForSlot.remove(slot);
+    if (cid != null) {
+      _bindings.send(cid, jsonEncode({'@type': 'close'}));
+      _slotForClient.remove(cid);
+    }
+    _slots.remove(slot);
+    _persist();
+  }
+
   void _persist() {
     _prefs.setStringList(_slotsKey, _slots.map((s) => s.toString()).toList());
     _prefs.setInt(_activeKey, _activeSlot);
