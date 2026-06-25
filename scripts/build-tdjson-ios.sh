@@ -2,30 +2,28 @@
 #
 # build-tdjson-ios.sh
 #
-# Builds TDLib's `tdjson` for iOS (device arm64 + simulator) and installs it as
-# a static library that links into the Runner app, so the Dart FFI layer can
-# resolve the symbols via DynamicLibrary.process() at runtime.
+# Fetches TDLib's `tdjson` XCFramework for iOS (device arm64 + simulator) and
+# installs it into the Runner app checkout, so the Dart FFI layer can resolve the
+# symbols at runtime.
 #
-# The simplest, most reliable route is the official prebuilt XCFramework from
-# tdlib/td-ios or building from source per https://tdlib.github.io/td/build.html.
-# This script wires a prebuilt `tdjson.xcframework` (placed at
-# ios/tdjson/tdjson.xcframework) into the Runner target via the generated
-# Xcode project; if you build from source, drop the resulting xcframework there.
-#
-# After placing the xcframework, also ensure ios/Podfile links it (see NATIVE.md)
-# and that "Embed & Sign" is set so the symbols are present in the process.
+# The prebuilt artifact lives in the sibling mithka-tdjson repo. Set
+# TDJSON_XCFRAMEWORK_URL to override the default download.
 #
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEST="$REPO_ROOT/ios/tdjson"
+TDJSON_URL="${TDJSON_XCFRAMEWORK_URL:-https://github.com/iebb/mithka-tdjson/releases/download/tdjson-1.8.65/tdjson-ios.xcframework.zip}"
 
 echo "→ Expected: $DEST/tdjson.xcframework"
 if [[ -d "$DEST/tdjson.xcframework" ]]; then
   echo "  ✓ tdjson.xcframework present"
 else
-  echo "  ✗ Missing. Build TDLib for iOS (device + simulator) and copy the"
-  echo "    resulting tdjson.xcframework to $DEST/."
-  echo "    See https://tdlib.github.io/td/build.html and NATIVE.md."
-  exit 1
+  echo "  → downloading tdjson.xcframework"
+  mkdir -p "$DEST"
+  tmp="$(mktemp "${TMPDIR:-/tmp}/tdjson-ios.XXXXXX.zip")"
+  curl -fL "$TDJSON_URL" -o "$tmp"
+  unzip -q -o "$tmp" -d "$DEST"
+  rm -f "$tmp"
 fi
+"$REPO_ROOT/scripts/wrap-tdjson-xcframework.sh" "$DEST/tdjson.xcframework"
 echo "→ Now run: cd ios && pod install   (then: flutter run)"

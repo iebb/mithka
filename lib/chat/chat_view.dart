@@ -898,6 +898,7 @@ class _ChatViewState extends State<ChatView> {
                       _vm.insertMention(m.senderName!);
                     }
                   },
+                  onOpenReply: (messageId) => _scrollToMessage(messageId),
                   onOpenImage: _openImage,
                   onPlayVideo: _playVideo,
                   isRead: _vm.isRead(message),

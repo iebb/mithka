@@ -60,11 +60,18 @@ class ThemeController extends ChangeNotifier {
       _prefs.getInt(_brandKey) ?? (0xFF000000 | AppTheme.defaultBrand),
     );
     _fontScale = _prefs.getDouble(_fontKey) ?? 1.0;
+    _interfaceScale = _prefs.getDouble(_interfaceScaleKey) ?? 1.0;
     _circularGroupAvatars = _prefs.getBool(_groupAvatarCircleKey) ?? true;
     _showChatFolderFilter = _prefs.getBool(_chatFolderFilterKey) ?? false;
     _showMemberTags = _prefs.getBool(_memberTagsKey) ?? false;
     _showPremiumNameColors = _prefs.getBool(_premiumNameColorsKey) ?? true;
     _showPremiumEmojiStatus = _prefs.getBool(_premiumEmojiStatusKey) ?? true;
+    _showChatPremiumNameColors =
+        _prefs.getBool(_chatPremiumNameColorsKey) ?? true;
+    _showChatPremiumEmojiStatus =
+        _prefs.getBool(_chatPremiumEmojiStatusKey) ?? true;
+    _showMessageMetaIndicators =
+        _prefs.getBool(_messageMetaIndicatorsKey) ?? false;
     _groupImageMessages = _prefs.getBool(_groupImageMessagesKey) ?? false;
     _unreadBadgeMode = UnreadBadgeMode.values.firstWhere(
       (m) => m.name == _prefs.getString(_unreadBadgeModeKey),
@@ -77,28 +84,37 @@ class ThemeController extends ChangeNotifier {
   static const _tabKey = 'tabBarStyle';
   static const _brandKey = 'brandColor';
   static const _fontKey = 'fontScale';
+  static const _interfaceScaleKey = 'interfaceScale';
   static const _groupAvatarCircleKey = 'circularGroupAvatars';
   static const _chatFolderFilterKey = 'showChatFolderFilter';
   static const _memberTagsKey = 'showMemberTags';
   static const _premiumNameColorsKey = 'showPremiumNameColors';
   static const _premiumEmojiStatusKey = 'showPremiumEmojiStatus';
+  static const _chatPremiumNameColorsKey = 'showChatPremiumNameColors';
+  static const _chatPremiumEmojiStatusKey = 'showChatPremiumEmojiStatus';
+  static const _messageMetaIndicatorsKey = 'showMessageMetaIndicators';
   static const _groupImageMessagesKey = 'groupImageMessages';
   static const _unreadBadgeModeKey = 'unreadBadgeMode';
 
-  /// Selectable text-scale steps for the 字体大小 control (小 / 标准 / 大 / 超大).
-  /// Capped at 1.3 so fixed-height chrome doesn't overflow badly.
-  static const List<double> fontScaleSteps = [0.85, 1.0, 1.15, 1.3];
+  static const double minFontScale = 0.8;
+  static const double maxFontScale = 1.4;
+  static const double minInterfaceScale = 0.88;
+  static const double maxInterfaceScale = 1.22;
 
   final SharedPreferences _prefs;
   late AppearanceMode _mode;
   late TabBarStyle _tabBarStyle;
   late Color _brandColor;
   late double _fontScale;
+  late double _interfaceScale;
   late bool _circularGroupAvatars;
   bool _showChatFolderFilter = false;
   bool _showMemberTags = false;
   bool _showPremiumNameColors = true;
   bool _showPremiumEmojiStatus = true;
+  bool _showChatPremiumNameColors = true;
+  bool _showChatPremiumEmojiStatus = true;
+  bool _showMessageMetaIndicators = false;
   bool _groupImageMessages = false;
   late UnreadBadgeMode _unreadBadgeMode;
 
@@ -111,11 +127,19 @@ class ThemeController extends ChangeNotifier {
   bool get showMemberTags => _showMemberTags;
   bool get showPremiumNameColors => _showPremiumNameColors;
   bool get showPremiumEmojiStatus => _showPremiumEmojiStatus;
+  bool get showChatPremiumNameColors => _showChatPremiumNameColors;
+  bool get showChatPremiumEmojiStatus => _showChatPremiumEmojiStatus;
+  bool get showMessageMetaIndicators => _showMessageMetaIndicators;
   bool get groupImageMessages => _groupImageMessages;
   UnreadBadgeMode get unreadBadgeMode => _unreadBadgeMode;
 
   /// App-wide text scale factor, applied at the root via MediaQuery.textScaler.
   double get fontScale => _fontScale;
+  double get interfaceScale => _interfaceScale;
+  double get rowHeight => AppMetric.listRowHeight;
+  double get avatarSize => AppMetric.avatarSize;
+  double get navHeaderHeight => AppMetric.navHeaderHeight;
+  double scaled(double base) => base;
 
   set mode(AppearanceMode value) {
     _mode = value;
@@ -138,8 +162,14 @@ class ThemeController extends ChangeNotifier {
   }
 
   set fontScale(double value) {
-    _fontScale = value;
-    _prefs.setDouble(_fontKey, value);
+    _fontScale = value.clamp(minFontScale, maxFontScale);
+    _prefs.setDouble(_fontKey, _fontScale);
+    notifyListeners();
+  }
+
+  set interfaceScale(double value) {
+    _interfaceScale = value.clamp(minInterfaceScale, maxInterfaceScale);
+    _prefs.setDouble(_interfaceScaleKey, _interfaceScale);
     notifyListeners();
   }
 
@@ -170,6 +200,24 @@ class ThemeController extends ChangeNotifier {
   set showPremiumEmojiStatus(bool value) {
     _showPremiumEmojiStatus = value;
     _prefs.setBool(_premiumEmojiStatusKey, value);
+    notifyListeners();
+  }
+
+  set showChatPremiumNameColors(bool value) {
+    _showChatPremiumNameColors = value;
+    _prefs.setBool(_chatPremiumNameColorsKey, value);
+    notifyListeners();
+  }
+
+  set showChatPremiumEmojiStatus(bool value) {
+    _showChatPremiumEmojiStatus = value;
+    _prefs.setBool(_chatPremiumEmojiStatusKey, value);
+    notifyListeners();
+  }
+
+  set showMessageMetaIndicators(bool value) {
+    _showMessageMetaIndicators = value;
+    _prefs.setBool(_messageMetaIndicatorsKey, value);
     notifyListeners();
   }
 

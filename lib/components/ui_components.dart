@@ -7,14 +7,16 @@
 //
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
+import '../theme/theme_controller.dart';
 import '../tdlib/td_models.dart';
 import 'sf_symbols.dart';
 
 /// Flat reference-style header bar: optional back chevron, leading title,
-/// optional trailing icon. Fixed 44pt height with a hairline bottom divider.
+/// optional trailing icon.
 class NavHeader extends StatelessWidget {
   const NavHeader({
     super.key,
@@ -34,15 +36,19 @@ class NavHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final metrics = context.watch<ThemeController>();
+    final headerHeight = metrics.navHeaderHeight;
     return Container(
-      height: 44 + MediaQuery.of(context).padding.top,
+      height: headerHeight + MediaQuery.of(context).padding.top,
       padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
       decoration: BoxDecoration(
         color: c.navBar,
-        border: Border(bottom: BorderSide(color: c.divider, width: 0.5)),
+        border: Border(
+          bottom: BorderSide(color: c.divider, width: AppMetric.divider),
+        ),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
         child: Row(
           children: [
             if (onBack != null)
@@ -50,10 +56,10 @@ class NavHeader extends StatelessWidget {
                 behavior: HitTestBehavior.opaque,
                 onTap: onBack,
                 child: Padding(
-                  padding: const EdgeInsets.only(right: 12),
+                  padding: const EdgeInsets.only(right: AppSpacing.lg),
                   child: Icon(
                     sfIcon('chevron.left'),
-                    size: 22,
+                    size: metrics.scaled(AppIconSize.nav),
                     color: c.textPrimary,
                   ),
                 ),
@@ -64,7 +70,7 @@ class NavHeader extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 17,
+                  fontSize: AppTextSize.title,
                   fontWeight: FontWeight.w500,
                   color: c.textPrimary,
                 ),
@@ -77,7 +83,7 @@ class NavHeader extends StatelessWidget {
                 onTap: onTrailing,
                 child: Icon(
                   sfIcon(trailingIcon!),
-                  size: 21,
+                  size: metrics.scaled(AppIconSize.nav - 1),
                   color: c.textPrimary,
                 ),
               ),
@@ -98,17 +104,22 @@ class UnreadBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     if (count <= 0) return const SizedBox.shrink();
     return Container(
-      constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
-      padding: EdgeInsets.symmetric(horizontal: count > 9 ? 5 : 0),
+      constraints: const BoxConstraints(
+        minWidth: AppMetric.unreadBadgeMin,
+        minHeight: AppMetric.unreadBadgeMin,
+      ),
+      padding: EdgeInsets.symmetric(
+        horizontal: count > 9 ? AppSpacing.xs + 1 : 0,
+      ),
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: muted ? context.colors.textTertiary : AppTheme.unreadBadge,
-        borderRadius: BorderRadius.circular(9),
+        borderRadius: BorderRadius.circular(AppMetric.unreadBadgeMin / 2),
       ),
       child: Text(
         count > 99 ? '99+' : '$count',
         style: const TextStyle(
-          fontSize: 12,
+          fontSize: AppTextSize.caption,
           fontWeight: FontWeight.w600,
           color: Colors.white,
         ),
@@ -141,15 +152,18 @@ class RoleTag extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.xs + 1,
+        vertical: 1.5,
+      ),
       decoration: BoxDecoration(
         color: _color,
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
       ),
       child: Text(
         _label,
         style: const TextStyle(
-          fontSize: 10,
+          fontSize: AppTextSize.tiny,
           fontWeight: FontWeight.w500,
           color: Colors.white,
         ),
@@ -180,7 +194,7 @@ class InsetDivider extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
     padding: EdgeInsets.only(left: leadingInset),
-    child: Container(height: 0.5, color: context.colors.divider),
+    child: Container(height: AppMetric.divider, color: context.colors.divider),
   );
 }
 
@@ -190,11 +204,14 @@ class TimeSeparator extends StatelessWidget {
   final int unix;
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 6),
+    padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
     child: Center(
       child: Text(
         DateText.separatorLabel(unix),
-        style: TextStyle(fontSize: 12, color: context.colors.textSecondary),
+        style: TextStyle(
+          fontSize: AppTextSize.caption,
+          color: context.colors.textSecondary,
+        ),
       ),
     ),
   );
@@ -208,19 +225,25 @@ class SystemBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.colors;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
       child: Center(
         child: Container(
           constraints: const BoxConstraints(maxWidth: 300),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.xs + 1,
+          ),
           decoration: BoxDecoration(
             color: c.textPrimary.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: BorderRadius.circular(AppRadius.md),
           ),
           child: Text(
             text,
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 12, color: c.textSecondary),
+            style: TextStyle(
+              fontSize: AppTextSize.caption,
+              color: c.textSecondary,
+            ),
           ),
         ),
       ),
@@ -251,7 +274,7 @@ class ChatPreviewText extends StatelessWidget {
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       text: TextSpan(
-        style: const TextStyle(fontSize: 13),
+        style: const TextStyle(fontSize: AppTextSize.footnote),
         children: [
           if (draft)
             TextSpan(

@@ -10,16 +10,13 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import '../components/toast.dart';
 import 'package:provider/provider.dart';
 
 import '../auth/account_store.dart';
 import '../auth/auth_manager.dart';
 import '../chat/chat_view.dart';
 import '../chat/custom_emoji.dart';
-import '../chat/emoji_store.dart';
 import '../components/confirm_dialog.dart';
 import '../components/drawer_controller.dart' as dc;
 import '../components/photo_avatar.dart';
@@ -29,6 +26,7 @@ import '../chat/shared_media_view.dart';
 import '../settings/edit_profile_view.dart';
 import '../settings/settings_view.dart';
 import 'my_album_view.dart';
+import 'emoji_status_picker.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -188,249 +186,11 @@ class _ProfileViewState extends State<ProfileView> {
     );
   }
 
-  /// QQ's status picker, mapped to Telegram's emoji status: suggested
-  /// custom-emoji statuses plus — for Premium users — every installed custom-emoji
-  /// pack, so any custom emoji can be set as the status. (+ a clear option) →
-  /// setEmojiStatus.
   void _openStatusPicker() {
-    EmojiStore.shared.loadIfNeeded(); // populate the Premium custom-emoji packs
-    final optionsFuture = _vm.statusOptions();
-    // A Cupertino modal popup on the root navigator — not Material's
-    // showModalBottomSheet — so its barrier reliably covers the whole screen
-    // (the drawer is itself an overlay; a non-root sheet let taps bleed through
-    // to the chat list behind it).
-    showCupertinoModalPopup<void>(
-      context: context,
-      useRootNavigator: true,
-      builder: (sheetContext) {
-        final c = sheetContext.colors;
-        final maxHeight = MediaQuery.of(sheetContext).size.height * 0.6;
-
-        Future<void> pick(int id) async {
-          final ok = await _vm.setEmojiStatus(id);
-          if (!sheetContext.mounted) return;
-          Navigator.of(sheetContext).pop();
-          if (!ok && mounted) showToast(context, '设置状态失败（需要 Premium）');
-        }
-
-        Widget grid(List<int> ids) {
-          if (ids.isEmpty) {
-            return Center(
-              child: Text(
-                '该表情包暂无可用状态',
-                style: TextStyle(fontSize: 13, color: c.textSecondary),
-              ),
-            );
-          }
-          return GridView.count(
-            crossAxisCount: 6,
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            children: [
-              for (final id in ids)
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => pick(id),
-                  child: Padding(
-                    padding: const EdgeInsets.all(5),
-                    child: CustomEmojiView(
-                      id: id,
-                      size: 34,
-                      color: c.textPrimary,
-                    ),
-                  ),
-                ),
-            ],
-          );
-        }
-
-        var statusTab = 0; // 0 = 推荐 (suggested); 1..N = custom packs
-        return Align(
-          alignment: Alignment.bottomCenter,
-          child: Container(
-            decoration: BoxDecoration(
-              color: c.card,
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(16),
-              ),
-            ),
-            child: SafeArea(
-              top: false,
-              child: SizedBox(
-                height: maxHeight,
-                child: ListenableBuilder(
-                  listenable: EmojiStore.shared,
-                  builder: (ctx, _) {
-                    final packs = EmojiStore.shared.isPremium
-                        ? EmojiStore.shared.customPacks
-                        : const <CustomEmojiPack>[];
-                    return StatefulBuilder(
-                      builder: (ctx2, setSheet) {
-                        if (statusTab > packs.length) statusTab = 0;
-                        return Column(
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-                              child: Row(
-                                children: [
-                                  Text(
-                                    '设置状态',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
-                                      color: c.textPrimary,
-                                    ),
-                                  ),
-                                  const Spacer(),
-                                  if ((_vm.user?.emojiStatusId ?? 0) != 0)
-                                    GestureDetector(
-                                      behavior: HitTestBehavior.opaque,
-                                      onTap: () => pick(0),
-                                      child: Text(
-                                        '清除',
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          color: AppTheme.tagRed,
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                            Expanded(
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                ),
-                                child: statusTab == 0
-                                    ? FutureBuilder<List<int>>(
-                                        future: optionsFuture,
-                                        builder: (context, snap) {
-                                          if (snap.connectionState !=
-                                              ConnectionState.done) {
-                                            return const Center(
-                                              child: SizedBox(
-                                                width: 24,
-                                                height: 24,
-                                                child:
-                                                    CircularProgressIndicator.adaptive(
-                                                      strokeWidth: 2,
-                                                    ),
-                                              ),
-                                            );
-                                          }
-                                          final ids =
-                                              snap.data ?? const <int>[];
-                                          if (ids.isEmpty && packs.isEmpty) {
-                                            return Center(
-                                              child: Text(
-                                                '暂无可用状态（需要 Premium）',
-                                                style: TextStyle(
-                                                  fontSize: 13,
-                                                  color: c.textSecondary,
-                                                ),
-                                              ),
-                                            );
-                                          }
-                                          return grid(ids);
-                                        },
-                                      )
-                                    : grid([
-                                        for (final e
-                                            in packs[statusTab - 1].emoji)
-                                          if (e.customEmojiId != 0)
-                                            e.customEmojiId,
-                                      ]),
-                              ),
-                            ),
-                            // Tabs: 推荐 + one per installed custom-emoji pack.
-                            if (packs.isNotEmpty)
-                              _statusTabStrip(
-                                c,
-                                packs,
-                                statusTab,
-                                (i) => setSheet(() => statusTab = i),
-                              ),
-                          ],
-                        );
-                      },
-                    );
-                  },
-                ),
-              ),
-            ),
-          ),
-        );
-      },
+    showEmojiStatusPicker(
+      context,
+      currentStatusId: _vm.user?.emojiStatusId ?? 0,
     );
-  }
-
-  /// Bottom tab strip for the status picker: 推荐 + one tab per custom-emoji pack.
-  Widget _statusTabStrip(
-    dynamic c,
-    List<CustomEmojiPack> packs,
-    int selected,
-    ValueChanged<int> onTap,
-  ) {
-    Widget tab(int i, Widget child) {
-      final active = i == selected;
-      return GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => onTap(i),
-        child: Container(
-          width: 42,
-          height: 42,
-          margin: const EdgeInsets.symmetric(horizontal: 2),
-          decoration: BoxDecoration(
-            color: active ? c.searchFill : null,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          alignment: Alignment.center,
-          child: child,
-        ),
-      );
-    }
-
-    return Container(
-      height: 54,
-      decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: c.divider, width: 0.5)),
-      ),
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        children: [
-          tab(
-            0,
-            Icon(
-              sfIcon('star.fill'),
-              size: 22,
-              color: selected == 0 ? AppTheme.brand : c.textSecondary,
-            ),
-          ),
-          for (var i = 0; i < packs.length; i++)
-            tab(i + 1, _packTabIcon(packs[i], c)),
-        ],
-      ),
-    );
-  }
-
-  Widget _packTabIcon(CustomEmojiPack pack, dynamic c) {
-    final withId = pack.emoji.where((e) => e.customEmojiId != 0).toList();
-    if (withId.isNotEmpty) {
-      return CustomEmojiView(
-        id: withId.first.customEmojiId,
-        size: 26,
-        color: c.textPrimary,
-      );
-    }
-    if (pack.cover != null) {
-      return SizedBox(
-        width: 26,
-        height: 26,
-        child: TDImage(photo: pack.cover, cornerRadius: 4),
-      );
-    }
-    return Icon(sfIcon('square.grid.2x2'), size: 22, color: c.textSecondary);
   }
 
   @override
@@ -524,20 +284,10 @@ class _ProfileViewState extends State<ProfileView> {
                               ),
                             ),
                           ),
+                          _nameStatusIcon(user),
                           if (user?.isPremium ?? false) ...[
                             const SizedBox(width: 6),
                             const _VipBadge(),
-                          ],
-                          if ((user?.emojiStatusId ?? 0) != 0) ...[
-                            const SizedBox(width: 6),
-                            GestureDetector(
-                              onTap: _openStatusPicker,
-                              child: CustomEmojiView(
-                                id: user!.emojiStatusId,
-                                size: 24,
-                                color: Colors.white,
-                              ),
-                            ),
                           ],
                         ],
                       ),
@@ -568,62 +318,45 @@ class _ProfileViewState extends State<ProfileView> {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            Builder(
-              builder: (context) {
-                final premium = user?.isPremium ?? false;
-                final hasStatus = (user?.emojiStatusId ?? 0) != 0;
-                return GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _openStatusPicker,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 5,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (hasStatus)
-                          CustomEmojiView(
-                            id: user!.emojiStatusId,
-                            size: 16,
-                            color: Colors.white,
-                          )
-                        else
-                          const Icon(
-                            Icons.circle,
-                            size: 8,
-                            color: Color(0xFF1AC81A),
-                          ),
-                        const SizedBox(width: 5),
-                        Text(
-                          hasStatus ? '设置状态' : '在线',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.white,
-                          ),
-                        ),
-                        if (premium) ...[
-                          const SizedBox(width: 3),
-                          Icon(
-                            sfIcon('chevron.down'),
-                            size: 10,
-                            color: Colors.white.withValues(alpha: 0.8),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _nameStatusIcon(CurrentUser? user) {
+    final hasStatus = (user?.emojiStatusId ?? 0) != 0;
+    final premium = user?.isPremium ?? false;
+    if (!hasStatus && !premium) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(left: 6),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _openStatusPicker,
+        child: hasStatus
+            ? CustomEmojiView(
+                id: user!.emojiStatusId,
+                size: 24,
+                color: Colors.white,
+              )
+            : Container(
+                width: 24,
+                height: 24,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.18),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.55),
+                    width: 1,
+                  ),
+                ),
+                child: Icon(
+                  Icons.add_rounded,
+                  size: 16,
+                  color: Colors.white.withValues(alpha: 0.9),
+                ),
+              ),
       ),
     );
   }

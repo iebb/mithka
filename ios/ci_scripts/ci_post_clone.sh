@@ -18,15 +18,15 @@
 # Optional:
 #   TDJSON_XCFRAMEWORK_URL   override the prebuilt-framework download (see default below)
 #
-# The prebuilt tdjson.xcframework is hosted on a public GitHub release rather than
-# rebuilt here, because building TDLib + OpenSSL for iOS takes ~40 min. To refresh
-# it, rebuild locally (TDLib example/ios/build.sh, iOS only), re-zip, and upload to
-# a new ios-tdjson-<ver> release, then bump the URL.
+# The prebuilt tdjson.xcframework is hosted in the sibling mithka-tdjson repo
+# rather than rebuilt here, because building TDLib + OpenSSL for iOS takes
+# ~40 min. To refresh it, rebuild locally, re-zip, upload a new release asset to
+# iebb/mithka-tdjson, then bump the URL.
 
 set -e
 
 FLUTTER_VERSION="3.44.2"
-TDJSON_URL="${TDJSON_XCFRAMEWORK_URL:-https://github.com/iebb/mithka/releases/download/ios-tdjson-1.8.65/tdjson-ios.xcframework.zip}"
+TDJSON_URL="${TDJSON_XCFRAMEWORK_URL:-https://github.com/iebb/mithka-tdjson/releases/download/tdjson-1.8.65/tdjson-ios.xcframework.zip}"
 
 # Xcode Cloud checks the repo out here; fall back to walking up from this script.
 REPO="${CI_PRIMARY_REPOSITORY_PATH:-$(cd "$(dirname "$0")/../.." && pwd)}"

@@ -13,6 +13,69 @@ import 'package:flutter/material.dart';
 Color _hex(int rgb, [double opacity = 1]) =>
     Color((rgb & 0xFFFFFF) | 0xFF000000).withValues(alpha: opacity);
 
+abstract final class AppTextSize {
+  static const double tiny = 10;
+  static const double caption = 12;
+  static const double footnote = 13;
+  static const double callout = 14;
+  static const double body = 15;
+  static const double bodyLarge = 16;
+  static const double title = 17;
+  static const double display = 22;
+  static const double largeDisplay = 24;
+}
+
+abstract final class AppSpacing {
+  static const double xxs = 2;
+  static const double xs = 4;
+  static const double sm = 6;
+  static const double md = 8;
+  static const double lg = 12;
+  static const double xl = 14;
+  static const double xxl = 16;
+  static const double section = 24;
+}
+
+abstract final class AppRadius {
+  static const double sm = 4;
+  static const double md = 6;
+  static const double control = 9;
+  static const double card = 12;
+}
+
+abstract final class AppIconSize {
+  static const double xs = 12;
+  static const double sm = 13;
+  static const double md = 16;
+  static const double lg = 18;
+  static const double xl = 20;
+  static const double nav = 22;
+  static const double toolbar = 24;
+  static const double add = 25;
+}
+
+abstract final class AppMetric {
+  static const double navHeaderHeight = 44;
+  static const double listRowHeight = 64;
+  static const double avatarSize = 48;
+  static const double assistantAvatarSize = 50;
+  static const double headerAvatarSize = 40;
+  static const double hitTarget = 36;
+  static const double searchHeight = 36;
+  static const double searchIcon = 16;
+  static const double onlineDot = 7;
+  static const double menuWidth = 220;
+  static const double menuRowHeight = 50;
+  static const double menuIconSlot = 24;
+  static const double splashPenguinSize = 192;
+  static const double splashSpinnerSize = 24;
+  static const double divider = 0.5;
+  static const double selectedBorder = 2.5;
+  static const double badgeOutlinePadding = 1.5;
+  static const double unreadBadgeMin = 18;
+  static const double unreadDot = 11;
+}
+
 /// Constants that read well on both light and dark, so they stay fixed.
 abstract final class AppTheme {
   // MARK: Brand (mutable — driven by the user's chosen theme color via
@@ -56,8 +119,8 @@ abstract final class AppTheme {
   static final Color cloverGreen = _hex(0x2DBE60);
 
   // MARK: Metrics
-  static const double rowHeight = 64;
-  static const double avatarSize = 48;
+  static const double rowHeight = AppMetric.listRowHeight;
+  static const double avatarSize = AppMetric.avatarSize;
   static const double avatarCorner = 12; // legacy (rounded-square)
   static const double groupAvatarCornerRatio = 0.30; // groups: rounded square
   static const double bubbleCorner = 9;

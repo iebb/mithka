@@ -1,7 +1,11 @@
 # Native TDLib (tdjson) integration
 
-Drachma talks **only** to real TDLib via Dart FFI (`lib/tdlib/td_bindings.dart`),
+Mithka talks **only** to real TDLib via Dart FFI (`lib/tdlib/td_bindings.dart`),
 so each platform must ship the `tdjson` native library. There is no mock backend.
+
+The native TDLib artifacts are kept outside this app repository. iOS release
+assets live in [`iebb/mithka-tdjson`](https://github.com/iebb/mithka-tdjson), so
+normal users do not see a large vendored TDLib binary in the app source tree.
 
 ## 1. Credentials
 
@@ -32,11 +36,15 @@ guide: <https://tdlib.github.io/td/build.html>. `minSdk` is pinned to 21.)
 On Apple platforms the symbols are resolved from the app binary
 (`DynamicLibrary.process()`), so `tdjson` must be linked into the Runner target.
 
-1. Build (or download) `tdjson.xcframework` for device **and** simulator and place
-   it at `ios/tdjson/tdjson.xcframework`.
-2. Add it to the Runner target (drag into Xcode → "Embed & Sign", or vendor it via
-   the Podfile). `./scripts/build-tdjson-ios.sh` checks the framework is in place.
-3. `cd ios && pod install` (needs CocoaPods: `brew install cocoapods`).
+1. Run `./scripts/build-tdjson-ios.sh`. It downloads the prebuilt
+   `tdjson.xcframework` from `iebb/mithka-tdjson` unless
+   `TDJSON_XCFRAMEWORK_URL` overrides the source.
+2. `cd ios && pod install` (needs CocoaPods: `brew install cocoapods`).
+
+To refresh the prebuilt artifact, rebuild TDLib separately, package
+`tdjson.xcframework` in the `mithka-tdjson` repo, upload a new release asset, and
+bump the default URL in `scripts/build-tdjson-ios.sh` and
+`ios/ci_scripts/ci_post_clone.sh`.
 
 ## 4. Run
 

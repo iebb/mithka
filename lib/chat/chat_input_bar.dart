@@ -31,6 +31,7 @@ import 'emoji_catalog.dart';
 import 'emoji_store.dart';
 import 'emoji_text_controller.dart';
 import 'checklist_composer_view.dart';
+import 'image_edit_view.dart';
 import 'location_picker_view.dart';
 import 'poll_composer_view.dart';
 import 'sticker_preview.dart';
@@ -536,7 +537,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
         if (isVideo) {
           widget.vm.sendVideo(x.path);
         } else {
-          widget.vm.sendPhoto(x.path);
+          final edited = await _editImage(x.path);
+          if (edited != null) widget.vm.sendPhoto(edited);
         }
       }
     } catch (_) {
@@ -548,10 +550,21 @@ class _ChatInputBarState extends State<ChatInputBar> {
   Future<void> _takePhoto() async {
     try {
       final shot = await ImagePicker().pickImage(source: ImageSource.camera);
-      if (shot != null) widget.vm.sendPhoto(shot.path);
+      if (shot == null) return;
+      final edited = await _editImage(shot.path);
+      if (edited != null) widget.vm.sendPhoto(edited);
     } catch (_) {
       _pickFailed('相机');
     }
+  }
+
+  Future<String?> _editImage(String path) {
+    return Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => ImageEditView(sourcePath: path),
+      ),
+    );
   }
 
   /// 文件: pick an arbitrary document and send it.

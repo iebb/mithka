@@ -44,13 +44,13 @@ class SplashView extends StatelessWidget {
           children: [
             Image(
               image: AssetImage('assets/penguin.png'),
-              width: 64,
-              height: 64,
+              width: AppMetric.splashPenguinSize,
+              height: AppMetric.splashPenguinSize,
             ),
-            SizedBox(height: 18),
+            SizedBox(height: AppSpacing.lg + AppSpacing.sm),
             SizedBox(
-              width: 24,
-              height: 24,
+              width: AppMetric.splashSpinnerSize,
+              height: AppMetric.splashSpinnerSize,
               child: CircularProgressIndicator(
                 strokeWidth: 2.5,
                 valueColor: AlwaysStoppedAnimation(Colors.white),

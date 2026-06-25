@@ -42,6 +42,7 @@ class ChatListViewModel extends ChangeNotifier {
   final Map<int, Map<int, int>> _folderOrders = {};
   final Map<int, String> _senderNames = {};
   final Set<int> _resolvingSenders = {};
+  final Set<int> _resolvingPeers = {};
   final Set<int> _resolvingFolders = {};
 
   final TdClient _client = TdClient.shared;
@@ -289,6 +290,7 @@ class ChatListViewModel extends ChangeNotifier {
         if (summary == null) return;
         _map[summary.id] = summary;
         _applyPositions(summary.id, chat.objects('positions'));
+        _resolvePeerIfNeeded(summary);
         _resolveSenderIfNeeded(summary.id, chat.obj('last_message'));
         _resort();
 
@@ -401,6 +403,12 @@ class ChatListViewModel extends ChangeNotifier {
         if (id == null) return;
         _mutate(id, (s) => s.photo = TDParse.smallPhoto(update.obj('photo')));
         _resort();
+
+      case 'updateUser':
+        final user = update.obj('user');
+        final id = user?.int64('id');
+        if (user == null || id == null) return;
+        _applyPeerUser(user);
     }
   }
 
@@ -455,6 +463,7 @@ class ChatListViewModel extends ChangeNotifier {
           if (summary == null) return;
           _map[summary.id] = summary;
           _applyPositions(summary.id, raw.objects('positions'));
+          _resolvePeerIfNeeded(summary);
           _resolveSenderIfNeeded(summary.id, raw.obj('last_message'));
           _resort();
         })
@@ -492,6 +501,48 @@ class ChatListViewModel extends ChangeNotifier {
     if (a.order != b.order) return b.order.compareTo(a.order);
     if (a.date != b.date) return b.date.compareTo(a.date);
     return b.id.compareTo(a.id);
+  }
+
+  // MARK: - Chat-list Premium display metadata (private chats)
+
+  void _resolvePeerIfNeeded(ChatSummary summary) {
+    final userId = summary.peerUserId;
+    if (userId == null || _resolvingPeers.contains(userId)) return;
+    _resolvingPeers.add(userId);
+    _client
+        .query({'@type': 'getUser', 'user_id': userId})
+        .then((user) {
+          _resolvingPeers.remove(userId);
+          _applyPeerUser(user);
+        })
+        .catchError((_) {
+          _resolvingPeers.remove(userId);
+        });
+  }
+
+  void _applyPeerUser(Map<String, dynamic> user) {
+    final userId = user.int64('id');
+    if (userId == null) return;
+    var changed = false;
+    final isPremium = user.boolean('is_premium') ?? false;
+    final accent = user.integer('accent_color_id') ?? -1;
+    final status =
+        user.obj('emoji_status')?.obj('type')?.int64('custom_emoji_id') ??
+        user.obj('emoji_status')?.int64('custom_emoji_id') ??
+        0;
+    for (final chat in _map.values) {
+      if (chat.peerUserId != userId) continue;
+      if (chat.peerIsPremium == isPremium &&
+          chat.peerAccentColorId == accent &&
+          chat.peerEmojiStatusId == status) {
+        continue;
+      }
+      chat.peerIsPremium = isPremium;
+      chat.peerAccentColorId = accent;
+      chat.peerEmojiStatusId = status;
+      changed = true;
+    }
+    if (changed) notifyListeners();
   }
 
   // MARK: - Last-message sender resolution (groups & channels)

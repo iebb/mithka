@@ -9,6 +9,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../chat/custom_emoji.dart';
 import '../components/photo_avatar.dart';
 import '../components/sf_symbols.dart';
 import '../components/ui_components.dart';
@@ -17,6 +18,16 @@ import '../theme/date_text.dart';
 import '../theme/theme_controller.dart';
 import '../tdlib/td_models.dart';
 
+const List<Color> _telegramAccentColors = [
+  Color(0xFFCC5049),
+  Color(0xFFD67722),
+  Color(0xFF955CDB),
+  Color(0xFF40A920),
+  Color(0xFF309EBA),
+  Color(0xFF368AD1),
+  Color(0xFFC7508B),
+];
+
 class ChatRowView extends StatelessWidget {
   const ChatRowView({super.key, required this.chat});
   final ChatSummary chat;
@@ -24,30 +35,55 @@ class ChatRowView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final theme = context.watch<ThemeController>();
+    final rowHeight = theme.rowHeight;
+    final premiumNameColor = theme.showPremiumNameColors && chat.peerIsPremium
+        ? _accentColor(chat.peerAccentColorId)
+        : c.textPrimary;
+    final showPremiumStatus =
+        theme.showPremiumEmojiStatus &&
+        chat.peerIsPremium &&
+        chat.peerEmojiStatusId != 0;
     return Container(
-      height: AppTheme.rowHeight,
+      height: rowHeight,
       color: chat.isPinned ? c.pinnedRow : c.background,
-      padding: const EdgeInsets.symmetric(horizontal: 14),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
       child: Row(
         children: [
           _avatar(context),
-          const SizedBox(width: 12),
+          const SizedBox(width: AppSpacing.lg),
           Expanded(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  chat.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                    color: c.textPrimary,
-                  ),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        chat.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: AppTextSize.body,
+                          fontWeight: chat.peerIsPremium
+                              ? FontWeight.w600
+                              : FontWeight.w500,
+                          color: premiumNameColor,
+                        ),
+                      ),
+                    ),
+                    if (showPremiumStatus) ...[
+                      const SizedBox(width: AppSpacing.xs),
+                      CustomEmojiView(
+                        id: chat.peerEmojiStatusId,
+                        size: 17,
+                        color: premiumNameColor,
+                      ),
+                    ],
+                  ],
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: AppSpacing.xs),
                 chat.draftText.trim().isNotEmpty
                     ? ChatPreviewText(message: chat.draftText, draft: true)
                     : ChatPreviewText(
@@ -57,44 +93,53 @@ class ChatRowView extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: AppSpacing.md),
           _rightColumn(context),
         ],
       ),
     );
   }
 
+  Color _accentColor(int id) {
+    if (id >= 0 && id < _telegramAccentColors.length) {
+      return _telegramAccentColors[id];
+    }
+    return AppTheme.brand;
+  }
+
   Widget _avatar(BuildContext context) {
-    final circleGroups = context.watch<ThemeController>().circularGroupAvatars;
+    final theme = context.watch<ThemeController>();
+    final circleGroups = theme.circularGroupAvatars;
+    final avatarSize = theme.avatarSize;
     return SizedBox(
-      width: AppTheme.avatarSize,
-      height: AppTheme.avatarSize,
+      width: avatarSize,
+      height: avatarSize,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
           PhotoAvatar(
             title: chat.title,
             photo: chat.photo,
-            size: AppTheme.avatarSize,
+            size: avatarSize,
             square: chat.usesSquareAvatar && !circleGroups,
           ),
           if (chat.unreadCount > 0)
             Positioned(
-              right: -6,
-              top: -5,
+              right: -AppSpacing.sm,
+              top: -(AppSpacing.xs + 1),
               child: UnreadBadge(count: chat.unreadCount, muted: chat.isMuted),
             )
           else if (chat.isMarkedUnread)
             Positioned(
-              right: -2,
-              top: -2,
+              right: -AppSpacing.xxs,
+              top: -AppSpacing.xxs,
               child: Container(
-                padding: const EdgeInsets.all(1.5),
+                padding: const EdgeInsets.all(AppMetric.badgeOutlinePadding),
                 decoration: const BoxDecoration(
                   color: Colors.white,
                   shape: BoxShape.circle,
                 ),
-                child: const RedDot(size: 11),
+                child: const RedDot(size: AppMetric.unreadDot),
               ),
             ),
         ],
@@ -104,26 +149,36 @@ class ChatRowView extends StatelessWidget {
 
   Widget _rightColumn(BuildContext context) {
     final c = context.colors;
+    final rowHeight = context.watch<ThemeController>().rowHeight;
     return SizedBox(
-      height: AppTheme.rowHeight,
+      height: rowHeight,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 13),
+        padding: const EdgeInsets.symmetric(
+          vertical: AppSpacing.lg + AppSpacing.xxs,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Text(
               DateText.listLabel(chat.date),
-              style: TextStyle(fontSize: 12, color: c.textTertiary),
+              style: TextStyle(
+                fontSize: AppTextSize.caption,
+                color: c.textTertiary,
+              ),
             ),
             const Spacer(),
             if (chat.isMuted)
-              Icon(sfIcon('bell.slash.fill'), size: 13, color: c.textTertiary)
+              Icon(
+                sfIcon('bell.slash.fill'),
+                size: AppIconSize.sm,
+                color: c.textTertiary,
+              )
             else if (chat.isPinned)
               Transform.rotate(
                 angle: 0.785, // 45°
                 child: Icon(
                   sfIcon('pin.fill'),
-                  size: 12,
+                  size: AppIconSize.xs,
                   color: c.textTertiary,
                 ),
               ),

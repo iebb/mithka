@@ -27,7 +27,12 @@ class AppearanceView extends StatelessWidget {
           NavHeader(title: '外观', onBack: () => Navigator.of(context).pop()),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                AppSpacing.xl,
+                AppSpacing.lg,
+                AppSpacing.section,
+              ),
               children: [
                 _label(context, '深色模式'),
                 _card(context, [
@@ -40,13 +45,13 @@ class AppearanceView extends StatelessWidget {
                       () => theme.mode = m,
                     ),
                 ]),
-                const SizedBox(height: 14),
-                _label(context, '字体大小'),
+                const SizedBox(height: AppSpacing.xl),
+                _label(context, '大小'),
                 _fontSizeCard(context, theme),
-                const SizedBox(height: 14),
+                const SizedBox(height: AppSpacing.xl),
                 _label(context, '主题颜色'),
                 _colorCard(context, theme),
-                const SizedBox(height: 14),
+                const SizedBox(height: AppSpacing.xl),
                 _label(context, '标签栏样式'),
                 _card(context, [
                   for (final s in TabBarStyle.values)
@@ -58,7 +63,7 @@ class AppearanceView extends StatelessWidget {
                       () => theme.tabBarStyle = s,
                     ),
                 ]),
-                const SizedBox(height: 14),
+                const SizedBox(height: AppSpacing.xl),
                 _label(context, '显示'),
                 _card(context, [
                   _toggleRow(
@@ -70,17 +75,53 @@ class AppearanceView extends StatelessWidget {
                   ),
                   _toggleRow(
                     context,
-                    Icons.filter_list_rounded,
-                    '顶部显示聊天分组筛选',
-                    theme.showChatFolderFilter,
-                    (v) => theme.showChatFolderFilter = v,
-                  ),
-                  _toggleRow(
-                    context,
                     Icons.badge_outlined,
                     '显示成员头衔',
                     theme.showMemberTags,
                     (v) => theme.showMemberTags = v,
+                  ),
+                  _toggleRow(
+                    context,
+                    Icons.photo_library_outlined,
+                    '合并连续图片消息',
+                    theme.groupImageMessages,
+                    (v) => theme.groupImageMessages = v,
+                  ),
+                ]),
+                const SizedBox(height: AppSpacing.xl),
+                _label(context, '聊天界面'),
+                _card(context, [
+                  _toggleRow(
+                    context,
+                    Icons.palette_outlined,
+                    '显示 Premium 名字颜色',
+                    theme.showChatPremiumNameColors,
+                    (v) => theme.showChatPremiumNameColors = v,
+                  ),
+                  _toggleRow(
+                    context,
+                    Icons.emoji_emotions_outlined,
+                    '显示 Premium 状态表情',
+                    theme.showChatPremiumEmojiStatus,
+                    (v) => theme.showChatPremiumEmojiStatus = v,
+                  ),
+                  _toggleRow(
+                    context,
+                    Icons.edit_note_rounded,
+                    '显示编辑和已读标记',
+                    theme.showMessageMetaIndicators,
+                    (v) => theme.showMessageMetaIndicators = v,
+                  ),
+                ]),
+                const SizedBox(height: AppSpacing.xl),
+                _label(context, '聊天列表'),
+                _card(context, [
+                  _toggleRow(
+                    context,
+                    Icons.filter_list_rounded,
+                    '顶部显示聊天分组筛选',
+                    theme.showChatFolderFilter,
+                    (v) => theme.showChatFolderFilter = v,
                   ),
                   _toggleRow(
                     context,
@@ -96,15 +137,8 @@ class AppearanceView extends StatelessWidget {
                     theme.showPremiumEmojiStatus,
                     (v) => theme.showPremiumEmojiStatus = v,
                   ),
-                  _toggleRow(
-                    context,
-                    Icons.photo_library_outlined,
-                    '合并连续图片消息',
-                    theme.groupImageMessages,
-                    (v) => theme.groupImageMessages = v,
-                  ),
                 ]),
-                const SizedBox(height: 14),
+                const SizedBox(height: AppSpacing.xl),
                 _label(context, '消息红点'),
                 _card(context, [
                   for (final m in UnreadBadgeMode.values)
@@ -141,25 +175,31 @@ class AppearanceView extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: c.card,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.card),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.xxl,
+        vertical: AppSpacing.xxl,
+      ),
       child: Wrap(
-        spacing: 16,
-        runSpacing: 14,
+        spacing: AppSpacing.xxl,
+        runSpacing: AppSpacing.xl,
         children: [
           for (final color in _palette)
             GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: () => theme.brandColor = color,
               child: Container(
-                width: 34,
-                height: 34,
+                width: AppMetric.hitTarget - AppSpacing.xxs,
+                height: AppMetric.hitTarget - AppSpacing.xxs,
                 decoration: BoxDecoration(
                   color: color,
                   shape: BoxShape.circle,
                   border: color.toARGB32() == selected
-                      ? Border.all(color: c.textPrimary, width: 2.5)
+                      ? Border.all(
+                          color: c.textPrimary,
+                          width: AppMetric.selectedBorder,
+                        )
                       : null,
                   boxShadow: [
                     BoxShadow(
@@ -181,73 +221,129 @@ class AppearanceView extends StatelessWidget {
 
   Widget _fontSizeCard(BuildContext context, ThemeController theme) {
     final c = context.colors;
-    final steps = ThemeController.fontScaleSteps;
-    const labels = ['小', '标准', '大', '超大'];
-    var index = 0;
-    var best = double.infinity;
-    for (var i = 0; i < steps.length; i++) {
-      final delta = (steps[i] - theme.fontScale).abs();
-      if (delta < best) {
-        best = delta;
-        index = i;
-      }
-    }
     return Container(
       decoration: BoxDecoration(
         color: c.card,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
-          SizedBox(
-            height: 52,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.text_fields_rounded,
-                    size: 20,
-                    color: AppTheme.brand,
-                  ),
-                  const SizedBox(width: 14),
-                  Text(
-                    '聊天字体',
-                    style: TextStyle(fontSize: 16, color: c.textPrimary),
-                  ),
-                  const Spacer(),
-                  Text(
-                    labels[index],
-                    style: TextStyle(fontSize: 15, color: c.textSecondary),
-                  ),
-                ],
+          _scaleSlider(
+            context,
+            icon: Icons.text_fields_rounded,
+            title: '字体大小',
+            value: theme.fontScale,
+            min: ThemeController.minFontScale,
+            max: ThemeController.maxFontScale,
+            divisions: 24,
+            leading: Text(
+              'A',
+              style: TextStyle(
+                fontSize: AppTextSize.footnote,
+                color: c.textSecondary,
               ),
             ),
+            trailing: Text(
+              'A',
+              style: TextStyle(
+                fontSize: AppTextSize.largeDisplay,
+                color: c.textPrimary,
+              ),
+            ),
+            onChanged: (value) => theme.fontScale = value,
           ),
           const InsetDivider(leadingInset: 52),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-            child: Row(
-              children: [
-                Text(
-                  'A',
-                  style: TextStyle(fontSize: 14, color: c.textSecondary),
-                ),
-                Expanded(
-                  child: CupertinoSlider(
-                    value: index.toDouble(),
-                    min: 0,
-                    max: (steps.length - 1).toDouble(),
-                    divisions: steps.length - 1,
-                    activeColor: AppTheme.brand,
-                    onChanged: (value) =>
-                        theme.fontScale = steps[value.round()],
-                  ),
-                ),
-                Text('A', style: TextStyle(fontSize: 24, color: c.textPrimary)),
-              ],
+          _scaleSlider(
+            context,
+            icon: Icons.space_dashboard_outlined,
+            title: '界面大小',
+            value: theme.interfaceScale,
+            min: ThemeController.minInterfaceScale,
+            max: ThemeController.maxInterfaceScale,
+            divisions: 17,
+            leading: Icon(
+              Icons.crop_square,
+              size: AppTextSize.body,
+              color: c.textSecondary,
             ),
+            trailing: Icon(
+              Icons.crop_square,
+              size: AppIconSize.add,
+              color: c.textPrimary,
+            ),
+            onChanged: (value) => theme.interfaceScale = value,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _scaleSlider(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required double value,
+    required double min,
+    required double max,
+    required int divisions,
+    required Widget leading,
+    required Widget trailing,
+    required ValueChanged<double> onChanged,
+  }) {
+    final c = context.colors;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.xxl,
+        AppSpacing.lg,
+        AppSpacing.xxl,
+        AppSpacing.md,
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 20, color: AppTheme.brand),
+              const SizedBox(width: AppSpacing.xl),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: AppTextSize.bodyLarge,
+                  color: c.textPrimary,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '${(value * 100).round()}%',
+                style: TextStyle(
+                  fontSize: AppTextSize.body,
+                  color: c.textSecondary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Row(
+            children: [
+              SizedBox(
+                width: AppIconSize.nav,
+                child: Center(child: leading),
+              ),
+              Expanded(
+                child: CupertinoSlider(
+                  value: value,
+                  min: min,
+                  max: max,
+                  divisions: divisions,
+                  activeColor: AppTheme.brand,
+                  onChanged: onChanged,
+                ),
+              ),
+              SizedBox(
+                width: AppIconSize.toolbar + AppSpacing.xs,
+                child: Center(child: trailing),
+              ),
+            ],
           ),
         ],
       ),
@@ -255,10 +351,13 @@ class AppearanceView extends StatelessWidget {
   }
 
   Widget _label(BuildContext context, String t) => Padding(
-    padding: const EdgeInsets.only(left: 16, bottom: 6),
+    padding: const EdgeInsets.only(left: AppSpacing.xxl, bottom: AppSpacing.sm),
     child: Text(
       t,
-      style: TextStyle(fontSize: 13, color: context.colors.textTertiary),
+      style: TextStyle(
+        fontSize: AppTextSize.footnote,
+        color: context.colors.textTertiary,
+      ),
     ),
   );
 
@@ -267,7 +366,7 @@ class AppearanceView extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: c.card,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -293,16 +392,23 @@ class AppearanceView extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: SizedBox(
-        height: 52,
+        height: AppMetric.menuRowHeight + AppSpacing.xxs,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
           child: Row(
             children: [
-              Icon(icon, size: 20, color: AppTheme.brand),
-              const SizedBox(width: 14),
-              Text(label, style: TextStyle(fontSize: 16, color: c.textPrimary)),
+              Icon(icon, size: AppIconSize.xl, color: AppTheme.brand),
+              const SizedBox(width: AppSpacing.xl),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: AppTextSize.bodyLarge,
+                  color: c.textPrimary,
+                ),
+              ),
               const Spacer(),
-              if (selected) Icon(Icons.check, size: 18, color: AppTheme.brand),
+              if (selected)
+                Icon(Icons.check, size: AppIconSize.lg, color: AppTheme.brand),
             ],
           ),
         ),
@@ -319,14 +425,20 @@ class AppearanceView extends StatelessWidget {
   ) {
     final c = context.colors;
     return SizedBox(
-      height: 52,
+      height: AppMetric.menuRowHeight + AppSpacing.xxs,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
         child: Row(
           children: [
-            Icon(icon, size: 20, color: AppTheme.brand),
-            const SizedBox(width: 14),
-            Text(label, style: TextStyle(fontSize: 16, color: c.textPrimary)),
+            Icon(icon, size: AppIconSize.xl, color: AppTheme.brand),
+            const SizedBox(width: AppSpacing.xl),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: AppTextSize.bodyLarge,
+                color: c.textPrimary,
+              ),
+            ),
             const Spacer(),
             CupertinoSwitch(
               value: value,

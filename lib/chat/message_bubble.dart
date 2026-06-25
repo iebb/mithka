@@ -54,6 +54,7 @@ class MessageBubble extends StatefulWidget {
     this.onReply,
     this.onAvatarTap,
     this.onAvatarLongPress,
+    this.onOpenReply,
     this.onOpenImage,
     this.onPlayVideo,
     this.onToggleReaction,
@@ -73,6 +74,7 @@ class MessageBubble extends StatefulWidget {
   final ValueChanged<ChatMessage>? onReply;
   final ValueChanged<ChatMessage>? onAvatarTap;
   final ValueChanged<ChatMessage>? onAvatarLongPress;
+  final ValueChanged<int>? onOpenReply;
   final ValueChanged<ChatMessage>? onOpenImage;
   final ValueChanged<ChatMessage>? onPlayVideo;
   final ValueChanged<MessageReaction>? onToggleReaction;
@@ -151,13 +153,15 @@ class _MessageBubbleState extends State<MessageBubble> {
     final theme = context.watch<ThemeController>();
     final showMemberTags = theme.showMemberTags;
     final premiumNameColor =
-        theme.showPremiumNameColors && message.senderIsPremium
+        theme.showChatPremiumNameColors && message.senderIsPremium
         ? _senderAccentColor(message.senderAccentColorId)
         : c.textSecondary;
     final showPremiumStatus =
-        theme.showPremiumEmojiStatus &&
+        theme.showChatPremiumEmojiStatus &&
         message.senderIsPremium &&
         message.senderEmojiStatusId != 0;
+    final senderTitle = message.senderTitle?.trim();
+    final hasSenderTitle = senderTitle != null && senderTitle.isNotEmpty;
     final body = GestureDetector(
       key: _bubbleKey,
       onLongPress: _handleLongPress,
@@ -193,7 +197,12 @@ class _MessageBubbleState extends State<MessageBubble> {
                     children: [
                       if (widget.showRepeat) _repeatBadge(),
                       if (widget.showRepeat) const SizedBox(width: 6),
-                      Flexible(child: content),
+                      Flexible(
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: content,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -229,12 +238,11 @@ class _MessageBubbleState extends State<MessageBubble> {
                           padding: const EdgeInsets.only(left: 4, bottom: 3),
                           child: Row(
                             children: [
-                              if (message.senderRole != null) ...[
+                              if (message.senderRole != null ||
+                                  hasSenderTitle) ...[
                                 RoleTag(
-                                  role: message.senderRole!,
-                                  title: showMemberTags
-                                      ? message.senderTitle
-                                      : null,
+                                  role: message.senderRole ?? MemberRole.member,
+                                  title: showMemberTags ? senderTitle : null,
                                 ),
                                 const SizedBox(width: 4),
                               ],
@@ -414,6 +422,7 @@ class _MessageBubbleState extends State<MessageBubble> {
 
   Widget _textBubble(String text, bool outgoing) {
     final c = context.colors;
+    final showMeta = context.watch<ThemeController>().showMessageMetaIndicators;
     final baseColor = outgoing
         ? AppTheme.bubbleOutgoingText
         : c.bubbleIncomingText;
@@ -442,7 +451,8 @@ class _MessageBubbleState extends State<MessageBubble> {
               style: TextStyle(fontSize: 16, color: baseColor),
               children: [
                 ..._emojiSpans(text, baseColor, linkColor),
-                if (widget.message.isEdited || outgoing) _metaSpan(outgoing),
+                if (showMeta && (widget.message.isEdited || outgoing))
+                  _metaSpan(outgoing),
               ],
             ),
           ),
@@ -553,36 +563,41 @@ class _MessageBubbleState extends State<MessageBubble> {
     final c = context.colors;
     final accent = outgoing ? Colors.white : AppTheme.brand;
     final faded = outgoing ? Colors.white70 : c.textSecondary;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
-      decoration: BoxDecoration(
-        color: (outgoing ? Colors.white : AppTheme.brand).withValues(
-          alpha: 0.12,
+    final targetId = message.replyToMessageId;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: targetId == null ? null : () => widget.onOpenReply?.call(targetId),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+        decoration: BoxDecoration(
+          color: (outgoing ? Colors.white : AppTheme.brand).withValues(
+            alpha: 0.12,
+          ),
+          borderRadius: BorderRadius.circular(4),
+          border: Border(left: BorderSide(color: accent, width: 2.5)),
         ),
-        borderRadius: BorderRadius.circular(4),
-        border: Border(left: BorderSide(color: accent, width: 2.5)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            message.replyToSender ?? '',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: accent,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              message.replyToSender ?? '',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: accent,
+              ),
             ),
-          ),
-          Text(
-            message.replyToPreview ?? '',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 12, color: faded),
-          ),
-        ],
+            Text(
+              message.replyToPreview ?? '',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 12, color: faded),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -594,7 +609,7 @@ class _MessageBubbleState extends State<MessageBubble> {
     caseSensitive: false,
   );
 
-  /// Trailing inline meta after the text: 已编辑 tag + read tick (✓ / ✓✓).
+  /// Trailing inline meta after the text: edited pencil + send/read tick.
   InlineSpan _metaSpan(bool outgoing) {
     final faint = outgoing
         ? Colors.white.withValues(alpha: 0.65)
@@ -607,7 +622,7 @@ class _MessageBubbleState extends State<MessageBubble> {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (widget.message.isEdited)
-              Text('已编辑', style: TextStyle(fontSize: 10, color: faint)),
+              Icon(sfIcon('pencil'), size: 11, color: faint),
             if (widget.message.isEdited && outgoing) const SizedBox(width: 4),
             if (outgoing)
               Icon(

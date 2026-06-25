@@ -111,6 +111,8 @@ class _ChatMembersViewState extends State<ChatMembersView> {
           role = MemberRole.admin;
       }
       final ct = status?.str('custom_title');
+      final title = (ct?.trim().isNotEmpty ?? false) ? ct!.trim() : null;
+      role ??= title == null ? null : MemberRole.member;
       try {
         final user = await TdClient.shared.query({
           '@type': 'getUser',
@@ -122,7 +124,7 @@ class _ChatMembersViewState extends State<ChatMembersView> {
             name: TDParse.userName(user),
             photo: TDParse.smallPhoto(user.obj('profile_photo')),
             role: role,
-            title: (ct?.isNotEmpty ?? false) ? ct : null,
+            title: title,
             status: TDParse.userStatus(user),
             isOnline: TDParse.isUserOnline(user),
           ),

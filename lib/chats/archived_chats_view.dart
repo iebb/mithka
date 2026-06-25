@@ -7,6 +7,7 @@
 //
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../chat/chat_view.dart';
 import '../components/sf_symbols.dart';
@@ -14,6 +15,7 @@ import '../components/ui_components.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
+import '../theme/theme_controller.dart';
 import 'chat_row_view.dart';
 
 /// Collapsed "群助手" entry summarizing archived chats.
@@ -27,41 +29,44 @@ class GroupAssistantRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final theme = context.watch<ThemeController>();
+    final rowHeight = theme.rowHeight;
+    final avatarSize = theme.scaled(AppMetric.assistantAvatarSize);
     return Container(
-      height: AppTheme.rowHeight,
+      height: rowHeight,
       color: c.background,
-      padding: const EdgeInsets.symmetric(horizontal: 14),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
       child: Row(
         children: [
           SizedBox(
-            width: 50,
-            height: 50,
+            width: avatarSize,
+            height: avatarSize,
             child: Stack(
               clipBehavior: Clip.none,
               children: [
                 Container(
-                  width: 50,
-                  height: 50,
+                  width: avatarSize,
+                  height: avatarSize,
                   decoration: const BoxDecoration(
                     color: Color(0xFFFF9D2E),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
                     sfIcon('message.fill'),
-                    size: 22,
+                    size: theme.scaled(22),
                     color: Colors.white,
                   ),
                 ),
                 if (_totalUnread > 0)
                   Positioned(
-                    right: -6,
-                    top: -5,
+                    right: -AppSpacing.sm,
+                    top: -(AppSpacing.xs + 1),
                     child: UnreadBadge(count: _totalUnread),
                   ),
               ],
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: AppSpacing.lg),
           Expanded(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -70,12 +75,12 @@ class GroupAssistantRow extends StatelessWidget {
                 Text(
                   '群助手',
                   style: TextStyle(
-                    fontSize: 16,
+                    fontSize: AppTextSize.bodyLarge,
                     fontWeight: FontWeight.w500,
                     color: c.textPrimary,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: AppSpacing.xs),
                 ChatPreviewText(
                   sender: _latest?.title,
                   message: _latest?.lastMessage ?? '',
@@ -83,12 +88,15 @@ class GroupAssistantRow extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: AppSpacing.md),
           Padding(
             padding: const EdgeInsets.only(top: 13),
             child: Text(
               DateText.listLabel(_latest?.date ?? 0),
-              style: TextStyle(fontSize: 12, color: c.textTertiary),
+              style: TextStyle(
+                fontSize: AppTextSize.caption,
+                color: c.textTertiary,
+              ),
             ),
           ),
         ],

@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import '../components/toast.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../chat/image_edit_view.dart';
 import '../components/photo_avatar.dart';
 import '../components/sf_symbols.dart';
 import '../components/ui_components.dart';
@@ -261,13 +262,22 @@ class _EditProfileViewState extends State<EditProfileView> {
         maxWidth: 1280,
       );
       if (img == null) return;
+      if (!mounted) return;
+      final edited = await Navigator.of(context).push<String>(
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (_) => ImageEditView(sourcePath: img.path, avatar: true),
+        ),
+      );
+      if (edited == null) return;
       await _client.query({
         '@type': 'setProfilePhoto',
         'photo': {
           '@type': 'inputChatPhotoStatic',
-          'photo': {'@type': 'inputFileLocal', 'path': img.path},
+          'photo': {'@type': 'inputFileLocal', 'path': edited},
         },
       });
+      if (!mounted) return;
       _toast('头像已更新');
       // The new photo propagates via updateUser after upload; re-read shortly.
       await Future<void>.delayed(const Duration(milliseconds: 800));

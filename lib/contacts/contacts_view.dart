@@ -213,9 +213,7 @@ class _ContactsViewState extends State<ContactsView> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(0, 0, 0, 24),
       child: Container(
-        decoration: BoxDecoration(
-          color: c.card,
-        ),
+        decoration: BoxDecoration(color: c.card),
         clipBehavior: Clip.antiAlias,
         child: Column(children: children),
       ),

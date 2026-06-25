@@ -149,6 +149,10 @@ class ChatSummary {
     this.archiveOrder = 0,
     this.isMarkedUnread = false,
     this.draftText = '',
+    this.peerUserId,
+    this.peerIsPremium = false,
+    this.peerAccentColorId = -1,
+    this.peerEmojiStatusId = 0,
   });
 
   final int id;
@@ -166,6 +170,10 @@ class ChatSummary {
   int archiveOrder; // > 0 when the chat is in the Archive list
   bool isMarkedUnread; // "标为未读" with no unread count
   String draftText; // unsent draft; shown as "[草稿]" prefix when non-empty
+  int? peerUserId; // private/secret chat peer, used for chat-list Premium UI
+  bool peerIsPremium;
+  int peerAccentColorId;
+  int peerEmojiStatusId;
 
   /// Groups & channels use a rounded-square avatar unless UI preferences
   /// override them; people use a circle.
@@ -407,6 +415,7 @@ abstract final class TDParse {
     final muted =
         (chat.obj('notification_settings')?.integer('mute_for') ?? 0) > 0;
 
+    final type = chat.obj('type');
     return ChatSummary(
       id: id,
       title: title,
@@ -421,6 +430,10 @@ abstract final class TDParse {
       archiveOrder: archiveOrder,
       isMarkedUnread: chat.boolean('is_marked_as_unread') ?? false,
       draftText: draftText(chat.obj('draft_message')),
+      peerUserId: switch (type?.type) {
+        'chatTypePrivate' || 'chatTypeSecret' => type?.int64('user_id'),
+        _ => null,
+      },
     );
   }
 

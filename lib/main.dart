@@ -91,11 +91,9 @@ class _MithkaAppState extends State<MithkaApp> {
             themeMode: theme.themeMode,
             // Apply the user's chosen font size app-wide (设置 › 通用 › 字体大小).
             builder: (context, child) {
-              final mq = MediaQuery.of(context);
-              return MediaQuery(
-                data: mq.copyWith(
-                  textScaler: TextScaler.linear(theme.fontScale),
-                ),
+              return _ScaledAppView(
+                fontScale: theme.fontScale,
+                interfaceScale: theme.interfaceScale,
                 child: child ?? const SizedBox.shrink(),
               );
             },
@@ -107,6 +105,64 @@ class _MithkaAppState extends State<MithkaApp> {
           );
         },
       ),
+    );
+  }
+}
+
+class _ScaledAppView extends StatelessWidget {
+  const _ScaledAppView({
+    required this.fontScale,
+    required this.interfaceScale,
+    required this.child,
+  });
+
+  final double fontScale;
+  final double interfaceScale;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final scale = interfaceScale;
+    final virtualSize = Size(
+      media.size.width / scale,
+      media.size.height / scale,
+    );
+    final scaledMedia = media.copyWith(
+      size: virtualSize,
+      padding: _unscaleInsets(media.padding, scale),
+      viewPadding: _unscaleInsets(media.viewPadding, scale),
+      viewInsets: _unscaleInsets(media.viewInsets, scale),
+      systemGestureInsets: _unscaleInsets(media.systemGestureInsets, scale),
+      textScaler: TextScaler.linear(fontScale / scale),
+    );
+
+    return ClipRect(
+      child: OverflowBox(
+        alignment: Alignment.topLeft,
+        minWidth: virtualSize.width,
+        maxWidth: virtualSize.width,
+        minHeight: virtualSize.height,
+        maxHeight: virtualSize.height,
+        child: Transform.scale(
+          scale: scale,
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+            width: virtualSize.width,
+            height: virtualSize.height,
+            child: MediaQuery(data: scaledMedia, child: child),
+          ),
+        ),
+      ),
+    );
+  }
+
+  EdgeInsets _unscaleInsets(EdgeInsets insets, double scale) {
+    return EdgeInsets.fromLTRB(
+      insets.left / scale,
+      insets.top / scale,
+      insets.right / scale,
+      insets.bottom / scale,
     );
   }
 }

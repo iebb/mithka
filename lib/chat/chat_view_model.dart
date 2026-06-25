@@ -1442,14 +1442,16 @@ class ChatViewModel extends ChangeNotifier {
       });
       final status = member.obj('status');
       final title = status?.str('custom_title');
-      final cleanTitle = (title?.isNotEmpty ?? false) ? title : null;
+      final cleanTitle = (title?.trim().isNotEmpty ?? false)
+          ? title!.trim()
+          : null;
       switch (status?.type) {
         case 'chatMemberStatusCreator':
           return (MemberRole.owner, cleanTitle);
         case 'chatMemberStatusAdministrator':
           return (MemberRole.admin, cleanTitle);
         default:
-          return (MemberRole.member, null);
+          return (MemberRole.member, cleanTitle);
       }
     } catch (_) {
       return (MemberRole.member, null);

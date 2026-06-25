@@ -23,6 +23,7 @@ import '../components/sf_symbols.dart';
 import '../components/ui_components.dart';
 import '../contacts/add_people_view.dart';
 import '../contacts/create_group_view.dart';
+import '../profile/emoji_status_picker.dart';
 import '../settings/edit_field_view.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -59,6 +60,7 @@ class _ChatListViewState extends State<ChatListView> {
   String _meName = '我';
   TdFileRef? _mePhoto;
   int _meStatusId = 0; // current emoji status, shown after the name
+  bool _meIsPremium = false;
   int? _meId;
   StreamSubscription? _userSub;
   int? _openSwipeChat;
@@ -107,7 +109,8 @@ class _ChatListViewState extends State<ChatListView> {
 
   void _onScroll() {
     if (!_scrollController.hasClients) return;
-    if (_scrollController.position.extentAfter < AppTheme.rowHeight * 8) {
+    final rowHeight = context.read<ThemeController>().rowHeight;
+    if (_scrollController.position.extentAfter < rowHeight * 8) {
       _model.loadMore();
     }
   }
@@ -135,6 +138,7 @@ class _ChatListViewState extends State<ChatListView> {
               me.obj('emoji_status')?.obj('type')?.int64('custom_emoji_id') ??
               me.obj('emoji_status')?.int64('custom_emoji_id') ??
               0;
+          _meIsPremium = me.boolean('is_premium') ?? false;
           _meId = me.int64('id');
         });
       }
@@ -261,7 +265,7 @@ class _ChatListViewState extends State<ChatListView> {
       if (assistantIndex <= chatIndex) itemIndex++;
     }
 
-    const rowH = AppTheme.rowHeight + 0.5;
+    final rowH = context.read<ThemeController>().rowHeight + 0.5;
     return math.min(
       itemIndex * rowH,
       _scrollController.position.maxScrollExtent,
@@ -291,7 +295,7 @@ class _ChatListViewState extends State<ChatListView> {
             ],
           ),
         ),
-        if (!useFilterMenu && _showPlusMenu) _plusMenuOverlay(),
+        if (_showPlusMenu) _plusMenuOverlay(),
         if (useFilterMenu && _showFilterMenu) _filterMenuOverlay(),
       ],
     );
@@ -307,14 +311,21 @@ class _ChatListViewState extends State<ChatListView> {
       color: c.listHeaderTint,
       padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.xxl,
+          vertical: AppSpacing.md + AppSpacing.xxs,
+        ),
         child: Row(
           children: [
             GestureDetector(
               onTap: () => context.read<dc.DrawerController>().open(),
-              child: PhotoAvatar(title: _meName, photo: _mePhoto, size: 40),
+              child: PhotoAvatar(
+                title: _meName,
+                photo: _mePhoto,
+                size: AppMetric.headerAvatarSize,
+              ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: AppSpacing.lg),
             Expanded(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -329,37 +340,55 @@ class _ChatListViewState extends State<ChatListView> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 17,
+                            fontSize: AppTextSize.title,
                             fontWeight: FontWeight.w600,
                             color: c.textPrimary,
                           ),
                         ),
                       ),
                       if (_meStatusId != 0) ...[
-                        const SizedBox(width: 5),
-                        CustomEmojiView(
-                          id: _meStatusId,
-                          size: 18,
-                          color: c.textPrimary,
+                        const SizedBox(width: AppSpacing.xs + 1),
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => showEmojiStatusPicker(
+                            context,
+                            currentStatusId: _meStatusId,
+                          ),
+                          child: CustomEmojiView(
+                            id: _meStatusId,
+                            size: 18,
+                            color: c.textPrimary,
+                          ),
+                        ),
+                      ],
+                      if (_meIsPremium && _meStatusId != 0) ...[
+                        const SizedBox(width: AppSpacing.xs),
+                        Icon(
+                          Icons.keyboard_arrow_down_rounded,
+                          size: 14,
+                          color: c.textTertiary,
                         ),
                       ],
                     ],
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: AppSpacing.xxs),
                   Row(
                     children: [
                       Container(
-                        width: 7,
-                        height: 7,
+                        width: AppMetric.onlineDot,
+                        height: AppMetric.onlineDot,
                         decoration: BoxDecoration(
                           color: AppTheme.onlineDot,
                           shape: BoxShape.circle,
                         ),
                       ),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: AppSpacing.xs),
                       Text(
                         '在线',
-                        style: TextStyle(fontSize: 12, color: c.textSecondary),
+                        style: TextStyle(
+                          fontSize: AppTextSize.caption,
+                          color: c.textSecondary,
+                        ),
                       ),
                     ],
                   ),
@@ -367,7 +396,7 @@ class _ChatListViewState extends State<ChatListView> {
               ),
             ),
             if (useFilterMenu && !activeFilter.isAll) ...[
-              const SizedBox(width: 8),
+              const SizedBox(width: AppSpacing.md),
               ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 132),
                 child: Text(
@@ -375,28 +404,43 @@ class _ChatListViewState extends State<ChatListView> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.right,
-                  style: TextStyle(fontSize: 14, color: c.textSecondary),
+                  style: TextStyle(
+                    fontSize: AppTextSize.callout,
+                    color: c.textSecondary,
+                  ),
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: AppSpacing.md),
             ],
+            if (useFilterMenu)
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => setState(() {
+                  _showFilterMenu = true;
+                  _showPlusMenu = false;
+                }),
+                child: SizedBox(
+                  width: AppMetric.hitTarget,
+                  height: AppMetric.hitTarget,
+                  child: Icon(
+                    Icons.filter_list_rounded,
+                    size: AppIconSize.toolbar,
+                    color: c.textPrimary,
+                  ),
+                ),
+              ),
             GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: () => setState(() {
-                if (useFilterMenu) {
-                  _showFilterMenu = true;
-                  _showPlusMenu = false;
-                } else {
-                  _showPlusMenu = true;
-                  _showFilterMenu = false;
-                }
+                _showPlusMenu = true;
+                _showFilterMenu = false;
               }),
               child: SizedBox(
-                width: 36,
-                height: 36,
+                width: AppMetric.hitTarget,
+                height: AppMetric.hitTarget,
                 child: Icon(
-                  useFilterMenu ? Icons.filter_list_rounded : sfIcon('plus'),
-                  size: useFilterMenu ? 24 : 25,
+                  sfIcon('plus'),
+                  size: AppIconSize.add,
                   color: c.textPrimary,
                 ),
               ),
@@ -417,19 +461,34 @@ class _ChatListViewState extends State<ChatListView> {
       ).push(MaterialPageRoute(builder: (_) => const SearchView())),
       child: Container(
         color: c.listHeaderTint,
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.lg,
+          AppSpacing.md,
+          AppSpacing.lg,
+          AppSpacing.sm,
+        ),
         child: Container(
-          height: 36,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
+          height: AppMetric.searchHeight,
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
           decoration: BoxDecoration(
             color: c.searchFill,
-            borderRadius: BorderRadius.circular(9),
+            borderRadius: BorderRadius.circular(AppRadius.control),
           ),
           child: Row(
             children: [
-              Icon(sfIcon('magnifyingglass'), size: 16, color: c.textTertiary),
-              const SizedBox(width: 6),
-              Text('搜索', style: TextStyle(fontSize: 14, color: c.textTertiary)),
+              Icon(
+                sfIcon('magnifyingglass'),
+                size: AppMetric.searchIcon,
+                color: c.textTertiary,
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Text(
+                '搜索',
+                style: TextStyle(
+                  fontSize: AppTextSize.callout,
+                  color: c.textTertiary,
+                ),
+              ),
             ],
           ),
         ),
@@ -445,7 +504,7 @@ class _ChatListViewState extends State<ChatListView> {
       color: c.background,
       child: LayoutBuilder(
         builder: (context, geo) {
-          const rowH = AppTheme.rowHeight + 0.5;
+          final rowH = context.watch<ThemeController>().rowHeight + 0.5;
           final visibleRows = math.max(1, (geo.maxHeight / rowH).ceil());
           _lastVisibleRows = visibleRows;
           final chats = _model.chats;
@@ -582,7 +641,7 @@ class PlusMenu extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: Container(
-        width: 220,
+        width: AppMetric.menuWidth,
         decoration: BoxDecoration(
           color: c.card,
           borderRadius: BorderRadius.circular(12),
@@ -602,23 +661,28 @@ class PlusMenu extends StatelessWidget {
                 behavior: HitTestBehavior.opaque,
                 onTap: () => onSelect(item.$2),
                 child: SizedBox(
-                  height: 50,
+                  height: AppMetric.menuRowHeight,
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.xxl,
+                    ),
                     child: Row(
                       children: [
                         SizedBox(
-                          width: 24,
+                          width: AppMetric.menuIconSlot,
                           child: Icon(
                             sfIcon(item.$1),
-                            size: 19,
+                            size: AppIconSize.lg + 1,
                             color: c.textPrimary,
                           ),
                         ),
-                        const SizedBox(width: 14),
+                        const SizedBox(width: AppSpacing.xl),
                         Text(
                           item.$2,
-                          style: TextStyle(fontSize: 16, color: c.textPrimary),
+                          style: TextStyle(
+                            fontSize: AppTextSize.bodyLarge,
+                            color: c.textPrimary,
+                          ),
                         ),
                       ],
                     ),
@@ -650,7 +714,7 @@ class ChatFilterMenu extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: Container(
-        width: 220,
+        width: AppMetric.menuWidth,
         constraints: const BoxConstraints(maxHeight: 360),
         decoration: BoxDecoration(
           color: c.card,
@@ -674,25 +738,30 @@ class ChatFilterMenu extends StatelessWidget {
               behavior: HitTestBehavior.opaque,
               onTap: () => onSelect(filter),
               child: SizedBox(
-                height: 50,
+                height: AppMetric.menuRowHeight,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.xxl,
+                  ),
                   child: Row(
                     children: [
                       Icon(
                         filter.isAll
                             ? Icons.all_inbox_rounded
                             : Icons.folder_outlined,
-                        size: 19,
+                        size: AppIconSize.lg + 1,
                         color: c.textPrimary,
                       ),
-                      const SizedBox(width: 14),
+                      const SizedBox(width: AppSpacing.xl),
                       Expanded(
                         child: Text(
                           filter.title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 16, color: c.textPrimary),
+                          style: TextStyle(
+                            fontSize: AppTextSize.bodyLarge,
+                            color: c.textPrimary,
+                          ),
                         ),
                       ),
                       if (selectedFilter)
@@ -829,7 +898,7 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
                           child: Text(
                             item.title,
                             style: const TextStyle(
-                              fontSize: 15,
+                              fontSize: AppTextSize.body,
                               color: Colors.white,
                             ),
                           ),

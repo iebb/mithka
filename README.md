@@ -39,7 +39,7 @@ stories, settings, and a 1:1 call UI.
 
 - **Flutter** UI (`lib/`), state via `provider` + `ChangeNotifier`.
 - **TDLib** linked through Dart FFI (`lib/tdlib/`); the native `libtdjson`
-  binary is built per platform (see below) and is **not** committed.
+  binary is downloaded/built per platform (see below) and is **not** committed.
 - All theming is adaptive (light / dark); UI components are Cupertino/custom —
   no Material dialogs, snackbars, or switches.
 
@@ -57,13 +57,16 @@ class Secrets {
 }
 ```
 
-The TDLib native library is built with the helper scripts (output is git-ignored):
+The TDLib native library is prepared with helper scripts (output is git-ignored).
+iOS downloads a prebuilt artifact from
+[`iebb/mithka-tdjson`](https://github.com/iebb/mithka-tdjson); Android still
+builds per ABI locally.
 
 ```bash
 # Android (per ABI) — produces android/app/src/main/jniLibs/<abi>/libtdjson.so
 scripts/build-tdjson-android.sh arm64-v8a
 
-# iOS — produces the libtdjson framework consumed by the Runner
+# iOS — downloads ios/tdjson/tdjson.xcframework consumed by the Runner
 scripts/build-tdjson-ios.sh
 ```
 
