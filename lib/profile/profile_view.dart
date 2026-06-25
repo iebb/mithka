@@ -26,7 +26,6 @@ import '../components/photo_avatar.dart';
 import '../components/sf_symbols.dart';
 import '../components/ui_components.dart';
 import '../chat/shared_media_view.dart';
-import '../settings/appearance_view.dart';
 import '../settings/edit_profile_view.dart';
 import '../settings/settings_view.dart';
 import 'my_album_view.dart';
@@ -438,13 +437,13 @@ class _ProfileViewState extends State<ProfileView> {
   Widget build(BuildContext context) {
     final c = context.colors;
     return Container(
-      color: c.groupedBackground,
+      color: c.card,
       child: Column(
         children: [
           _banner(),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.only(top: 12, bottom: 8),
+              padding: const EdgeInsets.only(top: 0, bottom: 0),
               children: [
                 _rowsCard(),
                 const SizedBox(height: 12),
@@ -633,30 +632,19 @@ class _ProfileViewState extends State<ProfileView> {
 
   Widget _rowsCard() {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: context.colors.card,
-        borderRadius: BorderRadius.circular(14),
-      ),
+      decoration: BoxDecoration(color: context.colors.card),
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
-          _row('photo.fill', const Color(0xFFF5A623), '相册', () {
+          _row('photo', const Color(0xFFF5A623), '相册', () {
             _root.push(
               MaterialPageRoute(
                 builder: (_) => MyAlbumView(userId: _vm.user?.id ?? 0),
               ),
             );
           }),
-          const InsetDivider(leadingInset: 60),
-          _row(
-            'star.fill',
-            const Color(0xFFFF9D2E),
-            '收藏',
-            () => _openSaved('收藏'),
-          ),
-          const InsetDivider(leadingInset: 60),
-          _row('folder.fill', const Color(0xFF3C8CF0), '文件', () {
+          _row('star', const Color(0xFFFF9D2E), '收藏', () => _openSaved('收藏')),
+          _row('folder', const Color(0xFF3C8CF0), '文件', () {
             final cid = _vm.savedChatId ?? _vm.user?.id ?? 0;
             _root.push(
               MaterialPageRoute(
@@ -665,13 +653,6 @@ class _ProfileViewState extends State<ProfileView> {
               ),
             );
           }),
-          const InsetDivider(leadingInset: 60),
-          _row('sparkles', const Color(0xFF8E7BFF), '外观', () {
-            _root.push(
-              MaterialPageRoute(builder: (_) => const AppearanceView()),
-            );
-          }),
-          const InsetDivider(leadingInset: 60),
           _row('qrcode', AppTheme.brand, '二维码名片', () {
             _root.push(
               MaterialPageRoute(
@@ -692,19 +673,19 @@ class _ProfileViewState extends State<ProfileView> {
       child: SizedBox(
         height: 54,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 8),
           child: Row(
             children: [
               Container(
-                width: 32,
+                width: 42,
                 height: 32,
                 alignment: Alignment.center,
-                child: Icon(sfIcon(icon), size: 25, color: color),
+                child: Icon(sfIcon(icon), size: 20, color: color),
               ),
-              const SizedBox(width: 14),
-              Text(label, style: TextStyle(fontSize: 16, color: c.textPrimary)),
+              const SizedBox(width: 12),
+              Text(label, style: TextStyle(fontSize: 15, color: c.textPrimary)),
               const Spacer(),
-              Icon(sfIcon('chevron.right'), size: 16, color: c.textTertiary),
+              Icon(sfIcon('chevron.right'), size: 15, color: c.textTertiary),
             ],
           ),
         ),
@@ -718,7 +699,7 @@ class _ProfileViewState extends State<ProfileView> {
     final c = context.colors;
     final accounts = context.watch<AccountStore>();
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 12),
+      margin: const EdgeInsets.symmetric(horizontal: 0),
       decoration: BoxDecoration(
         color: c.card,
         borderRadius: BorderRadius.circular(14),
@@ -726,6 +707,7 @@ class _ProfileViewState extends State<ProfileView> {
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
+          const InsetDivider(leadingInset: 0),
           for (final s in accounts.summaries) ...[
             GestureDetector(
               behavior: HitTestBehavior.opaque,
@@ -877,15 +859,15 @@ class _ProfileViewState extends State<ProfileView> {
           height: 74,
           child: Row(
             children: [
-              const SizedBox(width: 28),
+              const SizedBox(width: 16),
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () => _root.push(
                   MaterialPageRoute(builder: (_) => const SettingsView()),
                 ),
-                child: _barItem('gearshape.fill', '设置'),
+                child: _barItem('gearshape', '设置'),
               ),
-              const SizedBox(width: 30),
+              const SizedBox(width: 24),
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 // Flip between EXPLICIT light/dark every tap (never `system`,
@@ -894,7 +876,7 @@ class _ProfileViewState extends State<ProfileView> {
                     ? AppearanceMode.light
                     : AppearanceMode.dark,
                 child: _barItem(
-                  isDark ? 'sun.max.fill' : 'moon.fill',
+                  isDark ? 'sun.max' : 'moon',
                   isDark ? '日间' : '夜间',
                 ),
               ),
@@ -913,9 +895,9 @@ class _ProfileViewState extends State<ProfileView> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(sfIcon(icon), size: 29, color: c.textPrimary),
+          Icon(sfIcon(icon), size: 22, color: c.textPrimary),
           const SizedBox(height: 5),
-          Text(label, style: TextStyle(fontSize: 15, color: c.textPrimary)),
+          Text(label, style: TextStyle(fontSize: 13, color: c.textPrimary)),
         ],
       ),
     );

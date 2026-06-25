@@ -17,18 +17,58 @@ import '../tdlib/td_models.dart';
 import 'sticker_item.dart';
 
 class _SenderInfo {
-  _SenderInfo(this.name, this.photo, this.role, this.title);
+  _SenderInfo(
+    this.name,
+    this.photo,
+    this.role,
+    this.title, {
+    this.isPremium = false,
+    this.accentColorId = -1,
+    this.emojiStatusId = 0,
+  });
   final String name;
   final TdFileRef? photo;
   final MemberRole role;
   final String? title;
+  final bool isPremium;
+  final int accentColorId;
+  final int emojiStatusId;
+}
+
+class MessageSenderOption {
+  const MessageSenderOption({
+    required this.sender,
+    required this.id,
+    required this.title,
+    this.photo,
+    this.needsPremium = false,
+  });
+
+  final Map<String, dynamic> sender;
+  final int id;
+  final String title;
+  final TdFileRef? photo;
+  final bool needsPremium;
+
+  bool sameSender(Map<String, dynamic>? other) {
+    if (other == null || other.type != sender.type) return false;
+    return switch (sender.type) {
+      'messageSenderUser' => other.int64('user_id') == id,
+      'messageSenderChat' => other.int64('chat_id') == id,
+      _ => false,
+    };
+  }
 }
 
 class ChatViewModel extends ChangeNotifier {
-  ChatViewModel({required this.chatId, required String title})
-    : peerTitle = title;
+  ChatViewModel({
+    required this.chatId,
+    required String title,
+    this.initialMessageId,
+  }) : peerTitle = title;
 
   final int chatId;
+  final int? initialMessageId;
 
   List<ChatMessage> messages = [];
   String peerTitle;
@@ -40,6 +80,8 @@ class ChatViewModel extends ChangeNotifier {
   TdFileRef? mePhoto;
   String draft = '';
   ChatMessage? replyTo;
+  List<MessageSenderOption> availableMessageSenders = const [];
+  MessageSenderOption? selectedMessageSender;
 
   // Live header state.
   bool peerOnline = false;
@@ -48,6 +90,7 @@ class ChatViewModel extends ChangeNotifier {
   int lastReadInboxId = 0; // incoming messages with id <= this are read
   int unreadCount = 0; // unread incoming messages on entry (for the divider)
   bool initialLoaded = false; // first history page (+ unread boundary) is in
+  bool anchoredHistory = false; // transcript is centered on an arbitrary target
 
   // 群公告 / pinned message shown in a bar below the header.
   ChatMessage? pinnedMessage;
@@ -70,6 +113,7 @@ class ChatViewModel extends ChangeNotifier {
   StreamSubscription? _sub;
   bool _isLoadingOlder = false;
   int? _restoreTopId;
+  int? _pendingScrollToId;
 
   // Typing: sender ids currently acting, auto-cleared after a few seconds.
   final Map<int, String> _typing = {};
@@ -95,6 +139,7 @@ class ChatViewModel extends ChangeNotifier {
   }
 
   bool isRead(ChatMessage m) => m.isOutgoing && m.id <= lastReadOutboxId;
+  bool get canChooseMessageSender => availableMessageSenders.length > 1;
 
   final Map<int, _SenderInfo> _senderCache = {};
   final Set<int> _resolvingSenders = {};
@@ -106,6 +151,12 @@ class ChatViewModel extends ChangeNotifier {
     return id;
   }
 
+  int? consumePendingScrollToId() {
+    final id = _pendingScrollToId;
+    _pendingScrollToId = null;
+    return id;
+  }
+
   // MARK: - Lifecycle
 
   void onAppear() {
@@ -114,13 +165,19 @@ class ChatViewModel extends ChangeNotifier {
     () async {
       await _loadMe();
       await _loadChatHeader();
-      await _loadInitialHistory();
+      await _loadAvailableMessageSenders();
+      final target = initialMessageId;
+      if (target != null) {
+        await loadAroundMessage(target);
+      } else {
+        await _loadInitialHistory();
+      }
       initialLoaded = true;
       notifyListeners();
       // Mark the chat read once positioned, so the badge clears and the next
       // open lands at the latest message. The unread snapshot for this session's
       // "以下为新消息" divider was already captured in _loadChatHeader.
-      _markChatRead();
+      if (target == null) _markChatRead();
     }();
   }
 
@@ -132,6 +189,115 @@ class ChatViewModel extends ChangeNotifier {
       mePhoto = TDParse.smallPhoto(me.obj('profile_photo'));
       notifyListeners();
     } catch (_) {}
+  }
+
+  Future<void> _loadAvailableMessageSenders() async {
+    try {
+      final res = await _client.query({
+        '@type': 'getChatAvailableMessageSenders',
+        'chat_id': chatId,
+      });
+      final raw = res.objects('senders') ?? const <Map<String, dynamic>>[];
+      final loaded = <MessageSenderOption>[];
+      for (final item in raw) {
+        final sender = item.obj('sender');
+        if (sender == null) continue;
+        final option = await _messageSenderOption(
+          sender,
+          item.boolean('needs_premium') ?? false,
+        );
+        if (option != null) loaded.add(option);
+      }
+      availableMessageSenders = loaded;
+      if (selectedMessageSender == null && loaded.isNotEmpty) {
+        selectedMessageSender = loaded.first;
+      } else if (selectedMessageSender != null) {
+        MessageSenderOption? selected;
+        for (final option in loaded) {
+          if (option.sameSender(selectedMessageSender!.sender)) {
+            selected = option;
+            break;
+          }
+        }
+        selectedMessageSender =
+            selected ?? (loaded.isNotEmpty ? loaded.first : null);
+      }
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  Future<MessageSenderOption?> _messageSenderOption(
+    Map<String, dynamic> sender,
+    bool needsPremium,
+  ) async {
+    switch (sender.type) {
+      case 'messageSenderUser':
+        final userId = sender.int64('user_id');
+        if (userId == null) return null;
+        if (peerUserId == userId || userId > 0) {
+          try {
+            final user = await _client.query({
+              '@type': 'getUser',
+              'user_id': userId,
+            });
+            final name = TDParse.userName(user);
+            return MessageSenderOption(
+              sender: sender,
+              id: userId,
+              title: name.isEmpty ? meName : name,
+              photo: TDParse.smallPhoto(user.obj('profile_photo')),
+              needsPremium: needsPremium,
+            );
+          } catch (_) {}
+        }
+        return MessageSenderOption(
+          sender: sender,
+          id: userId,
+          title: meName,
+          photo: mePhoto,
+          needsPremium: needsPremium,
+        );
+      case 'messageSenderChat':
+        final senderChatId = sender.int64('chat_id');
+        if (senderChatId == null) return null;
+        try {
+          final chat = await _client.query({
+            '@type': 'getChat',
+            'chat_id': senderChatId,
+          });
+          return MessageSenderOption(
+            sender: sender,
+            id: senderChatId,
+            title: chat.str('title') ?? '频道',
+            photo: TDParse.smallPhoto(chat.obj('photo')),
+            needsPremium: needsPremium,
+          );
+        } catch (_) {
+          return MessageSenderOption(
+            sender: sender,
+            id: senderChatId,
+            title: '频道',
+            needsPremium: needsPremium,
+          );
+        }
+    }
+    return null;
+  }
+
+  Future<void> selectMessageSender(MessageSenderOption option) async {
+    final previous = selectedMessageSender;
+    selectedMessageSender = option;
+    notifyListeners();
+    try {
+      await _client.query({
+        '@type': 'setChatMessageSender',
+        'chat_id': chatId,
+        'message_sender_id': option.sender,
+      });
+    } catch (_) {
+      selectedMessageSender = previous;
+      notifyListeners();
+    }
   }
 
   void onDisappear() {
@@ -711,6 +877,46 @@ class ChatViewModel extends ChangeNotifier {
     }
   }
 
+  Future<bool> loadAroundMessage(int messageId) async {
+    final batch = <ChatMessage>[];
+    try {
+      final targetRaw = await _client.query({
+        '@type': 'getMessage',
+        'chat_id': chatId,
+        'message_id': messageId,
+      });
+      final target = TDParse.message(targetRaw);
+      if (target != null) batch.add(target);
+    } catch (_) {}
+
+    try {
+      final response = await _client.query({
+        '@type': 'getChatHistory',
+        'chat_id': chatId,
+        'from_message_id': messageId,
+        'offset': -30,
+        'limit': 80,
+        'only_local': false,
+      });
+      batch.addAll(
+        (response.objects('messages') ?? const <Map<String, dynamic>>[])
+            .map(TDParse.message)
+            .whereType<ChatMessage>(),
+      );
+    } catch (_) {}
+
+    if (batch.isEmpty) return false;
+    messages = [];
+    anchoredHistory = true;
+    _pendingScrollToId = messageId;
+    _merge(batch);
+    _resolveSendersIfNeeded(batch);
+    _resolveRepliesIfNeeded(batch);
+    _resolveForwardsIfNeeded(batch);
+    _resolveServiceUsersIfNeeded(batch);
+    return messages.any((m) => m.id == messageId);
+  }
+
   Future<void> _fetchHistory(
     int fromMessageId,
     int offset,
@@ -750,6 +956,7 @@ class ChatViewModel extends ChangeNotifier {
     _resolveSendersIfNeeded(parsed);
     _resolveRepliesIfNeeded(parsed);
     _resolveForwardsIfNeeded(parsed);
+    _resolveServiceUsersIfNeeded(parsed);
   }
 
   // MARK: - Live updates
@@ -769,6 +976,7 @@ class ChatViewModel extends ChangeNotifier {
         _resolveSendersIfNeeded([message]);
         _resolveRepliesIfNeeded([message]);
         _resolveForwardsIfNeeded([message]);
+        _resolveServiceUsersIfNeeded([message]);
         _client.send({
           '@type': 'viewMessages',
           'chat_id': chatId,
@@ -804,6 +1012,23 @@ class ChatViewModel extends ChangeNotifier {
           _restartTypingTimer();
         }
         notifyListeners();
+
+      case 'updateChatMessageSender':
+        if (update.int64('chat_id') != chatId) return;
+        final sender = update.obj('message_sender_id');
+        if (sender == null) {
+          selectedMessageSender = null;
+          notifyListeners();
+          return;
+        }
+        for (final option in availableMessageSenders) {
+          if (option.sameSender(sender)) {
+            selectedMessageSender = option;
+            notifyListeners();
+            return;
+          }
+        }
+        _loadAvailableMessageSenders();
 
       case 'updateUserStatus':
         if (isGroup || update.int64('user_id') != peerUserId) return;
@@ -1032,13 +1257,19 @@ class ChatViewModel extends ChangeNotifier {
       if (m.senderId != senderId || m.isOutgoing) continue;
       if (m.senderName == info.name &&
           m.senderRole == info.role &&
-          m.senderTitle == info.title) {
+          m.senderTitle == info.title &&
+          m.senderIsPremium == info.isPremium &&
+          m.senderAccentColorId == info.accentColorId &&
+          m.senderEmojiStatusId == info.emojiStatusId) {
         continue;
       }
       m.senderName = info.name;
       m.senderPhoto = info.photo;
       m.senderRole = info.role;
       m.senderTitle = info.title;
+      m.senderIsPremium = info.isPremium;
+      m.senderAccentColorId = info.accentColorId;
+      m.senderEmojiStatusId = info.emojiStatusId;
       changed = true;
     }
     if (changed) notifyListeners();
@@ -1111,11 +1342,49 @@ class ChatViewModel extends ChangeNotifier {
     } catch (_) {}
   }
 
+  void _resolveServiceUsersIfNeeded(List<ChatMessage> batch) {
+    for (final message in batch) {
+      if (!message.isService || message.serviceUserIds.isEmpty) continue;
+      switch (message.contentType) {
+        case 'messageChatAddMembers':
+        case 'messageChatJoinByLink':
+        case 'messageChatJoinByRequest':
+          _resolveJoinServiceText(message);
+      }
+    }
+  }
+
+  Future<void> _resolveJoinServiceText(ChatMessage message) async {
+    final names = <String>[];
+    for (final userId in message.serviceUserIds.take(5)) {
+      try {
+        final user = await _client.query({
+          '@type': 'getUser',
+          'user_id': userId,
+        });
+        final name = TDParse.userName(user);
+        if (name.isNotEmpty) names.add(name);
+      } catch (_) {}
+    }
+    if (names.isEmpty) return;
+    final suffix = message.serviceUserIds.length > names.length
+        ? ' 等${message.serviceUserIds.length}人'
+        : '';
+    final text = '${names.join('、')}$suffix加入了群聊';
+    final index = messages.indexWhere((m) => m.id == message.id);
+    if (index < 0 || messages[index].text == text) return;
+    messages[index].text = text;
+    notifyListeners();
+  }
+
   Future<void> _resolveSender(int senderId) async {
     _SenderInfo info;
     if (senderId > 0) {
       String name;
       TdFileRef? photo;
+      var isPremium = false;
+      var accentColorId = -1;
+      var emojiStatusId = 0;
       try {
         final user = await _client.query({
           '@type': 'getUser',
@@ -1123,12 +1392,26 @@ class ChatViewModel extends ChangeNotifier {
         });
         name = TDParse.userName(user);
         photo = TDParse.smallPhoto(user.obj('profile_photo'));
+        isPremium = user.boolean('is_premium') ?? false;
+        accentColorId = user.integer('accent_color_id') ?? -1;
+        emojiStatusId =
+            user.obj('emoji_status')?.obj('type')?.int64('custom_emoji_id') ??
+            user.obj('emoji_status')?.int64('custom_emoji_id') ??
+            0;
       } catch (_) {
         name = '用户 $senderId';
         photo = null;
       }
       final role = await _resolveRole(senderId);
-      info = _SenderInfo(name, photo, role.$1, role.$2);
+      info = _SenderInfo(
+        name,
+        photo,
+        role.$1,
+        role.$2,
+        isPremium: isPremium,
+        accentColorId: accentColorId,
+        emojiStatusId: emojiStatusId,
+      );
     } else {
       try {
         final chat = await _client.query({

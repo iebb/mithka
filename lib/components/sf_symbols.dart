@@ -42,10 +42,12 @@ const Map<String, IconData> _map = {
 
   // Appearance / settings
   'circle.lefthalf.filled': Icons.contrast,
+  'sun.max': Icons.wb_sunny_outlined,
   'sun.max.fill': Icons.light_mode,
+  'moon': Icons.nightlight_outlined,
   'moon.fill': Icons.dark_mode,
   'rectangle.split.3x1.fill': Icons.view_week,
-  'sparkles': Icons.auto_awesome,
+  'sparkles': Icons.auto_awesome_outlined,
   'gearshape.fill': CupertinoIcons.gear_solid,
   'gearshape': CupertinoIcons.gear,
   'bell.fill': CupertinoIcons.bell_fill,
@@ -58,7 +60,9 @@ const Map<String, IconData> _map = {
   'info.circle': CupertinoIcons.info_circle,
   'trash': CupertinoIcons.trash,
   'trash.fill': CupertinoIcons.trash_fill,
+  'star': CupertinoIcons.star,
   'star.fill': CupertinoIcons.star_fill,
+  'folder': CupertinoIcons.folder,
   'folder.fill': CupertinoIcons.folder_fill,
   'qrcode': CupertinoIcons.qrcode,
   'qrcode.viewfinder': CupertinoIcons.qrcode_viewfinder,

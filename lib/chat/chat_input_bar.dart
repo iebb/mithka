@@ -22,6 +22,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../components/photo_avatar.dart';
 import '../components/icon_grid.dart';
 import '../components/sf_symbols.dart';
+import '../components/ui_components.dart';
 import '../theme/app_theme.dart';
 import '../tdlib/td_models.dart';
 import 'chat_view_model.dart';
@@ -315,9 +316,84 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   // MARK: - Input row
 
+  void _showSenderPicker() {
+    final options = vm.availableMessageSenders;
+    if (options.length <= 1) return;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        final c = context.colors;
+        return SafeArea(
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            decoration: BoxDecoration(
+              color: c.card,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (var i = 0; i < options.length; i++) ...[
+                  _senderOptionRow(options[i]),
+                  if (i < options.length - 1)
+                    const InsetDivider(leadingInset: 64),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _senderOptionRow(MessageSenderOption option) {
+    final c = context.colors;
+    final selected =
+        vm.selectedMessageSender?.sameSender(option.sender) == true;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: option.needsPremium
+          ? null
+          : () {
+              Navigator.of(context).pop();
+              vm.selectMessageSender(option);
+            },
+      child: SizedBox(
+        height: 56,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Row(
+            children: [
+              PhotoAvatar(title: option.title, photo: option.photo, size: 36),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  option.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 16, color: c.textPrimary),
+                ),
+              ),
+              if (option.needsPremium)
+                Text(
+                  'Premium',
+                  style: TextStyle(fontSize: 13, color: AppTheme.brand),
+                )
+              else if (selected)
+                Icon(Icons.check, size: 18, color: AppTheme.brand),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _inputRow() {
     final c = context.colors;
     final hasText = _controller.text.trim().isNotEmpty;
+    final sender = vm.selectedMessageSender;
     return Padding(
       padding: const EdgeInsets.only(left: 12, right: 12, top: 8, bottom: 6),
       child: Row(
@@ -330,17 +406,47 @@ class _ChatInputBarState extends State<ChatInputBar> {
                 borderRadius: BorderRadius.circular(18),
               ),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-              child: TextField(
-                controller: _controller,
-                focusNode: _focus,
-                minLines: 1,
-                maxLines: 4,
-                style: TextStyle(fontSize: 16, color: c.textPrimary),
-                decoration: const InputDecoration(
-                  hintText: '发送消息…',
-                  border: InputBorder.none,
-                  isCollapsed: true,
-                ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  if (vm.canChooseMessageSender && sender != null) ...[
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: _showSenderPicker,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          PhotoAvatar(
+                            title: sender.title,
+                            photo: sender.photo,
+                            size: 28,
+                          ),
+                          const SizedBox(width: 2),
+                          Icon(
+                            Icons.keyboard_arrow_down_rounded,
+                            size: 16,
+                            color: c.textTertiary,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  Expanded(
+                    child: TextField(
+                      controller: _controller,
+                      focusNode: _focus,
+                      minLines: 1,
+                      maxLines: 4,
+                      style: TextStyle(fontSize: 16, color: c.textPrimary),
+                      decoration: const InputDecoration(
+                        hintText: '发送消息…',
+                        border: InputBorder.none,
+                        isCollapsed: true,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),

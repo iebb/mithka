@@ -61,6 +61,11 @@ class ThemeController extends ChangeNotifier {
     );
     _fontScale = _prefs.getDouble(_fontKey) ?? 1.0;
     _circularGroupAvatars = _prefs.getBool(_groupAvatarCircleKey) ?? true;
+    _showChatFolderFilter = _prefs.getBool(_chatFolderFilterKey) ?? false;
+    _showMemberTags = _prefs.getBool(_memberTagsKey) ?? false;
+    _showPremiumNameColors = _prefs.getBool(_premiumNameColorsKey) ?? true;
+    _showPremiumEmojiStatus = _prefs.getBool(_premiumEmojiStatusKey) ?? true;
+    _groupImageMessages = _prefs.getBool(_groupImageMessagesKey) ?? false;
     _unreadBadgeMode = UnreadBadgeMode.values.firstWhere(
       (m) => m.name == _prefs.getString(_unreadBadgeModeKey),
       orElse: () => UnreadBadgeMode.messages,
@@ -73,6 +78,11 @@ class ThemeController extends ChangeNotifier {
   static const _brandKey = 'brandColor';
   static const _fontKey = 'fontScale';
   static const _groupAvatarCircleKey = 'circularGroupAvatars';
+  static const _chatFolderFilterKey = 'showChatFolderFilter';
+  static const _memberTagsKey = 'showMemberTags';
+  static const _premiumNameColorsKey = 'showPremiumNameColors';
+  static const _premiumEmojiStatusKey = 'showPremiumEmojiStatus';
+  static const _groupImageMessagesKey = 'groupImageMessages';
   static const _unreadBadgeModeKey = 'unreadBadgeMode';
 
   /// Selectable text-scale steps for the 字体大小 control (小 / 标准 / 大 / 超大).
@@ -85,6 +95,11 @@ class ThemeController extends ChangeNotifier {
   late Color _brandColor;
   late double _fontScale;
   late bool _circularGroupAvatars;
+  bool _showChatFolderFilter = false;
+  bool _showMemberTags = false;
+  bool _showPremiumNameColors = true;
+  bool _showPremiumEmojiStatus = true;
+  bool _groupImageMessages = false;
   late UnreadBadgeMode _unreadBadgeMode;
 
   AppearanceMode get mode => _mode;
@@ -92,6 +107,11 @@ class ThemeController extends ChangeNotifier {
   ThemeMode get themeMode => _mode.themeMode;
   Color get brandColor => _brandColor;
   bool get circularGroupAvatars => _circularGroupAvatars;
+  bool get showChatFolderFilter => _showChatFolderFilter;
+  bool get showMemberTags => _showMemberTags;
+  bool get showPremiumNameColors => _showPremiumNameColors;
+  bool get showPremiumEmojiStatus => _showPremiumEmojiStatus;
+  bool get groupImageMessages => _groupImageMessages;
   UnreadBadgeMode get unreadBadgeMode => _unreadBadgeMode;
 
   /// App-wide text scale factor, applied at the root via MediaQuery.textScaler.
@@ -126,6 +146,36 @@ class ThemeController extends ChangeNotifier {
   set circularGroupAvatars(bool value) {
     _circularGroupAvatars = value;
     _prefs.setBool(_groupAvatarCircleKey, value);
+    notifyListeners();
+  }
+
+  set showChatFolderFilter(bool value) {
+    _showChatFolderFilter = value;
+    _prefs.setBool(_chatFolderFilterKey, value);
+    notifyListeners();
+  }
+
+  set showMemberTags(bool value) {
+    _showMemberTags = value;
+    _prefs.setBool(_memberTagsKey, value);
+    notifyListeners();
+  }
+
+  set showPremiumNameColors(bool value) {
+    _showPremiumNameColors = value;
+    _prefs.setBool(_premiumNameColorsKey, value);
+    notifyListeners();
+  }
+
+  set showPremiumEmojiStatus(bool value) {
+    _showPremiumEmojiStatus = value;
+    _prefs.setBool(_premiumEmojiStatusKey, value);
+    notifyListeners();
+  }
+
+  set groupImageMessages(bool value) {
+    _groupImageMessages = value;
+    _prefs.setBool(_groupImageMessagesKey, value);
     notifyListeners();
   }
 

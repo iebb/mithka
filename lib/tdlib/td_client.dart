@@ -59,6 +59,7 @@ class TdClient {
   // Multicast of the ACTIVE account's updates.
   final StreamController<Map<String, dynamic>> _updates =
       StreamController.broadcast(sync: true);
+  final Map<int, Map<String, dynamic>> _latestChatFoldersByClient = {};
 
   // Accounts
   final Map<int, int> _clientForSlot = {};
@@ -76,6 +77,8 @@ class TdClient {
   int get activeSlot => _activeSlot;
   List<int> get configuredSlots => List.unmodifiable(_slots);
   int? clientId(int slot) => _clientForSlot[slot];
+  Map<String, dynamic>? get latestChatFoldersUpdate =>
+      _latestChatFoldersByClient[_activeClientId];
 
   // MARK: - Lifecycle
 
@@ -210,6 +213,10 @@ class TdClient {
         object.obj('authorization_state')?.type ==
             'authorizationStateWaitTdlibParameters') {
       _sendParameters(clientId);
+    }
+
+    if (object.type == 'updateChatFolders') {
+      _latestChatFoldersByClient[clientId] = object;
     }
 
     // Only surface the active account's updates to the UI.

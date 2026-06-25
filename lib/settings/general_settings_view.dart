@@ -1,14 +1,12 @@
 //
 //  general_settings_view.dart
 //
-//  通用 (General): 深色模式 + 标签栏样式 (both drive ThemeController live), 存储空间
-//  (live cache size + clear), and 聊天 preference toggles. Port of the Swift
-//  `GeneralSettingsView` / `GeneralSettingsViewModel`.
+//  通用 (General): storage controls and general chat preference toggles. Port
+//  of the Swift `GeneralSettingsView` / `GeneralSettingsViewModel`.
 //
 
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../components/sf_symbols.dart';
@@ -16,7 +14,6 @@ import '../components/ui_components.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
-import '../theme/theme_controller.dart';
 
 class GeneralSettingsView extends StatefulWidget {
   const GeneralSettingsView({super.key});
@@ -31,9 +28,6 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
   bool _clearing = false;
   bool _enterToSend = false;
   SharedPreferences? _prefs;
-
-  static const _appearanceColor = Color(0xFF6A5BE2);
-  static const _tabColor = Color(0xFF16B0A0);
 
   @override
   void initState() {
@@ -104,12 +98,6 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
               children: [
-                _appearanceCard(),
-                const SizedBox(height: 14),
-                _fontSizeCard(),
-                const SizedBox(height: 14),
-                _tabBarCard(),
-                const SizedBox(height: 14),
                 _storageCard(),
                 const SizedBox(height: 14),
                 _chatCard(),
@@ -150,161 +138,6 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(children: children),
-    );
-  }
-
-  Widget _selectRow(
-    String icon,
-    Color color,
-    String label,
-    bool selected,
-    VoidCallback onTap,
-  ) {
-    final c = context.colors;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: SizedBox(
-        height: 52,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              _iconBadge(icon, color),
-              const SizedBox(width: 12),
-              Text(label, style: TextStyle(fontSize: 16, color: c.textPrimary)),
-              const Spacer(),
-              if (selected)
-                Icon(sfIcon('checkmark'), size: 16, color: AppTheme.brand),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _appearanceCard() {
-    final theme = context.watch<ThemeController>();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _sectionHeader('深色模式'),
-        _card([
-          for (var i = 0; i < AppearanceMode.values.length; i++) ...[
-            _selectRow(
-              AppearanceMode.values[i].name == 'system'
-                  ? 'circle.lefthalf.filled'
-                  : AppearanceMode.values[i].name == 'light'
-                  ? 'sun.max.fill'
-                  : 'moon.fill',
-              _appearanceColor,
-              AppearanceMode.values[i].label,
-              theme.mode == AppearanceMode.values[i],
-              () => context.read<ThemeController>().mode =
-                  AppearanceMode.values[i],
-            ),
-            if (i < AppearanceMode.values.length - 1)
-              const InsetDivider(leadingInset: 56),
-          ],
-        ]),
-      ],
-    );
-  }
-
-  Widget _fontSizeCard() {
-    final c = context.colors;
-    final theme = context.watch<ThemeController>();
-    final steps = ThemeController.fontScaleSteps;
-    const labels = ['小', '标准', '大', '超大'];
-    // Closest step to the saved scale.
-    var idx = 0;
-    var best = double.infinity;
-    for (var i = 0; i < steps.length; i++) {
-      final d = (steps[i] - theme.fontScale).abs();
-      if (d < best) {
-        best = d;
-        idx = i;
-      }
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _sectionHeader('字体大小'),
-        _card([
-          SizedBox(
-            height: 52,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  _iconBadge('doc', const Color(0xFFF5A623)),
-                  const SizedBox(width: 12),
-                  Text(
-                    '聊天字体',
-                    style: TextStyle(fontSize: 16, color: c.textPrimary),
-                  ),
-                  const Spacer(),
-                  Text(
-                    labels[idx],
-                    style: TextStyle(fontSize: 15, color: c.textSecondary),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const InsetDivider(leadingInset: 56),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-            child: Row(
-              children: [
-                Text(
-                  'A',
-                  style: TextStyle(fontSize: 14, color: c.textSecondary),
-                ),
-                Expanded(
-                  child: CupertinoSlider(
-                    value: idx.toDouble(),
-                    min: 0,
-                    max: (steps.length - 1).toDouble(),
-                    divisions: steps.length - 1,
-                    activeColor: AppTheme.brand,
-                    onChanged: (v) =>
-                        context.read<ThemeController>().fontScale =
-                            steps[v.round()],
-                  ),
-                ),
-                Text('A', style: TextStyle(fontSize: 24, color: c.textPrimary)),
-              ],
-            ),
-          ),
-        ]),
-      ],
-    );
-  }
-
-  Widget _tabBarCard() {
-    final theme = context.watch<ThemeController>();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _sectionHeader('标签栏样式'),
-        _card([
-          for (var i = 0; i < TabBarStyle.values.length; i++) ...[
-            _selectRow(
-              TabBarStyle.values[i].name == 'classic'
-                  ? 'rectangle.split.3x1.fill'
-                  : 'sparkles',
-              _tabColor,
-              TabBarStyle.values[i].label,
-              theme.tabBarStyle == TabBarStyle.values[i],
-              () => context.read<ThemeController>().tabBarStyle =
-                  TabBarStyle.values[i],
-            ),
-            if (i < TabBarStyle.values.length - 1)
-              const InsetDivider(leadingInset: 56),
-          ],
-        ]),
-      ],
     );
   }
 

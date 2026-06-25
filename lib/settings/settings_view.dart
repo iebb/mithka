@@ -14,6 +14,7 @@ import '../components/sf_symbols.dart';
 import '../components/ui_components.dart';
 import '../theme/app_theme.dart';
 import 'about_view.dart';
+import 'appearance_view.dart';
 import 'edit_profile_view.dart';
 import 'general_settings_view.dart';
 import 'notification_settings_view.dart';
@@ -70,6 +71,14 @@ class SettingsView extends StatelessWidget {
                     '通用',
                     const Color(0xFF8E8E93),
                     () => const GeneralSettingsView(),
+                  ),
+                  const InsetDivider(leadingInset: 56),
+                  _navRow(
+                    context,
+                    'sparkles',
+                    '外观',
+                    const Color(0xFF8E7BFF),
+                    () => const AppearanceView(),
                   ),
                   const InsetDivider(leadingInset: 56),
                   _navRow(

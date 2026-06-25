@@ -197,6 +197,10 @@ class ChatMessage {
     this.document,
     this.senderRole,
     this.senderTitle,
+    this.senderIsPremium = false,
+    this.senderAccentColorId = -1,
+    this.senderEmojiStatusId = 0,
+    this.mediaAlbumId = 0,
     this.animatedSticker,
     this.videoSticker,
     this.video,
@@ -207,6 +211,7 @@ class ChatMessage {
     this.location,
     this.voice,
     this.replyToMessageId,
+    this.serviceUserIds = const [],
     this.customEmoji = const [],
     this.isEdited = false,
   });
@@ -235,6 +240,10 @@ class ChatMessage {
   MessageDocument? document;
   MemberRole? senderRole;
   String? senderTitle;
+  bool senderIsPremium;
+  int senderAccentColorId;
+  int senderEmojiStatusId;
+  int mediaAlbumId;
   TdFileRef? animatedSticker; // .tgs (Lottie) sticker file
   TdFileRef? videoSticker; // .webm video sticker file
   TdFileRef? video; // playable video file (messageVideo)
@@ -249,6 +258,10 @@ class ChatMessage {
   int? replyToMessageId;
   String? replyToSender; // resolved sender name of the quoted message
   String? replyToPreview; // one-line preview of the quoted message
+
+  // Service messages such as member joins may carry affected user ids, resolved
+  // by the chat view model once TDLib can provide display names.
+  List<int> serviceUserIds;
 
   // Inline custom (premium) emoji spans within `text`.
   List<CustomEmojiEntity> customEmoji;
@@ -489,6 +502,7 @@ abstract final class TDParse {
         callDuration: callDuration,
         contentType: content?.type,
         senderId: senderId,
+        mediaAlbumId: message.int64('media_album_id') ?? 0,
         image: media.image,
         imageWidth: media.width,
         imageHeight: media.height,
@@ -503,6 +517,7 @@ abstract final class TDParse {
         location: locationAttachment(content),
         voice: voiceAttachment(content),
         replyToMessageId: replyToMessageId,
+        serviceUserIds: serviceUserIds(content, senderId),
         customEmoji: customEmojiEntities(ft),
         isEdited: (message.integer('edit_date') ?? 0) > 0,
       )
@@ -827,6 +842,23 @@ abstract final class TDParse {
         return '助力了本群';
       default:
         return '系统消息';
+    }
+  }
+
+  static List<int> serviceUserIds(
+    Map<String, dynamic>? content,
+    int? senderId,
+  ) {
+    switch (content?.type) {
+      case 'messageChatAddMembers':
+        return content?.int64Array('member_user_ids') ??
+            content?.int64Array('user_ids') ??
+            const <int>[];
+      case 'messageChatJoinByLink':
+      case 'messageChatJoinByRequest':
+        return senderId != null && senderId > 0 ? [senderId] : const <int>[];
+      default:
+        return const <int>[];
     }
   }
 

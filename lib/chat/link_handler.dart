@@ -44,7 +44,13 @@ Future<void> openLink(BuildContext context, String url) async {
           '@type': 'getMessageLinkInfo',
           'url': url,
         });
-        await _openChat(nav, info.int64('chat_id'));
+        final message = info.obj('message');
+        final chatId = info.int64('chat_id') ?? message?.int64('chat_id');
+        final messageId =
+            info.int64('message_id') ??
+            message?.int64('id') ??
+            type.int64('message_id');
+        await _openChat(nav, chatId, initialMessageId: messageId);
       case 'internalLinkTypeUserPhoneNumber':
         final user = await TdClient.shared.query({
           '@type': 'searchUserByPhoneNumber',
@@ -69,7 +75,11 @@ Future<void> openLink(BuildContext context, String url) async {
   }
 }
 
-Future<void> _openChat(NavigatorState nav, int? chatId) async {
+Future<void> _openChat(
+  NavigatorState nav,
+  int? chatId, {
+  int? initialMessageId,
+}) async {
   if (chatId == null) return;
   var title = '';
   try {
@@ -82,7 +92,11 @@ Future<void> _openChat(NavigatorState nav, int? chatId) async {
   if (!nav.mounted) return;
   nav.push(
     MaterialPageRoute(
-      builder: (_) => ChatView(chatId: chatId, title: title),
+      builder: (_) => ChatView(
+        chatId: chatId,
+        title: title,
+        initialMessageId: initialMessageId,
+      ),
     ),
   );
 }

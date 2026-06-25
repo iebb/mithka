@@ -12,11 +12,13 @@ import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../components/photo_avatar.dart';
 import '../components/sf_symbols.dart';
 import '../components/ui_components.dart';
 import '../theme/app_theme.dart';
+import '../theme/theme_controller.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -26,6 +28,16 @@ import 'file_detail_view.dart';
 import 'video_sticker_view.dart';
 import 'link_handler.dart';
 import 'voice_audio.dart';
+
+const List<Color> _telegramAccentColors = [
+  Color(0xFFCC5049),
+  Color(0xFFD67722),
+  Color(0xFF955CDB),
+  Color(0xFF40A920),
+  Color(0xFF309EBA),
+  Color(0xFF368AD1),
+  Color(0xFFC7508B),
+];
 
 class MessageBubble extends StatefulWidget {
   const MessageBubble({
@@ -136,6 +148,16 @@ class _MessageBubbleState extends State<MessageBubble> {
 
   Widget _row(bool outgoing) {
     final c = context.colors;
+    final theme = context.watch<ThemeController>();
+    final showMemberTags = theme.showMemberTags;
+    final premiumNameColor =
+        theme.showPremiumNameColors && message.senderIsPremium
+        ? _senderAccentColor(message.senderAccentColorId)
+        : c.textSecondary;
+    final showPremiumStatus =
+        theme.showPremiumEmojiStatus &&
+        message.senderIsPremium &&
+        message.senderEmojiStatusId != 0;
     final body = GestureDetector(
       key: _bubbleKey,
       onLongPress: _handleLongPress,
@@ -210,7 +232,9 @@ class _MessageBubbleState extends State<MessageBubble> {
                               if (message.senderRole != null) ...[
                                 RoleTag(
                                   role: message.senderRole!,
-                                  title: message.senderTitle,
+                                  title: showMemberTags
+                                      ? message.senderTitle
+                                      : null,
                                 ),
                                 const SizedBox(width: 4),
                               ],
@@ -221,10 +245,21 @@ class _MessageBubbleState extends State<MessageBubble> {
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
                                     fontSize: 12,
-                                    color: c.textSecondary,
+                                    color: premiumNameColor,
+                                    fontWeight: message.senderIsPremium
+                                        ? FontWeight.w600
+                                        : FontWeight.w400,
                                   ),
                                 ),
                               ),
+                              if (showPremiumStatus) ...[
+                                const SizedBox(width: 3),
+                                CustomEmojiView(
+                                  id: message.senderEmojiStatusId,
+                                  size: 14,
+                                  color: premiumNameColor,
+                                ),
+                              ],
                             ],
                           ),
                         ),
@@ -243,6 +278,13 @@ class _MessageBubbleState extends State<MessageBubble> {
               ],
       ),
     );
+  }
+
+  Color _senderAccentColor(int id) {
+    if (id >= 0 && id < _telegramAccentColors.length) {
+      return _telegramAccentColors[id];
+    }
+    return AppTheme.brand;
   }
 
   Widget _reactionChips(bool outgoing) {

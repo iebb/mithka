@@ -42,7 +42,7 @@ class ChatRowView extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 16,
+                    fontSize: 15,
                     fontWeight: FontWeight.w500,
                     color: c.textPrimary,
                   ),
@@ -67,15 +67,15 @@ class ChatRowView extends StatelessWidget {
   Widget _avatar(BuildContext context) {
     final circleGroups = context.watch<ThemeController>().circularGroupAvatars;
     return SizedBox(
-      width: 50,
-      height: 50,
+      width: AppTheme.avatarSize,
+      height: AppTheme.avatarSize,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
           PhotoAvatar(
             title: chat.title,
             photo: chat.photo,
-            size: 50,
+            size: AppTheme.avatarSize,
             square: chat.usesSquareAvatar && !circleGroups,
           ),
           if (chat.unreadCount > 0)

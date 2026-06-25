@@ -42,7 +42,11 @@ class SplashView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.chat_bubble, size: 56, color: Colors.white),
+            Image(
+              image: AssetImage('assets/penguin.png'),
+              width: 64,
+              height: 64,
+            ),
             SizedBox(height: 18),
             SizedBox(
               width: 24,

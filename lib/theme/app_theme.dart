@@ -56,8 +56,8 @@ abstract final class AppTheme {
   static final Color cloverGreen = _hex(0x2DBE60);
 
   // MARK: Metrics
-  static const double rowHeight = 70;
-  static const double avatarSize = 50;
+  static const double rowHeight = 64;
+  static const double avatarSize = 48;
   static const double avatarCorner = 12; // legacy (rounded-square)
   static const double groupAvatarCornerRatio = 0.30; // groups: rounded square
   static const double bubbleCorner = 9;

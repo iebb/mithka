@@ -185,25 +185,22 @@ class _ChatInfoViewState extends State<ChatInfoView> {
               style: TextStyle(fontSize: 13, color: c.textSecondary),
             );
     }
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Flexible(
-          child: Text(
-            _vm.groupNumber.isEmpty ? '群聊' : '群号：${_vm.groupNumber}',
+        Text(
+          _vm.groupNumber.isEmpty ? '群聊' : '群号：${_vm.groupNumber}',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(fontSize: 13, color: c.textSecondary),
+        ),
+        const SizedBox(height: 4),
+        if (_vm.isPublic && (_vm.username?.isNotEmpty ?? false))
+          Text(
+            '@${_vm.username}',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 13, color: c.textSecondary),
-          ),
-        ),
-        const SizedBox(width: 8),
-        if (_vm.isPublic && (_vm.username?.isNotEmpty ?? false))
-          Flexible(
-            child: Text(
-              '@${_vm.username}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 13, color: AppTheme.brand),
-            ),
+            style: TextStyle(fontSize: 13, color: AppTheme.brand),
           )
         else
           _lockBadge('不允许被搜索'),

@@ -124,9 +124,7 @@ class _MainTabViewState extends State<MainTabView> {
   }
 
   void _scrollMessagesToFirstUnread() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _chatListController.scrollToFirstUnread();
-    });
+    _chatListController.scrollToFirstUnread();
   }
 
   @override

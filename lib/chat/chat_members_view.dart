@@ -7,6 +7,7 @@
 //
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../components/confirm_dialog.dart';
 import '../components/toast.dart';
 
@@ -16,6 +17,7 @@ import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
+import '../theme/theme_controller.dart';
 
 class GroupMember {
   GroupMember({
@@ -213,6 +215,7 @@ class _ChatMembersViewState extends State<ChatMembersView> {
 
   Widget _memberRow(GroupMember m) {
     final c = context.colors;
+    final showMemberTags = context.watch<ThemeController>().showMemberTags;
     return SizedBox(
       height: 64,
       child: Padding(
@@ -243,7 +246,10 @@ class _ChatMembersViewState extends State<ChatMembersView> {
                       ),
                       if (m.role != null) ...[
                         const SizedBox(width: 6),
-                        RoleTag(role: m.role!, title: m.title),
+                        RoleTag(
+                          role: m.role!,
+                          title: showMemberTags ? m.title : null,
+                        ),
                       ],
                     ],
                   ),

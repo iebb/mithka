@@ -41,6 +41,9 @@ class AppearanceView extends StatelessWidget {
                     ),
                 ]),
                 const SizedBox(height: 14),
+                _label(context, '字体大小'),
+                _fontSizeCard(context, theme),
+                const SizedBox(height: 14),
                 _label(context, '主题颜色'),
                 _colorCard(context, theme),
                 const SizedBox(height: 14),
@@ -64,6 +67,41 @@ class AppearanceView extends StatelessWidget {
                     '群聊头像显示为圆形',
                     theme.circularGroupAvatars,
                     (v) => theme.circularGroupAvatars = v,
+                  ),
+                  _toggleRow(
+                    context,
+                    Icons.filter_list_rounded,
+                    '顶部显示聊天分组筛选',
+                    theme.showChatFolderFilter,
+                    (v) => theme.showChatFolderFilter = v,
+                  ),
+                  _toggleRow(
+                    context,
+                    Icons.badge_outlined,
+                    '显示成员头衔',
+                    theme.showMemberTags,
+                    (v) => theme.showMemberTags = v,
+                  ),
+                  _toggleRow(
+                    context,
+                    Icons.palette_outlined,
+                    '显示 Premium 名字颜色',
+                    theme.showPremiumNameColors,
+                    (v) => theme.showPremiumNameColors = v,
+                  ),
+                  _toggleRow(
+                    context,
+                    Icons.emoji_emotions_outlined,
+                    '显示 Premium 状态表情',
+                    theme.showPremiumEmojiStatus,
+                    (v) => theme.showPremiumEmojiStatus = v,
+                  ),
+                  _toggleRow(
+                    context,
+                    Icons.photo_library_outlined,
+                    '合并连续图片消息',
+                    theme.groupImageMessages,
+                    (v) => theme.groupImageMessages = v,
                   ),
                 ]),
                 const SizedBox(height: 14),
@@ -136,6 +174,81 @@ class AppearanceView extends StatelessWidget {
                     : null,
               ),
             ),
+        ],
+      ),
+    );
+  }
+
+  Widget _fontSizeCard(BuildContext context, ThemeController theme) {
+    final c = context.colors;
+    final steps = ThemeController.fontScaleSteps;
+    const labels = ['小', '标准', '大', '超大'];
+    var index = 0;
+    var best = double.infinity;
+    for (var i = 0; i < steps.length; i++) {
+      final delta = (steps[i] - theme.fontScale).abs();
+      if (delta < best) {
+        best = delta;
+        index = i;
+      }
+    }
+    return Container(
+      decoration: BoxDecoration(
+        color: c.card,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          SizedBox(
+            height: 52,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.text_fields_rounded,
+                    size: 20,
+                    color: AppTheme.brand,
+                  ),
+                  const SizedBox(width: 14),
+                  Text(
+                    '聊天字体',
+                    style: TextStyle(fontSize: 16, color: c.textPrimary),
+                  ),
+                  const Spacer(),
+                  Text(
+                    labels[index],
+                    style: TextStyle(fontSize: 15, color: c.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const InsetDivider(leadingInset: 52),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: Row(
+              children: [
+                Text(
+                  'A',
+                  style: TextStyle(fontSize: 14, color: c.textSecondary),
+                ),
+                Expanded(
+                  child: CupertinoSlider(
+                    value: index.toDouble(),
+                    min: 0,
+                    max: (steps.length - 1).toDouble(),
+                    divisions: steps.length - 1,
+                    activeColor: AppTheme.brand,
+                    onChanged: (value) =>
+                        theme.fontScale = steps[value.round()],
+                  ),
+                ),
+                Text('A', style: TextStyle(fontSize: 24, color: c.textPrimary)),
+              ],
+            ),
+          ),
         ],
       ),
     );

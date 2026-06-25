@@ -7,6 +7,7 @@
 //
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import '../components/toast.dart';
@@ -34,21 +35,39 @@ import 'sticker_set_detail_view.dart';
 import 'video_player_view.dart';
 
 class ChatView extends StatefulWidget {
-  const ChatView({super.key, required this.chatId, required this.title});
+  const ChatView({
+    super.key,
+    required this.chatId,
+    required this.title,
+    this.initialMessageId,
+  });
   final int chatId;
   final String title;
+  final int? initialMessageId;
 
   @override
   State<ChatView> createState() => _ChatViewState();
+}
+
+class _TranscriptEntry {
+  const _TranscriptEntry(this.messages, this.startIndex);
+
+  final List<ChatMessage> messages;
+  final int startIndex;
+
+  ChatMessage get first => messages.first;
+  bool get isImageGroup => messages.length > 1;
 }
 
 class _ChatViewState extends State<ChatView> {
   late final ChatViewModel _vm = ChatViewModel(
     chatId: widget.chatId,
     title: widget.title,
+    initialMessageId: widget.initialMessageId,
   );
   final _scroll = ScrollController();
   final _pinnedKey = GlobalKey(); // the pinned message's row, for scroll-to
+  final _targetKey = GlobalKey(); // arbitrary linked/anchored message row
   final _unreadKey = GlobalKey(); // the "以下为新消息" divider, for entry scroll
   ChatMessage? _actionTarget;
   Rect? _actionRect; // global bounds of the long-pressed bubble
@@ -59,6 +78,7 @@ class _ChatViewState extends State<ChatView> {
   bool _showJumpDown = false; // scrolled up → show jump-to-bottom button
   bool _bannerDismissed = false; // "N条新消息" banner dismissed / caught up
   Timer? _bannerTimer; // auto-hides the banner a few seconds after it appears
+  int? _scrollTargetId;
 
   /// Gap (seconds) between messages that triggers a fresh time separator.
   static const _separatorGap = 300;
@@ -68,6 +88,7 @@ class _ChatViewState extends State<ChatView> {
     super.initState();
     _vm.addListener(_onModel);
     _scroll.addListener(_onScroll);
+    _scrollTargetId = widget.initialMessageId;
     _vm.onAppear();
     // Load premium status early so the message menu can correctly hide the
     // emoji add/表情包 actions for non-premium users (the menu reads it).
@@ -119,9 +140,16 @@ class _ChatViewState extends State<ChatView> {
       _lastCount = _vm.messages.length;
       // Keep pinned to the bottom while history streams in; the one-time entry
       // positioning below repositions to the first unread once it's all loaded.
-      if (restore == null) {
+      if (restore == null && _scrollTargetId == null && !_vm.anchoredHistory) {
         WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
       }
+    }
+    final target = _vm.consumePendingScrollToId();
+    if (target != null) {
+      _scrollTargetId = target;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _ensureMessageVisible(target);
+      });
     }
     // Telegram-style entry: once the initial history (incl. the unread
     // boundary) is loaded, jump to the first unread message — or stay at the
@@ -149,6 +177,12 @@ class _ChatViewState extends State<ChatView> {
   /// exist yet — jump approximately first to build it, then snap precisely.
   void _initialScroll() {
     if (!_scroll.hasClients) return;
+    final target = widget.initialMessageId;
+    if (target != null) {
+      _scrollTargetId = target;
+      _ensureMessageVisible(target);
+      return;
+    }
     final i = _firstUnreadIndex();
     final boundaryLoaded =
         _vm.messages.isNotEmpty && _vm.messages.first.id <= _vm.lastReadInboxId;
@@ -259,10 +293,7 @@ class _ChatViewState extends State<ChatView> {
 
   void _openImage(ChatMessage message) {
     final pairs = _vm.messages
-        .where(
-          (m) =>
-              m.image != null && m.animatedSticker == null && m.video == null,
-        )
+        .where((m) => m.isPhoto && m.image != null)
         .toList();
     final items = pairs.map((m) => m.image!).toList();
     final start = pairs.indexWhere((m) => m.id == message.id);
@@ -772,12 +803,22 @@ class _ChatViewState extends State<ChatView> {
     );
   }
 
-  /// Scrolls the transcript to the pinned message. If it's already built, uses
-  /// ensureVisible; otherwise jumps near its position (or loads older history)
-  /// and retries a few times until the row is in the tree.
+  /// Scrolls the transcript to a message. If it is not loaded, ask TDLib for a
+  /// page centered around that id instead of fetching the whole middle history.
   Future<void> _scrollToMessage(int messageId) async {
-    for (var tries = 0; tries < 8; tries++) {
-      final ctx = _pinnedKey.currentContext;
+    _scrollTargetId = messageId;
+    if (_vm.messages.any((m) => m.id == messageId)) {
+      await _ensureMessageVisible(messageId);
+      return;
+    }
+    final loaded = await _vm.loadAroundMessage(messageId);
+    if (!loaded || !mounted) return;
+    await _ensureMessageVisible(messageId);
+  }
+
+  Future<void> _ensureMessageVisible(int messageId) async {
+    for (var tries = 0; tries < 6; tries++) {
+      final ctx = _targetKey.currentContext;
       if (ctx != null && ctx.mounted) {
         await Scrollable.ensureVisible(
           ctx,
@@ -790,39 +831,50 @@ class _ChatViewState extends State<ChatView> {
       if (!_scroll.hasClients) return;
       final index = _vm.messages.indexWhere((m) => m.id == messageId);
       if (index >= 0) {
-        // In the list but off-screen — jump near it so the row builds.
         final max = _scroll.position.maxScrollExtent;
-        final frac = index / _vm.messages.length;
+        final frac = _vm.messages.length <= 1
+            ? 0.0
+            : index / _vm.messages.length;
         _scroll.jumpTo((max * frac).clamp(0.0, max));
-      } else {
-        // Not loaded yet — go to the top to pull older history.
-        _scroll.jumpTo(0);
-        _vm.loadOlder();
       }
-      await Future<void>.delayed(const Duration(milliseconds: 220));
+      await Future<void>.delayed(const Duration(milliseconds: 120));
       if (!mounted) return;
     }
   }
 
   Widget _transcript() {
-    final messages = _vm.messages;
+    final groupImages = context.watch<ThemeController>().groupImageMessages;
+    final entries = groupImages ? _groupedTranscript() : _plainTranscript();
     return Container(
       color: context.colors.chatBackground,
       child: ListView.builder(
         controller: _scroll,
         padding: const EdgeInsets.symmetric(vertical: 8),
-        itemCount: messages.length,
+        itemCount: entries.length,
         itemBuilder: (context, index) {
-          final message = messages[index];
+          final entry = entries[index];
+          final message = entry.first;
+          final messageIndex = entry.startIndex;
+          final isTarget = entry.messages.any((m) => m.id == _scrollTargetId);
+          final isPinned = entry.messages.any(
+            (m) => m.id == _vm.pinnedMessage?.id,
+          );
           return Column(
-            key: message.id == _vm.pinnedMessage?.id ? _pinnedKey : null,
+            key: isTarget
+                ? _targetKey
+                : isPinned
+                ? _pinnedKey
+                : null,
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (_needsUnreadDivider(index))
+              if (_needsUnreadDivider(messageIndex))
                 KeyedSubtree(key: _unreadKey, child: _unreadDivider()),
-              if (_needsSeparator(index)) TimeSeparator(unix: message.date),
+              if (_needsSeparator(messageIndex))
+                TimeSeparator(unix: message.date),
               if (message.isService)
                 SystemBanner(text: message.text)
+              else if (entry.isImageGroup)
+                _imageGroupBubble(entry.messages)
               else
                 MessageBubble(
                   message: message,
@@ -831,7 +883,7 @@ class _ChatViewState extends State<ChatView> {
                   isGroup: _vm.isGroup,
                   meName: _vm.meName,
                   mePhoto: _vm.mePhoto,
-                  showRepeat: _isRepeatTail(index),
+                  showRepeat: _isRepeatTail(messageIndex),
                   onRepeat: () => _vm.repeatMessage(message),
                   onLongPress: (m, rect) => setState(() {
                     _actionTarget = m;
@@ -855,6 +907,228 @@ class _ChatViewState extends State<ChatView> {
             ],
           );
         },
+      ),
+    );
+  }
+
+  List<_TranscriptEntry> _plainTranscript() {
+    final messages = _vm.messages;
+    return [
+      for (var i = 0; i < messages.length; i++)
+        _TranscriptEntry([messages[i]], i),
+    ];
+  }
+
+  List<_TranscriptEntry> _groupedTranscript() {
+    final messages = _vm.messages;
+    final entries = <_TranscriptEntry>[];
+    var i = 0;
+    while (i < messages.length) {
+      final first = messages[i];
+      if (!_canGroupImage(first)) {
+        entries.add(_TranscriptEntry([first], i));
+        i++;
+        continue;
+      }
+
+      final group = <ChatMessage>[first];
+      var j = i + 1;
+      while (j < messages.length) {
+        final next = messages[j];
+        if (_needsSeparator(j) || _needsUnreadDivider(j)) break;
+        if (!_sameImageGroup(group.last, next)) break;
+        group.add(next);
+        j++;
+      }
+
+      entries.add(_TranscriptEntry(group, i));
+      i = j;
+    }
+    return entries;
+  }
+
+  bool _canGroupImage(ChatMessage message) {
+    return !message.isService && message.isPhoto && message.image != null;
+  }
+
+  bool _sameImageGroup(ChatMessage previous, ChatMessage next) {
+    if (!_canGroupImage(next)) return false;
+    if (previous.isOutgoing != next.isOutgoing) return false;
+    if (previous.senderId != next.senderId) return false;
+    if (previous.mediaAlbumId != 0 || next.mediaAlbumId != 0) {
+      return previous.mediaAlbumId != 0 &&
+          previous.mediaAlbumId == next.mediaAlbumId;
+    }
+    return (next.date - previous.date).abs() <= 20;
+  }
+
+  Widget _imageGroupBubble(List<ChatMessage> group) {
+    final c = context.colors;
+    final first = group.first;
+    final outgoing = first.isOutgoing;
+    final avatarTitle = outgoing
+        ? _vm.meName
+        : (_vm.isGroup && (first.senderName?.isNotEmpty ?? false))
+        ? first.senderName!
+        : _vm.peerTitle;
+    final avatarPhoto = outgoing
+        ? _vm.mePhoto
+        : (_vm.isGroup ? first.senderPhoto : _vm.peerPhoto);
+    final captions = group
+        .map((m) => m.text.trim())
+        .where((text) => text.isNotEmpty && text != '[图片]')
+        .toList();
+    final gallery = _imageGroupGallery(group, outgoing, captions);
+
+    Widget avatar() => GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: outgoing ? null : () => _openSenderProfile(first),
+      onLongPress: outgoing
+          ? null
+          : () {
+              if (_vm.isGroup && (first.senderName?.isNotEmpty ?? false)) {
+                _vm.insertMention(first.senderName!);
+              }
+            },
+      child: PhotoAvatar(title: avatarTitle, photo: avatarPhoto, size: 38),
+    );
+
+    Widget body = GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onLongPress: () => setState(() {
+        _actionTarget = first;
+        _actionRect = null;
+        _reactionExpanded = false;
+        _reactionTab = 'standard';
+      }),
+      child: outgoing
+          ? gallery
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_vm.isGroup && (first.senderName?.isNotEmpty ?? false))
+                  Padding(
+                    padding: const EdgeInsets.only(left: 2, bottom: 4),
+                    child: Text(
+                      first.senderName!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12, color: c.textSecondary),
+                    ),
+                  ),
+                gallery,
+              ],
+            ),
+    );
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        mainAxisAlignment: outgoing
+            ? MainAxisAlignment.end
+            : MainAxisAlignment.start,
+        children: outgoing
+            ? [
+                Flexible(
+                  child: Align(alignment: Alignment.centerRight, child: body),
+                ),
+                const SizedBox(width: 8),
+                avatar(),
+              ]
+            : [avatar(), const SizedBox(width: 8), Flexible(child: body)],
+      ),
+    );
+  }
+
+  Widget _imageGroupGallery(
+    List<ChatMessage> group,
+    bool outgoing,
+    List<String> captions,
+  ) {
+    final c = context.colors;
+    const maxWidth = 252.0;
+    const gap = 4.0;
+    final visible = group.take(9).toList();
+    final columns = visible.length <= 2 ? visible.length : 3;
+    final tile = (maxWidth - gap * (columns - 1)) / columns;
+    return Container(
+      constraints: const BoxConstraints(maxWidth: maxWidth),
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: outgoing ? AppTheme.bubbleOutgoing : c.bubbleIncoming,
+        borderRadius: BorderRadius.circular(8),
+        border: outgoing ? null : Border.all(color: c.divider, width: 0.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Wrap(
+            spacing: gap,
+            runSpacing: gap,
+            children: [
+              for (var i = 0; i < visible.length; i++)
+                _imageGroupTile(
+                  visible[i],
+                  width: tile,
+                  height: tile,
+                  extraCount: i == visible.length - 1
+                      ? math.max(0, group.length - visible.length)
+                      : 0,
+                ),
+            ],
+          ),
+          if (captions.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(6, 7, 6, 3),
+              child: Text(
+                captions.first,
+                style: TextStyle(
+                  fontSize: 15,
+                  height: 1.25,
+                  color: outgoing ? AppTheme.bubbleOutgoingText : c.textPrimary,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _imageGroupTile(
+    ChatMessage message, {
+    required double width,
+    required double height,
+    required int extraCount,
+  }) {
+    return GestureDetector(
+      onTap: () => _openImage(message),
+      child: SizedBox(
+        width: width,
+        height: height,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            TDImage(photo: message.image, cornerRadius: 5, fit: BoxFit.cover),
+            if (extraCount > 0)
+              Container(
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.45),
+                  borderRadius: BorderRadius.circular(5),
+                ),
+                child: Text(
+                  '+$extraCount',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

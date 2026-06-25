@@ -15,30 +15,51 @@ import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 
+class ChatFilterOption {
+  const ChatFilterOption({required this.title, this.folderId});
+
+  final String title;
+  final int? folderId;
+
+  bool get isAll => folderId == null;
+}
+
 class ChatListViewModel extends ChangeNotifier {
   List<ChatSummary> _chats = [];
   List<ChatSummary> _archived = [];
+  List<ChatFilterOption> _filters = const [ChatFilterOption(title: '全部')];
+  ChatFilterOption _selectedFilter = const ChatFilterOption(title: '全部');
   String? notice;
 
   List<ChatSummary> get chats => _chats;
   List<ChatSummary> get archived => _archived;
+  List<ChatFilterOption> get filters => _filters;
+  ChatFilterOption get selectedFilter => _selectedFilter;
+  bool get isAllFilter => _selectedFilter.isAll;
 
   /// Authoritative store keyed by chat id; `chats` is a sorted projection.
   final Map<int, ChatSummary> _map = {};
+  final Map<int, Map<int, int>> _folderOrders = {};
   final Map<int, String> _senderNames = {};
   final Set<int> _resolvingSenders = {};
+  final Set<int> _resolvingFolders = {};
 
   final TdClient _client = TdClient.shared;
   StreamSubscription? _sub;
   bool _listening = false;
-  static const _pageSize = 40;
+  bool _prefetchingMain = false;
+  final Set<String> _loadingChatLists = {};
+  final Set<String> _exhaustedChatLists = {};
+  static const _pageSize = 100;
 
   void onAppear() {
     if (_listening) return;
     _listening = true;
     _subscribe();
+    _loadFilters();
     _loadChats(_pageSize);
     _loadArchive(_pageSize);
+    _prefetchMainChats();
   }
 
   @override
@@ -49,16 +70,142 @@ class ChatListViewModel extends ChangeNotifier {
 
   // MARK: - Loading
 
-  void _loadChats(int limit) {
+  Map<String, dynamic> get _activeChatList => _selectedFilter.folderId == null
+      ? {'@type': 'chatListMain'}
+      : {'@type': 'chatListFolder', 'chat_folder_id': _selectedFilter.folderId};
+
+  void _loadFilters() {
+    final cached = _client.latestChatFoldersUpdate;
+    if (cached != null) _applyChatFolders(cached);
+
     _client
-        .query({
-          '@type': 'loadChats',
-          'chat_list': {'@type': 'chatListMain'},
-          'limit': limit,
+        .query({'@type': 'getChatFolders'})
+        .then(_applyChatFolders)
+        .catchError((_) {});
+  }
+
+  void _applyChatFolders(Map<String, dynamic> object) {
+    final raw =
+        object.objects('chat_folders') ??
+        object.objects('chat_folder_infos') ??
+        const <Map<String, dynamic>>[];
+    final folders = <ChatFilterOption>[const ChatFilterOption(title: '全部')];
+    for (final folder in raw) {
+      final id = folder.integer('id') ?? folder.integer('chat_folder_id');
+      if (id == null) continue;
+      final title = _folderTitle(folder, id);
+      folders.add(ChatFilterOption(title: title, folderId: id));
+    }
+    _filters = folders;
+    if (_selectedFilter.folderId != null &&
+        !_filters.any((f) => f.folderId == _selectedFilter.folderId)) {
+      _selectedFilter = _filters.first;
+      _loadChats(_pageSize);
+      _prefetchMainChats();
+      _resort();
+    }
+    notifyListeners();
+  }
+
+  String _folderTitle(Map<String, dynamic> folder, int id) =>
+      folder.obj('name')?.obj('text')?.str('text') ??
+      folder.obj('title')?.str('text') ??
+      folder.str('title') ??
+      folder.str('name') ??
+      '分组 $id';
+
+  void _ensureFolderOption(int id) {
+    if (_filters.any((f) => f.folderId == id)) return;
+    _filters = [..._filters, ChatFilterOption(title: '分组 $id', folderId: id)];
+    notifyListeners();
+    if (_resolvingFolders.contains(id)) return;
+    _resolvingFolders.add(id);
+    _client
+        .query({'@type': 'getChatFolder', 'chat_folder_id': id})
+        .then((folder) {
+          _resolvingFolders.remove(id);
+          final title = _folderTitle(folder, id);
+          _filters = [
+            for (final filter in _filters)
+              filter.folderId == id
+                  ? ChatFilterOption(title: title, folderId: id)
+                  : filter,
+          ];
+          if (_selectedFilter.folderId == id) {
+            _selectedFilter = ChatFilterOption(title: title, folderId: id);
+          }
+          notifyListeners();
         })
-        .catchError(
-          (_) => <String, dynamic>{},
-        ); // 404 when exhausted — harmless
+        .catchError((_) {
+          _resolvingFolders.remove(id);
+        });
+  }
+
+  void selectFilter(ChatFilterOption filter) {
+    if (filter.folderId == _selectedFilter.folderId) return;
+    _selectedFilter = filter;
+    _loadChats(_pageSize);
+    if (filter.isAll) {
+      _prefetchMainChats();
+    }
+    _resort();
+  }
+
+  void selectAllFilter() {
+    if (_selectedFilter.isAll) return;
+    _selectedFilter = _filters.first;
+    _loadChats(_pageSize);
+    _prefetchMainChats();
+    _resort();
+  }
+
+  String _chatListKey(Map<String, dynamic> list) =>
+      switch (list.type ?? list['@type']) {
+        'chatListFolder' => 'folder:${list.integer('chat_folder_id') ?? 0}',
+        'chatListArchive' => 'archive',
+        _ => 'main',
+      };
+
+  Future<bool> _loadChatList(Map<String, dynamic> list, int limit) async {
+    final key = _chatListKey(list);
+    if (_loadingChatLists.contains(key) || _exhaustedChatLists.contains(key)) {
+      return false;
+    }
+    _loadingChatLists.add(key);
+    try {
+      await _client.query({
+        '@type': 'loadChats',
+        'chat_list': list,
+        'limit': limit,
+      });
+      return true;
+    } catch (error) {
+      if (error is TdError && error.code == 404) {
+        _exhaustedChatLists.add(key);
+      }
+      return false;
+    } finally {
+      _loadingChatLists.remove(key);
+    }
+  }
+
+  void _loadChats(int limit) {
+    _loadChatList(_activeChatList, limit);
+  }
+
+  void _prefetchMainChats() {
+    if (_prefetchingMain || _exhaustedChatLists.contains('main')) return;
+    _prefetchingMain = true;
+    Future<void>(() async {
+      while (!_exhaustedChatLists.contains('main')) {
+        final loaded = await _loadChatList({
+          '@type': 'chatListMain',
+        }, _pageSize);
+        if (!loaded && !_loadingChatLists.contains('main')) break;
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      _prefetchingMain = false;
+    });
   }
 
   void _loadArchive(int limit) {
@@ -141,8 +288,12 @@ class ChatListViewModel extends ChangeNotifier {
         final summary = TDParse.chat(chat);
         if (summary == null) return;
         _map[summary.id] = summary;
+        _applyPositions(summary.id, chat.objects('positions'));
         _resolveSenderIfNeeded(summary.id, chat.obj('last_message'));
         _resort();
+
+      case 'updateChatFolders':
+        _applyChatFolders(update);
 
       case 'updateChatLastMessage':
         final id = update.int64('chat_id');
@@ -167,16 +318,35 @@ class ChatListViewModel extends ChangeNotifier {
         final id = update.int64('chat_id');
         final position = update.obj('position');
         if (id == null || position == null) return;
-        switch (position.obj('list')?.type) {
+        _applyPosition(id, position);
+        _ensureChatLoaded(id);
+        _resort();
+
+      case 'updateChatAddedToList':
+        final id = update.int64('chat_id');
+        final list = update.obj('chat_list');
+        if (id == null || list == null) return;
+        _ensureChatLoaded(id);
+        if (list.type == 'chatListFolder') {
+          final folderId = list.integer('chat_folder_id');
+          if (folderId != null) {
+            _folderOrders.putIfAbsent(folderId, () => {})[id] = 1;
+          }
+        }
+        _resort();
+
+      case 'updateChatRemovedFromList':
+        final id = update.int64('chat_id');
+        final list = update.obj('chat_list');
+        if (id == null || list == null) return;
+        switch (list.type) {
           case 'chatListMain':
-            _mutate(id, (s) {
-              s.order = position.int64('order') ?? 0;
-              s.isPinned = position.boolean('is_pinned') ?? false;
-            });
+            _mutate(id, (s) => s.order = 0);
           case 'chatListArchive':
-            _mutate(id, (s) => s.archiveOrder = position.int64('order') ?? 0);
-          default:
-            return;
+            _mutate(id, (s) => s.archiveOrder = 0);
+          case 'chatListFolder':
+            final folderId = list.integer('chat_folder_id');
+            if (folderId != null) _folderOrders[folderId]?.remove(id);
         }
         _resort();
 
@@ -245,19 +415,50 @@ class ChatListViewModel extends ChangeNotifier {
   void _applyPositions(int id, List<Map<String, dynamic>>? positions) {
     if (positions == null) return;
     for (final position in positions) {
-      switch (position.obj('list')?.type) {
-        case 'chatListMain':
-          _mutate(id, (s) {
-            s.order = position.int64('order') ?? s.order;
-            s.isPinned = position.boolean('is_pinned') ?? s.isPinned;
-          });
-        case 'chatListArchive':
-          _mutate(
-            id,
-            (s) => s.archiveOrder = position.int64('order') ?? s.archiveOrder,
-          );
-      }
+      _applyPosition(id, position);
     }
+  }
+
+  void _applyPosition(int id, Map<String, dynamic> position) {
+    final list = position.obj('list');
+    switch (list?.type) {
+      case 'chatListMain':
+        _mutate(id, (s) {
+          s.order = position.int64('order') ?? s.order;
+          s.isPinned = position.boolean('is_pinned') ?? s.isPinned;
+        });
+      case 'chatListArchive':
+        _mutate(
+          id,
+          (s) => s.archiveOrder = position.int64('order') ?? s.archiveOrder,
+        );
+      case 'chatListFolder':
+        final folderId = list?.integer('chat_folder_id');
+        if (folderId == null) return;
+        _ensureFolderOption(folderId);
+        final order = position.int64('order') ?? 0;
+        final orders = _folderOrders.putIfAbsent(folderId, () => {});
+        if (order > 0) {
+          orders[id] = order;
+        } else {
+          orders.remove(id);
+        }
+    }
+  }
+
+  void _ensureChatLoaded(int id) {
+    if (_map.containsKey(id)) return;
+    _client
+        .query({'@type': 'getChat', 'chat_id': id})
+        .then((raw) {
+          final summary = TDParse.chat(raw);
+          if (summary == null) return;
+          _map[summary.id] = summary;
+          _applyPositions(summary.id, raw.objects('positions'));
+          _resolveSenderIfNeeded(summary.id, raw.obj('last_message'));
+          _resort();
+        })
+        .catchError((_) {});
   }
 
   // MARK: - Sorting
@@ -270,7 +471,19 @@ class ChatListViewModel extends ChangeNotifier {
             ? b.archiveOrder.compareTo(a.archiveOrder)
             : b.date.compareTo(a.date),
       );
-    _chats = all.where((c) => c.order > 0).toList()..sort(_compare);
+    if (_selectedFilter.folderId == null) {
+      _chats = all.where((c) => c.order > 0).toList()..sort(_compare);
+    } else {
+      final folderOrders = _folderOrders[_selectedFilter.folderId] ?? const {};
+      _chats = all.where((c) => (folderOrders[c.id] ?? 0) > 0).toList()
+        ..sort((a, b) {
+          final ao = folderOrders[a.id] ?? 0;
+          final bo = folderOrders[b.id] ?? 0;
+          if (ao != bo) return bo.compareTo(ao);
+          if (a.date != b.date) return b.date.compareTo(a.date);
+          return b.id.compareTo(a.id);
+        });
+    }
     notifyListeners();
   }
 
