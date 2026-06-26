@@ -718,7 +718,7 @@ class ThemeController extends ChangeNotifier {
     _fontScale = _prefs.getDouble(_fontKey) ?? 1.0;
     _interfaceScale = _prefs.getDouble(_interfaceScaleKey) ?? 1.0;
     _circularGroupAvatars = _prefs.getBool(_groupAvatarCircleKey) ?? true;
-    _showChatFolderFilter = _prefs.getBool(_chatFolderFilterKey) ?? false;
+    _showChatFolderFilter = _prefs.getBool(_chatFolderFilterKey) ?? true;
     _showChatListSearch = _prefs.getBool(_chatListSearchKey) ?? true;
     _hideSidebarPhone = _prefs.getBool(_hideSidebarPhoneKey) ?? false;
     _showMemberTags = _prefs.getBool(_memberTagsKey) ?? false;
@@ -787,7 +787,7 @@ class ThemeController extends ChangeNotifier {
   late double _fontScale;
   late double _interfaceScale;
   late bool _circularGroupAvatars;
-  bool _showChatFolderFilter = false;
+  bool _showChatFolderFilter = true;
   bool _showChatListSearch = true;
   bool _hideSidebarPhone = false;
   bool _showMemberTags = false;
