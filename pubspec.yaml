@@ -12,8 +12,6 @@ dependencies:
   flutter_localizations:
     sdk: flutter
 
-  cupertino_icons: ^1.0.8
-
   # State management — mirrors SwiftUI's ObservableObject / @Published.
   provider: ^6.1.2
 
@@ -70,6 +68,7 @@ dependencies:
   firebase_analytics: ^10.10.7
   package_info_plus: ^9.0.1
   sentry_flutter: ^8.14.2
+  font_awesome_flutter: ^11.0.0
 
 dev_dependencies:
   flutter_test:

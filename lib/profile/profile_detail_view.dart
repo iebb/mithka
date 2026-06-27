@@ -482,8 +482,8 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
                                 padding: const EdgeInsets.all(4),
                                 child: Icon(
                                   _hideIdentity
-                                      ? CupertinoIcons.eye
-                                      : CupertinoIcons.eye_slash,
+                                      ? sfIcon('eye')
+                                      : sfIcon('eye.slash'),
                                   size: 17,
                                   color: c.textTertiary,
                                 ),
