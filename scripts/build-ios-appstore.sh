@@ -34,10 +34,7 @@ if ! /usr/bin/dwarfdump --uuid "$TDJSON_DSYM" | grep -q "$EXPECTED_UUID"; then
   exit 1
 fi
 
-echo "== Package Swift runtime =="
-"$REPO_ROOT/scripts/package-swift-runtime.sh" "$ARCHIVE"
-
-echo "== Export patched IPA =="
+echo "== Export IPA =="
 rm -rf "$REPO_ROOT/build/ios/ipa-appstore"
 xcodebuild -exportArchive \
   -archivePath "$ARCHIVE" \
@@ -50,16 +47,6 @@ if [[ -z "$IPA" ]]; then
   exit 1
 fi
 
-if ! /usr/bin/unzip -l "$IPA" | grep -q 'SwiftSupport/iphoneos/'; then
-  echo "error: $IPA is missing SwiftSupport/iphoneos" >&2
-  exit 1
-fi
-
-if ! /usr/bin/unzip -l "$IPA" | grep -q 'Payload/Runner.app/Frameworks/libswiftCore.dylib'; then
-  echo "error: $IPA is missing Swift dylibs in Payload/Runner.app/Frameworks" >&2
-  exit 1
-fi
-
 echo "OK: $IPA"
 echo "OK: tdjson dSYM UUID $EXPECTED_UUID"
-echo "OK: Swift runtime present in app Frameworks and SwiftSupport/iphoneos"
+echo "OK: Swift runtime packaging left to xcodebuild -exportArchive"
