@@ -117,23 +117,35 @@ jobs:
           keyAlias=$KEY_ALIAS
           storeFile=upload-keystore.jks
           EOF
+      
+      - name: Set Current Date
+        id: my_date
+        uses: jossef/action-set-current-date@v2
+        with:
+          format: 'YYYY-MM-DD_HH-mm'
+          timezone: 'Asia/Shanghai'
 
       - name: Build arm64-v8a release APK
         run: flutter build apk --release --split-per-abi --target-platform "$TARGET_PLATFORM" --dart-define="GIT_COMMIT=${GITHUB_SHA::7}"
+
+      - name: Rename APK artifact
+        run: | 
+          cd build/app/outputs/flutter-apk/
+          mv app-arm64-v8a-release.apk Mithka-master-${{ github.sha :: 7 }}-${{ steps.my_date.outputs.time }}-arm64-v8a.apk
 
       - name: Upload APK artifact
         id: upload-apk
         uses: actions/upload-artifact@v4
         with:
           name: apk-${{ env.ABI }}
-          path: build/app/outputs/flutter-apk/app-${{ env.ABI }}-release.apk
+          path: build/app/outputs/flutter-apk/Mithka-master-${{ github.sha :: 7 }}-${{ steps.my_date.outputs.time }}-arm64-v8a.apk
           if-no-files-found: error
 
       - name: Upload APK to Telegram channel
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CI_CHANNEL: ${{ secrets.TELEGRAM_CI_CHANNEL }}
-          APK_PATH: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+          APK_PATH: build/app/outputs/flutter-apk/Mithka-master-${{ github.sha :: 7 }}-${{ steps.my_date.outputs.time }}-arm64-v8a.apk
           ARTIFACT_URL: ${{ steps.upload-apk.outputs.artifact-url }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |

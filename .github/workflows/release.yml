@@ -152,11 +152,16 @@ jobs:
       - name: Build ${{ matrix.abi }} release APK
         run: flutter build apk --release --split-per-abi --target-platform ${{ matrix.target }} --dart-define="GIT_COMMIT=${{ needs.prepare.outputs.short_sha }}"
 
+      - name: Rename APK artifact
+        run: |
+          cd build/app/outputs/flutter-apk/
+          mv app-${{ matrix.abi }}-release.apk Mithka-${{ needs.prepare.outputs.app_version }}-${{ matrix.abi }}.apk
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: apk-${{ matrix.abi }}
-          path: build/app/outputs/flutter-apk/app-${{ matrix.abi }}-release.apk
+          path: build/app/outputs/flutter-apk/Mithka-${{ needs.prepare.outputs.app_version }}-${{ matrix.abi }}.apk
           if-no-files-found: error
 
   release:
@@ -197,7 +202,7 @@ jobs:
         with:
           tag_name: ${{ needs.prepare.outputs.release_tag }}
           target_commitish: ${{ github.sha }}
-          files: apks/*-release.apk
+          files: apks/Mithka-*.apk
           fail_on_unmatched_files: true
 
       - name: Notify Telegram channel
