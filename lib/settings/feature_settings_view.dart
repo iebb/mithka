@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../components/ui_components.dart';
+import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 
@@ -61,7 +62,7 @@ class FeatureSettingsView extends StatelessWidget {
     child: Align(
       alignment: Alignment.centerLeft,
       child: Text(
-        title,
+        title.l10n(context),
         style: TextStyle(
           fontSize: AppTextSize.caption,
           color: context.colors.textTertiary,

@@ -16,6 +16,7 @@ import 'package:fvp/fvp.dart' as fvp;
 import 'package:provider/provider.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'app/content_view.dart';
 import 'app/app_version.dart';
@@ -23,6 +24,8 @@ import 'app/app_navigator.dart';
 import 'auth/account_store.dart';
 import 'auth/auth_manager.dart';
 import 'components/drawer_controller.dart' as dc;
+import 'l10n/app_locale_controller.dart';
+import 'l10n/app_localizations.dart';
 import 'notifications/notification_controller.dart';
 import 'settings/keyword_blocker.dart';
 import 'settings/translation_controller.dart';
@@ -98,6 +101,7 @@ class _MithkaAppState extends State<MithkaApp> {
   late final TranslationController _translation = TranslationController(
     widget.prefs,
   );
+  late final AppLocaleController _locale = AppLocaleController(widget.prefs);
   late final AccountStore _accounts = AccountStore(widget.prefs);
   late final dc.DrawerController _drawer = dc.DrawerController();
 
@@ -166,15 +170,27 @@ class _MithkaAppState extends State<MithkaApp> {
         ChangeNotifierProvider.value(value: _auth),
         ChangeNotifierProvider.value(value: _theme),
         ChangeNotifierProvider.value(value: _translation),
+        ChangeNotifierProvider.value(value: _locale),
         ChangeNotifierProvider.value(value: _accounts),
         ChangeNotifierProvider<dc.DrawerController>.value(value: _drawer),
       ],
-      child: Consumer2<ThemeController, AccountStore>(
-        builder: (context, theme, accounts, _) {
+      child: Consumer3<ThemeController, AccountStore, AppLocaleController>(
+        builder: (context, theme, accounts, locale, _) {
           return MaterialApp(
             navigatorKey: appNavigatorKey,
             title: 'Mithka',
             debugShowCheckedModeBanner: false,
+            locale: locale.locale,
+            localeResolutionCallback: (locale, _) => locale == null
+                ? AppLocalizations.fallbackLocale
+                : AppLocalizations.resolve(locale),
+            supportedLocales: AppLocalizations.supportedLocales,
+            localizationsDelegates: const [
+              AppLocalizations.delegate,
+              GlobalMaterialLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+            ],
             navigatorObservers: [
               FirebaseAnalyticsObserver(analytics: FirebaseAnalytics.instance),
             ],

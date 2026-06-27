@@ -13,6 +13,7 @@ import '../app/app_version.dart';
 import '../auth/auth_manager.dart';
 import '../components/sf_symbols.dart';
 import '../components/ui_components.dart';
+import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 import 'about_view.dart';
 import 'appearance_view.dart';
@@ -157,7 +158,7 @@ class SettingsView extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                title,
+                title.l10n(context),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 16, color: c.textPrimary),

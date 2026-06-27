@@ -9,6 +9,7 @@
 import 'package:flutter/material.dart';
 
 import '../components/sf_symbols.dart';
+import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 
 class EditFieldView extends StatefulWidget {
@@ -98,7 +99,7 @@ class _EditFieldViewState extends State<EditFieldView> {
                     decoration: InputDecoration(
                       isCollapsed: true,
                       border: InputBorder.none,
-                      hintText: widget.hint,
+                      hintText: widget.hint.l10n(context),
                       hintStyle: TextStyle(color: c.textTertiary),
                       counterText: '',
                     ),
@@ -170,7 +171,7 @@ class _EditFieldViewState extends State<EditFieldView> {
               ),
             ),
             Text(
-              widget.title,
+              widget.title.l10n(context),
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
@@ -185,7 +186,7 @@ class _EditFieldViewState extends State<EditFieldView> {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Text(
-                    '保存',
+                    '保存'.l10n(context),
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,

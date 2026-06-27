@@ -9,11 +9,17 @@
 
 import 'package:flutter/material.dart';
 
+import '../l10n/app_localizations.dart';
+
 void showToast(
   BuildContext context,
   String message, {
   Duration visibleFor = const Duration(milliseconds: 1400),
-}) => showToastOverlay(Overlay.of(context), message, visibleFor: visibleFor);
+}) => showToastOverlay(
+  Overlay.of(context),
+  message.l10n(context),
+  visibleFor: visibleFor,
+);
 
 void showToastOverlay(
   OverlayState overlay,

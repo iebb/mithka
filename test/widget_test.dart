@@ -2,6 +2,7 @@
 
 import 'package:mithka/tdlib/json_helpers.dart';
 import 'package:mithka/tdlib/td_models.dart';
+import 'package:mithka/l10n/app_locale_controller.dart';
 import 'package:mithka/settings/keyword_blocker.dart';
 import 'package:mithka/settings/translation_controller.dart';
 import 'package:mithka/theme/date_text.dart';
@@ -388,5 +389,29 @@ void main() {
         expect(controller.provider, TranslationProvider.nativeOnDevice);
       },
     );
+  });
+
+  group('AppLocaleController', () {
+    test('defaults to system and persists explicit locale choices', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final controller = AppLocaleController(prefs);
+
+      expect(controller.followsSystem, isTrue);
+      expect(controller.locale, isNull);
+
+      controller.locale = const Locale('ja');
+      expect(controller.followsSystem, isFalse);
+      expect(controller.locale, const Locale('ja'));
+
+      final reloaded = AppLocaleController(prefs);
+      expect(reloaded.locale, const Locale('ja'));
+
+      reloaded.locale = null;
+      expect(reloaded.followsSystem, isTrue);
+
+      final systemAgain = AppLocaleController(prefs);
+      expect(systemAgain.locale, isNull);
+    });
   });
 }

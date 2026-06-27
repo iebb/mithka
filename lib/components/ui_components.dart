@@ -16,6 +16,7 @@ import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
 import '../theme/theme_controller.dart';
 import '../tdlib/td_models.dart';
+import '../l10n/app_localizations.dart';
 import 'sf_symbols.dart';
 
 /// Flat reference-style header bar: optional back chevron, leading title,
@@ -69,7 +70,7 @@ class NavHeader extends StatelessWidget {
               ),
             Expanded(
               child: Text(
-                title,
+                title.l10n(context),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -339,7 +340,7 @@ class RoleTag extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppRadius.sm),
       ),
       child: Text(
-        _label,
+        _label.l10n(context),
         style: const TextStyle(
           fontSize: AppTextSize.tiny,
           fontWeight: FontWeight.w500,
@@ -435,7 +436,7 @@ class SettingsRow extends StatelessWidget {
             children: [
               if (leading != null) ...[leading!, const SizedBox(width: 12)],
               Text(
-                title,
+                title.l10n(context),
                 style: TextStyle(
                   fontSize: AppTextSize.body,
                   color: c.textPrimary,
@@ -448,7 +449,7 @@ class SettingsRow extends StatelessWidget {
                   child:
                       trailing ??
                       Text(
-                        value,
+                        value.l10n(context),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         textAlign: TextAlign.right,
@@ -503,7 +504,7 @@ class SettingsSwitchRow extends StatelessWidget {
             children: [
               if (leading != null) ...[leading!, const SizedBox(width: 12)],
               Text(
-                title,
+                title.l10n(context),
                 style: TextStyle(
                   fontSize: AppTextSize.body,
                   color: c.textPrimary,
@@ -608,7 +609,7 @@ class ChatPreviewText extends StatelessWidget {
         children: [
           if (draft)
             TextSpan(
-              text: '[草稿] ',
+              text: '${'[草稿]'.l10n(context)} ',
               style: TextStyle(color: AppTheme.tagRed),
             )
           else if (sender != null && sender!.isNotEmpty)
@@ -617,7 +618,7 @@ class ChatPreviewText extends StatelessWidget {
               style: TextStyle(color: c.textSecondary),
             ),
           TextSpan(
-            text: message.replaceAll('\n', ' '),
+            text: _previewMessage(context),
             style: TextStyle(
               color: !draft && isRed ? AppTheme.tagRed : c.textSecondary,
             ),
@@ -625,6 +626,16 @@ class ChatPreviewText extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _previewMessage(BuildContext context) {
+    var text = message.replaceAll('\n', ' ');
+    for (final tag in _redTags) {
+      if (!text.startsWith(tag)) continue;
+      text = text.replaceFirst(tag, tag.l10n(context));
+      break;
+    }
+    return text;
   }
 }
 

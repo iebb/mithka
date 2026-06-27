@@ -12,10 +12,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../components/sf_symbols.dart';
 import '../components/ui_components.dart';
+import '../l10n/app_locale_controller.dart';
+import '../l10n/app_localizations.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
+import 'language_settings_view.dart';
 
 class GeneralSettingsView extends StatefulWidget {
   const GeneralSettingsView({super.key});
@@ -102,6 +105,8 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
               children: [
                 _storageCard(),
                 const SizedBox(height: 14),
+                _languageCard(),
+                const SizedBox(height: 14),
                 _chatCard(),
               ],
             ),
@@ -116,11 +121,26 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
     child: Align(
       alignment: Alignment.centerLeft,
       child: Text(
-        title,
+        title.l10n(context),
         style: TextStyle(fontSize: 13, color: context.colors.textTertiary),
       ),
     ),
   );
+
+  Widget _languageCard() {
+    final locale = context.watch<AppLocaleController>();
+    return _card([
+      _navRow(
+        'globe',
+        const Color(0xFF34A2DF),
+        '应用语言',
+        locale.selectedLabel(context),
+        () => Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const LanguageSettingsView())),
+      ),
+    ]);
+  }
 
   Widget _iconBadge(String icon, Color color) => Container(
     width: 28,
@@ -255,7 +275,10 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
           children: [
             _iconBadge(icon, color),
             const SizedBox(width: 12),
-            Text(title, style: TextStyle(fontSize: 16, color: c.textPrimary)),
+            Text(
+              title.l10n(context),
+              style: TextStyle(fontSize: 16, color: c.textPrimary),
+            ),
             const Spacer(),
             CupertinoSwitch(
               value: value,
@@ -263,6 +286,53 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
               onChanged: onChanged,
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _navRow(
+    String icon,
+    Color color,
+    String title,
+    String value,
+    VoidCallback onTap,
+  ) {
+    final c = context.colors;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: SizedBox(
+        height: 52,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              _iconBadge(icon, color),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  title.l10n(context),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 16, color: c.textPrimary),
+                ),
+              ),
+              const SizedBox(width: 12),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 150),
+                child: Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: TextStyle(fontSize: 15, color: c.textSecondary),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Icon(sfIcon('chevron.right'), size: 14, color: c.textTertiary),
+            ],
+          ),
         ),
       ),
     );

@@ -7,6 +7,8 @@
 
 import 'package:flutter/cupertino.dart';
 
+import '../l10n/app_localizations.dart';
+
 Future<bool> confirmDialog(
   BuildContext context, {
   required String title,
@@ -18,18 +20,18 @@ Future<bool> confirmDialog(
   final ok = await showCupertinoDialog<bool>(
     context: context,
     builder: (ctx) => CupertinoAlertDialog(
-      title: Text(title),
-      content: message == null ? null : Text(message),
+      title: Text(title.l10n(ctx)),
+      content: message == null ? null : Text(message.l10n(ctx)),
       actions: [
         CupertinoDialogAction(
           onPressed: () => Navigator.of(ctx).pop(false),
-          child: Text(cancelText),
+          child: Text(cancelText.l10n(ctx)),
         ),
         CupertinoDialogAction(
           isDestructiveAction: destructive,
           isDefaultAction: !destructive,
           onPressed: () => Navigator.of(ctx).pop(true),
-          child: Text(confirmText),
+          child: Text(confirmText.l10n(ctx)),
         ),
       ],
     ),
