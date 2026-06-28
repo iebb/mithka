@@ -30,6 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       app_version: ${{ steps.version.outputs.app_version }}
+      build_stamp: ${{ steps.version.outputs.build_stamp }}
       release_tag: ${{ steps.version.outputs.release_tag }}
       short_sha: ${{ steps.version.outputs.short_sha }}
     steps:
@@ -41,12 +42,15 @@ jobs:
           raw_version="$(awk '/^version:/ { print $2; exit }' pubspec.yaml)"
           test -n "$raw_version"
           app_version="${raw_version%%+*}"
+          build_stamp="$(date -u '+%y%m%d%H')"
           release_tag="v$app_version"
           short_sha="${GITHUB_SHA::7}"
           echo "app_version=$app_version" >> "$GITHUB_OUTPUT"
+          echo "build_stamp=$build_stamp" >> "$GITHUB_OUTPUT"
           echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
           echo "short_sha=$short_sha" >> "$GITHUB_OUTPUT"
           echo "Release tag: $release_tag"
+          echo "GMT build stamp: $build_stamp"
 
   build:
     name: Build ${{ matrix.abi }} APK
@@ -155,14 +159,23 @@ jobs:
         run: |
           flutter build apk --release --split-per-abi \
             --target-platform ${{ matrix.target }} \
+            --build-name="${{ needs.prepare.outputs.app_version }}" \
+            --build-number="${{ needs.prepare.outputs.build_stamp }}" \
             --dart-define="GIT_COMMIT=${{ needs.prepare.outputs.short_sha }}" \
+            --dart-define="CI_BUILD_STAMP=${{ needs.prepare.outputs.build_stamp }}" \
             --dart-define="SENTRY_DSN=$SENTRY_DSN"
+
+      - name: Rename APK
+        run: |
+          mkdir -p dist
+          cp "build/app/outputs/flutter-apk/app-${{ matrix.abi }}-release.apk" \
+            "dist/mithka-${{ needs.prepare.outputs.app_version }}+${{ needs.prepare.outputs.build_stamp }}-${{ matrix.abi }}-release.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: apk-${{ matrix.abi }}
-          path: build/app/outputs/flutter-apk/app-${{ matrix.abi }}-release.apk
+          name: apk-${{ matrix.abi }}-${{ needs.prepare.outputs.build_stamp }}
+          path: dist/mithka-${{ needs.prepare.outputs.app_version }}+${{ needs.prepare.outputs.build_stamp }}-${{ matrix.abi }}-release.apk
           if-no-files-found: error
 
   release:
@@ -198,7 +211,7 @@ jobs:
         with:
           tag_name: ${{ needs.prepare.outputs.release_tag }}
           target_commitish: ${{ github.sha }}
-          files: apks/*-release.apk
+          files: apks/*.apk
           overwrite_files: true
           fail_on_unmatched_files: true
 

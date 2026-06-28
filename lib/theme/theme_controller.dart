@@ -71,6 +71,49 @@ enum GroupAssistantPlacement {
   IconData get icon => _icon.data;
 }
 
+enum EmojiFontChoice {
+  system('系统默认'),
+  notoColor('Noto Color Emoji'),
+  noto('Noto Emoji');
+
+  const EmojiFontChoice(this.label);
+
+  final String label;
+
+  String? get googleFamily {
+    return switch (this) {
+      EmojiFontChoice.system => null,
+      EmojiFontChoice.notoColor => 'Noto Color Emoji',
+      EmojiFontChoice.noto => 'Noto Emoji',
+    };
+  }
+
+  List<String> get fontFamilies {
+    final googleFamily = googleLoadedFamily;
+    if (googleFamily != null) return [googleFamily];
+    return switch (this) {
+      EmojiFontChoice.system => _platformEmojiFontFallback(),
+      EmojiFontChoice.notoColor => const ['NotoColorEmoji'],
+      EmojiFontChoice.noto => const ['NotoEmoji'],
+    };
+  }
+
+  String? get googleLoadedFamily {
+    final family = googleFamily;
+    if (family == null) return null;
+    final style = GoogleFonts.getFont(family, textStyle: const TextStyle());
+    return style.fontFamily;
+  }
+
+  static List<String> _platformEmojiFontFallback() {
+    return switch (defaultTargetPlatform) {
+      TargetPlatform.iOS || TargetPlatform.macOS => const ['Apple Color Emoji'],
+      TargetPlatform.android => const ['Noto Color Emoji'],
+      _ => const ['Noto Color Emoji', 'Apple Color Emoji'],
+    };
+  }
+}
+
 enum AppFontChoice {
   system('系统默认', '消息预览 Aa 123', cjk: true),
   apple('Apple / 苹方', '消息预览 Aa 123', cjk: true),
@@ -608,6 +651,29 @@ enum AppFontChoice {
   }
 }
 
+List<String> dedupeFontFamilies(Iterable<String> values) {
+  final seen = <String>{};
+  return [
+    for (final value in values)
+      if (value.trim().isNotEmpty && seen.add(value.trim())) value.trim(),
+  ];
+}
+
+const googleFontFamilyStoragePrefix = 'google:';
+
+String encodeGoogleFontFamily(String family) =>
+    '$googleFontFamilyStoragePrefix$family';
+
+String? decodeGoogleFontFamily(String value) {
+  final trimmed = value.trim();
+  if (!trimmed.startsWith(googleFontFamilyStoragePrefix)) return null;
+  final family = trimmed.substring(googleFontFamilyStoragePrefix.length).trim();
+  return family.isEmpty ? null : family;
+}
+
+String displayStoredFontFamily(String value) =>
+    decodeGoogleFontFamily(value) ?? value.trim();
+
 enum AppMonospaceFontChoice {
   system('系统等宽', 'final count = 123;'),
   sfMono('SF Mono', 'final count = 123;'),
@@ -658,14 +724,24 @@ enum AppMonospaceFontChoice {
 
   TextStyle applyTextStyle(TextStyle base, {String? customFamily}) {
     final custom = customFamily?.trim();
-    final withFamily = isCustom && custom != null && custom.isNotEmpty
+    final customGoogleFamily = custom == null
+        ? null
+        : decodeGoogleFontFamily(custom);
+    final withFamily = isCustom && customGoogleFamily != null
+        ? GoogleFonts.getFont(customGoogleFamily, textStyle: base)
+        : isCustom && custom != null && custom.isNotEmpty
         ? base.copyWith(fontFamily: custom)
         : isGoogleFont
         ? GoogleFonts.getFont(googleFamily!, textStyle: base)
         : base.copyWith(fontFamily: fontFamily);
+    final selectedCustomFamily = customGoogleFamily ?? custom;
     return withFamily.copyWith(
       fontFamilyFallback: _dedupe([
-        if (isCustom && custom != null && custom.isNotEmpty) custom,
+        if (isCustom &&
+            selectedCustomFamily != null &&
+            selectedCustomFamily.isNotEmpty)
+          selectedCustomFamily,
+        ...?withFamily.fontFamilyFallback,
         fontFamily,
         ..._platformMonospaceFontFallback(),
         ...AppFontChoice._platformFontFallback(),
@@ -734,6 +810,13 @@ class ThemeController extends ChangeNotifier {
     );
     _customMonospaceFontFamily =
         _prefs.getString(_customMonospaceFontFamilyKey)?.trim() ?? '';
+    _emojiFontChoice = EmojiFontChoice.values.firstWhere(
+      (m) => m.name == _prefs.getString(_emojiFontChoiceKey),
+      orElse: () => EmojiFontChoice.system,
+    );
+    _fontFallbackChain = dedupeFontFamilies(
+      _prefs.getStringList(_fontFallbackChainKey) ?? const <String>[],
+    );
     _fontScale = _prefs.getDouble(_fontKey) ?? 1.0;
     _interfaceScale = _prefs.getDouble(_interfaceScaleKey) ?? 1.0;
     _circularGroupAvatars = _prefs.getBool(_groupAvatarCircleKey) ?? true;
@@ -776,6 +859,8 @@ class ThemeController extends ChangeNotifier {
   static const _customCjkFontFamilyKey = 'customCjkFontFamily';
   static const _monospaceFontChoiceKey = 'monospaceFontChoice';
   static const _customMonospaceFontFamilyKey = 'customMonospaceFontFamily';
+  static const _emojiFontChoiceKey = 'emojiFontChoice';
+  static const _fontFallbackChainKey = 'fontFallbackChain';
   static const _fontKey = 'fontScale';
   static const _interfaceScaleKey = 'interfaceScale';
   static const _groupAvatarCircleKey = 'circularGroupAvatars';
@@ -810,6 +895,8 @@ class ThemeController extends ChangeNotifier {
   late String _customCjkFontFamily;
   late AppMonospaceFontChoice _monospaceFontChoice;
   late String _customMonospaceFontFamily;
+  late EmojiFontChoice _emojiFontChoice;
+  late List<String> _fontFallbackChain;
   late double _fontScale;
   late double _interfaceScale;
   late bool _circularGroupAvatars;
@@ -839,6 +926,9 @@ class ThemeController extends ChangeNotifier {
   String get customCjkFontFamily => _customCjkFontFamily;
   AppMonospaceFontChoice get monospaceFontChoice => _monospaceFontChoice;
   String get customMonospaceFontFamily => _customMonospaceFontFamily;
+  EmojiFontChoice get emojiFontChoice => _emojiFontChoice;
+  List<String> get fontFallbackChain => List.unmodifiable(_fontFallbackChain);
+  bool get usesCustomFontFallbackChain => _fontFallbackChain.isNotEmpty;
   String get effectivePrimaryFontLabel =>
       _fontChoice.isCustom && _customPrimaryFontFamily.isNotEmpty
       ? _customPrimaryFontFamily
@@ -849,8 +939,17 @@ class ThemeController extends ChangeNotifier {
       : _cjkFontChoice.label;
   String get effectiveMonospaceFontLabel =>
       _monospaceFontChoice.isCustom && _customMonospaceFontFamily.isNotEmpty
-      ? _customMonospaceFontFamily
+      ? displayStoredFontFamily(_customMonospaceFontFamily)
       : _monospaceFontChoice.label;
+  String get effectiveFontChainLabel {
+    if (_fontFallbackChain.isEmpty) return '未设置';
+    if (_fontFallbackChain.length == 1) return _fontFallbackChain.first;
+    final head = _fontFallbackChain.take(2).join(' / ');
+    return _fontFallbackChain.length > 2
+        ? '$head / +${_fontFallbackChain.length - 2}'
+        : head;
+  }
+
   bool get circularGroupAvatars => _circularGroupAvatars;
   bool get showChatFolderFilter => _showChatFolderFilter;
   bool get showChatListSearch => _showChatListSearch;
@@ -882,8 +981,75 @@ class ThemeController extends ChangeNotifier {
   double get avatarSize => AppMetric.avatarSize;
   double get navHeaderHeight => AppMetric.navHeaderHeight;
   double scaled(double base) => base;
+  List<String> effectiveFontFamilyChain([TextStyle? base]) {
+    final textFamilies = _fontFallbackChain.isNotEmpty
+        ? _fontFallbackChain
+        : [AppFontChoice._platformFontFamily()];
+    return dedupeFontFamilies([
+      textFamilies.first,
+      ..._emojiFontChoice.fontFamilies,
+      ...textFamilies.skip(1),
+      ...AppFontChoice._platformFontFallback(),
+    ]);
+  }
+
+  TextStyle applyAppTextStyle(TextStyle base) {
+    final families = effectiveFontFamilyChain(base);
+    if (families.isEmpty) return base;
+    final first = families.first;
+    final googleFamily = _googleFamilyFor(first);
+    final withPrimary = googleFamily == null
+        ? base.copyWith(fontFamily: first)
+        : GoogleFonts.getFont(googleFamily, textStyle: base);
+    return withPrimary.copyWith(
+      fontFamilyFallback: dedupeFontFamilies([
+        ..._emojiFontChoice.fontFamilies,
+        ...?withPrimary.fontFamilyFallback,
+        ...families.skip(1),
+      ]),
+    );
+  }
+
+  TextTheme applyAppTextTheme(TextTheme textTheme) {
+    TextStyle? apply(TextStyle? style) =>
+        style == null ? null : applyAppTextStyle(style);
+    return textTheme.copyWith(
+      displayLarge: apply(textTheme.displayLarge),
+      displayMedium: apply(textTheme.displayMedium),
+      displaySmall: apply(textTheme.displaySmall),
+      headlineLarge: apply(textTheme.headlineLarge),
+      headlineMedium: apply(textTheme.headlineMedium),
+      headlineSmall: apply(textTheme.headlineSmall),
+      titleLarge: apply(textTheme.titleLarge),
+      titleMedium: apply(textTheme.titleMedium),
+      titleSmall: apply(textTheme.titleSmall),
+      bodyLarge: apply(textTheme.bodyLarge),
+      bodyMedium: apply(textTheme.bodyMedium),
+      bodySmall: apply(textTheme.bodySmall),
+      labelLarge: apply(textTheme.labelLarge),
+      labelMedium: apply(textTheme.labelMedium),
+      labelSmall: apply(textTheme.labelSmall),
+    );
+  }
+
   TextStyle codeTextStyle(TextStyle base) => _monospaceFontChoice
       .applyTextStyle(base, customFamily: _customMonospaceFontFamily);
+
+  static String? _googleFamilyFor(String family) {
+    final storedGoogleFamily = decodeGoogleFontFamily(family);
+    if (storedGoogleFamily != null) return storedGoogleFamily;
+    for (final font in AppFontChoice.values) {
+      if (font.googleFamily == family || font.fontFamily == family) {
+        return font.googleFamily;
+      }
+    }
+    for (final font in AppMonospaceFontChoice.values) {
+      if (font.googleFamily == family || font.fontFamily == family) {
+        return font.googleFamily;
+      }
+    }
+    return null;
+  }
 
   set mode(AppearanceMode value) {
     _mode = value;
@@ -934,6 +1100,37 @@ class ThemeController extends ChangeNotifier {
     _customMonospaceFontFamily = value.trim();
     _prefs.setString(_customMonospaceFontFamilyKey, _customMonospaceFontFamily);
     notifyListeners();
+  }
+
+  set emojiFontChoice(EmojiFontChoice value) {
+    _emojiFontChoice = value;
+    _prefs.setString(_emojiFontChoiceKey, value.name);
+    notifyListeners();
+  }
+
+  void setFontFallbackChain(List<String> value) {
+    _fontFallbackChain = dedupeFontFamilies(value);
+    _prefs.setStringList(_fontFallbackChainKey, _fontFallbackChain);
+    notifyListeners();
+  }
+
+  void addFontToFallbackChain(String family) {
+    setFontFallbackChain([..._fontFallbackChain, family]);
+  }
+
+  void removeFontFromFallbackChainAt(int index) {
+    if (index < 0 || index >= _fontFallbackChain.length) return;
+    final next = [..._fontFallbackChain]..removeAt(index);
+    setFontFallbackChain(next);
+  }
+
+  void moveFontInFallbackChain(int oldIndex, int newIndex) {
+    if (oldIndex < 0 || oldIndex >= _fontFallbackChain.length) return;
+    final next = [..._fontFallbackChain];
+    newIndex = newIndex.clamp(0, next.length - 1);
+    final item = next.removeAt(oldIndex);
+    next.insert(newIndex, item);
+    setFontFallbackChain(next);
   }
 
   set fontScale(double value) {

@@ -21,8 +21,7 @@ enum MessageAction {
   translate('character.book.closed', '翻译'),
   reply('quote.bubble', '引用'),
   forward('arrowshape.turn.up.right', '转发'),
-  playPiP('pip.enter', '画中画'),
-  playSplit('rectangle.split.2x1', '分屏'),
+  playMuted('speaker.slash.fill', '静音播放'),
   multiSelect('checkmark.circle', '多选'),
   pinTodo('pin.fill', '设为待办'),
   unpinTodo('pin.fill', '撤回待办'),
@@ -38,16 +37,20 @@ enum MessageAction {
   bool get isDestructive => this == MessageAction.delete;
 }
 
+enum MessageActionSource { normal, video }
+
 class MessageActionMenu extends StatelessWidget {
   const MessageActionMenu({
     super.key,
     required this.message,
     required this.isPinned,
     required this.onSelect,
+    this.source = MessageActionSource.normal,
   });
   final ChatMessage message;
   final bool isPinned;
   final ValueChanged<MessageAction> onSelect;
+  final MessageActionSource source;
 
   static const _surface = Color(0xFF2C2C2E);
   static const _destructive = Color(0xFFFF6961);
@@ -73,9 +76,8 @@ class MessageActionMenu extends StatelessWidget {
     }
     result.add(MessageAction.reply);
     result.add(MessageAction.forward);
-    if (message.video != null) {
-      result.add(MessageAction.playPiP);
-      result.add(MessageAction.playSplit);
+    if (message.video != null && source == MessageActionSource.video) {
+      result.add(MessageAction.playMuted);
     }
     result.add(MessageAction.multiSelect);
     result.add(isPinned ? MessageAction.unpinTodo : MessageAction.pinTodo);

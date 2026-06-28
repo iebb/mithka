@@ -1,4 +1,5 @@
 import Flutter
+import Sentry
 import SwiftUI
 import Translation
 import UIKit
@@ -12,7 +13,40 @@ import UIKit
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    configureNativeSentryIfNeeded()
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  private func configureNativeSentryIfNeeded() {
+    guard !SentrySDK.isEnabled else { return }
+    let info = Bundle.main.infoDictionary ?? [:]
+    let encodedDsn = (info["SentryDSNEncoded"] as? String ?? "")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    let dsn = (encodedDsn.removingPercentEncoding ?? encodedDsn)
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !dsn.isEmpty, !dsn.contains("$(") else { return }
+
+    let configuredEnvironment = (info["SentryEnvironment"] as? String ?? "production")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    let environment = configuredEnvironment.isEmpty || configuredEnvironment.contains("$(")
+      ? "production"
+      : configuredEnvironment
+
+    SentrySDK.start { options in
+      options.dsn = dsn
+      options.environment = environment
+      options.releaseName = Self.sentryReleaseName(info: info)
+      options.sendDefaultPii = false
+      options.tracesSampleRate = 0.0
+      options.enableWatchdogTerminationTracking = true
+    }
+  }
+
+  private static func sentryReleaseName(info: [String: Any]) -> String {
+    let bundleId = info["CFBundleIdentifier"] as? String ?? "ad.neko.mithka"
+    let version = info["CFBundleShortVersionString"] as? String ?? "0"
+    let build = info["CFBundleVersion"] as? String ?? "0"
+    return "\(bundleId)@\(version)+\(build)"
   }
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
@@ -44,6 +78,23 @@ import UIKit
         return
       }
       result(nil)
+    }
+
+    let fontsChannel = FlutterMethodChannel(
+      name: "mithka/fonts",
+      binaryMessenger: engineBridge.applicationRegistrar.messenger()
+    )
+    fontsChannel.setMethodCallHandler { call, result in
+      guard call.method == "listFonts" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      var names = Set<String>()
+      UIFont.familyNames.forEach { family in
+        names.insert(family)
+        UIFont.fontNames(forFamilyName: family).forEach { names.insert($0) }
+      }
+      result(Array(names).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending })
     }
 
     let nativeTranslationChannel = FlutterMethodChannel(

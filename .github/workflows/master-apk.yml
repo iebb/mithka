@@ -77,6 +77,19 @@ jobs:
       - name: Flutter dependencies
         run: flutter pub get
 
+      - name: Build metadata
+        id: build-meta
+        run: |
+          raw_version="$(awk '/^version:/ { print $2; exit }' pubspec.yaml)"
+          test -n "$raw_version"
+          app_version="${raw_version%%+*}"
+          build_stamp="$(date -u '+%y%m%d%H')"
+          apk_name="mithka-${app_version}+${build_stamp}-master-${GITHUB_SHA::7}-${ABI}-release.apk"
+          echo "app_version=$app_version" >> "$GITHUB_OUTPUT"
+          echo "build_stamp=$build_stamp" >> "$GITHUB_OUTPUT"
+          echo "apk_name=$apk_name" >> "$GITHUB_OUTPUT"
+          echo "GMT build stamp: $build_stamp"
+
       - name: Write Firebase Android config
         env:
           FIREBASE_ANDROID_GOOGLE_SERVICES_JSON_B64: ${{ secrets.FIREBASE_ANDROID_GOOGLE_SERVICES_JSON_B64 }}
@@ -124,15 +137,24 @@ jobs:
         run: |
           flutter build apk --release --split-per-abi \
             --target-platform "$TARGET_PLATFORM" \
+            --build-name="${{ steps.build-meta.outputs.app_version }}" \
+            --build-number="${{ steps.build-meta.outputs.build_stamp }}" \
             --dart-define="GIT_COMMIT=${GITHUB_SHA::7}" \
+            --dart-define="CI_BUILD_STAMP=${{ steps.build-meta.outputs.build_stamp }}" \
             --dart-define="SENTRY_DSN=$SENTRY_DSN"
+
+      - name: Rename APK
+        run: |
+          mkdir -p dist
+          cp "build/app/outputs/flutter-apk/app-${ABI}-release.apk" \
+            "dist/${{ steps.build-meta.outputs.apk_name }}"
 
       - name: Upload APK artifact
         id: upload-apk
         uses: actions/upload-artifact@v4
         with:
-          name: apk-${{ env.ABI }}
-          path: build/app/outputs/flutter-apk/app-${{ env.ABI }}-release.apk
+          name: apk-${{ env.ABI }}-${{ steps.build-meta.outputs.build_stamp }}
+          path: dist/${{ steps.build-meta.outputs.apk_name }}
           if-no-files-found: error
 
       - name: Upload APK to Telegram channel
@@ -141,7 +163,7 @@ jobs:
           TELEGRAM_CI_CHANNEL: ${{ secrets.TELEGRAM_CI_CHANNEL }}
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
-          APK_PATH: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+          APK_PATH: dist/${{ steps.build-meta.outputs.apk_name }}
           ARTIFACT_URL: ${{ steps.upload-apk.outputs.artifact-url }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -151,8 +173,8 @@ jobs:
           build_date="$(date -u '+%Y-%m-%d %H:%M UTC')"
           commit_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}"
           commit_message="$(git log -1 --pretty=%s | tr '\n' ' ' | cut -c1-180)"
-          caption="$(printf '🧪 Mithka master %s · arm64-v8a\nDate: %s\nCommit: %s\nMessage: %s' \
-            "${GITHUB_SHA::7}" "$build_date" "$commit_url" "$commit_message")"
+          caption="$(printf '🧪 Mithka master %s · arm64-v8a · %s\nDate: %s\nCommit: %s\nMessage: %s' \
+            "${GITHUB_SHA::7}" "${{ steps.build-meta.outputs.build_stamp }}" "$build_date" "$commit_url" "$commit_message")"
           response=/tmp/telegram-response.json
 
           upload_document() {

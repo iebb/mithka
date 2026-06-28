@@ -333,22 +333,40 @@ class TdClient {
     await _applySavedProxyToClient(clientId);
   }
 
+  Future<void> applyProxyConfig(ProxyConfig config) async {
+    final clientId = _activeClientId;
+    if (clientId == 0) {
+      throw StateError('TDLib client is not active yet');
+    }
+    await _applyProxyConfigToClient(config, clientId);
+  }
+
   Future<void> _applySavedProxyToClient(int clientId) async {
     final config = await ProxyConfig.load();
+    await _applyProxyConfigToClient(config, clientId);
+  }
+
+  Future<void> _applyProxyConfigToClient(
+    ProxyConfig config,
+    int clientId,
+  ) async {
     if (!config.configured) return;
     if (!config.isUsable) {
       try {
         await queryTo({
           '@type': 'disableProxy',
-        }, clientId).timeout(const Duration(seconds: 2));
-      } catch (_) {}
+        }, clientId).timeout(const Duration(seconds: 8));
+        debugPrint('🌐 [Mithka] proxy disabled for client $clientId');
+      } catch (error) {
+        debugPrint('🌐 [Mithka] failed to disable proxy: $error');
+      }
       return;
     }
 
     try {
       final proxies = await queryTo({
         '@type': 'getProxies',
-      }, clientId).timeout(const Duration(seconds: 2));
+      }, clientId).timeout(const Duration(seconds: 8));
       Map<String, dynamic>? existing;
       for (final proxy
           in proxies.objects('proxies') ?? const <Map<String, dynamic>>[]) {
@@ -357,20 +375,40 @@ class TdClient {
           break;
         }
       }
-      final id = existing?.integer('id');
+      final added = existing == null
+          ? await queryTo(
+              config.addProxyRequest,
+              clientId,
+            ).timeout(const Duration(seconds: 8))
+          : null;
+      final id = existing?.integer('id') ?? added?.integer('id');
       if (id != null) {
         await queryTo({
           '@type': 'enableProxy',
           'proxy_id': id,
-        }, clientId).timeout(const Duration(seconds: 2));
+        }, clientId).timeout(const Duration(seconds: 8));
+        unawaited(
+          queryTo({'@type': 'pingProxy', 'proxy_id': id}, clientId)
+              .then((result) {
+                debugPrint('🌐 [Mithka] proxy ping result: $result');
+              })
+              .catchError((Object error) {
+                debugPrint('🌐 [Mithka] proxy ping failed: $error');
+              }),
+        );
+        debugPrint(
+          '🌐 [Mithka] proxy enabled: ${config.label} '
+          '${config.server}:${config.port} for client $clientId',
+        );
         return;
       }
-      await queryTo(
-        config.addProxyRequest,
-        clientId,
-      ).timeout(const Duration(seconds: 2));
-    } catch (_) {
-      _bindings.send(clientId, jsonEncode(config.addProxyRequest));
+      throw StateError('TDLib did not return a proxy id');
+    } catch (error) {
+      debugPrint(
+        '🌐 [Mithka] proxy apply failed: ${config.label} '
+        '${config.server}:${config.port}: $error',
+      );
+      rethrow;
     }
   }
 

@@ -43,6 +43,10 @@
 	<string>Mithka needs the microphone to record voice messages.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Mithka needs photo access to send images.</string>
+	<key>SentryDSNEncoded</key>
+	<string>$(SENTRY_DSN_ENCODED)</string>
+	<key>SentryEnvironment</key>
+	<string>$(SENTRY_ENVIRONMENT)</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

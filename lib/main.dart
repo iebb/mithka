@@ -7,12 +7,15 @@
 //  rebuilds for the newly active account. Port of the Swift `MithkaApp`.
 //
 
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:fvp/fvp.dart' as fvp;
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -37,25 +40,32 @@ const _sentryEnvironment = String.fromEnvironment(
   'SENTRY_ENVIRONMENT',
   defaultValue: 'production',
 );
+const _gitCommit = String.fromEnvironment('GIT_COMMIT');
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final androidSdkInt = await _androidSdkInt();
-  final useFvp = defaultTargetPlatform != TargetPlatform.android ||
-      (androidSdkInt != null && androidSdkInt < 35);
-  if (useFvp) {
-    // Route video_player through the MDK/FFmpeg backend so .webm (VP9 + alpha)
-    // video stickers decode + play (and stay transparent). fvp 0.37.2 crashes
-    // while loading libmdk.so on Android 15+, so those devices stay on the
-    // stock Android video_player backend.
-    fvp.registerWith(
-      options: defaultTargetPlatform == TargetPlatform.android
-          ? {
-              'video.decoders': ['FFmpeg', 'dav1d'],
-            }
-          : null,
-    );
+  if (_sentryDsn.isEmpty) {
+    await _bootstrapAndRunApp();
+    return;
   }
+
+  await SentryFlutter.init(_configureSentry, appRunner: _bootstrapAndRunApp);
+}
+
+Future<void> _bootstrapAndRunApp() async {
+  GoogleFonts.config.allowRuntimeFetching = true;
+  // Route video_player through the MDK/FFmpeg backend so .webm (VP9 + alpha)
+  // video stickers decode + play (and stay transparent).
+  //
+  // Android keeps software decoders first because MDK's hardware decoder path
+  // has crashed on some Android 14/HyperOS builds.
+  fvp.registerWith(
+    options: defaultTargetPlatform == TargetPlatform.android
+        ? {
+            'video.decoders': ['FFmpeg', 'dav1d'],
+          }
+        : null,
+  );
   // Let iPhone and iPad follow every physical orientation.
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
@@ -72,34 +82,69 @@ Future<void> main() async {
   await FirebaseAnalytics.instance.logAppOpen(
     parameters: appVersion.analyticsParameters,
   );
+  if (_sentryDsn.isNotEmpty) {
+    await Sentry.configureScope((scope) async {
+      await scope.setTag('app.version', appVersion.version);
+      await scope.setTag('app.build_number', appVersion.buildNumber);
+      await scope.setTag('git.commit', appVersion.commit);
+    });
+  }
   final prefs = await SharedPreferences.getInstance();
   KeywordBlocker.shared.initialize(prefs);
   final app = MithkaApp(prefs: prefs);
-  if (_sentryDsn.isEmpty) {
-    runApp(app);
-    return;
-  }
-
-  await SentryFlutter.init((options) {
-    options.dsn = _sentryDsn;
-    options.environment = _sentryEnvironment;
-    options.release = 'mithka@${appVersion.version}+${appVersion.buildNumber}';
-    options.sendDefaultPii = false;
-    options.tracesSampleRate = 0;
-  }, appRunner: () => runApp(app));
+  _runAppWithNonFatalGoogleFonts(app);
 }
 
-Future<int?> _androidSdkInt() async {
-  if (defaultTargetPlatform != TargetPlatform.android) return null;
-  try {
-    final info = await const MethodChannel(
-      'mithka/app_info',
-    ).invokeMapMethod<String, Object?>('info');
-    final sdkInt = info?['sdkInt'];
-    return sdkInt is int ? sdkInt : null;
-  } catch (_) {
-    return null;
-  }
+void _configureSentry(SentryFlutterOptions options) {
+  options.dsn = _sentryDsn;
+  options.environment = _sentryEnvironment;
+  options.release = _gitCommit.isEmpty ? 'mithka' : 'mithka@$_gitCommit';
+  options.sendDefaultPii = false;
+  options.tracesSampleRate = 0;
+  options.beforeSend = (event, hint) =>
+      _isGoogleFontLoadFailure(event) ? null : event;
+}
+
+bool _isGoogleFontLoadFailure(SentryEvent event) {
+  final parts = <String>[
+    event.throwable?.toString() ?? '',
+    event.message?.formatted ?? '',
+    event.message?.template ?? '',
+    for (final exception in event.exceptions ?? const [])
+      '${exception.type ?? ''} ${exception.value ?? ''}',
+  ];
+  return _isGoogleFontLoadFailureText(parts.join('\n'));
+}
+
+void _runAppWithNonFatalGoogleFonts(Widget app) {
+  final previousFlutterOnError = FlutterError.onError;
+  FlutterError.onError = (details) {
+    if (_isGoogleFontLoadFailureText(details.exceptionAsString())) return;
+    previousFlutterOnError?.call(details);
+  };
+
+  final previousPlatformOnError = ui.PlatformDispatcher.instance.onError;
+  ui.PlatformDispatcher.instance.onError = (error, stack) {
+    if (_isGoogleFontLoadFailureText(error.toString())) return true;
+    return previousPlatformOnError?.call(error, stack) ?? false;
+  };
+
+  runApp(app);
+}
+
+bool _isGoogleFontLoadFailureText(String value) {
+  final text = value.toLowerCase();
+  final isGoogleFonts =
+      text.contains('google_fonts') ||
+      text.contains('googlefonts') ||
+      text.contains('fonts.gstatic.com') ||
+      text.contains('fonts.googleapis.com');
+  if (!isGoogleFonts) return false;
+  return text.contains('failed to load font') ||
+      text.contains('unable to load font') ||
+      text.contains('handshakeexception') ||
+      text.contains('socketexception') ||
+      text.contains('clientexception');
 }
 
 class MithkaApp extends StatefulWidget {
@@ -128,25 +173,17 @@ class _MithkaAppState extends State<MithkaApp> {
   }
 
   ThemeData _themeData(Brightness brightness, ThemeController theme) {
-    final fontChoice = theme.fontChoice;
-    final cjkFontChoice = theme.cjkFontChoice;
-    final customPrimary = theme.customPrimaryFontFamily;
-    final customCjk = theme.customCjkFontFamily;
     final colors = brightness == Brightness.dark
         ? AppColors.dark
         : AppColors.light;
-    final fallback = fontChoice.effectiveFallback(
-      cjkFontChoice,
-      null,
-      customCjk,
-    );
-    final useCustomPrimary =
-        fontChoice.isCustom && customPrimary.trim().isNotEmpty;
+    final families = theme.effectiveFontFamilyChain();
     final base = ThemeData(
       brightness: brightness,
       useMaterial3: true,
-      fontFamily: useCustomPrimary ? customPrimary : fontChoice.fontFamily,
-      fontFamilyFallback: fallback,
+      fontFamily: families.isEmpty ? null : families.first,
+      fontFamilyFallback: families.length > 1
+          ? families.skip(1).toList()
+          : null,
       scaffoldBackgroundColor: colors.background,
       colorScheme: ColorScheme.fromSeed(
         seedColor: AppTheme.brand,
@@ -163,18 +200,8 @@ class _MithkaAppState extends State<MithkaApp> {
       highlightColor: Colors.transparent,
     );
     return base.copyWith(
-      textTheme: fontChoice.applyTextTheme(
-        base.textTheme,
-        cjkFallback: cjkFontChoice,
-        customPrimaryFamily: customPrimary,
-        customCjkFamily: customCjk,
-      ),
-      primaryTextTheme: fontChoice.applyTextTheme(
-        base.primaryTextTheme,
-        cjkFallback: cjkFontChoice,
-        customPrimaryFamily: customPrimary,
-        customCjkFamily: customCjk,
-      ),
+      textTheme: theme.applyAppTextTheme(base.textTheme),
+      primaryTextTheme: theme.applyAppTextTheme(base.primaryTextTheme),
     );
   }
 

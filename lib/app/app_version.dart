@@ -8,6 +8,7 @@ class AppVersion {
   });
 
   static const _commit = String.fromEnvironment('GIT_COMMIT');
+  static const _ciBuildStamp = String.fromEnvironment('CI_BUILD_STAMP');
 
   final String version;
   final String buildNumber;
@@ -31,7 +32,7 @@ class AppVersion {
     final info = await PackageInfo.fromPlatform();
     return AppVersion(
       version: info.version,
-      buildNumber: info.buildNumber,
+      buildNumber: _ciBuildStamp.isEmpty ? info.buildNumber : _ciBuildStamp,
       commit: _commit.isEmpty ? 'local' : _commit,
     );
   }

@@ -89,6 +89,21 @@ void main() {
     });
   });
 
+  group('ThemeController fonts', () {
+    test('applies explicit fallback chain in order', () async {
+      SharedPreferences.setMockInitialValues({
+        'fontFallbackChain': ['Futura', 'PingFang SC', 'Futura'],
+      });
+      final prefs = await SharedPreferences.getInstance();
+      final theme = ThemeController(prefs);
+
+      expect(theme.fontFallbackChain, ['Futura', 'PingFang SC']);
+      final style = theme.applyAppTextStyle(const TextStyle());
+      expect(style.fontFamily, 'Futura');
+      expect(style.fontFamilyFallback, contains('PingFang SC'));
+    });
+  });
+
   group('TDParse.messageText', () {
     test('photo with no caption → [图片]', () {
       final content = <String, dynamic>{'@type': 'messagePhoto'};

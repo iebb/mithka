@@ -26,6 +26,7 @@ import '../tdlib/td_models.dart';
 import 'animated_sticker_view.dart';
 import 'custom_emoji.dart';
 import 'file_detail_view.dart';
+import 'message_action_menu.dart';
 import 'video_sticker_view.dart';
 import 'link_handler.dart';
 import 'location_detail_view.dart';
@@ -75,7 +76,12 @@ class MessageBubble extends StatefulWidget {
   final TdFileRef? mePhoto;
   final bool showRepeat;
   final VoidCallback? onRepeat;
-  final void Function(ChatMessage message, Rect? bounds)? onLongPress;
+  final void Function(
+    ChatMessage message,
+    Rect? bounds,
+    MessageActionSource source,
+  )?
+  onLongPress;
   final ValueChanged<ChatMessage>? onReply;
   final ValueChanged<ChatMessage>? onAvatarTap;
   final ValueChanged<ChatMessage>? onAvatarLongPress;
@@ -109,31 +115,29 @@ class _MessageBubbleState extends State<MessageBubble>
   bool _videoStickerReady = false;
   bool _musicPressed = false;
   double _swipeX = 0;
+  double? _layoutWidth;
   final Set<String> _expandedQuotes = {};
   final Set<String> _revealedSpoilers = {};
 
-  void _handleLongPress() {
+  void _handleLongPress([
+    MessageActionSource source = MessageActionSource.normal,
+  ]) {
     final box = _bubbleKey.currentContext?.findRenderObject() as RenderBox?;
     Rect? bounds;
     if (box != null && box.hasSize) {
       bounds = box.localToGlobal(Offset.zero) & box.size;
     }
-    widget.onLongPress?.call(message, bounds);
+    widget.onLongPress?.call(message, bounds, source);
   }
 
   ChatMessage get message => widget.message;
 
-  double _messageLaneWidth() {
-    final screenWidth = MediaQuery.sizeOf(context).width;
-    // Row chrome: outer padding, the opposite-side spacer, avatar and gap.
-    final reserved = 12.0 * 2 + 48.0 + 38.0 + 8.0;
-    return math.max(160.0, screenWidth - reserved);
+  double _bubbleMaxWidth() {
+    final width = _layoutWidth ?? MediaQuery.sizeOf(context).width;
+    return math.max(1.0, width * _bubbleMaxWidthFraction);
   }
 
-  double _bubbleMaxWidth() =>
-      math.max(160.0, _messageLaneWidth() * _bubbleMaxWidthFraction);
-
-  double _mediaMaxWidth() => math.max(152.0, _bubbleMaxWidth() - 8.0);
+  double _mediaMaxWidth() => _bubbleMaxWidth();
 
   @override
   void initState() {
@@ -157,25 +161,32 @@ class _MessageBubbleState extends State<MessageBubble>
   @override
   Widget build(BuildContext context) {
     if (message.isService) return const SizedBox.shrink();
-    return Stack(
-      alignment: Alignment.centerRight,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(right: 16),
-          child: Opacity(
-            opacity: (math.min(1, math.max(0, -_swipeX) / 50)).toDouble(),
-            child: Icon(
-              sfIcon('arrowshape.turn.up.left.fill'),
-              size: 18,
-              color: AppTheme.brand,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        _layoutWidth = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width;
+        return Stack(
+          alignment: Alignment.centerRight,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(right: 16),
+              child: Opacity(
+                opacity: (math.min(1, math.max(0, -_swipeX) / 50)).toDouble(),
+                child: Icon(
+                  sfIcon('arrowshape.turn.up.left.fill'),
+                  size: 18,
+                  color: AppTheme.brand,
+                ),
+              ),
             ),
-          ),
-        ),
-        Transform.translate(
-          offset: Offset(_swipeX, 0),
-          child: _row(message.isOutgoing),
-        ),
-      ],
+            Transform.translate(
+              offset: Offset(_swipeX, 0),
+              child: _row(message.isOutgoing),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -227,19 +238,22 @@ class _MessageBubbleState extends State<MessageBubble>
       onHorizontalDragEnd: _onDragEnd,
       child: _contentBody(outgoing),
     );
-    final content = message.reactions.isEmpty
-        ? body
-        : Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: outgoing
-                ? CrossAxisAlignment.end
-                : CrossAxisAlignment.start,
-            children: [
-              body,
-              const SizedBox(height: 4),
-              _reactionChips(outgoing),
-            ],
-          );
+    final content = ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: _bubbleMaxWidth()),
+      child: message.reactions.isEmpty
+          ? body
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: outgoing
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
+              children: [
+                body,
+                const SizedBox(height: 4),
+                _reactionChips(outgoing),
+              ],
+            ),
+    );
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
@@ -247,7 +261,6 @@ class _MessageBubbleState extends State<MessageBubble>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: outgoing
             ? [
-                const SizedBox(width: 48),
                 Expanded(
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.end,
@@ -343,7 +356,6 @@ class _MessageBubbleState extends State<MessageBubble>
                     ],
                   ),
                 ),
-                const SizedBox(width: 48),
               ],
       ),
     );
@@ -2004,6 +2016,7 @@ class _MessageBubbleState extends State<MessageBubble>
     final mediaRadius = grouped ? 0.0 : 10.0;
     final media = GestureDetector(
       onTap: () => widget.onPlayVideo?.call(message),
+      onLongPress: () => _handleLongPress(MessageActionSource.video),
       child: SizedBox(
         width: size.width,
         height: size.height,

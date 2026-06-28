@@ -14,6 +14,10 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.MethodChannel
 import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileInputStream
+import org.xmlpull.v1.XmlPullParser
+import org.xmlpull.v1.XmlPullParserFactory
 
 class MainActivity : FlutterActivity() {
     private var callMedia: CallMediaPlugin? = null
@@ -67,6 +71,15 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mithka/fonts")
+            .setMethodCallHandler { call, result ->
+                if (call.method == "listFonts") {
+                    result.success(listSystemFonts())
+                } else {
+                    result.notImplemented()
+                }
+            }
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mithka/clipboard")
             .setMethodCallHandler { call, result ->
                 if (call.method != "readImage") {
@@ -112,6 +125,64 @@ class MainActivity : FlutterActivity() {
             }
     }
 
+    private fun listSystemFonts(): List<String> {
+        val fonts = linkedSetOf(
+            "sans-serif",
+            "sans-serif-condensed",
+            "sans-serif-medium",
+            "sans-serif-light",
+            "serif",
+            "monospace",
+            "Roboto",
+            "Noto Sans",
+            "Noto Sans CJK SC",
+            "Noto Sans CJK TC",
+            "Noto Sans JP",
+            "Noto Sans KR",
+        )
+        val paths = listOf(
+            "/system/etc/fonts.xml",
+            "/system/etc/system_fonts.xml",
+            "/product/etc/fonts.xml",
+            "/vendor/etc/fonts.xml",
+        )
+        for (path in paths) {
+            val file = File(path)
+            if (!file.exists() || !file.canRead()) continue
+            try {
+                FileInputStream(file).use { input ->
+                    val parser = XmlPullParserFactory.newInstance().newPullParser()
+                    parser.setInput(input, null)
+                    var event = parser.eventType
+                    while (event != XmlPullParser.END_DOCUMENT) {
+                        if (event == XmlPullParser.START_TAG) {
+                            when (parser.name) {
+                                "family" -> parser.getAttributeValue(null, "name")
+                                    ?.trim()
+                                    ?.takeIf { it.isNotEmpty() }
+                                    ?.let { fonts.add(it) }
+                                "alias" -> {
+                                    parser.getAttributeValue(null, "name")
+                                        ?.trim()
+                                        ?.takeIf { it.isNotEmpty() }
+                                        ?.let { fonts.add(it) }
+                                    parser.getAttributeValue(null, "to")
+                                        ?.trim()
+                                        ?.takeIf { it.isNotEmpty() }
+                                        ?.let { fonts.add(it) }
+                                }
+                            }
+                        }
+                        event = parser.next()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w("Mithka", "Failed to read font list from $path", e)
+            }
+        }
+        return fonts.sortedWith(String.CASE_INSENSITIVE_ORDER)
+    }
+
     private fun registerPlugins(flutterEngine: FlutterEngine) {
         val pluginClasses = buildList {
             add("com.ryanheise.audio_session.AudioSessionPlugin")
@@ -121,11 +192,7 @@ class MainActivity : FlutterActivity() {
             add("com.dexterous.flutterlocalnotifications.FlutterLocalNotificationsPlugin")
             add("io.flutter.plugins.flutter_plugin_android_lifecycle.FlutterAndroidLifecyclePlugin")
             add("xyz.canardoux.fluttersound.FlutterSound")
-            // fvp 0.37.2 crashes in libmdk.so during JNI_OnLoad on Android 15+
-            // before Dart can handle it. Older Android versions keep the backend.
-            if (Build.VERSION.SDK_INT < 35) {
-                add("com.mediadevkit.fvp.FvpPlugin")
-            }
+            add("com.mediadevkit.fvp.FvpPlugin")
             add("com.baseflow.geolocator.GeolocatorPlugin")
             add("io.flutter.plugins.imagepicker.ImagePickerPlugin")
             add("com.github.dart_lang.jni.JniPlugin")

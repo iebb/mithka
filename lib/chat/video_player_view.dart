@@ -193,6 +193,7 @@ class VideoPlayerView extends StatefulWidget {
     this.messageId,
     this.currentMode = VideoDisplayMode.fullscreen,
     this.onSwitchMode,
+    this.initialMuted = false,
   });
 
   final TdFileRef video;
@@ -206,6 +207,7 @@ class VideoPlayerView extends StatefulWidget {
   final int? messageId;
   final VideoDisplayMode currentMode;
   final ValueChanged<VideoDisplayMode>? onSwitchMode;
+  final bool initialMuted;
 
   @override
   State<VideoPlayerView> createState() => _VideoPlayerViewState();
@@ -236,6 +238,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialMuted) _volume = 0;
     _load();
   }
 

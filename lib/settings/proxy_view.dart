@@ -107,7 +107,8 @@ class _ProxyViewState extends State<ProxyView> {
   }
 
   static String _typeLabel(Map<String, dynamic> proxy) {
-    return switch (proxy.obj('type')?.type) {
+    final details = ProxyConfig.tdProxyDetails(proxy);
+    return switch (details.obj('type')?.type) {
       'proxyTypeSocks5' => 'SOCKS5',
       'proxyTypeHttp' => 'HTTP',
       'proxyTypeMtproto' => 'MTProto',
@@ -204,10 +205,11 @@ class _ProxyViewState extends State<ProxyView> {
 
   Widget _proxyRow(Map<String, dynamic> proxy) {
     final c = context.colors;
+    final details = ProxyConfig.tdProxyDetails(proxy);
     final id = proxy.integer('id') ?? 0;
     final enabled = proxy.boolean('is_enabled') ?? false;
-    final server = proxy.str('server') ?? '';
-    final port = proxy.integer('port') ?? 0;
+    final server = details.str('server') ?? '';
+    final port = details.integer('port') ?? 0;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: enabled ? null : () => _enable(proxy),
@@ -348,11 +350,11 @@ class _ProxyEditViewState extends State<ProxyEditView> {
       return;
     }
     try {
-      await TdClient.shared.query(config.addProxyRequest);
+      await TdClient.shared.applyProxyConfig(config);
       await ProxyConfig.save(config);
-      unawaited(TdClient.shared.applySavedProxyToActive());
       if (mounted) Navigator.of(context).pop(true);
-    } catch (_) {
+    } catch (error) {
+      debugPrint('🌐 [Mithka] add proxy failed: $error');
       if (mounted) {
         setState(() => _saving = false);
         showToast(context, '添加代理失败');

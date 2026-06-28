@@ -54,18 +54,28 @@ class ProxyConfig {
     },
   };
 
-  Map<String, dynamic> get addProxyRequest => {
-    '@type': 'addProxy',
+  Map<String, dynamic> get tdProxy => {
+    '@type': 'proxy',
     'server': server.trim(),
     'port': port,
-    'enable': true,
     'type': tdType,
   };
 
+  Map<String, dynamic> get addProxyRequest => {
+    '@type': 'addProxy',
+    'proxy': tdProxy,
+    'enable': true,
+  };
+
+  static Map<String, dynamic> tdProxyDetails(Map<String, dynamic> proxy) {
+    return proxy.obj('proxy') ?? proxy;
+  }
+
   bool matchesTdProxy(Map<String, dynamic> proxy) {
-    if ((proxy.str('server') ?? '') != server.trim()) return false;
-    if ((proxy.integer('port') ?? 0) != port) return false;
-    final tdType = proxy.obj('type');
+    final details = tdProxyDetails(proxy);
+    if ((details.str('server') ?? '') != server.trim()) return false;
+    if ((details.integer('port') ?? 0) != port) return false;
+    final tdType = details.obj('type');
     return switch (type) {
       'http' => tdType?.type == 'proxyTypeHttp',
       'mtproto' => tdType?.type == 'proxyTypeMtproto',
@@ -74,7 +84,8 @@ class ProxyConfig {
   }
 
   static ProxyConfig fromTdProxy(Map<String, dynamic> proxy) {
-    final type = proxy.obj('type');
+    final details = tdProxyDetails(proxy);
+    final type = details.obj('type');
     final kind = switch (type?.type) {
       'proxyTypeHttp' => 'http',
       'proxyTypeMtproto' => 'mtproto',
@@ -84,8 +95,8 @@ class ProxyConfig {
       configured: true,
       enabled: true,
       type: kind,
-      server: proxy.str('server') ?? '',
-      port: proxy.integer('port') ?? 0,
+      server: details.str('server') ?? '',
+      port: details.integer('port') ?? 0,
       username: type?.str('username') ?? '',
       password: type?.str('password') ?? '',
       secret: type?.str('secret') ?? '',

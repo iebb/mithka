@@ -94,6 +94,7 @@ class _ChatViewState extends State<ChatView> {
   final _unreadKey = GlobalKey(); // the "以下为新消息" divider, for entry scroll
   ChatMessage? _actionTarget;
   Rect? _actionRect; // global bounds of the long-pressed bubble
+  MessageActionSource _actionSource = MessageActionSource.normal;
   bool _reactionExpanded = false; // full reaction picker vs. quick bar
   String _reactionTab = 'standard'; // 'standard' or a custom-emoji pack id
   int _lastCount = 0;
@@ -124,11 +125,9 @@ class _ChatViewState extends State<ChatView> {
   static const _separatorGap = 300;
   static OverlayEntry? _globalPictureInPictureVideo;
 
-  double _messageMediaMaxWidth() {
-    final screenWidth = MediaQuery.sizeOf(context).width;
-    // Album rows only reserve outer padding, avatar and the avatar gap.
-    final laneWidth = math.max(160.0, screenWidth - 12.0 * 2 - 38.0 - 8.0);
-    return laneWidth * 0.75;
+  double _messageMediaMaxWidth([double? chatWidth]) {
+    final width = chatWidth ?? MediaQuery.sizeOf(context).width;
+    return math.max(1.0, width * 0.75);
   }
 
   @override
@@ -591,6 +590,7 @@ class _ChatViewState extends State<ChatView> {
     setState(() {
       _actionTarget = null;
       _actionRect = null;
+      _actionSource = MessageActionSource.normal;
       _reactionExpanded = false;
       _selectionAnchorId = message.id;
       _selectedMessageIds
@@ -769,7 +769,7 @@ class _ChatViewState extends State<ChatView> {
     return false;
   }
 
-  void _playVideo(ChatMessage message) {
+  void _playVideo(ChatMessage message, {bool muted = false}) {
     final v = message.video;
     if (v == null) return;
     Navigator.of(context).push(
@@ -783,6 +783,7 @@ class _ChatViewState extends State<ChatView> {
           sourceChatId: widget.chatId,
           messageId: message.id,
           currentMode: VideoDisplayMode.fullscreen,
+          initialMuted: muted,
           onSwitchMode: (mode) => _switchVideoMode(routeContext, message, mode),
         ),
       ),
@@ -819,12 +820,6 @@ class _ChatViewState extends State<ChatView> {
         );
         Navigator.of(routeContext).maybePop();
     }
-  }
-
-  void _playVideoPictureInPicture(ChatMessage message) {
-    final v = message.video;
-    if (v == null) return;
-    _showVideoPictureInPicture(context, message, widget.chatId, widget.title);
   }
 
   static void _showVideoPictureInPicture(
@@ -1020,22 +1015,6 @@ class _ChatViewState extends State<ChatView> {
     overlay.insert(entry);
   }
 
-  void _playVideoSplit(ChatMessage message) {
-    final v = message.video;
-    if (v == null) return;
-    VideoSplitController.instance.play(
-      VideoSplitSession(
-        chatId: widget.chatId,
-        title: widget.title,
-        video: v,
-        thumb: message.image,
-        width: message.imageWidth,
-        height: message.imageHeight,
-        messageId: message.id,
-      ),
-    );
-  }
-
   void _openImage(ChatMessage message) {
     final pairs = _vm.messages
         .where((m) => m.isPhoto && m.image != null)
@@ -1111,7 +1090,10 @@ class _ChatViewState extends State<ChatView> {
   }
 
   Future<void> _perform(MessageAction action, ChatMessage message) async {
-    setState(() => _actionTarget = null);
+    setState(() {
+      _actionTarget = null;
+      _actionSource = MessageActionSource.normal;
+    });
     switch (action) {
       case MessageAction.copy:
         Clipboard.setData(ClipboardData(text: message.text));
@@ -1123,10 +1105,8 @@ class _ChatViewState extends State<ChatView> {
         _vm.setReply(message);
       case MessageAction.forward:
         _forwardMessage(message);
-      case MessageAction.playPiP:
-        _playVideoPictureInPicture(message);
-      case MessageAction.playSplit:
-        _playVideoSplit(message);
+      case MessageAction.playMuted:
+        _playVideo(message, muted: true);
       case MessageAction.multiSelect:
         _enterSelection(message);
       case MessageAction.pinTodo:
@@ -2353,10 +2333,15 @@ class _ChatViewState extends State<ChatView> {
     );
   }
 
-  void _showActionMenuForMessage(ChatMessage message, Rect? rect) {
+  void _showActionMenuForMessage(
+    ChatMessage message,
+    Rect? rect, [
+    MessageActionSource source = MessageActionSource.normal,
+  ]) {
     setState(() {
       _actionTarget = message;
       _actionRect = rect;
+      _actionSource = source;
       _reactionExpanded = false;
       _reactionTab = 'standard';
     });
@@ -2429,8 +2414,6 @@ class _ChatViewState extends State<ChatView> {
         .map((m) => m.text.trim())
         .where((text) => text.isNotEmpty && text != '[图片]' && text != '[视频]')
         .toList();
-    final gallery = _imageGroupGallery(group, outgoing, captions);
-
     Widget avatar() => GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => _openSenderProfile(first),
@@ -2444,53 +2427,69 @@ class _ChatViewState extends State<ChatView> {
       child: PhotoAvatar(title: avatarTitle, photo: avatarPhoto, size: 38),
     );
 
-    Widget body = outgoing
-        ? gallery
-        : Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (_vm.isGroup && (first.senderName?.isNotEmpty ?? false))
-                Padding(
-                  padding: const EdgeInsets.only(left: 2, bottom: 4),
-                  child: Text(
-                    first.senderName!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 12, color: c.textSecondary),
-                  ),
-                ),
-              gallery,
-            ],
-          );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final chatWidth = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width;
+        final gallery = _imageGroupGallery(
+          group,
+          outgoing,
+          captions,
+          maxWidth: _messageMediaMaxWidth(chatWidth),
+        );
+        Widget body = outgoing
+            ? gallery
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (_vm.isGroup && (first.senderName?.isNotEmpty ?? false))
+                    Padding(
+                      padding: const EdgeInsets.only(left: 2, bottom: 4),
+                      child: Text(
+                        first.senderName!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 12, color: c.textSecondary),
+                      ),
+                    ),
+                  gallery,
+                ],
+              );
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        mainAxisAlignment: outgoing
-            ? MainAxisAlignment.end
-            : MainAxisAlignment.start,
-        children: outgoing
-            ? [
-                Flexible(
-                  child: Align(alignment: Alignment.centerRight, child: body),
-                ),
-                const SizedBox(width: 8),
-                avatar(),
-              ]
-            : [avatar(), const SizedBox(width: 8), Flexible(child: body)],
-      ),
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisAlignment: outgoing
+                ? MainAxisAlignment.end
+                : MainAxisAlignment.start,
+            children: outgoing
+                ? [
+                    Flexible(
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: body,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    avatar(),
+                  ]
+                : [avatar(), const SizedBox(width: 8), Flexible(child: body)],
+          ),
+        );
+      },
     );
   }
 
   Widget _imageGroupGallery(
     List<ChatMessage> group,
     bool outgoing,
-    List<String> captions,
-  ) {
+    List<String> captions, {
+    required double maxWidth,
+  }) {
     final c = context.colors;
     final visible = group.take(9).toList();
-    final maxWidth = _messageMediaMaxWidth();
     const padding = 4.0;
     final layout = buildTelegramMediaAlbumLayout(
       items: [
@@ -2580,7 +2579,13 @@ class _ChatViewState extends State<ChatView> {
               final rect = box != null && box.hasSize
                   ? box.localToGlobal(Offset.zero) & box.size
                   : null;
-              _showActionMenuForMessage(message, rect);
+              _showActionMenuForMessage(
+                message,
+                rect,
+                message.video != null
+                    ? MessageActionSource.video
+                    : MessageActionSource.normal,
+              );
             },
       child: SizedBox(
         key: tileKey,
@@ -2688,6 +2693,7 @@ class _ChatViewState extends State<ChatView> {
     final target = _actionTarget;
     setState(() {
       _actionTarget = null;
+      _actionSource = MessageActionSource.normal;
       _reactionExpanded = false;
     });
     if (target != null) _vm.addReaction(target.id, emoji);
@@ -2697,6 +2703,7 @@ class _ChatViewState extends State<ChatView> {
     final target = _actionTarget;
     setState(() {
       _actionTarget = null;
+      _actionSource = MessageActionSource.normal;
       _reactionExpanded = false;
     });
     if (target != null) _vm.addCustomReaction(target.id, customEmojiId);
@@ -2731,6 +2738,7 @@ class _ChatViewState extends State<ChatView> {
     void dismiss() => setState(() {
       _actionTarget = null;
       _actionRect = null;
+      _actionSource = MessageActionSource.normal;
       _reactionExpanded = false;
     });
 
@@ -2766,6 +2774,7 @@ class _ChatViewState extends State<ChatView> {
               child: MessageActionMenu(
                 message: _actionTarget!,
                 isPinned: _vm.pinnedMessage?.id == _actionTarget!.id,
+                source: _actionSource,
                 onSelect: (action) => _perform(action, _actionTarget!),
               ),
             ),

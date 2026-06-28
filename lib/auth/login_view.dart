@@ -161,6 +161,11 @@ class _LoginViewState extends State<LoginView> {
                 ),
               ),
             ),
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 6,
+            right: 6,
+            child: _proxyIconButton(),
+          ),
         ],
       ),
     );
@@ -345,8 +350,6 @@ class _LoginViewState extends State<LoginView> {
             ],
           ),
         ),
-        const SizedBox(height: 12),
-        _proxyRow(),
         const SizedBox(height: 20),
         _primaryButton(auth, '获取验证码', _phoneDigits.length >= 7, () {
           auth.submitPhone('+$_phoneDigits');
@@ -362,86 +365,39 @@ class _LoginViewState extends State<LoginView> {
     );
   }
 
-  Widget _proxyRow() {
+  Widget _proxyIconButton() {
     final c = context.colors;
-    final proxy = _proxy;
-    final enabled = proxy?.isUsable ?? false;
-    return Container(
-      decoration: BoxDecoration(
-        color: c.card,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: _openProxySetup,
-              child: SizedBox(
-                height: 54,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
-                    children: [
-                      Icon(
-                        sfIcon('globe'),
-                        size: 21,
-                        color: enabled ? AppTheme.brand : c.textTertiary,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '代理',
-                              style: TextStyle(
-                                fontSize: 15,
-                                color: c.textPrimary,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              enabled
-                                  ? '${proxy!.label} ${proxy.server}:${proxy.port}'
-                                  : '不使用代理',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: c.textSecondary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Icon(
-                        sfIcon('chevron.right'),
-                        size: 14,
-                        color: c.textTertiary,
-                      ),
-                    ],
+    final enabled = _proxy?.isUsable ?? false;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _openProxySetup,
+      onLongPress: enabled ? _disableProxy : null,
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Icon(
+              sfIcon('globe'),
+              size: 25,
+              color: enabled ? AppTheme.brand : c.textPrimary,
+            ),
+            if (enabled)
+              Positioned(
+                right: -2,
+                top: -2,
+                child: Container(
+                  width: 7,
+                  height: 7,
+                  decoration: BoxDecoration(
+                    color: AppTheme.brand,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: c.background, width: 1.2),
                   ),
                 ),
               ),
-            ),
-          ),
-          if (enabled) ...[
-            Container(width: 0.5, height: 28, color: c.divider),
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: _disableProxy,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Text(
-                  '关闭',
-                  style: TextStyle(fontSize: 14, color: AppTheme.tagRed),
-                ),
-              ),
-            ),
           ],
-        ],
+        ),
       ),
     );
   }

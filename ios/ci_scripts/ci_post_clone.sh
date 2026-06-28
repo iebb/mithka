@@ -43,15 +43,8 @@ echo "▸ git commit: $GIT_COMMIT"
 RAW_VERSION="$(awk '/^version:/ { print $2; exit }' pubspec.yaml)"
 test -n "$RAW_VERSION"
 APP_BUILD_NAME="${RAW_VERSION%%+*}"
-APP_BUILD_NUMBER="${RAW_VERSION#*+}"
-if [ "$APP_BUILD_NUMBER" = "$RAW_VERSION" ]; then
-  APP_BUILD_NUMBER=1
-fi
-IFS=. read -r APP_VERSION_MAJOR APP_VERSION_MINOR APP_VERSION_PATCH <<EOF
-$APP_BUILD_NAME
-EOF
-APP_VERSION_PATCH=$((APP_VERSION_PATCH - APP_VERSION_PATCH % 4))
-XCODE_BUILD_NAME="${APP_VERSION_MAJOR}.${APP_VERSION_MINOR}.${APP_VERSION_PATCH}"
+APP_BUILD_NUMBER="$(date -u '+%y%m%d%H')"
+XCODE_BUILD_NAME="$APP_BUILD_NAME"
 echo "▸ app version: $APP_BUILD_NAME+$APP_BUILD_NUMBER"
 echo "▸ Xcode Cloud App Store version override: $XCODE_BUILD_NAME+$APP_BUILD_NUMBER"
 python3 - <<PY
@@ -112,7 +105,18 @@ flutter pub get
 flutter build ios --config-only --release \
   --build-name="$XCODE_BUILD_NAME" \
   --build-number="$APP_BUILD_NUMBER" \
-  --dart-define="GIT_COMMIT=$GIT_COMMIT"
+  --dart-define="GIT_COMMIT=$GIT_COMMIT" \
+  --dart-define="SENTRY_DSN=${SENTRY_DSN:-}" \
+  --dart-define="SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT:-production}"
+python3 - <<PY >> ios/Flutter/Generated.xcconfig
+import os
+import urllib.parse
+
+dsn = os.environ.get("SENTRY_DSN", "")
+environment = os.environ.get("SENTRY_ENVIRONMENT", "production")
+print("SENTRY_DSN_ENCODED=" + urllib.parse.quote(dsn, safe=""))
+print("SENTRY_ENVIRONMENT=" + environment.replace("\\n", "").replace("\\r", ""))
+PY
 
 # --- CocoaPods --------------------------------------------------------------
 if ! command -v pod >/dev/null 2>&1; then

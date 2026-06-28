@@ -1002,46 +1002,54 @@ class _ClassicTabBar extends StatelessWidget {
                   child: GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: () => onSelect(i),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.max,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        SizedBox(
-                          height: 28,
-                          child: Stack(
-                            clipBehavior: Clip.none,
-                            alignment: Alignment.center,
-                            children: [
-                              Icon(
-                                sfIcon(items[i].icon),
-                                size: 26,
+                    child: Center(
+                      child: SizedBox(
+                        width: 64,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.max,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            SizedBox(
+                              width: 36,
+                              height: 28,
+                              child: Stack(
+                                clipBehavior: Clip.none,
+                                alignment: Alignment.center,
+                                children: [
+                                  Icon(
+                                    sfIcon(items[i].icon),
+                                    size: 26,
+                                    color: selection == i
+                                        ? AppTheme.brand
+                                        : c.textTertiary,
+                                  ),
+                                  if (i == 0 && unread > 0)
+                                    Positioned(
+                                      right: -14,
+                                      top: -2,
+                                      child: UnreadBadge(
+                                        count: unread,
+                                        onClear: onClearUnread,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              items[i].label.l10n(context),
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 11,
                                 color: selection == i
                                     ? AppTheme.brand
                                     : c.textTertiary,
                               ),
-                              if (i == 0 && unread > 0)
-                                Positioned(
-                                  right: -10,
-                                  top: 0,
-                                  child: UnreadBadge(
-                                    count: unread,
-                                    onClear: onClearUnread,
-                                  ),
-                                ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          items[i].label.l10n(context),
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: selection == i
-                                ? AppTheme.brand
-                                : c.textTertiary,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ),

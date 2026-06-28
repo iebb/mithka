@@ -17,6 +17,9 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
+val sentryDsn = providers.environmentVariable("SENTRY_DSN").orNull.orEmpty()
+val sentryEnvironment = providers.environmentVariable("SENTRY_ENVIRONMENT").orNull ?: "production"
+
 android {
     namespace = "ad.neko.mithka"
     compileSdk = flutter.compileSdkVersion
@@ -38,6 +41,8 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["sentryDsn"] = sentryDsn
+        manifestPlaceholders["sentryEnvironment"] = sentryEnvironment
     }
 
     packaging {

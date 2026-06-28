@@ -21,6 +21,29 @@ subprojects {
     }
 }
 
+// fvp 0.37.2 calls MDK_setGlobalOptionInt32("profiler.gpu", 1) from
+// JNI_OnLoad. On Android 14/15 devices that can abort the process while
+// System.loadLibrary("fvp") initializes, before Dart can configure fvp. Keep
+// fvp enabled, but remove that optional profiler switch before native build.
+subprojects {
+    if (name == "fvp") {
+        tasks.matching { it.name == "preBuild" }.configureEach {
+            doFirst {
+                val source = file("fvp_plugin.cpp")
+                if (!source.exists()) return@doFirst
+                val original = source.readText()
+                val patched = original.replace(
+                    "    mdk::SetGlobalOption(\"profiler.gpu\", 1);\n\n",
+                    "    // Disabled by Mithka: crashes inside MDK on Android 14/15 during library load.\n",
+                )
+                if (patched != original) {
+                    source.writeText(patched)
+                }
+            }
+        }
+    }
+}
+
 val newBuildDir: Directory =
     rootProject.layout.buildDirectory
         .dir("../../build")
