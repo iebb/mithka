@@ -68,7 +68,7 @@ dependencies:
   firebase_core: ^2.32.0
   firebase_analytics: ^10.10.7
   package_info_plus: ^9.0.1
-  sentry_flutter: ^8.14.2
+  sentry_flutter: ^9.22.0
   font_awesome_flutter: ^11.0.0
 
 dev_dependencies:
