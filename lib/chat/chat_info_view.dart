@@ -7,6 +7,8 @@
 //  Port of the Swift `ChatInfoView` / `ChatInfoViewModel`.
 //
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
@@ -15,6 +17,7 @@ import '../components/confirm_dialog.dart';
 import '../components/icon_grid.dart';
 import '../components/photo_avatar.dart';
 import '../components/sf_symbols.dart';
+import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -55,6 +58,12 @@ class _ChatInfoViewState extends State<ChatInfoView> {
   void initState() {
     super.initState();
     _vm.addListener(() {
+      final notice = _vm.takeNotice();
+      if (notice != null && mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) showToast(context, notice);
+        });
+      }
       if (mounted) setState(() {});
     });
     _vm.load();
@@ -245,10 +254,6 @@ class _ChatInfoViewState extends State<ChatInfoView> {
 
   Widget _memberGridCard() {
     final c = context.colors;
-    // Always a 5×3 (15-cell) grid: action tiles take the last 1–2 cells.
-    final actionTiles = (_vm.canInvite ? 1 : 0) + (_vm.canRemove ? 1 : 0);
-    final memberSlots = (15 - actionTiles).clamp(0, 15);
-    final shown = _vm.members.take(memberSlots).toList();
     return Container(
       decoration: _card,
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
@@ -280,38 +285,52 @@ class _ChatInfoViewState extends State<ChatInfoView> {
             ),
           ),
           const SizedBox(height: 12),
-          IconGrid(
-            perRow: 5,
-            children: [
-              for (final m in shown)
-                GestureDetector(
-                  onTap: _openMembers,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      PhotoAvatar(title: m.name, photo: m.photo, size: 48),
-                      const SizedBox(height: 6),
-                      Text(
-                        m.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 12, color: c.textPrimary),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final perRow = _gridColumnsForWidth(constraints.maxWidth);
+              final actionTiles =
+                  (_vm.canInvite ? 1 : 0) + (_vm.canRemove ? 1 : 0);
+              final maxTiles = perRow * 3;
+              final memberSlots = (maxTiles - actionTiles).clamp(0, maxTiles);
+              final shown = _vm.members.take(memberSlots).toList();
+              return IconGrid(
+                perRow: perRow,
+                children: [
+                  for (final m in shown)
+                    GestureDetector(
+                      onTap: _openMembers,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          PhotoAvatar(title: m.name, photo: m.photo, size: 48),
+                          const SizedBox(height: 6),
+                          Text(
+                            m.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: c.textPrimary,
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
-              if (_vm.canInvite)
-                _actionTile(
-                  sfIcon('plus'),
-                  '邀请',
-                  () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => AddMembersView(chatId: widget.chatId),
                     ),
-                  ),
-                ),
-              if (_vm.canRemove) _actionTile(sfIcon('minus'), '移除', _openMembers),
-            ],
+                  if (_vm.canInvite)
+                    _actionTile(
+                      sfIcon('plus'),
+                      '邀请',
+                      () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => AddMembersView(chatId: widget.chatId),
+                        ),
+                      ),
+                    ),
+                  if (_vm.canRemove)
+                    _actionTile(sfIcon('minus'), '移除', _openMembers),
+                ],
+              );
+            },
           ),
         ],
       ),
@@ -444,55 +463,73 @@ class _ChatInfoViewState extends State<ChatInfoView> {
               ],
             ),
             const SizedBox(height: 16),
-            Row(
-              children: [
-                _groupAppItem(
-                  icon: 'folder.fill',
-                  color: const Color(0xFFFFB300),
-                  label: '文件',
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => SharedMediaView(
-                        chatId: widget.chatId,
-                        title: widget.title,
-                        initialTab: 1,
-                        displayTitle: '群文件',
-                        lockedTab: true,
+            LayoutBuilder(
+              builder: (context, constraints) => IconGrid(
+                perRow: _gridColumnsForWidth(constraints.maxWidth),
+                children: [
+                  _groupAppItem(
+                    icon: 'folder.fill',
+                    color: const Color(0xFFFFB300),
+                    label: '文件',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => SharedMediaView(
+                          chatId: widget.chatId,
+                          title: widget.title,
+                          initialTab: 1,
+                          displayTitle: '群文件',
+                          lockedTab: true,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                _groupAppItem(
-                  icon: 'photo.fill',
-                  color: const Color(0xFF15A7F7),
-                  label: '相册',
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => SharedMediaView(
-                        chatId: widget.chatId,
-                        title: widget.title,
-                        initialTab: 0,
-                        displayTitle: '群相册',
-                        lockedTab: true,
+                  _groupAppItem(
+                    icon: 'photo.fill',
+                    color: const Color(0xFF15A7F7),
+                    label: '相册',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => SharedMediaView(
+                          chatId: widget.chatId,
+                          title: widget.title,
+                          initialTab: 0,
+                          displayTitle: '群相册',
+                          lockedTab: true,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                _groupAppItem(
-                  icon: 'star.fill',
-                  color: const Color(0xFF18C26E),
-                  label: '精华消息',
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => PinnedMessagesView(
-                        chatId: widget.chatId,
-                        title: widget.title,
+                  _groupAppItem(
+                    icon: 'video.fill',
+                    color: const Color(0xFF7B61FF),
+                    label: '群视频',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => SharedMediaView(
+                          chatId: widget.chatId,
+                          title: widget.title,
+                          initialTab: 4,
+                          displayTitle: '群视频',
+                          lockedTab: true,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const Expanded(child: SizedBox.shrink()),
-              ],
+                  _groupAppItem(
+                    icon: 'star.fill',
+                    color: const Color(0xFF18C26E),
+                    label: '精华消息',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => PinnedMessagesView(
+                          chatId: widget.chatId,
+                          title: widget.title,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -507,35 +544,36 @@ class _ChatInfoViewState extends State<ChatInfoView> {
     required VoidCallback onTap,
   }) {
     final c = context.colors;
-    return Expanded(
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.12),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(sfIcon(icon), size: 22, color: color),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
             ),
-            const SizedBox(height: 7),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 13, color: c.textSecondary),
-            ),
-          ],
-        ),
+            child: Icon(sfIcon(icon), size: 22, color: color),
+          ),
+          const SizedBox(height: 7),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 13, color: c.textSecondary),
+          ),
+        ],
       ),
     );
   }
+
+  int _gridColumnsForWidth(double width) =>
+      (width / 70).floor().clamp(5, 12).toInt();
 
   Widget _togglesCard() {
     final showGroupAssistant = _vm.isMuted || _vm.isArchived;
@@ -686,6 +724,7 @@ class _FolderMembership {
     required this.folder,
     required this.selected,
     required this.autoSelected,
+    this.editable = true,
   });
 
   final int id;
@@ -693,6 +732,7 @@ class _FolderMembership {
   Map<String, dynamic> folder;
   bool selected;
   bool autoSelected;
+  final bool editable;
   bool saving = false;
 }
 
@@ -737,10 +777,26 @@ class _ChatFolderMembershipViewState extends State<ChatFolderMembershipView> {
       for (final info in raw) {
         final id = info.integer('id') ?? info.integer('chat_folder_id');
         if (id == null) continue;
-        final folder = await _client.query({
-          '@type': 'getChatFolder',
-          'chat_folder_id': id,
-        });
+        Map<String, dynamic>? folder;
+        try {
+          folder = await _client.query({
+            '@type': 'getChatFolder',
+            'chat_folder_id': id,
+          });
+        } catch (_) {}
+        if (folder == null) {
+          loaded.add(
+            _FolderMembership(
+              id: id,
+              title: _folderTitle(const <String, dynamic>{}, info, id),
+              folder: const <String, dynamic>{},
+              selected: activeFolderIds.contains(id),
+              autoSelected: activeFolderIds.contains(id),
+              editable: false,
+            ),
+          );
+          continue;
+        }
         final included = _ids(folder, 'included_chat_ids');
         final excluded = _ids(folder, 'excluded_chat_ids');
         final autoSelected =
@@ -793,7 +849,7 @@ class _ChatFolderMembershipViewState extends State<ChatFolderMembershipView> {
   }
 
   Future<void> _toggle(_FolderMembership item, bool value) async {
-    if (item.saving || item.selected == value) return;
+    if (!item.editable || item.saving || item.selected == value) return;
     setState(() {
       item.selected = value;
       item.saving = true;
@@ -1042,10 +1098,15 @@ class _ChatFolderMembershipViewState extends State<ChatFolderMembershipView> {
                 ),
               )
             else
-              CupertinoSwitch(
-                value: item.selected,
-                activeTrackColor: AppTheme.brand,
-                onChanged: (value) => _toggle(item, value),
+              Opacity(
+                opacity: item.editable ? 1 : 0.45,
+                child: CupertinoSwitch(
+                  value: item.selected,
+                  activeTrackColor: AppTheme.brand,
+                  onChanged: item.editable
+                      ? (value) => _toggle(item, value)
+                      : null,
+                ),
               ),
           ],
         ),
@@ -1075,6 +1136,13 @@ class ChatInfoViewModel extends ChangeNotifier {
   bool canManageGroup = false;
   bool isMember = false; // confirmed member → may quit; false hides 退出
   bool _loaded = false;
+  String? _notice;
+
+  String? takeNotice() {
+    final value = _notice;
+    _notice = null;
+    return value;
+  }
 
   void load() {
     if (_loaded) return;
@@ -1254,12 +1322,22 @@ class ChatInfoViewModel extends ChangeNotifier {
   void setPinned(bool value) {
     isPinned = value;
     notifyListeners();
-    TdClient.shared.send({
-      '@type': 'toggleChatIsPinned',
-      'chat_list': {'@type': 'chatListMain'},
-      'chat_id': chatId,
-      'is_pinned': value,
-    });
+    unawaited(_setPinned(value));
+  }
+
+  Future<void> _setPinned(bool value) async {
+    try {
+      await TdClient.shared.query({
+        '@type': 'toggleChatIsPinned',
+        'chat_list': {'@type': 'chatListMain'},
+        'chat_id': chatId,
+        'is_pinned': value,
+      });
+    } catch (e) {
+      isPinned = !value;
+      _notice = _pinErrorNotice(e);
+      notifyListeners();
+    }
   }
 
   void setMuted(bool value) {
@@ -1316,5 +1394,24 @@ class ChatInfoViewModel extends ChangeNotifier {
 
   void leaveChat() {
     TdClient.shared.send({'@type': 'leaveChat', 'chat_id': chatId});
+  }
+
+  String _pinErrorNotice(Object error) {
+    final message = error is TdError ? error.message : error.toString();
+    final text = message.trim();
+    final normalized = text.toLowerCase().replaceAll('_', ' ');
+    final hitPinned =
+        normalized.contains('pin') ||
+        normalized.contains('pinned') ||
+        normalized.contains('置顶');
+    final hitLimit =
+        normalized.contains('limit') ||
+        normalized.contains('too many') ||
+        normalized.contains('too much') ||
+        normalized.contains('many') ||
+        normalized.contains('much') ||
+        normalized.contains('上限');
+    if (hitPinned && hitLimit) return '置顶失败：置顶数量已达上限';
+    return text.isEmpty ? '置顶失败' : '置顶失败：$text';
   }
 }

@@ -41,8 +41,12 @@ class AboutView extends StatelessWidget {
                           gradient: AppTheme.brandGradient,
                           borderRadius: BorderRadius.circular(20),
                         ),
-                        child: const Center(
-                          child: Text('🐧', style: TextStyle(fontSize: 46)),
+                        child: const Padding(
+                          padding: EdgeInsets.all(10),
+                          child: Image(
+                            image: AssetImage('assets/penguin.png'),
+                            fit: BoxFit.contain,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 14),

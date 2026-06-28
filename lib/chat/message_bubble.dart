@@ -99,7 +99,7 @@ class _MessageBubbleState extends State<MessageBubble>
   static const double _replyTrigger = 48;
   static const double _replyRestingLimit = 72;
   static const double _replyHardLimit = 104;
-  static const double _mediaMaxSide = 200;
+  static const double _bubbleMaxWidthFraction = 0.75;
 
   final VoicePlayer _voice = VoicePlayer();
   final GlobalKey _bubbleKey = GlobalKey();
@@ -122,6 +122,18 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   ChatMessage get message => widget.message;
+
+  double _messageLaneWidth() {
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    // Row chrome: outer padding, the opposite-side spacer, avatar and gap.
+    final reserved = 12.0 * 2 + 48.0 + 38.0 + 8.0;
+    return math.max(160.0, screenWidth - reserved);
+  }
+
+  double _bubbleMaxWidth() =>
+      math.max(160.0, _messageLaneWidth() * _bubbleMaxWidthFraction);
+
+  double _mediaMaxWidth() => math.max(152.0, _bubbleMaxWidth() - 8.0);
 
   @override
   void initState() {
@@ -538,7 +550,9 @@ class _MessageBubbleState extends State<MessageBubble>
               if (message.isEdited && outgoing) const SizedBox(width: 3),
               if (outgoing)
                 Icon(
-                  widget.isRead ? sfIcon('checkmark.double') : sfIcon('checkmark'),
+                  widget.isRead
+                      ? sfIcon('checkmark.double')
+                      : sfIcon('checkmark'),
                   size: 14,
                   color: widget.isRead ? Colors.white : faint,
                 ),
@@ -567,7 +581,7 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   Widget _buttonRows(bool outgoing) {
-    final maxWidth = math.min(MediaQuery.sizeOf(context).width * 0.68, 286.0);
+    final maxWidth = _bubbleMaxWidth();
     return SizedBox(
       width: maxWidth,
       child: Column(
@@ -642,6 +656,7 @@ class _MessageBubbleState extends State<MessageBubble>
     }
     _linkRecognizers.clear();
     return Container(
+      constraints: BoxConstraints(maxWidth: _bubbleMaxWidth()),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       decoration: BoxDecoration(
         color: outgoing ? AppTheme.bubbleOutgoing : c.bubbleIncoming,
@@ -688,7 +703,7 @@ class _MessageBubbleState extends State<MessageBubble>
         : c.textSecondary;
     final link = outgoing ? Colors.white : c.linkBlue;
     return Container(
-      width: math.min(MediaQuery.sizeOf(context).width * 0.70, 310.0),
+      width: _bubbleMaxWidth(),
       decoration: BoxDecoration(
         color: outgoing
             ? Colors.white.withValues(alpha: 0.10)
@@ -747,7 +762,7 @@ class _MessageBubbleState extends State<MessageBubble>
         ? Colors.white.withValues(alpha: 0.75)
         : c.textSecondary;
     final link = outgoing ? Colors.white : c.linkBlue;
-    final maxWidth = math.min(MediaQuery.sizeOf(context).width * 0.70, 310.0);
+    final maxWidth = _bubbleMaxWidth();
     final media = _linkPreviewMedia(preview, maxWidth);
     final textChildren = <Widget>[
       if (preview.siteName.isNotEmpty)
@@ -1006,10 +1021,7 @@ class _MessageBubbleState extends State<MessageBubble>
               color: const Color(0xFFFF3B30),
               borderRadius: BorderRadius.circular(4),
             ),
-            child: Icon(sfIcon('music.note'),
-              color: Colors.white,
-              size: 14,
-            ),
+            child: Icon(sfIcon('music.note'), color: Colors.white, size: 14),
           ),
           const SizedBox(width: 7),
           Text(
@@ -1089,7 +1101,11 @@ class _MessageBubbleState extends State<MessageBubble>
         : Container(
             color: AppTheme.brand.withValues(alpha: 0.12),
             alignment: Alignment.center,
-            child: Icon(sfIcon('music.note.list'), size: 28, color: c.textSecondary),
+            child: Icon(
+              sfIcon('music.note.list'),
+              size: 28,
+              color: c.textSecondary,
+            ),
           );
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -1306,7 +1322,9 @@ class _MessageBubbleState extends State<MessageBubble>
             if (widget.message.isEdited && outgoing) const SizedBox(width: 4),
             if (outgoing)
               Icon(
-                widget.isRead ? sfIcon('checkmark.double') : sfIcon('checkmark'),
+                widget.isRead
+                    ? sfIcon('checkmark.double')
+                    : sfIcon('checkmark'),
                 size: 13,
                 color: widget.isRead ? Colors.white : faint,
               ),
@@ -1512,7 +1530,7 @@ class _MessageBubbleState extends State<MessageBubble>
     final language = (pre.language ?? '').trim();
     final codeBackground = _codeBackgroundColor;
     return Container(
-      width: math.min(MediaQuery.sizeOf(context).width * 0.70, 310.0),
+      width: _bubbleMaxWidth(),
       decoration: BoxDecoration(
         color: codeBackground,
         borderRadius: BorderRadius.circular(7),
@@ -1873,33 +1891,89 @@ class _MessageBubbleState extends State<MessageBubble>
   Widget _imageContent(TdFileRef image, bool outgoing) {
     final size = _imageDisplaySize();
     final caption = _caption();
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: outgoing
-          ? CrossAxisAlignment.end
-          : CrossAxisAlignment.start,
-      children: [
-        GestureDetector(
-          onTap: () => widget.onOpenImage?.call(message),
-          child: SizedBox(
-            width: size.width,
-            height: size.height,
-            // Fit (contain) so the whole image shows at its aspect ratio — never
-            // cropped. The box is already aspect-correct when dimensions are known.
-            child: TDImage(
-              photo: image,
-              cornerRadius: 10,
-              fit: BoxFit.contain,
-              cacheWidth: _cachePx(size.width),
-              cacheHeight: _cachePx(size.height),
+    final grouped = _groupsMediaCaption(caption);
+    final mediaRadius = grouped ? 0.0 : 10.0;
+    final media = GestureDetector(
+      onTap: () => widget.onOpenImage?.call(message),
+      child: SizedBox(
+        width: size.width,
+        height: size.height,
+        // Fit (contain) so the whole image shows at its aspect ratio — never
+        // cropped. The box is already aspect-correct when dimensions are known.
+        child: TDImage(
+          photo: image,
+          cornerRadius: mediaRadius,
+          fit: BoxFit.contain,
+          cacheWidth: _cachePx(size.width),
+          cacheHeight: _cachePx(size.height),
+          showProgress: true,
+        ),
+      ),
+    );
+    return _mediaWithCaption(
+      media: media,
+      caption: caption,
+      outgoing: outgoing,
+    );
+  }
+
+  bool _groupsMediaCaption(String? caption) =>
+      caption != null && context.watch<ThemeController>().groupImageMessages;
+
+  Widget _mediaWithCaption({
+    required Widget media,
+    required String? caption,
+    required bool outgoing,
+  }) {
+    if (!_groupsMediaCaption(caption)) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: outgoing
+            ? CrossAxisAlignment.end
+            : CrossAxisAlignment.start,
+        children: [
+          media,
+          if (caption != null) ...[
+            const SizedBox(height: 4),
+            _textBubble(caption, outgoing),
+          ],
+        ],
+      );
+    }
+
+    final c = context.colors;
+    final baseColor = outgoing
+        ? AppTheme.bubbleOutgoingText
+        : c.bubbleIncomingText;
+    final linkColor = outgoing ? Colors.white : c.linkBlue;
+    return Container(
+      decoration: BoxDecoration(
+        color: outgoing ? AppTheme.bubbleOutgoing : c.bubbleIncoming,
+        borderRadius: BorderRadius.circular(8),
+        border: outgoing ? null : Border.all(color: c.divider, width: 0.5),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          media,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(6, 7, 6, 3),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: _richTextWidgets(
+                caption!,
+                baseColor,
+                linkColor,
+                outgoing,
+                false,
+              ),
             ),
           ),
-        ),
-        if (caption != null) ...[
-          const SizedBox(height: 4),
-          _textBubble(caption, outgoing),
         ],
-      ],
+      ),
     );
   }
 
@@ -1926,80 +2000,69 @@ class _MessageBubbleState extends State<MessageBubble>
     final size = _imageDisplaySize();
     final caption = _caption();
     final dur = message.videoDuration ?? 0;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: outgoing
-          ? CrossAxisAlignment.end
-          : CrossAxisAlignment.start,
-      children: [
-        GestureDetector(
-          onTap: () => widget.onPlayVideo?.call(message),
-          child: SizedBox(
-            width: size.width,
-            height: size.height,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: message.image != null
-                      ? TDImage(
-                          photo: message.image,
-                          cornerRadius: 10,
-                          fit: BoxFit.cover,
-                          cacheWidth: _cachePx(size.width),
-                          cacheHeight: _cachePx(size.height),
-                        )
-                      : Container(color: Colors.black26),
-                ),
-                // Play button.
-                Center(
-                  child: Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.45),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      sfIcon('play.fill'),
-                      color: Colors.white,
-                      size: 24,
-                    ),
-                  ),
-                ),
-                // Duration badge.
-                if (dur > 0)
-                  Positioned(
-                    left: 6,
-                    bottom: 6,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.5),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        _durationString(dur),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
+    final grouped = _groupsMediaCaption(caption);
+    final mediaRadius = grouped ? 0.0 : 10.0;
+    final media = GestureDetector(
+      onTap: () => widget.onPlayVideo?.call(message),
+      child: SizedBox(
+        width: size.width,
+        height: size.height,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(mediaRadius),
+              child: message.image != null
+                  ? TDImage(
+                      photo: message.image,
+                      cornerRadius: mediaRadius,
+                      fit: BoxFit.cover,
+                      cacheWidth: _cachePx(size.width),
+                      cacheHeight: _cachePx(size.height),
+                      showProgress: true,
+                    )
+                  : Container(color: Colors.black26),
             ),
-          ),
+            // Play button.
+            Center(
+              child: Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.45),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(sfIcon('play.fill'), color: Colors.white, size: 24),
+              ),
+            ),
+            // Duration badge.
+            if (dur > 0)
+              Positioned(
+                left: 6,
+                bottom: 6,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    _durationString(dur),
+                    style: const TextStyle(color: Colors.white, fontSize: 11),
+                  ),
+                ),
+              ),
+          ],
         ),
-        if (caption != null) ...[
-          const SizedBox(height: 4),
-          _textBubble(caption, outgoing),
-        ],
-      ],
+      ),
+    );
+    return _mediaWithCaption(
+      media: media,
+      caption: caption,
+      outgoing: outgoing,
     );
   }
 
@@ -2011,12 +2074,13 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   Size _imageDisplaySize() {
+    final maxWidth = _mediaMaxWidth();
     return _fitSize(
       width: message.imageWidth,
       height: message.imageHeight,
-      maxWidth: _mediaMaxSide,
-      maxHeight: _mediaMaxSide,
-      fallback: const Size(_mediaMaxSide, _mediaMaxSide),
+      maxWidth: maxWidth,
+      maxHeight: maxWidth,
+      fallback: Size(maxWidth, maxWidth),
     );
   }
 
@@ -2325,10 +2389,7 @@ class _MessageBubbleState extends State<MessageBubble>
                 shape: BoxShape.circle,
                 border: Border.all(color: c.card, width: 1.5),
               ),
-              child: Icon(sfIcon('arrow.down'),
-                size: 11,
-                color: Colors.white,
-              ),
+              child: Icon(sfIcon('arrow.down'), size: 11, color: Colors.white),
             ),
           ),
         ],

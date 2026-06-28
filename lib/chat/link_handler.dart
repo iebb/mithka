@@ -8,6 +8,7 @@
 
 import 'package:flutter/material.dart';
 import '../components/confirm_dialog.dart';
+import '../components/toast.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../tdlib/json_helpers.dart';
@@ -16,11 +17,8 @@ import 'chat_view.dart';
 
 Future<void> openLink(BuildContext context, String url) async {
   final nav = Navigator.of(context);
-  final lower = url.toLowerCase();
-  final isTelegram =
-      lower.startsWith('tg:') ||
-      lower.contains('t.me/') ||
-      lower.contains('telegram.me/');
+  final link = _normalizeTelegramLink(url);
+  final isTelegram = link != null;
   if (!isTelegram) {
     await _external(url);
     return;
@@ -29,7 +27,7 @@ Future<void> openLink(BuildContext context, String url) async {
   try {
     final type = await TdClient.shared.query({
       '@type': 'getInternalLinkType',
-      'link': url,
+      'link': link,
     });
     switch (type.type) {
       case 'internalLinkTypePublicChat':
@@ -42,7 +40,7 @@ Future<void> openLink(BuildContext context, String url) async {
       case 'internalLinkTypeMessage':
         final info = await TdClient.shared.query({
           '@type': 'getMessageLinkInfo',
-          'url': url,
+          'url': link,
         });
         final message = info.obj('message');
         final chatId = info.int64('chat_id') ?? message?.int64('chat_id');
@@ -66,14 +64,138 @@ Future<void> openLink(BuildContext context, String url) async {
           await _openChat(nav, chat.int64('id'));
         }
       case 'internalLinkTypeChatInvite':
-        if (context.mounted) await _joinInvite(context, nav, url);
+        if (context.mounted) await _joinInvite(context, nav, link);
       default:
-        await _external(url);
+        if (!await _openTelegramFallback(nav, link) && context.mounted) {
+          showToast(context, '暂不支持打开此 Telegram 链接');
+        }
     }
   } catch (_) {
-    await _external(url);
+    if (!await _openTelegramFallback(nav, link) && context.mounted) {
+      showToast(context, '无法打开 Telegram 链接');
+    }
   }
 }
+
+String? _normalizeTelegramLink(String raw) {
+  final trimmed = raw.trim();
+  if (trimmed.isEmpty) return null;
+  final lower = trimmed.toLowerCase();
+  if (lower.startsWith('tg:')) return trimmed;
+
+  var candidate = trimmed;
+  if (!candidate.contains('://')) candidate = 'https://$candidate';
+  final uri = Uri.tryParse(candidate);
+  if (uri == null) return null;
+  final host = uri.host.toLowerCase();
+  if (host == 't.me' ||
+      host == 'telegram.me' ||
+      host == 'telegram.dog' ||
+      host == 'www.t.me' ||
+      host == 'www.telegram.me' ||
+      host == 'www.telegram.dog') {
+    return uri.replace(scheme: 'https').toString();
+  }
+  return null;
+}
+
+Future<bool> _openTelegramFallback(NavigatorState nav, String link) async {
+  final uri = Uri.tryParse(link);
+  if (uri == null) return false;
+
+  if (uri.scheme.toLowerCase() == 'tg') {
+    final host = uri.host.toLowerCase();
+    final params = uri.queryParameters;
+    final userId = int.tryParse(params['id'] ?? '');
+    if (host == 'user' && userId != null) {
+      return _openUser(nav, userId);
+    }
+    if (host == 'resolve') {
+      final username = params['domain'] ?? params['username'];
+      final messageId = int.tryParse(params['post'] ?? '');
+      if (username != null && username.trim().isNotEmpty) {
+        return _openPublicChat(
+          nav,
+          username.trim(),
+          initialMessageId: messageId,
+        );
+      }
+    }
+    return false;
+  }
+
+  final host = uri.host.toLowerCase();
+  final isTelegramHost =
+      host == 't.me' ||
+      host == 'telegram.me' ||
+      host == 'telegram.dog' ||
+      host == 'www.t.me' ||
+      host == 'www.telegram.me' ||
+      host == 'www.telegram.dog';
+  if (!isTelegramHost) return false;
+
+  final segments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
+  if (segments.isEmpty) return false;
+
+  final first = segments.first;
+  final lowerFirst = first.toLowerCase();
+  if (first.startsWith('+') || lowerFirst == 'joinchat') return false;
+  if (lowerFirst == 'c') {
+    return _openPrivateMessageLink(nav, segments);
+  }
+  if (!_isPublicUsername(first)) return false;
+
+  final messageId = segments.length > 1 ? int.tryParse(segments[1]) : null;
+  return _openPublicChat(nav, first, initialMessageId: messageId);
+}
+
+Future<bool> _openUser(NavigatorState nav, int userId) async {
+  try {
+    final chat = await TdClient.shared.query({
+      '@type': 'createPrivateChat',
+      'user_id': userId,
+      'force': false,
+    });
+    await _openChat(nav, chat.int64('id'));
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+Future<bool> _openPublicChat(
+  NavigatorState nav,
+  String username, {
+  int? initialMessageId,
+}) async {
+  try {
+    final chat = await TdClient.shared.query({
+      '@type': 'searchPublicChat',
+      'username': username,
+    });
+    await _openChat(nav, chat.int64('id'), initialMessageId: initialMessageId);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+Future<bool> _openPrivateMessageLink(
+  NavigatorState nav,
+  List<String> segments,
+) async {
+  if (segments.length < 3) return false;
+  final internalId = int.tryParse(segments[1]);
+  final messageId = int.tryParse(segments[2]);
+  if (internalId == null) return false;
+  final chatId = int.tryParse('-100$internalId');
+  if (chatId == null) return false;
+  await _openChat(nav, chatId, initialMessageId: messageId);
+  return true;
+}
+
+bool _isPublicUsername(String value) =>
+    RegExp(r'^[A-Za-z0-9_]{3,32}$').hasMatch(value);
 
 Future<void> _openChat(
   NavigatorState nav,

@@ -304,7 +304,11 @@ class _StoryViewerViewState extends State<StoryViewerView> {
                       child: SizedBox(
                         width: 36,
                         height: 36,
-                        child: Icon(sfIcon('xmark'), size: 22, color: Colors.white),
+                        child: Icon(
+                          sfIcon('xmark'),
+                          size: 22,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                   ],

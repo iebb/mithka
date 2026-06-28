@@ -15,6 +15,7 @@ import 'package:provider/provider.dart';
 import '../call/call_manager.dart';
 import '../call/call_screen.dart';
 import '../chat/chat_view.dart';
+import '../chat/video_player_view.dart';
 import '../channels/topic_chat_view.dart';
 import '../channels/topic_channels_view.dart';
 import '../chats/chat_list_view.dart';
@@ -22,6 +23,7 @@ import '../components/drawer_controller.dart' as dc;
 import '../components/sf_symbols.dart';
 import '../components/ui_components.dart';
 import '../contacts/contacts_view.dart';
+import '../l10n/app_localizations.dart';
 import '../moments/moments_view.dart';
 import '../profile/profile_view.dart';
 import '../tdlib/json_helpers.dart';
@@ -29,6 +31,7 @@ import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import '../update/update_checker.dart';
+import 'video_split_controller.dart';
 
 /// Global unread badge source.
 class UnreadBadgeModel extends ChangeNotifier {
@@ -66,25 +69,54 @@ class MainTabView extends StatefulWidget {
   State<MainTabView> createState() => _MainTabViewState();
 }
 
-class _MainTabViewState extends State<MainTabView> {
+class MainSplitRootView extends StatefulWidget {
+  const MainSplitRootView({super.key});
+
+  @override
+  State<MainSplitRootView> createState() => _MainSplitRootViewState();
+}
+
+class _MainTabViewState extends _MainRootViewState<MainTabView> {
+  @override
+  bool get checkForUpdates => true;
+
+  @override
+  bool get showCallOverlay => true;
+}
+
+class _MainSplitRootViewState extends _MainRootViewState<MainSplitRootView> {}
+
+abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
+  bool get checkForUpdates => false;
+  bool get showCallOverlay => false;
+
   int _selection = 0;
   late final dc.TabBarVisibility _tabBar = dc.TabBarVisibility();
   late final UnreadBadgeModel _unread = UnreadBadgeModel()..start();
   late final CallManager _calls = CallManager()..start();
   late final ChatListController _chatListController = ChatListController();
+  final VideoSplitController _videoSplit = VideoSplitController.instance;
   ChatListSelection? _selectedMessageChat;
+  Widget? _selectedChannelDetail;
+  Widget? _selectedContactDetail;
+  Widget? _selectedMomentDetail;
+  double _videoSplitFraction = 0.42;
+  OverlayEntry? _pictureInPictureVideo;
 
   @override
   void initState() {
     super.initState();
     // Android-only: check GitHub Releases for a newer same-ABI build (once).
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) UpdateChecker.maybePrompt(context);
-    });
+    if (checkForUpdates) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) UpdateChecker.maybePrompt(context);
+      });
+    }
   }
 
   @override
   void dispose() {
+    _pictureInPictureVideo?.remove();
     _calls.dispose();
     _chatListController.dispose();
     super.dispose();
@@ -117,11 +149,29 @@ class _MainTabViewState extends State<MainTabView> {
   };
 
   Future<bool> _onWillPop() async {
-    if (_selection == 0 &&
-        _usesMessageSplit(context) &&
-        _selectedMessageChat != null) {
-      setState(() => _selectedMessageChat = null);
-      return false;
+    if (_usesTabletSplit(context)) {
+      switch (_selection) {
+        case 0:
+          if (_selectedMessageChat != null) {
+            setState(() => _selectedMessageChat = null);
+            return false;
+          }
+        case 1:
+          if (_selectedChannelDetail != null) {
+            setState(() => _selectedChannelDetail = null);
+            return false;
+          }
+        case 2:
+          if (_selectedContactDetail != null) {
+            setState(() => _selectedContactDetail = null);
+            return false;
+          }
+        case 3:
+          if (_selectedMomentDetail != null) {
+            setState(() => _selectedMomentDetail = null);
+            return false;
+          }
+      }
     }
     final nav = _navKeys[_selection].currentState;
     if (nav != null && nav.canPop()) {
@@ -141,6 +191,7 @@ class _MainTabViewState extends State<MainTabView> {
     if (tabIndex == _selection) {
       // Tapping the active tab pops to its root.
       _navKeys[tabIndex].currentState?.popUntil((r) => r.isFirst);
+      if (_usesTabletSplit(context)) _clearTabletDetail(tabIndex);
       if (shouldJumpUnread) _scrollMessagesToFirstUnread();
       return;
     }
@@ -152,6 +203,27 @@ class _MainTabViewState extends State<MainTabView> {
     _chatListController.scrollToFirstUnread();
   }
 
+  void _clearTabletDetail(int tabIndex) {
+    switch (tabIndex) {
+      case 0:
+        if (_selectedMessageChat != null) {
+          setState(() => _selectedMessageChat = null);
+        }
+      case 1:
+        if (_selectedChannelDetail != null) {
+          setState(() => _selectedChannelDetail = null);
+        }
+      case 2:
+        if (_selectedContactDetail != null) {
+          setState(() => _selectedContactDetail = null);
+        }
+      case 3:
+        if (_selectedMomentDetail != null) {
+          setState(() => _selectedMomentDetail = null);
+        }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
@@ -159,6 +231,7 @@ class _MainTabViewState extends State<MainTabView> {
         ChangeNotifierProvider.value(value: _tabBar),
         ChangeNotifierProvider.value(value: _unread),
         ChangeNotifierProvider.value(value: _calls),
+        ChangeNotifierProvider.value(value: _videoSplit),
       ],
       // Material ancestor so the tab content (bare Containers) gets a proper
       // DefaultTextStyle instead of the debug red/yellow-underline fallback.
@@ -169,21 +242,360 @@ class _MainTabViewState extends State<MainTabView> {
           onPopInvokedWithResult: (didPop, _) async {
             if (!didPop) await _onWillPop();
           },
-          child: Stack(
-            children: [
-              _classicTabs(),
-              _drawerOverlay(),
-              // Full-screen call HUD over everything when a call is active.
-              Consumer<CallManager>(
-                builder: (context, calls, _) => calls.call == null
-                    ? const SizedBox.shrink()
-                    : Positioned.fill(child: CallScreen(manager: calls)),
-              ),
-            ],
+          child: _videoSplitHost(_rootStack()),
+        ),
+      ),
+    );
+  }
+
+  Widget _rootStack() {
+    return Stack(
+      children: [
+        _classicTabs(),
+        _drawerOverlay(),
+        // Full-screen call HUD over everything when a call is active.
+        if (showCallOverlay)
+          Consumer<CallManager>(
+            builder: (context, calls, _) => calls.call == null
+                ? const SizedBox.shrink()
+                : Positioned.fill(child: CallScreen(manager: calls)),
+          ),
+      ],
+    );
+  }
+
+  Widget _videoSplitHost(Widget root) {
+    return AnimatedBuilder(
+      animation: _videoSplit,
+      builder: (context, _) {
+        final session = _videoSplit.session;
+        if (session == null) return root;
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final wide =
+                constraints.maxWidth >= 760 &&
+                constraints.maxWidth > constraints.maxHeight;
+            if (wide) {
+              final videoWidth = (constraints.maxWidth * _videoSplitFraction)
+                  .clamp(280.0, constraints.maxWidth - 320)
+                  .toDouble();
+              return Row(
+                children: [
+                  Expanded(child: root),
+                  _videoSplitDivider(
+                    vertical: true,
+                    onDrag: (delta) => setState(() {
+                      _videoSplitFraction =
+                          (_videoSplitFraction - delta / constraints.maxWidth)
+                              .clamp(0.25, 0.72);
+                    }),
+                  ),
+                  SizedBox(width: videoWidth, child: _videoSibling(session)),
+                ],
+              );
+            }
+
+            final videoHeight = (constraints.maxHeight * _videoSplitFraction)
+                .clamp(220.0, constraints.maxHeight - 260)
+                .toDouble();
+            return Column(
+              children: [
+                SizedBox(height: videoHeight, child: _videoSibling(session)),
+                _videoSplitDivider(
+                  vertical: false,
+                  onDrag: (delta) => setState(() {
+                    _videoSplitFraction =
+                        (_videoSplitFraction + delta / constraints.maxHeight)
+                            .clamp(0.25, 0.72);
+                  }),
+                ),
+                Expanded(child: root),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _videoSibling(VideoSplitSession session) {
+    return ColoredBox(
+      color: Colors.black,
+      child: VideoPlayerView(
+        video: session.video,
+        thumb: session.thumb,
+        width: session.width,
+        height: session.height,
+        presentation: VideoPlayerPresentation.embedded,
+        onClose: _videoSplit.close,
+        sourceChatId: session.chatId,
+        messageId: session.messageId,
+        currentMode: VideoDisplayMode.split,
+        onSwitchMode: (mode) => _switchSiblingVideoMode(session, mode),
+      ),
+    );
+  }
+
+  Widget _videoSplitDivider({
+    required bool vertical,
+    required ValueChanged<double> onDrag,
+  }) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onPanUpdate: (details) =>
+          onDrag(vertical ? details.delta.dx : details.delta.dy),
+      child: Container(
+        width: vertical ? 14 : double.infinity,
+        height: vertical ? double.infinity : 14,
+        color: const Color(0xFF111113),
+        alignment: Alignment.center,
+        child: Container(
+          width: vertical ? 3 : 52,
+          height: vertical ? 52 : 3,
+          decoration: BoxDecoration(
+            color: const Color(0xFF3A3A3C),
+            borderRadius: BorderRadius.circular(2),
           ),
         ),
       ),
     );
+  }
+
+  void _switchSiblingVideoMode(
+    VideoSplitSession session,
+    VideoDisplayMode mode,
+  ) {
+    switch (mode) {
+      case VideoDisplayMode.split:
+        break;
+      case VideoDisplayMode.pictureInPicture:
+        _videoSplit.close();
+        _showSplitVideoPictureInPicture(session);
+      case VideoDisplayMode.fullscreen:
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            fullscreenDialog: true,
+            builder: (_) => VideoPlayerView(
+              video: session.video,
+              thumb: session.thumb,
+              width: session.width,
+              height: session.height,
+              sourceChatId: session.chatId,
+              messageId: session.messageId,
+              currentMode: VideoDisplayMode.fullscreen,
+            ),
+          ),
+        );
+    }
+  }
+
+  void _showSplitVideoPictureInPicture(VideoSplitSession session) {
+    _pictureInPictureVideo?.remove();
+    _pictureInPictureVideo = null;
+    final overlay = Overlay.of(context, rootOverlay: true);
+    final screen = MediaQuery.sizeOf(context);
+    const margin = 16.0;
+    final aspect =
+        (session.width != null &&
+            session.height != null &&
+            session.width! > 0 &&
+            session.height! > 0)
+        ? session.width! / session.height!
+        : 16 / 9;
+    var boxWidth = (screen.width * 0.46).clamp(220.0, 360.0);
+    var boxHeight = (boxWidth / aspect).clamp(130.0, 260.0);
+    boxWidth = boxHeight * aspect;
+    var offset = Offset(
+      screen.width - boxWidth - margin,
+      screen.height - boxHeight - MediaQuery.paddingOf(context).bottom - 110,
+    );
+
+    late final OverlayEntry entry;
+    void close() {
+      entry.remove();
+      if (_pictureInPictureVideo == entry) {
+        _pictureInPictureVideo = null;
+      }
+    }
+
+    void switchMode(VideoDisplayMode mode) {
+      if (mode == VideoDisplayMode.pictureInPicture) return;
+      close();
+      switch (mode) {
+        case VideoDisplayMode.pictureInPicture:
+          break;
+        case VideoDisplayMode.split:
+          _videoSplit.play(session);
+        case VideoDisplayMode.fullscreen:
+          Navigator.of(context, rootNavigator: true).push(
+            MaterialPageRoute(
+              fullscreenDialog: true,
+              builder: (routeContext) => VideoPlayerView(
+                video: session.video,
+                thumb: session.thumb,
+                width: session.width,
+                height: session.height,
+                sourceChatId: session.chatId,
+                messageId: session.messageId,
+                currentMode: VideoDisplayMode.fullscreen,
+                onSwitchMode: (nextMode) {
+                  switch (nextMode) {
+                    case VideoDisplayMode.fullscreen:
+                      break;
+                    case VideoDisplayMode.pictureInPicture:
+                      Navigator.of(routeContext).maybePop();
+                      _showSplitVideoPictureInPicture(session);
+                    case VideoDisplayMode.split:
+                      Navigator.of(routeContext).maybePop();
+                      _videoSplit.play(session);
+                  }
+                },
+              ),
+            ),
+          );
+      }
+    }
+
+    entry = OverlayEntry(
+      builder: (overlayContext) => StatefulBuilder(
+        builder: (context, setOverlayState) {
+          final media = MediaQuery.sizeOf(context);
+          final padding = MediaQuery.paddingOf(context);
+          void clampOffset() {
+            offset = Offset(
+              offset.dx.clamp(margin, media.width - boxWidth - margin),
+              offset.dy.clamp(
+                padding.top + margin,
+                media.height - boxHeight - padding.bottom - margin,
+              ),
+            );
+          }
+
+          void move(DragUpdateDetails details) {
+            setOverlayState(() {
+              offset += details.delta;
+              clampOffset();
+            });
+          }
+
+          void resizeFromCorner(
+            DragUpdateDetails details, {
+            required int horizontalSign,
+            required int verticalSign,
+          }) {
+            setOverlayState(() {
+              final oldWidth = boxWidth;
+              final oldHeight = boxHeight;
+              final minW = math.min(180.0, media.width - margin * 2);
+              final maxW = math.max(minW, media.width - margin * 2);
+              final widthFromX = boxWidth + details.delta.dx * horizontalSign;
+              final widthFromY =
+                  boxWidth + details.delta.dy * verticalSign * aspect;
+              final nextWidth =
+                  (widthFromX - boxWidth).abs() > (widthFromY - boxWidth).abs()
+                  ? widthFromX
+                  : widthFromY;
+              boxWidth = nextWidth.clamp(minW, maxW);
+              boxHeight = boxWidth / aspect;
+              if (boxHeight > media.height * 0.72) {
+                boxHeight = media.height * 0.72;
+                boxWidth = boxHeight * aspect;
+              }
+              if (boxHeight < 110) {
+                boxHeight = 110;
+                boxWidth = boxHeight * aspect;
+              }
+              if (horizontalSign < 0) {
+                offset = offset.translate(oldWidth - boxWidth, 0);
+              }
+              if (verticalSign < 0) {
+                offset = offset.translate(0, oldHeight - boxHeight);
+              }
+              clampOffset();
+            });
+          }
+
+          return Positioned(
+            left: offset.dx,
+            top: offset.dy,
+            width: boxWidth,
+            height: boxHeight,
+            child: Material(
+              type: MaterialType.transparency,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Positioned.fill(
+                    child: GestureDetector(
+                      onPanUpdate: move,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(14),
+                        child: VideoPlayerView(
+                          video: session.video,
+                          thumb: session.thumb,
+                          width: session.width,
+                          height: session.height,
+                          presentation:
+                              VideoPlayerPresentation.pictureInPicture,
+                          compactControls: true,
+                          onClose: close,
+                          sourceChatId: session.chatId,
+                          messageId: session.messageId,
+                          currentMode: VideoDisplayMode.pictureInPicture,
+                          onSwitchMode: switchMode,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: 8,
+                    top: 8,
+                    child: _SplitPiPModeButton(
+                      currentMode: VideoDisplayMode.pictureInPicture,
+                      onSelected: switchMode,
+                    ),
+                  ),
+                  _SplitPiPCornerHandle(
+                    alignment: Alignment.topLeft,
+                    onDrag: (details) => resizeFromCorner(
+                      details,
+                      horizontalSign: -1,
+                      verticalSign: -1,
+                    ),
+                  ),
+                  _SplitPiPCornerHandle(
+                    alignment: Alignment.topRight,
+                    onDrag: (details) => resizeFromCorner(
+                      details,
+                      horizontalSign: 1,
+                      verticalSign: -1,
+                    ),
+                  ),
+                  _SplitPiPCornerHandle(
+                    alignment: Alignment.bottomLeft,
+                    onDrag: (details) => resizeFromCorner(
+                      details,
+                      horizontalSign: -1,
+                      verticalSign: 1,
+                    ),
+                  ),
+                  _SplitPiPCornerHandle(
+                    alignment: Alignment.bottomRight,
+                    onDrag: (details) => resizeFromCorner(
+                      details,
+                      horizontalSign: 1,
+                      verticalSign: 1,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+    _pictureInPictureVideo = entry;
+    overlay.insert(entry);
   }
 
   // MARK: - Per-tab navigators
@@ -219,8 +631,8 @@ class _MainTabViewState extends State<MainTabView> {
     }
     final selection = _visibleSelection(tabs);
     final activeTabIndex = tabs[selection].index;
-    if (activeTabIndex == 0 && _usesMessageSplit(context)) {
-      return _messageSplitTabs(tabs, selection);
+    if (_usesTabletSplit(context)) {
+      return _tabletSplitTabs(tabs, selection, activeTabIndex);
     }
     return Column(
       children: [
@@ -249,7 +661,11 @@ class _MainTabViewState extends State<MainTabView> {
     );
   }
 
-  Widget _messageSplitTabs(List<_MainTabItem> tabs, int selection) {
+  Widget _tabletSplitTabs(
+    List<_MainTabItem> tabs,
+    int selection,
+    int activeTabIndex,
+  ) {
     final theme = context.watch<ThemeController>();
     final size = MediaQuery.of(context).size;
     final sidebarWidth = (size.width * 0.32).clamp(320.0, 420.0).toDouble();
@@ -260,12 +676,10 @@ class _MainTabViewState extends State<MainTabView> {
           child: Column(
             children: [
               Expanded(
-                child: ChatListView(
-                  controller: _chatListController,
-                  selectedChatId: _selectedMessageChat?.chatId,
-                  onChatSelected: (chat) {
-                    setState(() => _selectedMessageChat = chat);
-                  },
+                child: _LazyTabStack(
+                  selection: selection,
+                  items: tabs,
+                  builder: (tab) => _tabletSidebarRoot(tab.index),
                 ),
               ),
               AnimatedBuilder(
@@ -281,28 +695,83 @@ class _MainTabViewState extends State<MainTabView> {
             ],
           ),
         ),
-        Expanded(child: _messageDetailPane()),
+        Expanded(child: _tabletDetailPane(activeTabIndex)),
       ],
     );
   }
+
+  Widget _tabletSidebarRoot(int tabIndex) => switch (tabIndex) {
+    0 => ChatListView(
+      controller: _chatListController,
+      selectedChatId: _selectedMessageChat?.chatId,
+      onChatSelected: (chat) {
+        setState(() => _selectedMessageChat = chat);
+      },
+    ),
+    1 => TopicChannelsView(
+      onOpenDetail: (detail) {
+        setState(() => _selectedChannelDetail = detail);
+      },
+    ),
+    2 => ContactsView(
+      onOpenDetail: (detail) {
+        setState(() => _selectedContactDetail = detail);
+      },
+    ),
+    _ => MomentsView(
+      onOpenDetail: (detail) {
+        setState(() => _selectedMomentDetail = detail);
+      },
+    ),
+  };
+
+  Widget _tabletDetailPane(int activeTabIndex) => switch (activeTabIndex) {
+    0 => _messageDetailPane(),
+    1 =>
+      _selectedChannelDetail ??
+          const _SplitEmptyPane(icon: 'number.circle.fill', title: '选择频道内容'),
+    2 =>
+      _selectedContactDetail ??
+          const _SplitEmptyPane(icon: 'person.2.fill', title: '选择联系人'),
+    _ =>
+      _selectedMomentDetail ??
+          ChannelMomentsView(
+            isRootTab: true,
+            title: '好友动态',
+            onOpenDetail: (detail) {
+              setState(() => _selectedMomentDetail = detail);
+            },
+          ),
+  };
 
   Widget _messageDetailPane() {
     final selected = _selectedMessageChat;
     if (selected == null) return const _MessageEmptyPane();
     final chat = selected.chat;
+    final headerHeight =
+        AppMetric.headerAvatarSize + (AppSpacing.md + AppSpacing.xxs) * 2;
+    final headerColor = context.colors.chatBackground;
     return KeyedSubtree(
       key: ValueKey('message-detail-${selected.chatId}-${selected.isForum}'),
       child: selected.isForum && chat != null
-          ? TopicChatView(chat: chat, showBackButton: false)
+          ? TopicChatView(
+              chat: chat,
+              showBackButton: false,
+              headerHeight: headerHeight,
+              headerColor: headerColor,
+            )
           : ChatView(
               chatId: selected.chatId,
               title: selected.title,
               showBackButton: false,
+              headerHeight: headerHeight,
+              headerColor: headerColor,
+              showHeaderDivider: false,
             ),
     );
   }
 
-  bool _usesMessageSplit(BuildContext context) {
+  bool _usesTabletSplit(BuildContext context) {
     final size = MediaQuery.of(context).size;
     return size.width > size.height && math.min(size.width, size.height) >= 600;
   }
@@ -366,6 +835,41 @@ class _MessageEmptyPane extends StatelessWidget {
                 'Mithka',
                 style: TextStyle(
                   fontSize: 64,
+                  fontWeight: FontWeight.w600,
+                  color: c.textTertiary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SplitEmptyPane extends StatelessWidget {
+  const _SplitEmptyPane({required this.icon, required this.title});
+
+  final String icon;
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return ColoredBox(
+      color: c.groupedBackground,
+      child: Center(
+        child: Opacity(
+          opacity: 0.18,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(sfIcon(icon), size: 56, color: c.textTertiary),
+              const SizedBox(height: 14),
+              Text(
+                title.l10n(context),
+                style: TextStyle(
+                  fontSize: 17,
                   fontWeight: FontWeight.w600,
                   color: c.textTertiary,
                 ),
@@ -529,7 +1033,7 @@ class _ClassicTabBar extends StatelessWidget {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          items[i].label,
+                          items[i].label.l10n(context),
                           style: TextStyle(
                             fontSize: 11,
                             color: selection == i
@@ -544,6 +1048,86 @@ class _ClassicTabBar extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _SplitPiPModeButton extends StatelessWidget {
+  const _SplitPiPModeButton({
+    required this.currentMode,
+    required this.onSelected,
+  });
+
+  final VideoDisplayMode currentMode;
+  final ValueChanged<VideoDisplayMode> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<VideoDisplayMode>(
+      tooltip: '切换显示模式',
+      color: const Color(0xFF1C1C1E),
+      onSelected: (mode) {
+        if (mode != currentMode) onSelected(mode);
+      },
+      itemBuilder: (_) => [
+        _modeItem(VideoDisplayMode.pictureInPicture, '画中画'),
+        _modeItem(VideoDisplayMode.split, '分屏'),
+        _modeItem(VideoDisplayMode.fullscreen, '全屏播放'),
+      ],
+      child: SizedBox(
+        width: 40,
+        height: 40,
+        child: Center(
+          child: Icon(
+            sfIcon('rectangle.split.2x1'),
+            color: Colors.white.withValues(alpha: 0.92),
+            size: 22,
+          ),
+        ),
+      ),
+    );
+  }
+
+  PopupMenuItem<VideoDisplayMode> _modeItem(
+    VideoDisplayMode mode,
+    String label,
+  ) {
+    return PopupMenuItem<VideoDisplayMode>(
+      value: mode,
+      child: Row(
+        children: [
+          SizedBox(
+            width: 20,
+            child: mode == currentMode
+                ? Icon(sfIcon('checkmark'), size: 14, color: Colors.white)
+                : null,
+          ),
+          const SizedBox(width: 8),
+          Text(label, style: const TextStyle(color: Colors.white)),
+        ],
+      ),
+    );
+  }
+}
+
+class _SplitPiPCornerHandle extends StatelessWidget {
+  const _SplitPiPCornerHandle({required this.alignment, required this.onDrag});
+
+  final Alignment alignment;
+  final GestureDragUpdateCallback onDrag;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      left: alignment.x < 0 ? -8 : null,
+      right: alignment.x > 0 ? -8 : null,
+      top: alignment.y < 0 ? -8 : null,
+      bottom: alignment.y > 0 ? -8 : null,
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onPanUpdate: onDrag,
+        child: const SizedBox(width: 44, height: 44),
       ),
     );
   }

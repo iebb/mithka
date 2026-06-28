@@ -26,7 +26,9 @@ import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 
 class ContactsView extends StatefulWidget {
-  const ContactsView({super.key});
+  const ContactsView({super.key, this.onOpenDetail});
+
+  final ValueChanged<Widget>? onOpenDetail;
 
   @override
   State<ContactsView> createState() => _ContactsViewState();
@@ -58,6 +60,14 @@ class _ContactsViewState extends State<ContactsView> {
     Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => const AddPeopleView()));
+  }
+
+  void _openDetail(Widget detail) {
+    if (widget.onOpenDetail != null) {
+      widget.onOpenDetail!(detail);
+      return;
+    }
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => detail));
   }
 
   Future<void> _loadMe() async {
@@ -235,10 +245,11 @@ class _ContactsViewState extends State<ContactsView> {
       for (final contact in contacts) ...[
         GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) =>
-                  ProfileDetailView(userId: contact.id, name: contact.name),
+          onTap: () => _openDetail(
+            ProfileDetailView(
+              userId: contact.id,
+              name: contact.name,
+              showBackButton: widget.onOpenDetail == null,
             ),
           ),
           child: SizedBox(
@@ -303,9 +314,12 @@ class _ContactsViewState extends State<ContactsView> {
       for (final group in chats) ...[
         GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => ChatView(chatId: group.id, title: group.title),
+          onTap: () => _openDetail(
+            ChatView(
+              chatId: group.id,
+              title: group.title,
+              showBackButton: widget.onOpenDetail == null,
+              showHeaderDivider: widget.onOpenDetail == null,
             ),
           ),
           child: SizedBox(
@@ -387,13 +401,14 @@ class ContactsViewModel extends ChangeNotifier {
   StreamSubscription<Map<String, dynamic>>? _subscription;
   bool _disposed = false;
   static const _pageSize = 100;
+  static const _prefetchPasses = 8;
 
   void onAppear() {
     if (_started) return;
     _started = true;
     _loadContacts();
     _subscribe();
-    _prefetchMainChats();
+    _prefetchChats();
   }
 
   Future<void> _loadContacts() async {
@@ -446,8 +461,15 @@ class ContactsViewModel extends ChangeNotifier {
       user.obj('type')?.type == 'userTypeRegularBot' ||
       user.boolean('is_bot') == true;
 
+  String _chatListKey(Map<String, dynamic> list) =>
+      switch (list.type ?? list['@type']) {
+        'chatListArchive' => 'archive',
+        'chatListFolder' => 'folder:${list.integer('chat_folder_id') ?? 0}',
+        _ => 'main',
+      };
+
   Future<bool> _loadChatList(Map<String, dynamic> list, int limit) async {
-    final key = list.type ?? list['@type'] as String? ?? 'main';
+    final key = _chatListKey(list);
     if (_loadingChatLists.contains(key) || _exhaustedChatLists.contains(key)) {
       return false;
     }
@@ -491,24 +513,35 @@ class ContactsViewModel extends ChangeNotifier {
     } catch (_) {}
   }
 
-  void _prefetchMainChats() {
+  void _prefetchChats() {
     Future<void>(() async {
       chatsLoading = true;
       _safeNotify();
-      while (!_disposed && !_exhaustedChatLists.contains('chatListMain')) {
-        final loaded = await _loadChatList({
-          '@type': 'chatListMain',
-        }, _pageSize);
-        await _hydrateChatList({'@type': 'chatListMain'}, _pageSize);
-        if (_disposed ||
-            (!loaded && !_loadingChatLists.contains('chatListMain'))) {
-          break;
-        }
-        await Future<void>.delayed(const Duration(milliseconds: 10));
+      const lists = [
+        {'@type': 'chatListMain'},
+        {'@type': 'chatListArchive'},
+      ];
+      for (final list in lists) {
+        await _prefetchChatList(list);
       }
       chatsLoading = false;
       _safeNotify();
     });
+  }
+
+  Future<void> _prefetchChatList(Map<String, dynamic> list) async {
+    final key = _chatListKey(list);
+    await _hydrateChatList(list, _pageSize);
+    var passes = 0;
+    while (!_disposed &&
+        !_exhaustedChatLists.contains(key) &&
+        passes < _prefetchPasses) {
+      passes += 1;
+      final loaded = await _loadChatList(list, _pageSize);
+      await _hydrateChatList(list, _pageSize);
+      if (_disposed || !loaded) break;
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
   }
 
   void _subscribe() {
@@ -518,6 +551,15 @@ class ContactsViewModel extends ChangeNotifier {
         case 'updateNewChat':
           final chat = update.obj('chat');
           if (chat != null) unawaited(_ingestChat(chat));
+        case 'updateChatAddedToList':
+          final id = update.int64('chat_id');
+          if (id != null) _ensureChatLoaded(id);
+        case 'updateChatPosition':
+          final id = update.int64('chat_id');
+          if (id != null) _ensureChatLoaded(id);
+        case 'updateChatRemovedFromList':
+          final id = update.int64('chat_id');
+          if (id != null) _ensureChatLoaded(id);
         case 'updateChatTitle':
           final id = update.int64('chat_id');
           final existing = id != null ? _chatById(id) : null;
@@ -537,6 +579,15 @@ class ContactsViewModel extends ChangeNotifier {
   }
 
   ChatSummary? _chatById(int id) => _groupIndex[id] ?? _channelIndex[id];
+
+  void _ensureChatLoaded(int id) {
+    TdClient.shared
+        .query({'@type': 'getChat', 'chat_id': id})
+        .then((chat) {
+          if (!_disposed) unawaited(_ingestChat(chat));
+        })
+        .catchError((_) {});
+  }
 
   Future<void> _ingestChat(Map<String, dynamic> chat) async {
     final summary = TDParse.chat(chat);

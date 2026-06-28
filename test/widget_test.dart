@@ -5,6 +5,7 @@ import 'package:mithka/tdlib/td_models.dart';
 import 'package:mithka/l10n/app_locale_controller.dart';
 import 'package:mithka/settings/keyword_blocker.dart';
 import 'package:mithka/settings/translation_controller.dart';
+import 'package:mithka/chat/media_album_layout.dart';
 import 'package:mithka/theme/date_text.dart';
 import 'package:mithka/theme/theme_controller.dart';
 import 'package:flutter/material.dart';
@@ -30,6 +31,61 @@ void main() {
       expect(obj.int64('order'), 123456789012345);
       expect(obj.integer('n'), 7);
       expect(obj.str('missing'), isNull);
+    });
+  });
+
+  group('ChatMessage album visual media', () {
+    test(
+      'includes photos and videos, excludes thumbnail-only placeholders',
+      () {
+        ChatMessage message(String type) => ChatMessage(
+          id: 1,
+          isOutgoing: false,
+          text: '',
+          date: 1,
+          contentType: type,
+          image: TdFileRef(id: 10),
+        );
+
+        expect(message('messagePhoto').isAlbumVisualMedia, isTrue);
+        expect(message('messageVideo').isAlbumVisualMedia, isTrue);
+        expect(message('messageSticker').isAlbumVisualMedia, isFalse);
+        expect(message('messageAnimation').isAlbumVisualMedia, isFalse);
+      },
+    );
+  });
+
+  group('MediaAlbumLayout', () {
+    test('uses proportional non-overlapping rows for mixed albums', () {
+      final layout = buildTelegramMediaAlbumLayout(
+        items: const [
+          MediaAlbumItem(width: 1600, height: 900),
+          MediaAlbumItem(width: 900, height: 1600),
+          MediaAlbumItem(width: 1200, height: 1200),
+          MediaAlbumItem(width: 1024, height: 768),
+          MediaAlbumItem(width: 768, height: 1024),
+        ],
+        maxWidth: 330,
+        gap: 3,
+      );
+
+      expect(layout.tiles, hasLength(5));
+      expect(layout.width, 330);
+      expect(layout.height, greaterThan(0));
+      for (final tile in layout.tiles) {
+        expect(tile.left, greaterThanOrEqualTo(0));
+        expect(tile.top, greaterThanOrEqualTo(0));
+        expect(tile.right, lessThanOrEqualTo(layout.width + 0.01));
+        expect(tile.bottom, lessThanOrEqualTo(layout.height + 0.01));
+        expect(tile.width, greaterThan(0));
+        expect(tile.height, greaterThan(0));
+      }
+
+      for (var i = 0; i < layout.tiles.length; i++) {
+        for (var j = i + 1; j < layout.tiles.length; j++) {
+          expect(layout.tiles[i].overlaps(layout.tiles[j]), isFalse);
+        }
+      }
     });
   });
 
@@ -341,42 +397,39 @@ void main() {
   });
 
   group('TranslationController', () {
-    test('defaults off and persists target/no-translate preferences', () async {
+    test('defaults off and persists target/provider preferences', () async {
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
       final controller = TranslationController(prefs);
 
       expect(controller.enabled, isFalse);
-      expect(controller.autoTranslate, isFalse);
-      expect(controller.provider, TranslationProvider.nativeOnDevice);
+      expect(controller.provider, TranslationProvider.tdlib);
       expect(controller.targetLanguageCode, 'zh-Hans');
-      expect(controller.noTranslateLanguageCodes, isEmpty);
       expect(
         controller.lingvaEndpoint,
         TranslationController.defaultLingvaEndpoint,
       );
       expect(controller.libreTranslateEndpoint, isEmpty);
+      expect(controller.libreTranslateApiKey, isEmpty);
 
       controller.enabled = true;
-      controller.autoTranslate = true;
-      controller.provider = TranslationProvider.nativeOnDevice;
+      controller.provider = TranslationProvider.lingva;
       controller.targetLanguageCode = 'ja';
-      controller.setNoTranslateLanguage('en', true);
       controller.lingvaEndpoint = 'https://lingva.example.com/';
       controller.libreTranslateEndpoint = ' https://libre.example.com// ';
+      controller.libreTranslateApiKey = ' secret-key ';
 
       final reloaded = TranslationController(prefs);
       expect(reloaded.enabled, isTrue);
-      expect(reloaded.autoTranslate, isTrue);
-      expect(reloaded.provider, TranslationProvider.nativeOnDevice);
+      expect(reloaded.provider, TranslationProvider.lingva);
       expect(reloaded.targetLanguageCode, 'ja');
-      expect(reloaded.noTranslateLanguageCodes, contains('en'));
       expect(reloaded.lingvaEndpoint, 'https://lingva.example.com');
       expect(reloaded.libreTranslateEndpoint, 'https://libre.example.com');
+      expect(reloaded.libreTranslateApiKey, 'secret-key');
     });
 
     test(
-      'forces native provider regardless of stale stored provider',
+      'loads stored provider and falls back to Telegram for unavailable values',
       () async {
         SharedPreferences.setMockInitialValues({
           'translation.provider': 'tdlib',
@@ -384,9 +437,23 @@ void main() {
         final prefs = await SharedPreferences.getInstance();
         final controller = TranslationController(prefs);
 
-        expect(controller.provider, TranslationProvider.nativeOnDevice);
-        controller.provider = TranslationProvider.lingva;
-        expect(controller.provider, TranslationProvider.nativeOnDevice);
+        expect(controller.provider, TranslationProvider.tdlib);
+        controller.provider = TranslationProvider.myMemory;
+        expect(controller.provider, TranslationProvider.myMemory);
+
+        SharedPreferences.setMockInitialValues({
+          'translation.provider': 'not_a_provider',
+        });
+        final fallbackPrefs = await SharedPreferences.getInstance();
+        final fallback = TranslationController(fallbackPrefs);
+        expect(fallback.provider, TranslationProvider.tdlib);
+
+        SharedPreferences.setMockInitialValues({
+          'translation.provider': 'native_on_device',
+        });
+        final nativePrefs = await SharedPreferences.getInstance();
+        final nativeFallback = TranslationController(nativePrefs);
+        expect(nativeFallback.provider, TranslationProvider.tdlib);
       },
     );
   });

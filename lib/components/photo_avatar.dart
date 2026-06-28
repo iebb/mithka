@@ -6,6 +6,7 @@
 //  circle vs rounded-square. Port of the Swift `PhotoAvatar`/`TDImage`.
 //
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -225,12 +226,14 @@ class TDImage extends StatefulWidget {
     this.fit = BoxFit.cover,
     this.cacheWidth,
     this.cacheHeight,
+    this.showProgress = false,
   });
   final TdFileRef? photo;
   final double cornerRadius;
   final BoxFit fit;
   final int? cacheWidth;
   final int? cacheHeight;
+  final bool showProgress;
 
   @override
   State<TDImage> createState() => _TDImageState();
@@ -240,6 +243,8 @@ class _TDImageState extends State<TDImage> {
   File? _file;
   int? _loadedId;
   int? _loadedSlot;
+  TdFileProgress? _progress;
+  StreamSubscription<TdFileProgress>? _progressSub;
 
   @override
   void initState() {
@@ -253,21 +258,56 @@ class _TDImageState extends State<TDImage> {
     _load();
   }
 
+  @override
+  void dispose() {
+    _progressSub?.cancel();
+    super.dispose();
+  }
+
   void _load() {
     final ref = widget.photo;
     final slot = TdClient.shared.activeSlot;
     if (ref == null) {
       _loadedId = null;
+      _loadedSlot = null;
+      _progressSub?.cancel();
+      _progressSub = null;
+      if (_file != null || _progress != null) {
+        setState(() {
+          _file = null;
+          _progress = null;
+        });
+      } else {
+        _progress = null;
+      }
       return;
     }
-    if (_loadedId == ref.id && _loadedSlot == slot) return;
+    if (_loadedId == ref.id &&
+        _loadedSlot == slot &&
+        oldProgressModeUnchanged()) {
+      return;
+    }
     _loadedId = ref.id;
     _loadedSlot = slot;
+    _progress = null;
+    _progressSub?.cancel();
+    _progressSub = null;
+    if (widget.showProgress) {
+      _progressSub = TdFileCenter.shared.progress(ref.id).listen((progress) {
+        if (!mounted || _loadedId != ref.id || _loadedSlot != slot) return;
+        setState(() => _progress = progress);
+      });
+    }
     setState(() => _file = null);
     TdFileCenter.shared.path(ref.id).then((path) {
       if (!mounted || _loadedId != ref.id || _loadedSlot != slot) return;
       if (path != null) setState(() => _file = File(path));
     });
+  }
+
+  bool oldProgressModeUnchanged() {
+    if (widget.showProgress) return _progressSub != null;
+    return _progressSub == null;
   }
 
   @override
@@ -292,9 +332,66 @@ class _TDImageState extends State<TDImage> {
     } else {
       child = Container(color: context.colors.groupedBackground);
     }
+    if (widget.showProgress && _file == null) {
+      child = Stack(
+        fit: StackFit.expand,
+        children: [
+          child,
+          _MediaLoadingProgress(progress: _progress),
+        ],
+      );
+    }
     return ClipRRect(
       borderRadius: BorderRadius.circular(widget.cornerRadius),
       child: child,
+    );
+  }
+}
+
+class _MediaLoadingProgress extends StatelessWidget {
+  const _MediaLoadingProgress({this.progress});
+
+  final TdFileProgress? progress;
+
+  @override
+  Widget build(BuildContext context) {
+    final value = progress?.fraction;
+    final text = value == null || value <= 0 || value >= 1
+        ? null
+        : '${(value * 100).clamp(1, 99).round()}%';
+    return Center(
+      child: Container(
+        width: 58,
+        height: 58,
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.38),
+          shape: BoxShape.circle,
+        ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            SizedBox(
+              width: 46,
+              height: 46,
+              child: CircularProgressIndicator(
+                value: value != null && value > 0 && value < 1 ? value : null,
+                strokeWidth: 3,
+                valueColor: const AlwaysStoppedAnimation(Colors.white),
+                backgroundColor: Colors.white.withValues(alpha: 0.24),
+              ),
+            ),
+            if (text != null)
+              Text(
+                text,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

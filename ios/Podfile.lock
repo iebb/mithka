@@ -1,6 +1,8 @@
 PODS:
   - apple_maps_flutter (0.0.1):
     - Flutter
+  - audio_session (0.0.1):
+    - Flutter
   - DKImagePickerController/Core (4.3.9):
     - DKImagePickerController/ImageDataManager
     - DKImagePickerController/Resource
@@ -172,8 +174,10 @@ PODS:
   - video_player_avfoundation (0.0.1):
     - Flutter
     - FlutterMacOS
+
 DEPENDENCIES:
   - apple_maps_flutter (from `.symlinks/plugins/apple_maps_flutter/ios`)
+  - audio_session (from `.symlinks/plugins/audio_session/ios`)
   - file_picker (from `.symlinks/plugins/file_picker/ios`)
   - firebase_analytics (from `.symlinks/plugins/firebase_analytics/ios`)
   - firebase_core (from `.symlinks/plugins/firebase_core/ios`)
@@ -213,6 +217,8 @@ SPEC REPOS:
 EXTERNAL SOURCES:
   apple_maps_flutter:
     :path: ".symlinks/plugins/apple_maps_flutter/ios"
+  audio_session:
+    :path: ".symlinks/plugins/audio_session/ios"
   file_picker:
     :path: ".symlinks/plugins/file_picker/ios"
   firebase_analytics:
@@ -248,6 +254,7 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   apple_maps_flutter: 2237d66a8e242082a2d88134af372f7b3375d7a6
+  audio_session: 9bb7f6c970f21241b19f5a3658097ae459681ba0
   DKImagePickerController: 946cec48c7873164274ecc4624d19e3da4c1ef3c
   DKPhotoGallery: b3834fecb755ee09a593d7c9e389d8b5d6deed60
   file_picker: a0560bc09d61de87f12d246fc47d2119e6ef37be

@@ -4,8 +4,6 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.os.Build
 import com.google.mlkit.common.model.DownloadConditions
-import com.google.mlkit.nl.languageid.LanguageIdentification
-import com.google.mlkit.nl.languageid.LanguageIdentifier
 import com.google.mlkit.nl.translate.TranslateLanguage
 import com.google.mlkit.nl.translate.Translation
 import com.google.mlkit.nl.translate.Translator
@@ -17,9 +15,6 @@ import java.io.ByteArrayOutputStream
 
 class MainActivity : FlutterActivity() {
     private var callMedia: CallMediaPlugin? = null
-    private val languageIdentifier: LanguageIdentifier by lazy {
-        LanguageIdentification.getClient()
-    }
     private val translators = mutableMapOf<String, Translator>()
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -53,11 +48,20 @@ class MainActivity : FlutterActivity() {
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mithka/native_translation")
             .setMethodCallHandler { call, result ->
-                if (call.method != "translate") {
-                    result.notImplemented()
-                    return@setMethodCallHandler
+                when (call.method) {
+                    "capabilities" -> {
+                        result.success(listOf("android_mlkit"))
+                        return@setMethodCallHandler
+                    }
+                    "translate" -> {
+                        translateOnDevice(call.arguments as? Map<*, *>, result)
+                        return@setMethodCallHandler
+                    }
+                    else -> {
+                        result.notImplemented()
+                        return@setMethodCallHandler
+                    }
                 }
-                translateOnDevice(call.arguments as? Map<*, *>, result)
             }
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mithka/clipboard")
@@ -126,18 +130,7 @@ class MainActivity : FlutterActivity() {
             return
         }
 
-        languageIdentifier.identifyLanguage(text)
-            .addOnSuccessListener { detected ->
-                val source = mlKitLanguage(detected)
-                if (source == null) {
-                    result.error("unknown_source_language", "无法识别原文语言", null)
-                    return@addOnSuccessListener
-                }
-                translateWithLanguages(text, source, target, result)
-            }
-            .addOnFailureListener { e ->
-                result.error("language_detection_failed", e.localizedMessage, null)
-            }
+        result.error("source_language_required", "ML Kit 本地翻译需要明确原文语言", null)
     }
 
     private fun translateWithLanguages(
@@ -203,7 +196,6 @@ class MainActivity : FlutterActivity() {
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
         translators.values.forEach { it.close() }
         translators.clear()
-        languageIdentifier.close()
         callMedia?.dispose()
         callMedia = null
         super.cleanUpFlutterEngine(flutterEngine)

@@ -39,6 +39,8 @@ import 'image_edit_view.dart';
 import 'link_handler.dart';
 import 'location_picker_view.dart';
 import 'poll_composer_view.dart';
+import 'rich_text_composer_view.dart';
+import 'rich_text_format.dart';
 import 'sticker_preview.dart';
 import 'sticker_store.dart';
 
@@ -278,6 +280,36 @@ class _ChatInputBarState extends State<ChatInputBar> {
     }
     final (text, entities) = _controller.toFormatted();
     vm.sendFormatted(text, entities);
+    _controller.clear();
+    _focus.requestFocus();
+  }
+
+  Future<void> _openRichTextComposer() async {
+    final result = await Navigator.of(context).push<RichTextComposerResult>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => RichTextComposerView(
+          initialText: _controller.text,
+          title: '富文本消息',
+          submitText: '发送',
+          hintText: '支持 Markdown：**粗体**、*斜体*、`代码`、引用等',
+          allowMedia: false,
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+    final parsed = parseTelegramMarkdown(result.text.trim());
+    if (parsed.text.trim().isEmpty) return;
+    if (vm.requiresPaidMessage) {
+      final ok = await confirmDialog(
+        context,
+        title: '发送付费消息？',
+        message: '发送这条消息需要 ${vm.paidMessageStarCount} 星。',
+        confirmText: '发送',
+      );
+      if (!mounted || !ok) return;
+    }
+    vm.sendFormatted(parsed.text, parsed.entities);
     _controller.clear();
     _focus.requestFocus();
   }
@@ -675,6 +707,16 @@ class _ChatInputBarState extends State<ChatInputBar> {
                                       );
                                     })
                                     .toList();
+                                items.insert(
+                                  0,
+                                  ContextMenuButtonItem(
+                                    label: '富文本',
+                                    onPressed: () {
+                                      ContextMenuController.removeAny();
+                                      unawaited(_openRichTextComposer());
+                                    },
+                                  ),
+                                );
                                 return AdaptiveTextSelectionToolbar.buttonItems(
                                   anchors: editableTextState.contextMenuAnchors,
                                   buttonItems: items,

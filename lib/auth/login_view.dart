@@ -5,6 +5,8 @@
 //  phone → code → password → (registration). Port of the Swift `LoginView`.
 //
 
+import 'dart:async';
+
 import 'package:dlibphonenumber/dlibphonenumber.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -12,6 +14,8 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../components/sf_symbols.dart';
+import '../settings/proxy_config.dart';
+import '../settings/proxy_view.dart';
 import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
 import 'account_store.dart';
@@ -31,6 +35,7 @@ class _LoginViewState extends State<LoginView> {
   final _password = ObscuringController();
   final _firstName = TextEditingController();
   final _lastName = TextEditingController();
+  ProxyConfig? _proxy;
 
   // When true, show the phone-number step even though TDLib is still at a later
   // auth state — lets the user back out of the code / 2FA step to fix the number.
@@ -40,11 +45,22 @@ class _LoginViewState extends State<LoginView> {
   Country? get _detectedCountry => Country.match(_phoneDigits);
 
   @override
+  void initState() {
+    super.initState();
+    _loadProxy();
+  }
+
+  @override
   void dispose() {
     for (final c in [_phone, _code, _password, _firstName, _lastName]) {
       c.dispose();
     }
     super.dispose();
+  }
+
+  Future<void> _loadProxy() async {
+    final proxy = await ProxyConfig.load();
+    if (mounted) setState(() => _proxy = proxy);
   }
 
   /// Formats the input as `+<cc> <national groups>` via libphonenumber's
@@ -180,7 +196,7 @@ class _LoginViewState extends State<LoginView> {
               child: const Text('重新输入手机号'),
             ),
           // Aborting an add-account drops the half-created slot and returns to
-          // the account we came from (no "未登录" left behind).
+          // the account we came from.
           if (pendingAdd)
             CupertinoActionSheetAction(
               onPressed: () {
@@ -329,6 +345,8 @@ class _LoginViewState extends State<LoginView> {
             ],
           ),
         ),
+        const SizedBox(height: 12),
+        _proxyRow(),
         const SizedBox(height: 20),
         _primaryButton(auth, '获取验证码', _phoneDigits.length >= 7, () {
           auth.submitPhone('+$_phoneDigits');
@@ -342,6 +360,106 @@ class _LoginViewState extends State<LoginView> {
         ),
       ],
     );
+  }
+
+  Widget _proxyRow() {
+    final c = context.colors;
+    final proxy = _proxy;
+    final enabled = proxy?.isUsable ?? false;
+    return Container(
+      decoration: BoxDecoration(
+        color: c.card,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _openProxySetup,
+              child: SizedBox(
+                height: 54,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: [
+                      Icon(
+                        sfIcon('globe'),
+                        size: 21,
+                        color: enabled ? AppTheme.brand : c.textTertiary,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '代理',
+                              style: TextStyle(
+                                fontSize: 15,
+                                color: c.textPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              enabled
+                                  ? '${proxy!.label} ${proxy.server}:${proxy.port}'
+                                  : '不使用代理',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: c.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(
+                        sfIcon('chevron.right'),
+                        size: 14,
+                        color: c.textTertiary,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          if (enabled) ...[
+            Container(width: 0.5, height: 28, color: c.divider),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _disableProxy,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  '关闭',
+                  style: TextStyle(fontSize: 14, color: AppTheme.tagRed),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openProxySetup() async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => const ProxyEditView(allowOfflineSave: true),
+      ),
+    );
+    if (changed == true) await _loadProxy();
+  }
+
+  Future<void> _disableProxy() async {
+    await ProxyConfig.disable();
+    unawaited(TdClient.shared.applySavedProxyToActive());
+    await _loadProxy();
   }
 
   void _showCountrySheet() {
@@ -478,7 +596,11 @@ class _LoginViewState extends State<LoginView> {
       padding: const EdgeInsets.only(top: 12),
       child: Column(
         children: [
-          Icon(sfIcon('exclamationmark.triangle.fill'), size: 40, color: AppTheme.unreadBadge),
+          Icon(
+            sfIcon('exclamationmark.triangle.fill'),
+            size: 40,
+            color: AppTheme.unreadBadge,
+          ),
           const SizedBox(height: 12),
           Text(
             '尚未配置 Telegram API 凭证',

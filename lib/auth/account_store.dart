@@ -6,6 +6,8 @@
 //  switch or add an account. Port of the Swift `AccountStore`.
 //
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -32,8 +34,7 @@ class AccountStore extends ChangeNotifier {
     : _prefs = prefs,
       _activeSlot = prefs.getInt('drachma.activeSlot') ?? 0 {
     // Restore an add-account that was in progress when the app was killed, so
-    // its half-created slot can still be cleaned up rather than lingering as
-    // "未登录".
+    // its half-created slot can still be cleaned up.
     _pendingSlot = prefs.getInt(_pendingKey);
     _returnSlot = prefs.getInt(_returnKey) ?? 0;
     // Refresh the switcher when one of our own accounts changes (e.g. after a
@@ -57,7 +58,7 @@ class AccountStore extends ChangeNotifier {
   // An in-progress "add account": the freshly-created slot whose login has not
   // completed, and the slot we should fall back to if the user aborts. While
   // this is set, backing out of the login flow discards [_pendingSlot] and
-  // returns to [_returnSlot] rather than leaving a half-created "未登录" entry.
+  // returns to [_returnSlot] rather than leaving a half-created account entry.
   // Persisted so it survives an app kill mid-login.
   int? _pendingSlot;
   int _returnSlot = 0;
@@ -109,13 +110,12 @@ class AccountStore extends ChangeNotifier {
         }
       }
       final parsedName = me != null ? TDParse.userName(me) : '';
-      final name = parsedName.isEmpty
-          ? (slot == _activeSlot ? '未登录账号' : '未登录')
-          : parsedName;
-      final phone = TDParse.formatPhone(me?.str('phone_number'));
+      if (me == null || selfId == null || parsedName.isEmpty) continue;
+      final name = parsedName;
+      final phone = TDParse.formatPhone(me.str('phone_number'));
 
       String? avatarPath;
-      final fileId = me?.obj('profile_photo')?.obj('small')?.integer('id');
+      final fileId = me.obj('profile_photo')?.obj('small')?.integer('id');
       if (fileId != null) {
         try {
           final res = await TdClient.shared.queryTo({
@@ -168,8 +168,7 @@ class AccountStore extends ChangeNotifier {
   }
 
   /// Aborts an in-progress "add account": switches back to the account we came
-  /// from and discards the transient slot, so no half-created "未登录" entry is
-  /// left behind. No-op if there's no pending add.
+  /// from and discards the transient slot. No-op if there's no pending add.
   void cancelAddAccount(AuthManager auth) {
     final pending = _pendingSlot;
     if (pending == null) return;
@@ -179,21 +178,34 @@ class AccountStore extends ChangeNotifier {
     final target = slots.contains(_returnSlot) && _returnSlot != pending
         ? _returnSlot
         : slots.firstWhere((s) => s != pending, orElse: () => pending);
-    if (target == pending) return; // nothing to fall back to — keep the slot
-    TdClient.shared.setActive(target); // must point away before removing
-    _activeSlot = target;
-    TdClient.shared.removeSlot(pending);
+    if (target == pending) {
+      _activeSlot = TdClient.shared.replaceActiveWithFreshLoginSlot();
+    } else {
+      TdClient.shared.setActive(target); // must point away before removing
+      _activeSlot = target;
+      TdClient.shared.removeSlot(pending);
+    }
     notifyListeners();
     auth.reloadAuthState();
     refresh();
   }
 
-  /// Removes an account slot from the switcher (e.g. a leftover "未登录" entry
-  /// or a no-longer-wanted logged-out account). If the slot is currently active,
-  /// switches to another account first. Refuses to remove the only account.
+  /// Removes an account slot from the switcher. If this is the last slot,
+  /// replace it with a clean login slot so the app lands on initial login.
   void removeAccount(int slot, AuthManager auth) {
     final slots = TdClient.shared.configuredSlots;
-    if (slots.length <= 1 || !slots.contains(slot)) return;
+    if (!slots.contains(slot)) return;
+    if (slots.length <= 1) {
+      if (slot == _pendingSlot) {
+        _pendingSlot = null;
+        _persistPending();
+      }
+      _activeSlot = TdClient.shared.replaceActiveWithFreshLoginSlot();
+      notifyListeners();
+      auth.reloadAuthState();
+      refresh();
+      return;
+    }
     if (slot == _activeSlot) {
       final target = slots.firstWhere((s) => s != slot);
       TdClient.shared.setActive(target);
@@ -207,5 +219,89 @@ class AccountStore extends ChangeNotifier {
     TdClient.shared.removeSlot(slot);
     notifyListeners();
     refresh();
+  }
+
+  /// Logs out the active account. When another logged-in account exists, switch
+  /// to it first and remove the logged-out slot so the UI does not land on a
+  /// stale account row.
+  Future<void> logOutActive(AuthManager auth) async {
+    final slot = _activeSlot;
+    final slots = TdClient.shared.configuredSlots;
+    final target = await _nextReadySlot(after: slot);
+    if (target == null) {
+      final oldClientId = TdClient.shared.clientId(slot);
+      if (oldClientId != null) {
+        try {
+          await TdClient.shared
+              .queryTo({'@type': 'logOut'}, oldClientId)
+              .timeout(const Duration(seconds: 8));
+        } catch (_) {}
+      }
+      if (slot == _pendingSlot) {
+        _pendingSlot = null;
+        _persistPending();
+      }
+      _activeSlot = TdClient.shared.replaceActiveWithFreshLoginSlot();
+      notifyListeners();
+      auth.reloadAuthState();
+      await refresh();
+      return;
+    }
+
+    final oldClientId = TdClient.shared.clientId(slot);
+    TdClient.shared.setActive(target);
+    _activeSlot = target;
+    if (slot == _pendingSlot) {
+      _pendingSlot = null;
+      _persistPending();
+    }
+    notifyListeners();
+    auth.reloadAuthState();
+
+    if (oldClientId != null) {
+      try {
+        await TdClient.shared
+            .queryTo({'@type': 'logOut'}, oldClientId)
+            .timeout(const Duration(seconds: 8));
+      } catch (_) {}
+    }
+
+    if (slots.length > 1 && TdClient.shared.configuredSlots.contains(slot)) {
+      TdClient.shared.removeSlot(slot);
+    }
+    await refresh();
+  }
+
+  Future<int?> _nextReadySlot({required int after}) async {
+    final slots = TdClient.shared.configuredSlots;
+    if (slots.length <= 1) return null;
+    final index = slots.indexOf(after);
+    final candidates = <int>[
+      if (index >= 0) ...slots.skip(index + 1),
+      if (index >= 0) ...slots.take(index),
+      if (index < 0) ...slots,
+    ].where((slot) => slot != after);
+    for (final slot in candidates) {
+      if (await _slotIsReady(slot)) return slot;
+    }
+    return null;
+  }
+
+  Future<bool> _slotIsReady(int slot) async {
+    final cid = TdClient.shared.clientId(slot);
+    if (cid == null) return false;
+    try {
+      final state = await TdClient.shared
+          .queryTo({'@type': 'getAuthorizationState'}, cid)
+          .timeout(const Duration(seconds: 2));
+      if (state.type == 'authorizationStateReady') return true;
+    } catch (_) {}
+    try {
+      await TdClient.shared
+          .queryTo({'@type': 'getMe'}, cid)
+          .timeout(const Duration(seconds: 2));
+      return true;
+    } catch (_) {}
+    return false;
   }
 }

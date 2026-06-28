@@ -8,6 +8,8 @@
 //  MTProto. No Material dialogs.
 //
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -18,6 +20,7 @@ import '../components/ui_components.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
+import 'proxy_config.dart';
 
 class ProxyView extends StatefulWidget {
   const ProxyView({super.key});
@@ -54,9 +57,12 @@ class _ProxyViewState extends State<ProxyView> {
 
   bool get _anyEnabled => _proxies.any((p) => p.boolean('is_enabled') ?? false);
 
-  Future<void> _enable(int id) async {
+  Future<void> _enable(Map<String, dynamic> proxy) async {
+    final id = proxy.integer('id') ?? 0;
     try {
       await _client.query({'@type': 'enableProxy', 'proxy_id': id});
+      await ProxyConfig.save(ProxyConfig.fromTdProxy(proxy));
+      unawaited(_client.applySavedProxyToActive());
     } catch (_) {}
     _load();
   }
@@ -65,6 +71,8 @@ class _ProxyViewState extends State<ProxyView> {
     try {
       await _client.query({'@type': 'disableProxy'});
     } catch (_) {}
+    await ProxyConfig.disable();
+    unawaited(_client.applySavedProxyToActive());
     _load();
   }
 
@@ -76,8 +84,17 @@ class _ProxyViewState extends State<ProxyView> {
       destructive: true,
     );
     if (!ok) return;
+    final removed = _proxies.firstWhere(
+      (proxy) => proxy.integer('id') == id,
+      orElse: () => const <String, dynamic>{},
+    );
+    final wasEnabled = removed.boolean('is_enabled') ?? false;
     try {
       await _client.query({'@type': 'removeProxy', 'proxy_id': id});
+      if (wasEnabled) {
+        await ProxyConfig.disable();
+        unawaited(_client.applySavedProxyToActive());
+      }
     } catch (_) {}
     _load();
   }
@@ -193,7 +210,7 @@ class _ProxyViewState extends State<ProxyView> {
     final port = proxy.integer('port') ?? 0;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: enabled ? null : () => _enable(id),
+      onTap: enabled ? null : () => _enable(proxy),
       child: SizedBox(
         height: 60,
         child: Padding(
@@ -268,7 +285,9 @@ class _ProxyViewState extends State<ProxyView> {
 
 /// Full-page custom add-proxy editor — type segments + borderless fields.
 class ProxyEditView extends StatefulWidget {
-  const ProxyEditView({super.key});
+  const ProxyEditView({super.key, this.allowOfflineSave = false});
+
+  final bool allowOfflineSave;
 
   @override
   State<ProxyEditView> createState() => _ProxyEditViewState();
@@ -307,32 +326,31 @@ class _ProxyEditViewState extends State<ProxyEditView> {
     return true;
   }
 
-  Map<String, dynamic> _typeObject() => switch (_type) {
-    'http' => {
-      '@type': 'proxyTypeHttp',
-      'username': _username.text.trim(),
-      'password': _password.text.trim(),
-      'http_only': false,
-    },
-    'mtproto' => {'@type': 'proxyTypeMtproto', 'secret': _secret.text.trim()},
-    _ => {
-      '@type': 'proxyTypeSocks5',
-      'username': _username.text.trim(),
-      'password': _password.text.trim(),
-    },
-  };
+  ProxyConfig get _config => ProxyConfig(
+    configured: true,
+    enabled: true,
+    type: _type,
+    server: _server.text.trim(),
+    port: int.parse(_port.text.trim()),
+    username: _username.text.trim(),
+    password: _password.text.trim(),
+    secret: _secret.text.trim(),
+  );
 
   Future<void> _save() async {
     if (!_valid || _saving) return;
     setState(() => _saving = true);
+    final config = _config;
+    if (widget.allowOfflineSave) {
+      await ProxyConfig.save(config);
+      unawaited(TdClient.shared.applySavedProxyToActive());
+      if (mounted) Navigator.of(context).pop(true);
+      return;
+    }
     try {
-      await TdClient.shared.query({
-        '@type': 'addProxy',
-        'server': _server.text.trim(),
-        'port': int.parse(_port.text.trim()),
-        'enable': true,
-        'type': _typeObject(),
-      });
+      await TdClient.shared.query(config.addProxyRequest);
+      await ProxyConfig.save(config);
+      unawaited(TdClient.shared.applySavedProxyToActive());
       if (mounted) Navigator.of(context).pop(true);
     } catch (_) {
       if (mounted) {

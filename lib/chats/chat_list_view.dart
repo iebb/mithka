@@ -15,7 +15,6 @@ import 'package:flutter/material.dart';
 import '../components/toast.dart';
 import 'package:provider/provider.dart';
 
-import '../channels/topic_chat_view.dart';
 import '../chat/chat_view.dart';
 import '../chat/custom_emoji.dart';
 import '../components/drawer_controller.dart' as dc;
@@ -87,7 +86,7 @@ class ChatListView extends StatefulWidget {
 
 class _ChatListViewState extends State<ChatListView> {
   final ChatListViewModel _model = ChatListViewModel();
-  final ScrollController _scrollController = ScrollController();
+  late ScrollController _scrollController = _newScrollController();
   String _meName = '我';
   TdFileRef? _mePhoto;
   int _meStatusId = 0; // current emoji status, shown after the name
@@ -102,13 +101,18 @@ class _ChatListViewState extends State<ChatListView> {
   int _lastHandledScrollToFirstUnreadRequest = 0;
   int _lastHandledMarkAllReadRequest = 0;
   int _pendingScrollAttempts = 0;
+  bool _didApplyTopAssistantInitialOffset = false;
+
+  ScrollController _newScrollController({double initialScrollOffset = 0}) {
+    return ScrollController(initialScrollOffset: initialScrollOffset)
+      ..addListener(_onScroll);
+  }
 
   @override
   void initState() {
     super.initState();
     _model.onAppear();
     _model.addListener(_onModel);
-    _scrollController.addListener(_onScroll);
     widget.controller?.addListener(_onControllerRequest);
     _loadMe();
     // Keep the header's name/status/photo live — TDLib emits updateUser for us
@@ -185,9 +189,7 @@ class _ChatListViewState extends State<ChatListView> {
     }
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => chat.isForum
-            ? TopicChatView(chat: chat)
-            : ChatView(chatId: chat.id, title: chat.title),
+        builder: (_) => ChatView(chatId: chat.id, title: chat.title),
       ),
     );
   }
@@ -311,7 +313,12 @@ class _ChatListViewState extends State<ChatListView> {
 
     var itemIndex = chatIndex;
     if (_model.isAllFilter && _model.archived.isNotEmpty) {
-      final assistantIndex = math.min(_lastVisibleRows + 1, chats.length);
+      final placement = context.read<ThemeController>().groupAssistantPlacement;
+      final assistantIndex = _assistantInsertionIndex(
+        chats,
+        _lastVisibleRows,
+        placement,
+      );
       if (assistantIndex <= chatIndex) itemIndex++;
     }
 
@@ -554,6 +561,9 @@ class _ChatListViewState extends State<ChatListView> {
   Widget _chatList() {
     final c = context.colors;
     final showSearch = context.watch<ThemeController>().showChatListSearch;
+    final assistantPlacement = context
+        .watch<ThemeController>()
+        .groupAssistantPlacement;
     return Container(
       color: c.background,
       child: LayoutBuilder(
@@ -573,17 +583,45 @@ class _ChatListViewState extends State<ChatListView> {
             );
           }
           final hasArchive = _model.isAllFilter && _model.archived.isNotEmpty;
-          final assistantIndex = math.min(visibleRows + 1, chats.length);
+          final topAssistant =
+              hasArchive && assistantPlacement == GroupAssistantPlacement.top;
+          if (!topAssistant) _didApplyTopAssistantInitialOffset = false;
+          final assistantIndex = _assistantInsertionIndex(
+            chats,
+            visibleRows,
+            assistantPlacement,
+          );
 
           // Build flat item list with the 群助手 entry interleaved.
           final items = <Widget>[];
+          if (topAssistant) items.add(_assistantRow());
           if (showSearch) items.add(_searchPill());
           for (var i = 0; i < chats.length; i++) {
-            if (hasArchive && i == assistantIndex) items.add(_assistantRow());
+            if (!topAssistant && hasArchive && i == assistantIndex) {
+              items.add(_assistantRow());
+            }
             items.add(_swipeRow(chats[i]));
           }
-          if (hasArchive && assistantIndex >= chats.length) {
+          if (!topAssistant && hasArchive && assistantIndex >= chats.length) {
             items.add(_assistantRow());
+          }
+
+          if (topAssistant &&
+              !_didApplyTopAssistantInitialOffset &&
+              !_scrollController.hasClients) {
+            _didApplyTopAssistantInitialOffset = true;
+            _scrollController.removeListener(_onScroll);
+            _scrollController.dispose();
+            _scrollController = _newScrollController(initialScrollOffset: rowH);
+          } else if (topAssistant && !_didApplyTopAssistantInitialOffset) {
+            _didApplyTopAssistantInitialOffset = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted || !_scrollController.hasClients) return;
+              final max = _scrollController.position.maxScrollExtent;
+              if (_scrollController.position.pixels < rowH * 0.5) {
+                _scrollController.jumpTo(math.min(rowH, max));
+              }
+            });
           }
 
           return ListView.builder(
@@ -596,6 +634,33 @@ class _ChatListViewState extends State<ChatListView> {
         },
       ),
     );
+  }
+
+  int _assistantInsertionIndex(
+    List<ChatSummary> chats,
+    int visibleRows,
+    GroupAssistantPlacement placement,
+  ) {
+    if (chats.isEmpty) return 0;
+    return switch (placement) {
+      GroupAssistantPlacement.top => 0,
+      GroupAssistantPlacement.secondScreen => math.min(
+        visibleRows + 1,
+        chats.length,
+      ),
+      GroupAssistantPlacement.chronological => _chronologicalAssistantIndex(
+        chats,
+      ),
+    };
+  }
+
+  int _chronologicalAssistantIndex(List<ChatSummary> chats) {
+    final archiveDate = _model.archived.isEmpty
+        ? 0
+        : _model.archived.first.date;
+    if (archiveDate <= 0) return chats.length;
+    final index = chats.indexWhere((chat) => chat.date < archiveDate);
+    return index < 0 ? chats.length : index;
   }
 
   Widget _rowContainer(Widget child) => child;
@@ -893,9 +958,7 @@ class ChatFilterMenu extends StatelessWidget {
                   child: Row(
                     children: [
                       Icon(
-                        filter.isAll
-                            ? sfIcon('tray.full')
-                            : sfIcon('folder'),
+                        filter.isAll ? sfIcon('tray.full') : sfIcon('folder'),
                         size: AppIconSize.lg + 1,
                         color: c.textPrimary,
                       ),
@@ -912,7 +975,11 @@ class ChatFilterMenu extends StatelessWidget {
                         ),
                       ),
                       if (selectedFilter)
-                        Icon(sfIcon('checkmark'), size: 18, color: AppTheme.brand),
+                        Icon(
+                          sfIcon('checkmark'),
+                          size: 18,
+                          color: AppTheme.brand,
+                        ),
                     ],
                   ),
                 ),

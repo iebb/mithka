@@ -595,7 +595,10 @@ class _ImageEditViewState extends State<ImageEditView> {
           IconButton(
             tooltip: '重置裁剪',
             onPressed: _resetCrop,
-            icon: Icon(sfIcon('arrow.triangle.2.circlepath'), color: Colors.white),
+            icon: Icon(
+              sfIcon('arrow.triangle.2.circlepath'),
+              color: Colors.white,
+            ),
           ),
           if (!widget.avatar)
             IconButton(

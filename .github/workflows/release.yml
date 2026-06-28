@@ -215,9 +215,20 @@ jobs:
         run: |
           test -n "$TELEGRAM_BOT_TOKEN"
           test -n "$TELEGRAM_CI_CHANNEL"
-          curl -fsS \
+          response="$(curl -fsS \
             -F "chat_id=$TELEGRAM_CI_CHANNEL" \
             -F "text=🚀 Mithka release $RELEASE_TAG
 
           APKs: $RELEASE_URL" \
-            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage"
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage")"
+          # Release CI announcements should stay in the channel history but not
+          # become pinned. If another automation or Telegram-side behavior pins
+          # the just-sent message, unpin that exact message best-effort.
+          message_id="$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("result", {}).get("message_id", ""))' <<< "$response")"
+          if [ -n "$message_id" ]; then
+            curl -fsS \
+              -F "chat_id=$TELEGRAM_CI_CHANNEL" \
+              -F "message_id=$message_id" \
+              "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/unpinChatMessage" \
+              >/dev/null 2>&1 || true
+          fi

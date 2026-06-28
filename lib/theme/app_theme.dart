@@ -59,7 +59,6 @@ abstract final class AppMetric {
   static const double navHeaderHeight = 44;
   static const double listRowHeight = 64;
   static const double avatarSize = 48;
-  static const double assistantAvatarSize = 50;
   static const double headerAvatarSize = 40;
   static const double hitTarget = 36;
   static const double searchHeight = 36;
@@ -189,12 +188,12 @@ class AppColors extends ThemeExtension<AppColors> {
   static final AppColors light = AppColors(
     background: _hex(0xFFFFFF),
     pinnedRow: _hex(0xF3F4F7),
-    listHeaderTint: _hex(0xEDF1F8),
+    listHeaderTint: _hex(0xEFF5FF),
     card: _hex(0xFFFFFF),
     navBar: _hex(0xFFFFFF),
-    groupedBackground: _hex(0xF2F3F5),
-    chatBackground: _hex(0xEDEDED),
-    searchFill: _hex(0xEFF1F4),
+    groupedBackground: _hex(0xF2F2F2),
+    chatBackground: _hex(0xF2F2F2),
+    searchFill: _hex(0xFFFFFF),
     inputBarBackground: _hex(0xF7F7F7),
     panelBackground: _hex(0xF2F3F5),
     bubbleIncoming: _hex(0xFFFFFF),
@@ -207,22 +206,22 @@ class AppColors extends ThemeExtension<AppColors> {
   );
 
   static final AppColors dark = AppColors(
-    background: _hex(0x1A1A1C),
-    pinnedRow: _hex(0x202024),
-    listHeaderTint: _hex(0x202024),
-    card: _hex(0x242427),
-    navBar: _hex(0x1E1E20),
-    groupedBackground: _hex(0x121214),
-    chatBackground: _hex(0x161618),
-    searchFill: _hex(0x2A2A2E),
-    inputBarBackground: _hex(0x202022),
-    panelBackground: _hex(0x1C1C1E),
-    bubbleIncoming: _hex(0x2A2A2E),
+    background: _hex(0x202324),
+    pinnedRow: _hex(0x252829),
+    listHeaderTint: _hex(0x202324),
+    card: _hex(0x202324),
+    navBar: _hex(0x2B2D2E),
+    groupedBackground: _hex(0x151718),
+    chatBackground: _hex(0x000000),
+    searchFill: _hex(0x36383A),
+    inputBarBackground: _hex(0x202324),
+    panelBackground: _hex(0x151718),
+    bubbleIncoming: _hex(0x292D30),
     bubbleIncomingText: _hex(0xEDEDED),
-    textPrimary: _hex(0xE8E8EA),
-    textSecondary: _hex(0x98989D),
-    textTertiary: _hex(0x6A6A6E),
-    divider: _hex(0x35353A),
+    textPrimary: _hex(0xEDEDED),
+    textSecondary: _hex(0x9A9A9A),
+    textTertiary: _hex(0x707276),
+    divider: _hex(0x303234),
     linkBlue: _hex(0x5EA0FF),
   );
 

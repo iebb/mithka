@@ -35,7 +35,7 @@ class GroupAssistantRow extends StatelessWidget {
     final c = context.colors;
     final theme = context.watch<ThemeController>();
     final rowHeight = theme.rowHeight;
-    final avatarSize = theme.scaled(AppMetric.assistantAvatarSize);
+    final avatarSize = theme.avatarSize;
     return Container(
       height: rowHeight,
       color: c.background,

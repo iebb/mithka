@@ -59,6 +59,18 @@ enum UnreadBadgeOverflowMode {
   };
 }
 
+enum GroupAssistantPlacement {
+  top('顶部折叠', FontAwesomeIcons.arrowUp),
+  chronological('按时间排序', FontAwesomeIcons.clock),
+  secondScreen('第二屏首位', FontAwesomeIcons.arrowDown);
+
+  const GroupAssistantPlacement(this.label, this._icon);
+  final String label;
+  final FaIconData _icon;
+
+  IconData get icon => _icon.data;
+}
+
 enum AppFontChoice {
   system('系统默认', '消息预览 Aa 123', cjk: true),
   apple('Apple / 苹方', '消息预览 Aa 123', cjk: true),
@@ -741,6 +753,10 @@ class ThemeController extends ChangeNotifier {
     _groupImageMessages = _prefs.getBool(_groupImageMessagesKey) ?? true;
     _showChannelsTab = _prefs.getBool(_showChannelsTabKey) ?? false;
     _showMomentsTab = _prefs.getBool(_showMomentsTabKey) ?? true;
+    _groupAssistantPlacement = GroupAssistantPlacement.values.firstWhere(
+      (m) => m.name == _prefs.getString(_groupAssistantPlacementKey),
+      orElse: () => GroupAssistantPlacement.secondScreen,
+    );
     _unreadBadgeMode = UnreadBadgeMode.values.firstWhere(
       (m) => m.name == _prefs.getString(_unreadBadgeModeKey),
       orElse: () => UnreadBadgeMode.messages,
@@ -776,6 +792,7 @@ class ThemeController extends ChangeNotifier {
   static const _groupImageMessagesKey = 'groupImageMessages';
   static const _showChannelsTabKey = 'showChannelsTab';
   static const _showMomentsTabKey = 'showMomentsTab';
+  static const _groupAssistantPlacementKey = 'groupAssistantPlacement';
   static const _unreadBadgeModeKey = 'unreadBadgeMode';
   static const _unreadBadgeOverflowModeKey = 'unreadBadgeOverflowMode';
 
@@ -809,6 +826,7 @@ class ThemeController extends ChangeNotifier {
   bool _groupImageMessages = true;
   bool _showChannelsTab = false;
   bool _showMomentsTab = true;
+  late GroupAssistantPlacement _groupAssistantPlacement;
   late UnreadBadgeMode _unreadBadgeMode;
   late UnreadBadgeOverflowMode _unreadBadgeOverflowMode;
 
@@ -847,9 +865,15 @@ class ThemeController extends ChangeNotifier {
   bool get groupImageMessages => _groupImageMessages;
   bool get showChannelsTab => _showChannelsTab;
   bool get showMomentsTab => _showMomentsTab;
+  GroupAssistantPlacement get groupAssistantPlacement =>
+      _groupAssistantPlacement;
   UnreadBadgeMode get unreadBadgeMode => _unreadBadgeMode;
+  bool get unreadBadgeShowsChatCount =>
+      _unreadBadgeMode == UnreadBadgeMode.chats;
   UnreadBadgeOverflowMode get unreadBadgeOverflowMode =>
       _unreadBadgeOverflowMode;
+  bool get capUnreadBadgeAt99 =>
+      _unreadBadgeOverflowMode == UnreadBadgeOverflowMode.capped;
 
   /// App-wide text scale factor, applied at the root via MediaQuery.textScaler.
   double get fontScale => _fontScale;
@@ -1008,15 +1032,31 @@ class ThemeController extends ChangeNotifier {
     notifyListeners();
   }
 
+  set groupAssistantPlacement(GroupAssistantPlacement value) {
+    _groupAssistantPlacement = value;
+    _prefs.setString(_groupAssistantPlacementKey, value.name);
+    notifyListeners();
+  }
+
   set unreadBadgeMode(UnreadBadgeMode value) {
     _unreadBadgeMode = value;
     _prefs.setString(_unreadBadgeModeKey, value.name);
     notifyListeners();
   }
 
+  set unreadBadgeShowsChatCount(bool value) {
+    unreadBadgeMode = value ? UnreadBadgeMode.chats : UnreadBadgeMode.messages;
+  }
+
   set unreadBadgeOverflowMode(UnreadBadgeOverflowMode value) {
     _unreadBadgeOverflowMode = value;
     _prefs.setString(_unreadBadgeOverflowModeKey, value.name);
     notifyListeners();
+  }
+
+  set capUnreadBadgeAt99(bool value) {
+    unreadBadgeOverflowMode = value
+        ? UnreadBadgeOverflowMode.capped
+        : UnreadBadgeOverflowMode.exact;
   }
 }

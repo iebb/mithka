@@ -11,20 +11,29 @@
 		1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */ = {isa = PBXBuildFile; fileRef = 1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */; };
 		1E0380BE718A337ABF60C994 /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4722587BC4AC3EEC7575A44C /* Pods_Runner.framework */; };
 		331C808B294A63AB00263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C807B294A618700263BE5 /* RunnerTests.swift */; };
+		3710E08FDCA600E100CD4F88 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 52A009A067E9DA34DF0021A0 /* Foundation.framework */; };
 		3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */; };
-		5F21B8A82FEE7A5800F10001 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 5F21B8A72FEE7A5800F10001 /* GoogleService-Info.plist */; };
 		56461556E6B04081CB084252 /* Pods_RunnerTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 175A52FD9B996D21E7E5A1EC /* Pods_RunnerTests.framework */; };
+		5F21B8A82FEE7A5800F10001 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 5F21B8A72FEE7A5800F10001 /* GoogleService-Info.plist */; };
 		74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74858FAE1ED2DC5600515810 /* AppDelegate.swift */; };
 		7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */; };
 		8CE983C32FEBFF5D00D0A469 /* Pengram.icon in Resources */ = {isa = PBXBuildFile; fileRef = 8CE983C22FEBFF5D00D0A469 /* Pengram.icon */; };
 		97C146FC1CF9000F007C117D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FA1CF9000F007C117D /* Main.storyboard */; };
 		97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000F007C117D /* Assets.xcassets */; };
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
+		A685F7A8DE8A8339A7CFE48A /* RunnerUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8FADD48E0FE94429FDE1912 /* RunnerUITests.swift */; };
 		BD06D3B4F53874C98C6D9618 /* tdjson.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 7AF24ACBEB1466595B72E2DD /* tdjson.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
 		331C8085294A63A400263BE5 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 97C146E61CF9000F007C117D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 97C146ED1CF9000F007C117D;
+			remoteInfo = Runner;
+		};
+		E2D68C5593A8C49A7C6CE6AB /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 97C146E61CF9000F007C117D /* Project object */;
 			proxyType = 1;
@@ -55,8 +64,9 @@
 		331C807B294A618700263BE5 /* RunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunnerTests.swift; sourceTree = "<group>"; };
 		331C8081294A63A400263BE5 /* RunnerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RunnerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = AppFrameworkInfo.plist; path = Flutter/AppFrameworkInfo.plist; sourceTree = "<group>"; };
-		5F21B8A72FEE7A5800F10001 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		4722587BC4AC3EEC7575A44C /* Pods_Runner.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Runner.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		52A009A067E9DA34DF0021A0 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		5F21B8A72FEE7A5800F10001 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Runner-Bridging-Header.h"; sourceTree = "<group>"; };
 		74858FAE1ED2DC5600515810 /* AppDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
@@ -75,9 +85,19 @@
 		ED8D718BAAB68DA0BBCAA176 /* Pods-Runner.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.release.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"; sourceTree = "<group>"; };
 		EE10E6CFEEFDE38592ABA806 /* Pods-RunnerTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.release.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.release.xcconfig"; sourceTree = "<group>"; };
 		EFF89E330D2D2A54C6DE0C80 /* Pods-RunnerTests.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.profile.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.profile.xcconfig"; sourceTree = "<group>"; };
+		F4C386C258DAFED2D9C5A120 /* RunnerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; name = RunnerUITests.xctest; path = RunnerUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		F8FADD48E0FE94429FDE1912 /* RunnerUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RunnerUITests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		39844E4A361E9D56B36A6E4E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3710E08FDCA600E100CD4F88 /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		6CDD517FC15EFC429BF19718 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -106,6 +126,15 @@
 			path = RunnerTests;
 			sourceTree = "<group>";
 		};
+		58A8BF37A222A722C6007F34 /* RunnerUITests */ = {
+			isa = PBXGroup;
+			children = (
+				F8FADD48E0FE94429FDE1912 /* RunnerUITests.swift */,
+			);
+			name = RunnerUITests;
+			path = RunnerUITests;
+			sourceTree = "<group>";
+		};
 		9740EEB11CF90186004384FC /* Flutter */ = {
 			isa = PBXGroup;
 			children = (
@@ -126,6 +155,7 @@
 				331C8082294A63A400263BE5 /* RunnerTests */,
 				CFFBCA7D541D2548B6919989 /* Frameworks */,
 				E0A445C3AA6A613EA2B5CBF2 /* Pods */,
+				58A8BF37A222A722C6007F34 /* RunnerUITests */,
 			);
 			sourceTree = "<group>";
 		};
@@ -134,6 +164,7 @@
 			children = (
 				97C146EE1CF9000F007C117D /* Runner.app */,
 				331C8081294A63A400263BE5 /* RunnerTests.xctest */,
+				F4C386C258DAFED2D9C5A120 /* RunnerUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -156,12 +187,21 @@
 			path = Runner;
 			sourceTree = "<group>";
 		};
+		B22F9C570B286432D1B0172B /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				52A009A067E9DA34DF0021A0 /* Foundation.framework */,
+			);
+			name = iOS;
+			sourceTree = "<group>";
+		};
 		CFFBCA7D541D2548B6919989 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
 				7AF24ACBEB1466595B72E2DD /* tdjson.xcframework */,
 				4722587BC4AC3EEC7575A44C /* Pods_Runner.framework */,
 				175A52FD9B996D21E7E5A1EC /* Pods_RunnerTests.framework */,
+				B22F9C570B286432D1B0172B /* iOS */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -200,6 +240,24 @@
 			productName = RunnerTests;
 			productReference = 331C8081294A63A400263BE5 /* RunnerTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		7E185FF3DAB034683BE5749C /* RunnerUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2CC36BAA76E2E9418DB23939 /* Build configuration list for PBXNativeTarget "RunnerUITests" */;
+			buildPhases = (
+				F78C1211F95EDA49C2EA6BDD /* Sources */,
+				39844E4A361E9D56B36A6E4E /* Frameworks */,
+				8C996543254F5869D984E54F /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				93904544FCF7EE0B99308CF6 /* PBXTargetDependency */,
+			);
+			name = RunnerUITests;
+			productName = RunnerUITests;
+			productReference = F4C386C258DAFED2D9C5A120 /* RunnerUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 		97C146ED1CF9000F007C117D /* Runner */ = {
 			isa = PBXNativeTarget;
@@ -260,12 +318,20 @@
 			targets = (
 				97C146ED1CF9000F007C117D /* Runner */,
 				331C8080294A63A400263BE5 /* RunnerTests */,
+				7E185FF3DAB034683BE5749C /* RunnerUITests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		331C807F294A63A400263BE5 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8C996543254F5869D984E54F /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -436,6 +502,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		F78C1211F95EDA49C2EA6BDD /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A685F7A8DE8A8339A7CFE48A /* RunnerUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -443,6 +517,12 @@
 			isa = PBXTargetDependency;
 			target = 97C146ED1CF9000F007C117D /* Runner */;
 			targetProxy = 331C8085294A63A400263BE5 /* PBXContainerItemProxy */;
+		};
+		93904544FCF7EE0B99308CF6 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = Runner;
+			target = 97C146ED1CF9000F007C117D /* Runner */;
+			targetProxy = E2D68C5593A8C49A7C6CE6AB /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -525,18 +605,17 @@
 		249021D4217E4FDB00AE95B9 /* Profile */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 7AFA3C8E1D35360C0083082E /* Release.xcconfig */;
-				buildSettings = {
-					ASSETCATALOG_COMPILER_APPICON_NAME = Pengram;
-					ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
-					CLANG_ENABLE_MODULES = YES;
-					CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
-					DEVELOPMENT_TEAM = 7P8CLHDH5G;
-					ENABLE_BITCODE = NO;
-					EMBEDDED_CONTENT_CONTAINS_SWIFT = YES;
-					FLUTTER_BUILD_NAME = 0.1.17;
-					FRAMEWORK_SEARCH_PATHS = (
-						"$(inherited)",
-						"$(PROJECT_DIR)/tdjson",
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = Pengram;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
+				DEVELOPMENT_TEAM = 7P8CLHDH5G;
+				EMBEDDED_CONTENT_CONTAINS_SWIFT = YES;
+				ENABLE_BITCODE = NO;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/tdjson",
 				);
 				INFOPLIST_FILE = Runner/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Mithka;
@@ -607,6 +686,71 @@
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Runner.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Runner";
 			};
 			name = Profile;
+		};
+		3DB80AFEE2D760E3F5ECAAEA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				FULL_PRODUCT_NAME = "$(TARGET_NAME).xctest";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = ad.neko.mithka.RunnerUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = Runner;
+				WRAPPER_EXTENSION = xctest;
+			};
+			name = Debug;
+		};
+		58E6E5125C042691D25A4DB0 /* Profile */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				FULL_PRODUCT_NAME = "$(TARGET_NAME).xctest";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = ad.neko.mithka.RunnerUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = Runner;
+				VALIDATE_PRODUCT = YES;
+				WRAPPER_EXTENSION = xctest;
+			};
+			name = Profile;
+		};
+		74817F027A52E6ED4F05258D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				FULL_PRODUCT_NAME = "$(TARGET_NAME).xctest";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = ad.neko.mithka.RunnerUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = Runner;
+				VALIDATE_PRODUCT = YES;
+				WRAPPER_EXTENSION = xctest;
+			};
+			name = Release;
 		};
 		97C147031CF9000F007C117D /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -730,18 +874,17 @@
 		97C147061CF9000F007C117D /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 9740EEB21CF90195004384FC /* Debug.xcconfig */;
-				buildSettings = {
-					ASSETCATALOG_COMPILER_APPICON_NAME = Pengram;
-					ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
-					CLANG_ENABLE_MODULES = YES;
-					CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
-					DEVELOPMENT_TEAM = 7P8CLHDH5G;
-					ENABLE_BITCODE = NO;
-					EMBEDDED_CONTENT_CONTAINS_SWIFT = YES;
-					FLUTTER_BUILD_NAME = 0.1.17;
-					FRAMEWORK_SEARCH_PATHS = (
-						"$(inherited)",
-						"$(PROJECT_DIR)/tdjson",
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = Pengram;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
+				DEVELOPMENT_TEAM = 7P8CLHDH5G;
+				EMBEDDED_CONTENT_CONTAINS_SWIFT = YES;
+				ENABLE_BITCODE = NO;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/tdjson",
 				);
 				INFOPLIST_FILE = Runner/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Mithka;
@@ -767,18 +910,17 @@
 		97C147071CF9000F007C117D /* Release */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 7AFA3C8E1D35360C0083082E /* Release.xcconfig */;
-				buildSettings = {
-					ASSETCATALOG_COMPILER_APPICON_NAME = Pengram;
-					ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
-					CLANG_ENABLE_MODULES = YES;
-					CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
-					DEVELOPMENT_TEAM = 7P8CLHDH5G;
-					ENABLE_BITCODE = NO;
-					EMBEDDED_CONTENT_CONTAINS_SWIFT = YES;
-					FLUTTER_BUILD_NAME = 0.1.17;
-					FRAMEWORK_SEARCH_PATHS = (
-						"$(inherited)",
-						"$(PROJECT_DIR)/tdjson",
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = Pengram;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
+				DEVELOPMENT_TEAM = 7P8CLHDH5G;
+				EMBEDDED_CONTENT_CONTAINS_SWIFT = YES;
+				ENABLE_BITCODE = NO;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/tdjson",
 				);
 				INFOPLIST_FILE = Runner/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Mithka;
@@ -803,6 +945,16 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		2CC36BAA76E2E9418DB23939 /* Build configuration list for PBXNativeTarget "RunnerUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				74817F027A52E6ED4F05258D /* Release */,
+				3DB80AFEE2D760E3F5ECAAEA /* Debug */,
+				58E6E5125C042691D25A4DB0 /* Profile */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		331C8087294A63A400263BE5 /* Build configuration list for PBXNativeTarget "RunnerTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

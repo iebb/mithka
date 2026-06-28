@@ -9,6 +9,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
@@ -16,7 +17,9 @@ import '../components/toast.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../app/video_split_controller.dart';
 import '../call/call_manager.dart';
+import '../channels/topic_chat_view.dart';
 import '../components/confirm_dialog.dart';
 import '../components/photo_avatar.dart';
 import '../components/sf_symbols.dart';
@@ -37,6 +40,7 @@ import 'emoji_store.dart';
 import 'chat_view_model.dart';
 import 'full_image_viewer.dart';
 import 'link_handler.dart';
+import 'media_album_layout.dart';
 import 'message_action_menu.dart';
 import 'message_bubble.dart';
 import 'sticker_set_detail_view.dart';
@@ -50,11 +54,19 @@ class ChatView extends StatefulWidget {
     required this.title,
     this.initialMessageId,
     this.showBackButton = true,
+    this.headerHeight = 48,
+    this.headerColor,
+    this.showHeaderDivider = true,
+    this.onBack,
   });
   final int chatId;
   final String title;
   final int? initialMessageId;
   final bool showBackButton;
+  final double headerHeight;
+  final Color? headerColor;
+  final bool showHeaderDivider;
+  final VoidCallback? onBack;
 
   @override
   State<ChatView> createState() => _ChatViewState();
@@ -68,13 +80,6 @@ class _TranscriptEntry {
 
   ChatMessage get first => messages.first;
   bool get isImageGroup => messages.length > 1;
-}
-
-class _ImageGroupLayout {
-  const _ImageGroupLayout(this.height, this.tiles);
-
-  final double height;
-  final List<Rect> tiles;
 }
 
 class _ChatViewState extends State<ChatView> {
@@ -103,13 +108,8 @@ class _ChatViewState extends State<ChatView> {
   double _keyboardInset = 0;
   bool _shortTranscriptFillScheduled = false;
   bool _isFillingShortTranscript = false;
-  bool _autoTranslateScheduled = false;
-  bool _autoTranslateRunning = false;
   bool _loadingLatestFromAnchor = false;
-  String _autoTranslateConfigKey = '';
   int _bottomSettleGeneration = 0;
-  final Set<int> _autoTranslateInFlight = {};
-  final Set<int> _autoTranslateFailed = {};
   final Set<int> _selectedMessageIds = {};
   int? _selectionAnchorId;
   bool _selectionScrollingUp = false;
@@ -122,6 +122,14 @@ class _ChatViewState extends State<ChatView> {
 
   /// Gap (seconds) between messages that triggers a fresh time separator.
   static const _separatorGap = 300;
+  static OverlayEntry? _globalPictureInPictureVideo;
+
+  double _messageMediaMaxWidth() {
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    // Album rows only reserve outer padding, avatar and the avatar gap.
+    final laneWidth = math.max(160.0, screenWidth - 12.0 * 2 - 38.0 - 8.0);
+    return laneWidth * 0.75;
+  }
 
   @override
   void initState() {
@@ -370,7 +378,6 @@ class _ChatViewState extends State<ChatView> {
     } else if (_vm.initialLoaded && _vm.messages.isNotEmpty) {
       _scheduleShortTranscriptFill();
     }
-    _scheduleAutoTranslate();
     // The "N条新消息" banner shows on entry, then auto-hides after a few seconds.
     final keepEntryUnreadBanner =
         context.read<ThemeController>().openChatsAtLatest &&
@@ -567,7 +574,12 @@ class _ChatViewState extends State<ChatView> {
     if (_backSwipePopping || !mounted) return;
     _backSwipePopping = true;
     try {
-      await Navigator.of(context).maybePop();
+      final onBack = widget.onBack;
+      if (onBack != null) {
+        onBack();
+      } else {
+        await Navigator.of(context).maybePop();
+      }
     } finally {
       _backSwipePopping = false;
     }
@@ -693,78 +705,6 @@ class _ChatViewState extends State<ChatView> {
     _exitSelection();
   }
 
-  void _scheduleAutoTranslate() {
-    if (_autoTranslateScheduled || _autoTranslateRunning) return;
-    final translation = context.read<TranslationController>();
-    if (!translation.enabled ||
-        !translation.autoTranslate ||
-        !_vm.initialLoaded ||
-        _vm.messages.isEmpty) {
-      return;
-    }
-    _autoTranslateScheduled = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _autoTranslateScheduled = false;
-      unawaited(_runAutoTranslate());
-    });
-  }
-
-  Future<void> _runAutoTranslate() async {
-    if (!mounted || _autoTranslateRunning) return;
-    final translation = context.read<TranslationController>();
-    if (!translation.enabled || !translation.autoTranslate) return;
-    final configKey = _autoTranslateKey(translation);
-    if (_autoTranslateConfigKey != configKey) {
-      _autoTranslateConfigKey = configKey;
-      _autoTranslateFailed.clear();
-    }
-
-    final candidates = _vm.messages.reversed
-        .where(_shouldAutoTranslate)
-        .take(30)
-        .toList();
-    if (candidates.isEmpty) return;
-
-    _autoTranslateRunning = true;
-    try {
-      for (final message in candidates.reversed) {
-        if (!mounted || !context.read<TranslationController>().autoTranslate) {
-          break;
-        }
-        if (!_shouldAutoTranslate(message)) continue;
-        _autoTranslateInFlight.add(message.id);
-        final ok = await _translateMessage(message, showErrors: false);
-        _autoTranslateInFlight.remove(message.id);
-        if (!ok) _autoTranslateFailed.add(message.id);
-      }
-    } finally {
-      _autoTranslateRunning = false;
-    }
-  }
-
-  bool _shouldAutoTranslate(ChatMessage message) {
-    if (message.isOutgoing ||
-        message.isService ||
-        message.isTranslating ||
-        (message.translationText?.isNotEmpty ?? false) ||
-        _autoTranslateInFlight.contains(message.id) ||
-        _autoTranslateFailed.contains(message.id)) {
-      return false;
-    }
-    return _translationSourceText(message).trim().isNotEmpty;
-  }
-
-  String _autoTranslateKey(TranslationController translation) {
-    final noTranslate = translation.noTranslateLanguageCodes.toList()..sort();
-    return [
-      translation.provider.storageValue,
-      translation.targetLanguageCode,
-      translation.lingvaEndpoint,
-      translation.libreTranslateEndpoint,
-      noTranslate.join(','),
-    ].join('|');
-  }
-
   @override
   void dispose() {
     _bannerTimer?.cancel();
@@ -835,12 +775,263 @@ class _ChatViewState extends State<ChatView> {
     Navigator.of(context).push(
       MaterialPageRoute(
         fullscreenDialog: true,
-        builder: (_) => VideoPlayerView(
+        builder: (routeContext) => VideoPlayerView(
           video: v,
           thumb: message.image,
           width: message.imageWidth,
           height: message.imageHeight,
+          sourceChatId: widget.chatId,
+          messageId: message.id,
+          currentMode: VideoDisplayMode.fullscreen,
+          onSwitchMode: (mode) => _switchVideoMode(routeContext, message, mode),
         ),
+      ),
+    );
+  }
+
+  void _switchVideoMode(
+    BuildContext routeContext,
+    ChatMessage message,
+    VideoDisplayMode mode,
+  ) {
+    switch (mode) {
+      case VideoDisplayMode.fullscreen:
+        break;
+      case VideoDisplayMode.pictureInPicture:
+        _showVideoPictureInPicture(
+          routeContext,
+          message,
+          widget.chatId,
+          widget.title,
+        );
+        Navigator.of(routeContext).maybePop();
+      case VideoDisplayMode.split:
+        VideoSplitController.instance.play(
+          VideoSplitSession(
+            chatId: widget.chatId,
+            title: widget.title,
+            video: message.video!,
+            thumb: message.image,
+            width: message.imageWidth,
+            height: message.imageHeight,
+            messageId: message.id,
+          ),
+        );
+        Navigator.of(routeContext).maybePop();
+    }
+  }
+
+  void _playVideoPictureInPicture(ChatMessage message) {
+    final v = message.video;
+    if (v == null) return;
+    _showVideoPictureInPicture(context, message, widget.chatId, widget.title);
+  }
+
+  static void _showVideoPictureInPicture(
+    BuildContext context,
+    ChatMessage message,
+    int chatId,
+    String title,
+  ) {
+    final v = message.video;
+    if (v == null) return;
+    _globalPictureInPictureVideo?.remove();
+    _globalPictureInPictureVideo = null;
+
+    final overlay = Overlay.of(context, rootOverlay: true);
+    final screen = MediaQuery.sizeOf(context);
+    const margin = 16.0;
+    final aspect =
+        (message.imageWidth != null &&
+            message.imageHeight != null &&
+            message.imageWidth! > 0 &&
+            message.imageHeight! > 0)
+        ? message.imageWidth! / message.imageHeight!
+        : 16 / 9;
+    var boxWidth = (screen.width * 0.46).clamp(220.0, 360.0);
+    var boxHeight = (boxWidth / aspect).clamp(130.0, 260.0);
+    boxWidth = boxHeight * aspect;
+    var offset = Offset(
+      screen.width - boxWidth - margin,
+      screen.height - boxHeight - MediaQuery.paddingOf(context).bottom - 110,
+    );
+
+    late final OverlayEntry entry;
+    void close() {
+      entry.remove();
+      if (_globalPictureInPictureVideo == entry) {
+        _globalPictureInPictureVideo = null;
+      }
+    }
+
+    entry = OverlayEntry(
+      builder: (overlayContext) => StatefulBuilder(
+        builder: (context, setOverlayState) {
+          final media = MediaQuery.sizeOf(context);
+          final padding = MediaQuery.paddingOf(context);
+          void clampOffset() {
+            offset = Offset(
+              offset.dx.clamp(margin, media.width - boxWidth - margin),
+              offset.dy.clamp(
+                padding.top + margin,
+                media.height - boxHeight - padding.bottom - margin,
+              ),
+            );
+          }
+
+          void move(DragUpdateDetails details) {
+            setOverlayState(() {
+              offset += details.delta;
+              clampOffset();
+            });
+          }
+
+          void resizeFromCorner(
+            DragUpdateDetails details, {
+            required int horizontalSign,
+            required int verticalSign,
+          }) {
+            setOverlayState(() {
+              final oldWidth = boxWidth;
+              final oldHeight = boxHeight;
+              final minW = math.min(180.0, media.width - margin * 2);
+              final maxW = math.max(minW, media.width - margin * 2);
+              final widthFromX = boxWidth + details.delta.dx * horizontalSign;
+              final widthFromY =
+                  boxWidth + details.delta.dy * verticalSign * aspect;
+              final nextWidth =
+                  (widthFromX - boxWidth).abs() > (widthFromY - boxWidth).abs()
+                  ? widthFromX
+                  : widthFromY;
+              boxWidth = nextWidth.clamp(minW, maxW);
+              boxHeight = boxWidth / aspect;
+              if (boxHeight > media.height * 0.72) {
+                boxHeight = media.height * 0.72;
+                boxWidth = boxHeight * aspect;
+              }
+              if (boxHeight < 110) {
+                boxHeight = 110;
+                boxWidth = boxHeight * aspect;
+              }
+              if (horizontalSign < 0) {
+                offset = offset.translate(oldWidth - boxWidth, 0);
+              }
+              if (verticalSign < 0) {
+                offset = offset.translate(0, oldHeight - boxHeight);
+              }
+              clampOffset();
+            });
+          }
+
+          return Positioned(
+            left: offset.dx,
+            top: offset.dy,
+            width: boxWidth,
+            height: boxHeight,
+            child: Material(
+              type: MaterialType.transparency,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Positioned.fill(
+                    child: GestureDetector(
+                      onPanUpdate: move,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(14),
+                        child: VideoPlayerView(
+                          video: v,
+                          thumb: message.image,
+                          width: message.imageWidth,
+                          height: message.imageHeight,
+                          presentation:
+                              VideoPlayerPresentation.pictureInPicture,
+                          compactControls: true,
+                          onClose: close,
+                          sourceChatId: chatId,
+                          messageId: message.id,
+                          currentMode: VideoDisplayMode.pictureInPicture,
+                          onSwitchMode: (mode) => _switchPiPMode(
+                            context,
+                            close,
+                            mode,
+                            message,
+                            chatId,
+                            title,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: 8,
+                    top: 8,
+                    child: _PiPModeButton(
+                      currentMode: VideoDisplayMode.pictureInPicture,
+                      onSelected: (mode) => _switchPiPMode(
+                        context,
+                        close,
+                        mode,
+                        message,
+                        chatId,
+                        title,
+                      ),
+                    ),
+                  ),
+                  _PiPCornerHandle(
+                    alignment: Alignment.topLeft,
+                    onDrag: (details) => resizeFromCorner(
+                      details,
+                      horizontalSign: -1,
+                      verticalSign: -1,
+                    ),
+                  ),
+                  _PiPCornerHandle(
+                    alignment: Alignment.topRight,
+                    onDrag: (details) => resizeFromCorner(
+                      details,
+                      horizontalSign: 1,
+                      verticalSign: -1,
+                    ),
+                  ),
+                  _PiPCornerHandle(
+                    alignment: Alignment.bottomLeft,
+                    onDrag: (details) => resizeFromCorner(
+                      details,
+                      horizontalSign: -1,
+                      verticalSign: 1,
+                    ),
+                  ),
+                  _PiPCornerHandle(
+                    alignment: Alignment.bottomRight,
+                    onDrag: (details) => resizeFromCorner(
+                      details,
+                      horizontalSign: 1,
+                      verticalSign: 1,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+    _globalPictureInPictureVideo = entry;
+    overlay.insert(entry);
+  }
+
+  void _playVideoSplit(ChatMessage message) {
+    final v = message.video;
+    if (v == null) return;
+    VideoSplitController.instance.play(
+      VideoSplitSession(
+        chatId: widget.chatId,
+        title: widget.title,
+        video: v,
+        thumb: message.image,
+        width: message.imageWidth,
+        height: message.imageHeight,
+        messageId: message.id,
       ),
     );
   }
@@ -932,6 +1123,10 @@ class _ChatViewState extends State<ChatView> {
         _vm.setReply(message);
       case MessageAction.forward:
         _forwardMessage(message);
+      case MessageAction.playPiP:
+        _playVideoPictureInPicture(message);
+      case MessageAction.playSplit:
+        _playVideoSplit(message);
       case MessageAction.multiSelect:
         _enterSelection(message);
       case MessageAction.pinTodo:
@@ -997,7 +1192,8 @@ class _ChatViewState extends State<ChatView> {
     if (sourceText.trim().isEmpty) return true;
     final targetLanguage = _translationTargetLanguage(translation);
     try {
-      if (translation.provider == TranslationProvider.nativeOnDevice) {
+      if (translation.provider == TranslationProvider.iosSystem ||
+          translation.provider == TranslationProvider.androidMlKit) {
         await _vm.translateMessageExternally(
           message.id,
           targetLanguage,
@@ -1006,6 +1202,7 @@ class _ChatViewState extends State<ChatView> {
             sourceLanguageCode: 'autodetect',
             targetLanguageCode: targetLanguage,
           ),
+          showLoading: defaultTargetPlatform != TargetPlatform.iOS,
         );
       } else if (translation.provider == TranslationProvider.tdlib) {
         await _vm.translateMessage(message.id, targetLanguage);
@@ -1020,6 +1217,7 @@ class _ChatViewState extends State<ChatView> {
             targetLanguageCode: targetLanguage,
             lingvaEndpoint: translation.lingvaEndpoint,
             libreTranslateEndpoint: translation.libreTranslateEndpoint,
+            libreTranslateApiKey: translation.libreTranslateApiKey,
           ),
         );
       }
@@ -1119,10 +1317,6 @@ class _ChatViewState extends State<ChatView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final translation = context.watch<TranslationController>();
-    if (translation.enabled && translation.autoTranslate && _vm.initialLoaded) {
-      _scheduleAutoTranslate();
-    }
     _syncKeyboardInset(MediaQuery.of(context).viewInsets.bottom);
     // Not a member, joinable, and nothing to preview → a custom join screen
     // (header + centered card) instead of the transcript + composer.
@@ -1169,8 +1363,7 @@ class _ChatViewState extends State<ChatView> {
   }
 
   Widget _initialVisibility(Widget child) {
-    if (_initialPaintReady) return child;
-    return IgnorePointer(child: Opacity(opacity: 0, child: child));
+    return child;
   }
 
   Widget _transcriptLayer() {
@@ -1500,11 +1693,13 @@ class _ChatViewState extends State<ChatView> {
     return Container(
       padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
       decoration: BoxDecoration(
-        color: c.navBar,
-        border: Border(bottom: BorderSide(color: c.divider, width: 0.5)),
+        color: widget.headerColor ?? c.navBar,
+        border: widget.showHeaderDivider
+            ? Border(bottom: BorderSide(color: c.divider, width: 0.5))
+            : null,
       ),
       child: SizedBox(
-        height: 48,
+        height: widget.headerHeight,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14),
           child: Row(
@@ -1512,7 +1707,7 @@ class _ChatViewState extends State<ChatView> {
               if (widget.showBackButton)
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onTap: () => Navigator.of(context).pop(),
+                  onTap: widget.onBack ?? () => Navigator.of(context).pop(),
                   child: Padding(
                     padding: const EdgeInsets.only(right: 10),
                     child: Icon(
@@ -1524,34 +1719,21 @@ class _ChatViewState extends State<ChatView> {
                 )
               else
                 const SizedBox(width: 4),
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _vm.headerTitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                        color: c.textPrimary,
-                      ),
+              Expanded(child: _headerTitleBlock(subtitle, typing)),
+              if (_vm.isForum) ...[
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _openTopicMode(),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    child: Icon(
+                      sfIcon('number.circle.fill'),
+                      size: 22,
+                      color: c.textPrimary,
                     ),
-                    if (subtitle.isNotEmpty)
-                      Text(
-                        subtitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: typing ? AppTheme.brand : c.textSecondary,
-                        ),
-                      ),
-                  ],
+                  ),
                 ),
-              ),
+              ],
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () => Navigator.of(context).push(
@@ -1570,6 +1752,125 @@ class _ChatViewState extends State<ChatView> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _headerTitleBlock(String subtitle, bool typing) {
+    final c = context.colors;
+    final title = Text(
+      _vm.headerTitle,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w500,
+        color: c.textPrimary,
+      ),
+    );
+    final content = Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_vm.isForum)
+          Row(
+            children: [
+              Expanded(child: title),
+              const SizedBox(width: 4),
+              Icon(sfIcon('chevron.down'), size: 14, color: c.textSecondary),
+            ],
+          )
+        else
+          title,
+        if (subtitle.isNotEmpty)
+          Text(
+            subtitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 12,
+              color: typing ? AppTheme.brand : c.textSecondary,
+            ),
+          ),
+      ],
+    );
+    if (!_vm.isForum) return content;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _showTopicSelector,
+      child: content,
+    );
+  }
+
+  ChatSummary _topicChatSummary() => ChatSummary(
+    id: widget.chatId,
+    title: _vm.peerTitle,
+    lastMessage: '',
+    lastMessageId: 0,
+    date: 0,
+    unreadCount: _vm.unreadCount,
+    order: 0,
+    isMuted: _vm.isMuted,
+    kind: _vm.isChannel ? ChatKind.channel : ChatKind.group,
+    photo: _vm.peerPhoto,
+    isForum: true,
+  );
+
+  void _openTopicMode([int? threadId]) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) =>
+            TopicChatView(chat: _topicChatSummary(), initialThreadId: threadId),
+      ),
+    );
+  }
+
+  Future<void> _showTopicSelector() async {
+    if (!_vm.isForum) return;
+    if (_vm.forumTopics.isEmpty && !_vm.forumTopicsLoading) {
+      await _vm.loadForumTopics();
+    }
+    if (!mounted) return;
+    final topics = _vm.forumTopics;
+    if (topics.isEmpty) {
+      showToast(context, _vm.forumTopicsLoading ? '正在加载话题' : '暂无话题');
+      return;
+    }
+    final c = context.colors;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: c.background,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: ListView.separated(
+          shrinkWrap: true,
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          itemCount: topics.length + 1,
+          separatorBuilder: (_, _) =>
+              Divider(height: 1, indent: 56, color: c.divider),
+          itemBuilder: (_, index) {
+            final all = index == 0;
+            final topic = all ? null : topics[index - 1];
+            return ListTile(
+              leading: Icon(
+                all ? sfIcon('number.circle.fill') : sfIcon('message.fill'),
+                color: all ? AppTheme.brand : c.textSecondary,
+              ),
+              title: Text(
+                all ? '全部话题' : topic!.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: c.textPrimary, fontSize: 16),
+              ),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                _openTopicMode(topic?.id);
+              },
+            );
+          },
         ),
       ),
     );
@@ -1717,12 +2018,14 @@ class _ChatViewState extends State<ChatView> {
     final text = pinned.text.trim().isEmpty
         ? '[消息]'
         : pinned.text.replaceAll('\n', ' ');
+    final canPrevious = _vm.hasPreviousPinnedMessage;
+    final canNext = _vm.hasNextPinnedMessage;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => _scrollToMessage(pinned.id),
+      onTap: () => _openPinnedFromBar(pinned),
       child: Container(
         height: 48,
-        padding: const EdgeInsets.symmetric(horizontal: 18),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
           color: c.card.withValues(alpha: 0.86),
           borderRadius: BorderRadius.circular(14),
@@ -1741,8 +2044,8 @@ class _ChatViewState extends State<ChatView> {
         child: Row(
           children: [
             Container(
-              width: 22,
-              height: 22,
+              width: 16,
+              height: 16,
               decoration: BoxDecoration(
                 border: Border.all(color: const Color(0xFFFFB300), width: 2),
                 borderRadius: BorderRadius.circular(6),
@@ -1758,31 +2061,42 @@ class _ChatViewState extends State<ChatView> {
               child: Text.rich(
                 TextSpan(
                   children: [
-                    const TextSpan(
-                      text: '群待办',
-                      style: TextStyle(fontWeight: FontWeight.w600),
-                    ),
                     TextSpan(
-                      text: ' | $text',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w400,
-                        color: c.textSecondary,
-                      ),
+                      text: text,
+                      style: TextStyle(color: c.textSecondary),
                     ),
                   ],
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 16, color: c.textPrimary),
+                style: TextStyle(fontSize: 14, color: c.textPrimary),
               ),
             ),
             const SizedBox(width: 12),
+            if (_vm.pinnedMessages.length > 1) ...[
+              Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _pinnedNavButton(
+                    icon: 'chevron.up',
+                    enabled: canPrevious,
+                    onTap: _goToPreviousPinned,
+                  ),
+                  _pinnedNavButton(
+                    icon: 'chevron.down',
+                    enabled: canNext,
+                    onTap: _goToNextPinned,
+                  ),
+                ],
+              ),
+              const SizedBox(width: 4),
+            ],
             GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: _vm.dismissPinned,
               child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: Icon(sfIcon('xmark'), size: 20, color: c.textTertiary),
+                padding: const EdgeInsets.all(4),
+                child: Icon(sfIcon('xmark'), size: 16, color: c.textTertiary),
               ),
             ),
           ],
@@ -1791,28 +2105,92 @@ class _ChatViewState extends State<ChatView> {
     );
   }
 
+  Widget _pinnedNavButton({
+    required String icon,
+    required bool enabled,
+    required VoidCallback onTap,
+  }) {
+    final c = context.colors;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: enabled ? onTap : null,
+      child: SizedBox(
+        width: 24,
+        height: 18,
+        child: Icon(
+          sfIcon(icon),
+          size: 14,
+          color: c.textTertiary.withValues(alpha: enabled ? 1 : 0.28),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openPinnedFromBar(ChatMessage pinned) async {
+    if (_vm.pinnedMessage?.id == pinned.id && _isKeyMostlyVisible(_pinnedKey)) {
+      return;
+    }
+    await _scrollToMessage(pinned.id, pinnedJump: true);
+  }
+
+  void _goToPreviousPinned() {
+    final pinned = _vm.previousPinnedMessage();
+    if (pinned != null) {
+      unawaited(_scrollToMessage(pinned.id, pinnedJump: true));
+    }
+  }
+
+  void _goToNextPinned() {
+    final pinned = _vm.nextPinnedMessage();
+    if (pinned != null) {
+      unawaited(_scrollToMessage(pinned.id, pinnedJump: true));
+    }
+  }
+
   /// Scrolls the transcript to a message. If it is not loaded, ask TDLib for a
   /// page centered around that id instead of fetching the whole middle history.
-  Future<void> _scrollToMessage(int messageId) async {
-    _scrollTargetId = messageId;
+  Future<void> _scrollToMessage(
+    int messageId, {
+    bool pinnedJump = false,
+  }) async {
+    if (mounted) {
+      setState(() => _scrollTargetId = messageId);
+    } else {
+      _scrollTargetId = messageId;
+    }
     if (_vm.messages.any((m) => m.id == messageId)) {
-      await _ensureMessageVisible(messageId);
+      await _ensureMessageVisible(messageId, pinnedJump: pinnedJump);
       return;
     }
     final loaded = await _vm.loadAroundMessage(messageId);
     if (!loaded || !mounted) return;
-    await _ensureMessageVisible(messageId);
+    await _ensureMessageVisible(messageId, pinnedJump: pinnedJump);
   }
 
-  Future<void> _ensureMessageVisible(int messageId) async {
+  Future<void> _ensureMessageVisible(
+    int messageId, {
+    bool pinnedJump = false,
+  }) async {
     for (var tries = 0; tries < 6; tries++) {
-      final ctx = _targetKey.currentContext;
+      final activeKey = _scrollTargetId == messageId ? _targetKey : _pinnedKey;
+      final ctx = activeKey.currentContext;
       if (ctx != null && ctx.mounted) {
+        if (pinnedJump && _isKeyMostlyVisible(activeKey)) {
+          if (mounted && _scrollTargetId == messageId) {
+            setState(() => _scrollTargetId = null);
+          }
+          return;
+        }
         await Scrollable.ensureVisible(
           ctx,
-          alignment: 0.3,
-          duration: const Duration(milliseconds: 220),
+          alignment: pinnedJump ? 0.08 : 0.3,
+          duration: pinnedJump
+              ? const Duration(milliseconds: 140)
+              : const Duration(milliseconds: 220),
           curve: Curves.easeOutCubic,
+          alignmentPolicy: pinnedJump
+              ? ScrollPositionAlignmentPolicy.keepVisibleAtStart
+              : ScrollPositionAlignmentPolicy.explicit,
         );
         if (mounted && _scrollTargetId == messageId) {
           setState(() => _scrollTargetId = null);
@@ -1834,6 +2212,23 @@ class _ChatViewState extends State<ChatView> {
     if (mounted && _scrollTargetId == messageId) {
       setState(() => _scrollTargetId = null);
     }
+  }
+
+  bool _isKeyMostlyVisible(GlobalKey key) {
+    final ctx = key.currentContext;
+    if (ctx == null) return false;
+    final renderObject = ctx.findRenderObject();
+    if (renderObject is! RenderBox || !renderObject.attached) return false;
+    final media = MediaQuery.of(context);
+    final origin = renderObject.localToGlobal(Offset.zero);
+    final rect = origin & renderObject.size;
+    final viewportTop =
+        media.padding.top +
+        widget.headerHeight +
+        (widget.showHeaderDivider ? 1 : 0);
+    final viewportBottom =
+        media.size.height - media.viewInsets.bottom - media.padding.bottom - 72;
+    return rect.top >= viewportTop - 24 && rect.bottom <= viewportBottom + 24;
   }
 
   Widget _transcript() {
@@ -1887,12 +2282,7 @@ class _ChatViewState extends State<ChatView> {
                     onRepeat: () => _vm.repeatMessage(message),
                     onLongPress: _isSelecting
                         ? null
-                        : (m, rect) => setState(() {
-                            _actionTarget = m;
-                            _actionRect = rect;
-                            _reactionExpanded = false;
-                            _reactionTab = 'standard';
-                          }),
+                        : _showActionMenuForMessage,
                     onReply: (m) => _vm.setReply(m),
                     onAvatarTap: _openSenderProfile,
                     onAvatarLongPress: (m) {
@@ -1963,6 +2353,15 @@ class _ChatViewState extends State<ChatView> {
     );
   }
 
+  void _showActionMenuForMessage(ChatMessage message, Rect? rect) {
+    setState(() {
+      _actionTarget = message;
+      _actionRect = rect;
+      _reactionExpanded = false;
+      _reactionTab = 'standard';
+    });
+  }
+
   List<_TranscriptEntry> _plainTranscript() {
     final messages = _vm.messages;
     return [
@@ -2000,7 +2399,7 @@ class _ChatViewState extends State<ChatView> {
   }
 
   bool _canGroupImage(ChatMessage message) {
-    return !message.isService && message.isPhoto && message.image != null;
+    return !message.isService && message.isAlbumVisualMedia;
   }
 
   bool _sameImageGroup(ChatMessage previous, ChatMessage next) {
@@ -2028,7 +2427,7 @@ class _ChatViewState extends State<ChatView> {
         : (_vm.isGroup ? first.senderPhoto : _vm.peerPhoto);
     final captions = group
         .map((m) => m.text.trim())
-        .where((text) => text.isNotEmpty && text != '[图片]')
+        .where((text) => text.isNotEmpty && text != '[图片]' && text != '[视频]')
         .toList();
     final gallery = _imageGroupGallery(group, outgoing, captions);
 
@@ -2045,33 +2444,24 @@ class _ChatViewState extends State<ChatView> {
       child: PhotoAvatar(title: avatarTitle, photo: avatarPhoto, size: 38),
     );
 
-    Widget body = GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onLongPress: () => setState(() {
-        _actionTarget = first;
-        _actionRect = null;
-        _reactionExpanded = false;
-        _reactionTab = 'standard';
-      }),
-      child: outgoing
-          ? gallery
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (_vm.isGroup && (first.senderName?.isNotEmpty ?? false))
-                  Padding(
-                    padding: const EdgeInsets.only(left: 2, bottom: 4),
-                    child: Text(
-                      first.senderName!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 12, color: c.textSecondary),
-                    ),
+    Widget body = outgoing
+        ? gallery
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (_vm.isGroup && (first.senderName?.isNotEmpty ?? false))
+                Padding(
+                  padding: const EdgeInsets.only(left: 2, bottom: 4),
+                  child: Text(
+                    first.senderName!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12, color: c.textSecondary),
                   ),
-                gallery,
-              ],
-            ),
-    );
+                ),
+              gallery,
+            ],
+          );
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -2100,14 +2490,25 @@ class _ChatViewState extends State<ChatView> {
   ) {
     final c = context.colors;
     final visible = group.take(9).toList();
-    final screenWidth = MediaQuery.of(context).size.width;
-    final maxWidth = visible.length > 1
-        ? math.min(350.0, screenWidth - 86)
-        : math.min(252.0, screenWidth - 86);
+    final maxWidth = _messageMediaMaxWidth();
     const padding = 4.0;
-    final layout = _imageGroupLayout(maxWidth, visible.length, padding);
+    final layout = buildTelegramMediaAlbumLayout(
+      items: [
+        for (final message in visible)
+          MediaAlbumItem(
+            width: message.imageWidth,
+            height: message.imageHeight,
+          ),
+      ],
+      maxWidth: maxWidth - padding * 2,
+      gap: 4,
+      minSingleHeight: 120,
+      maxSingleHeight: 300,
+      minRowHeight: 82,
+      maxRowHeight: 230,
+    );
     return Container(
-      constraints: BoxConstraints(maxWidth: maxWidth),
+      constraints: BoxConstraints(maxWidth: layout.width + padding * 2),
       padding: const EdgeInsets.all(padding),
       decoration: BoxDecoration(
         color: outgoing ? AppTheme.bubbleOutgoing : c.bubbleIncoming,
@@ -2119,7 +2520,7 @@ class _ChatViewState extends State<ChatView> {
         mainAxisSize: MainAxisSize.min,
         children: [
           SizedBox(
-            width: maxWidth - padding * 2,
+            width: layout.width,
             height: layout.height,
             child: Stack(
               children: [
@@ -2155,108 +2556,34 @@ class _ChatViewState extends State<ChatView> {
     );
   }
 
-  _ImageGroupLayout _imageGroupLayout(
-    double maxWidth,
-    int count,
-    double padding,
-  ) {
-    const gap = 4.0;
-    final width = maxWidth - padding * 2;
-    Rect rect(double left, double top, double w, double h) =>
-        Rect.fromLTWH(left, top, w, h);
-
-    if (count == 1) {
-      return _ImageGroupLayout(width * 0.72, [rect(0, 0, width, width * 0.72)]);
-    }
-
-    if (count == 2) {
-      final tile = (width - gap) / 2;
-      return _ImageGroupLayout(tile, [
-        rect(0, 0, tile, tile),
-        rect(tile + gap, 0, tile, tile),
-      ]);
-    }
-
-    if (count == 3) return _rowSpanImageGroup(width, count, firstRowSpan: 2);
-    if (count == 5) return _rowSpanImageGroup(width, count, firstRowSpan: 2);
-    if (count == 7) return _rowSpanImageGroup(width, count, firstRowSpan: 3);
-    if (count == 8) return _rowSpanImageGroup(width, count, firstRowSpan: 2);
-
-    const columns = 2;
-    final tile = (width - gap * (columns - 1)) / columns;
-    if (count == 4) {
-      const rows = 2;
-      final height = tile * rows + gap * (rows - 1);
-      return _ImageGroupLayout(height, [
-        for (var i = 0; i < count; i++)
-          rect(
-            (i % columns) * (tile + gap),
-            (i ~/ columns) * (tile + gap),
-            tile,
-            tile,
-          ),
-      ]);
-    }
-
-    const gridColumns = 3;
-    final gridTile = (width - gap * (gridColumns - 1)) / gridColumns;
-    final gridRows = count <= 6 ? 2 : 3;
-    final height = gridTile * gridRows + gap * (gridRows - 1);
-    return _ImageGroupLayout(height, [
-      for (var i = 0; i < count; i++)
-        rect(
-          (i % gridColumns) * (gridTile + gap),
-          (i ~/ gridColumns) * (gridTile + gap),
-          gridTile,
-          gridTile,
-        ),
-    ]);
-  }
-
-  _ImageGroupLayout _rowSpanImageGroup(
-    double width,
-    int count, {
-    required int firstRowSpan,
-  }) {
-    const gap = 4.0;
-    final columns = count == 3 ? 2 : 3;
-    final tile = (width - gap * (columns - 1)) / columns;
-    var rows = firstRowSpan;
-    while (rows * columns - firstRowSpan < count - 1) {
-      rows += 1;
-    }
-    final height = tile * rows + gap * (rows - 1);
-    final tiles = <Rect>[
-      Rect.fromLTWH(0, 0, tile, tile * firstRowSpan + gap * (firstRowSpan - 1)),
-    ];
-    final slots = <({int col, int row})>[
-      for (var row = 0; row < rows; row++)
-        for (var col = 0; col < columns; col++)
-          if (!(col == 0 && row < firstRowSpan)) (col: col, row: row),
-    ];
-    for (var i = 1; i < count; i++) {
-      final slot = slots[i - 1];
-      tiles.add(
-        Rect.fromLTWH(
-          slot.col * (tile + gap),
-          slot.row * (tile + gap),
-          tile,
-          tile,
-        ),
-      );
-    }
-    return _ImageGroupLayout(height, tiles);
-  }
-
   Widget _imageGroupTile(
     ChatMessage message, {
     required double width,
     required double height,
     required int extraCount,
   }) {
+    final tileKey = GlobalKey();
     return GestureDetector(
-      onTap: () => _openImage(message),
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        if (message.video != null) {
+          _playVideo(message);
+        } else {
+          _openImage(message);
+        }
+      },
+      onLongPress: _isSelecting
+          ? null
+          : () {
+              final box =
+                  tileKey.currentContext?.findRenderObject() as RenderBox?;
+              final rect = box != null && box.hasSize
+                  ? box.localToGlobal(Offset.zero) & box.size
+                  : null;
+              _showActionMenuForMessage(message, rect);
+            },
       child: SizedBox(
+        key: tileKey,
         width: width,
         height: height,
         child: Stack(
@@ -2268,7 +2595,24 @@ class _ChatViewState extends State<ChatView> {
               fit: BoxFit.cover,
               cacheWidth: _cachePx(width),
               cacheHeight: _cachePx(height),
+              showProgress: true,
             ),
+            if (message.video != null)
+              Center(
+                child: Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.45),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    sfIcon('play.fill'),
+                    color: Colors.white,
+                    size: 21,
+                  ),
+                ),
+              ),
             if (extraCount > 0)
               Container(
                 alignment: Alignment.center,
@@ -2468,7 +2812,8 @@ class _ChatViewState extends State<ChatView> {
                 color: Color(0xFF3A3A3C),
                 shape: BoxShape.circle,
               ),
-              child: Icon(sfIcon('chevron.down'),
+              child: Icon(
+                sfIcon('chevron.down'),
                 size: 22,
                 color: Colors.white,
               ),
@@ -2561,10 +2906,7 @@ class _ChatViewState extends State<ChatView> {
         children: [
           _reactionTab2(
             'standard',
-            Icon(sfIcon('face.smiling'),
-              size: 22,
-              color: Colors.white70,
-            ),
+            Icon(sfIcon('face.smiling'), size: 22, color: Colors.white70),
           ),
           for (final pack in packs)
             _reactionTab2(
@@ -2575,7 +2917,8 @@ class _ChatViewState extends State<ChatView> {
                       size: 26,
                       color: Colors.white,
                     )
-                  : Icon(sfIcon('person.2.square.stack'),
+                  : Icon(
+                      sfIcon('person.2.square.stack'),
                       size: 20,
                       color: Colors.white70,
                     ),
@@ -2599,6 +2942,154 @@ class _ChatViewState extends State<ChatView> {
           borderRadius: BorderRadius.circular(8),
         ),
         child: SizedBox(width: 28, height: 28, child: Center(child: child)),
+      ),
+    );
+  }
+}
+
+void _switchPiPMode(
+  BuildContext context,
+  VoidCallback close,
+  VideoDisplayMode mode,
+  ChatMessage message,
+  int chatId,
+  String title,
+) {
+  if (mode == VideoDisplayMode.pictureInPicture) return;
+  final navigator = Navigator.of(context, rootNavigator: true);
+  close();
+  switch (mode) {
+    case VideoDisplayMode.pictureInPicture:
+      break;
+    case VideoDisplayMode.split:
+      VideoSplitController.instance.play(
+        VideoSplitSession(
+          chatId: chatId,
+          title: title,
+          video: message.video!,
+          thumb: message.image,
+          width: message.imageWidth,
+          height: message.imageHeight,
+          messageId: message.id,
+        ),
+      );
+    case VideoDisplayMode.fullscreen:
+      navigator.push(
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (routeContext) => VideoPlayerView(
+            video: message.video!,
+            thumb: message.image,
+            width: message.imageWidth,
+            height: message.imageHeight,
+            sourceChatId: chatId,
+            messageId: message.id,
+            currentMode: VideoDisplayMode.fullscreen,
+            onSwitchMode: (nextMode) {
+              switch (nextMode) {
+                case VideoDisplayMode.fullscreen:
+                  break;
+                case VideoDisplayMode.pictureInPicture:
+                  _ChatViewState._showVideoPictureInPicture(
+                    routeContext,
+                    message,
+                    chatId,
+                    title,
+                  );
+                  Navigator.of(routeContext).maybePop();
+                case VideoDisplayMode.split:
+                  VideoSplitController.instance.play(
+                    VideoSplitSession(
+                      chatId: chatId,
+                      title: title,
+                      video: message.video!,
+                      thumb: message.image,
+                      width: message.imageWidth,
+                      height: message.imageHeight,
+                      messageId: message.id,
+                    ),
+                  );
+                  Navigator.of(routeContext).maybePop();
+              }
+            },
+          ),
+        ),
+      );
+  }
+}
+
+class _PiPModeButton extends StatelessWidget {
+  const _PiPModeButton({required this.currentMode, required this.onSelected});
+
+  final VideoDisplayMode currentMode;
+  final ValueChanged<VideoDisplayMode> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<VideoDisplayMode>(
+      tooltip: '切换显示模式',
+      color: const Color(0xFF1C1C1E),
+      onSelected: (mode) {
+        if (mode != currentMode) onSelected(mode);
+      },
+      itemBuilder: (_) => [
+        _modeItem(VideoDisplayMode.pictureInPicture, '画中画'),
+        _modeItem(VideoDisplayMode.split, '分屏'),
+        _modeItem(VideoDisplayMode.fullscreen, '全屏播放'),
+      ],
+      child: SizedBox(
+        width: 40,
+        height: 40,
+        child: Center(
+          child: Icon(
+            sfIcon('rectangle.split.2x1'),
+            color: Colors.white.withValues(alpha: 0.92),
+            size: 22,
+          ),
+        ),
+      ),
+    );
+  }
+
+  PopupMenuItem<VideoDisplayMode> _modeItem(
+    VideoDisplayMode mode,
+    String label,
+  ) {
+    return PopupMenuItem<VideoDisplayMode>(
+      value: mode,
+      child: Row(
+        children: [
+          SizedBox(
+            width: 20,
+            child: mode == currentMode
+                ? Icon(sfIcon('checkmark'), size: 14, color: Colors.white)
+                : null,
+          ),
+          const SizedBox(width: 8),
+          Text(label, style: const TextStyle(color: Colors.white)),
+        ],
+      ),
+    );
+  }
+}
+
+class _PiPCornerHandle extends StatelessWidget {
+  const _PiPCornerHandle({required this.alignment, required this.onDrag});
+
+  final Alignment alignment;
+  final GestureDragUpdateCallback onDrag;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      left: alignment.x < 0 ? -8 : null,
+      right: alignment.x > 0 ? -8 : null,
+      top: alignment.y < 0 ? -8 : null,
+      bottom: alignment.y > 0 ? -8 : null,
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onPanUpdate: onDrag,
+        child: const SizedBox(width: 44, height: 44),
       ),
     );
   }

@@ -294,7 +294,7 @@ class ChatListViewModel extends ChangeNotifier {
           'chat_id': id,
           'is_pinned': newValue,
         })
-        .catchError((_) async {
+        .catchError((Object error) async {
           // Failure: revert and restore the chat's true position from TDLib.
           _mutate(id, (s) => s.isPinned = !newValue);
           try {
@@ -305,7 +305,7 @@ class ChatListViewModel extends ChangeNotifier {
             final fresh = TDParse.chat(raw);
             if (fresh != null) _map[id] = fresh;
           } catch (_) {}
-          notice = '置顶失败：已达置顶数量上限';
+          notice = _pinErrorNotice(error);
           _resort();
           return <String, dynamic>{};
         });
@@ -789,5 +789,24 @@ class ChatListViewModel extends ChangeNotifier {
         .catchError((_) {
           _resolvingSenders.remove(senderChatId);
         });
+  }
+
+  String _pinErrorNotice(Object error) {
+    final message = error is TdError ? error.message : error.toString();
+    final text = message.trim();
+    final normalized = text.toLowerCase().replaceAll('_', ' ');
+    final hitPinned =
+        normalized.contains('pin') ||
+        normalized.contains('pinned') ||
+        normalized.contains('置顶');
+    final hitLimit =
+        normalized.contains('limit') ||
+        normalized.contains('too many') ||
+        normalized.contains('too much') ||
+        normalized.contains('many') ||
+        normalized.contains('much') ||
+        normalized.contains('上限');
+    if (hitPinned && hitLimit) return '置顶失败：置顶数量已达上限';
+    return text.isEmpty ? '置顶失败' : '置顶失败：$text';
   }
 }

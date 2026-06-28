@@ -7,24 +7,23 @@
 //
 
 import 'dart:async';
-import 'dart:io';
-
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 
 import '../chat/chat_members_view.dart';
-import '../chat/telegram_rich_text.dart';
+import '../chat/rich_text_composer_view.dart';
 import '../components/confirm_dialog.dart';
 import '../components/photo_avatar.dart';
 import '../components/sf_symbols.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
+import '../l10n/app_localizations.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
 import '../chat/rich_text_format.dart';
+import 'topic_post_content.dart';
 
 class TopicChatView extends StatefulWidget {
   const TopicChatView({
@@ -33,12 +32,16 @@ class TopicChatView extends StatefulWidget {
     this.initialThreadId,
     this.initialMessageId,
     this.showBackButton = true,
+    this.headerHeight = 48,
+    this.headerColor,
   });
 
   final ChatSummary chat;
   final int? initialThreadId;
   final int? initialMessageId;
   final bool showBackButton;
+  final double headerHeight;
+  final Color? headerColor;
 
   @override
   State<TopicChatView> createState() => _TopicChatViewState();
@@ -273,10 +276,15 @@ class _TopicChatViewState extends State<TopicChatView> {
   }
 
   Future<void> _openComposer() async {
-    final result = await Navigator.of(context).push<_TopicComposerResult>(
+    final result = await Navigator.of(context).push<RichTextComposerResult>(
       MaterialPageRoute(
         fullscreenDialog: true,
-        builder: (_) => _TopicRichTextComposer(initialText: _input.text),
+        builder: (_) => RichTextComposerView(
+          initialText: _input.text,
+          title: '分享',
+          submitText: '发布',
+          hintText: '分享想法、图片说明或链接',
+        ),
       ),
     );
     if (result == null) return;
@@ -288,7 +296,7 @@ class _TopicChatViewState extends State<TopicChatView> {
     }
   }
 
-  Future<void> _sendPostMedia(_TopicComposerResult result) async {
+  Future<void> _sendPostMedia(RichTextComposerResult result) async {
     final threadId = _selectedThreadId;
     for (var i = 0; i < result.media.length; i++) {
       final file = result.media[i];
@@ -485,10 +493,10 @@ class _TopicChatViewState extends State<TopicChatView> {
     final c = context.colors;
     final top = MediaQuery.of(context).padding.top;
     return Container(
-      height: top + 48,
+      height: top + widget.headerHeight,
       padding: EdgeInsets.only(top: top),
       decoration: BoxDecoration(
-        color: c.navBar,
+        color: widget.headerColor ?? c.navBar,
         image: DecorationImage(
           image: const AssetImage('assets/app_icon.png'),
           fit: BoxFit.cover,
@@ -673,6 +681,7 @@ class _TopicChatViewState extends State<TopicChatView> {
       itemCount: posts.length,
       separatorBuilder: (_, _) => const InsetDivider(leadingInset: 0),
       itemBuilder: (context, index) => _TopicPostRow(
+        chatId: widget.chat.id,
         post: posts[index],
         sender: _senderCache[posts[index].message.senderId],
         onLike: () => _addReaction(posts[index], '❤️'),
@@ -741,6 +750,7 @@ class _TopicChatViewState extends State<TopicChatView> {
 
 class _TopicPostRow extends StatelessWidget {
   const _TopicPostRow({
+    required this.chatId,
     required this.post,
     required this.onLike,
     required this.onPickReaction,
@@ -748,6 +758,7 @@ class _TopicPostRow extends StatelessWidget {
     this.sender,
   });
 
+  final int chatId;
   final _TopicPost post;
   final _SenderInfo? sender;
   final VoidCallback onLike;
@@ -795,22 +806,19 @@ class _TopicPostRow extends StatelessWidget {
               ),
             ],
           ),
-          if (text.isNotEmpty) ...[
+          if (_hasRenderableContent) ...[
             const SizedBox(height: 14),
-            TelegramRichText(
+            TopicPostContent(
+              chatId: chatId,
+              message: post.message,
               text: text,
-              entities: post.message.textEntities,
-              style: TextStyle(
+              textStyle: TextStyle(
                 fontSize: 16,
                 height: 1.35,
                 color: c.textPrimary,
               ),
+              imageReactions: _ExtraReactions(message: post.message),
             ),
-          ],
-          if (post.message.image != null) ...[
-            const SizedBox(height: 12),
-            _PostImage(message: post.message),
-            _ExtraReactions(message: post.message),
           ],
           const SizedBox(height: 13),
           _PostActions(
@@ -827,43 +835,15 @@ class _TopicPostRow extends StatelessWidget {
   String get _displayText {
     final text = post.message.text.trim();
     if (text.startsWith('[') && text.endsWith(']')) return '';
+    if (post.message.document != null && text.startsWith('[文件]')) return '';
     return text;
   }
-}
 
-class _PostImage extends StatelessWidget {
-  const _PostImage({required this.message});
-
-  final ChatMessage message;
-
-  @override
-  Widget build(BuildContext context) {
-    final width = MediaQuery.of(context).size.width - 28;
-    final height = _imageHeight(width);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(6),
-      child: SizedBox(
-        width: width,
-        height: height,
-        child: TDImage(
-          photo: message.image,
-          cornerRadius: 6,
-          fit: BoxFit.cover,
-          cacheWidth: (width * MediaQuery.of(context).devicePixelRatio).round(),
-          cacheHeight: (height * MediaQuery.of(context).devicePixelRatio)
-              .round(),
-        ),
-      ),
-    );
-  }
-
-  double _imageHeight(double width) {
-    final w = message.imageWidth;
-    final h = message.imageHeight;
-    if (w == null || h == null || w <= 0 || h <= 0) return width * 0.62;
-    final ratio = (h / w).clamp(0.45, 1.25);
-    return width * ratio;
-  }
+  bool get _hasRenderableContent =>
+      _displayText.isNotEmpty ||
+      post.message.image != null ||
+      post.message.document != null ||
+      post.message.buttonRows.isNotEmpty;
 }
 
 class _PostActions extends StatelessWidget {
@@ -957,259 +937,6 @@ class _ExtraReactions extends StatelessWidget {
               ),
             ),
         ],
-      ),
-    );
-  }
-}
-
-class _TopicComposerResult {
-  const _TopicComposerResult({required this.text, required this.media});
-
-  final String text;
-  final List<XFile> media;
-}
-
-class _TopicRichTextComposer extends StatefulWidget {
-  const _TopicRichTextComposer({required this.initialText});
-
-  final String initialText;
-
-  @override
-  State<_TopicRichTextComposer> createState() => _TopicRichTextComposerState();
-}
-
-class _TopicRichTextComposerState extends State<_TopicRichTextComposer> {
-  late final TextEditingController _controller;
-  final _picker = ImagePicker();
-  final _media = <XFile>[];
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(text: widget.initialText);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _wrap(String left, [String? right]) {
-    right ??= left;
-    final value = _controller.value;
-    final selection = value.selection;
-    final start = selection.isValid ? selection.start : value.text.length;
-    final end = selection.isValid ? selection.end : value.text.length;
-    final selected = value.text.substring(start, end);
-    final next = value.text.replaceRange(start, end, '$left$selected$right');
-    _controller.value = TextEditingValue(
-      text: next,
-      selection: TextSelection.collapsed(
-        offset: start + left.length + selected.length,
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    return Scaffold(
-      backgroundColor: c.background,
-      body: SafeArea(
-        child: Column(
-          children: [
-            SizedBox(
-              height: 54,
-              child: Row(
-                children: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: Text('取消', style: TextStyle(color: c.textPrimary)),
-                  ),
-                  Expanded(
-                    child: Text(
-                      '分享',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w600,
-                        color: c.textPrimary,
-                      ),
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(
-                      _TopicComposerResult(
-                        text: _controller.text,
-                        media: List<XFile>.of(_media),
-                      ),
-                    ),
-                    child: const Text('发布'),
-                  ),
-                ],
-              ),
-            ),
-            Divider(height: 1, color: c.divider),
-            _toolbar(c),
-            _mediaStrip(c),
-            Expanded(
-              child: TextField(
-                controller: _controller,
-                autofocus: true,
-                maxLines: null,
-                expands: true,
-                textAlignVertical: TextAlignVertical.top,
-                style: TextStyle(
-                  fontSize: 16,
-                  height: 1.4,
-                  color: c.textPrimary,
-                ),
-                decoration: InputDecoration(
-                  contentPadding: const EdgeInsets.all(16),
-                  border: InputBorder.none,
-                  hintText: '分享想法、图片说明或链接',
-                  hintStyle: TextStyle(color: c.textTertiary),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _toolbar(AppColors c) {
-    return Container(
-      height: 44,
-      color: c.navBar,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        children: [
-          _formatButton(c, 'B', () => _wrap('**')),
-          _formatButton(c, 'I', () => _wrap('*')),
-          _formatButton(c, 'U', () => _wrap('__')),
-          _formatButton(c, 'S', () => _wrap('~~')),
-          _formatButton(c, '</>', () => _wrap('`')),
-          _formatButton(c, '引用', () => _wrap('> ', '')),
-        ],
-      ),
-    );
-  }
-
-  Widget _mediaStrip(AppColors c) {
-    if (_media.isEmpty) {
-      return Align(
-        alignment: Alignment.centerLeft,
-        child: TextButton.icon(
-          onPressed: _pickMedia,
-          icon: Icon(sfIcon('photo'), size: 20),
-          label: const Text('照片/视频'),
-        ),
-      );
-    }
-    return SizedBox(
-      height: 94,
-      child: ListView.separated(
-        padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-        scrollDirection: Axis.horizontal,
-        itemCount: _media.length + (_media.length < 9 ? 1 : 0),
-        separatorBuilder: (_, _) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          if (index == _media.length) return _addMediaTile(c);
-          return _mediaTile(c, index);
-        },
-      ),
-    );
-  }
-
-  Widget _addMediaTile(AppColors c) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: _pickMedia,
-      child: Container(
-        width: 84,
-        height: 84,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: c.searchFill,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Icon(sfIcon('plus'), color: c.textTertiary),
-      ),
-    );
-  }
-
-  Widget _mediaTile(AppColors c, int index) {
-    final item = _media[index];
-    final isVideo =
-        item.path.toLowerCase().endsWith('.mp4') ||
-        item.path.toLowerCase().endsWith('.mov') ||
-        item.path.toLowerCase().endsWith('.m4v') ||
-        item.path.toLowerCase().endsWith('.webm');
-    return Stack(
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: Image.file(
-            File(item.path),
-            width: 84,
-            height: 84,
-            fit: BoxFit.cover,
-            errorBuilder: (_, _, _) => Container(
-              width: 84,
-              height: 84,
-              color: c.searchFill,
-              child: Icon(
-                isVideo ? sfIcon('play.rectangle') : sfIcon('photo'),
-                color: c.textTertiary,
-              ),
-            ),
-          ),
-        ),
-        if (isVideo)
-          Positioned.fill(
-            child: Center(
-              child: Icon(sfIcon('play.fill'), color: Colors.white, size: 24),
-            ),
-          ),
-        Positioned(
-          top: 4,
-          right: 4,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => setState(() => _media.removeAt(index)),
-            child: Container(
-              width: 22,
-              height: 22,
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.55),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(sfIcon('xmark'), size: 12, color: Colors.white),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Future<void> _pickMedia() async {
-    try {
-      final picked = await _picker.pickMultipleMedia();
-      if (picked.isEmpty || !mounted) return;
-      final remaining = 9 - _media.length;
-      setState(() => _media.addAll(picked.take(remaining)));
-    } catch (_) {}
-  }
-
-  Widget _formatButton(AppColors c, String label, VoidCallback onTap) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: TextButton(
-        onPressed: onTap,
-        child: Text(label, style: TextStyle(color: c.textPrimary)),
       ),
     );
   }
@@ -1821,14 +1548,14 @@ class _TopicChannelSettingsViewState extends State<_TopicChannelSettingsView> {
       await TdClient.shared.query({
         '@type': 'toggleForumTopicIsPinned',
         'chat_id': widget.chat.id,
-        'forum_topic_id': topic.id,
+        'message_thread_id': topic.id,
         'is_pinned': value,
       });
       await widget.onTopicChanged();
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
       setState(() => _topicPinned = !value);
-      showToast(context, '设置置顶失败');
+      showToast(context, _tdActionError('设置置顶失败', e));
     }
   }
 
@@ -1840,7 +1567,7 @@ class _TopicChannelSettingsViewState extends State<_TopicChannelSettingsView> {
       await TdClient.shared.query({
         '@type': 'setForumTopicNotificationSettings',
         'chat_id': widget.chat.id,
-        'forum_topic_id': topic.id,
+        'message_thread_id': topic.id,
         'notification_settings': {
           '@type': 'chatNotificationSettings',
           'use_default_mute_for': false,
@@ -1848,11 +1575,19 @@ class _TopicChannelSettingsViewState extends State<_TopicChannelSettingsView> {
         },
       });
       await widget.onTopicChanged();
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
       setState(() => _topicMuted = !value);
-      showToast(context, '设置免打扰失败');
+      showToast(context, _tdActionError('设置免打扰失败', e));
     }
+  }
+
+  String _tdActionError(String fallback, Object error) {
+    if (error is TdError && error.message.trim().isNotEmpty) {
+      return '$fallback：${error.message.trim()}';
+    }
+    final text = error.toString().trim();
+    return text.isEmpty ? fallback : '$fallback：$text';
   }
 
   Future<void> _exitTopic() async {
@@ -1898,7 +1633,7 @@ class _TopicChannelSettingsViewState extends State<_TopicChannelSettingsView> {
                   ),
                   Expanded(
                     child: Text(
-                      '频道设置',
+                      '频道设置'.l10n(context),
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 17,
@@ -1946,7 +1681,7 @@ class _TopicChannelSettingsViewState extends State<_TopicChannelSettingsView> {
                             ),
                             const SizedBox(height: 6),
                             Text(
-                              '频道号：${widget.chat.id.abs()}',
+                              '频道号：${widget.chat.id.abs()}'.l10n(context),
                               style: TextStyle(
                                 fontSize: 14,
                                 color: c.textSecondary,
@@ -2008,7 +1743,7 @@ class _TopicChannelSettingsViewState extends State<_TopicChannelSettingsView> {
                             child: Padding(
                               padding: const EdgeInsets.symmetric(vertical: 16),
                               child: Text(
-                                '退出频道',
+                                '退出频道'.l10n(context),
                                 style: TextStyle(
                                   fontSize: 16,
                                   color: const Color(0xFFFF3B30),

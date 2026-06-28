@@ -66,5 +66,16 @@ android/app/src/main/jniLibs/
 /CLAUDE.md
 /SESSION.md
 /TODO.md
+
+# App Store submission / screenshot artifacts
+/app_store_connect_descriptions/
+/fastlane/
+/screenshots/
+/real_app_store_screenshots/
+/ios/RunnerUITests/
+/docs/app-store-connect-privacy.md
+/docs/privacy-policy.md
+/docs/privacy-policy.zh-Hans.md
+
 # Stray icon-generator output at repo root (real icons live in android/.../res/)
 /res/

@@ -414,6 +414,14 @@ class ChatMessage {
   /// of which also set [image].
   bool get isPhoto => contentType == 'messagePhoto';
 
+  /// Visual media that Telegram may place in the same media album.
+  ///
+  /// Stickers, GIFs and video stickers also have thumbnails in [image], but
+  /// they are not part of photo/video album merging.
+  bool get isAlbumVisualMedia =>
+      image != null &&
+      (contentType == 'messagePhoto' || contentType == 'messageVideo');
+
   /// Whether the "+1" (复读) quick-repeat may apply to this kind at all: only
   /// plain text and photos. Audio, voice, location, stickers, polls, files,
   /// videos, contacts and call logs are excluded.

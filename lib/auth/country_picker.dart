@@ -8,6 +8,7 @@
 //  presentation, match, and flag logic as the Swift `Country`.
 //
 
+import 'package:dlibphonenumber/dlibphonenumber.dart';
 import 'package:flutter/material.dart';
 
 import '../components/sf_symbols.dart';
@@ -32,7 +33,9 @@ class Country {
   static const Country china = Country('中国', 'CN', '86');
 
   /// Every dialable region we ship (names localized to Chinese). Comprehensive
-  /// across distinct country calling codes; +1 resolves to US (see _mainForCode).
+  /// across distinct country calling codes; shared calling codes use
+  /// libphonenumber leading-digit metadata before falling back to a canonical
+  /// display country.
   static const List<Country> all = [
     // East Asia
     Country('中国', 'CN', '86'),
@@ -216,8 +219,11 @@ class Country {
   static List<Country> get sorted =>
       [...all]..sort((a, b) => a.name.compareTo(b.name));
 
-  /// Best country whose dial code is a prefix of [digits] (longest dial wins;
-  /// shared codes resolve to the canonical main country, e.g. +1 → US).
+  /// Best country whose dial code is a prefix of [digits].
+  ///
+  /// Longest dial wins. Shared codes use libphonenumber's leading-digit
+  /// metadata, which matches Telegram's country detection behavior for ranges
+  /// such as +76/+77 Kazakhstan under the shared +7 country code.
   static const _mainForCode = {'1': 'US', '7': 'RU', '44': 'GB', '86': 'CN'};
 
   static Country? match(String digits) {
@@ -231,8 +237,44 @@ class Country {
         .reduce((a, b) => a > b ? a : b);
     final best = candidates.where((c) => c.dial.length == maxLen).toList();
     if (best.length == 1) return best.first;
+    final metadataMatch = _matchSharedCodeFromPhoneMetadata(digits, best);
+    if (metadataMatch != null) return metadataMatch;
     final main = _mainForCode[best.first.dial];
     return best.firstWhere((c) => c.iso == main, orElse: () => best.first);
+  }
+
+  static Country? _matchSharedCodeFromPhoneMetadata(
+    String digits,
+    List<Country> candidates,
+  ) {
+    if (candidates.isEmpty || digits.length <= candidates.first.dial.length) {
+      return null;
+    }
+    try {
+      final parsed = PhoneNumberUtil.instance.parse('+$digits', null);
+      final region = PhoneNumberUtil.instance.getRegionCodeForNumber(parsed);
+      final match = _byIso(region, candidates);
+      if (match != null) return match;
+    } catch (_) {
+      // Keep login typing resilient; fall through to short-prefix metadata.
+    }
+
+    // libphonenumber metadata marks Kazakhstan under +7 with national prefixes
+    // 6 and 7. Keep this explicit so the UI flips to KZ immediately at "+77",
+    // even if parsing rejects the very short partial number on some platforms.
+    if (digits.startsWith('76') || digits.startsWith('77')) {
+      return _byIso('KZ', candidates);
+    }
+    return null;
+  }
+
+  static Country? _byIso(String? iso, [Iterable<Country>? scope]) {
+    if (iso == null || iso.isEmpty) return null;
+    final upper = iso.toUpperCase();
+    for (final country in scope ?? all) {
+      if (country.iso == upper) return country;
+    }
+    return null;
   }
 }
 

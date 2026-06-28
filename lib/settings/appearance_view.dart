@@ -9,11 +9,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 
+import '../components/sf_symbols.dart';
 import '../components/ui_components.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import 'edit_field_view.dart';
-import '../components/sf_symbols.dart';
 
 class AppearanceView extends StatelessWidget {
   const AppearanceView({super.key});
@@ -82,20 +82,6 @@ class AppearanceView extends StatelessWidget {
                   ),
                   _toggleRow(
                     context,
-                    sfIcon('person.text.rectangle'),
-                    '显示成员头衔',
-                    theme.showMemberTags,
-                    (v) => theme.showMemberTags = v,
-                  ),
-                  _toggleRow(
-                    context,
-                    sfIcon('photo.stack'),
-                    '合并图片消息',
-                    theme.groupImageMessages,
-                    (v) => theme.groupImageMessages = v,
-                  ),
-                  _toggleRow(
-                    context,
                     sfIcon('eye.slash'),
                     '侧边栏隐藏手机号',
                     theme.hideSidebarPhone,
@@ -105,6 +91,20 @@ class AppearanceView extends StatelessWidget {
                 const SizedBox(height: AppSpacing.xl),
                 _label(context, '聊天界面'),
                 _card(context, [
+                  _toggleRow(
+                    context,
+                    sfIcon('person.text.rectangle'),
+                    '群成员显示头衔',
+                    theme.showMemberTags,
+                    (v) => theme.showMemberTags = v,
+                  ),
+                  _toggleRow(
+                    context,
+                    sfIcon('photo.stack'),
+                    '连续图片合并显示',
+                    theme.groupImageMessages,
+                    (v) => theme.groupImageMessages = v,
+                  ),
                   _toggleRow(
                     context,
                     sfIcon('paintpalette'),
@@ -160,24 +160,34 @@ class AppearanceView extends StatelessWidget {
                   ),
                 ]),
                 const SizedBox(height: AppSpacing.xl),
+                _label(context, '群助手位置'),
+                _card(context, [
+                  for (final m in GroupAssistantPlacement.values)
+                    _choiceRow(
+                      context,
+                      m.icon,
+                      m.label,
+                      theme.groupAssistantPlacement == m,
+                      () => theme.groupAssistantPlacement = m,
+                    ),
+                ]),
+                const SizedBox(height: AppSpacing.xl),
                 _label(context, '消息红点'),
                 _card(context, [
-                  for (final m in UnreadBadgeMode.values)
-                    _choiceRow(
-                      context,
-                      m.icon,
-                      m.label,
-                      theme.unreadBadgeMode == m,
-                      () => theme.unreadBadgeMode = m,
-                    ),
-                  for (final m in UnreadBadgeOverflowMode.values)
-                    _choiceRow(
-                      context,
-                      m.icon,
-                      m.label,
-                      theme.unreadBadgeOverflowMode == m,
-                      () => theme.unreadBadgeOverflowMode = m,
-                    ),
+                  _toggleRow(
+                    context,
+                    sfIcon('message'),
+                    '显示未读会话数',
+                    theme.unreadBadgeShowsChatCount,
+                    (v) => theme.unreadBadgeShowsChatCount = v,
+                  ),
+                  _toggleRow(
+                    context,
+                    sfIcon('bell.fill'),
+                    '超过 99 显示为 99+',
+                    theme.capUnreadBadgeAt99,
+                    (v) => theme.capUnreadBadgeAt99 = v,
+                  ),
                 ]),
               ],
             ),
@@ -437,7 +447,11 @@ class AppearanceView extends StatelessWidget {
               ),
               const Spacer(),
               if (selected)
-                Icon(sfIcon('checkmark'), size: AppIconSize.lg, color: AppTheme.brand),
+                Icon(
+                  sfIcon('checkmark'),
+                  size: AppIconSize.lg,
+                  color: AppTheme.brand,
+                ),
             ],
           ),
         ),
@@ -899,7 +913,11 @@ class FontPickerView extends StatelessWidget {
               ),
               const SizedBox(width: AppSpacing.md),
               if (selected)
-                Icon(sfIcon('checkmark'), size: AppIconSize.lg, color: AppTheme.brand),
+                Icon(
+                  sfIcon('checkmark'),
+                  size: AppIconSize.lg,
+                  color: AppTheme.brand,
+                ),
             ],
           ),
         ),
@@ -1027,7 +1045,11 @@ class MonospaceFontPickerView extends StatelessWidget {
               ),
               const SizedBox(width: AppSpacing.md),
               if (selected)
-                Icon(sfIcon('checkmark'), size: AppIconSize.lg, color: AppTheme.brand),
+                Icon(
+                  sfIcon('checkmark'),
+                  size: AppIconSize.lg,
+                  color: AppTheme.brand,
+                ),
             ],
           ),
         ),

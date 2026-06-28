@@ -55,10 +55,18 @@ import UIKit
       nativeTranslationBridge = bridge
       bridge.attachHostIfNeeded()
       nativeTranslationChannel.setMethodCallHandler { call, result in
+        if call.method == "capabilities" {
+          result(["ios_system"])
+          return
+        }
         bridge.handle(call: call, result: result)
       }
     } else {
       nativeTranslationChannel.setMethodCallHandler { call, result in
+        if call.method == "capabilities" {
+          result([])
+          return
+        }
         guard call.method == "translate" else {
           result(FlutterMethodNotImplemented)
           return

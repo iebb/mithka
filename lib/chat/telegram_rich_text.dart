@@ -16,6 +16,7 @@ class TelegramRichText extends StatefulWidget {
     this.maxLines,
     this.overflow = TextOverflow.clip,
     this.onBotCommandTap,
+    this.quoteBackgroundColor,
   });
 
   final String text;
@@ -25,6 +26,7 @@ class TelegramRichText extends StatefulWidget {
   final int? maxLines;
   final TextOverflow overflow;
   final ValueChanged<String>? onBotCommandTap;
+  final Color? quoteBackgroundColor;
 
   @override
   State<TelegramRichText> createState() => _TelegramRichTextState();
@@ -60,6 +62,9 @@ class _TelegramRichTextState extends State<TelegramRichText> {
           context,
         ).style.copyWith(color: context.colors.textPrimary);
     final linkColor = widget.linkColor ?? context.colors.linkBlue;
+    if (widget.quoteBackgroundColor != null && _hasBlockQuote()) {
+      return _richTextWithQuoteBlocks(context, baseStyle, linkColor);
+    }
     return RichText(
       maxLines: widget.maxLines,
       overflow: widget.overflow,
@@ -68,6 +73,122 @@ class _TelegramRichTextState extends State<TelegramRichText> {
         children: _spans(context, baseStyle, linkColor),
       ),
     );
+  }
+
+  bool _hasBlockQuote() =>
+      _validEntities(widget.text.length).any((entity) => entity.isBlockQuote);
+
+  Widget _richTextWithQuoteBlocks(
+    BuildContext context,
+    TextStyle baseStyle,
+    Color linkColor,
+  ) {
+    final text = widget.text;
+    final entities = _validEntities(text.length);
+    final blocks = entities.where((entity) => entity.isBlockQuote).toList()
+      ..sort((a, b) => a.offset.compareTo(b.offset));
+    final children = <Widget>[];
+    var cursor = 0;
+    for (final block in blocks) {
+      final start = block.offset.clamp(0, text.length).toInt();
+      final end = block.end.clamp(start, text.length).toInt();
+      if (end <= cursor) continue;
+      if (start > cursor) {
+        children.add(
+          _richTextSegment(text, cursor, start, entities, baseStyle, linkColor),
+        );
+      }
+      children.add(
+        Padding(
+          padding: EdgeInsets.only(
+            top: children.isEmpty ? 0 : 6,
+            bottom: end < text.length ? 6 : 0,
+          ),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(10, 7, 10, 7),
+            decoration: BoxDecoration(
+              color: widget.quoteBackgroundColor,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: _richTextSegment(
+              text,
+              start,
+              end,
+              entities.where((entity) => !entity.isBlockQuote).toList(),
+              baseStyle,
+              linkColor,
+            ),
+          ),
+        ),
+      );
+      cursor = end;
+    }
+    if (cursor < text.length) {
+      children.add(
+        _richTextSegment(
+          text,
+          cursor,
+          text.length,
+          entities,
+          baseStyle,
+          linkColor,
+        ),
+      );
+    }
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: children,
+    );
+  }
+
+  Widget _richTextSegment(
+    String source,
+    int start,
+    int end,
+    List<MessageTextEntity> sourceEntities,
+    TextStyle baseStyle,
+    Color linkColor,
+  ) {
+    final text = source.substring(start, end);
+    return TelegramRichText(
+      text: text,
+      entities: _sliceEntities(sourceEntities, start, end),
+      style: baseStyle,
+      linkColor: linkColor,
+      maxLines: widget.maxLines,
+      overflow: widget.overflow,
+      onBotCommandTap: widget.onBotCommandTap,
+    );
+  }
+
+  List<MessageTextEntity> _sliceEntities(
+    List<MessageTextEntity> source,
+    int start,
+    int end,
+  ) {
+    final sliced = <MessageTextEntity>[];
+    for (final entity in source) {
+      if (entity.end <= start || entity.offset >= end || entity.isBlockQuote) {
+        continue;
+      }
+      final nextStart = entity.offset.clamp(start, end).toInt();
+      final nextEnd = entity.end.clamp(nextStart, end).toInt();
+      if (nextEnd <= nextStart) continue;
+      sliced.add(
+        MessageTextEntity(
+          offset: nextStart - start,
+          length: nextEnd - nextStart,
+          type: entity.type,
+          url: entity.url,
+          userId: entity.userId,
+          customEmojiId: entity.customEmojiId,
+          language: entity.language,
+        ),
+      );
+    }
+    return sliced;
   }
 
   List<InlineSpan> _spans(

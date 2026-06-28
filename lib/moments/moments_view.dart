@@ -16,13 +16,16 @@ import 'package:image_picker/image_picker.dart';
 import '../chat/chat_picker_view.dart';
 import '../chat/full_image_viewer.dart';
 import '../chat/chat_view.dart';
+import '../chat/media_album_layout.dart';
 import '../chat/rich_text_format.dart';
 import '../chat/telegram_rich_text.dart';
+import '../chat/video_player_view.dart';
 import '../chats/chat_list_view_model.dart';
 import '../components/toast.dart';
 import '../components/photo_avatar.dart';
 import '../components/sf_symbols.dart';
 import '../components/ui_components.dart';
+import '../l10n/app_localizations.dart';
 import '../settings/accent_color_picker_view.dart';
 import '../tdlib/chat_membership.dart';
 import '../tdlib/json_helpers.dart';
@@ -112,8 +115,40 @@ class _LoadedPostComment {
   final ChatMessage message;
 }
 
+bool _isChannelSelfPost(ChannelPost post) {
+  final senderId = post.message.senderId;
+  if (senderId != null) return senderId == post.channel.id;
+
+  final senderTitle = post.message.senderTitle?.trim();
+  if (senderTitle == null || senderTitle.isEmpty) return false;
+  return senderTitle == post.channel.title.trim();
+}
+
+Future<bool> _canPostToChannel(ChatSummary channel, int meId) async {
+  try {
+    final member = await TdClient.shared.query({
+      '@type': 'getChatMember',
+      'chat_id': channel.id,
+      'member_id': {'@type': 'messageSenderUser', 'user_id': meId},
+    });
+    final status = member.obj('status');
+    switch (status?.type) {
+      case 'chatMemberStatusCreator':
+        return true;
+      case 'chatMemberStatusAdministrator':
+        return status?.obj('rights')?.boolean('can_post_messages') ?? true;
+    }
+  } catch (_) {}
+  return false;
+}
+
+Color _momentQuoteFill(AppColors c) =>
+    c.groupedBackground.withValues(alpha: 0.88);
+
 class MomentsView extends StatefulWidget {
-  const MomentsView({super.key});
+  const MomentsView({super.key, this.onOpenDetail});
+
+  final ValueChanged<Widget>? onOpenDetail;
 
   @override
   State<MomentsView> createState() => _MomentsViewState();
@@ -157,10 +192,18 @@ class _MomentsViewState extends State<MomentsView> {
     (sum, chat) => sum + (chat.unreadCount > 0 ? chat.unreadCount : 1),
   );
 
+  void _openDetail(Widget detail) {
+    if (widget.onOpenDetail != null) {
+      widget.onOpenDetail!(detail);
+      return;
+    }
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => detail));
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return Container(
+    return Material(
       color: c.groupedBackground,
       child: Column(
         children: [
@@ -178,11 +221,11 @@ class _MomentsViewState extends State<MomentsView> {
                         iconColor: const Color(0xFFFFBE00),
                         title: '动态',
                         trailing: _channelActivity(),
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => ChannelMomentsView(
-                              initialChannels: _allChannels,
-                            ),
+                        onTap: () => _openDetail(
+                          ChannelMomentsView(
+                            isRootTab: widget.onOpenDetail != null,
+                            title: widget.onOpenDetail == null ? '动态' : '好友动态',
+                            initialChannels: _allChannels,
                           ),
                         ),
                       ),
@@ -190,9 +233,9 @@ class _MomentsViewState extends State<MomentsView> {
                         icon: 'sparkles',
                         iconColor: const Color(0xFFFFBE00),
                         title: '故事',
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const StoriesView(),
+                        onTap: () => _openDetail(
+                          StoriesView(
+                            showBackButton: widget.onOpenDetail == null,
                           ),
                         ),
                       ),
@@ -229,7 +272,7 @@ class _MomentsViewState extends State<MomentsView> {
             ),
             const SizedBox(width: AppSpacing.md),
             Text(
-              title,
+              title.l10n(context),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(fontSize: 16, color: c.textPrimary),
@@ -260,7 +303,7 @@ class _MomentsViewState extends State<MomentsView> {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          '$_newPostCount 新发表',
+          AppLocalizations.of(context).format('newPosts', '$_newPostCount'),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(fontSize: 14, color: c.textSecondary),
@@ -301,11 +344,15 @@ class ChannelMomentsView extends StatefulWidget {
   const ChannelMomentsView({
     super.key,
     this.isRootTab = false,
+    this.title = '动态',
     this.initialChannels = const [],
+    this.onOpenDetail,
   });
 
   final bool isRootTab;
+  final String title;
   final List<ChatSummary> initialChannels;
+  final ValueChanged<Widget>? onOpenDetail;
 
   @override
   State<ChannelMomentsView> createState() => _ChannelMomentsViewState();
@@ -325,6 +372,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
   final Set<int> _exhaustedChannels = {};
   final Set<String> _loadingLikeNames = {};
   final Set<String> _loadingComments = {};
+  final Set<String> _loadingReplyQuotes = {};
   final Set<String> _loadingThreadTargets = {};
   final Map<int, bool> _joinedChannelCache = {};
   List<ChatSummary> _postableChannels = const [];
@@ -541,9 +589,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
 
   String? _postAlbumKey(ChannelPost post) {
     final message = post.message;
-    if (message.mediaAlbumId == 0 ||
-        !message.isPhoto ||
-        message.image == null) {
+    if (message.mediaAlbumId == 0 || !message.isAlbumVisualMedia) {
       return null;
     }
     return '${post.channel.id}:${message.mediaAlbumId}';
@@ -583,24 +629,6 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
         _selectedPostChannelId = postable.first.id;
       }
     });
-  }
-
-  Future<bool> _canPostToChannel(ChatSummary channel, int meId) async {
-    try {
-      final member = await TdClient.shared.query({
-        '@type': 'getChatMember',
-        'chat_id': channel.id,
-        'member_id': {'@type': 'messageSenderUser', 'user_id': meId},
-      });
-      final status = member.obj('status');
-      switch (status?.type) {
-        case 'chatMemberStatusCreator':
-          return true;
-        case 'chatMemberStatusAdministrator':
-          return status?.obj('rights')?.boolean('can_post_messages') ?? true;
-      }
-    } catch (_) {}
-    return false;
   }
 
   Future<void> _loadChannelPosts({bool loadOlder = false}) async {
@@ -706,10 +734,52 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
       if (!mounted) return;
       final posts = _posts.take(_metadataHydrationLimit).toList();
       _loadAuthors(posts);
+      _loadReplyQuotes(posts);
       _loadLikeNames(posts);
       _loadThreadTargets(posts);
       _loadComments(posts);
     });
+  }
+
+  void _loadReplyQuotes(List<ChannelPost> posts) {
+    for (final post in posts) {
+      final message = post.message;
+      final replyToMessageId = message.replyToMessageId;
+      if (replyToMessageId == null ||
+          (message.replyToPreview?.trim().isNotEmpty ?? false)) {
+        continue;
+      }
+      final key = '${post.channel.id}:${message.id}:$replyToMessageId';
+      if (_loadingReplyQuotes.contains(key)) continue;
+      _loadingReplyQuotes.add(key);
+      _resolveReplyQuote(post, key);
+    }
+  }
+
+  Future<void> _resolveReplyQuote(ChannelPost post, String key) async {
+    final message = post.message;
+    final replyToMessageId = message.replyToMessageId;
+    if (replyToMessageId == null) {
+      _loadingReplyQuotes.remove(key);
+      return;
+    }
+    try {
+      final raw = await TdClient.shared.query({
+        '@type': 'getMessage',
+        'chat_id': post.channel.id,
+        'message_id': replyToMessageId,
+      });
+      final quoted = TDParse.message(raw);
+      if (quoted == null) return;
+      message.replyToPreview = _replyPreview(quoted);
+      message.replyToSender = await _senderName(quoted) ?? post.channel.title;
+    } catch (_) {
+      message.replyToPreview ??= '';
+      message.replyToSender ??= post.channel.title;
+    } finally {
+      _loadingReplyQuotes.remove(key);
+      if (mounted) setState(() {});
+    }
   }
 
   void _loadComments(List<ChannelPost> posts) {
@@ -831,6 +901,21 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
     return text;
   }
 
+  String _replyPreview(ChatMessage message) {
+    if (message.document != null) return '[文件]${message.document!.fileName}';
+    if (message.voice != null) return '[语音]';
+    if (message.location != null) return '[位置]';
+    if (message.animatedSticker != null) return '[动画表情]';
+    if (message.video != null) {
+      return message.text.isEmpty ? '[视频]' : message.text;
+    }
+    if (message.image != null) {
+      return message.text.isEmpty ? '[图片]' : message.text;
+    }
+    final text = message.text.trim();
+    return text.isEmpty ? '[消息]' : text;
+  }
+
   List<MessageTextEntity> _commentEntities(ChatMessage message) {
     return message.text == message.text.trim()
         ? message.textEntities
@@ -846,8 +931,15 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
       final previous = byId[post.message.id];
       if (previous != null) {
         post.threadTarget = previous.threadTarget;
-        post.authorName = previous.authorName;
-        post.authorPhoto = previous.authorPhoto;
+        if (_isChannelSelfPost(post)) {
+          post.authorName = null;
+          post.authorPhoto = null;
+        } else {
+          post.authorName = previous.authorName;
+          post.authorPhoto = previous.authorPhoto;
+        }
+        post.message.replyToSender = previous.message.replyToSender;
+        post.message.replyToPreview = previous.message.replyToPreview;
         final likesChanged =
             _reactionCount(previous.message) != _reactionCount(post.message);
         final commentsChanged =
@@ -881,12 +973,22 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
 
   void _loadAuthors(List<ChannelPost> posts) {
     for (final post in posts) {
+      if (_isChannelSelfPost(post)) {
+        post.authorName = null;
+        post.authorPhoto = null;
+        continue;
+      }
       if (post.authorName != null) continue;
       _resolvePostAuthor(post);
     }
   }
 
   Future<void> _resolvePostAuthor(ChannelPost post) async {
+    if (_isChannelSelfPost(post)) {
+      post.authorName = null;
+      post.authorPhoto = null;
+      return;
+    }
     final senderId = post.message.senderId;
     try {
       if (senderId != null && senderId > 0) {
@@ -907,7 +1009,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
         post.authorPhoto = TDParse.smallPhoto(chat.obj('photo'));
       } else {
         final title = post.message.senderTitle?.trim();
-        if (title != null && title.isNotEmpty && !_isRoleLabel(title)) {
+        if (title != null && title.isNotEmpty) {
           post.authorName = title;
         }
       }
@@ -973,9 +1075,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
     final senderId = message.senderId;
     if (senderId == null) {
       final title = message.senderTitle?.trim();
-      return title != null && title.isNotEmpty && !_isRoleLabel(title)
-          ? title
-          : null;
+      return title != null && title.isNotEmpty ? title : null;
     }
     try {
       if (senderId > 0) {
@@ -994,20 +1094,8 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
       return name == null || name.isEmpty ? null : name;
     } catch (_) {
       final title = message.senderTitle?.trim();
-      return title != null && title.isNotEmpty && !_isRoleLabel(title)
-          ? title
-          : null;
+      return title != null && title.isNotEmpty ? title : null;
     }
-  }
-
-  bool _isRoleLabel(String value) {
-    final text = value.trim();
-    return text == '群主' ||
-        text == '管理员' ||
-        text == '成员' ||
-        text == '频道主' ||
-        text == '版主' ||
-        (text.startsWith('【') && text.endsWith('】') && text.length <= 8);
   }
 
   int _reactionCount(ChatMessage message) =>
@@ -1117,9 +1205,15 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
   }
 
   void _openPostDetail(ChannelPost post) {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => ChannelPostDetailView(post: post)),
+    final detail = ChannelPostDetailView(
+      post: post,
+      showBackButton: widget.onOpenDetail == null,
     );
+    if (widget.onOpenDetail != null) {
+      widget.onOpenDetail!(detail);
+      return;
+    }
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => detail));
   }
 
   void _openSearch() {
@@ -1161,12 +1255,12 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
   Widget build(BuildContext context) {
     final c = context.colors;
     final posts = _posts;
-    return Container(
+    return Material(
       color: c.groupedBackground,
       child: Column(
         children: [
           NavHeader(
-            title: '动态',
+            title: widget.title,
             onBack: widget.isRootTab ? null : () => Navigator.of(context).pop(),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
@@ -1264,11 +1358,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
             children: [
               Row(
                 children: [
-                  Icon(
-                    sfIcon('face.smiling'),
-                    size: 24,
-                    color: c.textPrimary,
-                  ),
+                  Icon(sfIcon('face.smiling'), size: 24, color: c.textPrimary),
                   const SizedBox(width: 18),
                   Icon(sfIcon('textformat'), size: 24, color: c.textPrimary),
                   const SizedBox(width: 18),
@@ -1355,7 +1445,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
                 ),
           const SizedBox(height: 12),
           Text(
-            loading ? '加载频道…' : '暂无频道内容',
+            (loading ? '加载频道…' : '暂无频道内容').l10n(context),
             style: TextStyle(fontSize: 15, color: c.textSecondary),
           ),
         ],
@@ -1576,12 +1666,22 @@ class _ChannelMomentsSearchViewState extends State<ChannelMomentsSearchView> {
 
   void _hydrateAuthors(List<ChannelPost> posts) {
     for (final post in posts) {
+      if (_isChannelSelfPost(post)) {
+        post.authorName = null;
+        post.authorPhoto = null;
+        continue;
+      }
       if (post.authorName != null) continue;
       unawaited(_resolvePostAuthor(post));
     }
   }
 
   Future<void> _resolvePostAuthor(ChannelPost post) async {
+    if (_isChannelSelfPost(post)) {
+      post.authorName = null;
+      post.authorPhoto = null;
+      return;
+    }
     final senderId = post.message.senderId;
     try {
       if (senderId != null && senderId > 0) {
@@ -1602,22 +1702,12 @@ class _ChannelMomentsSearchViewState extends State<ChannelMomentsSearchView> {
         post.authorPhoto = TDParse.smallPhoto(chat.obj('photo'));
       } else {
         final title = post.message.senderTitle?.trim();
-        if (title != null && title.isNotEmpty && !_isRoleLabel(title)) {
+        if (title != null && title.isNotEmpty) {
           post.authorName = title;
         }
       }
     } catch (_) {}
     if (mounted) setState(() {});
-  }
-
-  bool _isRoleLabel(String value) {
-    final text = value.trim();
-    return text == '群主' ||
-        text == '管理员' ||
-        text == '成员' ||
-        text == '频道主' ||
-        text == '版主' ||
-        (text.startsWith('【') && text.endsWith('】') && text.length <= 8);
   }
 
   void _openPost(ChannelPost post) {
@@ -1690,7 +1780,7 @@ class _ChannelMomentsSearchViewState extends State<ChannelMomentsSearchView> {
                           textInputAction: TextInputAction.search,
                           style: TextStyle(fontSize: 15, color: c.textPrimary),
                           decoration: InputDecoration(
-                            hintText: '搜索频道动态',
+                            hintText: '搜索频道动态'.l10n(context),
                             hintStyle: TextStyle(color: c.textTertiary),
                             border: InputBorder.none,
                             isCollapsed: true,
@@ -1728,7 +1818,7 @@ class _ChannelMomentsSearchViewState extends State<ChannelMomentsSearchView> {
     if (_channels.isEmpty) {
       return Center(
         child: Text(
-          '没有可搜索的频道',
+          '没有可搜索的频道'.l10n(context),
           style: TextStyle(fontSize: 14, color: c.textSecondary),
         ),
       );
@@ -1745,7 +1835,7 @@ class _ChannelMomentsSearchViewState extends State<ChannelMomentsSearchView> {
     if (_query.trim().isEmpty) {
       return Center(
         child: Text(
-          '搜索已加入频道的动态',
+          '搜索已加入频道的动态'.l10n(context),
           style: TextStyle(fontSize: 14, color: c.textSecondary),
         ),
       );
@@ -1753,7 +1843,7 @@ class _ChannelMomentsSearchViewState extends State<ChannelMomentsSearchView> {
     if (_results.isEmpty) {
       return Center(
         child: Text(
-          _loading ? '搜索中…' : '没有找到相关动态',
+          (_loading ? '搜索中…' : '没有找到相关动态').l10n(context),
           style: TextStyle(fontSize: 14, color: c.textSecondary),
         ),
       );
@@ -1880,9 +1970,14 @@ class _ChannelPostMenu extends StatelessWidget {
 }
 
 class ChannelPostDetailView extends StatefulWidget {
-  const ChannelPostDetailView({super.key, required this.post});
+  const ChannelPostDetailView({
+    super.key,
+    required this.post,
+    this.showBackButton = true,
+  });
 
   final ChannelPost post;
+  final bool showBackButton;
 
   @override
   State<ChannelPostDetailView> createState() => _ChannelPostDetailViewState();
@@ -2164,7 +2259,9 @@ class _ChannelPostDetailViewState extends State<ChannelPostDetailView> {
         children: [
           NavHeader(
             title: '详情',
-            onBack: () => Navigator.of(context).pop(),
+            onBack: widget.showBackButton
+                ? () => Navigator.of(context).pop()
+                : null,
             trailing: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: () => showChannelPostMenu(context, post),
@@ -2250,7 +2347,7 @@ class _ChannelPostDetailViewState extends State<ChannelPostDetailView> {
               constraints: const BoxConstraints(minHeight: 42),
               padding: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
-                color: c.searchFill,
+                color: _momentQuoteFill(c),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
@@ -2472,6 +2569,7 @@ class _DetailCommentTile extends StatelessWidget {
                       TelegramRichText(
                         text: comment.text,
                         entities: comment.entities,
+                        quoteBackgroundColor: _momentQuoteFill(c),
                         style: TextStyle(
                           fontSize: 15,
                           height: 1.28,
@@ -2820,11 +2918,7 @@ class _ChannelPostComposerViewState extends State<ChannelPostComposerView> {
         ),
         const InsetDivider(leadingInset: 56),
         SettingsSwitchRow(
-          leading: Icon(
-            sfIcon('bell'),
-            size: 22,
-            color: c.textPrimary,
-          ),
+          leading: Icon(sfIcon('bell'), size: 22, color: c.textPrimary),
           title: '通知订阅者',
           value: _notifySubscribers,
           onChanged: (value) => setState(() => _notifySubscribers = value),
@@ -3082,14 +3176,13 @@ class ChannelPostRow extends StatelessWidget {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 3),
                       Row(
                         children: [
                           if (_hasSignedAuthor) ...[
                             PhotoAvatar(
                               title: post.authorName!,
                               photo: post.authorPhoto,
-                              size: 18,
+                              size: 16,
                             ),
                             const SizedBox(width: 5),
                             Flexible(
@@ -3124,6 +3217,7 @@ class ChannelPostRow extends StatelessWidget {
               TelegramRichText(
                 text: text,
                 entities: _displayTextMessage?.textEntities ?? const [],
+                quoteBackgroundColor: _momentQuoteFill(c),
                 style: TextStyle(
                   fontSize: 15,
                   height: 1.35,
@@ -3131,9 +3225,16 @@ class ChannelPostRow extends StatelessWidget {
                 ),
               ),
             ],
+            if (_hasReplyQuote) ...[
+              SizedBox(height: text.isNotEmpty ? 8 : 12),
+              _PostReplyQuote(message: message),
+            ],
             if (_imageMessages.isNotEmpty) ...[
               const SizedBox(height: 10),
-              _PostImageGroup(messages: _imageMessages),
+              _PostImageGroup(
+                messages: _imageMessages,
+                sourceChatId: channel.id,
+              ),
             ],
             const SizedBox(height: 12),
             _PostActions(
@@ -3173,16 +3274,59 @@ class ChannelPostRow extends StatelessWidget {
     return null;
   }
 
-  List<ChatMessage> get _imageMessages => messages
-      .where((message) => message.isPhoto && message.image != null)
-      .toList();
+  List<ChatMessage> get _imageMessages =>
+      messages.where((message) => message.isAlbumVisualMedia).toList();
 
   bool get _hasInlineComments =>
       message.commentCount > 0 || (post.comments?.isNotEmpty ?? false);
 
   bool get _canReply => post.threadTarget != null || message.hasCommentThread;
 
-  bool get _hasSignedAuthor => post.authorName?.trim().isNotEmpty == true;
+  bool get _hasSignedAuthor =>
+      !_isChannelSelfPost(post) && post.authorName?.trim().isNotEmpty == true;
+
+  bool get _hasReplyQuote =>
+      message.replyToMessageId != null &&
+      (message.replyToPreview?.trim().isNotEmpty ?? false);
+}
+
+class _PostReplyQuote extends StatelessWidget {
+  const _PostReplyQuote({required this.message});
+
+  final ChatMessage message;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final sender = message.replyToSender?.trim();
+    final preview = message.replyToPreview?.trim() ?? '';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(13, 10, 13, 10),
+      decoration: BoxDecoration(
+        color: _momentQuoteFill(c),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: RichText(
+        maxLines: 4,
+        overflow: TextOverflow.ellipsis,
+        text: TextSpan(
+          style: TextStyle(fontSize: 15, height: 1.35, color: c.textPrimary),
+          children: [
+            if (sender != null && sender.isNotEmpty)
+              TextSpan(
+                text: '$sender: ',
+                style: TextStyle(
+                  color: c.linkBlue,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            TextSpan(text: preview.replaceAll('\n', ' ')),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _InlineQuickReply extends StatelessWidget {
@@ -3206,7 +3350,7 @@ class _InlineQuickReply extends StatelessWidget {
         height: 40,
         padding: const EdgeInsets.symmetric(horizontal: 10),
         decoration: BoxDecoration(
-          color: c.searchFill,
+          color: _momentQuoteFill(c),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
@@ -3272,6 +3416,7 @@ class _InlineComments extends StatelessWidget {
                     entities: comment.entities,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
+                    quoteBackgroundColor: _momentQuoteFill(c),
                     style: TextStyle(
                       fontSize: 14,
                       height: 1.25,
@@ -3296,33 +3441,35 @@ class _InlineComments extends StatelessWidget {
 }
 
 class _PostImageGroup extends StatelessWidget {
-  const _PostImageGroup({required this.messages});
+  const _PostImageGroup({required this.messages, required this.sourceChatId});
 
   final List<ChatMessage> messages;
+  final int sourceChatId;
 
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.of(context).size.width - 28;
     final visible = messages.take(9).toList();
     if (visible.isEmpty) return const SizedBox.shrink();
-    if (visible.length <= 1) {
-      final message = visible.first;
-      final size = _singleImageSize(message, width);
-      return _tappableTile(
-        context: context,
-        index: 0,
-        child: _PostImageTile(
-          message: message,
-          width: size.width,
-          height: size.height,
-        ),
-      );
-    }
-    final layout = _layout(width, visible.length);
+    final layout = buildTelegramMediaAlbumLayout(
+      items: [
+        for (final message in visible)
+          MediaAlbumItem(
+            width: message.imageWidth,
+            height: message.imageHeight,
+          ),
+      ],
+      maxWidth: width,
+      gap: 3,
+      minSingleHeight: 140,
+      maxSingleHeight: 420,
+      minRowHeight: 92,
+      maxRowHeight: 280,
+    );
     return ClipRRect(
       borderRadius: BorderRadius.circular(3),
       child: SizedBox(
-        width: width,
+        width: layout.width,
         height: layout.height,
         child: Stack(
           children: [
@@ -3355,95 +3502,53 @@ class _PostImageGroup extends StatelessWidget {
   }) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => _openImage(context, index),
+      onTap: () => _openMedia(context, messages[index]),
       child: child,
     );
   }
 
-  void _openImage(BuildContext context, int startIndex) {
-    final refs = messages
-        .map((message) => message.image)
-        .whereType<TdFileRef>()
+  void _openMedia(BuildContext context, ChatMessage message) {
+    final video = message.video;
+    if (video != null) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (_) => VideoPlayerView(
+            video: video,
+            thumb: message.image,
+            width: message.imageWidth,
+            height: message.imageHeight,
+            sourceChatId: sourceChatId,
+            messageId: message.id,
+          ),
+        ),
+      );
+      return;
+    }
+    _openImage(context, message);
+  }
+
+  void _openImage(BuildContext context, ChatMessage startMessage) {
+    final photoMessages = messages
+        .where((message) => message.isPhoto && message.image != null)
         .toList();
+    final refs = photoMessages.map((message) => message.image!).toList();
     if (refs.isEmpty) return;
+    final startIndex = photoMessages.indexWhere(
+      (message) => message.id == startMessage.id,
+    );
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => FullImageViewer(
           items: refs,
-          startIndex: startIndex.clamp(0, refs.length - 1),
+          startIndex: (startIndex < 0 ? 0 : startIndex).clamp(
+            0,
+            refs.length - 1,
+          ),
         ),
       ),
     );
   }
-
-  Size _singleImageSize(ChatMessage message, double maxWidth) {
-    final w = message.imageWidth;
-    final h = message.imageHeight;
-    if (w == null || h == null || w <= 0 || h <= 0) {
-      return Size(maxWidth, maxWidth * 0.62);
-    }
-    final displayWidth = math.min(w.toDouble(), maxWidth);
-    return Size(displayWidth, displayWidth * h / w);
-  }
-
-  _PostImageLayout _layout(double width, int count) {
-    const gap = 3.0;
-    Rect rect(double left, double top, double w, double h) =>
-        Rect.fromLTWH(left, top, w, h);
-
-    if (count == 2) {
-      final tile = (width - gap) / 2;
-      return _PostImageLayout(tile, [
-        rect(0, 0, tile, tile),
-        rect(tile + gap, 0, tile, tile),
-      ]);
-    }
-
-    if (count == 3) {
-      final leftW = (width - gap) * 0.58;
-      final rightW = width - gap - leftW;
-      final height = leftW;
-      final rightH = (height - gap) / 2;
-      return _PostImageLayout(height, [
-        rect(0, 0, leftW, height),
-        rect(leftW + gap, 0, rightW, rightH),
-        rect(leftW + gap, rightH + gap, rightW, rightH),
-      ]);
-    }
-
-    if (count == 4) {
-      final colW = (width - gap) / 2;
-      final rowH = colW * 0.62;
-      final height = rowH * 2 + gap;
-      return _PostImageLayout(height, [
-        rect(0, 0, colW, rowH),
-        rect(0, rowH + gap, colW, rowH),
-        rect(colW + gap, 0, colW, rowH),
-        rect(colW + gap, rowH + gap, colW, rowH),
-      ]);
-    }
-
-    final columns = count <= 6 ? 3 : 3;
-    final rows = count <= 6 ? 2 : 3;
-    final tile = (width - gap * (columns - 1)) / columns;
-    final height = tile * rows + gap * (rows - 1);
-    return _PostImageLayout(height, [
-      for (var i = 0; i < count; i++)
-        rect(
-          (i % columns) * (tile + gap),
-          (i ~/ columns) * (tile + gap),
-          tile,
-          tile,
-        ),
-    ]);
-  }
-}
-
-class _PostImageLayout {
-  const _PostImageLayout(this.height, this.tiles);
-
-  final double height;
-  final List<Rect> tiles;
 }
 
 class _PostImageTile extends StatelessWidget {
@@ -3634,7 +3739,9 @@ class _PostActions extends StatelessWidget {
 }
 
 class StoriesView extends StatefulWidget {
-  const StoriesView({super.key});
+  const StoriesView({super.key, this.showBackButton = true});
+
+  final bool showBackButton;
 
   @override
   State<StoriesView> createState() => _StoriesViewState();
@@ -3661,11 +3768,16 @@ class _StoriesViewState extends State<StoriesView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return Container(
+    return Material(
       color: c.groupedBackground,
       child: Column(
         children: [
-          NavHeader(title: '故事', onBack: () => Navigator.of(context).pop()),
+          NavHeader(
+            title: '故事',
+            onBack: widget.showBackButton
+                ? () => Navigator.of(context).pop()
+                : null,
+          ),
           Expanded(child: _content()),
         ],
       ),
@@ -3675,13 +3787,13 @@ class _StoriesViewState extends State<StoriesView> {
   Widget _content() {
     final c = context.colors;
     if (_model.groups.isEmpty && _model.loading) {
-      return const Center(
+      return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 12),
-            Text('加载动态…'),
+            const CircularProgressIndicator(),
+            const SizedBox(height: 12),
+            Text('加载动态…'.l10n(context)),
           ],
         ),
       );
@@ -3694,7 +3806,7 @@ class _StoriesViewState extends State<StoriesView> {
             Icon(sfIcon('circle.dashed'), size: 46, color: AppTheme.brand),
             const SizedBox(height: 12),
             Text(
-              '暂无好友动态',
+              '暂无好友动态'.l10n(context),
               style: TextStyle(fontSize: 15, color: c.textSecondary),
             ),
           ],

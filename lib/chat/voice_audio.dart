@@ -9,6 +9,7 @@
 
 import 'dart:async';
 
+import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_sound/flutter_sound.dart';
 import 'package:logger/logger.dart' show Level;
@@ -17,6 +18,8 @@ import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
 
 class VoicePlayer extends ChangeNotifier {
+  static Future<void>? _audioSessionFuture;
+
   FlutterSoundPlayer? _player;
   bool isPlaying = false;
   bool isLoading = false;
@@ -32,11 +35,19 @@ class VoicePlayer extends ChangeNotifier {
   FlutterSoundPlayer get _sound =>
       _player ??= FlutterSoundPlayer(logLevel: Level.warning);
 
+  static Future<void> _configureAudioSession() {
+    return _audioSessionFuture ??= (() async {
+      final session = await AudioSession.instance;
+      await session.configure(const AudioSessionConfiguration.music());
+    })();
+  }
+
   /// True when this player is the one bound to [file] (playing or paused).
   bool isActive(TdFileRef? file) => file != null && _fileId == file.id;
 
   Future<void> _ensureOpen() async {
     if (_opened) return;
+    await _configureAudioSession();
     final player = _sound;
     await player.openPlayer();
     await player.setSubscriptionDuration(const Duration(milliseconds: 60));
@@ -94,6 +105,8 @@ class VoicePlayer extends ChangeNotifier {
   Future<void> _start(int fromMs, {required Codec codec}) async {
     try {
       await _ensureOpen();
+      final session = await AudioSession.instance;
+      await session.setActive(true);
       final player = _sound;
       _progress?.cancel();
       _progress = player.onProgress?.listen((e) {

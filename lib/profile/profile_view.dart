@@ -515,8 +515,7 @@ class _ProfileViewState extends State<ProfileView> {
     );
   }
 
-  /// Long-press an account row to remove it from the switcher — for clearing a
-  /// leftover "未登录" entry or a logged-out account you no longer want.
+  /// Long-press an account row to remove it from the switcher.
   Future<void> _confirmRemoveAccount(
     AccountStore accounts,
     AccountSummary s,

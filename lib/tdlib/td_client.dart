@@ -27,6 +27,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/secrets.dart';
+import '../settings/proxy_config.dart';
 import 'json_helpers.dart';
 import 'td_bindings.dart';
 
@@ -149,8 +150,8 @@ class TdClient {
   int addSlot() {
     final newSlot =
         (_slots.isEmpty ? -1 : _slots.reduce((a, b) => a > b ? a : b)) + 1;
-    _slots.add(newSlot);
     final cid = _bindings.createClientId();
+    _slots.add(newSlot);
     _clientForSlot[newSlot] = cid;
     _slotForClient[cid] = newSlot;
     _persist();
@@ -174,14 +175,34 @@ class TdClient {
   /// first) to avoid leaving the UI pointed at a dead client.
   void removeSlot(int slot) {
     if (slot == _activeSlot || !_slots.contains(slot)) return;
+    _closeAndForgetSlot(slot);
+    _persist();
+    if (kDebugMode) unawaited(_persistDebugLiveClientIds());
+  }
+
+  /// Drops the current active slot and replaces it with a clean login client.
+  /// Used when the last account is cancelled/logged out: internally TDLib still
+  /// needs one active client, but the account switcher can remain empty.
+  int replaceActiveWithFreshLoginSlot() {
+    final oldSlot = _activeSlot;
+    final newSlot = addSlot();
+    setActive(newSlot);
+    if (_slots.contains(oldSlot)) {
+      _closeAndForgetSlot(oldSlot);
+      _persist();
+      if (kDebugMode) unawaited(_persistDebugLiveClientIds());
+    }
+    return newSlot;
+  }
+
+  void _closeAndForgetSlot(int slot) {
     final cid = _clientForSlot.remove(slot);
     if (cid != null) {
       _bindings.send(cid, jsonEncode({'@type': 'close'}));
       _slotForClient.remove(cid);
+      _latestChatFoldersByClient.remove(cid);
     }
     _slots.remove(slot);
-    _persist();
-    if (kDebugMode) unawaited(_persistDebugLiveClientIds());
   }
 
   void _persist() {
@@ -294,6 +315,7 @@ class TdClient {
         'application_version': '1.0',
       }),
     );
+    unawaited(_applySavedProxyToClient(clientId));
   }
 
   /// Re-sends TDLib parameters for the active client. This is intentionally
@@ -303,6 +325,53 @@ class TdClient {
     final clientId = _activeClientId;
     if (clientId == 0) return;
     _sendParameters(clientId);
+  }
+
+  Future<void> applySavedProxyToActive() async {
+    final clientId = _activeClientId;
+    if (clientId == 0) return;
+    await _applySavedProxyToClient(clientId);
+  }
+
+  Future<void> _applySavedProxyToClient(int clientId) async {
+    final config = await ProxyConfig.load();
+    if (!config.configured) return;
+    if (!config.isUsable) {
+      try {
+        await queryTo({
+          '@type': 'disableProxy',
+        }, clientId).timeout(const Duration(seconds: 2));
+      } catch (_) {}
+      return;
+    }
+
+    try {
+      final proxies = await queryTo({
+        '@type': 'getProxies',
+      }, clientId).timeout(const Duration(seconds: 2));
+      Map<String, dynamic>? existing;
+      for (final proxy
+          in proxies.objects('proxies') ?? const <Map<String, dynamic>>[]) {
+        if (config.matchesTdProxy(proxy)) {
+          existing = proxy;
+          break;
+        }
+      }
+      final id = existing?.integer('id');
+      if (id != null) {
+        await queryTo({
+          '@type': 'enableProxy',
+          'proxy_id': id,
+        }, clientId).timeout(const Duration(seconds: 2));
+        return;
+      }
+      await queryTo(
+        config.addProxyRequest,
+        clientId,
+      ).timeout(const Duration(seconds: 2));
+    } catch (_) {
+      _bindings.send(clientId, jsonEncode(config.addProxyRequest));
+    }
   }
 
   // MARK: - Sending

@@ -17,17 +17,36 @@ class NativeTranslationApi {
 
   static const _channel = MethodChannel('mithka/native_translation');
 
+  static Future<Set<TranslationProvider>> availableProviders() async {
+    try {
+      final raw = await _channel.invokeMethod<List<dynamic>>('capabilities');
+      final values = raw?.whereType<String>().toSet() ?? const <String>{};
+      return TranslationProvider.selectableProviders
+          .where((provider) => values.contains(provider.storageValue))
+          .toSet();
+    } on PlatformException {
+      return const <TranslationProvider>{};
+    } on MissingPluginException {
+      return const <TranslationProvider>{};
+    }
+  }
+
   static Future<String> translate({
     required String text,
     required String sourceLanguageCode,
     required String targetLanguageCode,
   }) async {
     try {
-      final translated = await _channel.invokeMethod<String>('translate', {
-        'text': text,
-        'sourceLanguageCode': sourceLanguageCode,
-        'targetLanguageCode': targetLanguageCode,
-      });
+      final translated = await _channel
+          .invokeMethod<String>('translate', {
+            'text': text,
+            'sourceLanguageCode': sourceLanguageCode,
+            'targetLanguageCode': targetLanguageCode,
+          })
+          .timeout(
+            const Duration(seconds: 60),
+            onTimeout: () => throw TranslationApiException('本机翻译已取消或超时'),
+          );
       if (translated == null || translated.isEmpty) {
         throw TranslationApiException('本机翻译没有返回译文');
       }
@@ -48,13 +67,13 @@ class ThirdPartyTranslationApi {
     required String targetLanguageCode,
     required String lingvaEndpoint,
     required String libreTranslateEndpoint,
+    required String libreTranslateApiKey,
   }) {
     final source = _sourceLanguage(sourceLanguageCode);
     final target = _apiLanguage(targetLanguageCode);
     return switch (provider) {
-      TranslationProvider.nativeOnDevice => throw TranslationApiException(
-        '本机翻译不走外部 API',
-      ),
+      TranslationProvider.iosSystem || TranslationProvider.androidMlKit =>
+        throw TranslationApiException('本机翻译不走外部 API'),
       TranslationProvider.myMemory => _translateMyMemory(text, source, target),
       TranslationProvider.lingva => _translateLingva(
         text,
@@ -67,6 +86,7 @@ class ThirdPartyTranslationApi {
         source,
         target,
         libreTranslateEndpoint,
+        libreTranslateApiKey,
       ),
       TranslationProvider.tdlib => throw TranslationApiException(
         '内部翻译不走外部 API',
@@ -127,17 +147,20 @@ class ThirdPartyTranslationApi {
     String source,
     String target,
     String endpoint,
+    String apiKey,
   ) async {
     if (endpoint.trim().isEmpty) {
       throw TranslationApiException('请先设置 LibreTranslate 地址');
     }
     final uri = _appendPath(_endpointUri(endpoint), ['translate']);
-    final json = await _postJson(uri, {
+    final body = <String, Object>{
       'q': text,
       'source': source,
       'target': target,
       'format': 'text',
-    });
+    };
+    if (apiKey.trim().isNotEmpty) body['api_key'] = apiKey.trim();
+    final json = await _postJson(uri, body);
     final value = json['translatedText']?.toString();
     if (value == null || value.isEmpty) {
       throw TranslationApiException('LibreTranslate 没有返回译文');

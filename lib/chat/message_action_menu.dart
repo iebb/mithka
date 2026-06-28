@@ -21,6 +21,8 @@ enum MessageAction {
   translate('character.book.closed', '翻译'),
   reply('quote.bubble', '引用'),
   forward('arrowshape.turn.up.right', '转发'),
+  playPiP('pip.enter', '画中画'),
+  playSplit('rectangle.split.2x1', '分屏'),
   multiSelect('checkmark.circle', '多选'),
   pinTodo('pin.fill', '设为待办'),
   unpinTodo('pin.fill', '撤回待办'),
@@ -71,6 +73,10 @@ class MessageActionMenu extends StatelessWidget {
     }
     result.add(MessageAction.reply);
     result.add(MessageAction.forward);
+    if (message.video != null) {
+      result.add(MessageAction.playPiP);
+      result.add(MessageAction.playSplit);
+    }
     result.add(MessageAction.multiSelect);
     result.add(isPinned ? MessageAction.unpinTodo : MessageAction.pinTodo);
     result.add(MessageAction.save);

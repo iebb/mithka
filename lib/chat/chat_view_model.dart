@@ -8,6 +8,7 @@
 //
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
@@ -80,6 +81,13 @@ class BotMenuInfo {
       type == 'botMenuButtonCommands' || type == 'botMenuButtonDefault';
 }
 
+class ForumTopicOption {
+  const ForumTopicOption({required this.id, required this.name});
+
+  final int id;
+  final String name;
+}
+
 class _DraftMention {
   const _DraftMention({required this.text, required this.userId});
 
@@ -126,6 +134,8 @@ class ChatViewModel extends ChangeNotifier {
 
   // 群公告 / pinned message shown in a bar below the header.
   ChatMessage? pinnedMessage;
+  List<ChatMessage> pinnedMessages = const [];
+  int pinnedMessageIndex = 0;
   bool pinnedDismissed = false;
 
   // Membership / send permission. Defaults assume a normal, joined, sendable
@@ -144,6 +154,9 @@ class ChatViewModel extends ChangeNotifier {
   bool botStartSent = false;
   BotMenuInfo? botMenu;
   List<BotCommandOption> botCommands = const [];
+  bool isForum = false;
+  bool forumTopicsLoading = false;
+  List<ForumTopicOption> forumTopics = const [];
   int messageAutoDeleteTime = 0;
   int paidMessageStarCount = 0;
 
@@ -213,9 +226,8 @@ class ChatViewModel extends ChangeNotifier {
     KeywordBlocker.shared.removeListener(_applyKeywordFilter);
     KeywordBlocker.shared.addListener(_applyKeywordFilter);
     () async {
-      await _loadMe();
+      unawaited(_loadMe());
       await _loadChatHeader();
-      await _loadAvailableMessageSenders();
       final target = initialMessageId;
       if (target != null) {
         await loadAroundMessage(target);
@@ -228,6 +240,7 @@ class ChatViewModel extends ChangeNotifier {
       // open lands at the latest message. The unread snapshot for this session's
       // "以下为新消息" divider was already captured in _loadChatHeader.
       if (target == null) _markChatRead();
+      unawaited(_loadAvailableMessageSenders());
     }();
   }
 
@@ -947,14 +960,15 @@ class ChatViewModel extends ChangeNotifier {
   Future<void> translateMessageExternally(
     int messageId,
     String toLanguageCode,
-    Future<String> Function() translate,
-  ) async {
-    _setTranslationLoading(messageId, true);
+    Future<String> Function() translate, {
+    bool showLoading = true,
+  }) async {
+    if (showLoading) _setTranslationLoading(messageId, true);
     try {
       final translated = await translate();
       _replaceTranslation(messageId, translated, const [], toLanguageCode);
     } catch (_) {
-      _setTranslationLoading(messageId, false);
+      if (showLoading) _setTranslationLoading(messageId, false);
       rethrow;
     }
   }
@@ -1091,6 +1105,7 @@ class ChatViewModel extends ChangeNotifier {
     lastReadInboxId = chat.int64('last_read_inbox_message_id') ?? 0;
     unreadCount = chat.integer('unread_count') ?? 0;
     isMuted = (chat.obj('notification_settings')?.integer('mute_for') ?? 0) > 0;
+    isForum = chat.boolean('view_as_topics') ?? false;
     messageAutoDeleteTime = _autoDeleteSeconds(chat);
     paidMessageStarCount = _paidMessageStars(chat);
     _applyRemoteDraft(chat.obj('draft_message'), force: true, notify: false);
@@ -1149,17 +1164,61 @@ class ChatViewModel extends ChangeNotifier {
             joinByRequest = sg.boolean('join_by_request') ?? false;
             _applyGroupStatus(sg.obj('status'));
           } catch (_) {}
-          try {
-            final full = await _client.query({
-              '@type': 'getSupergroupFullInfo',
-              'supergroup_id': sgid,
-            });
-            memberCount = full.integer('member_count') ?? 0;
-          } catch (_) {}
+          unawaited(_loadSupergroupFullInfo(sgid));
         }
+    }
+    if (isForum) {
+      unawaited(loadForumTopics());
+    } else if (forumTopics.isNotEmpty || forumTopicsLoading) {
+      forumTopicsLoading = false;
+      forumTopics = const [];
     }
     notifyListeners();
     _loadPinnedMessage();
+  }
+
+  Future<void> _loadSupergroupFullInfo(int supergroupId) async {
+    try {
+      final full = await _client.query({
+        '@type': 'getSupergroupFullInfo',
+        'supergroup_id': supergroupId,
+      });
+      memberCount = full.integer('member_count') ?? memberCount;
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  Future<void> loadForumTopics() async {
+    if (!isForum || forumTopicsLoading) return;
+    forumTopicsLoading = true;
+    notifyListeners();
+    try {
+      final response = await _client.query({
+        '@type': 'getForumTopics',
+        'chat_id': chatId,
+        'query': '',
+        'offset_date': 0,
+        'offset_message_id': 0,
+        'offset_forum_topic_id': 0,
+        'limit': 80,
+      });
+      final raw = response.objects('topics') ?? const <Map<String, dynamic>>[];
+      final topics = <ForumTopicOption>[];
+      for (final topic in raw) {
+        final info = topic.obj('info') ?? topic;
+        final id =
+            info.int64('message_thread_id') ?? topic.int64('message_thread_id');
+        if (id == null || id == 0) continue;
+        final name = info.str('name') ?? topic.str('name') ?? '话题';
+        topics.add(ForumTopicOption(id: id, name: name));
+      }
+      forumTopics = topics;
+    } catch (_) {
+      forumTopics = const [];
+    } finally {
+      forumTopicsLoading = false;
+      notifyListeners();
+    }
   }
 
   int _autoDeleteSeconds(Map<String, dynamic> chat) {
@@ -1318,16 +1377,40 @@ class ChatViewModel extends ChangeNotifier {
         'sender_id': null,
         'from_message_id': 0,
         'offset': 0,
-        'limit': 1,
+        'limit': 50,
         'filter': {'@type': 'searchMessagesFilterPinned'},
       });
       final list = res.objects('messages');
       if (list == null || list.isEmpty) return;
-      final parsed = TDParse.message(list.first);
-      if (parsed == null) return;
-      pinnedMessage = parsed;
+      final parsed = list.map(TDParse.message).whereType<ChatMessage>().toList();
+      if (parsed.isEmpty) return;
+      pinnedMessages = parsed;
+      pinnedMessageIndex = pinnedMessageIndex.clamp(0, parsed.length - 1);
+      pinnedMessage = parsed[pinnedMessageIndex];
       notifyListeners();
     } catch (_) {}
+  }
+
+  bool get hasPreviousPinnedMessage => pinnedMessageIndex > 0;
+  bool get hasNextPinnedMessage =>
+      pinnedMessageIndex < pinnedMessages.length - 1;
+
+  ChatMessage? previousPinnedMessage() {
+    if (!hasPreviousPinnedMessage) return null;
+    pinnedMessageIndex--;
+    pinnedMessage = pinnedMessages[pinnedMessageIndex];
+    pinnedDismissed = false;
+    notifyListeners();
+    return pinnedMessage;
+  }
+
+  ChatMessage? nextPinnedMessage() {
+    if (!hasNextPinnedMessage) return null;
+    pinnedMessageIndex++;
+    pinnedMessage = pinnedMessages[pinnedMessageIndex];
+    pinnedDismissed = false;
+    notifyListeners();
+    return pinnedMessage;
   }
 
   void dismissPinned() {
@@ -1344,6 +1427,11 @@ class ChatViewModel extends ChangeNotifier {
       'only_for_self': false,
     });
     pinnedMessage = message;
+    pinnedMessages = [
+      message,
+      ...pinnedMessages.where((m) => m.id != message.id),
+    ];
+    pinnedMessageIndex = 0;
     pinnedDismissed = false;
     notifyListeners();
   }
@@ -1354,11 +1442,29 @@ class ChatViewModel extends ChangeNotifier {
       'chat_id': chatId,
       'message_id': message.id,
     });
-    if (pinnedMessage?.id == message.id) {
+    final removedIndex = pinnedMessages.indexWhere((m) => m.id == message.id);
+    pinnedMessages = pinnedMessages.where((m) => m.id != message.id).toList();
+    if (pinnedMessages.isEmpty) {
       pinnedMessage = null;
+      pinnedMessageIndex = 0;
       pinnedDismissed = false;
       notifyListeners();
+      return;
     }
+    if (removedIndex >= 0 && removedIndex <= pinnedMessageIndex) {
+      pinnedMessageIndex = (pinnedMessageIndex - 1).clamp(
+        0,
+        pinnedMessages.length - 1,
+      );
+    } else {
+      pinnedMessageIndex = pinnedMessageIndex.clamp(
+        0,
+        pinnedMessages.length - 1,
+      );
+    }
+    pinnedMessage = pinnedMessages[pinnedMessageIndex];
+    pinnedDismissed = false;
+    notifyListeners();
   }
 
   // MARK: - History
@@ -1931,6 +2037,19 @@ class ChatViewModel extends ChangeNotifier {
     messages.removeWhere((m) => removed.contains(m.id));
     _blockedReadIds.removeWhere(removed.contains);
     if (replyTo != null && removed.contains(replyTo!.id)) replyTo = null;
+    if (pinnedMessages.any((m) => removed.contains(m.id))) {
+      pinnedMessages = pinnedMessages
+          .where((m) => !removed.contains(m.id))
+          .toList();
+      pinnedMessageIndex = pinnedMessageIndex.clamp(
+        0,
+        math.max(0, pinnedMessages.length - 1),
+      );
+      pinnedMessage = pinnedMessages.isEmpty
+          ? null
+          : pinnedMessages[pinnedMessageIndex];
+      pinnedDismissed = pinnedMessage == null ? false : pinnedDismissed;
+    }
     notifyListeners();
   }
 

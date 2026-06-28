@@ -344,6 +344,8 @@ class _PinnedMessagesViewState extends State<PinnedMessagesView> {
             thumb: message.image,
             width: message.imageWidth,
             height: message.imageHeight,
+            sourceChatId: widget.chatId,
+            messageId: message.id,
           ),
         ),
       );

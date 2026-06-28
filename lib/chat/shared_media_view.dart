@@ -18,12 +18,14 @@ import '../theme/date_text.dart';
 import 'file_detail_view.dart';
 import 'full_image_viewer.dart';
 import 'link_handler.dart';
+import 'video_player_view.dart';
 
 class _MediaTab {
-  const _MediaTab(this.label, this.filter, this.grid);
+  const _MediaTab(this.label, this.filter, this.grid, {this.videoOnly = false});
   final String label;
   final String filter;
   final bool grid;
+  final bool videoOnly;
 }
 
 class SharedMediaView extends StatefulWidget {
@@ -37,7 +39,7 @@ class SharedMediaView extends StatefulWidget {
   });
   final int chatId;
   final String title;
-  final int initialTab; // 0 图片视频, 1 文件, 2 链接, 3 语音
+  final int initialTab; // 0 图片视频, 1 文件, 2 链接, 3 语音, 4 视频
   final String displayTitle;
   final bool lockedTab;
 
@@ -51,6 +53,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
     _MediaTab('文件', 'searchMessagesFilterDocument', false),
     _MediaTab('链接', 'searchMessagesFilterUrl', false),
     _MediaTab('语音', 'searchMessagesFilterVoiceNote', false),
+    _MediaTab('视频', 'searchMessagesFilterVideo', true, videoOnly: true),
   ];
 
   final TdClient _client = TdClient.shared;
@@ -220,30 +223,106 @@ class _SharedMediaViewState extends State<SharedMediaView> {
   }
 
   Widget _grid(List<ChatMessage> items) {
-    final withImage = items.where((m) => m.image != null).toList();
+    final tab = _tabs[_tab];
+    final media = items
+        .where((m) => tab.videoOnly ? m.video != null : m.image != null)
+        .toList();
     return GridView.builder(
       padding: const EdgeInsets.all(2),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 4,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: _mediaGridColumns(context),
         mainAxisSpacing: 2,
         crossAxisSpacing: 2,
       ),
-      itemCount: withImage.length,
+      itemCount: media.length,
       itemBuilder: (context, i) {
-        final m = withImage[i];
-        return GestureDetector(
-          onTap: () {
-            final imgs = withImage.map((e) => e.image!).toList();
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                fullscreenDialog: true,
-                builder: (_) => FullImageViewer(items: imgs, startIndex: i),
+        final m = media[i];
+        return _mediaTile(m, media);
+      },
+    );
+  }
+
+  int _mediaGridColumns(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+    return (width / 110).floor().clamp(4, 10).toInt();
+  }
+
+  Widget _mediaTile(ChatMessage message, List<ChatMessage> media) {
+    final video = message.video;
+    return GestureDetector(
+      onTap: () {
+        if (video != null) {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              fullscreenDialog: true,
+              builder: (_) => VideoPlayerView(
+                video: video,
+                thumb: message.image,
+                width: message.imageWidth,
+                height: message.imageHeight,
+                sourceChatId: widget.chatId,
+                messageId: message.id,
               ),
-            );
-          },
-          child: TDImage(photo: m.image),
+            ),
+          );
+          return;
+        }
+        final photos = media
+            .where((m) => m.video == null && m.image != null)
+            .map((m) => m.image!)
+            .toList();
+        final photo = message.image;
+        if (photo == null) return;
+        final index = photos.indexWhere((item) => item.id == photo.id);
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            fullscreenDialog: true,
+            builder: (_) => FullImageViewer(
+              items: photos,
+              startIndex: index < 0 ? 0 : index,
+            ),
+          ),
         );
       },
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          TDImage(photo: message.image, fit: BoxFit.cover),
+          if (video != null) ...[
+            Container(color: Colors.black.withValues(alpha: 0.16)),
+            Center(
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.48),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(sfIcon('play.fill'), size: 18, color: Colors.white),
+              ),
+            ),
+            if ((message.videoDuration ?? 0) > 0)
+              Positioned(
+                right: 5,
+                bottom: 5,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 5,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.62),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    _duration(message.videoDuration!),
+                    style: const TextStyle(fontSize: 11, color: Colors.white),
+                  ),
+                ),
+              ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -332,5 +411,13 @@ class _SharedMediaViewState extends State<SharedMediaView> {
     if (bytes >= 1 << 20) return '${(bytes / (1 << 20)).toStringAsFixed(1)} MB';
     if (bytes >= 1 << 10) return '${(bytes / (1 << 10)).toStringAsFixed(0)} KB';
     return '$bytes B';
+  }
+
+  String _duration(int seconds) {
+    final h = seconds ~/ 3600;
+    final m = (seconds % 3600) ~/ 60;
+    final s = seconds % 60;
+    String two(int value) => value.toString().padLeft(2, '0');
+    return h > 0 ? '$h:${two(m)}:${two(s)}' : '$m:${two(s)}';
   }
 }

@@ -8,11 +8,11 @@
 
 import 'package:flutter/material.dart';
 
-import '../chat/telegram_rich_text.dart';
 import '../chats/chat_list_view_model.dart';
 import '../components/photo_avatar.dart';
 import '../components/sf_symbols.dart';
 import '../components/ui_components.dart';
+import '../l10n/app_localizations.dart';
 import '../tdlib/chat_membership.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -20,9 +20,12 @@ import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
 import 'topic_chat_view.dart';
+import 'topic_post_content.dart';
 
 class TopicChannelsView extends StatefulWidget {
-  const TopicChannelsView({super.key});
+  const TopicChannelsView({super.key, this.onOpenDetail});
+
+  final ValueChanged<Widget>? onOpenDetail;
 
   @override
   State<TopicChannelsView> createState() => _TopicChannelsViewState();
@@ -264,8 +267,10 @@ class _TopicChannelsViewState extends State<TopicChannelsView> {
                     itemCount: posts.length,
                     separatorBuilder: (_, _) =>
                         const InsetDivider(leadingInset: 0),
-                    itemBuilder: (context, index) =>
-                        _TopicPostRow(post: posts[index]),
+                    itemBuilder: (context, index) => _TopicPostRow(
+                      post: posts[index],
+                      onOpenDetail: widget.onOpenDetail,
+                    ),
                   ),
           ),
         ],
@@ -288,7 +293,7 @@ class _TopicChannelsViewState extends State<TopicChannelsView> {
                 ),
           const SizedBox(height: 12),
           Text(
-            _loading ? '加载频道…' : '暂无话题频道',
+            (_loading ? '加载频道…' : '暂无话题频道').l10n(context),
             style: TextStyle(fontSize: 15, color: c.textSecondary),
           ),
         ],
@@ -298,9 +303,10 @@ class _TopicChannelsViewState extends State<TopicChannelsView> {
 }
 
 class _TopicPostRow extends StatelessWidget {
-  const _TopicPostRow({required this.post});
+  const _TopicPostRow({required this.post, this.onOpenDetail});
 
   final _TopicPost post;
+  final ValueChanged<Widget>? onOpenDetail;
 
   @override
   Widget build(BuildContext context) {
@@ -308,15 +314,19 @@ class _TopicPostRow extends StatelessWidget {
     final text = _displayText;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => TopicChatView(
-            chat: post.chat,
-            initialThreadId: post.threadId,
-            initialMessageId: post.message.id,
-          ),
-        ),
-      ),
+      onTap: () {
+        final detail = TopicChatView(
+          chat: post.chat,
+          initialThreadId: post.threadId,
+          initialMessageId: post.message.id,
+          showBackButton: onOpenDetail == null,
+        );
+        if (onOpenDetail != null) {
+          onOpenDetail!(detail);
+          return;
+        }
+        Navigator.of(context).push(MaterialPageRoute(builder: (_) => detail));
+      },
       child: Container(
         color: c.background,
         padding: const EdgeInsets.fromLTRB(14, 16, 14, 14),
@@ -359,23 +369,20 @@ class _TopicPostRow extends StatelessWidget {
                 ),
               ],
             ),
-            if (text.isNotEmpty) ...[
+            if (_hasRenderableContent) ...[
               const SizedBox(height: 12),
-              TelegramRichText(
+              TopicPostContent(
+                chatId: post.chat.id,
+                message: post.message,
                 text: text,
-                entities: post.message.textEntities,
-                maxLines: 6,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
+                maxTextLines: 6,
+                textOverflow: TextOverflow.ellipsis,
+                textStyle: TextStyle(
                   fontSize: 17,
                   height: 1.35,
                   color: c.textPrimary,
                 ),
               ),
-            ],
-            if (post.message.image != null) ...[
-              const SizedBox(height: 10),
-              _TopicImage(message: post.message),
             ],
             const SizedBox(height: 12),
             _TopicStats(message: post.message),
@@ -388,43 +395,15 @@ class _TopicPostRow extends StatelessWidget {
   String get _displayText {
     final text = post.message.text.trim();
     if (text.startsWith('[') && text.endsWith(']')) return '';
+    if (post.message.document != null && text.startsWith('[文件]')) return '';
     return text;
   }
-}
 
-class _TopicImage extends StatelessWidget {
-  const _TopicImage({required this.message});
-
-  final ChatMessage message;
-
-  @override
-  Widget build(BuildContext context) {
-    final width = MediaQuery.of(context).size.width - 28;
-    final height = _imageHeight(width);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(6),
-      child: SizedBox(
-        width: width,
-        height: height,
-        child: TDImage(
-          photo: message.image,
-          cornerRadius: 6,
-          fit: BoxFit.cover,
-          cacheWidth: (width * MediaQuery.of(context).devicePixelRatio).round(),
-          cacheHeight: (height * MediaQuery.of(context).devicePixelRatio)
-              .round(),
-        ),
-      ),
-    );
-  }
-
-  double _imageHeight(double width) {
-    final w = message.imageWidth;
-    final h = message.imageHeight;
-    if (w == null || h == null || w <= 0 || h <= 0) return width * 0.62;
-    final ratio = (h / w).clamp(0.45, 1.25);
-    return width * ratio;
-  }
+  bool get _hasRenderableContent =>
+      _displayText.isNotEmpty ||
+      post.message.image != null ||
+      post.message.document != null ||
+      post.message.buttonRows.isNotEmpty;
 }
 
 class _TopicStats extends StatelessWidget {

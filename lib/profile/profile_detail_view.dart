@@ -31,9 +31,15 @@ import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 
 class ProfileDetailView extends StatefulWidget {
-  const ProfileDetailView({super.key, required this.userId, this.name = ''});
+  const ProfileDetailView({
+    super.key,
+    required this.userId,
+    this.name = '',
+    this.showBackButton = true,
+  });
   final int userId;
   final String name;
+  final bool showBackButton;
 
   @override
   State<ProfileDetailView> createState() => _ProfileDetailViewState();
@@ -357,28 +363,29 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
       clipBehavior: Clip.none,
       children: [
         Column(children: [_cover(bannerH.toDouble()), _identityPanel(status)]),
-        Positioned(
-          top: top + 4,
-          left: 18,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => Navigator.of(context).pop(),
-            child: Container(
-              width: 42,
-              height: 42,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.22),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                sfIcon('chevron.left'),
-                size: 20,
-                color: Colors.white,
+        if (widget.showBackButton)
+          Positioned(
+            top: top + 4,
+            left: 18,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => Navigator.of(context).pop(),
+              child: Container(
+                width: 42,
+                height: 42,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.22),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  sfIcon('chevron.left'),
+                  size: 20,
+                  color: Colors.white,
+                ),
               ),
             ),
           ),
-        ),
         Positioned(
           top: top + 4,
           right: 18,
@@ -506,7 +513,7 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
                   Icon(
                     sfIcon('circle.fill'),
                     size: 7,
-                    color: const Color(0xFF1AC81A),
+                    color: Color(0xFF1AC81A),
                   ),
                   const SizedBox(width: 6),
                 ],

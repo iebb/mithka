@@ -1,7 +1,7 @@
 //
 //  translation_settings_view.dart
 //
-//  翻译 settings: target language and no-translate language preferences.
+//  翻译 settings: provider and target language preferences.
 //
 
 import 'dart:math' as math;
@@ -13,6 +13,8 @@ import 'package:provider/provider.dart';
 import '../components/sf_symbols.dart';
 import '../components/ui_components.dart';
 import '../theme/app_theme.dart';
+import 'edit_field_view.dart';
+import 'translation_api.dart';
 import 'translation_controller.dart';
 
 class TranslationSettingsView extends StatelessWidget {
@@ -39,17 +41,6 @@ class TranslationSettingsView extends StatelessWidget {
                     value: translation.enabled,
                     onChanged: (v) => translation.enabled = v,
                   ),
-                  const InsetDivider(leadingInset: 56),
-                  _switchRow(
-                    context,
-                    icon: 'wand.and.stars',
-                    title: '自动翻译',
-                    value: translation.autoTranslate,
-                    onChanged: (v) {
-                      if (v) translation.enabled = true;
-                      translation.autoTranslate = v;
-                    },
-                  ),
                 ]),
                 const SizedBox(height: 14),
                 _card(context, [
@@ -58,11 +49,9 @@ class TranslationSettingsView extends StatelessWidget {
                     icon: 'network',
                     title: '翻译服务',
                     trailing: translation.providerLabel,
-                    onTap: null,
+                    onTap: () => _showProviderPicker(context),
                   ),
-                ]),
-                const SizedBox(height: 14),
-                _card(context, [
+                  const InsetDivider(leadingInset: 56),
                   _navRow(
                     context,
                     icon: 'globe',
@@ -70,16 +59,54 @@ class TranslationSettingsView extends StatelessWidget {
                     trailing: translation.targetLanguageLabel,
                     onTap: () => _showTargetPicker(context),
                   ),
+                ]),
+                const SizedBox(height: 14),
+                _card(context, [
+                  _navRow(
+                    context,
+                    icon: 'link',
+                    title: 'Lingva 地址',
+                    trailing: _endpointLabel(translation.lingvaEndpoint),
+                    onTap: () => _editEndpoint(
+                      context,
+                      title: 'Lingva 地址',
+                      initial: translation.lingvaEndpoint,
+                      hint: TranslationController.defaultLingvaEndpoint,
+                      onSaved: (value) => translation.lingvaEndpoint = value,
+                    ),
+                  ),
                   const InsetDivider(leadingInset: 56),
                   _navRow(
                     context,
-                    icon: 'nosign',
-                    title: '不翻译语言',
-                    trailing: translation.noTranslateSummary,
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const NoTranslateLanguagesView(),
-                      ),
+                    icon: 'link',
+                    title: 'LibreTranslate 地址',
+                    trailing: _endpointLabel(
+                      translation.libreTranslateEndpoint,
+                    ),
+                    onTap: () => _editEndpoint(
+                      context,
+                      title: 'LibreTranslate 地址',
+                      initial: translation.libreTranslateEndpoint,
+                      hint: 'https://libretranslate.example.com',
+                      onSaved: (value) =>
+                          translation.libreTranslateEndpoint = value,
+                    ),
+                  ),
+                  const InsetDivider(leadingInset: 56),
+                  _navRow(
+                    context,
+                    icon: 'key',
+                    title: 'LibreTranslate API Key',
+                    trailing: translation.libreTranslateApiKey.isEmpty
+                        ? '未设置'
+                        : '已设置',
+                    onTap: () => _editEndpoint(
+                      context,
+                      title: 'LibreTranslate API Key',
+                      initial: translation.libreTranslateApiKey,
+                      hint: '可留空',
+                      onSaved: (value) =>
+                          translation.libreTranslateApiKey = value,
                     ),
                   ),
                 ]),
@@ -89,6 +116,115 @@ class TranslationSettingsView extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  void _showProviderPicker(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        final c = context.colors;
+        final translation = context.watch<TranslationController>();
+        return SafeArea(
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            decoration: BoxDecoration(
+              color: c.card,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: FutureBuilder<Set<TranslationProvider>>(
+              future: NativeTranslationApi.availableProviders(),
+              builder: (context, snapshot) {
+                final nativeProviders =
+                    snapshot.data ?? const <TranslationProvider>{};
+                final providers = TranslationProvider.selectableProviders
+                    .where(
+                      (provider) =>
+                          !provider.isNative ||
+                          nativeProviders.contains(provider),
+                    )
+                    .toList();
+                return ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: providers.length,
+                  separatorBuilder: (_, _) =>
+                      const InsetDivider(leadingInset: 56),
+                  itemBuilder: (context, i) {
+                    final provider = providers[i];
+                    final selected = translation.provider == provider;
+                    return GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {
+                        translation.provider = provider;
+                        Navigator.of(context).pop();
+                      },
+                      child: SizedBox(
+                        height: 52,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Row(
+                            children: [
+                              _iconBadge(
+                                context,
+                                'network',
+                                const Color(0xFF34A2DF),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  provider.label,
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    color: c.textPrimary,
+                                  ),
+                                ),
+                              ),
+                              if (selected)
+                                Icon(
+                                  sfIcon('checkmark'),
+                                  size: 18,
+                                  color: AppTheme.brand,
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _editEndpoint(
+    BuildContext context, {
+    required String title,
+    required String initial,
+    required String hint,
+    required ValueChanged<String> onSaved,
+  }) async {
+    final value = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => EditFieldView(
+          title: title,
+          initial: initial,
+          hint: hint,
+          keyboardType: TextInputType.url,
+        ),
+      ),
+    );
+    if (value == null) return;
+    onSaved(value);
+  }
+
+  String _endpointLabel(String endpoint) {
+    if (endpoint.trim().isEmpty) return '未设置';
+    return endpoint;
   }
 
   void _showTargetPicker(BuildContext context) {
@@ -138,7 +274,11 @@ class TranslationSettingsView extends StatelessWidget {
                             ),
                           ),
                           if (selected)
-                            Icon(sfIcon('checkmark'), size: 18, color: AppTheme.brand),
+                            Icon(
+                              sfIcon('checkmark'),
+                              size: 18,
+                              color: AppTheme.brand,
+                            ),
                         ],
                       ),
                     ),
@@ -255,87 +395,4 @@ class TranslationSettingsView extends StatelessWidget {
         ),
         child: Icon(sfIcon(icon), size: 15, color: Colors.white),
       );
-}
-
-class NoTranslateLanguagesView extends StatelessWidget {
-  const NoTranslateLanguagesView({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    final translation = context.watch<TranslationController>();
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
-        children: [
-          NavHeader(title: '不翻译语言', onBack: () => Navigator.of(context).pop()),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
-              children: [
-                Container(
-                  decoration: BoxDecoration(
-                    color: c.card,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: Column(
-                    children: [
-                      for (
-                        var i = 0;
-                        i < TranslationController.noTranslateLanguages.length;
-                        i++
-                      ) ...[
-                        _languageRow(
-                          context,
-                          translation,
-                          TranslationController.noTranslateLanguages[i],
-                        ),
-                        if (i <
-                            TranslationController.noTranslateLanguages.length -
-                                1)
-                          const InsetDivider(leadingInset: 16),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _languageRow(
-    BuildContext context,
-    TranslationController translation,
-    TranslationLanguage language,
-  ) {
-    final c = context.colors;
-    final selected = translation.noTranslateLanguageCodes.contains(
-      language.code,
-    );
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => translation.setNoTranslateLanguage(language.code, !selected),
-      child: SizedBox(
-        height: 52,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  language.label,
-                  style: TextStyle(fontSize: 16, color: c.textPrimary),
-                ),
-              ),
-              if (selected) Icon(sfIcon('checkmark'), size: 18, color: AppTheme.brand),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
