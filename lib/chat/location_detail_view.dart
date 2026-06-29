@@ -15,7 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../components/ui_components.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
@@ -144,8 +144,8 @@ class _LocationDetailViewState extends State<LocationDetailView> {
               width: 42,
               height: 42,
               alignment: Alignment.topCenter,
-              child: Icon(
-                sfIcon('mappin.and.ellipse'),
+              child: FaIcon(
+                FontAwesomeIcons.locationPin,
                 size: 38,
                 color: AppTheme.brand,
               ),
@@ -177,8 +177,8 @@ class _LocationDetailViewState extends State<LocationDetailView> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  sfIcon('mappin.and.ellipse'),
+                FaIcon(
+                  FontAwesomeIcons.locationPin,
                   size: 20,
                   color: AppTheme.brand,
                 ),

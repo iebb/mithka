@@ -23,7 +23,7 @@ import '../chat/custom_emoji.dart';
 import '../chat/full_image_viewer.dart';
 import '../chat/voice_audio.dart';
 import '../components/photo_avatar.dart';
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../components/ui_components.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -378,8 +378,8 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
                   color: Colors.black.withValues(alpha: 0.22),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(
-                  sfIcon('chevron.left'),
+                child: FaIcon(
+                  FontAwesomeIcons.chevronLeft,
                   size: 20,
                   color: Colors.white,
                 ),
@@ -400,7 +400,11 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
                 color: Colors.black.withValues(alpha: 0.22),
                 shape: BoxShape.circle,
               ),
-              child: Icon(sfIcon('ellipsis'), size: 21, color: Colors.white),
+              child: FaIcon(
+                FontAwesomeIcons.ellipsis,
+                size: 21,
+                color: Colors.white,
+              ),
             ),
           ),
         ),
@@ -489,8 +493,8 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
                                 padding: const EdgeInsets.all(4),
                                 child: Icon(
                                   _hideIdentity
-                                      ? sfIcon('eye')
-                                      : sfIcon('eye.slash'),
+                                      ? FontAwesomeIcons.eye.data
+                                      : FontAwesomeIcons.eyeSlash.data,
                                   size: 17,
                                   color: c.textTertiary,
                                 ),
@@ -510,8 +514,8 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
             Row(
               children: [
                 if (_isOnline) ...[
-                  Icon(
-                    sfIcon('circle.fill'),
+                  FaIcon(
+                    FontAwesomeIcons.solidCircle,
                     size: 7,
                     color: Color(0xFF1AC81A),
                   ),
@@ -537,7 +541,7 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                Icon(sfIcon('pencil'), size: 17, color: c.textTertiary),
+                FaIcon(FontAwesomeIcons.pen, size: 17, color: c.textTertiary),
               ],
             ),
           ],
@@ -603,7 +607,7 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
           _musicRow(),
           const InsetDivider(leadingInset: 56),
           _profileRow(
-            'magnifyingglass',
+            FontAwesomeIcons.magnifyingGlass.data,
             '查找聊天记录',
             trailing: '图片、视频、文件等',
             onTap: _openSearch,
@@ -649,7 +653,11 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
               padding: const EdgeInsets.fromLTRB(20, 0, 10, 0),
               child: Row(
                 children: [
-                  Icon(sfIcon('music.note'), size: 22, color: c.textPrimary),
+                  FaIcon(
+                    FontAwesomeIcons.music,
+                    size: 22,
+                    color: c.textPrimary,
+                  ),
                   const SizedBox(width: 16),
                   Expanded(
                     child: Column(
@@ -707,15 +715,17 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
                     GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onTap: toggle,
-                      child: Icon(
-                        sfIcon(playing ? 'pause.fill' : 'play.fill'),
+                      child: FaIcon(
+                        playing
+                            ? FontAwesomeIcons.pause
+                            : FontAwesomeIcons.play,
                         size: 18,
                         color: AppTheme.brand,
                       ),
                     )
                   else
-                    Icon(
-                      sfIcon('chevron.right'),
+                    FaIcon(
+                      FontAwesomeIcons.chevronRight,
                       size: 16,
                       color: c.textTertiary,
                     ),
@@ -771,7 +781,7 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
   }
 
   Widget _profileRow(
-    String icon,
+    IconData icon,
     String title, {
     String? trailing,
     required VoidCallback? onTap,
@@ -787,7 +797,7 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
           padding: const EdgeInsets.fromLTRB(20, 0, 0, 0),
           child: Row(
             children: [
-              Icon(sfIcon(icon), size: 22, color: c.textPrimary),
+              Icon(icon, size: 22, color: c.textPrimary),
               const SizedBox(width: 16),
               Expanded(
                 child: Text(
@@ -816,7 +826,11 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
               ],
               const SizedBox(width: 10),
               if (showChevron)
-                Icon(sfIcon('chevron.right'), size: 16, color: c.textTertiary)
+                FaIcon(
+                  FontAwesomeIcons.chevronRight,
+                  size: 16,
+                  color: c.textTertiary,
+                )
               else
                 const SizedBox(width: 16),
             ],
@@ -916,7 +930,11 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
                 style: TextStyle(fontSize: 13, color: c.textSecondary),
               ),
               const SizedBox(width: 4),
-              Icon(sfIcon('chevron.right'), size: 14, color: c.textTertiary),
+              FaIcon(
+                FontAwesomeIcons.chevronRight,
+                size: 14,
+                color: c.textTertiary,
+              ),
             ],
           ),
           const SizedBox(height: 12),

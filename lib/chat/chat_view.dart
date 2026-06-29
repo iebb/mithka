@@ -22,7 +22,7 @@ import '../call/call_manager.dart';
 import '../channels/topic_chat_view.dart';
 import '../components/confirm_dialog.dart';
 import '../components/photo_avatar.dart';
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../components/ui_components.dart';
 import '../profile/profile_detail_view.dart';
 import '../theme/app_theme.dart';
@@ -775,6 +775,15 @@ class _ChatViewState extends State<ChatView> {
   void _playVideo(ChatMessage message, {bool muted = false}) {
     final v = message.video;
     if (v == null) return;
+    final session = _videoSession(message);
+    if (VideoSplitController.instance.isOpen) {
+      VideoSplitController.instance.play(session);
+      return;
+    }
+    if (VideoPiPController.instance.isOpen) {
+      VideoPiPController.instance.play(session);
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute(
         fullscreenDialog: true,
@@ -790,6 +799,18 @@ class _ChatViewState extends State<ChatView> {
           onSwitchMode: (mode) => _switchVideoMode(routeContext, message, mode),
         ),
       ),
+    );
+  }
+
+  VideoSplitSession _videoSession(ChatMessage message) {
+    return VideoSplitSession(
+      chatId: widget.chatId,
+      title: widget.title,
+      video: message.video!,
+      thumb: message.image,
+      width: message.imageWidth,
+      height: message.imageHeight,
+      messageId: message.id,
     );
   }
 
@@ -833,22 +854,36 @@ class _ChatViewState extends State<ChatView> {
   ) {
     final v = message.video;
     if (v == null) return;
+    final initialSession = VideoSplitSession(
+      chatId: chatId,
+      title: title,
+      video: v,
+      thumb: message.image,
+      width: message.imageWidth,
+      height: message.imageHeight,
+      messageId: message.id,
+    );
+    final pip = VideoPiPController.instance;
+    if (_globalPictureInPictureVideo != null) {
+      pip.play(initialSession);
+      return;
+    }
+    if (pip.isOpen) {
+      pip.play(initialSession);
+      return;
+    }
+    pip.play(initialSession);
     _globalPictureInPictureVideo?.remove();
     _globalPictureInPictureVideo = null;
 
     final overlay = Overlay.of(context, rootOverlay: true);
     final screen = MediaQuery.sizeOf(context);
     const margin = 16.0;
-    final aspect =
-        (message.imageWidth != null &&
-            message.imageHeight != null &&
-            message.imageWidth! > 0 &&
-            message.imageHeight! > 0)
-        ? message.imageWidth! / message.imageHeight!
-        : 16 / 9;
+    var aspect = _sessionAspect(initialSession);
     var boxWidth = (screen.width * 0.46).clamp(220.0, 360.0);
     var boxHeight = (boxWidth / aspect).clamp(130.0, 260.0);
     boxWidth = boxHeight * aspect;
+    var displayedVideoId = initialSession.video.id;
     var offset = Offset(
       screen.width - boxWidth - margin,
       screen.height - boxHeight - MediaQuery.paddingOf(context).bottom - 110,
@@ -859,6 +894,9 @@ class _ChatViewState extends State<ChatView> {
       entry.remove();
       if (_globalPictureInPictureVideo == entry) {
         _globalPictureInPictureVideo = null;
+      }
+      if (pip.session?.video.id == displayedVideoId) {
+        pip.close();
       }
     }
 
@@ -875,6 +913,15 @@ class _ChatViewState extends State<ChatView> {
                 media.height - boxHeight - padding.bottom - margin,
               ),
             );
+          }
+
+          void syncSession(VideoSplitSession session) {
+            if (session.video.id == displayedVideoId) return;
+            displayedVideoId = session.video.id;
+            aspect = _sessionAspect(session);
+            boxHeight = (boxWidth / aspect).clamp(110.0, media.height * 0.72);
+            boxWidth = boxHeight * aspect;
+            clampOffset();
           }
 
           void move(DragUpdateDetails details) {
@@ -921,95 +968,87 @@ class _ChatViewState extends State<ChatView> {
             });
           }
 
-          return Positioned(
-            left: offset.dx,
-            top: offset.dy,
-            width: boxWidth,
-            height: boxHeight,
-            child: Material(
-              type: MaterialType.transparency,
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Positioned.fill(
-                    child: GestureDetector(
-                      onPanUpdate: move,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(14),
-                        child: VideoPlayerView(
-                          video: v,
-                          thumb: message.image,
-                          width: message.imageWidth,
-                          height: message.imageHeight,
-                          presentation:
-                              VideoPlayerPresentation.pictureInPicture,
-                          compactControls: true,
-                          onClose: close,
-                          sourceChatId: chatId,
-                          messageId: message.id,
-                          currentMode: VideoDisplayMode.pictureInPicture,
-                          onSwitchMode: (mode) => _switchPiPMode(
-                            context,
-                            close,
-                            mode,
-                            message,
-                            chatId,
-                            title,
+          return AnimatedBuilder(
+            animation: pip,
+            builder: (context, _) {
+              final session = pip.session;
+              if (session == null) return const SizedBox.shrink();
+              syncSession(session);
+              return Positioned(
+                left: offset.dx,
+                top: offset.dy,
+                width: boxWidth,
+                height: boxHeight,
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Positioned.fill(
+                        child: GestureDetector(
+                          onPanUpdate: move,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(14),
+                            child: VideoPlayerView(
+                              key: ValueKey(session.video.id),
+                              video: session.video,
+                              thumb: session.thumb,
+                              width: session.width,
+                              height: session.height,
+                              presentation:
+                                  VideoPlayerPresentation.pictureInPicture,
+                              compactControls: true,
+                              onClose: close,
+                              sourceChatId: session.chatId,
+                              messageId: session.messageId,
+                              currentMode: VideoDisplayMode.pictureInPicture,
+                              onSwitchMode: (mode) => _switchPiPSessionMode(
+                                context,
+                                close,
+                                mode,
+                                session,
+                              ),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ),
-                  Positioned(
-                    left: 8,
-                    top: 8,
-                    child: _PiPModeButton(
-                      currentMode: VideoDisplayMode.pictureInPicture,
-                      onSelected: (mode) => _switchPiPMode(
-                        context,
-                        close,
-                        mode,
-                        message,
-                        chatId,
-                        title,
+                      _PiPCornerHandle(
+                        alignment: Alignment.topLeft,
+                        onDrag: (details) => resizeFromCorner(
+                          details,
+                          horizontalSign: -1,
+                          verticalSign: -1,
+                        ),
                       ),
-                    ),
+                      _PiPCornerHandle(
+                        alignment: Alignment.topRight,
+                        onDrag: (details) => resizeFromCorner(
+                          details,
+                          horizontalSign: 1,
+                          verticalSign: -1,
+                        ),
+                      ),
+                      _PiPCornerHandle(
+                        alignment: Alignment.bottomLeft,
+                        onDrag: (details) => resizeFromCorner(
+                          details,
+                          horizontalSign: -1,
+                          verticalSign: 1,
+                        ),
+                      ),
+                      _PiPCornerHandle(
+                        alignment: Alignment.bottomRight,
+                        onDrag: (details) => resizeFromCorner(
+                          details,
+                          horizontalSign: 1,
+                          verticalSign: 1,
+                        ),
+                      ),
+                    ],
                   ),
-                  _PiPCornerHandle(
-                    alignment: Alignment.topLeft,
-                    onDrag: (details) => resizeFromCorner(
-                      details,
-                      horizontalSign: -1,
-                      verticalSign: -1,
-                    ),
-                  ),
-                  _PiPCornerHandle(
-                    alignment: Alignment.topRight,
-                    onDrag: (details) => resizeFromCorner(
-                      details,
-                      horizontalSign: 1,
-                      verticalSign: -1,
-                    ),
-                  ),
-                  _PiPCornerHandle(
-                    alignment: Alignment.bottomLeft,
-                    onDrag: (details) => resizeFromCorner(
-                      details,
-                      horizontalSign: -1,
-                      verticalSign: 1,
-                    ),
-                  ),
-                  _PiPCornerHandle(
-                    alignment: Alignment.bottomRight,
-                    onDrag: (details) => resizeFromCorner(
-                      details,
-                      horizontalSign: 1,
-                      verticalSign: 1,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+                ),
+              );
+            },
           );
         },
       ),
@@ -1385,6 +1424,7 @@ class _ChatViewState extends State<ChatView> {
       child: Container(
         width: 40,
         height: 40,
+        alignment: Alignment.center,
         decoration: BoxDecoration(
           color: c.navBar,
           shape: BoxShape.circle,
@@ -1397,7 +1437,11 @@ class _ChatViewState extends State<ChatView> {
             ),
           ],
         ),
-        child: Icon(sfIcon('chevron.down'), size: 20, color: c.textSecondary),
+        child: FaIcon(
+          FontAwesomeIcons.angleDown,
+          size: 22,
+          color: c.textSecondary,
+        ),
       ),
     );
   }
@@ -1426,7 +1470,7 @@ class _ChatViewState extends State<ChatView> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(sfIcon('arrow.up'), size: 14, color: AppTheme.brand),
+            FaIcon(FontAwesomeIcons.arrowUp, size: 14, color: AppTheme.brand),
             const SizedBox(width: 5),
             Text(
               '$count条新消息',
@@ -1519,7 +1563,7 @@ class _ChatViewState extends State<ChatView> {
           mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(sfIcon('bell.fill'), size: 18, color: AppTheme.brand),
+            FaIcon(FontAwesomeIcons.solidBell, size: 18, color: AppTheme.brand),
             const SizedBox(width: 8),
             Text(
               muted ? '取消静音' : '静音',
@@ -1693,8 +1737,8 @@ class _ChatViewState extends State<ChatView> {
                   onTap: widget.onBack ?? () => Navigator.of(context).pop(),
                   child: Padding(
                     padding: const EdgeInsets.only(right: 10),
-                    child: Icon(
-                      sfIcon('chevron.left'),
+                    child: FaIcon(
+                      FontAwesomeIcons.chevronLeft,
                       size: 22,
                       color: c.textPrimary,
                     ),
@@ -1709,8 +1753,8 @@ class _ChatViewState extends State<ChatView> {
                   onTap: () => _openTopicMode(),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 10),
-                    child: Icon(
-                      sfIcon('number.circle.fill'),
+                    child: FaIcon(
+                      FontAwesomeIcons.hashtag,
                       size: 22,
                       color: c.textPrimary,
                     ),
@@ -1727,8 +1771,8 @@ class _ChatViewState extends State<ChatView> {
                     ),
                   ),
                 ),
-                child: Icon(
-                  sfIcon('line.3.horizontal'),
+                child: FaIcon(
+                  FontAwesomeIcons.bars,
                   size: 22,
                   color: c.textPrimary,
                 ),
@@ -1761,7 +1805,11 @@ class _ChatViewState extends State<ChatView> {
             children: [
               Expanded(child: title),
               const SizedBox(width: 4),
-              Icon(sfIcon('chevron.down'), size: 14, color: c.textSecondary),
+              FaIcon(
+                FontAwesomeIcons.chevronDown,
+                size: 14,
+                color: c.textSecondary,
+              ),
             ],
           )
         else
@@ -1839,7 +1887,9 @@ class _ChatViewState extends State<ChatView> {
             final topic = all ? null : topics[index - 1];
             return ListTile(
               leading: Icon(
-                all ? sfIcon('number.circle.fill') : sfIcon('message.fill'),
+                all
+                    ? FontAwesomeIcons.hashtag.data
+                    : FontAwesomeIcons.solidMessage.data,
                 color: all ? AppTheme.brand : c.textSecondary,
               ),
               title: Text(
@@ -1896,8 +1946,8 @@ class _ChatViewState extends State<ChatView> {
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Icon(
-                sfIcon('magnifyingglass'),
+              child: FaIcon(
+                FontAwesomeIcons.magnifyingGlass,
                 size: 22,
                 color: c.textPrimary,
               ),
@@ -1944,8 +1994,8 @@ class _ChatViewState extends State<ChatView> {
               children: [
                 Icon(
                   _selectionScrollingUp
-                      ? sfIcon('arrow.up')
-                      : sfIcon('chevron.down'),
+                      ? FontAwesomeIcons.arrowUp.data
+                      : FontAwesomeIcons.chevronDown.data,
                   size: 18,
                   color: AppTheme.brand,
                 ),
@@ -1966,13 +2016,13 @@ class _ChatViewState extends State<ChatView> {
     final c = context.colors;
     final enabled = _selectedMessageIds.isNotEmpty;
     final color = enabled ? c.textPrimary : c.textTertiary;
-    Widget button(String icon, VoidCallback onTap) => GestureDetector(
+    Widget button(IconData icon, VoidCallback onTap) => GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: enabled ? onTap : null,
       child: SizedBox(
         width: 58,
         height: 52,
-        child: Icon(sfIcon(icon), size: 26, color: color),
+        child: Icon(icon, size: 26, color: color),
       ),
     );
     return Container(
@@ -1986,10 +2036,13 @@ class _ChatViewState extends State<ChatView> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
-            button('arrowshape.turn.up.right', _forwardSelected),
-            button('star', _saveSelected),
-            button('trash', _deleteSelected),
-            button('ellipsis', () => showToast(context, '暂未支持更多操作')),
+            button(FontAwesomeIcons.share.data, _forwardSelected),
+            button(FontAwesomeIcons.star.data, _saveSelected),
+            button(FontAwesomeIcons.trash.data, _deleteSelected),
+            button(
+              FontAwesomeIcons.ellipsis.data,
+              () => showToast(context, '暂未支持更多操作'),
+            ),
           ],
         ),
       ),
@@ -2033,8 +2086,8 @@ class _ChatViewState extends State<ChatView> {
                 border: Border.all(color: const Color(0xFFFFB300), width: 2),
                 borderRadius: BorderRadius.circular(6),
               ),
-              child: Icon(
-                sfIcon('checkmark'),
+              child: FaIcon(
+                FontAwesomeIcons.check,
                 size: 15,
                 color: const Color(0xFFFFB300),
               ),
@@ -2061,12 +2114,12 @@ class _ChatViewState extends State<ChatView> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   _pinnedNavButton(
-                    icon: 'chevron.up',
+                    icon: FontAwesomeIcons.chevronUp.data,
                     enabled: canPrevious,
                     onTap: _goToPreviousPinned,
                   ),
                   _pinnedNavButton(
-                    icon: 'chevron.down',
+                    icon: FontAwesomeIcons.chevronDown.data,
                     enabled: canNext,
                     onTap: _goToNextPinned,
                   ),
@@ -2079,7 +2132,11 @@ class _ChatViewState extends State<ChatView> {
               onTap: _vm.dismissPinned,
               child: Padding(
                 padding: const EdgeInsets.all(4),
-                child: Icon(sfIcon('xmark'), size: 16, color: c.textTertiary),
+                child: FaIcon(
+                  FontAwesomeIcons.xmark,
+                  size: 16,
+                  color: c.textTertiary,
+                ),
               ),
             ),
           ],
@@ -2089,7 +2146,7 @@ class _ChatViewState extends State<ChatView> {
   }
 
   Widget _pinnedNavButton({
-    required String icon,
+    required IconData icon,
     required bool enabled,
     required VoidCallback onTap,
   }) {
@@ -2101,7 +2158,7 @@ class _ChatViewState extends State<ChatView> {
         width: 24,
         height: 18,
         child: Icon(
-          sfIcon(icon),
+          icon,
           size: 14,
           color: c.textTertiary.withValues(alpha: enabled ? 1 : 0.28),
         ),
@@ -2317,6 +2374,7 @@ class _ChatViewState extends State<ChatView> {
           Container(
             width: 24,
             height: 24,
+            alignment: Alignment.center,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: selected ? AppTheme.brand : Colors.transparent,
@@ -2326,7 +2384,7 @@ class _ChatViewState extends State<ChatView> {
               ),
             ),
             child: selected
-                ? Icon(sfIcon('checkmark'), size: 17, color: Colors.white)
+                ? FaIcon(FontAwesomeIcons.check, size: 17, color: Colors.white)
                 : null,
           ),
           const SizedBox(width: 8),
@@ -2610,12 +2668,13 @@ class _ChatViewState extends State<ChatView> {
                 child: Container(
                   width: 42,
                   height: 42,
+                  alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: Colors.black.withValues(alpha: 0.45),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(
-                    sfIcon('play.fill'),
+                  child: FaIcon(
+                    FontAwesomeIcons.play,
                     color: Colors.white,
                     size: 21,
                   ),
@@ -2820,12 +2879,13 @@ class _ChatViewState extends State<ChatView> {
               margin: const EdgeInsets.only(left: 2),
               width: 34,
               height: 34,
+              alignment: Alignment.center,
               decoration: const BoxDecoration(
                 color: Color(0xFF3A3A3C),
                 shape: BoxShape.circle,
               ),
-              child: Icon(
-                sfIcon('chevron.down'),
+              child: FaIcon(
+                FontAwesomeIcons.chevronDown,
                 size: 22,
                 color: Colors.white,
               ),
@@ -2918,7 +2978,11 @@ class _ChatViewState extends State<ChatView> {
         children: [
           _reactionTab2(
             'standard',
-            Icon(sfIcon('face.smiling'), size: 22, color: Colors.white70),
+            FaIcon(
+              FontAwesomeIcons.solidFaceSmile,
+              size: 22,
+              color: Colors.white70,
+            ),
           ),
           for (final pack in packs)
             _reactionTab2(
@@ -2929,8 +2993,8 @@ class _ChatViewState extends State<ChatView> {
                       size: 26,
                       color: Colors.white,
                     )
-                  : Icon(
-                      sfIcon('person.2.square.stack'),
+                  : FaIcon(
+                      FontAwesomeIcons.objectGroup,
                       size: 20,
                       color: Colors.white70,
                     ),
@@ -2959,13 +3023,11 @@ class _ChatViewState extends State<ChatView> {
   }
 }
 
-void _switchPiPMode(
+void _switchPiPSessionMode(
   BuildContext context,
   VoidCallback close,
   VideoDisplayMode mode,
-  ChatMessage message,
-  int chatId,
-  String title,
+  VideoSplitSession session,
 ) {
   if (mode == VideoDisplayMode.pictureInPicture) return;
   final navigator = Navigator.of(context, rootNavigator: true);
@@ -2974,53 +3036,28 @@ void _switchPiPMode(
     case VideoDisplayMode.pictureInPicture:
       break;
     case VideoDisplayMode.split:
-      VideoSplitController.instance.play(
-        VideoSplitSession(
-          chatId: chatId,
-          title: title,
-          video: message.video!,
-          thumb: message.image,
-          width: message.imageWidth,
-          height: message.imageHeight,
-          messageId: message.id,
-        ),
-      );
+      VideoSplitController.instance.play(session);
     case VideoDisplayMode.fullscreen:
       navigator.push(
         MaterialPageRoute(
           fullscreenDialog: true,
           builder: (routeContext) => VideoPlayerView(
-            video: message.video!,
-            thumb: message.image,
-            width: message.imageWidth,
-            height: message.imageHeight,
-            sourceChatId: chatId,
-            messageId: message.id,
+            video: session.video,
+            thumb: session.thumb,
+            width: session.width,
+            height: session.height,
+            sourceChatId: session.chatId,
+            messageId: session.messageId,
             currentMode: VideoDisplayMode.fullscreen,
             onSwitchMode: (nextMode) {
               switch (nextMode) {
                 case VideoDisplayMode.fullscreen:
                   break;
                 case VideoDisplayMode.pictureInPicture:
-                  _ChatViewState._showVideoPictureInPicture(
-                    routeContext,
-                    message,
-                    chatId,
-                    title,
-                  );
+                  VideoPiPController.instance.play(session);
                   Navigator.of(routeContext).maybePop();
                 case VideoDisplayMode.split:
-                  VideoSplitController.instance.play(
-                    VideoSplitSession(
-                      chatId: chatId,
-                      title: title,
-                      video: message.video!,
-                      thumb: message.image,
-                      width: message.imageWidth,
-                      height: message.imageHeight,
-                      messageId: message.id,
-                    ),
-                  );
+                  VideoSplitController.instance.play(session);
                   Navigator.of(routeContext).maybePop();
               }
             },
@@ -3030,59 +3067,13 @@ void _switchPiPMode(
   }
 }
 
-class _PiPModeButton extends StatelessWidget {
-  const _PiPModeButton({required this.currentMode, required this.onSelected});
-
-  final VideoDisplayMode currentMode;
-  final ValueChanged<VideoDisplayMode> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    return PopupMenuButton<VideoDisplayMode>(
-      tooltip: '切换显示模式',
-      color: const Color(0xFF1C1C1E),
-      onSelected: (mode) {
-        if (mode != currentMode) onSelected(mode);
-      },
-      itemBuilder: (_) => [
-        _modeItem(VideoDisplayMode.pictureInPicture, '画中画'),
-        _modeItem(VideoDisplayMode.split, '分屏'),
-        _modeItem(VideoDisplayMode.fullscreen, '全屏播放'),
-      ],
-      child: SizedBox(
-        width: 40,
-        height: 40,
-        child: Center(
-          child: Icon(
-            sfIcon('rectangle.split.2x1'),
-            color: Colors.white.withValues(alpha: 0.92),
-            size: 22,
-          ),
-        ),
-      ),
-    );
-  }
-
-  PopupMenuItem<VideoDisplayMode> _modeItem(
-    VideoDisplayMode mode,
-    String label,
-  ) {
-    return PopupMenuItem<VideoDisplayMode>(
-      value: mode,
-      child: Row(
-        children: [
-          SizedBox(
-            width: 20,
-            child: mode == currentMode
-                ? Icon(sfIcon('checkmark'), size: 14, color: Colors.white)
-                : null,
-          ),
-          const SizedBox(width: 8),
-          Text(label, style: const TextStyle(color: Colors.white)),
-        ],
-      ),
-    );
-  }
+double _sessionAspect(VideoSplitSession session) {
+  return (session.width != null &&
+          session.height != null &&
+          session.width! > 0 &&
+          session.height! > 0)
+      ? session.width! / session.height!
+      : 16 / 9;
 }
 
 class _PiPCornerHandle extends StatelessWidget {

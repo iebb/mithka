@@ -15,7 +15,7 @@ import '../chat/chat_view.dart';
 import '../components/drawer_controller.dart' as dc;
 import 'add_people_view.dart';
 import '../components/photo_avatar.dart';
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../components/ui_components.dart';
 import '../profile/profile_detail_view.dart';
 import '../tdlib/chat_membership.dart';
@@ -136,8 +136,8 @@ class _ContactsViewState extends State<ContactsView> {
             GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: _showAddMenu,
-              child: Icon(
-                sfIcon('person.badge.plus'),
+              child: FaIcon(
+                FontAwesomeIcons.userPlus,
                 size: 22,
                 color: c.textPrimary,
               ),
@@ -161,7 +161,11 @@ class _ContactsViewState extends State<ContactsView> {
         ),
         child: Row(
           children: [
-            Icon(sfIcon('magnifyingglass'), size: 16, color: c.textTertiary),
+            FaIcon(
+              FontAwesomeIcons.magnifyingGlass,
+              size: 16,
+              color: c.textTertiary,
+            ),
             const SizedBox(width: 6),
             Text('搜索', style: TextStyle(fontSize: 14, color: c.textTertiary)),
           ],
@@ -369,7 +373,7 @@ class _ContactsViewState extends State<ContactsView> {
                   child: CircularProgressIndicator(strokeWidth: 2.2),
                 )
               else
-                Icon(sfIcon('person.2'), size: 30, color: c.textTertiary),
+                FaIcon(FontAwesomeIcons.users, size: 30, color: c.textTertiary),
               const SizedBox(height: 12),
               Text(
                 loading ? '加载中…' : emptyText,

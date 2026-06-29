@@ -10,7 +10,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_locale_controller.dart';
 import '../l10n/app_localizations.dart';
@@ -131,7 +131,7 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
     final locale = context.watch<AppLocaleController>();
     return _card([
       _navRow(
-        'globe',
+        FontAwesomeIcons.globe.data,
         const Color(0xFF34A2DF),
         '应用语言',
         locale.selectedLabel(context),
@@ -142,14 +142,14 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
     ]);
   }
 
-  Widget _iconBadge(String icon, Color color) => Container(
+  Widget _iconBadge(IconData icon, Color color) => Container(
     width: 28,
     height: 28,
     decoration: BoxDecoration(
       color: color,
       borderRadius: BorderRadius.circular(7),
     ),
-    child: Icon(sfIcon(icon), size: 15, color: Colors.white),
+    child: Icon(icon, size: 15, color: Colors.white),
   );
 
   Widget _card(List<Widget> children) {
@@ -176,7 +176,10 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: [
-                  _iconBadge('folder.fill', const Color(0xFF16B0A0)),
+                  _iconBadge(
+                    FontAwesomeIcons.solidFolder.data,
+                    const Color(0xFF16B0A0),
+                  ),
                   const SizedBox(width: 12),
                   Text(
                     '缓存大小',
@@ -237,7 +240,7 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
         _sectionHeader('聊天'),
         _card([
           _toggleRow(
-            'arrowshape.turn.up.left',
+            FontAwesomeIcons.reply.data,
             const Color(0xFF3C8CF0),
             '回车键发送消息',
             _enterToSend,
@@ -248,7 +251,7 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
           ),
           const InsetDivider(leadingInset: 56),
           _toggleRow(
-            'arrow.down.to.line',
+            FontAwesomeIcons.download.data,
             const Color(0xFF3C8CF0),
             '打开聊天显示最新消息',
             theme.openChatsAtLatest,
@@ -260,7 +263,7 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
   }
 
   Widget _toggleRow(
-    String icon,
+    IconData icon,
     Color color,
     String title,
     bool value,
@@ -292,7 +295,7 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
   }
 
   Widget _navRow(
-    String icon,
+    IconData icon,
     Color color,
     String title,
     String value,
@@ -330,7 +333,11 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
                 ),
               ),
               const SizedBox(width: 6),
-              Icon(sfIcon('chevron.right'), size: 14, color: c.textTertiary),
+              FaIcon(
+                FontAwesomeIcons.chevronRight,
+                size: 14,
+                color: c.textTertiary,
+              ),
             ],
           ),
         ),

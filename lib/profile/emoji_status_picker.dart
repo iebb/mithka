@@ -5,7 +5,7 @@ import '../chat/custom_emoji.dart';
 import '../chat/emoji_store.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
@@ -266,8 +266,8 @@ Widget _statusTabStrip(
       children: [
         tab(
           0,
-          Icon(
-            sfIcon('star.fill'),
+          FaIcon(
+            FontAwesomeIcons.solidStar,
             size: 22,
             color: selected == 0 ? AppTheme.brand : c.textSecondary,
           ),
@@ -295,5 +295,5 @@ Widget _packTabIcon(CustomEmojiPack pack, dynamic c) {
       child: TDImage(photo: pack.cover, cornerRadius: 4),
     );
   }
-  return Icon(sfIcon('square.grid.2x2'), size: 22, color: c.textSecondary);
+  return FaIcon(FontAwesomeIcons.tableCells, size: 22, color: c.textSecondary);
 }

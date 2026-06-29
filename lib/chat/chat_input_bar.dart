@@ -24,7 +24,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../components/photo_avatar.dart';
 import '../components/icon_grid.dart';
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../components/ui_components.dart';
 import '../theme/app_theme.dart';
 import '../tdlib/td_models.dart';
@@ -376,7 +376,11 @@ class _ChatInputBarState extends State<ChatInputBar> {
             const SizedBox(width: 8),
             GestureDetector(
               onTap: () => vm.setReply(null),
-              child: Icon(sfIcon('xmark'), size: 18, color: c.textTertiary),
+              child: FaIcon(
+                FontAwesomeIcons.xmark,
+                size: 18,
+                color: c.textTertiary,
+              ),
             ),
           ],
         ),
@@ -462,7 +466,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
               children: [
                 if (menu?.isWebApp ?? false) ...[
                   _botMenuRow(
-                    icon: 'square.grid.2x2',
+                    icon: FontAwesomeIcons.tableCells.data,
                     title: menu!.text.isEmpty ? '打开菜单' : menu.text,
                     subtitle: menu.url,
                     onTap: () {
@@ -474,7 +478,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
                 ],
                 for (var i = 0; i < commands.length; i++) ...[
                   _botMenuRow(
-                    icon: 'slash.circle',
+                    icon: FontAwesomeIcons.ban.data,
                     title: '/${commands[i].command}',
                     subtitle: commands[i].description,
                     onTap: () {
@@ -494,7 +498,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
   }
 
   Widget _botMenuRow({
-    required String icon,
+    required IconData icon,
     required String title,
     required String subtitle,
     required VoidCallback onTap,
@@ -509,7 +513,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
           padding: const EdgeInsets.symmetric(horizontal: 14),
           child: Row(
             children: [
-              Icon(sfIcon(icon), size: 22, color: AppTheme.brand),
+              Icon(icon, size: 22, color: AppTheme.brand),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
@@ -582,7 +586,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
                   style: TextStyle(fontSize: 13, color: AppTheme.brand),
                 )
               else if (selected)
-                Icon(sfIcon('checkmark'), size: 18, color: AppTheme.brand),
+                FaIcon(FontAwesomeIcons.check, size: 18, color: AppTheme.brand),
             ],
           ),
         ),
@@ -614,8 +618,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
                   shape: BoxShape.circle,
                 ),
                 alignment: Alignment.center,
-                child: Icon(
-                  sfIcon('square.grid.2x2'),
+                child: FaIcon(
+                  FontAwesomeIcons.tableCells,
                   size: 20,
                   color: c.textSecondary,
                 ),
@@ -645,8 +649,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
                             size: 28,
                           ),
                           const SizedBox(width: 2),
-                          Icon(
-                            sfIcon('chevron.down'),
+                          FaIcon(
+                            FontAwesomeIcons.chevronDown,
                             size: 16,
                             color: c.textTertiary,
                           ),
@@ -752,8 +756,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(
-                            sfIcon('star.fill'),
+                          FaIcon(
+                            FontAwesomeIcons.solidStar,
                             size: 14,
                             color: Colors.white,
                           ),
@@ -768,8 +772,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
                           ),
                         ],
                       )
-                    : Icon(
-                        sfIcon('paperplane.fill'),
+                    : FaIcon(
+                        FontAwesomeIcons.solidPaperPlane,
                         size: 17,
                         color: Colors.white,
                       ),
@@ -788,19 +792,29 @@ class _ChatInputBarState extends State<ChatInputBar> {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       child: Row(
         children: [
-          _icon('mic.fill', _panel == _Panel.voice, _toggleVoice),
-          _icon('photo', false, _pickPhotos),
-          _icon('camera.fill', false, _takePhoto),
-          _icon('square.grid.2x2.fill', _panel == _Panel.sticker, () {
+          _icon(
+            FontAwesomeIcons.microphone.data,
+            _panel == _Panel.voice,
+            _toggleVoice,
+          ),
+          _icon(FontAwesomeIcons.image.data, false, _pickPhotos),
+          _icon(FontAwesomeIcons.camera.data, false, _takePhoto),
+          _icon(FontAwesomeIcons.grip.data, _panel == _Panel.sticker, () {
             _toggle(_Panel.sticker);
             if (_panel == _Panel.sticker) StickerStore.shared.loadIfNeeded();
           }),
-          _icon('face.smiling', _panel == _Panel.emoji, () {
-            _toggle(_Panel.emoji);
-            if (_panel == _Panel.emoji) EmojiStore.shared.loadIfNeeded();
-          }),
           _icon(
-            _panel != _Panel.none ? 'xmark' : 'plus.circle',
+            FontAwesomeIcons.solidFaceSmile.data,
+            _panel == _Panel.emoji,
+            () {
+              _toggle(_Panel.emoji);
+              if (_panel == _Panel.emoji) EmojiStore.shared.loadIfNeeded();
+            },
+          ),
+          _icon(
+            _panel != _Panel.none
+                ? FontAwesomeIcons.xmark.data
+                : FontAwesomeIcons.circlePlus.data,
             _panel == _Panel.function,
             () => _toggle(_Panel.function),
           ),
@@ -809,13 +823,13 @@ class _ChatInputBarState extends State<ChatInputBar> {
     );
   }
 
-  Widget _icon(String name, bool active, VoidCallback onTap) {
+  Widget _icon(IconData name, bool active, VoidCallback onTap) {
     return Expanded(
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: Icon(
-          sfIcon(name),
+          name,
           size: 24,
           color: active ? AppTheme.brand : context.colors.textSecondary,
         ),
@@ -1065,13 +1079,13 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   Widget _functionPanel() {
     final items = [
-      ('phone.fill', '语音通话', () => widget.onStartCall(false)),
-      ('video.fill', '视频通话', () => widget.onStartCall(true)),
-      ('location.fill', '位置', _sendLocation),
-      ('folder.fill', '文件', _pickFile),
-      ('square.grid.2x2.fill', '投票', _createPoll),
-      ('music.note', '音频', _pickAudio),
-      ('checklist', '清单', _createChecklist),
+      (FontAwesomeIcons.phone.data, '语音通话', () => widget.onStartCall(false)),
+      (FontAwesomeIcons.video.data, '视频通话', () => widget.onStartCall(true)),
+      (FontAwesomeIcons.locationDot.data, '位置', _sendLocation),
+      (FontAwesomeIcons.solidFolder.data, '文件', _pickFile),
+      (FontAwesomeIcons.grip.data, '投票', _createPoll),
+      (FontAwesomeIcons.music.data, '音频', _pickAudio),
+      (FontAwesomeIcons.listCheck.data, '清单', _createChecklist),
     ];
     final c = context.colors;
     return Container(
@@ -1099,11 +1113,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
                       color: c.card,
                       borderRadius: BorderRadius.circular(11),
                     ),
-                    child: Icon(
-                      sfIcon(item.$1),
-                      size: 22,
-                      color: c.textPrimary,
-                    ),
+                    child: Icon(item.$1, size: 22, color: c.textPrimary),
                   ),
                   const SizedBox(height: 5),
                   Text(
@@ -1227,8 +1237,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
             _emojiTabButton(
               selected: _emojiTab == 'standard',
               onTap: () => setState(() => _emojiTab = 'standard'),
-              child: Icon(
-                sfIcon('face.smiling'),
+              child: FaIcon(
+                FontAwesomeIcons.solidFaceSmile,
                 size: 20,
                 color: _emojiTab == 'standard'
                     ? AppTheme.brand
@@ -1354,7 +1364,11 @@ class _ChatInputBarState extends State<ChatInputBar> {
                   color: _recordCancelled ? AppTheme.tagRed : AppTheme.brand,
                   shape: BoxShape.circle,
                 ),
-                child: Icon(sfIcon('mic.fill'), size: 32, color: Colors.white),
+                child: FaIcon(
+                  FontAwesomeIcons.microphone,
+                  size: 32,
+                  color: Colors.white,
+                ),
               ),
             ),
           ),
@@ -1454,8 +1468,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
                   StickerStore.shared.loadPack(pack.id);
                 },
                 child: pack.id == StickerStore.recentPackId
-                    ? Icon(
-                        sfIcon('clock'),
+                    ? FaIcon(
+                        FontAwesomeIcons.clock,
                         size: 20,
                         color: pack.id == activeId
                             ? AppTheme.brand

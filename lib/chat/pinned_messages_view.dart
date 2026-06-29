@@ -8,7 +8,7 @@
 import 'package:flutter/material.dart';
 
 import '../components/photo_avatar.dart';
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -129,8 +129,8 @@ class _PinnedMessagesViewState extends State<PinnedMessagesView> {
                 onTap: () => Navigator.of(context).pop(),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 14),
-                  child: Icon(
-                    sfIcon('chevron.left'),
+                  child: FaIcon(
+                    FontAwesomeIcons.chevronLeft,
                     size: 22,
                     color: c.textPrimary,
                   ),
@@ -235,7 +235,11 @@ class _PinnedMessagesViewState extends State<PinnedMessagesView> {
                     ],
                   ),
                 ),
-                Icon(sfIcon('ellipsis'), size: 22, color: c.textTertiary),
+                FaIcon(
+                  FontAwesomeIcons.ellipsis,
+                  size: 22,
+                  color: c.textTertiary,
+                ),
               ],
             ),
             const SizedBox(height: 12),
@@ -270,12 +274,13 @@ class _PinnedMessagesViewState extends State<PinnedMessagesView> {
                       child: Container(
                         width: 44,
                         height: 44,
+                        alignment: Alignment.center,
                         decoration: BoxDecoration(
                           color: Colors.black.withValues(alpha: 0.45),
                           shape: BoxShape.circle,
                         ),
-                        child: Icon(
-                          sfIcon('play.fill'),
+                        child: FaIcon(
+                          FontAwesomeIcons.play,
                           color: Colors.white,
                           size: 22,
                         ),

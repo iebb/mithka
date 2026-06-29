@@ -10,6 +10,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:provider/provider.dart';
 
 import '../call/call_manager.dart';
@@ -20,7 +21,6 @@ import '../channels/topic_chat_view.dart';
 import '../channels/topic_channels_view.dart';
 import '../chats/chat_list_view.dart';
 import '../components/drawer_controller.dart' as dc;
-import '../components/sf_symbols.dart';
 import '../components/ui_components.dart';
 import '../contacts/contacts_view.dart';
 import '../l10n/app_localizations.dart';
@@ -117,6 +117,9 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
   @override
   void dispose() {
     _pictureInPictureVideo?.remove();
+    if (_pictureInPictureVideo != null) {
+      VideoPiPController.instance.close();
+    }
     _calls.dispose();
     _chatListController.dispose();
     super.dispose();
@@ -128,10 +131,10 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
   );
 
   static const _allTabs = [
-    _MainTabItem(0, '消息', 'message.fill'),
-    _MainTabItem(1, '频道', 'number.circle.fill'),
-    _MainTabItem(2, '联系人', 'person.2.fill'),
-    _MainTabItem(3, '动态', 'circle.dashed'),
+    _MainTabItem(0, '消息', FontAwesomeIcons.solidMessage),
+    _MainTabItem(1, '频道', FontAwesomeIcons.hashtag),
+    _MainTabItem(2, '联系人', FontAwesomeIcons.users),
+    _MainTabItem(3, '动态', FontAwesomeIcons.circleNotch),
   ];
 
   List<_MainTabItem> _visibleTabs(ThemeController theme) => [
@@ -298,9 +301,21 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
             final videoHeight = (constraints.maxHeight * _videoSplitFraction)
                 .clamp(220.0, constraints.maxHeight - 260)
                 .toDouble();
+            final topInset = MediaQuery.paddingOf(context).top;
             return Column(
               children: [
-                SizedBox(height: videoHeight, child: _videoSibling(session)),
+                SizedBox(
+                  height: videoHeight + topInset,
+                  child: ColoredBox(
+                    color: Colors.black,
+                    child: Column(
+                      children: [
+                        SizedBox(height: topInset),
+                        Expanded(child: _videoSibling(session)),
+                      ],
+                    ),
+                  ),
+                ),
                 _videoSplitDivider(
                   vertical: false,
                   onDrag: (delta) => setState(() {
@@ -309,7 +324,13 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
                             .clamp(0.25, 0.72);
                   }),
                 ),
-                Expanded(child: root),
+                Expanded(
+                  child: MediaQuery.removePadding(
+                    context: context,
+                    removeTop: true,
+                    child: root,
+                  ),
+                ),
               ],
             );
           },
@@ -322,6 +343,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
     return ColoredBox(
       color: Colors.black,
       child: VideoPlayerView(
+        key: ValueKey(session.video.id),
         video: session.video,
         thumb: session.thumb,
         width: session.width,
@@ -390,21 +412,24 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
   }
 
   void _showSplitVideoPictureInPicture(VideoSplitSession session) {
-    _pictureInPictureVideo?.remove();
-    _pictureInPictureVideo = null;
+    final pip = VideoPiPController.instance;
+    if (_pictureInPictureVideo != null) {
+      pip.play(session);
+      return;
+    }
+    if (pip.isOpen) {
+      pip.play(session);
+      return;
+    }
+    pip.play(session);
     final overlay = Overlay.of(context, rootOverlay: true);
     final screen = MediaQuery.sizeOf(context);
     const margin = 16.0;
-    final aspect =
-        (session.width != null &&
-            session.height != null &&
-            session.width! > 0 &&
-            session.height! > 0)
-        ? session.width! / session.height!
-        : 16 / 9;
+    var aspect = _videoSessionAspect(session);
     var boxWidth = (screen.width * 0.46).clamp(220.0, 360.0);
     var boxHeight = (boxWidth / aspect).clamp(130.0, 260.0);
     boxWidth = boxHeight * aspect;
+    var displayedVideoId = session.video.id;
     var offset = Offset(
       screen.width - boxWidth - margin,
       screen.height - boxHeight - MediaQuery.paddingOf(context).bottom - 110,
@@ -416,27 +441,30 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
       if (_pictureInPictureVideo == entry) {
         _pictureInPictureVideo = null;
       }
+      if (pip.session?.video.id == displayedVideoId) {
+        pip.close();
+      }
     }
 
-    void switchMode(VideoDisplayMode mode) {
+    void switchMode(VideoDisplayMode mode, VideoSplitSession modeSession) {
       if (mode == VideoDisplayMode.pictureInPicture) return;
       close();
       switch (mode) {
         case VideoDisplayMode.pictureInPicture:
           break;
         case VideoDisplayMode.split:
-          _videoSplit.play(session);
+          _videoSplit.play(modeSession);
         case VideoDisplayMode.fullscreen:
           Navigator.of(context, rootNavigator: true).push(
             MaterialPageRoute(
               fullscreenDialog: true,
               builder: (routeContext) => VideoPlayerView(
-                video: session.video,
-                thumb: session.thumb,
-                width: session.width,
-                height: session.height,
-                sourceChatId: session.chatId,
-                messageId: session.messageId,
+                video: modeSession.video,
+                thumb: modeSession.thumb,
+                width: modeSession.width,
+                height: modeSession.height,
+                sourceChatId: modeSession.chatId,
+                messageId: modeSession.messageId,
                 currentMode: VideoDisplayMode.fullscreen,
                 onSwitchMode: (nextMode) {
                   switch (nextMode) {
@@ -444,10 +472,10 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
                       break;
                     case VideoDisplayMode.pictureInPicture:
                       Navigator.of(routeContext).maybePop();
-                      _showSplitVideoPictureInPicture(session);
+                      _showSplitVideoPictureInPicture(modeSession);
                     case VideoDisplayMode.split:
                       Navigator.of(routeContext).maybePop();
-                      _videoSplit.play(session);
+                      _videoSplit.play(modeSession);
                   }
                 },
               ),
@@ -469,6 +497,15 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
                 media.height - boxHeight - padding.bottom - margin,
               ),
             );
+          }
+
+          void syncSession(VideoSplitSession nextSession) {
+            if (nextSession.video.id == displayedVideoId) return;
+            displayedVideoId = nextSession.video.id;
+            aspect = _videoSessionAspect(nextSession);
+            boxHeight = (boxWidth / aspect).clamp(110.0, media.height * 0.72);
+            boxWidth = boxHeight * aspect;
+            clampOffset();
           }
 
           void move(DragUpdateDetails details) {
@@ -515,81 +552,83 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
             });
           }
 
-          return Positioned(
-            left: offset.dx,
-            top: offset.dy,
-            width: boxWidth,
-            height: boxHeight,
-            child: Material(
-              type: MaterialType.transparency,
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Positioned.fill(
-                    child: GestureDetector(
-                      onPanUpdate: move,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(14),
-                        child: VideoPlayerView(
-                          video: session.video,
-                          thumb: session.thumb,
-                          width: session.width,
-                          height: session.height,
-                          presentation:
-                              VideoPlayerPresentation.pictureInPicture,
-                          compactControls: true,
-                          onClose: close,
-                          sourceChatId: session.chatId,
-                          messageId: session.messageId,
-                          currentMode: VideoDisplayMode.pictureInPicture,
-                          onSwitchMode: switchMode,
+          return AnimatedBuilder(
+            animation: pip,
+            builder: (context, _) {
+              final currentSession = pip.session;
+              if (currentSession == null) return const SizedBox.shrink();
+              syncSession(currentSession);
+              return Positioned(
+                left: offset.dx,
+                top: offset.dy,
+                width: boxWidth,
+                height: boxHeight,
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Positioned.fill(
+                        child: GestureDetector(
+                          onPanUpdate: move,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(14),
+                            child: VideoPlayerView(
+                              key: ValueKey(currentSession.video.id),
+                              video: currentSession.video,
+                              thumb: currentSession.thumb,
+                              width: currentSession.width,
+                              height: currentSession.height,
+                              presentation:
+                                  VideoPlayerPresentation.pictureInPicture,
+                              compactControls: true,
+                              onClose: close,
+                              sourceChatId: currentSession.chatId,
+                              messageId: currentSession.messageId,
+                              currentMode: VideoDisplayMode.pictureInPicture,
+                              onSwitchMode: (mode) =>
+                                  switchMode(mode, currentSession),
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                      _SplitPiPCornerHandle(
+                        alignment: Alignment.topLeft,
+                        onDrag: (details) => resizeFromCorner(
+                          details,
+                          horizontalSign: -1,
+                          verticalSign: -1,
+                        ),
+                      ),
+                      _SplitPiPCornerHandle(
+                        alignment: Alignment.topRight,
+                        onDrag: (details) => resizeFromCorner(
+                          details,
+                          horizontalSign: 1,
+                          verticalSign: -1,
+                        ),
+                      ),
+                      _SplitPiPCornerHandle(
+                        alignment: Alignment.bottomLeft,
+                        onDrag: (details) => resizeFromCorner(
+                          details,
+                          horizontalSign: -1,
+                          verticalSign: 1,
+                        ),
+                      ),
+                      _SplitPiPCornerHandle(
+                        alignment: Alignment.bottomRight,
+                        onDrag: (details) => resizeFromCorner(
+                          details,
+                          horizontalSign: 1,
+                          verticalSign: 1,
+                        ),
+                      ),
+                    ],
                   ),
-                  Positioned(
-                    left: 8,
-                    top: 8,
-                    child: _SplitPiPModeButton(
-                      currentMode: VideoDisplayMode.pictureInPicture,
-                      onSelected: switchMode,
-                    ),
-                  ),
-                  _SplitPiPCornerHandle(
-                    alignment: Alignment.topLeft,
-                    onDrag: (details) => resizeFromCorner(
-                      details,
-                      horizontalSign: -1,
-                      verticalSign: -1,
-                    ),
-                  ),
-                  _SplitPiPCornerHandle(
-                    alignment: Alignment.topRight,
-                    onDrag: (details) => resizeFromCorner(
-                      details,
-                      horizontalSign: 1,
-                      verticalSign: -1,
-                    ),
-                  ),
-                  _SplitPiPCornerHandle(
-                    alignment: Alignment.bottomLeft,
-                    onDrag: (details) => resizeFromCorner(
-                      details,
-                      horizontalSign: -1,
-                      verticalSign: 1,
-                    ),
-                  ),
-                  _SplitPiPCornerHandle(
-                    alignment: Alignment.bottomRight,
-                    onDrag: (details) => resizeFromCorner(
-                      details,
-                      horizontalSign: 1,
-                      verticalSign: 1,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+                ),
+              );
+            },
           );
         },
       ),
@@ -729,10 +768,13 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
     0 => _messageDetailPane(),
     1 =>
       _selectedChannelDetail ??
-          const _SplitEmptyPane(icon: 'number.circle.fill', title: '选择频道内容'),
+          const _SplitEmptyPane(
+            icon: FontAwesomeIcons.hashtag,
+            title: '选择频道内容',
+          ),
     2 =>
       _selectedContactDetail ??
-          const _SplitEmptyPane(icon: 'person.2.fill', title: '选择联系人'),
+          const _SplitEmptyPane(icon: FontAwesomeIcons.users, title: '选择联系人'),
     _ =>
       _selectedMomentDetail ??
           ChannelMomentsView(
@@ -851,7 +893,7 @@ class _MessageEmptyPane extends StatelessWidget {
 class _SplitEmptyPane extends StatelessWidget {
   const _SplitEmptyPane({required this.icon, required this.title});
 
-  final String icon;
+  final FaIconData icon;
   final String title;
 
   @override
@@ -865,7 +907,7 @@ class _SplitEmptyPane extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(sfIcon(icon), size: 56, color: c.textTertiary),
+              FaIcon(icon, size: 56, color: c.textTertiary),
               const SizedBox(height: 14),
               Text(
                 title.l10n(context),
@@ -888,7 +930,7 @@ class _MainTabItem {
 
   final int index;
   final String label;
-  final String icon;
+  final FaIconData icon;
 }
 
 class _LazyTabStack extends StatefulWidget {
@@ -1018,9 +1060,9 @@ class _ClassicTabBar extends StatelessWidget {
                                 clipBehavior: Clip.none,
                                 alignment: Alignment.center,
                                 children: [
-                                  Icon(
-                                    sfIcon(items[i].icon),
-                                    size: 26,
+                                  FaIcon(
+                                    items[i].icon,
+                                    size: 24,
                                     color: selection == i
                                         ? AppTheme.brand
                                         : c.textTertiary,
@@ -1062,62 +1104,13 @@ class _ClassicTabBar extends StatelessWidget {
   }
 }
 
-class _SplitPiPModeButton extends StatelessWidget {
-  const _SplitPiPModeButton({
-    required this.currentMode,
-    required this.onSelected,
-  });
-
-  final VideoDisplayMode currentMode;
-  final ValueChanged<VideoDisplayMode> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    return PopupMenuButton<VideoDisplayMode>(
-      tooltip: '切换显示模式',
-      color: const Color(0xFF1C1C1E),
-      onSelected: (mode) {
-        if (mode != currentMode) onSelected(mode);
-      },
-      itemBuilder: (_) => [
-        _modeItem(VideoDisplayMode.pictureInPicture, '画中画'),
-        _modeItem(VideoDisplayMode.split, '分屏'),
-        _modeItem(VideoDisplayMode.fullscreen, '全屏播放'),
-      ],
-      child: SizedBox(
-        width: 40,
-        height: 40,
-        child: Center(
-          child: Icon(
-            sfIcon('rectangle.split.2x1'),
-            color: Colors.white.withValues(alpha: 0.92),
-            size: 22,
-          ),
-        ),
-      ),
-    );
-  }
-
-  PopupMenuItem<VideoDisplayMode> _modeItem(
-    VideoDisplayMode mode,
-    String label,
-  ) {
-    return PopupMenuItem<VideoDisplayMode>(
-      value: mode,
-      child: Row(
-        children: [
-          SizedBox(
-            width: 20,
-            child: mode == currentMode
-                ? Icon(sfIcon('checkmark'), size: 14, color: Colors.white)
-                : null,
-          ),
-          const SizedBox(width: 8),
-          Text(label, style: const TextStyle(color: Colors.white)),
-        ],
-      ),
-    );
-  }
+double _videoSessionAspect(VideoSplitSession session) {
+  return (session.width != null &&
+          session.height != null &&
+          session.width! > 0 &&
+          session.height! > 0)
+      ? session.width! / session.height!
+      : 16 / 9;
 }
 
 class _SplitPiPCornerHandle extends StatelessWidget {

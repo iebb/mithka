@@ -13,7 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../settings/proxy_config.dart';
 import '../settings/proxy_view.dart';
 import '../tdlib/td_client.dart';
@@ -153,8 +153,8 @@ class _LoginViewState extends State<LoginView> {
                     : _showBackOptions(auth),
                 child: Padding(
                   padding: const EdgeInsets.all(10),
-                  child: Icon(
-                    sfIcon('chevron.left'),
+                  child: FaIcon(
+                    FontAwesomeIcons.chevronLeft,
                     size: 26,
                     color: c.textPrimary,
                   ),
@@ -315,8 +315,8 @@ class _LoginViewState extends State<LoginView> {
                             _detectedCountry!.flag,
                             style: const TextStyle(fontSize: 30),
                           )
-                        : Icon(
-                            sfIcon('globe'),
+                        : FaIcon(
+                            FontAwesomeIcons.globe,
                             size: 26,
                             color: c.textTertiary,
                           ),
@@ -377,8 +377,8 @@ class _LoginViewState extends State<LoginView> {
         child: Stack(
           clipBehavior: Clip.none,
           children: [
-            Icon(
-              sfIcon('globe'),
+            FaIcon(
+              FontAwesomeIcons.globe,
               size: 25,
               color: enabled ? AppTheme.brand : c.textPrimary,
             ),
@@ -441,7 +441,7 @@ class _LoginViewState extends State<LoginView> {
         ),
         const SizedBox(height: 16),
         InputField(
-          systemImage: 'lock.shield.fill',
+          systemImage: FontAwesomeIcons.shieldHalved.data,
           placeholder: '验证码',
           controller: _code,
           keyboardType: TextInputType.number,
@@ -493,7 +493,7 @@ class _LoginViewState extends State<LoginView> {
           ),
         const SizedBox(height: 16),
         InputField(
-          systemImage: 'lock.fill',
+          systemImage: FontAwesomeIcons.lock.data,
           placeholder: '两步验证密码',
           controller: _password,
           secure: true,
@@ -524,14 +524,14 @@ class _LoginViewState extends State<LoginView> {
         ),
         const SizedBox(height: 16),
         InputField(
-          systemImage: 'person.crop.circle.fill',
+          systemImage: FontAwesomeIcons.solidCircleUser.data,
           placeholder: '名字',
           controller: _firstName,
           onChanged: (_) => setState(() {}),
         ),
         const SizedBox(height: 16),
         InputField(
-          systemImage: 'person.crop.circle',
+          systemImage: FontAwesomeIcons.circleUser.data,
           placeholder: '姓氏（可选）',
           controller: _lastName,
         ),
@@ -552,8 +552,8 @@ class _LoginViewState extends State<LoginView> {
       padding: const EdgeInsets.only(top: 12),
       child: Column(
         children: [
-          Icon(
-            sfIcon('exclamationmark.triangle.fill'),
+          FaIcon(
+            FontAwesomeIcons.triangleExclamation,
             size: 40,
             color: AppTheme.unreadBadge,
           ),
@@ -658,7 +658,7 @@ class InputField extends StatefulWidget {
     this.onChanged,
   });
 
-  final String systemImage;
+  final IconData systemImage;
   final String placeholder;
   final TextEditingController controller;
   final bool secure;
@@ -693,11 +693,7 @@ class _InputFieldState extends State<InputField> {
         children: [
           SizedBox(
             width: 22,
-            child: Icon(
-              sfIcon(widget.systemImage),
-              size: 20,
-              color: AppTheme.brand,
-            ),
+            child: Icon(widget.systemImage, size: 20, color: AppTheme.brand),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -735,7 +731,9 @@ class _InputFieldState extends State<InputField> {
               child: Padding(
                 padding: const EdgeInsets.only(left: 8),
                 child: Icon(
-                  _obscure ? sfIcon('eye.slash') : sfIcon('eye'),
+                  _obscure
+                      ? FontAwesomeIcons.eyeSlash.data
+                      : FontAwesomeIcons.eye.data,
                   size: 20,
                   color: c.textTertiary,
                 ),

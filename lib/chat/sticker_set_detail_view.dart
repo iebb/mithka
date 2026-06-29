@@ -9,7 +9,7 @@
 
 import 'package:flutter/material.dart';
 
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../components/toast.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -124,8 +124,8 @@ class _StickerSetDetailViewState extends State<StickerSetDetailView> {
               onTap: () => Navigator.of(context).pop(),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 14),
-                child: Icon(
-                  sfIcon('chevron.left'),
+                child: FaIcon(
+                  FontAwesomeIcons.chevronLeft,
                   size: 24,
                   color: c.textPrimary,
                 ),

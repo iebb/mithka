@@ -9,7 +9,7 @@ import 'package:flutter/material.dart';
 
 import '../app/app_version.dart';
 import '../chat/link_handler.dart';
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../components/ui_components.dart';
 import '../theme/app_theme.dart';
 
@@ -85,7 +85,7 @@ class AboutView extends StatelessWidget {
                   child: Column(
                     children: [
                       _AboutLinkRow(
-                        icon: sfIcon('paperplane.fill'),
+                        icon: FontAwesomeIcons.solidPaperPlane.data,
                         title: 'Telegram 频道',
                         value: 't.me/mithka',
                         onTap: () => openLink(context, _channelUrl),
@@ -95,7 +95,7 @@ class AboutView extends StatelessWidget {
                         child: Divider(height: 1, color: c.divider),
                       ),
                       _AboutLinkRow(
-                        icon: sfIcon('chevron.left.forwardslash.chevron.right'),
+                        icon: FontAwesomeIcons.code.data,
                         title: 'GitHub',
                         value: 'github.com/iebb/mithka',
                         onTap: () => openLink(context, _githubUrl),
@@ -156,7 +156,11 @@ class _AboutLinkRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 6),
-              Icon(sfIcon('chevron.right'), size: 14, color: c.textTertiary),
+              FaIcon(
+                FontAwesomeIcons.chevronRight,
+                size: 14,
+                color: c.textTertiary,
+              ),
             ],
           ),
         ),

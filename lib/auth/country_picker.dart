@@ -11,7 +11,7 @@
 import 'package:dlibphonenumber/dlibphonenumber.dart';
 import 'package:flutter/material.dart';
 
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../theme/app_theme.dart';
 
 class Country {
@@ -340,8 +340,8 @@ class _CountryPickerViewState extends State<CountryPickerView> {
               ),
               child: Row(
                 children: [
-                  Icon(
-                    sfIcon('magnifyingglass'),
+                  FaIcon(
+                    FontAwesomeIcons.magnifyingGlass,
                     size: 18,
                     color: c.textSecondary,
                   ),
@@ -364,8 +364,8 @@ class _CountryPickerViewState extends State<CountryPickerView> {
                         _controller.clear();
                         _query = '';
                       }),
-                      child: Icon(
-                        sfIcon('xmark'),
+                      child: FaIcon(
+                        FontAwesomeIcons.xmark,
                         size: 18,
                         color: c.textTertiary,
                       ),

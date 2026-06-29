@@ -9,7 +9,7 @@
 import 'package:flutter/material.dart';
 
 import '../components/photo_avatar.dart';
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -136,8 +136,8 @@ class _SharedMediaViewState extends State<SharedMediaView> {
                 onTap: () => Navigator.of(context).pop(),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 14),
-                  child: Icon(
-                    sfIcon('chevron.left'),
+                  child: FaIcon(
+                    FontAwesomeIcons.chevronLeft,
                     size: 22,
                     color: c.textPrimary,
                   ),
@@ -294,11 +294,16 @@ class _SharedMediaViewState extends State<SharedMediaView> {
               child: Container(
                 width: 36,
                 height: 36,
+                alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: Colors.black.withValues(alpha: 0.48),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(sfIcon('play.fill'), size: 18, color: Colors.white),
+                child: FaIcon(
+                  FontAwesomeIcons.play,
+                  size: 18,
+                  color: Colors.white,
+                ),
               ),
             ),
             if ((message.videoDuration ?? 0) > 0)
@@ -371,13 +376,11 @@ class _SharedMediaViewState extends State<SharedMediaView> {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
-                sfIcon(
-                  isVoice
-                      ? 'mic.fill'
-                      : isLink
-                      ? 'link'
-                      : 'doc.fill',
-                ),
+                isVoice
+                    ? FontAwesomeIcons.microphone.data
+                    : isLink
+                    ? FontAwesomeIcons.link.data
+                    : FontAwesomeIcons.solidFile.data,
                 size: 20,
                 color: AppTheme.brand,
               ),

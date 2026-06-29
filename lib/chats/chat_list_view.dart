@@ -19,7 +19,7 @@ import '../chat/chat_view.dart';
 import '../chat/custom_emoji.dart';
 import '../components/drawer_controller.dart' as dc;
 import '../components/photo_avatar.dart';
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../contacts/add_people_view.dart';
 import '../contacts/create_group_view.dart';
 import '../profile/emoji_status_picker.dart';
@@ -426,8 +426,8 @@ class _ChatListViewState extends State<ChatListView> {
                       ],
                       if (_meIsPremium && _meStatusId != 0) ...[
                         const SizedBox(width: AppSpacing.xs),
-                        Icon(
-                          sfIcon('chevron.down'),
+                        FaIcon(
+                          FontAwesomeIcons.chevronDown,
                           size: 14,
                           color: c.textTertiary,
                         ),
@@ -485,8 +485,8 @@ class _ChatListViewState extends State<ChatListView> {
                 child: SizedBox(
                   width: AppMetric.hitTarget,
                   height: AppMetric.hitTarget,
-                  child: Icon(
-                    sfIcon('line.3.horizontal.decrease'),
+                  child: FaIcon(
+                    FontAwesomeIcons.filter,
                     size: AppIconSize.toolbar,
                     color: c.textPrimary,
                   ),
@@ -501,8 +501,8 @@ class _ChatListViewState extends State<ChatListView> {
               child: SizedBox(
                 width: AppMetric.hitTarget,
                 height: AppMetric.hitTarget,
-                child: Icon(
-                  sfIcon('plus'),
+                child: FaIcon(
+                  FontAwesomeIcons.plus,
                   size: AppIconSize.add,
                   color: c.textPrimary,
                 ),
@@ -540,8 +540,8 @@ class _ChatListViewState extends State<ChatListView> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                sfIcon('magnifyingglass'),
+              FaIcon(
+                FontAwesomeIcons.magnifyingGlass,
                 size: AppMetric.searchIcon,
                 color: c.textTertiary,
               ),
@@ -846,9 +846,9 @@ class PlusMenu extends StatelessWidget {
   final ValueChanged<String> onSelect;
 
   static const _items = [
-    ('plus.circle', '创建群聊'),
-    ('square.grid.2x2.fill', '创建频道'),
-    ('person.badge.plus', '加好友/群'),
+    (FontAwesomeIcons.circlePlus, '创建群聊'),
+    (FontAwesomeIcons.grip, '创建频道'),
+    (FontAwesomeIcons.userPlus, '加好友/群'),
   ];
 
   @override
@@ -887,7 +887,7 @@ class PlusMenu extends StatelessWidget {
                         SizedBox(
                           width: AppMetric.menuIconSlot,
                           child: Icon(
-                            sfIcon(item.$1),
+                            item.$1.data,
                             size: AppIconSize.lg + 1,
                             color: c.textPrimary,
                           ),
@@ -962,7 +962,9 @@ class ChatFilterMenu extends StatelessWidget {
                   child: Row(
                     children: [
                       Icon(
-                        filter.isAll ? sfIcon('tray.full') : sfIcon('folder'),
+                        filter.isAll
+                            ? FontAwesomeIcons.inbox.data
+                            : FontAwesomeIcons.folder.data,
                         size: AppIconSize.lg + 1,
                         color: c.textPrimary,
                       ),
@@ -979,8 +981,8 @@ class ChatFilterMenu extends StatelessWidget {
                         ),
                       ),
                       if (selectedFilter)
-                        Icon(
-                          sfIcon('checkmark'),
+                        FaIcon(
+                          FontAwesomeIcons.check,
                           size: 18,
                           color: AppTheme.brand,
                         ),

@@ -18,7 +18,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../components/photo_avatar.dart'; // PhotoAvatar + TDImage
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'call_manager.dart';
 
 class CallScreen extends StatefulWidget {
@@ -162,8 +162,8 @@ class _CallScreenState extends State<CallScreen> {
                 creationParamsCodec: StandardMessageCodec(),
               )
             : Center(
-                child: Icon(
-                  sfIcon('video.fill'),
+                child: FaIcon(
+                  FontAwesomeIcons.video,
                   color: Colors.white.withValues(alpha: 0.5),
                   size: 26,
                 ),
@@ -185,7 +185,7 @@ class _CallScreenState extends State<CallScreen> {
           shape: BoxShape.circle,
           border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
         ),
-        child: Icon(sfIcon('camera.rotate'), size: 22, color: Colors.white),
+        child: FaIcon(FontAwesomeIcons.rotate, size: 22, color: Colors.white),
       ),
     );
   }
@@ -329,13 +329,15 @@ class _CallScreenState extends State<CallScreen> {
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
           _CallButton(
-            icon: 'phone.down.fill',
+            icon: FontAwesomeIcons.phoneSlash.data,
             label: '拒绝',
             background: const Color(0xFFFF3B30),
             onTap: m.end,
           ),
           _CallButton(
-            icon: call.isVideo ? 'video.fill' : 'phone.fill',
+            icon: call.isVideo
+                ? FontAwesomeIcons.video.data
+                : FontAwesomeIcons.phone.data,
             label: '接听',
             background: const Color(0xFF07C160),
             onTap: m.accept,
@@ -350,7 +352,9 @@ class _CallScreenState extends State<CallScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             _CallToggle(
-              icon: m.isMuted ? 'mic.slash.fill' : 'mic.fill',
+              icon: m.isMuted
+                  ? FontAwesomeIcons.microphoneSlash.data
+                  : FontAwesomeIcons.microphone.data,
               label: '静音',
               isOn: m.isMuted,
               onTap: m.toggleMute,
@@ -358,7 +362,7 @@ class _CallScreenState extends State<CallScreen> {
             const SizedBox(width: 26),
             if (call.isVideo) ...[
               _CallToggle(
-                icon: 'video.fill',
+                icon: FontAwesomeIcons.video.data,
                 label: '摄像头',
                 isOn: m.isVideoEnabled,
                 onTap: _onCameraToggle,
@@ -366,7 +370,7 @@ class _CallScreenState extends State<CallScreen> {
               const SizedBox(width: 26),
             ],
             _CallToggle(
-              icon: 'speaker.wave.2.fill',
+              icon: FontAwesomeIcons.volumeHigh.data,
               label: '免提',
               isOn: m.isSpeaker,
               onTap: m.toggleSpeaker,
@@ -375,7 +379,7 @@ class _CallScreenState extends State<CallScreen> {
         ),
         const SizedBox(height: 30),
         _CallButton(
-          icon: 'phone.down.fill',
+          icon: FontAwesomeIcons.phoneSlash.data,
           label: '挂断',
           background: const Color(0xFFFF3B30),
           size: 66,
@@ -394,7 +398,7 @@ class _CallButton extends StatelessWidget {
     this.size = 68,
     required this.onTap,
   });
-  final String icon;
+  final IconData icon;
   final String label;
   final Color background;
   final double size;
@@ -416,7 +420,7 @@ class _CallButton extends StatelessWidget {
               color: background,
               shape: BoxShape.circle,
             ),
-            child: Icon(sfIcon(icon), size: size * 0.42, color: Colors.white),
+            child: Icon(icon, size: size * 0.42, color: Colors.white),
           ),
         ),
         const SizedBox(height: 10),
@@ -441,7 +445,7 @@ class _CallToggle extends StatelessWidget {
     required this.isOn,
     required this.onTap,
   });
-  final String icon;
+  final IconData icon;
   final String label;
   final bool isOn;
   final VoidCallback onTap;
@@ -463,7 +467,7 @@ class _CallToggle extends StatelessWidget {
               shape: BoxShape.circle,
             ),
             child: Icon(
-              sfIcon(icon),
+              icon,
               size: 24,
               color: isOn ? Colors.black : Colors.white,
             ),

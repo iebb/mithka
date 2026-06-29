@@ -10,7 +10,7 @@ import 'package:flutter/material.dart';
 
 import '../chats/chat_list_view_model.dart';
 import '../components/photo_avatar.dart';
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../tdlib/chat_membership.dart';
@@ -241,20 +241,12 @@ class _TopicChannelsViewState extends State<TopicChannelsView> {
                     padding: const EdgeInsets.fromLTRB(8, 8, 0, 8),
                     child: Icon(
                       _nonMutedOnly
-                          ? sfIcon('bell.fill')
-                          : sfIcon('bell.slash.fill'),
+                          ? FontAwesomeIcons.solidBell.data
+                          : FontAwesomeIcons.bellSlash.data,
                       size: 24,
                       color: _nonMutedOnly ? AppTheme.brand : c.textPrimary,
                     ),
                   ),
-                ),
-                const SizedBox(width: AppSpacing.lg),
-                Icon(sfIcon('magnifyingglass'), size: 25, color: c.textPrimary),
-                const SizedBox(width: AppSpacing.xl),
-                Icon(
-                  sfIcon('person.crop.circle'),
-                  size: 27,
-                  color: c.textPrimary,
                 ),
               ],
             ),
@@ -286,8 +278,8 @@ class _TopicChannelsViewState extends State<TopicChannelsView> {
         children: [
           _loading
               ? const CircularProgressIndicator()
-              : Icon(
-                  sfIcon('number.circle.fill'),
+              : FaIcon(
+                  FontAwesomeIcons.hashtag,
                   size: 46,
                   color: AppTheme.brand,
                 ),
@@ -425,25 +417,21 @@ class _TopicStats extends StatelessWidget {
           style: TextStyle(fontSize: 14, color: c.textTertiary),
         ),
         const Spacer(),
-        Icon(sfIcon('hand.thumbsup'), size: 24, color: c.textPrimary),
+        FaIcon(FontAwesomeIcons.thumbsUp, size: 24, color: c.textPrimary),
         const SizedBox(width: 5),
         Text(
           reactionCount == 0 ? '' : '$reactionCount',
           style: TextStyle(fontSize: 15, color: c.textPrimary),
         ),
         const SizedBox(width: 24),
-        Icon(sfIcon('bubble.left'), size: 24, color: c.textPrimary),
+        FaIcon(FontAwesomeIcons.comment, size: 24, color: c.textPrimary),
         const SizedBox(width: 5),
         Text(
           message.commentCount == 0 ? '' : '${message.commentCount}',
           style: TextStyle(fontSize: 15, color: c.textPrimary),
         ),
         const SizedBox(width: 24),
-        Icon(
-          sfIcon('arrowshape.turn.up.right'),
-          size: 27,
-          color: c.textPrimary,
-        ),
+        FaIcon(FontAwesomeIcons.share, size: 27, color: c.textPrimary),
       ],
     );
   }

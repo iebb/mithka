@@ -16,7 +16,7 @@ import '../components/toast.dart';
 import '../chat/chat_view.dart';
 import '../components/icon_grid.dart';
 import '../components/photo_avatar.dart';
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../profile/profile_detail_view.dart';
 import '../settings/edit_field_view.dart';
 import '../tdlib/json_helpers.dart';
@@ -289,8 +289,8 @@ class _AddPeopleViewState extends State<AddPeopleView> {
                 onTap: () => Navigator.of(context).pop(),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 14),
-                  child: Icon(
-                    sfIcon('chevron.left'),
+                  child: FaIcon(
+                    FontAwesomeIcons.chevronLeft,
                     size: 22,
                     color: c.textPrimary,
                   ),
@@ -356,7 +356,11 @@ class _AddPeopleViewState extends State<AddPeopleView> {
         ),
         child: Row(
           children: [
-            Icon(sfIcon('magnifyingglass'), size: 16, color: c.textTertiary),
+            FaIcon(
+              FontAwesomeIcons.magnifyingGlass,
+              size: 16,
+              color: c.textTertiary,
+            ),
             const SizedBox(width: 6),
             Expanded(
               child: TextField(
@@ -381,9 +385,9 @@ class _AddPeopleViewState extends State<AddPeopleView> {
   }
 
   Widget _optionsGrid() {
-    final options = <(String, String, VoidCallback)>[
-      ('person.2.fill', '创建群聊', _createGroup),
-      ('antenna.radiowaves.left.and.right', '创建频道', _createChannel),
+    final options = <(IconData, String, VoidCallback)>[
+      (FontAwesomeIcons.users.data, '创建群聊', _createGroup),
+      (FontAwesomeIcons.towerBroadcast.data, '创建频道', _createChannel),
     ];
     final c = context.colors;
     return SingleChildScrollView(
@@ -413,11 +417,7 @@ class _AddPeopleViewState extends State<AddPeopleView> {
                         color: AppTheme.brand.withValues(alpha: 0.12),
                         shape: BoxShape.circle,
                       ),
-                      child: Icon(
-                        sfIcon(o.$1),
-                        size: 22,
-                        color: AppTheme.brand,
-                      ),
+                      child: Icon(o.$1, size: 22, color: AppTheme.brand),
                     ),
                     const SizedBox(height: 6),
                     Text(
@@ -528,7 +528,11 @@ class _AddPeopleViewState extends State<AddPeopleView> {
                 ],
               ),
             ),
-            Icon(sfIcon('chevron.right'), size: 14, color: c.textTertiary),
+            FaIcon(
+              FontAwesomeIcons.chevronRight,
+              size: 14,
+              color: c.textTertiary,
+            ),
           ],
         ),
       ),

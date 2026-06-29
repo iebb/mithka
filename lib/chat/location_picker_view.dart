@@ -18,7 +18,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../components/ui_components.dart';
 import '../theme/app_theme.dart';
 
@@ -205,8 +205,8 @@ class _LocationPickerViewState extends State<LocationPickerView> {
                   child: Center(
                     child: Transform.translate(
                       offset: const Offset(0, -18),
-                      child: Icon(
-                        sfIcon('location.fill'),
+                      child: FaIcon(
+                        FontAwesomeIcons.locationDot,
                         size: 38,
                         color: AppTheme.brand,
                       ),
@@ -222,6 +222,7 @@ class _LocationPickerViewState extends State<LocationPickerView> {
                     child: Container(
                       width: 44,
                       height: 44,
+                      alignment: Alignment.center,
                       decoration: BoxDecoration(
                         color: c.card,
                         shape: BoxShape.circle,
@@ -233,8 +234,8 @@ class _LocationPickerViewState extends State<LocationPickerView> {
                           ),
                         ],
                       ),
-                      child: Icon(
-                        sfIcon('location.fill'),
+                      child: FaIcon(
+                        FontAwesomeIcons.locationDot,
                         size: 20,
                         color: AppTheme.brand,
                       ),
@@ -263,7 +264,7 @@ class _LocationPickerViewState extends State<LocationPickerView> {
       ),
       child: Row(
         children: [
-          Icon(sfIcon('mappin.and.ellipse'), size: 18, color: AppTheme.brand),
+          FaIcon(FontAwesomeIcons.locationPin, size: 18, color: AppTheme.brand),
           const SizedBox(width: 10),
           Expanded(
             child: Text(

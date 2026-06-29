@@ -8,7 +8,7 @@
 
 import 'package:flutter/material.dart';
 
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 
@@ -113,8 +113,8 @@ class _EditFieldViewState extends State<EditFieldView> {
                           onTap: () => _controller.clear(),
                           child: Padding(
                             padding: const EdgeInsets.only(left: 8, top: 2),
-                            child: Icon(
-                              sfIcon('xmark'),
+                            child: FaIcon(
+                              FontAwesomeIcons.xmark,
                               size: 17,
                               color: c.textTertiary,
                             ),
@@ -162,8 +162,8 @@ class _EditFieldViewState extends State<EditFieldView> {
                 onTap: () => Navigator.of(context).pop(),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 14),
-                  child: Icon(
-                    sfIcon('chevron.left'),
+                  child: FaIcon(
+                    FontAwesomeIcons.chevronLeft,
                     size: 22,
                     color: c.textPrimary,
                   ),

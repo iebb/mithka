@@ -49,3 +49,24 @@ class VideoSplitController extends ChangeNotifier {
     notifyListeners();
   }
 }
+
+class VideoPiPController extends ChangeNotifier {
+  VideoPiPController._();
+
+  static final VideoPiPController instance = VideoPiPController._();
+
+  VideoSplitSession? _session;
+  VideoSplitSession? get session => _session;
+  bool get isOpen => _session != null;
+
+  void play(VideoSplitSession session) {
+    _session = session;
+    notifyListeners();
+  }
+
+  void close() {
+    if (_session == null) return;
+    _session = null;
+    notifyListeners();
+  }
+}

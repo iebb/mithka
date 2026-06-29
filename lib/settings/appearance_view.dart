@@ -14,7 +14,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../components/ui_components.dart';
 import '../theme/app_theme.dart';
 import '../theme/system_font_catalog.dart';
@@ -67,7 +67,7 @@ class AppearanceView extends StatelessWidget {
                         builder: (_) => const FontSettingsView(),
                       ),
                     ),
-                    icon: sfIcon('textformat'),
+                    icon: FontAwesomeIcons.font.data,
                   ),
                 ]),
                 const SizedBox(height: AppSpacing.xl),
@@ -78,14 +78,14 @@ class AppearanceView extends StatelessWidget {
                 _card(context, [
                   _toggleRow(
                     context,
-                    sfIcon('person.2'),
+                    FontAwesomeIcons.users.data,
                     '群聊头像显示为圆形',
                     theme.circularGroupAvatars,
                     (v) => theme.circularGroupAvatars = v,
                   ),
                   _toggleRow(
                     context,
-                    sfIcon('eye.slash'),
+                    FontAwesomeIcons.eyeSlash.data,
                     '侧边栏隐藏手机号',
                     theme.hideSidebarPhone,
                     (v) => theme.hideSidebarPhone = v,
@@ -96,35 +96,35 @@ class AppearanceView extends StatelessWidget {
                 _card(context, [
                   _toggleRow(
                     context,
-                    sfIcon('person.text.rectangle'),
+                    FontAwesomeIcons.idBadge.data,
                     '群成员显示头衔',
                     theme.showMemberTags,
                     (v) => theme.showMemberTags = v,
                   ),
                   _toggleRow(
                     context,
-                    sfIcon('photo.stack'),
+                    FontAwesomeIcons.images.data,
                     '连续图片合并显示',
                     theme.groupImageMessages,
                     (v) => theme.groupImageMessages = v,
                   ),
                   _toggleRow(
                     context,
-                    sfIcon('paintpalette'),
+                    FontAwesomeIcons.palette.data,
                     '显示 Premium 名字颜色',
                     theme.showChatPremiumNameColors,
                     (v) => theme.showChatPremiumNameColors = v,
                   ),
                   _toggleRow(
                     context,
-                    sfIcon('face.smiling'),
+                    FontAwesomeIcons.solidFaceSmile.data,
                     '显示 Premium 状态表情',
                     theme.showChatPremiumEmojiStatus,
                     (v) => theme.showChatPremiumEmojiStatus = v,
                   ),
                   _toggleRow(
                     context,
-                    sfIcon('square.and.pencil'),
+                    FontAwesomeIcons.penToSquare.data,
                     '显示编辑和已读标记',
                     theme.showMessageMetaIndicators,
                     (v) => theme.showMessageMetaIndicators = v,
@@ -135,28 +135,28 @@ class AppearanceView extends StatelessWidget {
                 _card(context, [
                   _toggleRow(
                     context,
-                    sfIcon('line.3.horizontal.decrease'),
+                    FontAwesomeIcons.filter.data,
                     '顶部显示聊天分组筛选',
                     theme.showChatFolderFilter,
                     (v) => theme.showChatFolderFilter = v,
                   ),
                   _toggleRow(
                     context,
-                    sfIcon('magnifyingglass'),
+                    FontAwesomeIcons.magnifyingGlass.data,
                     '显示聊天列表搜索',
                     theme.showChatListSearch,
                     (v) => theme.showChatListSearch = v,
                   ),
                   _toggleRow(
                     context,
-                    sfIcon('paintpalette'),
+                    FontAwesomeIcons.palette.data,
                     '显示 Premium 名字颜色',
                     theme.showPremiumNameColors,
                     (v) => theme.showPremiumNameColors = v,
                   ),
                   _toggleRow(
                     context,
-                    sfIcon('face.smiling'),
+                    FontAwesomeIcons.solidFaceSmile.data,
                     '显示 Premium 状态表情',
                     theme.showPremiumEmojiStatus,
                     (v) => theme.showPremiumEmojiStatus = v,
@@ -179,14 +179,14 @@ class AppearanceView extends StatelessWidget {
                 _card(context, [
                   _toggleRow(
                     context,
-                    sfIcon('message'),
+                    FontAwesomeIcons.message.data,
                     '显示未读会话数',
                     theme.unreadBadgeShowsChatCount,
                     (v) => theme.unreadBadgeShowsChatCount = v,
                   ),
                   _toggleRow(
                     context,
-                    sfIcon('bell.fill'),
+                    FontAwesomeIcons.solidBell.data,
                     '超过 99 显示为 99+',
                     theme.capUnreadBadgeAt99,
                     (v) => theme.capUnreadBadgeAt99 = v,
@@ -234,6 +234,7 @@ class AppearanceView extends StatelessWidget {
               child: Container(
                 width: AppMetric.hitTarget - AppSpacing.xxs,
                 height: AppMetric.hitTarget - AppSpacing.xxs,
+                alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: color,
                   shape: BoxShape.circle,
@@ -252,7 +253,11 @@ class AppearanceView extends StatelessWidget {
                   ],
                 ),
                 child: color.toARGB32() == selected
-                    ? Icon(sfIcon('checkmark'), size: 18, color: Colors.white)
+                    ? FaIcon(
+                        FontAwesomeIcons.check,
+                        size: 18,
+                        color: Colors.white,
+                      )
                     : null,
               ),
             ),
@@ -273,7 +278,7 @@ class AppearanceView extends StatelessWidget {
         children: [
           _scaleSlider(
             context,
-            icon: sfIcon('textformat'),
+            icon: FontAwesomeIcons.font.data,
             title: '字体大小',
             value: theme.fontScale,
             min: ThemeController.minFontScale,
@@ -298,19 +303,19 @@ class AppearanceView extends StatelessWidget {
           const InsetDivider(leadingInset: 52),
           _scaleSlider(
             context,
-            icon: sfIcon('square.grid.2x2'),
+            icon: FontAwesomeIcons.tableCells.data,
             title: '界面大小',
             value: theme.interfaceScale,
             min: ThemeController.minInterfaceScale,
             max: ThemeController.maxInterfaceScale,
             divisions: 17,
-            leading: Icon(
-              sfIcon('square'),
+            leading: FaIcon(
+              FontAwesomeIcons.square,
               size: AppTextSize.body,
               color: c.textSecondary,
             ),
-            trailing: Icon(
-              sfIcon('square'),
+            trailing: FaIcon(
+              FontAwesomeIcons.square,
               size: AppIconSize.add,
               color: c.textPrimary,
             ),
@@ -450,8 +455,8 @@ class AppearanceView extends StatelessWidget {
               ),
               const Spacer(),
               if (selected)
-                Icon(
-                  sfIcon('checkmark'),
+                FaIcon(
+                  FontAwesomeIcons.check,
                   size: AppIconSize.lg,
                   color: AppTheme.brand,
                 ),
@@ -539,8 +544,8 @@ class AppearanceView extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: AppSpacing.sm),
-              Icon(
-                sfIcon('chevron.right'),
+              FaIcon(
+                FontAwesomeIcons.chevronRight,
                 size: AppIconSize.lg,
                 color: c.textTertiary,
               ),
@@ -754,13 +759,13 @@ class _FontCacheManagementViewState extends State<FontCacheManagementView> {
 
   Widget _actionCard(BuildContext context, _FontCacheSnapshot data) {
     return _cacheCard(context, [
-      _actionRow(context, '刷新缓存列表', sfIcon('arrow.clockwise'), () {
+      _actionRow(context, '刷新缓存列表', FontAwesomeIcons.arrowsRotate.data, () {
         setState(() => _snapshot = _loadSnapshot());
       }),
       _actionRow(
         context,
         '清理未使用字体',
-        sfIcon('trash'),
+        FontAwesomeIcons.trash.data,
         data.unusedCount == 0 ? null : () => _deleteUnused(data),
         destructive: true,
       ),
@@ -875,8 +880,8 @@ class _FontCacheManagementViewState extends State<FontCacheManagementView> {
                   ),
                 ),
                 const Spacer(),
-                Icon(
-                  sfIcon('chevron.right'),
+                FaIcon(
+                  FontAwesomeIcons.chevronRight,
                   size: AppIconSize.lg,
                   color: enabled && !destructive
                       ? c.textTertiary
@@ -944,8 +949,8 @@ class _FontCacheManagementViewState extends State<FontCacheManagementView> {
                 height: AppMetric.hitTarget,
                 child: Opacity(
                   opacity: entry.active ? 0.2 : 1,
-                  child: Icon(
-                    sfIcon('trash'),
+                  child: FaIcon(
+                    FontAwesomeIcons.trash,
                     size: AppIconSize.xl,
                     color: entry.active ? c.textTertiary : AppTheme.unreadBadge,
                   ),
@@ -1170,8 +1175,8 @@ class TextFontView extends StatelessWidget {
           children: [
             ReorderableDragStartListener(
               index: index,
-              child: Icon(
-                sfIcon('line.3.horizontal'),
+              child: FaIcon(
+                FontAwesomeIcons.bars,
                 size: AppIconSize.xl,
                 color: c.textTertiary,
               ),
@@ -1216,8 +1221,8 @@ class TextFontView extends StatelessWidget {
               child: SizedBox(
                 width: AppMetric.hitTarget,
                 height: AppMetric.hitTarget,
-                child: Icon(
-                  sfIcon('trash'),
+                child: FaIcon(
+                  FontAwesomeIcons.trash,
                   size: AppIconSize.xl,
                   color: c.textTertiary,
                 ),
@@ -1238,7 +1243,7 @@ class TextFontView extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
-          _actionRow(context, '添加文本字体', sfIcon('plus'), () async {
+          _actionRow(context, '添加文本字体', FontAwesomeIcons.plus.data, () async {
             final family = await Navigator.of(context).push<String>(
               MaterialPageRoute(builder: (_) => const FontAddView()),
             );
@@ -1250,7 +1255,7 @@ class TextFontView extends StatelessWidget {
             _actionRow(
               context,
               '清空文本字体',
-              sfIcon('xmark'),
+              FontAwesomeIcons.xmark.data,
               () => context.read<ThemeController>().setFontFallbackChain(
                 const <String>[],
               ),
@@ -1287,8 +1292,8 @@ class TextFontView extends StatelessWidget {
                 style: TextStyle(fontSize: AppTextSize.bodyLarge, color: color),
               ),
               const Spacer(),
-              Icon(
-                sfIcon('chevron.right'),
+              FaIcon(
+                FontAwesomeIcons.chevronRight,
                 size: AppIconSize.lg,
                 color: destructive ? Colors.transparent : c.textTertiary,
               ),
@@ -1407,8 +1412,8 @@ class EmojiFontPickerView extends StatelessWidget {
                 ),
               ),
               if (selected)
-                Icon(
-                  sfIcon('checkmark'),
+                FaIcon(
+                  FontAwesomeIcons.check,
                   size: AppIconSize.lg,
                   color: AppTheme.brand,
                 ),
@@ -2017,8 +2022,8 @@ class _MonospaceFontPickerViewState extends State<MonospaceFontPickerView> {
                 const SizedBox(width: AppSpacing.md),
               ],
               if (selected)
-                Icon(
-                  sfIcon('checkmark'),
+                FaIcon(
+                  FontAwesomeIcons.check,
                   size: AppIconSize.lg,
                   color: AppTheme.brand,
                 ),

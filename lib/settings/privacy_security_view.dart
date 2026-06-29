@@ -8,7 +8,7 @@
 
 import 'package:flutter/material.dart';
 
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../components/ui_components.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -97,7 +97,7 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
               children: [
                 _group('隐私', [
                   _Row(
-                    'clock',
+                    FontAwesomeIcons.clock.data,
                     '最后上线时间',
                     _ruleValue['userPrivacySettingShowStatus'] ?? '',
                     () {
@@ -110,7 +110,7 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
                     },
                   ),
                   _Row(
-                    'person.crop.circle',
+                    FontAwesomeIcons.circleUser.data,
                     '头像',
                     _ruleValue['userPrivacySettingShowProfilePhoto'] ?? '',
                     () {
@@ -123,7 +123,7 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
                     },
                   ),
                   _Row(
-                    'phone.fill',
+                    FontAwesomeIcons.phone.data,
                     '语音通话',
                     _ruleValue['userPrivacySettingAllowCalls'] ?? '',
                     () {
@@ -138,27 +138,27 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
                 ]),
                 const SizedBox(height: 14),
                 _group('安全', [
-                  _Row('lock.fill', '两步验证', _twoStep, null),
+                  _Row(FontAwesomeIcons.lock.data, '两步验证', _twoStep, null),
                   _Row(
-                    'iphone',
+                    FontAwesomeIcons.mobileScreenButton.data,
                     '已登录设备',
                     '',
                     () => _open(const ActiveSessionsView()),
                   ),
                   _Row(
-                    'person.2.fill',
+                    FontAwesomeIcons.users.data,
                     '黑名单',
                     '',
                     () => _open(const BlockedUsersView()),
                   ),
                   _Row(
-                    'nosign',
+                    FontAwesomeIcons.ban.data,
                     '关键词屏蔽',
                     '',
                     () => _open(const KeywordBlockerView()),
                   ),
                   _Row(
-                    'timer',
+                    FontAwesomeIcons.stopwatch.data,
                     '自动删除消息',
                     '',
                     () => _open(const AutoDeleteView()),
@@ -202,11 +202,7 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: Row(
                         children: [
-                          Icon(
-                            sfIcon(row.icon),
-                            size: 20,
-                            color: AppTheme.brand,
-                          ),
+                          Icon(row.icon, size: 20, color: AppTheme.brand),
                           const SizedBox(width: 14),
                           Text(
                             row.title,
@@ -226,8 +222,8 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
                             ),
                           if (row.onTap != null) ...[
                             const SizedBox(width: 6),
-                            Icon(
-                              sfIcon('chevron.right'),
+                            FaIcon(
+                              FontAwesomeIcons.chevronRight,
                               size: 14,
                               color: c.textTertiary,
                             ),
@@ -249,7 +245,7 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
 
 class _Row {
   _Row(this.icon, this.title, this.value, this.onTap);
-  final String icon;
+  final IconData icon;
   final String title;
   final String value;
   final VoidCallback? onTap;

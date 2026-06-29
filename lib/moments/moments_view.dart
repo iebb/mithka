@@ -23,7 +23,7 @@ import '../chat/video_player_view.dart';
 import '../chats/chat_list_view_model.dart';
 import '../components/toast.dart';
 import '../components/photo_avatar.dart';
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../settings/accent_color_picker_view.dart';
@@ -217,7 +217,7 @@ class _MomentsViewState extends State<MomentsView> {
                   child: Column(
                     children: [
                       _menuRow(
-                        icon: 'star',
+                        icon: FontAwesomeIcons.star.data,
                         iconColor: const Color(0xFFFFBE00),
                         title: '动态',
                         trailing: _channelActivity(),
@@ -230,7 +230,7 @@ class _MomentsViewState extends State<MomentsView> {
                         ),
                       ),
                       _menuRow(
-                        icon: 'sparkles',
+                        icon: FontAwesomeIcons.wandMagicSparkles.data,
                         iconColor: const Color(0xFFFFBE00),
                         title: '故事',
                         onTap: () => _openDetail(
@@ -251,7 +251,7 @@ class _MomentsViewState extends State<MomentsView> {
   }
 
   Widget _menuRow({
-    required String icon,
+    required IconData icon,
     required Color iconColor,
     required String title,
     required VoidCallback onTap,
@@ -266,10 +266,7 @@ class _MomentsViewState extends State<MomentsView> {
         child: Row(
           children: [
             const SizedBox(width: AppSpacing.xl),
-            SizedBox(
-              width: 36,
-              child: Icon(sfIcon(icon), size: 25, color: iconColor),
-            ),
+            SizedBox(width: 36, child: Icon(icon, size: 25, color: iconColor)),
             const SizedBox(width: AppSpacing.md),
             Text(
               title.l10n(context),
@@ -286,7 +283,11 @@ class _MomentsViewState extends State<MomentsView> {
               ),
             ],
             const SizedBox(width: AppSpacing.md),
-            Icon(sfIcon('chevron.right'), size: 18, color: c.textTertiary),
+            FaIcon(
+              FontAwesomeIcons.chevronRight,
+              size: 18,
+              color: c.textTertiary,
+            ),
             const SizedBox(width: AppSpacing.xl),
           ],
         ),
@@ -1272,8 +1273,8 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
                     padding: const EdgeInsets.fromLTRB(8, 8, 0, 8),
                     child: Icon(
                       _nonMutedOnly
-                          ? sfIcon('bell.fill')
-                          : sfIcon('bell.slash.fill'),
+                          ? FontAwesomeIcons.solidBell.data
+                          : FontAwesomeIcons.bellSlash.data,
                       size: 24,
                       color: _nonMutedOnly ? AppTheme.brand : c.textPrimary,
                     ),
@@ -1285,8 +1286,8 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
                   onTap: _openSearch,
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(12, 8, 0, 8),
-                    child: Icon(
-                      sfIcon('magnifyingglass'),
+                    child: FaIcon(
+                      FontAwesomeIcons.magnifyingGlass,
                       size: 25,
                       color: c.textPrimary,
                     ),
@@ -1358,13 +1359,21 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
             children: [
               Row(
                 children: [
-                  Icon(sfIcon('face.smiling'), size: 24, color: c.textPrimary),
+                  FaIcon(
+                    FontAwesomeIcons.solidFaceSmile,
+                    size: 24,
+                    color: c.textPrimary,
+                  ),
                   const SizedBox(width: 18),
-                  Icon(sfIcon('textformat'), size: 24, color: c.textPrimary),
+                  FaIcon(FontAwesomeIcons.font, size: 24, color: c.textPrimary),
                   const SizedBox(width: 18),
-                  Icon(sfIcon('photo'), size: 24, color: c.textPrimary),
+                  FaIcon(
+                    FontAwesomeIcons.image,
+                    size: 24,
+                    color: c.textPrimary,
+                  ),
                   const SizedBox(width: 18),
-                  Icon(sfIcon('at'), size: 24, color: c.textPrimary),
+                  FaIcon(FontAwesomeIcons.at, size: 24, color: c.textPrimary),
                   const Spacer(),
                   GestureDetector(
                     behavior: HitTestBehavior.opaque,
@@ -1372,8 +1381,8 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
                       setState(() => _replyPost = null);
                       _replyFocus.unfocus();
                     },
-                    child: Icon(
-                      sfIcon('xmark'),
+                    child: FaIcon(
+                      FontAwesomeIcons.xmark,
                       size: 20,
                       color: c.textTertiary,
                     ),
@@ -1412,8 +1421,8 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
                       onTap: _sendQuickReply,
                       child: Padding(
                         padding: const EdgeInsets.only(left: 10),
-                        child: Icon(
-                          sfIcon('paperplane.fill'),
+                        child: FaIcon(
+                          FontAwesomeIcons.solidPaperPlane,
                           size: 22,
                           color: AppTheme.brand,
                         ),
@@ -1438,8 +1447,8 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
         children: [
           loading
               ? const CircularProgressIndicator()
-              : Icon(
-                  sfIcon('antenna.radiowaves.left.and.right'),
+              : FaIcon(
+                  FontAwesomeIcons.towerBroadcast,
                   size: 46,
                   color: AppTheme.brand,
                 ),
@@ -1749,8 +1758,8 @@ class _ChannelMomentsSearchViewState extends State<ChannelMomentsSearchView> {
                 onTap: () => Navigator.of(context).pop(),
                 child: Padding(
                   padding: const EdgeInsets.only(right: 10),
-                  child: Icon(
-                    sfIcon('chevron.left'),
+                  child: FaIcon(
+                    FontAwesomeIcons.chevronLeft,
                     size: 22,
                     color: c.textPrimary,
                   ),
@@ -1766,8 +1775,8 @@ class _ChannelMomentsSearchViewState extends State<ChannelMomentsSearchView> {
                   ),
                   child: Row(
                     children: [
-                      Icon(
-                        sfIcon('magnifyingglass'),
+                      FaIcon(
+                        FontAwesomeIcons.magnifyingGlass,
                         size: 15,
                         color: c.textTertiary,
                       ),
@@ -1796,8 +1805,8 @@ class _ChannelMomentsSearchViewState extends State<ChannelMomentsSearchView> {
                             _controller.clear();
                             _onChanged('');
                           },
-                          child: Icon(
-                            sfIcon('xmark'),
+                          child: FaIcon(
+                            FontAwesomeIcons.xmark,
                             size: 16,
                             color: c.textTertiary,
                           ),
@@ -1945,8 +1954,8 @@ class _ChannelPostMenu extends StatelessWidget {
                 children: [
                   SizedBox(
                     width: AppMetric.menuIconSlot,
-                    child: Icon(
-                      sfIcon('arrow.right.square'),
+                    child: FaIcon(
+                      FontAwesomeIcons.rightFromBracket,
                       size: AppIconSize.lg + 1,
                       color: c.textPrimary,
                     ),
@@ -2267,7 +2276,11 @@ class _ChannelPostDetailViewState extends State<ChannelPostDetailView> {
               onTap: () => showChannelPostMenu(context, post),
               child: Padding(
                 padding: const EdgeInsets.all(4),
-                child: Icon(sfIcon('ellipsis'), size: 24, color: c.textPrimary),
+                child: FaIcon(
+                  FontAwesomeIcons.ellipsis,
+                  size: 24,
+                  color: c.textPrimary,
+                ),
               ),
             ),
           ),
@@ -2334,8 +2347,8 @@ class _ChannelPostDetailViewState extends State<ChannelPostDetailView> {
                     GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onTap: () => setState(() => _replyTo = null),
-                      child: Icon(
-                        sfIcon('xmark.circle.fill'),
+                      child: FaIcon(
+                        FontAwesomeIcons.solidCircleXmark,
                         size: 18,
                         color: c.textTertiary,
                       ),
@@ -2379,8 +2392,8 @@ class _ChannelPostDetailViewState extends State<ChannelPostDetailView> {
                     onTap: _sendReply,
                     child: Padding(
                       padding: const EdgeInsets.only(left: 10),
-                      child: Icon(
-                        sfIcon('paperplane.fill'),
+                      child: FaIcon(
+                        FontAwesomeIcons.solidPaperPlane,
                         size: 21,
                         color: AppTheme.brand.withValues(
                           alpha: _sending ? 0.45 : 1,
@@ -2590,8 +2603,8 @@ class _DetailCommentTile extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
-                      sfIcon('hand.thumbsup'),
+                    FaIcon(
+                      FontAwesomeIcons.thumbsUp,
                       size: 21,
                       color: c.textTertiary,
                     ),
@@ -2806,7 +2819,7 @@ class _ChannelPostComposerViewState extends State<ChannelPostComposerView> {
               width: AppMetric.mediaTile,
               height: AppMetric.mediaTile,
               color: c.searchFill,
-              child: Icon(sfIcon('photo'), color: c.textTertiary),
+              child: FaIcon(FontAwesomeIcons.image, color: c.textTertiary),
             ),
           ),
         ),
@@ -2819,12 +2832,13 @@ class _ChannelPostComposerViewState extends State<ChannelPostComposerView> {
             child: Container(
               width: AppMetric.overlayCloseButton,
               height: AppMetric.overlayCloseButton,
+              alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: Colors.black.withValues(alpha: 0.55),
                 shape: BoxShape.circle,
               ),
-              child: Icon(
-                sfIcon('xmark'),
+              child: FaIcon(
+                FontAwesomeIcons.xmark,
                 size: AppIconSize.xs,
                 color: Colors.white,
               ),
@@ -2850,7 +2864,11 @@ class _ChannelPostComposerViewState extends State<ChannelPostComposerView> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(sfIcon('photo'), size: AppIconSize.add, color: c.textTertiary),
+            FaIcon(
+              FontAwesomeIcons.image,
+              size: AppIconSize.add,
+              color: c.textTertiary,
+            ),
             const SizedBox(height: AppSpacing.md),
             Text('照片/视频', style: AppTextStyle.footnote(c.textTertiary)),
           ],
@@ -2911,8 +2929,8 @@ class _ChannelPostComposerViewState extends State<ChannelPostComposerView> {
     return SettingsCard(
       children: [
         SettingsRow(
-          leading: Icon(
-            sfIcon('paperplane'),
+          leading: FaIcon(
+            FontAwesomeIcons.paperPlane,
             size: AppIconSize.nav,
             color: c.textPrimary,
           ),
@@ -2924,8 +2942,8 @@ class _ChannelPostComposerViewState extends State<ChannelPostComposerView> {
         ),
         const InsetDivider(leadingInset: AppMetric.settingsIconDividerInset),
         SettingsSwitchRow(
-          leading: Icon(
-            sfIcon('bell'),
+          leading: FaIcon(
+            FontAwesomeIcons.bell,
             size: AppIconSize.nav,
             color: c.textPrimary,
           ),
@@ -3024,7 +3042,7 @@ class _ChannelPostComposerViewState extends State<ChannelPostComposerView> {
                 style: TextStyle(fontSize: 16, color: c.textPrimary),
               ),
               trailing: selected
-                  ? Icon(sfIcon('checkmark.circle'), color: AppTheme.brand)
+                  ? FaIcon(FontAwesomeIcons.circleCheck, color: AppTheme.brand)
                   : null,
               onTap: () => Navigator.of(context).pop(channel),
             );
@@ -3177,8 +3195,8 @@ class ChannelPostRow extends StatelessWidget {
                             onTap: () => showChannelPostMenu(context, post),
                             child: Padding(
                               padding: const EdgeInsets.fromLTRB(12, 4, 0, 4),
-                              child: Icon(
-                                sfIcon('ellipsis'),
+                              child: FaIcon(
+                                FontAwesomeIcons.ellipsis,
                                 size: 22,
                                 color: c.textTertiary,
                               ),
@@ -3598,12 +3616,13 @@ class _PostImageTile extends StatelessWidget {
                 child: Container(
                   width: 48,
                   height: 48,
+                  alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: Colors.black.withValues(alpha: 0.45),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(
-                    sfIcon('play.fill'),
+                  child: FaIcon(
+                    FontAwesomeIcons.play,
                     color: Colors.white,
                     size: 24,
                   ),
@@ -3657,8 +3676,8 @@ class _PostActions extends StatelessWidget {
           onTap: () => _react(context),
           child: Padding(
             padding: const EdgeInsets.all(4),
-            child: Icon(
-              sfIcon('hand.thumbsup'),
+            child: FaIcon(
+              FontAwesomeIcons.thumbsUp,
               size: 27,
               color: c.textPrimary,
             ),
@@ -3671,8 +3690,8 @@ class _PostActions extends StatelessWidget {
             onTap: () => onComment(post),
             child: Padding(
               padding: const EdgeInsets.all(4),
-              child: Icon(
-                sfIcon('bubble.left'),
+              child: FaIcon(
+                FontAwesomeIcons.comment,
                 size: 27,
                 color: c.textPrimary,
               ),
@@ -3685,8 +3704,8 @@ class _PostActions extends StatelessWidget {
           onTap: () => _forward(context),
           child: Padding(
             padding: const EdgeInsets.all(4),
-            child: Icon(
-              sfIcon('arrowshape.turn.up.right'),
+            child: FaIcon(
+              FontAwesomeIcons.share,
               size: 30,
               color: c.textPrimary,
             ),
@@ -3813,7 +3832,11 @@ class _StoriesViewState extends State<StoriesView> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(sfIcon('circle.dashed'), size: 46, color: AppTheme.brand),
+            FaIcon(
+              FontAwesomeIcons.circleNotch,
+              size: 46,
+              color: AppTheme.brand,
+            ),
             const SizedBox(height: 12),
             Text(
               '暂无好友动态'.l10n(context),

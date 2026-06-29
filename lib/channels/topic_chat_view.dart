@@ -13,7 +13,7 @@ import '../chat/chat_members_view.dart';
 import '../chat/rich_text_composer_view.dart';
 import '../components/confirm_dialog.dart';
 import '../components/photo_avatar.dart';
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
@@ -511,8 +511,8 @@ class _TopicChatViewState extends State<TopicChatView> {
               onTap: () => Navigator.of(context).pop(),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-                child: Icon(
-                  sfIcon('chevron.left'),
+                child: FaIcon(
+                  FontAwesomeIcons.chevronLeft,
                   size: 24,
                   color: c.textPrimary,
                 ),
@@ -554,8 +554,8 @@ class _TopicChatViewState extends State<TopicChatView> {
             onTap: _openSearch,
             child: Padding(
               padding: const EdgeInsets.all(4),
-              child: Icon(
-                sfIcon('magnifyingglass'),
+              child: FaIcon(
+                FontAwesomeIcons.magnifyingGlass,
                 size: 25,
                 color: c.textPrimary,
               ),
@@ -567,8 +567,8 @@ class _TopicChatViewState extends State<TopicChatView> {
             onTap: _openSettings,
             child: Padding(
               padding: const EdgeInsets.all(4),
-              child: Icon(
-                sfIcon('line.3.horizontal'),
+              child: FaIcon(
+                FontAwesomeIcons.bars,
                 size: 25,
                 color: c.textPrimary,
               ),
@@ -734,8 +734,8 @@ class _TopicChatViewState extends State<TopicChatView> {
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: _openComposer,
-                child: Icon(
-                  sfIcon('square.and.pencil'),
+                child: FaIcon(
+                  FontAwesomeIcons.penToSquare,
                   size: 26,
                   color: AppTheme.brand,
                 ),
@@ -877,7 +877,7 @@ class _PostActions extends StatelessWidget {
           behavior: HitTestBehavior.opaque,
           onTap: onLike,
           onLongPress: onPickReaction,
-          child: Icon(sfIcon('heart'), size: 24, color: c.textPrimary),
+          child: FaIcon(FontAwesomeIcons.heart, size: 24, color: c.textPrimary),
         ),
         const SizedBox(width: 5),
         Text(
@@ -888,7 +888,11 @@ class _PostActions extends StatelessWidget {
         GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: onComments,
-          child: Icon(sfIcon('bubble.left'), size: 24, color: c.textPrimary),
+          child: FaIcon(
+            FontAwesomeIcons.comment,
+            size: 24,
+            color: c.textPrimary,
+          ),
         ),
         const SizedBox(width: 5),
         Text(
@@ -896,11 +900,7 @@ class _PostActions extends StatelessWidget {
           style: TextStyle(fontSize: 14, color: c.textPrimary),
         ),
         const SizedBox(width: 24),
-        Icon(
-          sfIcon('arrowshape.turn.up.right'),
-          size: 25,
-          color: c.textPrimary,
-        ),
+        FaIcon(FontAwesomeIcons.share, size: 25, color: c.textPrimary),
       ],
     );
   }
@@ -1094,11 +1094,19 @@ class _TopicCommentsSheetState extends State<_TopicCommentsSheet> {
                     ),
                   ),
                   const SizedBox(width: 14),
-                  Icon(sfIcon('at'), size: 25, color: c.textPrimary),
+                  FaIcon(FontAwesomeIcons.at, size: 25, color: c.textPrimary),
                   const SizedBox(width: 14),
-                  Icon(sfIcon('face.smiling'), size: 25, color: c.textPrimary),
+                  FaIcon(
+                    FontAwesomeIcons.solidFaceSmile,
+                    size: 25,
+                    color: c.textPrimary,
+                  ),
                   const SizedBox(width: 14),
-                  Icon(sfIcon('photo'), size: 25, color: c.textPrimary),
+                  FaIcon(
+                    FontAwesomeIcons.image,
+                    size: 25,
+                    color: c.textPrimary,
+                  ),
                 ],
               ),
             ),
@@ -1161,7 +1169,7 @@ class _CommentRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          Icon(sfIcon('heart'), size: 22, color: c.textTertiary),
+          FaIcon(FontAwesomeIcons.heart, size: 22, color: c.textTertiary),
         ],
       ),
     );
@@ -1243,7 +1251,10 @@ class _TopicSearchViewState extends State<_TopicSearchView> {
               child: Row(
                 children: [
                   IconButton(
-                    icon: Icon(sfIcon('chevron.left'), color: c.textPrimary),
+                    icon: FaIcon(
+                      FontAwesomeIcons.chevronLeft,
+                      color: c.textPrimary,
+                    ),
                     onPressed: () => Navigator.of(context).pop(),
                   ),
                   Expanded(
@@ -1261,16 +1272,16 @@ class _TopicSearchViewState extends State<_TopicSearchView> {
                         style: TextStyle(fontSize: 16, color: c.textPrimary),
                         decoration: InputDecoration(
                           border: InputBorder.none,
-                          icon: Icon(
-                            sfIcon('magnifyingglass'),
+                          icon: FaIcon(
+                            FontAwesomeIcons.magnifyingGlass,
                             color: c.textTertiary,
                           ),
                           hintText: '搜索',
                           suffixIcon: _controller.text.isEmpty
                               ? null
                               : IconButton(
-                                  icon: Icon(
-                                    sfIcon('xmark.circle.fill'),
+                                  icon: FaIcon(
+                                    FontAwesomeIcons.solidCircleXmark,
                                     color: c.textTertiary,
                                   ),
                                   onPressed: () {
@@ -1299,7 +1310,7 @@ class _TopicSearchViewState extends State<_TopicSearchView> {
                   const Spacer(),
                   Text('最相关', style: TextStyle(color: c.textPrimary)),
                   const SizedBox(width: 3),
-                  Icon(sfIcon('arrow.up.arrow.down'), size: 17),
+                  FaIcon(FontAwesomeIcons.arrowsUpDown, size: 17),
                 ],
               ),
             ),
@@ -1332,7 +1343,7 @@ class _TopicSearchViewState extends State<_TopicSearchView> {
         children: [
           Text(text, style: TextStyle(fontSize: 14, color: c.textPrimary)),
           const SizedBox(width: 6),
-          Icon(sfIcon('chevron.down'), size: 14, color: c.textPrimary),
+          FaIcon(FontAwesomeIcons.chevronDown, size: 14, color: c.textPrimary),
         ],
       ),
     );
@@ -1629,7 +1640,10 @@ class _TopicChannelSettingsViewState extends State<_TopicChannelSettingsView> {
                 children: [
                   IconButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    icon: Icon(sfIcon('chevron.left'), color: c.textPrimary),
+                    icon: FaIcon(
+                      FontAwesomeIcons.chevronLeft,
+                      color: c.textPrimary,
+                    ),
                   ),
                   Expanded(
                     child: Text(
@@ -1644,10 +1658,7 @@ class _TopicChannelSettingsViewState extends State<_TopicChannelSettingsView> {
                   ),
                   IconButton(
                     onPressed: () {},
-                    icon: Icon(
-                      sfIcon('arrowshape.turn.up.right'),
-                      color: c.textPrimary,
-                    ),
+                    icon: FaIcon(FontAwesomeIcons.share, color: c.textPrimary),
                   ),
                 ],
               ),
@@ -1690,7 +1701,11 @@ class _TopicChannelSettingsViewState extends State<_TopicChannelSettingsView> {
                           ],
                         ),
                       ),
-                      Icon(sfIcon('qrcode'), size: 26, color: c.textPrimary),
+                      FaIcon(
+                        FontAwesomeIcons.qrcode,
+                        size: 26,
+                        color: c.textPrimary,
+                      ),
                     ],
                   ),
                   const SizedBox(height: 22),
@@ -1795,11 +1810,12 @@ class _TopicChannelSettingsViewState extends State<_TopicChannelSettingsView> {
                 Container(
                   width: 42,
                   height: 42,
+                  alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: c.searchFill,
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(sfIcon('plus'), color: c.textSecondary),
+                  child: FaIcon(FontAwesomeIcons.plus, color: c.textSecondary),
                 ),
                 const SizedBox(height: 6),
                 Text(

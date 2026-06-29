@@ -10,7 +10,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
 
@@ -85,7 +85,10 @@ class _FullImageViewerState extends State<FullImageViewer> {
               opacity: 1 - progress,
               child: Row(
                 children: [
-                  _circleIcon('xmark', () => Navigator.of(context).pop()),
+                  _circleFaIcon(
+                    FontAwesomeIcons.xmark,
+                    () => Navigator.of(context).pop(),
+                  ),
                   const Spacer(),
                   if (widget.items.length > 1)
                     Container(
@@ -116,16 +119,17 @@ class _FullImageViewerState extends State<FullImageViewer> {
     );
   }
 
-  Widget _circleIcon(String name, VoidCallback onTap) => GestureDetector(
+  Widget _circleFaIcon(FaIconData name, VoidCallback onTap) => GestureDetector(
     onTap: onTap,
     child: Container(
       width: 40,
       height: 40,
+      alignment: Alignment.center,
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.18),
         shape: BoxShape.circle,
       ),
-      child: Icon(sfIcon(name), size: 18, color: Colors.white),
+      child: FaIcon(name, size: 18, color: Colors.white),
     ),
   );
 }

@@ -15,7 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../components/photo_avatar.dart';
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../components/ui_components.dart';
 import '../profile/profile_detail_view.dart';
 import '../theme/app_theme.dart';
@@ -173,8 +173,8 @@ class _MessageBubbleState extends State<MessageBubble>
               padding: const EdgeInsets.only(right: 16),
               child: Opacity(
                 opacity: (math.min(1, math.max(0, -_swipeX) / 50)).toDouble(),
-                child: Icon(
-                  sfIcon('arrowshape.turn.up.left.fill'),
+                child: FaIcon(
+                  FontAwesomeIcons.reply,
                   size: 18,
                   color: AppTheme.brand,
                 ),
@@ -559,13 +559,13 @@ class _MessageBubbleState extends State<MessageBubble>
             mainAxisSize: MainAxisSize.min,
             children: [
               if (message.isEdited)
-                Icon(sfIcon('pencil'), size: 13, color: faint),
+                FaIcon(FontAwesomeIcons.pen, size: 13, color: faint),
               if (message.isEdited && outgoing) const SizedBox(width: 3),
               if (outgoing)
                 Icon(
                   widget.isRead
-                      ? sfIcon('checkmark.double')
-                      : sfIcon('checkmark'),
+                      ? FontAwesomeIcons.checkDouble.data
+                      : FontAwesomeIcons.check.data,
                   size: 14,
                   color: widget.isRead ? Colors.white : faint,
                 ),
@@ -890,11 +890,16 @@ class _MessageBubbleState extends State<MessageBubble>
               child: Container(
                 width: 38,
                 height: 38,
+                alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: Colors.black.withValues(alpha: 0.45),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(sfIcon('play.fill'), color: Colors.white, size: 20),
+                child: FaIcon(
+                  FontAwesomeIcons.play,
+                  color: Colors.white,
+                  size: 20,
+                ),
               ),
             ),
         ],
@@ -1034,7 +1039,11 @@ class _MessageBubbleState extends State<MessageBubble>
               color: const Color(0xFFFF3B30),
               borderRadius: BorderRadius.circular(4),
             ),
-            child: Icon(sfIcon('music.note'), color: Colors.white, size: 14),
+            child: FaIcon(
+              FontAwesomeIcons.music,
+              color: Colors.white,
+              size: 14,
+            ),
           ),
           const SizedBox(width: 7),
           Text(
@@ -1114,8 +1123,8 @@ class _MessageBubbleState extends State<MessageBubble>
         : Container(
             color: AppTheme.brand.withValues(alpha: 0.12),
             alignment: Alignment.center,
-            child: Icon(
-              sfIcon('music.note.list'),
+            child: FaIcon(
+              FontAwesomeIcons.compactDisc,
               size: 28,
               color: c.textSecondary,
             ),
@@ -1157,8 +1166,10 @@ class _MessageBubbleState extends State<MessageBubble>
                           valueColor: AlwaysStoppedAnimation(Colors.white),
                         ),
                       )
-                    : Icon(
-                        sfIcon(playing ? 'pause.fill' : 'play.fill'),
+                    : FaIcon(
+                        playing
+                            ? FontAwesomeIcons.pause
+                            : FontAwesomeIcons.play,
                         color: Colors.white,
                         size: 17,
                       ),
@@ -1217,7 +1228,9 @@ class _MessageBubbleState extends State<MessageBubble>
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              sfIcon(isVideo ? 'video.fill' : 'phone.fill'),
+              isVideo
+                  ? FontAwesomeIcons.video.data
+                  : FontAwesomeIcons.phone.data,
               size: 18,
               color: accent,
             ),
@@ -1245,8 +1258,8 @@ class _MessageBubbleState extends State<MessageBubble>
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(
-          sfIcon('arrowshape.turn.up.right.fill'),
+        FaIcon(
+          FontAwesomeIcons.share,
           size: 11,
           color: accent.withValues(alpha: 0.9),
         ),
@@ -1331,13 +1344,13 @@ class _MessageBubbleState extends State<MessageBubble>
           mainAxisSize: MainAxisSize.min,
           children: [
             if (widget.message.isEdited)
-              Icon(sfIcon('pencil'), size: 11, color: faint),
+              FaIcon(FontAwesomeIcons.pen, size: 11, color: faint),
             if (widget.message.isEdited && outgoing) const SizedBox(width: 4),
             if (outgoing)
               Icon(
                 widget.isRead
-                    ? sfIcon('checkmark.double')
-                    : sfIcon('checkmark'),
+                    ? FontAwesomeIcons.checkDouble.data
+                    : FontAwesomeIcons.check.data,
                 size: 13,
                 color: widget.isRead ? Colors.white : faint,
               ),
@@ -2042,11 +2055,16 @@ class _MessageBubbleState extends State<MessageBubble>
               child: Container(
                 width: 48,
                 height: 48,
+                alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: Colors.black.withValues(alpha: 0.45),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(sfIcon('play.fill'), color: Colors.white, size: 24),
+                child: FaIcon(
+                  FontAwesomeIcons.play,
+                  color: Colors.white,
+                  size: 24,
+                ),
               ),
             ),
             // Duration badge.
@@ -2186,8 +2204,10 @@ class _MessageBubbleState extends State<MessageBubble>
                             valueColor: AlwaysStoppedAnimation(fg),
                           ),
                         )
-                      : Icon(
-                          sfIcon(_voice.isPlaying ? 'pause.fill' : 'play.fill'),
+                      : FaIcon(
+                          _voice.isPlaying
+                              ? FontAwesomeIcons.pause
+                              : FontAwesomeIcons.play,
                           size: 14,
                           color: fg,
                         ),
@@ -2379,7 +2399,7 @@ class _MessageBubbleState extends State<MessageBubble>
         clipBehavior: Clip.none,
         alignment: Alignment.center,
         children: [
-          Icon(sfIcon('doc.fill'), size: 40, color: _fileColor(ext)),
+          FaIcon(FontAwesomeIcons.solidFile, size: 40, color: _fileColor(ext)),
           Positioned(
             bottom: 8,
             child: Text(
@@ -2403,7 +2423,11 @@ class _MessageBubbleState extends State<MessageBubble>
                 shape: BoxShape.circle,
                 border: Border.all(color: c.card, width: 1.5),
               ),
-              child: Icon(sfIcon('arrow.down'), size: 11, color: Colors.white),
+              child: FaIcon(
+                FontAwesomeIcons.arrowDown,
+                size: 11,
+                color: Colors.white,
+              ),
             ),
           ),
         ],
@@ -2521,8 +2545,8 @@ class _MapThumbnailState extends State<_MapThumbnail> {
           else
             Container(color: c.groupedBackground),
           Center(
-            child: Icon(
-              sfIcon('mappin.and.ellipse'),
+            child: FaIcon(
+              FontAwesomeIcons.locationPin,
               size: 32,
               color: AppTheme.brand,
             ),

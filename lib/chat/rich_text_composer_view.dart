@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../theme/app_theme.dart';
 
 class RichTextComposerResult {
@@ -178,7 +178,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
         alignment: Alignment.centerLeft,
         child: TextButton.icon(
           onPressed: _pickMedia,
-          icon: Icon(sfIcon('photo'), size: 20),
+          icon: FaIcon(FontAwesomeIcons.image, size: 20),
           label: const Text('照片/视频'),
         ),
       );
@@ -210,7 +210,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
           color: c.searchFill,
           borderRadius: BorderRadius.circular(8),
         ),
-        child: Icon(sfIcon('plus'), color: c.textTertiary),
+        child: FaIcon(FontAwesomeIcons.plus, color: c.textTertiary),
       ),
     );
   }
@@ -232,7 +232,9 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
               height: 84,
               color: c.searchFill,
               child: Icon(
-                isVideo ? sfIcon('play.rectangle') : sfIcon('photo'),
+                isVideo
+                    ? FontAwesomeIcons.solidFileVideo.data
+                    : FontAwesomeIcons.image.data,
                 color: c.textTertiary,
               ),
             ),
@@ -241,7 +243,11 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
         if (isVideo)
           Positioned.fill(
             child: Center(
-              child: Icon(sfIcon('play.fill'), color: Colors.white, size: 24),
+              child: FaIcon(
+                FontAwesomeIcons.play,
+                color: Colors.white,
+                size: 24,
+              ),
             ),
           ),
         Positioned(
@@ -253,11 +259,16 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
             child: Container(
               width: 22,
               height: 22,
+              alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: Colors.black.withValues(alpha: 0.55),
                 shape: BoxShape.circle,
               ),
-              child: Icon(sfIcon('xmark'), size: 12, color: Colors.white),
+              child: FaIcon(
+                FontAwesomeIcons.xmark,
+                size: 12,
+                color: Colors.white,
+              ),
             ),
           ),
         ),

@@ -12,7 +12,7 @@ import 'package:flutter/material.dart';
 
 import '../chat/chat_view.dart';
 import '../components/photo_avatar.dart';
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../components/ui_components.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -85,8 +85,8 @@ class _SearchViewState extends State<SearchView> {
                 onTap: () => Navigator.of(context).pop(),
                 child: Padding(
                   padding: const EdgeInsets.only(right: 10),
-                  child: Icon(
-                    sfIcon('chevron.left'),
+                  child: FaIcon(
+                    FontAwesomeIcons.chevronLeft,
                     size: 22,
                     color: c.textPrimary,
                   ),
@@ -102,8 +102,8 @@ class _SearchViewState extends State<SearchView> {
                   ),
                   child: Row(
                     children: [
-                      Icon(
-                        sfIcon('magnifyingglass'),
+                      FaIcon(
+                        FontAwesomeIcons.magnifyingGlass,
                         size: 15,
                         color: c.textTertiary,
                       ),
@@ -133,8 +133,8 @@ class _SearchViewState extends State<SearchView> {
                             setState(() => _query = '');
                             _vm.search('');
                           },
-                          child: Icon(
-                            sfIcon('xmark'),
+                          child: FaIcon(
+                            FontAwesomeIcons.xmark,
                             size: 16,
                             color: c.textTertiary,
                           ),

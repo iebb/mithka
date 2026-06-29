@@ -11,7 +11,7 @@ import 'package:provider/provider.dart';
 
 import '../chat/custom_emoji.dart';
 import '../components/photo_avatar.dart';
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../components/ui_components.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
@@ -183,16 +183,16 @@ class ChatRowView extends StatelessWidget {
             ),
             const Spacer(),
             if (chat.isMuted)
-              Icon(
-                sfIcon('bell.slash.fill'),
+              FaIcon(
+                FontAwesomeIcons.bellSlash,
                 size: AppIconSize.sm,
                 color: c.textTertiary,
               )
             else if (chat.isPinned)
               Transform.rotate(
                 angle: 0.785, // 45°
-                child: Icon(
-                  sfIcon('pin.fill'),
+                child: FaIcon(
+                  FontAwesomeIcons.thumbtack,
                   size: AppIconSize.xs,
                   color: c.textTertiary,
                 ),

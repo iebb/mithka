@@ -16,7 +16,7 @@ import 'package:video_player/video_player.dart';
 
 import 'chat_picker_view.dart';
 import '../components/photo_avatar.dart';
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../components/toast.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_image_loader.dart';
@@ -178,6 +178,36 @@ class _TdVideoStreamServer {
 enum VideoPlayerPresentation { fullscreen, embedded, pictureInPicture }
 
 enum VideoDisplayMode { fullscreen, pictureInPicture, split }
+
+class _VideoControlsLayout {
+  const _VideoControlsLayout({
+    required this.left,
+    required this.right,
+    required this.playButtonSize,
+    required this.playIconSize,
+    required this.playGap,
+    required this.timeGap,
+    required this.timeStyle,
+    required this.actionButtonSize,
+    required this.actionGap,
+    required this.bottomPadding,
+    required this.timelineCompact,
+    required this.timelineAtBottom,
+  });
+
+  final double left;
+  final double right;
+  final Size playButtonSize;
+  final double playIconSize;
+  final double playGap;
+  final double timeGap;
+  final TextStyle timeStyle;
+  final double actionButtonSize;
+  final double actionGap;
+  final double bottomPadding;
+  final bool timelineCompact;
+  final bool timelineAtBottom;
+}
 
 class VideoPlayerView extends StatefulWidget {
   const VideoPlayerView({
@@ -365,6 +395,12 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     });
   }
 
+  void _toggleMute() {
+    _hideTimer?.cancel();
+    _setVolume(_volume <= 0.01 ? 1 : 0);
+    _scheduleHide();
+  }
+
   String get _resumeKey {
     final chatId = widget.sourceChatId;
     final messageId = widget.messageId;
@@ -457,21 +493,9 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          if (ready)
-            // Scale the video to fill the screen as much as possible while
-            // keeping its aspect ratio (no crop).
-            Positioned.fill(
-              child: FittedBox(
-                fit: BoxFit.contain,
-                child: SizedBox(
-                  width: c.value.size.width,
-                  height: c.value.size.height,
-                  child: VideoPlayer(c),
-                ),
-              ),
-            )
-          else
-            _loadingState(),
+          if (ready) _videoFrame(c) else _loadingState(),
+          if (ready && _controlsVisible) ..._controlChromeBlocks(visible: true),
+          if (ready && _controlsVisible) _topTechnicalInfo(_debugText(c)),
           if (ready && _controlsVisible) ..._controls(c),
           if (!ready || _controlsVisible) _closeButton(),
         ],
@@ -486,16 +510,176 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     return Scaffold(backgroundColor: Colors.black, body: body);
   }
 
+  bool _usesCompactChrome(BuildContext context) {
+    return _usesPhoneFullscreen(context) ||
+        widget.presentation == VideoPlayerPresentation.embedded;
+  }
+
+  List<Widget> _controlChromeBlocks({required bool visible}) {
+    if (widget.presentation == VideoPlayerPresentation.pictureInPicture) {
+      return const [];
+    }
+    final media = MediaQuery.of(context);
+    final layout = _controlsLayout(context);
+    final topInset = widget.presentation == VideoPlayerPresentation.fullscreen
+        ? media.padding.top
+        : 0.0;
+    final bottomInset =
+        widget.presentation == VideoPlayerPresentation.fullscreen
+        ? media.padding.bottom
+        : 0.0;
+    final topHeight = topInset + (layout.timelineCompact ? 56 : 104);
+    final bottomHeight = bottomInset + _bottomChromeHeight(layout);
+    Widget block() {
+      return IgnorePointer(
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOut,
+          opacity: visible ? 1 : 0,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.66),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return [
+      Positioned(left: 0, top: 0, right: 0, height: topHeight, child: block()),
+      Positioned(
+        left: 0,
+        right: 0,
+        bottom: 0,
+        height: bottomHeight,
+        child: block(),
+      ),
+    ];
+  }
+
+  double _bottomChromeHeight(_VideoControlsLayout layout) {
+    final timelineHeight = layout.playButtonSize.height;
+    final secondaryHeight = layout.actionButtonSize;
+    final contentHeight = layout.timelineAtBottom
+        ? secondaryHeight + layout.actionGap + timelineHeight
+        : timelineHeight + 24 + secondaryHeight;
+    return layout.bottomPadding + contentHeight + 14;
+  }
+
+  double _controlsBottom(_VideoControlsLayout layout) {
+    final bottomInset =
+        widget.presentation == VideoPlayerPresentation.fullscreen
+        ? MediaQuery.of(context).padding.bottom
+        : 0.0;
+    return bottomInset + layout.bottomPadding;
+  }
+
+  Widget _topTechnicalInfo(Widget child) {
+    final media = MediaQuery.of(context);
+    final layout = _controlsLayout(context);
+    final topInset = widget.presentation == VideoPlayerPresentation.fullscreen
+        ? media.padding.top
+        : 0.0;
+    return Positioned(
+      top: topInset + (layout.timelineCompact ? 10 : 36),
+      right: layout.right,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: layout.timelineCompact ? 220 : 300,
+        ),
+        child: child,
+      ),
+    );
+  }
+
+  Widget _videoFrame(VideoPlayerController c) {
+    final videoSize = c.value.size;
+    if (videoSize.width <= 0 || videoSize.height <= 0) {
+      return const SizedBox.expand();
+    }
+    final alignment = _usesPhonePortraitVideoOffset(context)
+        ? const Alignment(0, -0.20)
+        : Alignment.center;
+    return Positioned.fill(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final fitted = _containSize(videoSize, constraints.biggest);
+          return Align(
+            alignment: alignment,
+            child: SizedBox(
+              width: fitted.width,
+              height: fitted.height,
+              child: VideoPlayer(c),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Size _containSize(Size content, Size bounds) {
+    if (bounds.width <= 0 || bounds.height <= 0) return Size.zero;
+    final scale = math.min(
+      bounds.width / content.width,
+      bounds.height / content.height,
+    );
+    return Size(content.width * scale, content.height * scale);
+  }
+
+  bool _usesPhoneFullscreen(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    return widget.presentation == VideoPlayerPresentation.fullscreen &&
+        size.shortestSide < 600;
+  }
+
+  bool _usesPhonePortraitVideoOffset(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    return _usesPhoneFullscreen(context) && size.height > size.width;
+  }
+
+  _VideoControlsLayout _controlsLayout(BuildContext context) {
+    final embedded = widget.presentation == VideoPlayerPresentation.embedded;
+    final compactChrome = _usesCompactChrome(context);
+    return _VideoControlsLayout(
+      left: embedded ? 12 : (compactChrome ? 14 : 54),
+      right: embedded ? 12 : (compactChrome ? 16 : 38),
+      playButtonSize: compactChrome ? const Size(44, 44) : const Size(78, 64),
+      playIconSize: compactChrome ? 30 : 58,
+      playGap: compactChrome ? 8 : 10,
+      timeGap: compactChrome ? 8 : 12,
+      timeStyle: TextStyle(
+        color: const Color(0xFF8E8E93),
+        fontSize: compactChrome ? 15 : 20,
+        fontWeight: FontWeight.w500,
+      ),
+      actionButtonSize: compactChrome ? 36 : 50,
+      actionGap: compactChrome ? 8 : 12,
+      bottomPadding: compactChrome ? 10 : 24,
+      timelineCompact: compactChrome,
+      timelineAtBottom: compactChrome,
+    );
+  }
+
   Widget _closeButton() {
     final pip = widget.presentation == VideoPlayerPresentation.pictureInPicture;
     final embedded = widget.presentation == VideoPlayerPresentation.embedded;
+    final phoneFullscreen = _usesPhoneFullscreen(context);
     return Positioned(
-      top: pip ? 3 : (embedded ? 8 : MediaQuery.of(context).padding.top + 28),
-      left: pip || embedded ? null : 30,
+      top: pip
+          ? 3
+          : (embedded
+                ? 8
+                : MediaQuery.of(context).padding.top +
+                      (phoneFullscreen ? 6 : 28)),
+      left: pip || embedded ? null : (phoneFullscreen ? 8 : 30),
       right: pip ? 4 : (embedded ? 8 : null),
       child: pip || embedded
-          ? _plainIconButton('xmark', _close, size: 34)
-          : _roundIconButton('chevron.left', _close, size: 58),
+          ? _plainIconButton(FontAwesomeIcons.xmark.data, _close, size: 34)
+          : _roundIconButton(
+              FontAwesomeIcons.chevronLeft.data,
+              _close,
+              size: phoneFullscreen ? 44 : 58,
+            ),
     );
   }
 
@@ -558,91 +742,98 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
               style: TextStyle(color: Colors.white, fontSize: 15),
             ),
           )
-        else
+        else ...[
+          ..._controlChromeBlocks(visible: true),
+          _topTechnicalInfo(_loadingDebugText()),
           ..._pendingControls(),
+        ],
       ],
     );
   }
 
   List<Widget> _pendingControls() {
     if (widget.compactControls) return _pendingCompactControls();
-    final bottom = MediaQuery.of(context).padding.bottom + 24;
+    final layout = _controlsLayout(context);
+    final bottom = _controlsBottom(layout);
+    final timeline = _pendingTimelineRow(layout);
+    final secondary = _pendingSecondaryControls(layout);
     return [
       Positioned(
-        left: widget.presentation == VideoPlayerPresentation.embedded ? 16 : 54,
-        right: widget.presentation == VideoPlayerPresentation.embedded
-            ? 16
-            : 38,
+        left: layout.left,
+        right: layout.right,
         bottom: bottom,
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                SizedBox(
-                  width: 78,
-                  height: 64,
-                  child: Icon(
-                    sfIcon('play.fill'),
-                    color: Colors.white.withValues(alpha: 0.7),
-                    size: 58,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                const Text(
-                  '00:00',
-                  style: TextStyle(
-                    color: Color(0xFF8E8E93),
-                    fontSize: 20,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(child: _loadingScrubber()),
-                const SizedBox(width: 12),
-                const Text(
-                  '--:--',
-                  style: TextStyle(
-                    color: Color(0xFF8E8E93),
-                    fontSize: 20,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(child: _loadingDebugText()),
-                _volumeSlider(),
-                const SizedBox(width: 12),
-                _speedMenu(),
-                const SizedBox(width: 12),
-                _roundIconButton('arrow.down.to.line', _downloadedNotice),
-                if (widget.onSwitchMode != null) ...[
-                  const SizedBox(width: 12),
-                  _modeSwitchButton(),
-                ],
-                const SizedBox(width: 12),
-                _roundIconButton('arrowshape.turn.up.right', _forwardVideo),
-              ],
-            ),
-          ],
+          children: layout.timelineAtBottom
+              ? [secondary, SizedBox(height: layout.actionGap), timeline]
+              : [timeline, const SizedBox(height: 24), secondary],
         ),
       ),
     ];
   }
 
+  Widget _pendingTimelineRow(_VideoControlsLayout layout) {
+    return Row(
+      children: [
+        SizedBox(
+          width: layout.playButtonSize.width,
+          height: layout.playButtonSize.height,
+          child: Center(
+            child: FaIcon(
+              FontAwesomeIcons.play,
+              color: Colors.white.withValues(alpha: 0.7),
+              size: layout.playIconSize,
+            ),
+          ),
+        ),
+        SizedBox(width: layout.playGap),
+        Text('00:00', style: layout.timeStyle),
+        SizedBox(width: layout.timeGap),
+        Expanded(child: _loadingScrubber(compact: layout.timelineCompact)),
+        SizedBox(width: layout.timeGap),
+        Text('--:--', style: layout.timeStyle),
+      ],
+    );
+  }
+
+  Widget _pendingSecondaryControls(_VideoControlsLayout layout) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        const Spacer(),
+        _secondaryVolumeSlider(layout),
+        SizedBox(width: layout.actionGap),
+        _speedMenu(compact: layout.timelineCompact),
+        SizedBox(width: layout.actionGap),
+        _roundIconButton(
+          FontAwesomeIcons.download.data,
+          _downloadedNotice,
+          size: layout.actionButtonSize,
+        ),
+        if (widget.onSwitchMode != null) ...[
+          SizedBox(width: layout.actionGap),
+          _modeSwitchButton(size: layout.actionButtonSize),
+        ],
+        SizedBox(width: layout.actionGap),
+        _roundIconButton(
+          FontAwesomeIcons.share.data,
+          _forwardVideo,
+          size: layout.actionButtonSize,
+        ),
+      ],
+    );
+  }
+
   List<Widget> _pendingCompactControls() {
+    final pip = widget.presentation == VideoPlayerPresentation.pictureInPicture;
     return [
       Center(
         child: SizedBox(
           width: 54,
           height: 54,
           child: Center(
-            child: Icon(
-              sfIcon('play.fill'),
+            child: FaIcon(
+              FontAwesomeIcons.play,
               color: Colors.white.withValues(alpha: 0.7),
               size: 32,
             ),
@@ -662,7 +853,10 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
             const SizedBox(width: 8),
             Expanded(child: _loadingScrubber(compact: true)),
             const SizedBox(width: 8),
-            SizedBox(width: 104, child: _volumeSlider(compact: true)),
+            if (pip)
+              _muteButton(size: 34)
+            else
+              SizedBox(width: 104, child: _volumeSlider(compact: true)),
             const SizedBox(width: 8),
             Text(
               _speedText(_speed),
@@ -672,11 +866,13 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                 fontWeight: FontWeight.w700,
               ),
             ),
-            if (widget.onSwitchMode != null &&
-                widget.presentation !=
-                    VideoPlayerPresentation.pictureInPicture) ...[
+            if (!pip && widget.onSwitchMode != null) ...[
               const SizedBox(width: 8),
               _modeSwitchButton(size: 34),
+            ],
+            if (pip && widget.onSwitchMode != null) ...[
+              const SizedBox(width: 8),
+              _fullscreenButton(size: 34),
             ],
           ],
         ),
@@ -736,82 +932,94 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
 
   List<Widget> _controls(VideoPlayerController c) {
     if (widget.compactControls) return _compactControls(c);
-    final value = c.value;
-    final playing = value.isPlaying;
-    final bottom = MediaQuery.of(context).padding.bottom + 24;
+    final layout = _controlsLayout(context);
+    final bottom = _controlsBottom(layout);
+    final timeline = _timelineRow(c, layout);
+    final secondary = _secondaryControls(c, layout);
     return [
       Positioned(
-        left: widget.presentation == VideoPlayerPresentation.embedded ? 16 : 54,
-        right: widget.presentation == VideoPlayerPresentation.embedded
-            ? 16
-            : 38,
+        left: layout.left,
+        right: layout.right,
         bottom: bottom,
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _togglePlay,
-                  child: SizedBox(
-                    width: 78,
-                    height: 64,
-                    child: Icon(
-                      sfIcon(playing ? 'pause.fill' : 'play.fill'),
-                      color: Colors.white,
-                      size: 58,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  _fmt(value.position),
-                  style: const TextStyle(
-                    color: Color(0xFF8E8E93),
-                    fontSize: 20,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(child: _scrubber(c)),
-                const SizedBox(width: 12),
-                Text(
-                  _fmt(value.duration),
-                  style: const TextStyle(
-                    color: Color(0xFF8E8E93),
-                    fontSize: 20,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(child: _debugText(c)),
-                _volumeSlider(),
-                const SizedBox(width: 12),
-                _speedMenu(),
-                const SizedBox(width: 12),
-                _roundIconButton('arrow.down.to.line', _downloadedNotice),
-                if (widget.onSwitchMode != null) ...[
-                  const SizedBox(width: 12),
-                  _modeSwitchButton(),
-                ],
-                const SizedBox(width: 12),
-                _roundIconButton('arrowshape.turn.up.right', _forwardVideo),
-              ],
-            ),
-          ],
+          children: layout.timelineAtBottom
+              ? [secondary, SizedBox(height: layout.actionGap), timeline]
+              : [timeline, const SizedBox(height: 24), secondary],
         ),
       ),
     ];
   }
 
+  Widget _timelineRow(VideoPlayerController c, _VideoControlsLayout layout) {
+    final value = c.value;
+    final playing = value.isPlaying;
+    return Row(
+      children: [
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: _togglePlay,
+          child: SizedBox(
+            width: layout.playButtonSize.width,
+            height: layout.playButtonSize.height,
+            child: Center(
+              child: FaIcon(
+                playing ? FontAwesomeIcons.pause : FontAwesomeIcons.play,
+                color: Colors.white,
+                size: layout.playIconSize,
+              ),
+            ),
+          ),
+        ),
+        SizedBox(width: layout.playGap),
+        Text(_fmt(value.position), style: layout.timeStyle),
+        SizedBox(width: layout.timeGap),
+        Expanded(child: _scrubber(c, compact: layout.timelineCompact)),
+        SizedBox(width: layout.timeGap),
+        Text(_fmt(value.duration), style: layout.timeStyle),
+      ],
+    );
+  }
+
+  Widget _secondaryControls(
+    VideoPlayerController c,
+    _VideoControlsLayout layout,
+  ) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        const Spacer(),
+        _secondaryVolumeSlider(layout),
+        SizedBox(width: layout.actionGap),
+        _speedMenu(compact: layout.timelineCompact),
+        SizedBox(width: layout.actionGap),
+        _roundIconButton(
+          FontAwesomeIcons.download.data,
+          _downloadedNotice,
+          size: layout.actionButtonSize,
+        ),
+        if (widget.onSwitchMode != null) ...[
+          SizedBox(width: layout.actionGap),
+          _modeSwitchButton(size: layout.actionButtonSize),
+        ],
+        SizedBox(width: layout.actionGap),
+        _roundIconButton(
+          FontAwesomeIcons.share.data,
+          _forwardVideo,
+          size: layout.actionButtonSize,
+        ),
+      ],
+    );
+  }
+
+  Widget _secondaryVolumeSlider(_VideoControlsLayout layout) {
+    if (!layout.timelineCompact) return _volumeSlider();
+    return SizedBox(width: 82, child: _volumeSlider(compact: true));
+  }
+
   List<Widget> _compactControls(VideoPlayerController c) {
     final value = c.value;
+    final pip = widget.presentation == VideoPlayerPresentation.pictureInPicture;
     return [
       Center(
         child: GestureDetector(
@@ -821,8 +1029,10 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
             width: 54,
             height: 54,
             child: Center(
-              child: Icon(
-                sfIcon(value.isPlaying ? 'pause.fill' : 'play.fill'),
+              child: FaIcon(
+                value.isPlaying
+                    ? FontAwesomeIcons.pause
+                    : FontAwesomeIcons.play,
                 color: Colors.white,
                 size: 32,
               ),
@@ -836,9 +1046,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
         bottom: 10,
         child: Row(
           children: [
-            if (widget.onSwitchMode != null &&
-                widget.presentation !=
-                    VideoPlayerPresentation.pictureInPicture) ...[
+            if (!pip && widget.onSwitchMode != null) ...[
               _modeSwitchButton(size: 34),
               const SizedBox(width: 8),
             ],
@@ -849,7 +1057,10 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
             const SizedBox(width: 8),
             Expanded(child: _scrubber(c)),
             const SizedBox(width: 8),
-            SizedBox(width: 104, child: _volumeSlider(compact: true)),
+            if (pip)
+              _muteButton(size: 34)
+            else
+              SizedBox(width: 104, child: _volumeSlider(compact: true)),
             const SizedBox(width: 8),
             Text(
               _speedText(_speed),
@@ -859,27 +1070,31 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                 fontWeight: FontWeight.w700,
               ),
             ),
+            if (pip && widget.onSwitchMode != null) ...[
+              const SizedBox(width: 8),
+              _fullscreenButton(size: 34),
+            ],
           ],
         ),
       ),
     ];
   }
 
-  Widget _scrubber(VideoPlayerController c) {
+  Widget _scrubber(VideoPlayerController c, {bool compact = false}) {
     final value = c.value;
     final duration = value.duration.inMilliseconds;
     final position = value.position.inMilliseconds.clamp(0, duration);
     final loaded = _loadedFraction(value);
     return SizedBox(
-      height: 34,
+      height: compact ? 28 : 34,
       child: Stack(
         alignment: Alignment.centerLeft,
         children: [
           Positioned(
-            left: 24,
-            right: 24,
+            left: compact ? 0 : 24,
+            right: compact ? 0 : 24,
             child: Container(
-              height: 4,
+              height: compact ? 2.5 : 4,
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.16),
                 borderRadius: BorderRadius.circular(3),
@@ -887,13 +1102,13 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
             ),
           ),
           Positioned(
-            left: 24,
-            right: 24,
+            left: compact ? 0 : 24,
+            right: compact ? 0 : 24,
             child: FractionallySizedBox(
               alignment: Alignment.centerLeft,
               widthFactor: loaded,
               child: Container(
-                height: 4,
+                height: compact ? 2.5 : 4,
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.42),
                   borderRadius: BorderRadius.circular(3),
@@ -903,9 +1118,13 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
           ),
           SliderTheme(
             data: SliderTheme.of(context).copyWith(
-              trackHeight: 4,
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
-              overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
+              trackHeight: compact ? 2.5 : 4,
+              thumbShape: RoundSliderThumbShape(
+                enabledThumbRadius: compact ? 5 : 8,
+              ),
+              overlayShape: RoundSliderOverlayShape(
+                overlayRadius: compact ? 10 : 16,
+              ),
               activeTrackColor: Colors.white,
               inactiveTrackColor: Colors.transparent,
               disabledInactiveTrackColor: Colors.transparent,
@@ -959,13 +1178,19 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
         height: 1.25,
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.end,
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
             '${size.width.round()}x${size.height.round()} · ${_speedText(_speed)}',
+            textAlign: TextAlign.right,
           ),
-          Text(fileLine, maxLines: 1, overflow: TextOverflow.ellipsis),
+          Text(
+            fileLine,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.right,
+          ),
         ],
       ),
     );
@@ -983,19 +1208,25 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
         height: 1.25,
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.end,
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
             '${widget.width ?? 0}x${widget.height ?? 0} · ${_speedText(_speed)}',
+            textAlign: TextAlign.right,
           ),
-          Text(text, maxLines: 1, overflow: TextOverflow.ellipsis),
+          Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.right,
+          ),
         ],
       ),
     );
   }
 
-  Widget _speedMenu() {
+  Widget _speedMenu({bool compact = false}) {
     return PopupMenuButton<double>(
       initialValue: _speed,
       tooltip: '播放速度',
@@ -1015,14 +1246,14 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
           ),
       ],
       child: SizedBox(
-        height: 50,
-        width: 62,
+        height: compact ? 36 : 50,
+        width: compact ? 44 : 62,
         child: Center(
           child: Text(
             _speedText(_speed),
-            style: const TextStyle(
+            style: TextStyle(
               color: Colors.white,
-              fontSize: 16,
+              fontSize: compact ? 13 : 16,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -1032,21 +1263,29 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   }
 
   Widget _volumeSlider({bool compact = false}) {
-    final iconSize = compact ? 14.0 : 18.0;
+    final iconSize = compact ? 15.0 : 18.0;
     return SizedBox(
       width: compact ? null : 152,
-      height: compact ? 28 : 38,
+      height: compact ? 36 : 38,
       child: Row(
         mainAxisSize: compact ? MainAxisSize.max : MainAxisSize.min,
         children: [
-          Icon(
-            sfIcon(
-              _volume <= 0.01 ? 'speaker.slash.fill' : 'speaker.wave.2.fill',
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _toggleMute,
+            child: SizedBox(
+              width: compact ? 24 : 28,
+              height: compact ? 36 : 38,
+              child: Center(
+                child: Icon(
+                  _volumeIconData,
+                  color: Colors.white,
+                  size: iconSize,
+                ),
+              ),
             ),
-            color: Colors.white,
-            size: iconSize,
           ),
-          SizedBox(width: compact ? 4 : 7),
+          SizedBox(width: compact ? 0 : 7),
           Expanded(
             child: SliderTheme(
               data: SliderTheme.of(context).copyWith(
@@ -1077,6 +1316,23 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     );
   }
 
+  IconData get _volumeIconData => _volume <= 0.01
+      ? FontAwesomeIcons.volumeXmark.data
+      : FontAwesomeIcons.volumeHigh.data;
+
+  Widget _muteButton({required double size}) {
+    return _roundIconButton(_volumeIconData, _toggleMute, size: size);
+  }
+
+  Widget _fullscreenButton({required double size}) {
+    final callback = widget.onSwitchMode;
+    if (callback == null) return const SizedBox.shrink();
+    return _roundIconButton(FontAwesomeIcons.expand.data, () {
+      callback(VideoDisplayMode.fullscreen);
+      _scheduleHide();
+    }, size: size);
+  }
+
   Widget _modeSwitchButton({double size = 50}) {
     final callback = widget.onSwitchMode;
     if (callback == null) return const SizedBox.shrink();
@@ -1101,8 +1357,8 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
         width: size,
         height: size,
         child: Center(
-          child: Icon(
-            sfIcon('rectangle.split.2x1'),
+          child: FaIcon(
+            FontAwesomeIcons.tableColumns,
             color: Colors.white.withValues(alpha: 0.92),
             size: size * 0.5,
           ),
@@ -1122,7 +1378,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
           SizedBox(
             width: 20,
             child: mode == widget.currentMode
-                ? Icon(sfIcon('checkmark'), size: 14, color: Colors.white)
+                ? FaIcon(FontAwesomeIcons.check, size: 14, color: Colors.white)
                 : null,
           ),
           const SizedBox(width: 8),
@@ -1132,7 +1388,11 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     );
   }
 
-  Widget _roundIconButton(String icon, VoidCallback onTap, {double size = 50}) {
+  Widget _roundIconButton(
+    IconData icon,
+    VoidCallback onTap, {
+    double size = 50,
+  }) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
@@ -1141,7 +1401,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
         height: size,
         child: Center(
           child: Icon(
-            sfIcon(icon),
+            icon,
             color: Colors.white.withValues(alpha: 0.92),
             size: size * 0.5,
           ),
@@ -1150,7 +1410,11 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     );
   }
 
-  Widget _plainIconButton(String icon, VoidCallback onTap, {double size = 34}) {
+  Widget _plainIconButton(
+    IconData icon,
+    VoidCallback onTap, {
+    double size = 34,
+  }) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
@@ -1158,7 +1422,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
         width: size,
         height: size,
         child: Icon(
-          sfIcon(icon),
+          icon,
           color: Colors.white.withValues(alpha: 0.92),
           size: size * 0.58,
         ),

@@ -10,7 +10,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../components/ui_components.dart';
 import '../theme/app_theme.dart';
 import 'edit_field_view.dart';
@@ -36,7 +36,7 @@ class TranslationSettingsView extends StatelessWidget {
                 _card(context, [
                   _switchRow(
                     context,
-                    icon: 'character.book.closed',
+                    icon: FontAwesomeIcons.language.data,
                     title: '消息翻译',
                     value: translation.enabled,
                     onChanged: (v) => translation.enabled = v,
@@ -46,7 +46,7 @@ class TranslationSettingsView extends StatelessWidget {
                 _card(context, [
                   _navRow(
                     context,
-                    icon: 'network',
+                    icon: FontAwesomeIcons.networkWired.data,
                     title: '翻译服务',
                     trailing: translation.providerLabel,
                     onTap: () => _showProviderPicker(context),
@@ -54,7 +54,7 @@ class TranslationSettingsView extends StatelessWidget {
                   const InsetDivider(leadingInset: 56),
                   _navRow(
                     context,
-                    icon: 'globe',
+                    icon: FontAwesomeIcons.globe.data,
                     title: '目标语言',
                     trailing: translation.targetLanguageLabel,
                     onTap: () => _showTargetPicker(context),
@@ -64,7 +64,7 @@ class TranslationSettingsView extends StatelessWidget {
                 _card(context, [
                   _navRow(
                     context,
-                    icon: 'link',
+                    icon: FontAwesomeIcons.link.data,
                     title: 'Lingva 地址',
                     trailing: _endpointLabel(translation.lingvaEndpoint),
                     onTap: () => _editEndpoint(
@@ -78,7 +78,7 @@ class TranslationSettingsView extends StatelessWidget {
                   const InsetDivider(leadingInset: 56),
                   _navRow(
                     context,
-                    icon: 'link',
+                    icon: FontAwesomeIcons.link.data,
                     title: 'LibreTranslate 地址',
                     trailing: _endpointLabel(
                       translation.libreTranslateEndpoint,
@@ -95,7 +95,7 @@ class TranslationSettingsView extends StatelessWidget {
                   const InsetDivider(leadingInset: 56),
                   _navRow(
                     context,
-                    icon: 'key',
+                    icon: FontAwesomeIcons.key.data,
                     title: 'LibreTranslate API Key',
                     trailing: translation.libreTranslateApiKey.isEmpty
                         ? '未设置'
@@ -167,7 +167,7 @@ class TranslationSettingsView extends StatelessWidget {
                             children: [
                               _iconBadge(
                                 context,
-                                'network',
+                                FontAwesomeIcons.networkWired.data,
                                 const Color(0xFF34A2DF),
                               ),
                               const SizedBox(width: 12),
@@ -181,8 +181,8 @@ class TranslationSettingsView extends StatelessWidget {
                                 ),
                               ),
                               if (selected)
-                                Icon(
-                                  sfIcon('checkmark'),
+                                FaIcon(
+                                  FontAwesomeIcons.check,
                                   size: 18,
                                   color: AppTheme.brand,
                                 ),
@@ -262,7 +262,11 @@ class TranslationSettingsView extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: Row(
                         children: [
-                          _iconBadge(context, 'globe', const Color(0xFF34A2DF)),
+                          _iconBadge(
+                            context,
+                            FontAwesomeIcons.globe.data,
+                            const Color(0xFF34A2DF),
+                          ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(
@@ -274,8 +278,8 @@ class TranslationSettingsView extends StatelessWidget {
                             ),
                           ),
                           if (selected)
-                            Icon(
-                              sfIcon('checkmark'),
+                            FaIcon(
+                              FontAwesomeIcons.check,
                               size: 18,
                               color: AppTheme.brand,
                             ),
@@ -303,7 +307,7 @@ class TranslationSettingsView extends StatelessWidget {
 
   Widget _switchRow(
     BuildContext context, {
-    required String icon,
+    required IconData icon,
     required String title,
     required bool value,
     required ValueChanged<bool> onChanged,
@@ -332,7 +336,7 @@ class TranslationSettingsView extends StatelessWidget {
 
   Widget _navRow(
     BuildContext context, {
-    required String icon,
+    required IconData icon,
     required String title,
     required String trailing,
     required VoidCallback? onTap,
@@ -372,8 +376,8 @@ class TranslationSettingsView extends StatelessWidget {
               if (onTap != null)
                 SizedBox(
                   width: 14,
-                  child: Icon(
-                    sfIcon('chevron.right'),
+                  child: FaIcon(
+                    FontAwesomeIcons.chevronRight,
                     size: 14,
                     color: c.textTertiary,
                   ),
@@ -385,7 +389,7 @@ class TranslationSettingsView extends StatelessWidget {
     );
   }
 
-  Widget _iconBadge(BuildContext context, String icon, Color color) =>
+  Widget _iconBadge(BuildContext context, IconData icon, Color color) =>
       Container(
         width: 28,
         height: 28,
@@ -393,6 +397,6 @@ class TranslationSettingsView extends StatelessWidget {
           color: color,
           borderRadius: BorderRadius.circular(7),
         ),
-        child: Icon(sfIcon(icon), size: 15, color: Colors.white),
+        child: Icon(icon, size: 15, color: Colors.white),
       );
 }

@@ -9,7 +9,7 @@
 
 import 'package:flutter/material.dart';
 
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../components/ui_components.dart';
 import '../theme/app_theme.dart';
 
@@ -127,6 +127,7 @@ class _AccentColorPickerViewState extends State<AccentColorPickerView> {
         child: Container(
           width: 40,
           height: 40,
+          alignment: Alignment.center,
           decoration: BoxDecoration(
             color: color ?? c.groupedBackground,
             shape: BoxShape.circle,
@@ -135,13 +136,17 @@ class _AccentColorPickerViewState extends State<AccentColorPickerView> {
                 : null,
           ),
           child: selected
-              ? Icon(
-                  sfIcon('checkmark'),
+              ? FaIcon(
+                  FontAwesomeIcons.check,
                   size: 20,
                   color: color == null ? c.textSecondary : Colors.white,
                 )
               : (color == null
-                    ? Icon(sfIcon('nosign'), size: 18, color: c.textTertiary)
+                    ? FaIcon(
+                        FontAwesomeIcons.ban,
+                        size: 18,
+                        color: c.textTertiary,
+                      )
                     : null),
         ),
       ),

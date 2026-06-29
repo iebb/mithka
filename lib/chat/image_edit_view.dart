@@ -6,7 +6,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../theme/app_theme.dart';
 
 enum _EditTool { crop, mask, draw, text }
@@ -581,7 +581,7 @@ class _ImageEditViewState extends State<ImageEditView> {
         children: [
           IconButton(
             onPressed: () => Navigator.of(context).pop(),
-            icon: Icon(sfIcon('xmark'), color: Colors.white),
+            icon: FaIcon(FontAwesomeIcons.xmark, color: Colors.white),
           ),
           Text(
             widget.avatar ? '裁剪头像' : '编辑图片',
@@ -595,17 +595,14 @@ class _ImageEditViewState extends State<ImageEditView> {
           IconButton(
             tooltip: '重置裁剪',
             onPressed: _resetCrop,
-            icon: Icon(
-              sfIcon('arrow.triangle.2.circlepath'),
-              color: Colors.white,
-            ),
+            icon: FaIcon(FontAwesomeIcons.rotate, color: Colors.white),
           ),
           if (!widget.avatar)
             IconButton(
               tooltip: '旋转',
               onPressed: _saving ? null : _rotateRight,
-              icon: Icon(
-                sfIcon('rotate.right'),
+              icon: FaIcon(
+                FontAwesomeIcons.rotateRight,
                 color: _saving ? Colors.white38 : Colors.white,
               ),
             ),
@@ -640,17 +637,21 @@ class _ImageEditViewState extends State<ImageEditView> {
           children: [
             Row(
               children: [
-                _toolButton(_EditTool.crop, sfIcon('crop'), '裁剪'),
+                _toolButton(_EditTool.crop, FontAwesomeIcons.crop.data, '裁剪'),
                 if (!widget.avatar) ...[
-                  _toolButton(_EditTool.mask, sfIcon('drop'), '遮挡'),
-                  _toolButton(_EditTool.draw, sfIcon('pencil'), '画笔'),
-                  _toolButton(_EditTool.text, sfIcon('textformat'), '文字'),
+                  _toolButton(
+                    _EditTool.mask,
+                    FontAwesomeIcons.droplet.data,
+                    '遮挡',
+                  ),
+                  _toolButton(_EditTool.draw, FontAwesomeIcons.pen.data, '画笔'),
+                  _toolButton(_EditTool.text, FontAwesomeIcons.font.data, '文字'),
                 ],
                 const Spacer(),
                 IconButton(
                   onPressed: _strokes.isEmpty && _labels.isEmpty ? null : _undo,
-                  icon: Icon(
-                    sfIcon('arrow.counterclockwise'),
+                  icon: FaIcon(
+                    FontAwesomeIcons.rotateLeft,
                     color: _strokes.isEmpty && _labels.isEmpty
                         ? Colors.white30
                         : Colors.white,
@@ -674,7 +675,7 @@ class _ImageEditViewState extends State<ImageEditView> {
       child: Row(
         children: [
           Icon(
-            isMask ? sfIcon('drop') : sfIcon('pencil'),
+            isMask ? FontAwesomeIcons.droplet.data : FontAwesomeIcons.pen.data,
             size: 16,
             color: Colors.white70,
           ),

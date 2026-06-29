@@ -37,13 +37,13 @@ class FeatureSettingsView extends StatelessWidget {
                 SettingsCard(
                   children: [
                     SettingsSwitchRow(
-                      title: '显示频道',
+                      title: '频道',
                       value: theme.showChannelsTab,
                       onChanged: (value) => theme.showChannelsTab = value,
                     ),
                     const InsetDivider(leadingInset: 16),
                     SettingsSwitchRow(
-                      title: '显示底部动态',
+                      title: '动态',
                       value: theme.showMomentsTab,
                       onChanged: (value) => theme.showMomentsTab = value,
                     ),

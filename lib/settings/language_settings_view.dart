@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_locale_controller.dart';
 import '../l10n/app_localizations.dart';
@@ -86,7 +86,7 @@ class _LanguageRow extends StatelessWidget {
                 ),
               ),
               if (selected)
-                Icon(sfIcon('checkmark'), size: 18, color: AppTheme.brand),
+                FaIcon(FontAwesomeIcons.check, size: 18, color: AppTheme.brand),
             ],
           ),
         ),

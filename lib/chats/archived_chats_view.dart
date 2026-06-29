@@ -10,7 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../chat/chat_view.dart';
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../components/ui_components.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
@@ -51,12 +51,13 @@ class GroupAssistantRow extends StatelessWidget {
                 Container(
                   width: avatarSize,
                   height: avatarSize,
+                  alignment: Alignment.center,
                   decoration: const BoxDecoration(
                     color: Color(0xFFFF9D2E),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(
-                    sfIcon('message.fill'),
+                  child: FaIcon(
+                    FontAwesomeIcons.solidMessage,
                     size: theme.scaled(22),
                     color: Colors.white,
                   ),

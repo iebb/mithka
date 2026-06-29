@@ -17,7 +17,7 @@ import '../theme/date_text.dart';
 import '../theme/theme_controller.dart';
 import '../tdlib/td_models.dart';
 import '../l10n/app_localizations.dart';
-import 'sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 /// Flat reference-style header bar: optional back chevron, leading title,
 /// optional trailing icon.
@@ -33,7 +33,7 @@ class NavHeader extends StatelessWidget {
 
   final String title;
   final VoidCallback? onBack;
-  final String? trailingIcon;
+  final IconData? trailingIcon;
   final VoidCallback? onTrailing;
   final Widget? trailing;
 
@@ -61,8 +61,8 @@ class NavHeader extends StatelessWidget {
                 onTap: onBack,
                 child: Padding(
                   padding: const EdgeInsets.only(right: AppSpacing.lg),
-                  child: Icon(
-                    sfIcon('chevron.left'),
+                  child: FaIcon(
+                    FontAwesomeIcons.chevronLeft,
                     size: metrics.scaled(AppIconSize.nav),
                     color: c.textPrimary,
                   ),
@@ -82,7 +82,7 @@ class NavHeader extends StatelessWidget {
                 behavior: HitTestBehavior.opaque,
                 onTap: onTrailing,
                 child: Icon(
-                  sfIcon(trailingIcon!),
+                  trailingIcon!,
                   size: metrics.scaled(AppIconSize.nav - 1),
                   color: c.textPrimary,
                 ),
@@ -450,8 +450,8 @@ class SettingsRow extends StatelessWidget {
               ),
               if (showChevron) ...[
                 const SizedBox(width: 8),
-                Icon(
-                  sfIcon('chevron.right'),
+                FaIcon(
+                  FontAwesomeIcons.chevronRight,
                   size: AppIconSize.chevron,
                   color: c.textTertiary,
                 ),

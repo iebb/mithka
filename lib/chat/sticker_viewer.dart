@@ -8,7 +8,7 @@
 import 'package:flutter/material.dart';
 
 import '../components/photo_avatar.dart';
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../components/ui_components.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -78,9 +78,17 @@ class _StickerViewerState extends State<StickerViewer> {
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(sfIcon('square.grid.2x2'), size: 24, color: c.textPrimary),
+                FaIcon(
+                  FontAwesomeIcons.tableCells,
+                  size: 24,
+                  color: c.textPrimary,
+                ),
                 const SizedBox(width: 22),
-                Icon(sfIcon('ellipsis'), size: 24, color: c.textPrimary),
+                FaIcon(
+                  FontAwesomeIcons.ellipsis,
+                  size: 24,
+                  color: c.textPrimary,
+                ),
               ],
             ),
           ),
@@ -118,14 +126,22 @@ class _StickerViewerState extends State<StickerViewer> {
         fit: BoxFit.contain,
       );
     }
-    return Icon(sfIcon('face.smiling'), size: 96, color: AppTheme.brand);
+    return FaIcon(
+      FontAwesomeIcons.solidFaceSmile,
+      size: 96,
+      color: AppTheme.brand,
+    );
   }
 
   Widget _thumb() {
     final ref =
         _message.image ?? _message.animatedSticker ?? _message.videoSticker;
     if (ref == null) {
-      return Icon(sfIcon('face.smiling'), size: 34, color: AppTheme.brand);
+      return FaIcon(
+        FontAwesomeIcons.solidFaceSmile,
+        size: 34,
+        color: AppTheme.brand,
+      );
     }
     if (_message.animatedSticker != null) {
       return AnimatedStickerView(file: _message.animatedSticker!);
@@ -173,7 +189,11 @@ class _StickerViewerState extends State<StickerViewer> {
                   style: TextStyle(fontSize: 16, color: c.textSecondary),
                 ),
                 const SizedBox(width: 8),
-                Icon(sfIcon('chevron.right'), size: 18, color: c.textTertiary),
+                FaIcon(
+                  FontAwesomeIcons.chevronRight,
+                  size: 18,
+                  color: c.textTertiary,
+                ),
               ],
             ],
           ),

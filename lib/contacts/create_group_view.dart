@@ -10,7 +10,7 @@ import '../components/toast.dart';
 
 import '../chat/chat_view.dart';
 import '../components/photo_avatar.dart';
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -143,8 +143,8 @@ class _CreateGroupViewState extends State<CreateGroupView> {
                 onTap: () => Navigator.of(context).pop(),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 14),
-                  child: Icon(
-                    sfIcon('chevron.left'),
+                  child: FaIcon(
+                    FontAwesomeIcons.chevronLeft,
                     size: 22,
                     color: c.textPrimary,
                   ),
@@ -246,7 +246,9 @@ class _CreateGroupViewState extends State<CreateGroupView> {
         child: Row(
           children: [
             Icon(
-              selected ? sfIcon('checkmark.circle') : sfIcon('circle'),
+              selected
+                  ? FontAwesomeIcons.circleCheck.data
+                  : FontAwesomeIcons.circle.data,
               size: 22,
               color: selected ? AppTheme.brand : c.textTertiary,
             ),

@@ -10,7 +10,7 @@
 
 import 'package:flutter/material.dart';
 
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../components/ui_components.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -144,8 +144,8 @@ class _AutoDeleteViewState extends State<AutoDeleteView> {
                       ),
                       const Spacer(),
                       if (_selected == o.seconds)
-                        Icon(
-                          sfIcon('checkmark'),
+                        FaIcon(
+                          FontAwesomeIcons.check,
                           size: 18,
                           color: AppTheme.brand,
                         ),

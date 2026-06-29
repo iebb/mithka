@@ -10,7 +10,7 @@
 import 'package:flutter/material.dart';
 
 import '../components/photo_avatar.dart';
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../components/ui_components.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -148,8 +148,8 @@ class _PrivacyRuleViewState extends State<PrivacyRuleView> {
                                     ),
                                     const Spacer(),
                                     if (_value == i)
-                                      Icon(
-                                        sfIcon('checkmark'),
+                                      FaIcon(
+                                        FontAwesomeIcons.check,
                                         size: 18,
                                         color: AppTheme.brand,
                                       ),

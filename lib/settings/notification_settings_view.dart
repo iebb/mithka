@@ -9,7 +9,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../components/ui_components.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -129,7 +129,7 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
                 children: [
                   _card([
                     _toggle(
-                      'person.crop.circle',
+                      FontAwesomeIcons.circleUser.data,
                       const Color(0xFF3C8CF0),
                       '私聊消息',
                       _enabled(_private),
@@ -137,7 +137,7 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
                     ),
                     const InsetDivider(leadingInset: 56),
                     _toggle(
-                      'person.2.fill',
+                      FontAwesomeIcons.users.data,
                       const Color(0xFF16B05A),
                       '群组消息',
                       _enabled(_group),
@@ -145,7 +145,7 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
                     ),
                     const InsetDivider(leadingInset: 56),
                     _toggle(
-                      'square.grid.2x2.fill',
+                      FontAwesomeIcons.grip.data,
                       const Color(0xFFFF9D2E),
                       '频道消息',
                       _enabled(_channel),
@@ -155,7 +155,7 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
                   const SizedBox(height: 14),
                   _card([
                     _toggle(
-                      'doc',
+                      FontAwesomeIcons.file.data,
                       const Color(0xFF8E7BFF),
                       '通知预览',
                       _preview(_private),
@@ -163,7 +163,7 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
                     ),
                     const InsetDivider(leadingInset: 56),
                     _toggle(
-                      'speaker.wave.2.fill',
+                      FontAwesomeIcons.volumeHigh.data,
                       const Color(0xFFF5A623),
                       '声音',
                       _hasSound(_private),
@@ -188,7 +188,7 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
   );
 
   Widget _toggle(
-    String icon,
+    IconData icon,
     Color color,
     String title,
     bool value,
@@ -208,7 +208,7 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
                 color: color,
                 borderRadius: BorderRadius.circular(7),
               ),
-              child: Icon(sfIcon(icon), size: 15, color: Colors.white),
+              child: Icon(icon, size: 15, color: Colors.white),
             ),
             const SizedBox(width: 12),
             Text(title, style: TextStyle(fontSize: 16, color: c.textPrimary)),

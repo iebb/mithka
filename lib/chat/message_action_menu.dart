@@ -10,28 +10,28 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../settings/translation_controller.dart';
 import '../tdlib/td_models.dart';
 import 'emoji_store.dart';
 
 enum MessageAction {
-  copy('doc', '复制'),
-  edit('pencil', '编辑'),
-  translate('character.book.closed', '翻译'),
-  reply('quote.bubble', '引用'),
-  forward('arrowshape.turn.up.right', '转发'),
-  playMuted('speaker.slash.fill', '静音播放'),
-  multiSelect('checkmark.circle', '多选'),
-  pinTodo('pin.fill', '设为待办'),
-  unpinTodo('pin.fill', '撤回待办'),
-  save('star.fill', '收藏'),
-  saveSticker('plus.circle', '添加'),
-  viewStickerSet('square.grid.2x2', '表情包'),
-  delete('trash', '删除');
+  copy(FontAwesomeIcons.file, '复制'),
+  edit(FontAwesomeIcons.pen, '编辑'),
+  translate(FontAwesomeIcons.language, '翻译'),
+  reply(FontAwesomeIcons.quoteLeft, '引用'),
+  forward(FontAwesomeIcons.share, '转发'),
+  playMuted(FontAwesomeIcons.volumeXmark, '静音播放'),
+  multiSelect(FontAwesomeIcons.circleCheck, '多选'),
+  pinTodo(FontAwesomeIcons.thumbtack, '设为待办'),
+  unpinTodo(FontAwesomeIcons.thumbtack, '撤回待办'),
+  save(FontAwesomeIcons.solidStar, '收藏'),
+  saveSticker(FontAwesomeIcons.circlePlus, '添加'),
+  viewStickerSet(FontAwesomeIcons.tableCells, '表情包'),
+  delete(FontAwesomeIcons.trash, '删除');
 
   const MessageAction(this.glyph, this.label);
-  final String glyph;
+  final FaIconData glyph;
   final String label;
 
   bool get isDestructive => this == MessageAction.delete;
@@ -133,7 +133,7 @@ class MessageActionMenu extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        sfIcon(action.glyph),
+                        action.glyph.data,
                         size: 22,
                         color: action.isDestructive
                             ? _destructive

@@ -16,7 +16,7 @@ import 'package:provider/provider.dart';
 import '../components/confirm_dialog.dart';
 import '../components/icon_grid.dart';
 import '../components/photo_avatar.dart';
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../tdlib/json_helpers.dart';
@@ -186,9 +186,17 @@ class _ChatInfoViewState extends State<ChatInfoView> {
               ),
               if (_vm.isGroup) ...[
                 const SizedBox(width: 8),
-                Icon(sfIcon('qrcode'), size: 22, color: c.textSecondary),
+                FaIcon(
+                  FontAwesomeIcons.qrcode,
+                  size: 22,
+                  color: c.textSecondary,
+                ),
                 const SizedBox(width: 6),
-                Icon(sfIcon('chevron.right'), size: 15, color: c.textTertiary),
+                FaIcon(
+                  FontAwesomeIcons.chevronRight,
+                  size: 15,
+                  color: c.textTertiary,
+                ),
               ],
             ],
           ),
@@ -244,7 +252,7 @@ class _ChatInfoViewState extends State<ChatInfoView> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(sfIcon('lock.fill'), size: 10, color: c.textTertiary),
+          FaIcon(FontAwesomeIcons.lock, size: 10, color: c.textTertiary),
           const SizedBox(width: 3),
           Text(text, style: TextStyle(fontSize: 11, color: c.textTertiary)),
         ],
@@ -280,7 +288,11 @@ class _ChatInfoViewState extends State<ChatInfoView> {
                     style: TextStyle(fontSize: 14, color: c.textSecondary),
                   ),
                 const SizedBox(width: 6),
-                Icon(sfIcon('chevron.right'), size: 14, color: c.textTertiary),
+                FaIcon(
+                  FontAwesomeIcons.chevronRight,
+                  size: 14,
+                  color: c.textTertiary,
+                ),
               ],
             ),
           ),
@@ -318,7 +330,7 @@ class _ChatInfoViewState extends State<ChatInfoView> {
                     ),
                   if (_vm.canInvite)
                     _actionTile(
-                      sfIcon('plus'),
+                      FontAwesomeIcons.plus.data,
                       '邀请',
                       () => Navigator.of(context).push(
                         MaterialPageRoute(
@@ -327,7 +339,11 @@ class _ChatInfoViewState extends State<ChatInfoView> {
                       ),
                     ),
                   if (_vm.canRemove)
-                    _actionTile(sfIcon('minus'), '移除', _openMembers),
+                    _actionTile(
+                      FontAwesomeIcons.minus.data,
+                      '移除',
+                      _openMembers,
+                    ),
                 ],
               );
             },
@@ -434,7 +450,11 @@ class _ChatInfoViewState extends State<ChatInfoView> {
             children: [
               Text(title, style: TextStyle(fontSize: 15, color: c.textPrimary)),
               const Spacer(),
-              Icon(sfIcon('chevron.right'), size: 14, color: c.textTertiary),
+              FaIcon(
+                FontAwesomeIcons.chevronRight,
+                size: 14,
+                color: c.textTertiary,
+              ),
             ],
           ),
         ),
@@ -459,7 +479,11 @@ class _ChatInfoViewState extends State<ChatInfoView> {
                   style: TextStyle(fontSize: 15, color: c.textPrimary),
                 ),
                 const Spacer(),
-                Icon(sfIcon('chevron.right'), size: 14, color: c.textTertiary),
+                FaIcon(
+                  FontAwesomeIcons.chevronRight,
+                  size: 14,
+                  color: c.textTertiary,
+                ),
               ],
             ),
             const SizedBox(height: 16),
@@ -468,7 +492,7 @@ class _ChatInfoViewState extends State<ChatInfoView> {
                 perRow: _gridColumnsForWidth(constraints.maxWidth),
                 children: [
                   _groupAppItem(
-                    icon: 'folder.fill',
+                    icon: FontAwesomeIcons.solidFolder.data,
                     color: const Color(0xFFFFB300),
                     label: '文件',
                     onTap: () => Navigator.of(context).push(
@@ -484,7 +508,7 @@ class _ChatInfoViewState extends State<ChatInfoView> {
                     ),
                   ),
                   _groupAppItem(
-                    icon: 'photo.fill',
+                    icon: FontAwesomeIcons.solidImage.data,
                     color: const Color(0xFF15A7F7),
                     label: '相册',
                     onTap: () => Navigator.of(context).push(
@@ -500,7 +524,7 @@ class _ChatInfoViewState extends State<ChatInfoView> {
                     ),
                   ),
                   _groupAppItem(
-                    icon: 'video.fill',
+                    icon: FontAwesomeIcons.video.data,
                     color: const Color(0xFF7B61FF),
                     label: '群视频',
                     onTap: () => Navigator.of(context).push(
@@ -516,7 +540,7 @@ class _ChatInfoViewState extends State<ChatInfoView> {
                     ),
                   ),
                   _groupAppItem(
-                    icon: 'star.fill',
+                    icon: FontAwesomeIcons.solidStar.data,
                     color: const Color(0xFF18C26E),
                     label: '精华消息',
                     onTap: () => Navigator.of(context).push(
@@ -538,7 +562,7 @@ class _ChatInfoViewState extends State<ChatInfoView> {
   }
 
   Widget _groupAppItem({
-    required String icon,
+    required IconData icon,
     required Color color,
     required String label,
     required VoidCallback onTap,
@@ -558,7 +582,7 @@ class _ChatInfoViewState extends State<ChatInfoView> {
               color: color.withValues(alpha: 0.12),
               shape: BoxShape.circle,
             ),
-            child: Icon(sfIcon(icon), size: 22, color: color),
+            child: Icon(icon, size: 22, color: color),
           ),
           const SizedBox(height: 7),
           Text(
@@ -1003,7 +1027,11 @@ class _ChatFolderMembershipViewState extends State<ChatFolderMembershipView> {
               onTap: _loading ? null : _createFolder,
               child: Padding(
                 padding: const EdgeInsets.all(4),
-                child: Icon(sfIcon('plus'), size: 24, color: c.textPrimary),
+                child: FaIcon(
+                  FontAwesomeIcons.plus,
+                  size: 24,
+                  color: c.textPrimary,
+                ),
               ),
             ),
           ),
@@ -1078,7 +1106,7 @@ class _ChatFolderMembershipViewState extends State<ChatFolderMembershipView> {
         padding: const EdgeInsets.symmetric(horizontal: 14),
         child: Row(
           children: [
-            Icon(sfIcon('folder'), size: 22, color: AppTheme.brand),
+            FaIcon(FontAwesomeIcons.folder, size: 22, color: AppTheme.brand),
             const SizedBox(width: 12),
             Expanded(
               child: Text(

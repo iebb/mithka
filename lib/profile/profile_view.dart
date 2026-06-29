@@ -20,7 +20,7 @@ import '../chat/custom_emoji.dart';
 import '../components/confirm_dialog.dart';
 import '../components/drawer_controller.dart' as dc;
 import '../components/photo_avatar.dart';
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../components/ui_components.dart';
 import '../chat/shared_media_view.dart';
 import '../settings/edit_profile_view.dart';
@@ -250,8 +250,8 @@ class _ProfileViewState extends State<ProfileView> {
                 const Spacer(),
                 GestureDetector(
                   onTap: _openMyProfile,
-                  child: Icon(
-                    sfIcon('person.crop.circle'),
+                  child: FaIcon(
+                    FontAwesomeIcons.circleUser,
                     size: 22,
                     color: Colors.white,
                   ),
@@ -263,12 +263,20 @@ class _ProfileViewState extends State<ProfileView> {
                       builder: (_) => QRCodeView(name: user?.name ?? '我'),
                     ),
                   ),
-                  child: Icon(sfIcon('qrcode'), size: 22, color: Colors.white),
+                  child: FaIcon(
+                    FontAwesomeIcons.qrcode,
+                    size: 22,
+                    color: Colors.white,
+                  ),
                 ),
                 const SizedBox(width: 16),
                 GestureDetector(
                   onTap: () => context.read<dc.DrawerController>().close(),
-                  child: Icon(sfIcon('xmark'), size: 22, color: Colors.white),
+                  child: FaIcon(
+                    FontAwesomeIcons.xmark,
+                    size: 22,
+                    color: Colors.white,
+                  ),
                 ),
               ],
             ),
@@ -333,8 +341,8 @@ class _ProfileViewState extends State<ProfileView> {
                   onTap: () => _root.push(
                     MaterialPageRoute(builder: (_) => const EditProfileView()),
                   ),
-                  child: Icon(
-                    sfIcon('square.and.pencil'),
+                  child: FaIcon(
+                    FontAwesomeIcons.penToSquare,
                     size: 22,
                     color: Colors.white,
                   ),
@@ -374,8 +382,8 @@ class _ProfileViewState extends State<ProfileView> {
                     width: 1,
                   ),
                 ),
-                child: Icon(
-                  sfIcon('plus'),
+                child: FaIcon(
+                  FontAwesomeIcons.plus,
                   size: 16,
                   color: Colors.white.withValues(alpha: 0.9),
                 ),
@@ -392,15 +400,20 @@ class _ProfileViewState extends State<ProfileView> {
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
-          _row('photo', const Color(0xFFF5A623), '相册', () {
+          _row(FontAwesomeIcons.image.data, const Color(0xFFF5A623), '相册', () {
             _root.push(
               MaterialPageRoute(
                 builder: (_) => MyAlbumView(userId: _vm.user?.id ?? 0),
               ),
             );
           }),
-          _row('star', const Color(0xFFFF9D2E), '收藏', () => _openSaved('收藏')),
-          _row('folder', const Color(0xFF3C8CF0), '文件', () {
+          _row(
+            FontAwesomeIcons.star.data,
+            const Color(0xFFFF9D2E),
+            '收藏',
+            () => _openSaved('收藏'),
+          ),
+          _row(FontAwesomeIcons.folder.data, const Color(0xFF3C8CF0), '文件', () {
             final cid = _vm.savedChatId ?? _vm.user?.id ?? 0;
             _root.push(
               MaterialPageRoute(
@@ -414,7 +427,7 @@ class _ProfileViewState extends State<ProfileView> {
     );
   }
 
-  Widget _row(String icon, Color color, String label, VoidCallback onTap) {
+  Widget _row(IconData icon, Color color, String label, VoidCallback onTap) {
     final c = context.colors;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -429,12 +442,16 @@ class _ProfileViewState extends State<ProfileView> {
                 width: 42,
                 height: 32,
                 alignment: Alignment.center,
-                child: Icon(sfIcon(icon), size: 20, color: color),
+                child: Icon(icon, size: 20, color: color),
               ),
               const SizedBox(width: 12),
               Text(label, style: TextStyle(fontSize: 15, color: c.textPrimary)),
               const Spacer(),
-              Icon(sfIcon('chevron.right'), size: 15, color: c.textTertiary),
+              FaIcon(
+                FontAwesomeIcons.chevronRight,
+                size: 15,
+                color: c.textTertiary,
+              ),
             ],
           ),
         ),
@@ -494,8 +511,8 @@ class _ProfileViewState extends State<ProfileView> {
                         shape: BoxShape.circle,
                         color: AppTheme.brand.withValues(alpha: 0.12),
                       ),
-                      child: Icon(
-                        sfIcon('plus'),
+                      child: FaIcon(
+                        FontAwesomeIcons.plus,
                         size: 18,
                         color: AppTheme.brand,
                       ),
@@ -577,7 +594,7 @@ class _ProfileViewState extends State<ProfileView> {
               ),
             ),
             if (selected)
-              Icon(sfIcon('checkmark'), size: 16, color: AppTheme.brand),
+              FaIcon(FontAwesomeIcons.check, size: 16, color: AppTheme.brand),
           ],
         ),
       ),
@@ -614,7 +631,7 @@ class _ProfileViewState extends State<ProfileView> {
                 onTap: () => _root.push(
                   MaterialPageRoute(builder: (_) => const SettingsView()),
                 ),
-                child: _barItem('gearshape', '设置'),
+                child: _barItem(FontAwesomeIcons.gear.data, '设置'),
               ),
               const SizedBox(width: 24),
               GestureDetector(
@@ -625,7 +642,9 @@ class _ProfileViewState extends State<ProfileView> {
                     ? AppearanceMode.light
                     : AppearanceMode.dark,
                 child: _barItem(
-                  isDark ? 'sun.max' : 'moon',
+                  isDark
+                      ? FontAwesomeIcons.sun.data
+                      : FontAwesomeIcons.moon.data,
                   isDark ? '日间' : '夜间',
                 ),
               ),
@@ -637,14 +656,14 @@ class _ProfileViewState extends State<ProfileView> {
     );
   }
 
-  Widget _barItem(String icon, String label) {
+  Widget _barItem(IconData icon, String label) {
     final c = context.colors;
     return SizedBox(
       width: 58,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(sfIcon(icon), size: 22, color: c.textPrimary),
+          Icon(icon, size: 22, color: c.textPrimary),
           const SizedBox(height: 5),
           Text(label, style: TextStyle(fontSize: 13, color: c.textPrimary)),
         ],

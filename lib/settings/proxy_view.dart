@@ -14,7 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../components/confirm_dialog.dart';
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../tdlib/json_helpers.dart';
@@ -195,7 +195,7 @@ class _ProxyViewState extends State<ProxyView> {
               ),
               const Spacer(),
               if (!_anyEnabled)
-                Icon(sfIcon('checkmark'), size: 18, color: AppTheme.brand),
+                FaIcon(FontAwesomeIcons.check, size: 18, color: AppTheme.brand),
             ],
           ),
         ),
@@ -239,7 +239,7 @@ class _ProxyViewState extends State<ProxyView> {
                 ),
               ),
               if (enabled) ...[
-                Icon(sfIcon('checkmark'), size: 18, color: AppTheme.brand),
+                FaIcon(FontAwesomeIcons.check, size: 18, color: AppTheme.brand),
                 const SizedBox(width: 12),
               ],
               GestureDetector(
@@ -247,8 +247,8 @@ class _ProxyViewState extends State<ProxyView> {
                 onTap: () => _remove(id),
                 child: Padding(
                   padding: const EdgeInsets.all(4),
-                  child: Icon(
-                    sfIcon('minus.circle'),
+                  child: FaIcon(
+                    FontAwesomeIcons.circleMinus,
                     size: 20,
                     color: AppTheme.tagRed.withValues(alpha: 0.85),
                   ),
@@ -271,7 +271,7 @@ class _ProxyViewState extends State<ProxyView> {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
             children: [
-              Icon(sfIcon('plus'), size: 18, color: AppTheme.brand),
+              FaIcon(FontAwesomeIcons.plus, size: 18, color: AppTheme.brand),
               const SizedBox(width: 10),
               Text(
                 '添加代理',

@@ -8,7 +8,7 @@
 
 import 'package:flutter/material.dart';
 
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../components/ui_components.dart';
 import '../theme/app_theme.dart';
 
@@ -195,8 +195,8 @@ class _PollComposerViewState extends State<PollComposerView> {
                 onTap: () => _removeOption(i),
                 child: Padding(
                   padding: const EdgeInsets.only(left: 8),
-                  child: Icon(
-                    sfIcon('minus.circle'),
+                  child: FaIcon(
+                    FontAwesomeIcons.circleMinus,
                     size: 20,
                     color: AppTheme.tagRed.withValues(alpha: 0.8),
                   ),
@@ -219,8 +219,8 @@ class _PollComposerViewState extends State<PollComposerView> {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
             children: [
-              Icon(
-                sfIcon('plus'),
+              FaIcon(
+                FontAwesomeIcons.plus,
                 size: 18,
                 color: disabled
                     ? AppTheme.brand.withValues(alpha: 0.4)

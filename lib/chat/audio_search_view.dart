@@ -11,7 +11,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../components/photo_avatar.dart';
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../components/toast.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -209,8 +209,8 @@ class _AudioSearchViewState extends State<AudioSearchView> {
                 onTap: () => Navigator.of(context).pop(),
                 child: Padding(
                   padding: const EdgeInsets.only(right: 10),
-                  child: Icon(
-                    sfIcon('chevron.left'),
+                  child: FaIcon(
+                    FontAwesomeIcons.chevronLeft,
                     size: 22,
                     color: c.textPrimary,
                   ),
@@ -222,8 +222,8 @@ class _AudioSearchViewState extends State<AudioSearchView> {
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: _pickLocal,
-                  child: Icon(
-                    sfIcon('folder.fill'),
+                  child: FaIcon(
+                    FontAwesomeIcons.solidFolder,
                     size: 21,
                     color: AppTheme.brand,
                   ),
@@ -247,7 +247,11 @@ class _AudioSearchViewState extends State<AudioSearchView> {
       ),
       child: Row(
         children: [
-          Icon(sfIcon('magnifyingglass'), size: 15, color: c.textTertiary),
+          FaIcon(
+            FontAwesomeIcons.magnifyingGlass,
+            size: 15,
+            color: c.textTertiary,
+          ),
           const SizedBox(width: 6),
           Expanded(
             child: TextField(
@@ -271,7 +275,11 @@ class _AudioSearchViewState extends State<AudioSearchView> {
                 _controller.clear();
                 _onChanged('');
               },
-              child: Icon(sfIcon('xmark'), size: 16, color: c.textTertiary),
+              child: FaIcon(
+                FontAwesomeIcons.xmark,
+                size: 16,
+                color: c.textTertiary,
+              ),
             ),
         ],
       ),
@@ -382,8 +390,8 @@ class _AudioSearchViewState extends State<AudioSearchView> {
                     height: 18,
                     child: CircularProgressIndicator.adaptive(strokeWidth: 2),
                   )
-                : Icon(
-                    sfIcon('paperplane.fill'),
+                : FaIcon(
+                    FontAwesomeIcons.solidPaperPlane,
                     size: 19,
                     color: AppTheme.brand,
                   ),
@@ -410,7 +418,11 @@ class _AudioSearchViewState extends State<AudioSearchView> {
         color: AppTheme.brand.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Icon(sfIcon('music.note.list'), size: 25, color: c.textSecondary),
+      child: FaIcon(
+        FontAwesomeIcons.compactDisc,
+        size: 25,
+        color: c.textSecondary,
+      ),
     );
   }
 }

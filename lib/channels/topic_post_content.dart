@@ -5,7 +5,7 @@ import '../chat/file_detail_view.dart';
 import '../chat/link_handler.dart';
 import '../chat/telegram_rich_text.dart';
 import '../components/photo_avatar.dart';
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../components/toast.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -185,7 +185,11 @@ class _FileGlyph extends StatelessWidget {
         clipBehavior: Clip.none,
         alignment: Alignment.center,
         children: [
-          Icon(sfIcon('doc.fill'), size: 40, color: _fileColor(normalized)),
+          FaIcon(
+            FontAwesomeIcons.solidFile,
+            size: 40,
+            color: _fileColor(normalized),
+          ),
           Positioned(
             bottom: 8,
             child: Text(

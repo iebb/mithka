@@ -14,7 +14,7 @@ import 'package:provider/provider.dart';
 import '../app/app_version.dart';
 import '../auth/account_store.dart';
 import '../auth/auth_manager.dart';
-import '../components/sf_symbols.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
@@ -46,7 +46,7 @@ class SettingsView extends StatelessWidget {
                 _card([
                   _navRow(
                     context,
-                    'person.crop.circle.fill',
+                    FontAwesomeIcons.solidCircleUser.data,
                     '编辑资料',
                     const Color(0xFF3C8CF0),
                     () => const EditProfileView(),
@@ -56,7 +56,7 @@ class SettingsView extends StatelessWidget {
                 _card([
                   _navRow(
                     context,
-                    'bell.fill',
+                    FontAwesomeIcons.solidBell.data,
                     '消息通知',
                     const Color(0xFFF5A623),
                     () => const NotificationSettingsView(),
@@ -64,7 +64,7 @@ class SettingsView extends StatelessWidget {
                   const InsetDivider(leadingInset: 56),
                   _navRow(
                     context,
-                    'lock.shield.fill',
+                    FontAwesomeIcons.shieldHalved.data,
                     '隐私与安全',
                     const Color(0xFF16B05A),
                     () => const PrivacySecurityView(),
@@ -74,7 +74,7 @@ class SettingsView extends StatelessWidget {
                 _card([
                   _navRow(
                     context,
-                    'gearshape.fill',
+                    FontAwesomeIcons.gear.data,
                     '通用',
                     const Color(0xFF8E8E93),
                     () => const GeneralSettingsView(),
@@ -82,7 +82,7 @@ class SettingsView extends StatelessWidget {
                   const InsetDivider(leadingInset: 56),
                   _navRow(
                     context,
-                    'square.grid.2x2.fill',
+                    FontAwesomeIcons.grip.data,
                     '功能',
                     const Color(0xFF3C8CF0),
                     () => const FeatureSettingsView(),
@@ -90,7 +90,7 @@ class SettingsView extends StatelessWidget {
                   const InsetDivider(leadingInset: 56),
                   _navRow(
                     context,
-                    'sparkles',
+                    FontAwesomeIcons.wandMagicSparkles.data,
                     '外观',
                     const Color(0xFF8E7BFF),
                     () => const AppearanceView(),
@@ -98,7 +98,7 @@ class SettingsView extends StatelessWidget {
                   const InsetDivider(leadingInset: 56),
                   _navRow(
                     context,
-                    'character.book.closed',
+                    FontAwesomeIcons.language.data,
                     '翻译',
                     const Color(0xFF34A2DF),
                     () => const TranslationSettingsView(),
@@ -106,7 +106,7 @@ class SettingsView extends StatelessWidget {
                   const InsetDivider(leadingInset: 56),
                   _navRow(
                     context,
-                    'globe',
+                    FontAwesomeIcons.globe.data,
                     '代理',
                     const Color(0xFF34A2DF),
                     () => const ProxyView(),
@@ -137,7 +137,7 @@ class SettingsView extends StatelessWidget {
 
   Widget _rowLabel(
     BuildContext context,
-    String icon,
+    IconData icon,
     String title,
     Color color, {
     String? trailing,
@@ -156,7 +156,7 @@ class SettingsView extends StatelessWidget {
                 color: color,
                 borderRadius: BorderRadius.circular(7),
               ),
-              child: Icon(sfIcon(icon), size: 15, color: Colors.white),
+              child: Icon(icon, size: 15, color: Colors.white),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -181,7 +181,11 @@ class SettingsView extends StatelessWidget {
               ),
             ],
             const SizedBox(width: 6),
-            Icon(sfIcon('chevron.right'), size: 14, color: c.textTertiary),
+            FaIcon(
+              FontAwesomeIcons.chevronRight,
+              size: 14,
+              color: c.textTertiary,
+            ),
           ],
         ),
       ),
@@ -190,7 +194,7 @@ class SettingsView extends StatelessWidget {
 
   Widget _navRow(
     BuildContext context,
-    String icon,
+    IconData icon,
     String title,
     Color color,
     Widget Function() destination,
@@ -213,7 +217,7 @@ class SettingsView extends StatelessWidget {
       future: AppVersion.load(),
       builder: (context, snapshot) => _rowLabel(
         context,
-        'info.circle',
+        FontAwesomeIcons.circleInfo.data,
         '关于 Mithka',
         const Color(0xFF8E8E93),
         trailing: 'v${snapshot.data?.version ?? '...'}',
