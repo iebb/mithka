@@ -54,18 +54,23 @@ Future<void> main() async {
 
 Future<void> _bootstrapAndRunApp() async {
   GoogleFonts.config.allowRuntimeFetching = true;
-  // Route video_player through the MDK/FFmpeg backend so .webm (VP9 + alpha)
-  // video stickers decode + play (and stay transparent).
-  //
-  // Android keeps software decoders first because MDK's hardware decoder path
-  // has crashed on some Android 14/HyperOS builds.
-  fvp.registerWith(
-    options: defaultTargetPlatform == TargetPlatform.android
-        ? {
-            'video.decoders': ['FFmpeg', 'dav1d'],
-          }
-        : null,
-  );
+  final androidSdkInt = await _androidSdkInt();
+  final useFvp =
+      defaultTargetPlatform != TargetPlatform.android ||
+      (androidSdkInt != null && androidSdkInt < 34);
+  if (useFvp) {
+    // Route video_player through the MDK/FFmpeg backend so .webm (VP9 + alpha)
+    // video stickers decode + play (and stay transparent). fvp 0.37.2 crashes
+    // while loading libmdk.so on Android 14+, so those devices stay on the
+    // stock Android video_player backend.
+    fvp.registerWith(
+      options: defaultTargetPlatform == TargetPlatform.android
+          ? {
+              'video.decoders': ['FFmpeg', 'dav1d'],
+            }
+          : null,
+    );
+  }
   // Let iPhone and iPad follow every physical orientation.
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
@@ -103,6 +108,19 @@ void _configureSentry(SentryFlutterOptions options) {
   options.tracesSampleRate = 0;
   options.beforeSend = (event, hint) =>
       _isGoogleFontLoadFailure(event) ? null : event;
+}
+
+Future<int?> _androidSdkInt() async {
+  if (defaultTargetPlatform != TargetPlatform.android) return null;
+  try {
+    final info = await const MethodChannel(
+      'mithka/app_info',
+    ).invokeMapMethod<String, Object?>('info');
+    final sdkInt = info?['sdkInt'];
+    return sdkInt is int ? sdkInt : null;
+  } catch (_) {
+    return null;
+  }
 }
 
 bool _isGoogleFontLoadFailure(SentryEvent event) {

@@ -192,7 +192,11 @@ class MainActivity : FlutterActivity() {
             add("com.dexterous.flutterlocalnotifications.FlutterLocalNotificationsPlugin")
             add("io.flutter.plugins.flutter_plugin_android_lifecycle.FlutterAndroidLifecyclePlugin")
             add("xyz.canardoux.fluttersound.FlutterSound")
-            add("com.mediadevkit.fvp.FvpPlugin")
+            // fvp 0.37.2 crashes in libmdk.so during JNI_OnLoad on Android 14+
+            // before Dart can handle it. Older Android versions keep the backend.
+            if (Build.VERSION.SDK_INT < 34) {
+                add("com.mediadevkit.fvp.FvpPlugin")
+            }
             add("com.baseflow.geolocator.GeolocatorPlugin")
             add("io.flutter.plugins.imagepicker.ImagePickerPlugin")
             add("com.github.dart_lang.jni.JniPlugin")
