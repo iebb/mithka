@@ -1,8 +1,8 @@
 //
 //  about_view.dart
 //
-//  关于 — app identity (penguin icon, name, version) plus a tappable Telegram
-//  channel link (t.me/mithka) that resolves in-app via the link handler.
+//  关于 — app identity (penguin icon, name, version) plus tappable links
+//  that resolve through the shared link handler.
 //
 
 import 'package:flutter/material.dart';
@@ -22,6 +22,7 @@ class AboutView extends StatefulWidget {
 }
 
 class _AboutViewState extends State<AboutView> {
+  static const _websiteUrl = 'https://mithka.ieb.app';
   static const _channelUrl = 'https://t.me/mithka';
   static const _githubUrl = 'https://github.com/iebb/mithka';
   late final Future<AppVersion> _versionFuture = AppVersion.load();
@@ -96,6 +97,16 @@ class _AboutViewState extends State<AboutView> {
                   clipBehavior: Clip.antiAlias,
                   child: Column(
                     children: [
+                      _AboutLinkRow(
+                        icon: HeroAppIcons.globe.data,
+                        title: 'Website',
+                        value: 'mithka.ieb.app',
+                        onTap: () => openLink(context, _websiteUrl),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 48),
+                        child: Divider(height: 1, color: c.divider),
+                      ),
                       _AboutLinkRow(
                         icon: HeroAppIcons.solidPaperPlane.data,
                         title: AppStrings.t(AppStringKeys.aboutTelegramChannel),

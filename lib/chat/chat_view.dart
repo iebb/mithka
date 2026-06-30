@@ -383,7 +383,7 @@ class _ChatViewState extends State<ChatView> {
     if (target != null) {
       _scrollTargetId = target;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _ensureMessageVisible(target);
+        _ensureMessageVisible(target, instant: !_didInitialScroll);
       });
     }
     // Telegram-style entry: once the initial history (incl. the unread
@@ -440,7 +440,10 @@ class _ChatViewState extends State<ChatView> {
     final target = widget.initialMessageId;
     if (target != null) {
       _scrollTargetId = target;
-      await _ensureMessageVisible(target);
+      await _ensureMessageVisible(target, instant: true);
+      return;
+    }
+    if (_vm.anchoredHistory) {
       return;
     }
     if (_openAtLatest) {
@@ -1486,7 +1489,8 @@ class _ChatViewState extends State<ChatView> {
   }
 
   Widget _initialVisibility(Widget child) {
-    return child;
+    if (_initialPaintReady) return child;
+    return Opacity(opacity: 0, child: IgnorePointer(child: child));
   }
 
   Widget _transcriptLayer() {
@@ -2353,6 +2357,7 @@ class _ChatViewState extends State<ChatView> {
   Future<void> _ensureMessageVisible(
     int messageId, {
     bool pinnedJump = false,
+    bool instant = false,
   }) async {
     for (var tries = 0; tries < 6; tries++) {
       final activeKey = _scrollTargetId == messageId ? _targetKey : _pinnedKey;
@@ -2367,7 +2372,9 @@ class _ChatViewState extends State<ChatView> {
         await Scrollable.ensureVisible(
           ctx,
           alignment: pinnedJump ? 0.08 : 0.3,
-          duration: pinnedJump
+          duration: instant
+              ? Duration.zero
+              : pinnedJump
               ? const Duration(milliseconds: 140)
               : const Duration(milliseconds: 220),
           curve: Curves.easeOutCubic,

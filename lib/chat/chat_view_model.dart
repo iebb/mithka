@@ -259,7 +259,7 @@ class ChatViewModel extends ChangeNotifier {
       if (target != null) {
         await loadAroundMessage(target);
       } else {
-        await _loadInitialHistory();
+        await _loadInitialHistory(openAtLatest: markReadOnOpen);
       }
       initialLoaded = true;
       notifyListeners();
@@ -1522,7 +1522,27 @@ class ChatViewModel extends ChangeNotifier {
 
   // MARK: - History
 
-  Future<void> _loadInitialHistory() async {
+  Future<void> _loadInitialHistory({required bool openAtLatest}) async {
+    if (!openAtLatest && lastReadInboxId > 0) {
+      final loaded = await _loadInitialAroundLastRead();
+      if (loaded) return;
+    }
+    await _loadInitialLatestHistory();
+  }
+
+  Future<bool> _loadInitialAroundLastRead() async {
+    final loadedLocal = await loadAroundMessage(
+      lastReadInboxId,
+      onlyLocal: true,
+    );
+    if (loadedLocal) {
+      unawaited(loadAroundMessage(lastReadInboxId, scrollToTarget: false));
+      return true;
+    }
+    return loadAroundMessage(lastReadInboxId);
+  }
+
+  Future<void> _loadInitialLatestHistory() async {
     final seeded = _allMessages.isNotEmpty;
     final localLoaded = await _fetchHistory(
       0,
@@ -1551,7 +1571,11 @@ class ChatViewModel extends ChangeNotifier {
     }
   }
 
-  Future<bool> loadAroundMessage(int messageId) async {
+  Future<bool> loadAroundMessage(
+    int messageId, {
+    bool onlyLocal = false,
+    bool scrollToTarget = true,
+  }) async {
     final batch = <ChatMessage>[];
     try {
       final targetRaw = await _client.query({
@@ -1570,7 +1594,7 @@ class ChatViewModel extends ChangeNotifier {
         'from_message_id': messageId,
         'offset': -30,
         'limit': 80,
-        'only_local': false,
+        'only_local': onlyLocal,
       });
       batch.addAll(
         (response.objects('messages') ?? const <Map<String, dynamic>>[])
@@ -1584,7 +1608,7 @@ class ChatViewModel extends ChangeNotifier {
     messages = [];
     _hasOlderHistory = true;
     anchoredHistory = true;
-    _pendingScrollToId = messageId;
+    if (scrollToTarget) _pendingScrollToId = messageId;
     _merge(batch);
     _resolveSendersIfNeeded(batch);
     _resolveRepliesIfNeeded(batch);

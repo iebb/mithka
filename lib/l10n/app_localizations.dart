@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:intl/intl.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 
 class AppLocalizations {
   const AppLocalizations(this.locale);
@@ -1223,6 +1226,8 @@ abstract final class AppStringKeys {
 }
 
 abstract final class AppStrings {
+  static final Set<String> _reportedMissingKeys = {};
+
   static String t(String key, [Map<String, Object?> placeholders = const {}]) {
     final locale = AppLocalizations.resolve(Locale(Intl.getCurrentLocale()));
     return tForLocale(AppLocalizations.localeKeyFor(locale), key, placeholders);
@@ -1233,11 +1238,41 @@ abstract final class AppStrings {
     String key, [
     Map<String, Object?> placeholders = const {},
   ]) {
-    var value = _messages[localeKey]?[key] ?? _messages['en']?[key] ?? key;
+    final localeMessages = _messages[localeKey];
+    final localeValue = localeMessages?[key];
+    final fallbackValue = _messages['en']?[key];
+    if (localeValue == null) {
+      _reportMissing(localeKey, key, fallbackFound: fallbackValue != null);
+    }
+    var value = localeValue ?? fallbackValue ?? key;
     placeholders.forEach((placeholder, replacement) {
       value = value.replaceAll('{$placeholder}', '$replacement');
     });
     return value;
+  }
+
+  static void _reportMissing(
+    String localeKey,
+    String key, {
+    required bool fallbackFound,
+  }) {
+    final reportKey = '$localeKey:$key';
+    if (!_reportedMissingKeys.add(reportKey)) return;
+    unawaited(
+      Sentry.captureMessage(
+        'Missing localization: $key',
+        level: SentryLevel.warning,
+        withScope: (scope) {
+          scope.setTag('localization.locale', localeKey);
+          scope.setTag('localization.key', key);
+          scope.setContexts('localization', {
+            'locale': localeKey,
+            'key': key,
+            'fallback_found': fallbackFound,
+          });
+        },
+      ),
+    );
   }
 }
 
@@ -2507,7 +2542,7 @@ const _messages = {
     'chatPeopleTyping': "{value1} 人正在输入…",
     'chatPickerChooseChat': "选择聊天",
     'chatRecentlyOnline': "最近在线",
-    'chatRequestToJoin': "申请加入",
+    'chatRequestToJoin': "申請加入",
     'chatSaveFailed': "保存失败：{value1}",
     'chatSavedToSavedMessages': "已保存到 Saved Messages",
     'chatSearchHistoryTitle': "搜索聊天记录",
@@ -3524,7 +3559,7 @@ const _messages = {
     'chatPeopleTyping': "{value1} 人正在输入…",
     'chatPickerChooseChat': "选择聊天",
     'chatRecentlyOnline': "最近在线",
-    'chatRequestToJoin': "申请加入",
+    'chatRequestToJoin': "参加をリクエスト",
     'chatSaveFailed': "保存失败：{value1}",
     'chatSavedToSavedMessages': "已保存到 Saved Messages",
     'chatSearchHistoryTitle': "搜索聊天记录",
@@ -4541,7 +4576,7 @@ const _messages = {
     'chatPeopleTyping': "{value1} 人正在输入…",
     'chatPickerChooseChat': "选择聊天",
     'chatRecentlyOnline': "最近在线",
-    'chatRequestToJoin': "申请加入",
+    'chatRequestToJoin': "가입 요청",
     'chatSaveFailed': "保存失败：{value1}",
     'chatSavedToSavedMessages': "已保存到 Saved Messages",
     'chatSearchHistoryTitle': "搜索聊天记录",
@@ -5558,7 +5593,7 @@ const _messages = {
     'chatPeopleTyping': "{value1} 人正在输入…",
     'chatPickerChooseChat': "选择聊天",
     'chatRecentlyOnline': "最近在线",
-    'chatRequestToJoin': "申请加入",
+    'chatRequestToJoin': "Request to Join",
     'chatSaveFailed': "保存失败：{value1}",
     'chatSavedToSavedMessages': "已保存到 Saved Messages",
     'chatSearchHistoryTitle': "搜索聊天记录",
@@ -6575,7 +6610,7 @@ const _messages = {
     'chatPeopleTyping': "{value1} 人正在输入…",
     'chatPickerChooseChat': "选择聊天",
     'chatRecentlyOnline': "最近在线",
-    'chatRequestToJoin': "申请加入",
+    'chatRequestToJoin': "Demander à rejoindre",
     'chatSaveFailed': "保存失败：{value1}",
     'chatSavedToSavedMessages': "已保存到 Saved Messages",
     'chatSearchHistoryTitle': "搜索聊天记录",
@@ -7592,7 +7627,7 @@ const _messages = {
     'chatPeopleTyping': "{value1} 人正在输入…",
     'chatPickerChooseChat': "选择聊天",
     'chatRecentlyOnline': "最近在线",
-    'chatRequestToJoin': "申请加入",
+    'chatRequestToJoin': "Solicitar unirse",
     'chatSaveFailed': "保存失败：{value1}",
     'chatSavedToSavedMessages': "已保存到 Saved Messages",
     'chatSearchHistoryTitle': "搜索聊天记录",
@@ -8609,7 +8644,7 @@ const _messages = {
     'chatPeopleTyping': "{value1} 人正在输入…",
     'chatPickerChooseChat': "选择聊天",
     'chatRecentlyOnline': "最近在线",
-    'chatRequestToJoin': "申请加入",
+    'chatRequestToJoin': "Beitritt anfragen",
     'chatSaveFailed': "保存失败：{value1}",
     'chatSavedToSavedMessages': "已保存到 Saved Messages",
     'chatSearchHistoryTitle': "搜索聊天记录",

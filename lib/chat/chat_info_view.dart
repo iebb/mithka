@@ -697,13 +697,20 @@ class _ChatInfoViewState extends State<ChatInfoView> {
             AppStrings.t(AppStringKeys.chatInfoClearHistory),
             _clearHistory,
           ),
-          // Only a confirmed member can quit — hide 退出 for non-joined groups.
+          // Only a confirmed member can quit — hide 退出 for non-joined groups/channels.
           if (_vm.isGroup && _vm.isMember) ...[
             const InsetDivider(leadingInset: 0),
-            _destructiveRow(AppStrings.t(AppStringKeys.chatInfoLeaveGroup), () {
-              _vm.leaveChat();
-              Navigator.of(context).pop();
-            }),
+            _destructiveRow(
+              AppStrings.t(
+                _vm.isChannel
+                    ? AppStringKeys.topicChatLeaveChannel
+                    : AppStringKeys.chatInfoLeaveGroup,
+              ),
+              () {
+                _vm.leaveChat();
+                Navigator.of(context).pop();
+              },
+            ),
           ],
         ],
       ),
@@ -1186,6 +1193,7 @@ class ChatInfoViewModel extends ChangeNotifier {
   String title;
   TdFileRef? photo;
   bool isGroup = false;
+  bool isChannel = false;
   int memberCount = 0;
   String groupNumber = ''; // supergroup / basic-group id, shown as 群号
   String? username; // public @username (supergroups only)
@@ -1230,6 +1238,7 @@ class ChatInfoViewModel extends ChangeNotifier {
     if (t != null && t.isNotEmpty) title = t;
     photo = TDParse.smallPhoto(chat.obj('photo'));
     final kind = TDParse.chatKind(chat);
+    isChannel = kind == ChatKind.channel;
     isGroup = kind == ChatKind.group || kind == ChatKind.channel;
     canChangeAutoDelete = !isGroup;
     isMuted = (chat.obj('notification_settings')?.integer('mute_for') ?? 0) > 0;
