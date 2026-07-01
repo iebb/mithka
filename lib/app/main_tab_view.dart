@@ -189,21 +189,22 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
     final tabs = _visibleTabs(theme);
     if (i < 0 || i >= tabs.length) return;
     final tabIndex = tabs[i].index;
-    final shouldJumpUnread =
-        tabIndex == 0 && _unread.countFor(theme.unreadBadgeMode) > 0;
+    final shouldToggleMessages = tabIndex == 0;
     if (tabIndex == _selection) {
       // Tapping the active tab pops to its root.
       _navKeys[tabIndex].currentState?.popUntil((r) => r.isFirst);
       if (_usesTabletSplit(context)) _clearTabletDetail(tabIndex);
-      if (shouldJumpUnread) _scrollMessagesToFirstUnread();
+      if (shouldToggleMessages) _toggleMessagesListTarget(theme);
       return;
     }
     setState(() => _selection = tabIndex);
-    if (shouldJumpUnread) _scrollMessagesToFirstUnread();
+    if (shouldToggleMessages) _toggleMessagesListTarget(theme);
   }
 
-  void _scrollMessagesToFirstUnread() {
-    _chatListController.scrollToFirstUnread();
+  void _toggleMessagesListTarget(ThemeController theme) {
+    _chatListController.toggleFirstUnreadOrTop(
+      mayHaveUnread: _unread.countFor(theme.unreadBadgeMode) > 0,
+    );
   }
 
   void _clearTabletDetail(int tabIndex) {

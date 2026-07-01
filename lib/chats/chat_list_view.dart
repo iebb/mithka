@@ -37,12 +37,22 @@ import 'package:mithka/l10n/app_localizations.dart';
 
 class ChatListController extends ChangeNotifier {
   int _scrollToFirstUnreadRequests = 0;
+  int _toggleFirstUnreadRequests = 0;
   int _markAllReadRequests = 0;
+  bool _toggleRequestMayHaveUnread = false;
   int get scrollToFirstUnreadRequests => _scrollToFirstUnreadRequests;
+  int get toggleFirstUnreadRequests => _toggleFirstUnreadRequests;
   int get markAllReadRequests => _markAllReadRequests;
+  bool get toggleRequestMayHaveUnread => _toggleRequestMayHaveUnread;
 
   void scrollToFirstUnread() {
     _scrollToFirstUnreadRequests++;
+    notifyListeners();
+  }
+
+  void toggleFirstUnreadOrTop({required bool mayHaveUnread}) {
+    _toggleRequestMayHaveUnread = mayHaveUnread;
+    _toggleFirstUnreadRequests++;
     notifyListeners();
   }
 
@@ -99,9 +109,13 @@ class _ChatListViewState extends State<ChatListView> {
   bool _showPlusMenu = false;
   bool _showFilterMenu = false;
   int? _pendingScrollToFirstUnreadRequest;
+  bool _pendingScrollShouldToggle = false;
+  bool _pendingToggleMayHaveUnread = false;
   int _lastHandledScrollToFirstUnreadRequest = 0;
+  int _lastHandledToggleFirstUnreadRequest = 0;
   int _lastHandledMarkAllReadRequest = 0;
   int _pendingScrollAttempts = 0;
+  bool _toggleUnreadTargetNext = true;
   bool _didApplyTopAssistantInitialOffset = false;
 
   ScrollController _newScrollController({double initialScrollOffset = 0}) {
@@ -115,6 +129,9 @@ class _ChatListViewState extends State<ChatListView> {
     _model.onAppear();
     _model.addListener(_onModel);
     widget.controller?.addListener(_onControllerRequest);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _onControllerRequest();
+    });
     _loadMe();
     // Keep the header's name/status/photo live — TDLib emits updateUser for us
     // when the status or profile changes.
@@ -273,8 +290,28 @@ class _ChatListViewState extends State<ChatListView> {
     }
 
     final request = widget.controller?.scrollToFirstUnreadRequests ?? 0;
-    if (request <= _lastHandledScrollToFirstUnreadRequest) return;
+    if (request > _lastHandledScrollToFirstUnreadRequest) {
+      _beginScrollRequest(request, toggle: false, mayHaveUnread: true);
+    }
+
+    final toggleRequest = widget.controller?.toggleFirstUnreadRequests ?? 0;
+    if (toggleRequest > _lastHandledToggleFirstUnreadRequest) {
+      _beginScrollRequest(
+        toggleRequest,
+        toggle: true,
+        mayHaveUnread: widget.controller?.toggleRequestMayHaveUnread ?? false,
+      );
+    }
+  }
+
+  void _beginScrollRequest(
+    int request, {
+    required bool toggle,
+    required bool mayHaveUnread,
+  }) {
     _pendingScrollToFirstUnreadRequest = request;
+    _pendingScrollShouldToggle = toggle;
+    _pendingToggleMayHaveUnread = mayHaveUnread;
     _pendingScrollAttempts = 0;
     _model.selectAllFilter();
     _model.loadMore();
@@ -289,26 +326,53 @@ class _ChatListViewState extends State<ChatListView> {
         _retryScrollToFirstUnread();
         return;
       }
-      final target = _firstUnreadScrollOffset();
-      if (target == null) {
+      final firstUnread = _firstUnreadScrollOffset();
+      final target = _targetScrollOffsetForRequest(firstUnread);
+      if (target == null ||
+          (_pendingScrollShouldToggle &&
+              _pendingToggleMayHaveUnread &&
+              firstUnread == null)) {
         _model.loadMore();
         _retryScrollToFirstUnread();
         return;
       }
 
-      _lastHandledScrollToFirstUnreadRequest =
-          _pendingScrollToFirstUnreadRequest!;
+      if (_pendingScrollShouldToggle) {
+        _lastHandledToggleFirstUnreadRequest =
+            _pendingScrollToFirstUnreadRequest!;
+        _toggleUnreadTargetNext = firstUnread == null || target == 0;
+      } else {
+        _lastHandledScrollToFirstUnreadRequest =
+            _pendingScrollToFirstUnreadRequest!;
+      }
       _pendingScrollToFirstUnreadRequest = null;
+      _pendingScrollShouldToggle = false;
+      _pendingToggleMayHaveUnread = false;
       _pendingScrollAttempts = 0;
-      _scrollController.jumpTo(target);
+      _animateListTo(target);
     });
+  }
+
+  double? _targetScrollOffsetForRequest(double? firstUnread) {
+    if (!_pendingScrollShouldToggle) return firstUnread;
+    if (firstUnread == null) return 0;
+    return _toggleUnreadTargetNext ? firstUnread : 0;
   }
 
   void _retryScrollToFirstUnread() {
     _pendingScrollAttempts++;
     if (_pendingScrollAttempts > 160) {
+      final request = _pendingScrollToFirstUnreadRequest;
+      final wasToggle = _pendingScrollShouldToggle;
       _pendingScrollToFirstUnreadRequest = null;
+      _pendingScrollShouldToggle = false;
+      _pendingToggleMayHaveUnread = false;
       _pendingScrollAttempts = 0;
+      if (wasToggle && request != null) {
+        _lastHandledToggleFirstUnreadRequest = request;
+        _toggleUnreadTargetNext = true;
+        _animateListTo(0);
+      }
       return;
     }
     Future<void>.delayed(const Duration(milliseconds: 35), () {
@@ -339,6 +403,22 @@ class _ChatListViewState extends State<ChatListView> {
     return math.min(
       searchOffset + itemIndex * rowH,
       _scrollController.position.maxScrollExtent,
+    );
+  }
+
+  void _animateListTo(double target) {
+    if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    final clamped = target.clamp(0.0, position.maxScrollExtent).toDouble();
+    final distance = (position.pixels - clamped).abs();
+    if (distance < 1) return;
+    final duration = Duration(
+      milliseconds: (220 + distance * 0.22).clamp(260, 520).round(),
+    );
+    _scrollController.animateTo(
+      clamped,
+      duration: duration,
+      curve: Curves.easeOutCubic,
     );
   }
 

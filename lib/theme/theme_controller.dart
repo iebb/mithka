@@ -892,8 +892,8 @@ class ThemeController extends ChangeNotifier {
 
   static const double minFontScale = 0.8;
   static const double maxFontScale = 1.4;
-  static const double minInterfaceScale = 0.88;
-  static const double maxInterfaceScale = 1.22;
+  static const double minInterfaceScale = 0.66;
+  static const double maxInterfaceScale = 1.50;
 
   final SharedPreferences _prefs;
   late AppearanceMode _mode;

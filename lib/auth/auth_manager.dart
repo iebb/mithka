@@ -6,9 +6,12 @@
 //  the UI gates on. Port of the Swift `AuthManager`.
 //
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../config/secrets.dart';
+import '../settings/api_credentials_config.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import 'package:mithka/l10n/app_localizations.dart';
@@ -70,8 +73,12 @@ class AuthManager extends ChangeNotifier {
   void start() {
     if (_started) return;
     _started = true;
+    unawaited(_startAfterCredentialCheck());
+  }
 
-    if (!Secrets.isConfigured) {
+  Future<void> _startAfterCredentialCheck() async {
+    final customApi = await ApiCredentialsConfig.load();
+    if (!Secrets.isConfigured && !customApi.isUsable) {
       _set(const AuthMissingCredentials());
       return;
     }
@@ -83,7 +90,14 @@ class AuthManager extends ChangeNotifier {
       final state = update.obj('authorization_state');
       if (state != null) _handle(state);
     });
-    _client.start();
+    await _client.start();
+  }
+
+  void retryStart() {
+    if (_step is! AuthMissingCredentials) return;
+    _started = false;
+    _set(const AuthInitializing());
+    start();
   }
 
   // MARK: - Authorization state machine

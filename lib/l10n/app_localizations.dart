@@ -90,6 +90,8 @@ abstract final class AppStringKeys {
   static const aboutTitle = 'aboutTitle';
   static const aboutVersion = 'aboutVersion';
   static const accentColorPickerSave = 'accentColorPickerSave';
+  static const apiCredentialsCustomClientApi = 'apiCredentialsCustomClientApi';
+  static const apiCredentialsTitle = 'apiCredentialsTitle';
   static const addMembersDone = 'addMembersDone';
   static const addMembersDoneWithCount = 'addMembersDoneWithCount';
   static const addMembersInviteMembersTitle = 'addMembersInviteMembersTitle';
@@ -1241,7 +1243,7 @@ abstract final class AppStrings {
     final localeMessages = _messages[localeKey];
     final localeValue = localeMessages?[key];
     final fallbackValue = _messages['en']?[key];
-    if (localeValue == null && fallbackValue == null) {
+    if (localeValue == null && fallbackValue == null && _looksLikeKey(key)) {
       _reportMissing(localeKey, key);
     }
     var value = localeValue ?? fallbackValue ?? key;
@@ -1266,6 +1268,9 @@ abstract final class AppStrings {
       ),
     );
   }
+
+  static bool _looksLikeKey(String key) =>
+      RegExp(r'^[a-z][A-Za-z0-9]*$').hasMatch(key);
 }
 
 class _AppLocalizationsDelegate
@@ -1293,6 +1298,8 @@ const _messages = {
     'aboutTitle': "关于",
     'aboutVersion': "版本 {value1}",
     'accentColorPickerSave': "保存",
+    'apiCredentialsCustomClientApi': "自定义客户端 API",
+    'apiCredentialsTitle': "视频与下载加速",
     'addMembersDone': "完成",
     'addMembersDoneWithCount': "完成({value1})",
     'addMembersInviteMembersTitle': "邀请成员",
@@ -1973,9 +1980,9 @@ const _messages = {
     'loginSwitchAccount': "切换账号",
     'loginTelegramAccountTitle': "登录 Telegram 账号",
     'loginTelegramApiCredentialsMissing': "尚未配置 Telegram API 凭证",
-    'loginTelegramApiPortalInstructions': "（在 my.telegram.org 获取），然后重新运行。",
+    'loginTelegramApiPortalInstructions': "（可在 my.telegram.org 获取）。",
     'loginTelegramApiSecretsInstructions':
-        "请在 lib/config/secrets.dart 中填入你的 api_id 与 api_hash",
+        "请填写你自己的 Telegram 客户端 api_id 与 api_hash",
     'loginTwoStepPassword': "两步验证密码",
     'loginVerificationCode': "验证码",
     'loginVerify': "验证",
@@ -2310,6 +2317,8 @@ const _messages = {
     'aboutTitle': "关于",
     'aboutVersion': "版本 {value1}",
     'accentColorPickerSave': "保存",
+    'apiCredentialsCustomClientApi': "自定义客户端 API",
+    'apiCredentialsTitle': "视频与下载加速",
     'addMembersDone': "完成",
     'addMembersDoneWithCount': "完成({value1})",
     'addMembersInviteMembersTitle': "邀请成员",
@@ -2990,9 +2999,9 @@ const _messages = {
     'loginSwitchAccount': "切换账号",
     'loginTelegramAccountTitle': "登录 Telegram 账号",
     'loginTelegramApiCredentialsMissing': "尚未配置 Telegram API 凭证",
-    'loginTelegramApiPortalInstructions': "（在 my.telegram.org 获取），然后重新运行。",
+    'loginTelegramApiPortalInstructions': "（可在 my.telegram.org 获取）。",
     'loginTelegramApiSecretsInstructions':
-        "请在 lib/config/secrets.dart 中填入你的 api_id 与 api_hash",
+        "请填写你自己的 Telegram 客户端 api_id 与 api_hash",
     'loginTwoStepPassword': "两步验证密码",
     'loginVerificationCode': "验证码",
     'loginVerify': "验证",
@@ -3327,6 +3336,8 @@ const _messages = {
     'aboutTitle': "关于",
     'aboutVersion': "版本 {value1}",
     'accentColorPickerSave': "保存",
+    'apiCredentialsCustomClientApi': "自定义客户端 API",
+    'apiCredentialsTitle': "视频与下载加速",
     'addMembersDone': "完成",
     'addMembersDoneWithCount': "完成({value1})",
     'addMembersInviteMembersTitle': "邀请成员",
@@ -4007,9 +4018,9 @@ const _messages = {
     'loginSwitchAccount': "切换账号",
     'loginTelegramAccountTitle': "登录 Telegram 账号",
     'loginTelegramApiCredentialsMissing': "尚未配置 Telegram API 凭证",
-    'loginTelegramApiPortalInstructions': "（在 my.telegram.org 获取），然后重新运行。",
+    'loginTelegramApiPortalInstructions': "（可在 my.telegram.org 获取）。",
     'loginTelegramApiSecretsInstructions':
-        "请在 lib/config/secrets.dart 中填入你的 api_id 与 api_hash",
+        "请填写你自己的 Telegram 客户端 api_id 与 api_hash",
     'loginTwoStepPassword': "两步验证密码",
     'loginVerificationCode': "验证码",
     'loginVerify': "验证",
@@ -4344,6 +4355,8 @@ const _messages = {
     'aboutTitle': "关于",
     'aboutVersion': "版本 {value1}",
     'accentColorPickerSave': "保存",
+    'apiCredentialsCustomClientApi': "自定义客户端 API",
+    'apiCredentialsTitle': "视频与下载加速",
     'addMembersDone': "完成",
     'addMembersDoneWithCount': "完成({value1})",
     'addMembersInviteMembersTitle': "邀请成员",
@@ -5024,9 +5037,9 @@ const _messages = {
     'loginSwitchAccount': "切换账号",
     'loginTelegramAccountTitle': "登录 Telegram 账号",
     'loginTelegramApiCredentialsMissing': "尚未配置 Telegram API 凭证",
-    'loginTelegramApiPortalInstructions': "（在 my.telegram.org 获取），然后重新运行。",
+    'loginTelegramApiPortalInstructions': "（可在 my.telegram.org 获取）。",
     'loginTelegramApiSecretsInstructions':
-        "请在 lib/config/secrets.dart 中填入你的 api_id 与 api_hash",
+        "请填写你自己的 Telegram 客户端 api_id 与 api_hash",
     'loginTwoStepPassword': "两步验证密码",
     'loginVerificationCode': "验证码",
     'loginVerify': "验证",
@@ -5361,6 +5374,8 @@ const _messages = {
     'aboutTitle': "关于",
     'aboutVersion': "版本 {value1}",
     'accentColorPickerSave': "保存",
+    'apiCredentialsCustomClientApi': "Custom client API",
+    'apiCredentialsTitle': "Video & download acceleration",
     'addMembersDone': "完成",
     'addMembersDoneWithCount': "完成({value1})",
     'addMembersInviteMembersTitle': "邀请成员",
@@ -6041,9 +6056,9 @@ const _messages = {
     'loginSwitchAccount': "切换账号",
     'loginTelegramAccountTitle': "登录 Telegram 账号",
     'loginTelegramApiCredentialsMissing': "尚未配置 Telegram API 凭证",
-    'loginTelegramApiPortalInstructions': "（在 my.telegram.org 获取），然后重新运行。",
+    'loginTelegramApiPortalInstructions': " (available from my.telegram.org).",
     'loginTelegramApiSecretsInstructions':
-        "请在 lib/config/secrets.dart 中填入你的 api_id 与 api_hash",
+        "Enter your own Telegram client api_id and api_hash",
     'loginTwoStepPassword': "两步验证密码",
     'loginVerificationCode': "验证码",
     'loginVerify': "验证",
@@ -6378,6 +6393,8 @@ const _messages = {
     'aboutTitle': "关于",
     'aboutVersion': "版本 {value1}",
     'accentColorPickerSave': "保存",
+    'apiCredentialsCustomClientApi': "Custom client API",
+    'apiCredentialsTitle': "Video & download acceleration",
     'addMembersDone': "完成",
     'addMembersDoneWithCount': "完成({value1})",
     'addMembersInviteMembersTitle': "邀请成员",
@@ -7058,9 +7075,9 @@ const _messages = {
     'loginSwitchAccount': "切换账号",
     'loginTelegramAccountTitle': "登录 Telegram 账号",
     'loginTelegramApiCredentialsMissing': "尚未配置 Telegram API 凭证",
-    'loginTelegramApiPortalInstructions': "（在 my.telegram.org 获取），然后重新运行。",
+    'loginTelegramApiPortalInstructions': " (available from my.telegram.org).",
     'loginTelegramApiSecretsInstructions':
-        "请在 lib/config/secrets.dart 中填入你的 api_id 与 api_hash",
+        "Enter your own Telegram client api_id and api_hash",
     'loginTwoStepPassword': "两步验证密码",
     'loginVerificationCode': "验证码",
     'loginVerify': "验证",
@@ -7395,6 +7412,8 @@ const _messages = {
     'aboutTitle': "关于",
     'aboutVersion': "版本 {value1}",
     'accentColorPickerSave': "保存",
+    'apiCredentialsCustomClientApi': "Custom client API",
+    'apiCredentialsTitle': "Video & download acceleration",
     'addMembersDone': "完成",
     'addMembersDoneWithCount': "完成({value1})",
     'addMembersInviteMembersTitle': "邀请成员",
@@ -8075,9 +8094,9 @@ const _messages = {
     'loginSwitchAccount': "切换账号",
     'loginTelegramAccountTitle': "登录 Telegram 账号",
     'loginTelegramApiCredentialsMissing': "尚未配置 Telegram API 凭证",
-    'loginTelegramApiPortalInstructions': "（在 my.telegram.org 获取），然后重新运行。",
+    'loginTelegramApiPortalInstructions': " (available from my.telegram.org).",
     'loginTelegramApiSecretsInstructions':
-        "请在 lib/config/secrets.dart 中填入你的 api_id 与 api_hash",
+        "Enter your own Telegram client api_id and api_hash",
     'loginTwoStepPassword': "两步验证密码",
     'loginVerificationCode': "验证码",
     'loginVerify': "验证",
@@ -8412,6 +8431,8 @@ const _messages = {
     'aboutTitle': "关于",
     'aboutVersion': "版本 {value1}",
     'accentColorPickerSave': "保存",
+    'apiCredentialsCustomClientApi': "Custom client API",
+    'apiCredentialsTitle': "Video & download acceleration",
     'addMembersDone': "完成",
     'addMembersDoneWithCount': "完成({value1})",
     'addMembersInviteMembersTitle': "邀请成员",
@@ -9092,9 +9113,9 @@ const _messages = {
     'loginSwitchAccount': "切换账号",
     'loginTelegramAccountTitle': "登录 Telegram 账号",
     'loginTelegramApiCredentialsMissing': "尚未配置 Telegram API 凭证",
-    'loginTelegramApiPortalInstructions': "（在 my.telegram.org 获取），然后重新运行。",
+    'loginTelegramApiPortalInstructions': " (available from my.telegram.org).",
     'loginTelegramApiSecretsInstructions':
-        "请在 lib/config/secrets.dart 中填入你的 api_id 与 api_hash",
+        "Enter your own Telegram client api_id and api_hash",
     'loginTwoStepPassword': "两步验证密码",
     'loginVerificationCode': "验证码",
     'loginVerify': "验证",

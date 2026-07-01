@@ -427,6 +427,12 @@ class _ChatInputBarState extends State<ChatInputBar> {
     if (m.location != null) {
       return AppStrings.t(AppStringKeys.composerLocationPreview);
     }
+    if (m.isDice) {
+      return m.diceEmoji ?? m.text;
+    }
+    if (m.isAnimatedEmoji) {
+      return m.text;
+    }
     if (m.animatedSticker != null) {
       return AppStrings.t(AppStringKeys.composerAnimatedEmojiPreview);
     }

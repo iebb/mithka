@@ -14,6 +14,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../components/app_icons.dart';
+import '../settings/api_credentials_view.dart';
 import '../settings/proxy_config.dart';
 import '../settings/proxy_view.dart';
 import '../tdlib/td_client.dart';
@@ -240,7 +241,7 @@ class _LoginViewState extends State<LoginView> {
   Widget _stepFor(AuthManager auth) {
     if (_forcePhone) return _phoneStep(auth);
     return switch (auth.step) {
-      AuthMissingCredentials() => _credentialsNotice(),
+      AuthMissingCredentials() => _credentialsNotice(auth),
       AuthWaitCode(:final info) => _codeStep(auth, info),
       AuthWaitPassword(:final hint) => _passwordStep(auth, hint),
       AuthWaitRegistration() => _registrationStep(auth),
@@ -560,7 +561,7 @@ class _LoginViewState extends State<LoginView> {
     );
   }
 
-  Widget _credentialsNotice() {
+  Widget _credentialsNotice(AuthManager auth) {
     final c = context.colors;
     return Padding(
       padding: const EdgeInsets.only(top: 12),
@@ -587,7 +588,18 @@ class _LoginViewState extends State<LoginView> {
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 13, color: c.textSecondary),
           ),
+          const SizedBox(height: 18),
+          _primaryButton(auth, '配置自定义 API', true, () => _openApiSetup(auth)),
         ],
+      ),
+    );
+  }
+
+  Future<void> _openApiSetup(AuthManager auth) async {
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => ApiCredentialsView(onSaved: auth.retryStart),
       ),
     );
   }
@@ -745,9 +757,7 @@ class _InputFieldState extends State<InputField> {
               child: Padding(
                 padding: const EdgeInsets.only(left: 8),
                 child: Icon(
-                  _obscure
-                      ? HeroAppIcons.eyeSlash.data
-                      : HeroAppIcons.eye.data,
+                  _obscure ? HeroAppIcons.eyeSlash.data : HeroAppIcons.eye.data,
                   size: 20,
                   color: c.textTertiary,
                 ),

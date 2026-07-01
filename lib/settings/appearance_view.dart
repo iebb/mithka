@@ -389,7 +389,7 @@ extension _DisplayAppearanceHelpers on AppearanceView {
             value: theme.interfaceScale,
             min: ThemeController.minInterfaceScale,
             max: ThemeController.maxInterfaceScale,
-            divisions: 17,
+            divisions: 84,
             leading: AppIcon(
               HeroAppIcons.square,
               size: AppTextSize.body,
