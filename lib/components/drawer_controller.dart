@@ -57,9 +57,9 @@ class TabDepthObserver extends NavigatorObserver {
   final TabBarVisibility visibility;
   final List<Route<dynamic>> _pageStack = [];
 
-  void _report() => WidgetsBinding.instance.addPostFrameCallback(
-    (_) => visibility.setDepth(tab, (_pageStack.length - 1).clamp(0, 1 << 20)),
-  );
+  void _report() {
+    visibility.setDepth(tab, (_pageStack.length - 1).clamp(0, 1 << 20));
+  }
 
   @override
   void didPush(Route route, Route? previousRoute) {

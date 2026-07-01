@@ -27,6 +27,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/secrets.dart';
+import '../settings/api_credentials_config.dart';
 import '../settings/proxy_config.dart';
 import 'json_helpers.dart';
 import 'td_bindings.dart';
@@ -295,6 +296,8 @@ class TdClient {
 
     final dbDir = _databaseDirectory(slot);
     final filesDir = '$dbDir/files';
+    final api = ApiCredentialsConfig.fromPrefs(_prefs);
+    final useCustomApi = api.isUsable;
 
     _bindings.send(
       clientId,
@@ -307,8 +310,8 @@ class TdClient {
         'use_chat_info_database': true,
         'use_message_database': true,
         'use_secret_chats': false,
-        'api_id': Secrets.apiId,
-        'api_hash': Secrets.apiHash,
+        'api_id': useCustomApi ? api.apiId : Secrets.apiId,
+        'api_hash': useCustomApi ? api.apiHash.trim() : Secrets.apiHash,
         'system_language_code': Platform.localeName.split('_').first,
         'device_model': Platform.isIOS ? 'iPhone' : 'Android',
         'system_version': Platform.operatingSystemVersion,

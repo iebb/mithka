@@ -298,7 +298,7 @@ class _ChatViewState extends State<ChatView> {
       if (_liveNewMessageCount > 0) {
         setState(() {
           _liveNewMessageCount = 0;
-          _bannerDismissed = true;
+          _bannerDismissed = _vm.unreadCount <= 0;
         });
       }
       _animateToBottom(force: true);
@@ -309,8 +309,10 @@ class _ChatViewState extends State<ChatView> {
     try {
       final ok = await _vm.loadLatestHistory();
       if (!mounted || !ok) return;
-      _liveNewMessageCount = 0;
-      _bannerDismissed = true;
+      setState(() {
+        _liveNewMessageCount = 0;
+        _bannerDismissed = _vm.unreadCount <= 0;
+      });
       _scheduleScrollToBottom(animated: true, force: true);
     } finally {
       _loadingLatestFromAnchor = false;
@@ -1465,6 +1467,14 @@ class _ChatViewState extends State<ChatView> {
         onPointerCancel: _onBackSwipePointerEnd,
         child: Stack(
           children: [
+            if (_keyboardInset > 0)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: _keyboardInset,
+                child: ColoredBox(color: c.inputBarBackground),
+              ),
             Positioned.fill(
               child: AnimatedPadding(
                 duration: const Duration(milliseconds: 220),

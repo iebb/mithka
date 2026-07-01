@@ -328,6 +328,8 @@ class ChatMessage {
     this.videoSticker,
     this.video,
     this.videoDuration,
+    this.diceEmoji,
+    this.diceValue,
     this.stickerFileId,
     this.stickerSetId,
     this.isAnimatedEmoji = false,
@@ -383,6 +385,8 @@ class ChatMessage {
   TdFileRef? videoSticker; // .webm video sticker file
   TdFileRef? video; // playable video file (messageVideo)
   int? videoDuration; // seconds, for the duration badge
+  String? diceEmoji; // messageDice emoji, e.g. 🎲 / 🎯 / 🏀
+  int? diceValue; // messageDice value reported by TDLib
   int? stickerFileId; // any sticker's file id (for "add to favorites")
   int? stickerSetId; // the sticker's set id (for 表情详情)
   bool isAnimatedEmoji; // single-emoji message (messageAnimatedEmoji)
@@ -433,6 +437,9 @@ class ChatMessage {
   bool get isAlbumVisualMedia =>
       image != null &&
       (contentType == 'messagePhoto' || contentType == 'messageVideo');
+
+  bool get isDice =>
+      contentType == 'messageDice' && (diceEmoji ?? '').isNotEmpty;
 
   /// Whether the "+1" (复读) quick-repeat may apply to this kind at all: only
   /// plain text and photos. Audio, voice, location, stickers, polls, files,
@@ -776,6 +783,12 @@ abstract final class TDParse {
         videoSticker: media.videoSticker,
         video: media.video,
         videoDuration: media.videoDuration,
+        diceEmoji: content?.type == 'messageDice'
+            ? content?.str('emoji')
+            : null,
+        diceValue: content?.type == 'messageDice'
+            ? content?.integer('value')
+            : null,
         stickerFileId: media.stickerFileId,
         stickerSetId: media.stickerSetId,
         isAnimatedEmoji: media.isAnimatedEmoji,

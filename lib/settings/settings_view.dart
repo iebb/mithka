@@ -19,6 +19,7 @@ import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 import 'about_view.dart';
+import 'api_credentials_view.dart';
 import 'appearance_view.dart';
 import 'edit_profile_view.dart';
 import 'feature_settings_view.dart';
@@ -128,6 +129,14 @@ class _SettingsViewState extends State<SettingsView> {
                     AppStrings.t(AppStringKeys.proxyTitle),
                     const Color(0xFF34A2DF),
                     () => const ProxyView(),
+                  ),
+                  const InsetDivider(leadingInset: 56),
+                  _navRow(
+                    context,
+                    HeroAppIcons.cloudArrowDown.data,
+                    AppStringKeys.apiCredentialsTitle,
+                    const Color(0xFF2FBF71),
+                    () => const ApiCredentialsView(),
                   ),
                   const InsetDivider(leadingInset: 56),
                   _aboutRow(context),

@@ -222,6 +222,19 @@ void main() {
       expect(TDParse.messageText(content), 'hello');
     });
 
+    test('dice keeps emoji preview and parsed value', () {
+      final message = TDParse.message({
+        'id': 10,
+        'date': 1,
+        'content': {'@type': 'messageDice', 'emoji': '🎲', 'value': 6},
+      });
+      expect(message, isNotNull);
+      expect(message!.text, '🎲');
+      expect(message.diceEmoji, '🎲');
+      expect(message.diceValue, 6);
+      expect(message.isDice, isTrue);
+    });
+
     test('flattens Telegram core RichText markdown nodes', () {
       final rich = <String, dynamic>{
         '@type': 'textConcat',

@@ -263,10 +263,6 @@ class ChatViewModel extends ChangeNotifier {
       }
       initialLoaded = true;
       notifyListeners();
-      // Only the "open at latest" preference should force-read the newest
-      // message on entry. When that preference is off, preserve TDLib's
-      // last-read marker so the next open can return to the unread boundary.
-      if (target == null && markReadOnOpen) _markChatRead();
       unawaited(_loadAvailableMessageSenders());
     }();
   }
@@ -397,28 +393,6 @@ class ChatViewModel extends ChangeNotifier {
     _sub = null;
     KeywordBlocker.shared.removeListener(_applyKeywordFilter);
     _client.send({'@type': 'closeChat', 'chat_id': chatId});
-  }
-
-  /// Marks the chat read up to its latest message (force_read), clearing the
-  /// unread badge. Viewing the newest message advances last_read_inbox_message_id
-  /// past everything older, so a single id suffices.
-  void _markChatRead() {
-    if (unreadCount <= 0) return;
-    final latestVisible = messages.isNotEmpty ? messages.last.id : 0;
-    final latestBlocked = _allMessages
-        .where(_isBlockedMessage)
-        .map((m) => m.id)
-        .fold<int>(0, (a, b) => a > b ? a : b);
-    final messageId = latestVisible > latestBlocked
-        ? latestVisible
-        : latestBlocked;
-    if (messageId <= 0) return;
-    _client.send({
-      '@type': 'viewMessages',
-      'chat_id': chatId,
-      'message_ids': [messageId],
-      'force_read': true,
-    });
   }
 
   @override
@@ -610,6 +584,7 @@ class ChatViewModel extends ChangeNotifier {
   /// (offsets in UTF-16 of [text], which already has the fallback chars).
   void sendFormatted(String text, List<Map<String, dynamic>> entities) {
     if (text.trim().isEmpty) return;
+    if (entities.isEmpty && _sendDiceIfNeeded(text)) return;
     final allEntities = [...entities, ..._mentionEntitiesFor(text, entities)];
     _clearDraft(syncRemote: true);
     final request = <String, dynamic>{
@@ -633,6 +608,29 @@ class ChatViewModel extends ChangeNotifier {
     replyTo = null;
     _client.send(request);
     notifyListeners();
+  }
+
+  static const _diceEmojis = {'🎲', '🎯', '🏀', '⚽', '🎳', '🎰'};
+
+  bool _sendDiceIfNeeded(String text) {
+    final emoji = text.trim();
+    if (!_diceEmojis.contains(emoji)) return false;
+    _clearDraft(syncRemote: true);
+    final request = <String, dynamic>{
+      '@type': 'sendMessage',
+      'chat_id': chatId,
+      'input_message_content': {'@type': 'inputMessageDice', 'emoji': emoji},
+    };
+    if (replyTo != null) {
+      request['reply_to'] = {
+        '@type': 'inputMessageReplyToMessage',
+        'message_id': replyTo!.id,
+      };
+    }
+    replyTo = null;
+    _client.send(request);
+    notifyListeners();
+    return true;
   }
 
   /// 引用: set (or clear) the reply target. In a group, replying to someone also
@@ -1115,7 +1113,6 @@ class ChatViewModel extends ChangeNotifier {
     if (messages.length < 12 && _allMessages.isNotEmpty) {
       await _fetchHistory(_allMessages.first.id, 0, 40, restorePosition: false);
     }
-    _markChatRead();
     return true;
   }
 
@@ -1986,6 +1983,12 @@ class ChatViewModel extends ChangeNotifier {
     }
     if (q.location != null) {
       return AppStrings.t(AppStringKeys.composerLocationPreview);
+    }
+    if (q.isDice) {
+      return q.diceEmoji ?? q.text;
+    }
+    if (q.isAnimatedEmoji) {
+      return q.text;
     }
     if (q.animatedSticker != null) {
       return AppStrings.t(AppStringKeys.composerAnimatedEmojiPreview);

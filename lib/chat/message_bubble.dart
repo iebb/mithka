@@ -509,7 +509,9 @@ class _MessageBubbleState extends State<MessageBubble>
         outgoing,
       );
     }
-    if (message.video != null) {
+    if (message.isDice) {
+      body = _diceBubble(outgoing);
+    } else if (message.video != null) {
       body = _videoContent(outgoing);
     } else if (message.stickerFileId != null && message.image != null) {
       body = _staticStickerContent(message.image!);
@@ -661,6 +663,56 @@ class _MessageBubbleState extends State<MessageBubble>
 
   // MARK: - Text bubble
 
+  Widget _diceBubble(bool outgoing) {
+    final c = context.colors;
+    final value = message.diceValue;
+    return Container(
+      constraints: BoxConstraints(maxWidth: _bubbleMaxWidth()),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 11),
+      decoration: BoxDecoration(
+        color: outgoing ? AppTheme.bubbleOutgoing : c.bubbleIncoming,
+        borderRadius: BorderRadius.circular(10),
+        border: outgoing ? null : Border.all(color: c.divider, width: 0.5),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0.88, end: 1),
+            duration: const Duration(milliseconds: 260),
+            curve: Curves.easeOutBack,
+            builder: (context, scale, child) =>
+                Transform.scale(scale: scale, child: child),
+            child: Text(
+              message.diceEmoji ?? message.text,
+              style: const TextStyle(fontSize: 64, height: 1),
+            ),
+          ),
+          if (value != null) ...[
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+              decoration: BoxDecoration(
+                color: outgoing
+                    ? Colors.white.withValues(alpha: 0.16)
+                    : c.searchFill,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                '$value',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: outgoing ? Colors.white : c.textSecondary,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _textBubble(String text, bool outgoing) {
     final c = context.colors;
     final baseColor = outgoing
@@ -671,9 +723,13 @@ class _MessageBubbleState extends State<MessageBubble>
       r.dispose();
     }
     _linkRecognizers.clear();
+    final emojiOnly = _isEmojiOnlyText(text);
+    final textFontSize = emojiOnly ? 34.0 : 14.0;
     return Container(
       constraints: BoxConstraints(maxWidth: _bubbleMaxWidth()),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      padding: emojiOnly
+          ? const EdgeInsets.symmetric(horizontal: 10, vertical: 7)
+          : const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       decoration: BoxDecoration(
         color: outgoing ? AppTheme.bubbleOutgoing : c.bubbleIncoming,
         borderRadius: BorderRadius.circular(6),
@@ -695,7 +751,15 @@ class _MessageBubbleState extends State<MessageBubble>
             _linkPreviewCard(message.linkPreview!, outgoing),
             if (text.isNotEmpty) const SizedBox(height: 6),
           ],
-          ..._richTextWidgets(text, baseColor, linkColor, outgoing, false),
+          ..._richTextWidgets(
+            text,
+            baseColor,
+            linkColor,
+            outgoing,
+            false,
+            null,
+            textFontSize,
+          ),
           if (message.linkPreview != null &&
               !message.linkPreview!.showAboveText) ...[
             if (text.isNotEmpty) const SizedBox(height: 7),
@@ -710,6 +774,55 @@ class _MessageBubbleState extends State<MessageBubble>
       ),
     );
   }
+
+  bool _isEmojiOnlyText(String text) {
+    final stripped = text.replaceAll(RegExp(r'\s+'), '');
+    if (stripped.isEmpty) return false;
+    var count = 0;
+    for (final cluster in stripped.characters) {
+      if (!_isEmojiCluster(cluster)) return false;
+      count++;
+    }
+    return count > 1;
+  }
+
+  bool _isEmojiCluster(String cluster) {
+    final runes = cluster.runes.toList();
+    final keycap = runes.contains(0x20E3);
+    for (final rune in runes) {
+      if (_isEmojiModifier(rune)) continue;
+      if (keycap && _isKeycapBase(rune)) continue;
+      if (!_isEmojiCodepoint(rune)) return false;
+    }
+    return true;
+  }
+
+  bool _isEmojiModifier(int rune) =>
+      rune == 0x200D ||
+      rune == 0xFE0E ||
+      rune == 0xFE0F ||
+      rune == 0x20E3 ||
+      (rune >= 0x1F3FB && rune <= 0x1F3FF);
+
+  bool _isKeycapBase(int rune) =>
+      (rune >= 0x30 && rune <= 0x39) || rune == 0x23 || rune == 0x2A;
+
+  bool _isEmojiCodepoint(int rune) =>
+      rune == 0x00A9 ||
+      rune == 0x00AE ||
+      rune == 0x203C ||
+      rune == 0x2049 ||
+      rune == 0x2122 ||
+      rune == 0x2139 ||
+      rune == 0x3030 ||
+      rune == 0x303D ||
+      rune == 0x3297 ||
+      rune == 0x3299 ||
+      (rune >= 0x2194 && rune <= 0x21AA) ||
+      (rune >= 0x2300 && rune <= 0x23FF) ||
+      (rune >= 0x2600 && rune <= 0x27BF) ||
+      (rune >= 0x2934 && rune <= 0x2935) ||
+      (rune >= 0x1F000 && rune <= 0x1FAFF);
 
   Widget _translationBlock(bool outgoing) {
     final c = context.colors;
@@ -1699,7 +1812,7 @@ class _MessageBubbleState extends State<MessageBubble>
               padding: const EdgeInsets.symmetric(horizontal: 0.5),
               child: CustomEmojiView(
                 id: emoji.customEmojiId!,
-                size: 20,
+                size: math.max(20, fontSize * 1.15),
                 color: base,
               ),
             ),
