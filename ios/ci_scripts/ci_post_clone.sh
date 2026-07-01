@@ -38,10 +38,12 @@ echo "▸ git commit: $GIT_COMMIT"
 
 # Xcode Cloud runs xcodebuild after this script and can otherwise keep using
 # stale FLUTTER_BUILD_NAME values from the checked-in project. Keep the archive
-# version sourced from pubspec.yaml, matching the Android/GitHub release flow.
+# version sourced from pubspec.yaml by default, matching the Android/GitHub
+# release flow; release branches may pin an approved App Store version with
+# IOS_APP_BUILD_NAME_OVERRIDE.
 RAW_VERSION="$(awk '/^version:/ { print $2; exit }' pubspec.yaml)"
 test -n "$RAW_VERSION"
-APP_BUILD_NAME="${RAW_VERSION%%+*}"
+APP_BUILD_NAME="${IOS_APP_BUILD_NAME_OVERRIDE:-${RAW_VERSION%%+*}}"
 APP_BUILD_NUMBER="$(date -u '+%y%m%d%H')"
 XCODE_BUILD_NAME="$APP_BUILD_NAME"
 echo "▸ app version: $APP_BUILD_NAME+$APP_BUILD_NUMBER"
