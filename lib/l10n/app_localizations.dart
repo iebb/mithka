@@ -1241,8 +1241,8 @@ abstract final class AppStrings {
     final localeMessages = _messages[localeKey];
     final localeValue = localeMessages?[key];
     final fallbackValue = _messages['en']?[key];
-    if (localeValue == null) {
-      _reportMissing(localeKey, key, fallbackFound: fallbackValue != null);
+    if (localeValue == null && fallbackValue == null) {
+      _reportMissing(localeKey, key);
     }
     var value = localeValue ?? fallbackValue ?? key;
     placeholders.forEach((placeholder, replacement) {
@@ -1251,11 +1251,7 @@ abstract final class AppStrings {
     return value;
   }
 
-  static void _reportMissing(
-    String localeKey,
-    String key, {
-    required bool fallbackFound,
-  }) {
+  static void _reportMissing(String localeKey, String key) {
     final reportKey = '$localeKey:$key';
     if (!_reportedMissingKeys.add(reportKey)) return;
     unawaited(
@@ -1265,11 +1261,7 @@ abstract final class AppStrings {
         withScope: (scope) {
           scope.setTag('localization.locale', localeKey);
           scope.setTag('localization.key', key);
-          scope.setContexts('localization', {
-            'locale': localeKey,
-            'key': key,
-            'fallback_found': fallbackFound,
-          });
+          scope.setContexts('localization', {'locale': localeKey, 'key': key});
         },
       ),
     );
