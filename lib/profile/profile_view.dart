@@ -430,13 +430,15 @@ class _ProfileViewState extends State<ProfileView> {
             const Color(0xFF3C8CF0),
             AppStrings.t(AppStringKeys.topicPostContentFile),
             () {
-              final cid = _vm.savedChatId ?? _vm.user?.id ?? 0;
               _root.push(
                 MaterialPageRoute(
                   builder: (_) => SharedMediaView(
-                    chatId: cid,
+                    chatId: 0,
                     title: AppStrings.t(AppStringKeys.topicPostContentFile),
                     initialTab: 1,
+                    displayTitle: AppStrings.t(
+                      AppStringKeys.topicPostContentFile,
+                    ),
                   ),
                 ),
               );

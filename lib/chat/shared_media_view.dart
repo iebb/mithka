@@ -136,8 +136,8 @@ class _SharedMediaViewState extends State<SharedMediaView> {
     _loading.add(tab);
     final query = _query.trim();
     try {
-      if (_usesGlobalVideoSearch(tab)) {
-        await _loadGlobalVideos(tab, query);
+      if (_usesGlobalSearch(tab)) {
+        await _loadGlobalMessages(tab, query);
         return;
       }
       final res = await _client.query({
@@ -166,30 +166,28 @@ class _SharedMediaViewState extends State<SharedMediaView> {
     }
   }
 
-  bool _usesGlobalVideoSearch(int tab) =>
-      _tabs[tab].videoOnly && widget.chatId == 0;
+  bool _usesGlobalSearch(int tab) => widget.chatId == 0;
 
-  Future<void> _loadGlobalVideos(int tab, String query) async {
+  Future<void> _loadGlobalMessages(int tab, String query) async {
     final list = <Map<String, dynamic>>[
-      ...await _searchGlobalVideosInList(
+      ...await _searchGlobalMessagesInList(
         query: query,
         filter: _tabs[tab].filter,
         chatList: {'@type': 'chatListMain'},
       ),
-      ...await _searchGlobalVideosInList(
+      ...await _searchGlobalMessagesInList(
         query: query,
         filter: _tabs[tab].filter,
         chatList: {'@type': 'chatListArchive'},
       ),
     ];
-    var parsed = list
-        .map(TDParse.message)
-        .whereType<ChatMessage>()
-        .where((message) => message.video != null)
-        .toList();
-    if (query.isEmpty) {
+    var parsed = list.map(TDParse.message).whereType<ChatMessage>().toList();
+    if (_tabs[tab].videoOnly) {
+      parsed = parsed.where((message) => message.video != null).toList();
+    }
+    if (_tabs[tab].videoOnly && query.isEmpty) {
       _recentGlobalVideos = parsed;
-    } else if (_recentGlobalVideos.isNotEmpty) {
+    } else if (_tabs[tab].videoOnly && _recentGlobalVideos.isNotEmpty) {
       final seen = parsed.map((m) => '${m.chatId}:${m.id}').toSet();
       parsed = [
         ...parsed,
@@ -209,7 +207,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
     _primeFileStates(parsed);
   }
 
-  Future<List<Map<String, dynamic>>> _searchGlobalVideosInList({
+  Future<List<Map<String, dynamic>>> _searchGlobalMessagesInList({
     required String query,
     required String filter,
     required Map<String, dynamic> chatList,
@@ -1022,10 +1020,13 @@ class _SharedMediaViewState extends State<SharedMediaView> {
 
   String _fileSubtitle(ChatMessage message) {
     final state = _stateFor(message);
+    final source = _sourceTitleFor(message);
     return [
       DateText.listLabel(message.date),
       _downloadLabel(message, state),
-      if ((message.senderName ?? '').isNotEmpty) '来自 ${message.senderName}',
+      if (_usesGlobalSearch(_tab) && source.isNotEmpty) '来自 $source',
+      if (!_usesGlobalSearch(_tab) && (message.senderName ?? '').isNotEmpty)
+        '来自 ${message.senderName}',
     ].join(' · ');
   }
 
