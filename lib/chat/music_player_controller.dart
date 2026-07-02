@@ -559,8 +559,8 @@ class _ExpandedMusicPlayer extends StatelessWidget {
               _MiniButton(
                 tooltip: _modeLabel(controller.mode),
                 onTap: controller.cycleMode,
-                child: AppIcon(
-                  _modeIcon(controller.mode),
+                child: _modeIconWidget(
+                  controller.mode,
                   size: 20,
                   color: controller.mode == MusicPlaybackMode.sequence
                       ? c.textPrimary
@@ -749,8 +749,8 @@ void _showMusicQueue(BuildContext context, MusicPlayerController controller) {
                       const SizedBox(height: 12),
                       Row(
                         children: [
-                          AppIcon(
-                            _modeIcon(controller.mode),
+                          _modeIconWidget(
+                            controller.mode,
                             size: 17,
                             color: c.textSecondary,
                           ),
@@ -1012,12 +1012,136 @@ String _duration(int seconds) {
   return h > 0 ? '$h:${two(m)}:${two(s)}' : '$m:${two(s)}';
 }
 
-AppIconData _modeIcon(MusicPlaybackMode mode) {
+Widget _modeIconWidget(
+  MusicPlaybackMode mode, {
+  required double size,
+  required Color color,
+}) {
   return switch (mode) {
-    MusicPlaybackMode.sequence => HeroAppIcons.arrowsRotate,
-    MusicPlaybackMode.repeatOne => HeroAppIcons.rotate,
-    MusicPlaybackMode.shuffle => HeroAppIcons.arrowsUpDown,
+    MusicPlaybackMode.sequence => AppIcon(
+      HeroAppIcons.arrowsRotate,
+      size: size,
+      color: color,
+    ),
+    MusicPlaybackMode.repeatOne => _RepeatOneGlyph(size: size, color: color),
+    MusicPlaybackMode.shuffle => _ShuffleGlyph(size: size, color: color),
   };
+}
+
+class _RepeatOneGlyph extends StatelessWidget {
+  const _RepeatOneGlyph({required this.size, required this.color});
+
+  final double size;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox.square(
+      dimension: size,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          AppIcon(HeroAppIcons.arrowsRotate, size: size, color: color),
+          Transform.translate(
+            offset: Offset(size * 0.12, size * 0.06),
+            child: Text(
+              '1',
+              style: TextStyle(
+                inherit: false,
+                fontSize: size * 0.44,
+                height: 1,
+                fontWeight: FontWeight.w800,
+                color: color,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ShuffleGlyph extends StatelessWidget {
+  const _ShuffleGlyph({required this.size, required this.color});
+
+  final double size;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox.square(
+      dimension: size,
+      child: CustomPaint(painter: _ShuffleGlyphPainter(color)),
+    );
+  }
+}
+
+class _ShuffleGlyphPainter extends CustomPainter {
+  const _ShuffleGlyphPainter(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final stroke = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = (size.width * 0.1).clamp(1.6, 2.4)
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final arrow = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+
+    final upper = Path()
+      ..moveTo(size.width * 0.1, size.height * 0.3)
+      ..cubicTo(
+        size.width * 0.34,
+        size.height * 0.3,
+        size.width * 0.42,
+        size.height * 0.7,
+        size.width * 0.68,
+        size.height * 0.7,
+      );
+    final lower = Path()
+      ..moveTo(size.width * 0.1, size.height * 0.7)
+      ..cubicTo(
+        size.width * 0.34,
+        size.height * 0.7,
+        size.width * 0.42,
+        size.height * 0.3,
+        size.width * 0.68,
+        size.height * 0.3,
+      );
+    canvas.drawPath(upper, stroke);
+    canvas.drawPath(lower, stroke);
+    _drawArrow(
+      canvas,
+      arrow,
+      Offset(size.width * 0.9, size.height * 0.7),
+      size,
+    );
+    _drawArrow(
+      canvas,
+      arrow,
+      Offset(size.width * 0.9, size.height * 0.3),
+      size,
+    );
+  }
+
+  void _drawArrow(Canvas canvas, Paint paint, Offset tip, Size size) {
+    final head = Path()
+      ..moveTo(tip.dx, tip.dy)
+      ..lineTo(tip.dx - size.width * 0.22, tip.dy - size.height * 0.14)
+      ..lineTo(tip.dx - size.width * 0.22, tip.dy + size.height * 0.14)
+      ..close();
+    canvas.drawPath(head, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _ShuffleGlyphPainter oldDelegate) {
+    return oldDelegate.color != color;
+  }
 }
 
 String _modeLabel(MusicPlaybackMode mode) {

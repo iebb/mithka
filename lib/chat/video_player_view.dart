@@ -122,6 +122,11 @@ class _TdVideoStreamServer {
       }
 
       final bytes = await _readRange(start, end);
+      if (bytes.isEmpty) {
+        request.response.statusCode = HttpStatus.serviceUnavailable;
+        await request.response.close();
+        return;
+      }
       request.response
         ..statusCode = HttpStatus.partialContent
         ..contentLength = bytes.length;
@@ -144,14 +149,22 @@ class _TdVideoStreamServer {
     if (header != null && header.startsWith('bytes=')) {
       final value = header.substring('bytes='.length).split(',').first.trim();
       final parts = value.split('-');
-      start = int.tryParse(parts.first) ?? 0;
-      if (parts.length > 1 && parts[1].isNotEmpty) {
-        requestedEnd = int.tryParse(parts[1]);
+      if (parts.first.isEmpty && parts.length > 1) {
+        final suffixLength = int.tryParse(parts[1]) ?? 0;
+        if (suffixLength > 0) {
+          start = math.max(0, _total - suffixLength);
+          requestedEnd = _total - 1;
+        }
+      } else {
+        start = int.tryParse(parts.first) ?? 0;
+        if (parts.length > 1 && parts[1].isNotEmpty) {
+          requestedEnd = int.tryParse(parts[1]);
+        }
       }
     }
     start = start.clamp(0, math.max(0, _total - 1));
     final end = math.min(
-      requestedEnd ?? (start + _chunkSize - 1),
+      math.max(start, requestedEnd ?? (start + _chunkSize - 1)),
       math.min(_total - 1, start + _chunkSize - 1),
     );
     return (start, end);
@@ -167,22 +180,51 @@ class _TdVideoStreamServer {
         priority: 32,
         timeout: const Duration(seconds: 45),
       );
-      if (file == null) return false;
-      _updateFileInfo(file);
-      return _path != null && _path!.isNotEmpty;
+      if (file != null) _updateFileInfo(file);
+      if (_path == null || _path!.isEmpty) {
+        final path = await TdFileCenter.shared.playbackPath(fileId);
+        if (path != null && path.isNotEmpty) _path = path;
+      }
+      return _waitForReadableRange(start, end);
     } catch (_) {
-      return false;
+      return _waitForReadableRange(start, end);
     }
+  }
+
+  Future<bool> _waitForReadableRange(int start, int end) async {
+    final deadline = DateTime.now().add(const Duration(seconds: 45));
+    while (DateTime.now().isBefore(deadline)) {
+      try {
+        final path = _path;
+        if (path != null && path.isNotEmpty) {
+          final localFile = File(path);
+          if (await localFile.exists()) {
+            final available = await localFile.length();
+            if (available > start) return true;
+          }
+        }
+        final file = await TdClient.shared.query({
+          '@type': 'getFile',
+          'file_id': fileId,
+        });
+        _updateFileInfo(file);
+      } catch (_) {}
+      await Future<void>.delayed(const Duration(milliseconds: 180));
+    }
+    return false;
   }
 
   Future<List<int>> _readRange(int start, int end) async {
     final path = _path;
     if (path == null || path.isEmpty) return const [];
     final file = File(path);
+    final available = await file.length();
+    if (available <= start) return const [];
+    final readableEnd = math.min(end, available - 1);
     final raf = await file.open();
     try {
       await raf.setPosition(start);
-      return await raf.read(end - start + 1);
+      return await raf.read(readableEnd - start + 1);
     } finally {
       await raf.close();
     }
@@ -272,6 +314,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   double _downloadSpeed = 0;
   int _lastSavedPositionMs = 0;
   _TdVideoStreamServer? _streamServer;
+  bool _openedCompletedLocalFile = false;
 
   static const _speeds = <double>[0.5, 0.75, 1, 1.25, 1.5, 2];
   static const _resumePrefix = 'mithka.video.resume.';
@@ -306,6 +349,15 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
       _lastProgressBytes = progress.downloaded;
       setState(() => _progress = progress);
     });
+    final completedPath = await _completedLocalVideoPath();
+    if (!mounted) return;
+    if (completedPath != null) {
+      _localPath = completedPath;
+      _openedCompletedLocalFile = true;
+      final initialized = await _initializeFromFile(completedPath);
+      if (initialized || !mounted) return;
+      _openedCompletedLocalFile = false;
+    }
     final server = _TdVideoStreamServer(widget.video.id);
     _streamServer = server;
     final uri = await server.start();
@@ -325,8 +377,48 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     showToast(context, AppStringKeys.videoPlayerCannotPlay);
   }
 
+  Future<String?> _completedLocalVideoPath() async {
+    try {
+      final file = await TdClient.shared.query({
+        '@type': 'getFile',
+        'file_id': widget.video.id,
+      });
+      final local = file.obj('local');
+      if (local?.boolean('is_downloading_completed') != true) return null;
+      final path = local?.str('path');
+      if (path == null || path.isEmpty) return null;
+      final localFile = File(path);
+      if (!await localFile.exists()) return null;
+      final length = await localFile.length();
+      if (length <= 0) return null;
+      final expected = file.integer('expected_size') ?? 0;
+      final size = file.integer('size') ?? 0;
+      final total = expected > 0 ? expected : size;
+      if (total > 0 && length < total) return null;
+      _progress = TdFileProgress(
+        fileId: widget.video.id,
+        downloaded: total > 0 ? total : length,
+        prefixDownloaded: total > 0 ? total : length,
+        total: total > 0 ? total : length,
+        isActive: false,
+        isCompleted: true,
+      );
+      return path;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<bool> _initializeFromFile(String path) async {
+    final c = VideoPlayerController.file(File(path));
+    return _initializeController(c);
+  }
+
   Future<bool> _initializeFromUri(Uri uri) async {
-    final c = VideoPlayerController.networkUrl(uri);
+    return _initializeController(VideoPlayerController.networkUrl(uri));
+  }
+
+  Future<bool> _initializeController(VideoPlayerController c) async {
     try {
       await c.initialize().timeout(const Duration(seconds: 45));
       await c.setLooping(false);
@@ -491,7 +583,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     _controller?.removeListener(_onTick);
     _controller?.dispose();
     unawaited(_streamServer?.close());
-    if (_progress?.isCompleted != true) {
+    if (!_openedCompletedLocalFile && _progress?.isCompleted != true) {
       TdFileCenter.shared.cancelDownload(widget.video.id);
     }
     super.dispose();

@@ -265,7 +265,10 @@ class _MithkaAppState extends State<MithkaApp> {
                   Overlay(
                     initialEntries: [
                       OverlayEntry(
-                        builder: (_) => const GlobalMusicPlayerOverlay(),
+                        builder: (_) => const Material(
+                          type: MaterialType.transparency,
+                          child: GlobalMusicPlayerOverlay(),
+                        ),
                       ),
                     ],
                   ),
