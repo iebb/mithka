@@ -584,6 +584,31 @@ class _LoginViewState extends State<LoginView> {
 
   Widget _codeStep(AuthManager auth, String info) {
     final c = context.colors;
+    if (auth.isReviewCodePolling) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              info,
+              style: TextStyle(fontSize: 13, color: c.textSecondary),
+            ),
+          ),
+          const SizedBox(height: 28),
+          Center(
+            child: SizedBox(
+              width: 28,
+              height: 28,
+              child: CircularProgressIndicator.adaptive(
+                strokeWidth: 2.4,
+                valueColor: AlwaysStoppedAnimation<Color>(AppTheme.brand),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [

@@ -79,6 +79,7 @@ class AuthManager extends ChangeNotifier {
   AuthStep get step => _step;
   String? get errorMessage => _errorMessage;
   bool get isWorking => _isWorking;
+  bool get isReviewCodePolling => _reviewCodePollActive;
 
   void start() {
     if (_started) return;
@@ -196,6 +197,7 @@ class AuthManager extends ChangeNotifier {
   Future<void> _submitReviewCodeFromRelay() async {
     if (_reviewCodePollActive) return;
     _reviewCodePollActive = true;
+    notifyListeners();
     try {
       for (var attempt = 0; attempt < 20; attempt += 1) {
         if (_step is! AuthWaitCode || !_useReviewCodeRelay) return;
@@ -210,6 +212,7 @@ class AuthManager extends ChangeNotifier {
       debugPrint('Review login code relay failed: $error');
     } finally {
       _reviewCodePollActive = false;
+      notifyListeners();
     }
   }
 
