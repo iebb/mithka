@@ -442,6 +442,24 @@ class _ProfileViewState extends State<ProfileView> {
               );
             },
           ),
+          _row(
+            HeroAppIcons.video,
+            const Color(0xFF7B61FF),
+            AppStrings.t(AppStringKeys.sharedMediaVideos),
+            () {
+              _root.push(
+                MaterialPageRoute(
+                  builder: (_) => SharedMediaView(
+                    chatId: 0,
+                    title: AppStrings.t(AppStringKeys.sharedMediaVideos),
+                    initialTab: 4,
+                    displayTitle: AppStrings.t(AppStringKeys.sharedMediaVideos),
+                    lockedTab: true,
+                  ),
+                ),
+              );
+            },
+          ),
         ],
       ),
     );

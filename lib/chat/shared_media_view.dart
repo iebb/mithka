@@ -104,6 +104,8 @@ class _SharedMediaViewState extends State<SharedMediaView> {
   final Map<int, List<ChatMessage>> _cache = {};
   final Set<int> _loading = {};
   final Map<int, _SharedFileState> _files = {};
+  final Map<int, String> _sourceTitles = {};
+  List<ChatMessage> _recentGlobalVideos = const [];
   final TextEditingController _search = TextEditingController();
   StreamSubscription? _fileSub;
   Timer? _searchDebounce;
@@ -134,6 +136,10 @@ class _SharedMediaViewState extends State<SharedMediaView> {
     _loading.add(tab);
     final query = _query.trim();
     try {
+      if (_usesGlobalVideoSearch(tab)) {
+        await _loadGlobalVideos(tab, query);
+        return;
+      }
       final res = await _client.query({
         '@type': 'searchChatMessages',
         'chat_id': widget.chatId,
@@ -158,6 +164,83 @@ class _SharedMediaViewState extends State<SharedMediaView> {
     } catch (_) {
       if (mounted) setState(() => _loading.remove(tab));
     }
+  }
+
+  bool _usesGlobalVideoSearch(int tab) =>
+      _tabs[tab].videoOnly && widget.chatId == 0;
+
+  Future<void> _loadGlobalVideos(int tab, String query) async {
+    final list = <Map<String, dynamic>>[
+      ...await _searchGlobalVideosInList(
+        query: query,
+        filter: _tabs[tab].filter,
+        chatList: {'@type': 'chatListMain'},
+      ),
+      ...await _searchGlobalVideosInList(
+        query: query,
+        filter: _tabs[tab].filter,
+        chatList: {'@type': 'chatListArchive'},
+      ),
+    ];
+    var parsed = list
+        .map(TDParse.message)
+        .whereType<ChatMessage>()
+        .where((message) => message.video != null)
+        .toList();
+    if (query.isEmpty) {
+      _recentGlobalVideos = parsed;
+    } else if (_recentGlobalVideos.isNotEmpty) {
+      final seen = parsed.map((m) => '${m.chatId}:${m.id}').toSet();
+      parsed = [
+        ...parsed,
+        for (final message in _recentGlobalVideos)
+          if (!seen.contains('${message.chatId}:${message.id}')) message,
+      ];
+    }
+    for (final chatId
+        in parsed.map((m) => m.chatId).whereType<int>().take(40)) {
+      unawaited(_resolveSourceTitle(chatId));
+    }
+    if (!mounted) return;
+    setState(() {
+      _cache[tab] = parsed;
+      _loading.remove(tab);
+    });
+    _primeFileStates(parsed);
+  }
+
+  Future<List<Map<String, dynamic>>> _searchGlobalVideosInList({
+    required String query,
+    required String filter,
+    required Map<String, dynamic> chatList,
+  }) async {
+    try {
+      final res = await _client.query({
+        '@type': 'searchMessages',
+        'chat_list': chatList,
+        'query': query,
+        'offset_date': 0,
+        'offset_chat_id': 0,
+        'offset_message_id': 0,
+        'limit': 80,
+        'filter': {'@type': filter},
+        'min_date': 0,
+        'max_date': 0,
+      });
+      return res.objects('messages') ?? const <Map<String, dynamic>>[];
+    } catch (_) {
+      return const <Map<String, dynamic>>[];
+    }
+  }
+
+  Future<void> _resolveSourceTitle(int chatId) async {
+    if (_sourceTitles.containsKey(chatId)) return;
+    try {
+      final chat = await _client.query({'@type': 'getChat', 'chat_id': chatId});
+      final title = chat.str('title');
+      if (!mounted || title == null || title.isEmpty) return;
+      setState(() => _sourceTitles[chatId] = title);
+    } catch (_) {}
   }
 
   void _select(int tab) {
@@ -479,7 +562,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
 
   List<ChatMessage> _filteredItems(List<ChatMessage> items) {
     final query = _query.trim().toLowerCase();
-    return items.where((message) {
+    final filtered = items.where((message) {
       if ((_tabs[_tab].videoOnly || _tab == 1) &&
           !_matchesFileFilter(message)) {
         return false;
@@ -488,11 +571,27 @@ class _SharedMediaViewState extends State<SharedMediaView> {
       final fields = [
         message.text,
         message.senderName ?? '',
-        widget.title,
+        _sourceTitleFor(message),
         message.document?.fileName ?? '',
       ].join(' ').toLowerCase();
       return fields.contains(query);
     }).toList();
+    if (_tabs[_tab].videoOnly) {
+      filtered.sort((a, b) {
+        final byPriority = _videoPriority(b).compareTo(_videoPriority(a));
+        if (byPriority != 0) return byPriority;
+        return b.date.compareTo(a.date);
+      });
+    }
+    return filtered;
+  }
+
+  int _videoPriority(ChatMessage message) {
+    final state = _stateFor(message);
+    if (state?.completed == true) return 3;
+    if ((state?.downloaded ?? 0) > 0) return 2;
+    if (state?.active == true) return 1;
+    return 0;
   }
 
   bool _matchesFileFilter(ChatMessage message) {
@@ -543,7 +642,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
                 thumb: message.image,
                 width: message.imageWidth,
                 height: message.imageHeight,
-                sourceChatId: widget.chatId,
+                sourceChatId: _sourceChatIdFor(message),
                 messageId: message.id,
               ),
             ),
@@ -704,7 +803,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
               thumb: message.image,
               width: message.imageWidth,
               height: message.imageHeight,
-              sourceChatId: widget.chatId,
+              sourceChatId: _sourceChatIdFor(message),
               messageId: message.id,
             ),
           ),
@@ -795,7 +894,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
                   ],
                   const SizedBox(height: 3),
                   Text(
-                    '来自 ${widget.title}${(message.senderName ?? '').isEmpty ? '' : ' | ${message.senderName}'}',
+                    '来自 ${_sourceTitleFor(message)}${(message.senderName ?? '').isEmpty ? '' : ' | ${message.senderName}'}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(fontSize: 12, color: c.textTertiary),
@@ -949,6 +1048,16 @@ class _SharedMediaViewState extends State<SharedMediaView> {
     final text = message.text.trim().replaceAll('\n', ' ');
     if (text.isNotEmpty) return text;
     return '${DateText.listLabel(message.date)} 视频';
+  }
+
+  int _sourceChatIdFor(ChatMessage message) => message.chatId ?? widget.chatId;
+
+  String _sourceTitleFor(ChatMessage message) {
+    final sourceChatId = message.chatId;
+    if (sourceChatId != null) {
+      return _sourceTitles[sourceChatId] ?? widget.title;
+    }
+    return widget.title;
   }
 
   int? _fileId(ChatMessage message) =>

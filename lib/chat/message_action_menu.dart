@@ -57,19 +57,16 @@ class MessageActionMenu extends StatelessWidget {
   static const _surface = Color(0xFF2C2C2E);
   static const _destructive = Color(0xFFFF6961);
 
-  bool get _isTextMessage =>
-      message.image == null &&
-      message.document == null &&
-      message.animatedSticker == null;
-
   bool get _isEditableTextMessage =>
       message.contentType == 'messageText' && message.text.isNotEmpty;
+
+  bool get _hasCopyableText => message.text.trim().isNotEmpty;
 
   List<MessageAction> _actions(bool translationEnabled) {
     // Call logs / special messages: only 删除 (no copy/reply/forward/react).
     if (message.isCall) return [MessageAction.delete];
     final result = <MessageAction>[];
-    if (_isTextMessage && message.text.isNotEmpty) {
+    if (_hasCopyableText) {
       result.add(MessageAction.copy);
       result.add(MessageAction.selectText);
       if (message.isOutgoing && _isEditableTextMessage) {

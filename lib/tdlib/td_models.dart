@@ -304,6 +304,7 @@ class ChatMessage {
     required this.isOutgoing,
     required this.text,
     required this.date,
+    this.chatId,
     this.senderName,
     this.isService = false,
     this.isCall = false,
@@ -356,6 +357,7 @@ class ChatMessage {
   final bool isOutgoing;
   String text;
   final int date;
+  int? chatId;
   String? senderName;
   bool isService;
   bool isCall; // messageCall — a call log; not reactable
@@ -700,6 +702,7 @@ abstract final class TDParse {
   static ChatMessage? message(Map<String, dynamic> message) {
     final id = message.int64('id');
     if (id == null) return null;
+    final chatId = message.int64('chat_id');
     final outgoing = message.boolean('is_outgoing') ?? false;
     final date = message.integer('date') ?? 0;
     final content = message.obj('content');
@@ -763,6 +766,7 @@ abstract final class TDParse {
         isOutgoing: outgoing,
         text: displayText,
         date: date,
+        chatId: chatId,
         isService: service,
         isCall: isCall,
         callIsVideo: callIsVideo,
