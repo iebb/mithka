@@ -1,12 +1,13 @@
 name: 🚀 Release APK
 
-# Builds per-ABI **release** APKs from the release branch. Each ABI
+# Builds per-ABI **release** APKs from master/release. Each ABI
 # (arm64-v8a, armeabi-v7a) builds in its OWN parallel matrix job and downloads
 # the latest prebuilt native TDLib (tdjson) asset from iebb/mithka-tdjson. A
-# final job creates the version tag from pubspec.yaml and publishes all the APKs
-# to a single GitHub Release.
+# final job creates the version tag from pubspec.yaml and publishes all the APKs:
+# master creates a pre-release, release creates a normal release.
 #
-# Release by pushing the desired pubspec.yaml version to the release branch.
+# Pre-release by pushing to master. Release by pushing the desired pubspec.yaml
+# version to the release branch.
 #
 # Required repository secrets:
 #   TELEGRAM_API_ID, TELEGRAM_API_HASH   — baked into lib/config/secrets.dart
@@ -18,7 +19,7 @@ name: 🚀 Release APK
 
 on:
   push:
-    branches: [release]
+    branches: [master, release]
   workflow_dispatch:
 
 permissions:
@@ -32,6 +33,10 @@ jobs:
       app_version: ${{ steps.version.outputs.app_version }}
       build_stamp: ${{ steps.version.outputs.build_stamp }}
       release_tag: ${{ steps.version.outputs.release_tag }}
+      release_name: ${{ steps.version.outputs.release_name }}
+      release_channel: ${{ steps.version.outputs.release_channel }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+      make_latest: ${{ steps.version.outputs.make_latest }}
       short_sha: ${{ steps.version.outputs.short_sha }}
     steps:
       - uses: actions/checkout@v5
@@ -43,13 +48,38 @@ jobs:
           test -n "$raw_version"
           app_version="${raw_version%%+*}"
           build_stamp="$(date -u '+%y%m%d%H')"
-          release_tag="v$app_version"
           short_sha="${GITHUB_SHA::7}"
+          branch_name="${GITHUB_REF_NAME:-${GITHUB_REF#refs/heads/}}"
+          case "$branch_name" in
+            master)
+              release_tag="v${app_version}-master.${build_stamp}.${short_sha}"
+              release_name="Mithka ${app_version} master ${short_sha}"
+              release_channel="pre-release"
+              prerelease="true"
+              make_latest="false"
+              ;;
+            release)
+              release_tag="v$app_version"
+              release_name="Mithka $app_version"
+              release_channel="release"
+              prerelease="false"
+              make_latest="true"
+              ;;
+            *)
+              echo "Unsupported release branch: $branch_name" >&2
+              exit 1
+              ;;
+          esac
           echo "app_version=$app_version" >> "$GITHUB_OUTPUT"
           echo "build_stamp=$build_stamp" >> "$GITHUB_OUTPUT"
           echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+          echo "release_name=$release_name" >> "$GITHUB_OUTPUT"
+          echo "release_channel=$release_channel" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+          echo "make_latest=$make_latest" >> "$GITHUB_OUTPUT"
           echo "short_sha=$short_sha" >> "$GITHUB_OUTPUT"
           echo "Release tag: $release_tag"
+          echo "Release channel: $release_channel"
           echo "GMT build stamp: $build_stamp"
 
   build:
@@ -248,7 +278,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare.outputs.release_tag }}
+          name: ${{ needs.prepare.outputs.release_name }}
           target_commitish: ${{ github.sha }}
+          prerelease: ${{ needs.prepare.outputs.prerelease }}
+          make_latest: ${{ needs.prepare.outputs.make_latest }}
           files: apks/*.apk
           overwrite_files: true
           fail_on_unmatched_files: true
@@ -258,13 +291,14 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CI_CHANNEL: ${{ secrets.TELEGRAM_CI_CHANNEL }}
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          RELEASE_CHANNEL: ${{ needs.prepare.outputs.release_channel }}
           RELEASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.prepare.outputs.release_tag }}
         run: |
           test -n "$TELEGRAM_BOT_TOKEN"
           test -n "$TELEGRAM_CI_CHANNEL"
           response="$(curl -fsS \
             -F "chat_id=$TELEGRAM_CI_CHANNEL" \
-            -F "text=🚀 Mithka release $RELEASE_TAG
+            -F "text=🚀 Mithka $RELEASE_CHANNEL $RELEASE_TAG
 
           APKs: $RELEASE_URL" \
             "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage")"
