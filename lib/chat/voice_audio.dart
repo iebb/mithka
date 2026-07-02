@@ -25,6 +25,7 @@ class VoicePlayer extends ChangeNotifier {
   bool isLoading = false;
   Duration position = Duration.zero;
   Duration total = Duration.zero;
+  void Function(int fileId)? onFinished;
 
   int? _fileId;
   String? _path;
@@ -121,9 +122,11 @@ class VoicePlayer extends ChangeNotifier {
         fromURI: _path,
         codec: codec,
         whenFinished: () {
+          final finishedFileId = _fileId;
           isPlaying = false;
           position = Duration.zero;
           notifyListeners();
+          if (finishedFileId != null) onFinished?.call(finishedFileId);
         },
       );
       if (fromMs > 0) {
