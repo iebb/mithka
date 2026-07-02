@@ -242,7 +242,14 @@ class _MomentsViewState extends State<MomentsView> {
                           ),
                         ),
                       ),
-                      const InsetDivider(leadingInset: 72),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                Container(
+                  color: c.background,
+                  child: Column(
+                    children: [
                       _menuRow(
                         icon: HeroAppIcons.music.data,
                         iconColor: const Color(0xFFFF8A2A),
