@@ -1419,7 +1419,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
           return SafeArea(
             top: false,
             child: Container(
-              constraints: const BoxConstraints(maxHeight: 430),
+              height: MediaQuery.sizeOf(sheetContext).height * 0.58,
               decoration: BoxDecoration(
                 color: c.background,
                 borderRadius: const BorderRadius.vertical(
@@ -1429,32 +1429,63 @@ class _SharedMediaViewState extends State<SharedMediaView> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Container(
-                    width: 36,
-                    height: 4,
-                    margin: const EdgeInsets.only(top: 8, bottom: 10),
-                    decoration: BoxDecoration(
-                      color: c.divider,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 12, 8),
-                    child: Row(
+                    padding: const EdgeInsets.fromLTRB(18, 18, 14, 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: Text(
-                            _queueTitle(),
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: c.textPrimary,
-                            ),
+                        Text(
+                          '当前播放列表 (${queue.length})',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: c.textPrimary,
                           ),
                         ),
-                        Text(
-                          '${queue.length} 首',
-                          style: TextStyle(fontSize: 12, color: c.textTertiary),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            AppIcon(
+                              HeroAppIcons.arrowsRotate,
+                              size: 17,
+                              color: c.textSecondary,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '顺序播放',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: c.textSecondary,
+                                ),
+                              ),
+                            ),
+                            _playlistSheetIcon(
+                              sheetContext,
+                              HeroAppIcons.download,
+                              '下载',
+                            ),
+                            _playlistSheetIcon(
+                              sheetContext,
+                              HeroAppIcons.plus,
+                              '添加',
+                            ),
+                            _playlistSheetIcon(
+                              sheetContext,
+                              HeroAppIcons.trash,
+                              '清空',
+                              onTap: queue.isEmpty
+                                  ? null
+                                  : () {
+                                      setState(() {
+                                        _musicPlaylist = const [];
+                                        _musicQueue = const [];
+                                      });
+                                      setSheetState(() {});
+                                      unawaited(_saveMusicPlaylist());
+                                    },
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -1462,7 +1493,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
                   Flexible(
                     child: queue.isEmpty
                         ? Padding(
-                            padding: const EdgeInsets.fromLTRB(20, 34, 20, 42),
+                            padding: const EdgeInsets.fromLTRB(20, 40, 20, 42),
                             child: Text(
                               '还没有加入的音乐',
                               style: TextStyle(
@@ -1474,9 +1505,9 @@ class _SharedMediaViewState extends State<SharedMediaView> {
                         : ListView.builder(
                             shrinkWrap: true,
                             padding: EdgeInsets.only(
-                              bottom: MediaQuery.of(
-                                sheetContext,
-                              ).padding.bottom,
+                              bottom:
+                                  4 +
+                                  MediaQuery.of(sheetContext).padding.bottom,
                             ),
                             itemCount: queue.length,
                             itemBuilder: (context, index) => _musicQueueRow(
@@ -1490,6 +1521,34 @@ class _SharedMediaViewState extends State<SharedMediaView> {
                               },
                             ),
                           ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4, bottom: 6),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _playlistDot(active: true),
+                        _playlistDot(active: false),
+                        _playlistDot(active: false),
+                      ],
+                    ),
+                  ),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => Navigator.of(sheetContext).pop(),
+                    child: Container(
+                      height: 48,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        border: Border(
+                          top: BorderSide(color: c.divider, width: 0.5),
+                        ),
+                      ),
+                      child: Text(
+                        '关闭',
+                        style: TextStyle(fontSize: 15, color: c.textPrimary),
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -1513,28 +1572,9 @@ class _SharedMediaViewState extends State<SharedMediaView> {
         _playMusicMessage(message);
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+        padding: const EdgeInsets.fromLTRB(18, 8, 12, 8),
         child: Row(
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: SizedBox(
-                width: 42,
-                height: 42,
-                child: music.cover != null
-                    ? TDImage(photo: music.cover, fit: BoxFit.cover)
-                    : Container(
-                        alignment: Alignment.center,
-                        color: _musicAccent.withValues(alpha: 0.14),
-                        child: AppIcon(
-                          HeroAppIcons.music,
-                          size: 20,
-                          color: _musicAccent,
-                        ),
-                      ),
-              ),
-            ),
-            const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1544,12 +1584,12 @@ class _SharedMediaViewState extends State<SharedMediaView> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 14,
+                      fontSize: 13,
                       fontWeight: active ? FontWeight.w600 : FontWeight.w500,
                       color: active ? _musicAccent : c.textPrimary,
                     ),
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 3),
                   Text(
                     [
                       if ((music.performer ?? '').trim().isNotEmpty)
@@ -1558,7 +1598,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
                     ].join(' · '),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 12, color: c.textTertiary),
+                    style: TextStyle(fontSize: 11, color: c.textTertiary),
                   ),
                 ],
               ),
@@ -1570,21 +1610,60 @@ class _SharedMediaViewState extends State<SharedMediaView> {
                 color: _musicAccent,
               ),
             SizedBox(
-              width: 34,
-              height: 34,
+              width: 30,
+              height: 30,
               child: IconButton(
                 tooltip: '从播放列表移除',
                 padding: EdgeInsets.zero,
                 onPressed: onRemove,
                 icon: AppIcon(
-                  HeroAppIcons.trash,
-                  size: 17,
+                  HeroAppIcons.xmark,
+                  size: 14,
                   color: c.textTertiary,
                 ),
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _playlistSheetIcon(
+    BuildContext context,
+    AppIconData icon,
+    String tooltip, {
+    VoidCallback? onTap,
+  }) {
+    final c = context.colors;
+    return SizedBox(
+      width: 34,
+      height: 30,
+      child: IconButton(
+        tooltip: tooltip,
+        padding: EdgeInsets.zero,
+        onPressed: onTap,
+        icon: AppIcon(
+          icon,
+          size: 17,
+          color: onTap == null && tooltip == '清空'
+              ? c.textTertiary.withValues(alpha: 0.42)
+              : c.textTertiary,
+        ),
+      ),
+    );
+  }
+
+  Widget _playlistDot({required bool active}) {
+    return Container(
+      width: active ? 5 : 4,
+      height: active ? 5 : 4,
+      margin: const EdgeInsets.symmetric(horizontal: 3),
+      decoration: BoxDecoration(
+        color: active
+            ? _musicAccent
+            : context.colors.textTertiary.withValues(alpha: 0.35),
+        shape: BoxShape.circle,
       ),
     );
   }
@@ -1984,8 +2063,6 @@ class _SharedMediaViewState extends State<SharedMediaView> {
     if (performer.isNotEmpty) return performer;
     return AppStrings.t(AppStringKeys.profileDetailMusic);
   }
-
-  String _queueTitle() => '我的播放列表';
 
   bool _canOpenSourceMessage(ChatMessage message) =>
       _sourceChatIdFor(message) != 0 && message.id != 0;
