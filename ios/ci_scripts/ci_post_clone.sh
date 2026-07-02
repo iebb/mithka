@@ -29,6 +29,20 @@ set -e
 FLUTTER_VERSION="3.44.2"
 TDJSON_URL="${TDJSON_XCFRAMEWORK_URL:-https://github.com/iebb/mithka-tdjson/releases/latest/download/tdjson-ios.xcframework.zip}"
 
+decode_base64_to_file() {
+  data="$1"
+  output="$2"
+  tmp="${output}.tmp"
+  if printf '%s' "$data" | base64 --decode > "$tmp" 2>/dev/null ||
+    printf '%s' "$data" | base64 -D > "$tmp" 2>/dev/null ||
+    printf '%s' "$data" | base64 -d > "$tmp"; then
+    mv "$tmp" "$output"
+    return 0
+  fi
+  rm -f "$tmp"
+  return 1
+}
+
 # Xcode Cloud checks the repo out here; fall back to walking up from this script.
 REPO="${CI_PRIMARY_REPOSITORY_PATH:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$REPO"
@@ -37,10 +51,14 @@ GIT_COMMIT="$(git rev-parse --short HEAD)"
 echo "▸ git commit: $GIT_COMMIT"
 
 # Xcode Cloud runs xcodebuild after this script and can otherwise keep using
-# stale FLUTTER_BUILD_NAME values from the checked-in project. This release
-# branch intentionally pins the iOS App Store version independently from
-# pubspec.yaml.
-APP_BUILD_NAME="0.1.17"
+# stale FLUTTER_BUILD_NAME values from the checked-in project. Keep the archive
+# version sourced from pubspec.yaml by default, matching the Android/GitHub
+# release flow; release branches may pin an approved App Store version with
+# IOS_APP_BUILD_NAME_OVERRIDE.
+IOS_APP_BUILD_NAME_OVERRIDE="0.2.2"
+RAW_VERSION="$(awk '/^version:/ { print $2; exit }' pubspec.yaml)"
+test -n "$RAW_VERSION"
+APP_BUILD_NAME="${IOS_APP_BUILD_NAME_OVERRIDE:-${RAW_VERSION%%+*}}"
 APP_BUILD_NUMBER="$(date -u '+%y%m%d%H')"
 XCODE_BUILD_NAME="$APP_BUILD_NAME"
 echo "▸ app version: $APP_BUILD_NAME+$APP_BUILD_NUMBER"
@@ -77,10 +95,16 @@ class Secrets {
 EOF
 
 # --- Firebase config → ios/Runner/GoogleService-Info.plist ------------------
-: "${FIREBASE_IOS_GOOGLESERVICE_INFO_PLIST_B64:?set FIREBASE_IOS_GOOGLESERVICE_INFO_PLIST_B64 in the Xcode Cloud workflow environment}"
-echo "▸ writing ios/Runner/GoogleService-Info.plist"
 mkdir -p ios/Runner
-printf '%s' "$FIREBASE_IOS_GOOGLESERVICE_INFO_PLIST_B64" | base64 -d > ios/Runner/GoogleService-Info.plist
+if [ -n "${FIREBASE_IOS_GOOGLESERVICE_INFO_PLIST_B64:-}" ]; then
+  echo "▸ writing ios/Runner/GoogleService-Info.plist"
+  decode_base64_to_file "$FIREBASE_IOS_GOOGLESERVICE_INFO_PLIST_B64" ios/Runner/GoogleService-Info.plist
+elif [ -f ios/Runner/GoogleService-Info.plist ]; then
+  echo "▸ using existing ios/Runner/GoogleService-Info.plist"
+else
+  echo "error: set FIREBASE_IOS_GOOGLESERVICE_INFO_PLIST_B64 in the Xcode Cloud workflow environment" >&2
+  exit 1
+fi
 
 # --- Native TDLib framework (git-ignored; prebuilt on a public release) ------
 if [ ! -d "ios/tdjson/tdjson.xcframework" ]; then
