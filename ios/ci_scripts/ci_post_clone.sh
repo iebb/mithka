@@ -28,6 +28,52 @@ set -e
 
 FLUTTER_VERSION="3.44.2"
 TDJSON_URL="${TDJSON_XCFRAMEWORK_URL:-https://github.com/iebb/mithka-tdjson/releases/latest/download/tdjson-ios.xcframework.zip}"
+CURL_RETRY_FLAGS="-fL --retry 5 --retry-delay 2 --connect-timeout 20"
+if curl --help all 2>/dev/null | grep -q -- '--retry-all-errors'; then
+  CURL_RETRY_FLAGS="$CURL_RETRY_FLAGS --retry-all-errors"
+fi
+
+retry() {
+  attempts="$1"
+  delay="$2"
+  shift 2
+  n=1
+  while :; do
+    "$@" && return 0
+    status=$?
+    if [ "$n" -ge "$attempts" ]; then
+      echo "error: command failed after $attempts attempts: $*" >&2
+      return "$status"
+    fi
+    echo "warning: command failed with exit $status; retry $((n + 1))/$attempts in ${delay}s: $*" >&2
+    sleep "$delay"
+    n=$((n + 1))
+    delay=$((delay * 2))
+  done
+}
+
+pod_install_with_retry() {
+  attempts=4
+  delay=8
+  n=1
+  while :; do
+    rm -rf Pods
+    if pod install --deployment; then
+      return 0
+    fi
+    status=$?
+    if [ "$n" -ge "$attempts" ]; then
+      echo "error: pod install failed after $attempts attempts" >&2
+      return "$status"
+    fi
+    echo "warning: pod install failed with exit $status; clearing transient CocoaPods state and retrying $((n + 1))/$attempts in ${delay}s" >&2
+    find "${TMPDIR:-/tmp}" -maxdepth 1 \( -name 'CocoaPods-*' -o -name 'd20*' \) -exec rm -rf {} + 2>/dev/null || true
+    pod cache clean --all >/dev/null 2>&1 || true
+    sleep "$delay"
+    n=$((n + 1))
+    delay=$((delay * 2))
+  done
+}
 
 decode_base64_to_file() {
   data="$1"
@@ -76,7 +122,7 @@ PY
 # --- Flutter SDK (pinned) ---------------------------------------------------
 if ! command -v flutter >/dev/null 2>&1; then
   echo "▸ installing Flutter $FLUTTER_VERSION"
-  git clone --depth 1 -b "$FLUTTER_VERSION" https://github.com/flutter/flutter.git "$HOME/flutter"
+  retry 3 10 git clone --depth 1 -b "$FLUTTER_VERSION" https://github.com/flutter/flutter.git "$HOME/flutter"
   export PATH="$HOME/flutter/bin:$PATH"
 fi
 flutter --version
@@ -110,7 +156,8 @@ fi
 if [ ! -d "ios/tdjson/tdjson.xcframework" ]; then
   echo "▸ downloading tdjson.xcframework"
   mkdir -p ios/tdjson
-  curl -fL "$TDJSON_URL" -o /tmp/tdjson.zip
+  # shellcheck disable=SC2086 # CURL_RETRY_FLAGS is intentionally split.
+  retry 4 5 curl $CURL_RETRY_FLAGS "$TDJSON_URL" -o /tmp/tdjson.zip
   unzip -q -o /tmp/tdjson.zip -d ios/tdjson
 fi
 ls -d ios/tdjson/tdjson.xcframework
@@ -143,15 +190,14 @@ PY
 # --- CocoaPods --------------------------------------------------------------
 if ! command -v pod >/dev/null 2>&1; then
   echo "▸ installing CocoaPods"
-  brew install cocoapods || sudo gem install cocoapods
+  retry 3 10 brew install cocoapods || retry 3 10 sudo gem install cocoapods
 fi
 echo "▸ pod install"
 cd ios
 # Xcode Cloud can restore or leave behind a stale Pods sandbox. The archive
 # phase compares Podfile.lock with Pods/Manifest.lock, so rebuild the sandbox
 # from the checked-in lockfile before xcodebuild runs.
-rm -rf Pods
-pod install --deployment
+pod_install_with_retry
 cp Podfile.lock Pods/Manifest.lock
 diff -q Podfile.lock Pods/Manifest.lock
 ls -l Podfile.lock Pods/Manifest.lock
