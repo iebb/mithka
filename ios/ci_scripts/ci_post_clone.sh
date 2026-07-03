@@ -29,7 +29,7 @@
 set -e
 
 FLUTTER_VERSION="3.44.2"
-TDJSON_RELEASE_TAG="mithka-session-string-45df506"
+TDJSON_RELEASE_TAG="mithka-session-string-keyfix-783d04e"
 TDJSON_URL="${TDJSON_XCFRAMEWORK_URL:-https://github.com/iebb/mithka-tdjson/releases/download/${TDJSON_RELEASE_TAG}/tdjson-ios.xcframework.zip}"
 CURL_RETRY_FLAGS="-fL --retry 5 --retry-delay 2 --connect-timeout 20"
 if curl --help all 2>/dev/null | grep -q -- '--retry-all-errors'; then

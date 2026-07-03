@@ -230,47 +230,50 @@ class _AccountBackupViewState extends State<AccountBackupView> {
           _close();
         }
       },
-      child: CupertinoPageScaffold(
-        backgroundColor: c.groupedBackground,
-        child: Column(
-          children: [
-            NavHeader(
-              title: AppStrings.t(AppStringKeys.accountBackupTitle),
-              onBack: _close,
-            ),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
-                children: [
-                  if (widget.showCreateAction) ...[
-                    _enabledSwitch(),
-                    const SizedBox(height: 12),
-                    _actionButton(),
-                    const SizedBox(height: 8),
-                    _copyPyrogramButton(),
-                    const SizedBox(height: 8),
-                    _loadPyrogramButton(),
-                  ] else
-                    _loadPyrogramButton(),
-                  const SizedBox(height: 12),
-                  _notice(),
-                  const SizedBox(height: 18),
-                  _sectionTitle(AppStringKeys.accountBackupSessions),
-                  if (_loading)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 24),
-                      child: Center(child: CupertinoActivityIndicator()),
-                    )
-                  else if (!Platform.isIOS)
-                    _empty(AppStringKeys.accountBackupIOSOnly)
-                  else if (_backups.isEmpty)
-                    _empty(AppStringKeys.accountBackupEmpty)
-                  else
-                    _backupList(),
-                ],
+      child: DefaultTextStyle(
+        style: AppTextStyle.body(c.textPrimary),
+        child: CupertinoPageScaffold(
+          backgroundColor: c.groupedBackground,
+          child: Column(
+            children: [
+              NavHeader(
+                title: AppStrings.t(AppStringKeys.accountBackupTitle),
+                onBack: _close,
               ),
-            ),
-          ],
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
+                  children: [
+                    if (widget.showCreateAction) ...[
+                      _enabledSwitch(),
+                      const SizedBox(height: 12),
+                      _actionButton(),
+                      const SizedBox(height: 8),
+                      _copyPyrogramButton(),
+                      const SizedBox(height: 8),
+                      _loadPyrogramButton(),
+                    ] else
+                      _loadPyrogramButton(),
+                    const SizedBox(height: 12),
+                    _notice(),
+                    const SizedBox(height: 18),
+                    _sectionTitle(AppStringKeys.accountBackupSessions),
+                    if (_loading)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 24),
+                        child: Center(child: CupertinoActivityIndicator()),
+                      )
+                    else if (!Platform.isIOS)
+                      _empty(AppStringKeys.accountBackupIOSOnly)
+                    else if (_backups.isEmpty)
+                      _empty(AppStringKeys.accountBackupEmpty)
+                    else
+                      _backupList(),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -505,107 +508,110 @@ class _PyrogramSessionImportSheetState
     final media = MediaQuery.of(context);
     return Padding(
       padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
-      child: Container(
-        decoration: BoxDecoration(
-          color: c.groupedBackground,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
-        ),
-        padding: EdgeInsets.fromLTRB(16, 14, 16, media.padding.bottom + 16),
-        child: SafeArea(
-          top: false,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      AppStrings.t(
-                        AppStringKeys.accountBackupLoadPyrogramTitle,
-                      ),
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: c.textPrimary,
-                      ),
-                    ),
-                  ),
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => Navigator.of(context).pop(),
-                    child: Padding(
-                      padding: const EdgeInsets.all(8),
-                      child: AppIcon(
-                        HeroAppIcons.circleXmark,
-                        size: 24,
-                        color: c.textTertiary,
+      child: DefaultTextStyle(
+        style: AppTextStyle.body(c.textPrimary),
+        child: Container(
+          decoration: BoxDecoration(
+            color: c.groupedBackground,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+          ),
+          padding: EdgeInsets.fromLTRB(16, 14, 16, media.padding.bottom + 16),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        AppStrings.t(
+                          AppStringKeys.accountBackupLoadPyrogramTitle,
+                        ),
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: c.textPrimary,
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                AppStrings.t(AppStringKeys.accountBackupLoadPyrogramMessage),
-                style: TextStyle(
-                  fontSize: 13,
-                  height: 1.35,
-                  color: c.textSecondary,
-                ),
-              ),
-              const SizedBox(height: 14),
-              Container(
-                decoration: BoxDecoration(
-                  color: c.card,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: c.divider),
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: CupertinoTextField(
-                  controller: _controller,
-                  autofocus: true,
-                  minLines: 4,
-                  maxLines: 7,
-                  autocorrect: false,
-                  enableSuggestions: false,
-                  keyboardType: TextInputType.visiblePassword,
-                  textInputAction: TextInputAction.done,
-                  onSubmitted: (_) => _submit(),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  style: TextStyle(fontSize: 14, color: c.textPrimary),
-                  placeholder: AppStrings.t(
-                    AppStringKeys.accountBackupLoadPyrogramPlaceholder,
-                  ),
-                  placeholderStyle: TextStyle(
-                    fontSize: 14,
-                    color: c.textTertiary,
-                  ),
-                  decoration: null,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: _SheetActionButton(
-                      onPressed: _paste,
-                      icon: HeroAppIcons.code,
-                      label: AppStringKeys.accountBackupLoadPyrogramPaste,
-                      filled: false,
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => Navigator.of(context).pop(),
+                      child: Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: AppIcon(
+                          HeroAppIcons.circleXmark,
+                          size: 24,
+                          color: c.textTertiary,
+                        ),
+                      ),
                     ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  AppStrings.t(AppStringKeys.accountBackupLoadPyrogramMessage),
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.35,
+                    color: c.textSecondary,
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _SheetActionButton(
-                      onPressed: _submit,
-                      label: AppStringKeys.accountBackupLoadPyrogramConfirm,
-                      filled: true,
+                ),
+                const SizedBox(height: 14),
+                Container(
+                  decoration: BoxDecoration(
+                    color: c.card,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: c.divider),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: CupertinoTextField(
+                    controller: _controller,
+                    autofocus: true,
+                    minLines: 4,
+                    maxLines: 7,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    keyboardType: TextInputType.visiblePassword,
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => _submit(),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    style: TextStyle(fontSize: 14, color: c.textPrimary),
+                    placeholder: AppStrings.t(
+                      AppStringKeys.accountBackupLoadPyrogramPlaceholder,
                     ),
+                    placeholderStyle: TextStyle(
+                      fontSize: 14,
+                      color: c.textTertiary,
+                    ),
+                    decoration: null,
                   ),
-                ],
-              ),
-            ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _SheetActionButton(
+                        onPressed: _paste,
+                        icon: HeroAppIcons.code,
+                        label: AppStringKeys.accountBackupLoadPyrogramPaste,
+                        filled: false,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _SheetActionButton(
+                        onPressed: _submit,
+                        label: AppStringKeys.accountBackupLoadPyrogramConfirm,
+                        filled: true,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
