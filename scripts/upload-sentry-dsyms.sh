@@ -18,12 +18,12 @@ if [[ -z "${SENTRY_AUTH_TOKEN:-}" ]]; then
   exit 0
 fi
 
-SENTRY_ORG="${SENTRY_ORG:-}"
-SENTRY_PROJECT="${SENTRY_PROJECT:-}"
+SENTRY_ORG="${SENTRY_ORG:-nekoko}"
+SENTRY_PROJECT="${SENTRY_PROJECT:-9}"
 SENTRY_URL="${SENTRY_URL:-https://sentry.nekoko.it}"
 
-if [[ -z "$SENTRY_ORG" || -z "$SENTRY_PROJECT" ]]; then
-  echo "warning: SENTRY_ORG and SENTRY_PROJECT are required for Sentry dSYM upload; skipping" >&2
+if [[ -z "$SENTRY_PROJECT" ]]; then
+  echo "warning: SENTRY_PROJECT is required for Sentry dSYM upload; skipping" >&2
   exit 0
 fi
 
