@@ -48,9 +48,19 @@ Future<Uint8List?> _loadInflatedTgsSticker(String cacheKey, String path) {
 }
 
 class AnimatedStickerView extends StatefulWidget {
-  const AnimatedStickerView({super.key, required this.file, this.onReady});
+  const AnimatedStickerView({
+    super.key,
+    required this.file,
+    this.onReady,
+    this.frameRate,
+  });
   final TdFileRef file;
   final VoidCallback? onReady;
+
+  /// Playback frame rate; null keeps the composition's own rate. Inline
+  /// custom emoji pass a reduced rate — at text size the difference is
+  /// invisible but the repaint cost is not.
+  final FrameRate? frameRate;
 
   @override
   State<AnimatedStickerView> createState() => _AnimatedStickerViewState();
@@ -94,6 +104,11 @@ class _AnimatedStickerViewState extends State<AnimatedStickerView> {
   Widget build(BuildContext context) {
     final bytes = _bytes;
     if (bytes == null) return const SizedBox.expand();
-    return Lottie.memory(bytes, fit: BoxFit.contain, repeat: true);
+    return Lottie.memory(
+      bytes,
+      fit: BoxFit.contain,
+      repeat: true,
+      frameRate: widget.frameRate,
+    );
   }
 }

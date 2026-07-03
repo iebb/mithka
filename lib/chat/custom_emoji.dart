@@ -12,6 +12,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:lottie/lottie.dart' show FrameRate;
 
 import '../components/photo_avatar.dart';
 import '../tdlib/json_helpers.dart';
@@ -160,7 +161,12 @@ class _CustomEmojiViewState extends State<CustomEmojiView> {
     if (center.get(widget.id) == null) {
       center.request(widget.id);
       _sub = center.onResolved.listen((rid) {
-        if (rid == widget.id && mounted) setState(() {});
+        if (rid != widget.id) return;
+        // One-shot: once resolved the cache serves every later build, so stop
+        // paying for broadcast fan-out in long transcripts.
+        _sub?.cancel();
+        _sub = null;
+        if (mounted) setState(() {});
       });
     }
   }
@@ -179,7 +185,12 @@ class _CustomEmojiViewState extends State<CustomEmojiView> {
     // its static thumbnail. webp/other → the sticker file (falls back to thumb).
     Widget child;
     if (s.isTgs && s.file != null) {
-      child = AnimatedStickerView(file: s.file!);
+      // Inline emoji render at text size; 30 fps is indistinguishable there
+      // and halves the repaint cost of emoji-heavy messages.
+      child = AnimatedStickerView(
+        file: s.file!,
+        frameRate: const FrameRate(30),
+      );
     } else if (s.isWebm && s.file != null) {
       child = VideoStickerView(file: s.file!, fallback: s.thumb);
     } else {

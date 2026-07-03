@@ -584,11 +584,36 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
     return byId.values.toList();
   }
 
+  // Flattening + sorting + album-grouping the whole feed is O(n log n) with
+  // allocations; this getter is hit from build(), so cache until a
+  // _postsByChannel mutation invalidates it.
+  List<ChannelPost>? _postsCache;
+  Map<Key, int>? _postIndexByKey;
+
+  void _invalidateFeed() {
+    _postsCache = null;
+    _postIndexByKey = null;
+  }
+
   List<ChannelPost> get _posts {
+    final cached = _postsCache;
+    if (cached != null) return cached;
     final posts = _postsByChannel.values.expand((items) => items).toList()
       ..sort((a, b) => b.message.date.compareTo(a.message.date));
-    return _groupPostAlbums(posts).take(_feedLimit).toList();
+    return _postsCache = _groupPostAlbums(posts).take(_feedLimit).toList();
   }
+
+  static Key _postKey(ChannelPost post) =>
+      ValueKey('post-${post.channel.id}-${post.message.id}');
+
+  static const _composerHeaderKey = ValueKey('moments-composer-header');
+
+  /// Feed-list index per child key (composer header at 0, posts at i+1), so
+  /// keyed rows are reused when a refresh prepends new posts.
+  Map<Key, int> get _feedIndexByKey => _postIndexByKey ??= <Key, int>{
+    _composerHeaderKey: 0,
+    for (var i = 0; i < _posts.length; i++) _postKey(_posts[i]): i + 1,
+  };
 
   List<ChannelPost> _groupPostAlbums(List<ChannelPost> posts) {
     final grouped = <ChannelPost>[];
@@ -713,6 +738,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
     _joinedChannelCache[channel.id] = joined;
     if (!joined) {
       _postsByChannel.remove(channel.id);
+      _invalidateFeed();
       _oldestMessageByChannel.remove(channel.id);
       _exhaustedChannels.add(channel.id);
       if (mounted) setState(() {});
@@ -750,6 +776,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
     } catch (_) {
       if (generation != null && generation != _feedLoadGeneration) return;
       _postsByChannel.putIfAbsent(channel.id, () => const []);
+      _invalidateFeed();
     } finally {
       if (generation == null || generation == _feedLoadGeneration) {
         _loadingChannels.remove(channel.id);
@@ -764,6 +791,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
       _nonMutedOnly = !_nonMutedOnly;
       _feedLoadGeneration += 1;
       _postsByChannel.clear();
+      _invalidateFeed();
       _oldestMessageByChannel.clear();
       _exhaustedChannels.clear();
       _loadingChannels.clear();
@@ -1016,6 +1044,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
     final merged = byId.values.toList()
       ..sort((a, b) => b.message.date.compareTo(a.message.date));
     _postsByChannel[channelId] = merged;
+    _invalidateFeed();
     if (merged.isNotEmpty) {
       _oldestMessageByChannel[channelId] = merged
           .map((post) => post.message.id)
@@ -1303,6 +1332,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
       _oldestMessageByChannel.remove(channel.id);
       _postsByChannel.remove(channel.id);
     }
+    _invalidateFeed();
     _loadChannelPosts();
   }
 
@@ -1371,33 +1401,40 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
                 controller: _scroll,
                 padding: EdgeInsets.zero,
                 itemCount: posts.isEmpty ? 2 : posts.length + 1,
+                findChildIndexCallback: (key) => _feedIndexByKey[key],
                 itemBuilder: (context, i) {
                   if (i == 0) {
-                    return _MomentsComposerHeader(
-                      meName: _meName,
-                      mePhoto: _mePhoto,
-                      backgroundColor: _profileHeaderColor(context),
-                      canCompose: _postableChannels.isNotEmpty,
-                      onCompose: _openNewPostComposer,
+                    return KeyedSubtree(
+                      key: _composerHeaderKey,
+                      child: _MomentsComposerHeader(
+                        meName: _meName,
+                        mePhoto: _mePhoto,
+                        backgroundColor: _profileHeaderColor(context),
+                        canCompose: _postableChannels.isNotEmpty,
+                        onCompose: _openNewPostComposer,
+                      ),
                     );
                   }
                   if (posts.isEmpty) {
                     return SizedBox(height: 260, child: _empty());
                   }
                   final post = posts[i - 1];
-                  return Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      ChannelPostRow(
-                        post: post,
-                        meName: _meName,
-                        mePhoto: _mePhoto,
-                        onOpenPost: _openPostDetail,
-                        onComment: _beginReplyFromInline,
-                      ),
-                      if (i != posts.length)
-                        const InsetDivider(leadingInset: 0),
-                    ],
+                  return KeyedSubtree(
+                    key: _postKey(post),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ChannelPostRow(
+                          post: post,
+                          meName: _meName,
+                          mePhoto: _mePhoto,
+                          onOpenPost: _openPostDetail,
+                          onComment: _beginReplyFromInline,
+                        ),
+                        if (i != posts.length)
+                          const InsetDivider(leadingInset: 0),
+                      ],
+                    ),
                   );
                 },
               ),
