@@ -232,10 +232,9 @@ class TdClient {
   }
 
   Future<void> acceptLoginQrLink(String link) async {
-    final token = _qrLoginTokenForTdJson(link);
     await query({
-      '@type': 'acceptLoginToken',
-      'token': token,
+      '@type': 'confirmQrCodeAuthentication',
+      'link': link,
     }).timeout(const Duration(seconds: 20));
   }
 
@@ -263,10 +262,9 @@ class TdClient {
         'other_user_ids': const <int>[],
       }, cid).timeout(const Duration(seconds: 10));
       final link = await _waitForQrLoginLink(cid);
-      final token = _qrLoginTokenForTdJson(link);
       await queryTo({
-        '@type': 'acceptLoginToken',
-        'token': token,
+        '@type': 'confirmQrCodeAuthentication',
+        'link': link,
       }, source.clientId).timeout(const Duration(seconds: 20));
       await _waitForRestoredSessionReady(newSlot, cid, expectedUserId);
       setActive(newSlot);
@@ -373,18 +371,6 @@ class TdClient {
       await Future<void>.delayed(const Duration(milliseconds: 250));
     }
     throw TimeoutException('Timed out waiting for QR login token');
-  }
-
-  String _qrLoginTokenForTdJson(String link) {
-    final uri = Uri.tryParse(link);
-    final token =
-        uri?.queryParameters['token'] ??
-        RegExp(r'(?:^|[?&])token=([^&]+)').firstMatch(link)?.group(1);
-    if (token == null || token.isEmpty) {
-      throw FormatException('QR login link does not contain a token', link);
-    }
-    final decoded = base64Url.decode(base64Url.normalize(token));
-    return base64.encode(decoded);
   }
 
   Future<void> _waitForRestoredSessionReady(
