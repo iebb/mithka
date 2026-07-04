@@ -16,6 +16,14 @@ const enMessages = <String, String>{
   'accountBackupDeleteTitle': "Delete saved session?",
   'accountBackupEmpty': "No account sessions are backed up yet.",
   'accountBackupEnabled': "Back up accounts",
+  'accountBackupFreshSessionCreate': "Create New Session",
+  'accountBackupFreshSessionInteractive':
+      "Continue the login step to finish creating the new session.",
+  'accountBackupFreshSessionMessage':
+      "The restored session is ready. To avoid using the same Telegram session on multiple devices, Mithka can create a new session from it with QR login. Telegram may ask for your two-step verification password.",
+  'accountBackupFreshSessionReady': "Created a new session in slot {value1}",
+  'accountBackupFreshSessionTitle': "Create a new session?",
+  'accountBackupFreshSessionUseRestored': "Use Restored Session",
   'accountBackupInvalidImportedMessage':
       "This session string is no longer valid or may have been revoked. Please export a fresh session from a logged-in device.",
   'accountBackupInvalidMessage':

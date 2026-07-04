@@ -142,6 +142,18 @@ abstract final class AppStringKeys {
       'accountBackupDeleteInvalidSession';
   static const accountBackupEmpty = 'accountBackupEmpty';
   static const accountBackupEnabled = 'accountBackupEnabled';
+  static const accountBackupFreshSessionCreate =
+      'accountBackupFreshSessionCreate';
+  static const accountBackupFreshSessionInteractive =
+      'accountBackupFreshSessionInteractive';
+  static const accountBackupFreshSessionMessage =
+      'accountBackupFreshSessionMessage';
+  static const accountBackupFreshSessionReady =
+      'accountBackupFreshSessionReady';
+  static const accountBackupFreshSessionTitle =
+      'accountBackupFreshSessionTitle';
+  static const accountBackupFreshSessionUseRestored =
+      'accountBackupFreshSessionUseRestored';
   static const accountBackupInvalidImportedMessage =
       'accountBackupInvalidImportedMessage';
   static const accountBackupInvalidMessage = 'accountBackupInvalidMessage';

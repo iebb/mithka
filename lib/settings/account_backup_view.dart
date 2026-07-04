@@ -115,6 +115,7 @@ class _AccountBackupViewState extends State<AccountBackupView> {
     final text = error.toString().toLowerCase();
     return text.contains('session is invalid') ||
         text.contains('has been revoked') ||
+        text.contains('requires reauthorization') ||
         text.contains('not authorized') ||
         text.contains('request aborted') ||
         text.contains('authorizationstatewaitphonenumber');
@@ -193,24 +194,13 @@ class _AccountBackupViewState extends State<AccountBackupView> {
       confirmText: AppStringKeys.accountBackupRestore,
     );
     if (!ok || !mounted || _working) return;
-    final auth = context.read<AuthManager>();
-    final accounts = context.read<AccountStore>();
     setState(() => _working = true);
     try {
       final slot = await _service.restore(backup);
-      auth.reloadAuthState();
-      await accounts.refresh();
-      if (mounted) {
-        showToast(
-          context,
-          AppStrings.t(AppStringKeys.accountBackupRestored, {
-            'value1': '$slot',
-          }),
-        );
-        if (widget.closeAfterRestore) {
-          Navigator.of(context).pop();
-        }
-      }
+      await _handleRestoredSlot(
+        slot,
+        toastKey: AppStringKeys.accountBackupRestored,
+      );
     } catch (error) {
       final handled = await _handleInvalidSavedSession(backup, error);
       if (!mounted) return;
@@ -233,24 +223,13 @@ class _AccountBackupViewState extends State<AccountBackupView> {
       return;
     }
 
-    final auth = context.read<AuthManager>();
-    final accounts = context.read<AccountStore>();
     setState(() => _working = true);
     try {
       final slot = await _service.restoreSessionString(sessionString);
-      auth.reloadAuthState();
-      await accounts.refresh();
-      if (mounted) {
-        showToast(
-          context,
-          AppStrings.t(AppStringKeys.accountBackupImported, {
-            'value1': '$slot',
-          }),
-        );
-        if (widget.closeAfterRestore) {
-          Navigator.of(context).pop();
-        }
-      }
+      await _handleRestoredSlot(
+        slot,
+        toastKey: AppStringKeys.accountBackupImported,
+      );
     } catch (error) {
       if (mounted && _isInvalidSessionError(error)) {
         await _showInvalidImportedSessionAlert();
@@ -259,6 +238,45 @@ class _AccountBackupViewState extends State<AccountBackupView> {
       }
     } finally {
       if (mounted) setState(() => _working = false);
+    }
+  }
+
+  Future<void> _handleRestoredSlot(int slot, {required String toastKey}) async {
+    final auth = context.read<AuthManager>();
+    final accounts = context.read<AccountStore>();
+    auth.reloadAuthState();
+    await accounts.refresh();
+    if (!mounted) return;
+
+    showToast(context, AppStrings.t(toastKey, {'value1': '$slot'}));
+    final createFreshSession = await confirmDialog(
+      context,
+      title: AppStringKeys.accountBackupFreshSessionTitle,
+      message: AppStringKeys.accountBackupFreshSessionMessage,
+      confirmText: AppStringKeys.accountBackupFreshSessionCreate,
+      cancelText: AppStringKeys.accountBackupFreshSessionUseRestored,
+    );
+    if (!mounted) return;
+
+    if (createFreshSession) {
+      final result = await accounts.createFreshSessionFromRestoredSlot(
+        slot,
+        auth,
+      );
+      if (!mounted) return;
+      showToast(
+        context,
+        AppStrings.t(
+          result.needsInteractiveLogin
+              ? AppStringKeys.accountBackupFreshSessionInteractive
+              : AppStringKeys.accountBackupFreshSessionReady,
+          {'value1': '${result.slot}'},
+        ),
+      );
+    }
+
+    if (widget.closeAfterRestore && mounted) {
+      Navigator.of(context).pop();
     }
   }
 

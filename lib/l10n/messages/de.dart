@@ -16,6 +16,15 @@ const deMessages = <String, String>{
   'accountBackupDeleteTitle': "Gespeicherte Sitzung löschen?",
   'accountBackupEmpty': "Es wurden noch keine Kontositzungen gesichert.",
   'accountBackupEnabled': "Konten sichern",
+  'accountBackupFreshSessionCreate': "Neue Sitzung erstellen",
+  'accountBackupFreshSessionInteractive':
+      "Fahre mit dem Anmeldeschritt fort, um die neue Sitzung fertigzustellen.",
+  'accountBackupFreshSessionMessage':
+      "Die wiederhergestellte Sitzung ist bereit. Um dieselbe Telegram-Sitzung nicht auf mehreren Geräten zu verwenden, kann Mithka daraus per QR-Anmeldung eine neue Sitzung erstellen. Telegram kann dein Passwort für die zweistufige Verifizierung anfordern.",
+  'accountBackupFreshSessionReady': "Neue Sitzung in Slot {value1} erstellt",
+  'accountBackupFreshSessionTitle': "Neue Sitzung erstellen?",
+  'accountBackupFreshSessionUseRestored':
+      "Wiederhergestellte Sitzung verwenden",
   'accountBackupInvalidImportedMessage':
       "Diese Sitzungszeichenfolge ist nicht mehr gültig oder wurde möglicherweise widerrufen. Exportiere eine neue Sitzung von einem noch angemeldeten Gerät.",
   'accountBackupInvalidMessage':

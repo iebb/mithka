@@ -16,6 +16,14 @@ const esMessages = <String, String>{
   'accountBackupDeleteTitle': "¿Eliminar sesión guardada?",
   'accountBackupEmpty': "Aún no hay sesiones de cuenta guardadas.",
   'accountBackupEnabled': "Guardar cuentas",
+  'accountBackupFreshSessionCreate': "Crear nueva sesión",
+  'accountBackupFreshSessionInteractive':
+      "Continúa el paso de inicio de sesión para terminar de crear la nueva sesión.",
+  'accountBackupFreshSessionMessage':
+      "La sesión restaurada está lista. Para evitar usar la misma sesión de Telegram en varios dispositivos, Mithka puede crear una nueva sesión a partir de esta con inicio de sesión por QR. Telegram puede pedir tu contraseña de verificación en dos pasos.",
+  'accountBackupFreshSessionReady': "Nueva sesión creada en la ranura {value1}",
+  'accountBackupFreshSessionTitle': "¿Crear una nueva sesión?",
+  'accountBackupFreshSessionUseRestored': "Usar sesión restaurada",
   'accountBackupInvalidImportedMessage':
       "Esta cadena de sesión ya no es válida o puede haber sido revocada. Exporta una sesión nueva desde un dispositivo que siga conectado.",
   'accountBackupInvalidMessage':

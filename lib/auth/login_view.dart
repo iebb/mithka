@@ -15,7 +15,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../components/app_icons.dart';
 import '../settings/api_credentials_view.dart';
@@ -39,7 +38,6 @@ class LoginView extends StatefulWidget {
 
 class _LoginViewState extends State<LoginView> {
   static const _resendCooldown = Duration(seconds: 60);
-  static const _termsAcceptedKey = 'mithka.terms.accepted.v1';
 
   final _phone = TextEditingController(text: '+');
   final _code = TextEditingController();
@@ -51,8 +49,6 @@ class _LoginViewState extends State<LoginView> {
   int _resendRemainingSeconds = 0;
   ProxyConfig? _proxy;
   int _restorableBackupCount = 0;
-  bool _termsLoaded = false;
-  bool _termsAccepted = false;
 
   // When true, show the phone-number step even though TDLib is still at a later
   // auth state — lets the user back out of QR / code / 2FA to fix the number.
@@ -64,7 +60,6 @@ class _LoginViewState extends State<LoginView> {
   @override
   void initState() {
     super.initState();
-    unawaited(_loadTermsAcceptance());
     _loadProxy();
     if (Platform.isIOS) unawaited(_loadRestorableBackupCount());
   }
@@ -81,21 +76,6 @@ class _LoginViewState extends State<LoginView> {
   Future<void> _loadProxy() async {
     final proxy = await ProxyConfig.load();
     if (mounted) setState(() => _proxy = proxy);
-  }
-
-  Future<void> _loadTermsAcceptance() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (!mounted) return;
-    setState(() {
-      _termsAccepted = prefs.getBool(_termsAcceptedKey) ?? false;
-      _termsLoaded = true;
-    });
-  }
-
-  Future<void> _acceptTerms() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_termsAcceptedKey, true);
-    if (mounted) setState(() => _termsAccepted = true);
   }
 
   Future<void> _loadRestorableBackupCount() async {
@@ -302,8 +282,6 @@ class _LoginViewState extends State<LoginView> {
   }
 
   Widget _stepFor(AuthManager auth) {
-    if (!_termsLoaded) return _loadingStep();
-    if (!_termsAccepted) return _termsStep();
     if (_forcePhone) return _phoneStep(auth);
     return switch (auth.step) {
       AuthMissingCredentials() => _credentialsNotice(auth),
@@ -313,64 +291,6 @@ class _LoginViewState extends State<LoginView> {
       AuthWaitRegistration() => _registrationStep(auth),
       _ => _phoneStep(auth),
     };
-  }
-
-  Widget _loadingStep() {
-    return Center(
-      child: SizedBox(
-        width: 28,
-        height: 28,
-        child: CircularProgressIndicator.adaptive(
-          strokeWidth: 2.4,
-          valueColor: AlwaysStoppedAnimation<Color>(AppTheme.brand),
-        ),
-      ),
-    );
-  }
-
-  Widget _termsStep() {
-    final c = context.colors;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: c.card,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                AppStrings.t(AppStringKeys.loginTermsTitle),
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: c.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                AppStrings.t(AppStringKeys.loginTermsBody),
-                style: TextStyle(
-                  fontSize: 14,
-                  height: 1.45,
-                  color: c.textSecondary,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 20),
-        _primaryButton(
-          context.read<AuthManager>(),
-          AppStrings.t(AppStringKeys.loginTermsAccept),
-          true,
-          _acceptTerms,
-        ),
-      ],
-    );
   }
 
   Widget _header() {
@@ -508,14 +428,14 @@ class _LoginViewState extends State<LoginView> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (showingPhone && _termsAccepted)
+        if (showingPhone)
           _loginIconButton(
             icon: HeroAppIcons.qrcode,
             tooltip: AppStrings.t(AppStringKeys.loginWithQrCode),
             enabled: !auth.isWorking,
             onTap: () => _requestQrLogin(auth),
           ),
-        if (showingPhone && _termsAccepted && Platform.isIOS)
+        if (showingPhone && Platform.isIOS)
           _loginIconButton(
             icon: HeroAppIcons.key,
             tooltip: AppStrings.t(AppStringKeys.accountBackupRestoreAccount),

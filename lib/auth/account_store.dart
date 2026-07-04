@@ -11,6 +11,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../chat/custom_emoji.dart';
+import '../chat/emoji_store.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -44,6 +46,13 @@ class AccountStore extends ChangeNotifier {
     // name edit) — TDLib emits updateUser for us. Filtered to known self-ids so
     // it doesn't fire for every contact seen in chats.
     TdClient.shared.subscribe().listen((u) {
+      if (u.type == 'updateAuthorizationState') {
+        final state = u.obj('authorization_state');
+        if (state?.type == 'authorizationStateReady') {
+          unawaited(_removePendingSessionReplacementSource());
+        }
+        return;
+      }
       if (u.type != 'updateUser') return;
       final uid = u.obj('user')?.int64('id');
       if (uid != null && _selfIds.contains(uid)) refresh();
@@ -65,6 +74,8 @@ class AccountStore extends ChangeNotifier {
   // Persisted so it survives an app kill mid-login.
   int? _pendingSlot;
   int _returnSlot = 0;
+  int? _pendingSessionReplacementSourceSlot;
+  bool _removingSessionReplacementSource = false;
 
   void _persistPending() {
     final p = _pendingSlot;
@@ -79,6 +90,30 @@ class AccountStore extends ChangeNotifier {
 
   int get activeSlot => _activeSlot;
   List<AccountSummary> get summaries => _summaries;
+
+  void _activeAccountChanged() {
+    CustomEmojiCenter.shared.reset();
+    EmojiStore.shared.reset();
+  }
+
+  Future<void> _removePendingSessionReplacementSource() async {
+    final source = _pendingSessionReplacementSourceSlot;
+    if (source == null || _removingSessionReplacementSource) return;
+    if (source == _activeSlot) return;
+    if (!TdClient.shared.configuredSlots.contains(source)) {
+      _pendingSessionReplacementSourceSlot = null;
+      return;
+    }
+    _removingSessionReplacementSource = true;
+    try {
+      TdClient.shared.removeSlot(source);
+      await TdClient.shared.deleteSlotData(source);
+      _pendingSessionReplacementSourceSlot = null;
+      await refresh();
+    } finally {
+      _removingSessionReplacementSource = false;
+    }
+  }
 
   /// True while an add-account login is in progress on the active slot.
   bool get hasPendingAdd => _pendingSlot != null && _pendingSlot == _activeSlot;
@@ -120,6 +155,7 @@ class AccountStore extends ChangeNotifier {
     _pendingSlot = null;
     _persistPending();
     TdClient.shared.setActive(target);
+    _activeAccountChanged();
     _activeSlot = target;
     TdClient.shared.removeSlot(pending);
     await TdClient.shared.deleteSlotData(pending);
@@ -187,6 +223,7 @@ class AccountStore extends ChangeNotifier {
   void switchTo(int slot, AuthManager auth) {
     if (slot == _activeSlot) return;
     TdClient.shared.setActive(slot);
+    _activeAccountChanged();
     _activeSlot = slot;
     notifyListeners();
     auth.reloadAuthState();
@@ -201,10 +238,30 @@ class AccountStore extends ChangeNotifier {
     _pendingSlot = slot;
     _persistPending();
     TdClient.shared.setActive(slot);
+    _activeAccountChanged();
     _activeSlot = slot;
     notifyListeners();
     auth.reloadAuthState();
     refresh();
+  }
+
+  Future<TdFreshSessionResult> createFreshSessionFromRestoredSlot(
+    int sourceSlot,
+    AuthManager auth,
+  ) async {
+    final result = await TdClient.shared.createFreshSessionFromSlot(sourceSlot);
+    _activeAccountChanged();
+    _activeSlot = result.slot;
+    if (result.needsInteractiveLogin) {
+      _pendingSessionReplacementSourceSlot = sourceSlot;
+    } else {
+      _pendingSessionReplacementSourceSlot = sourceSlot;
+      await _removePendingSessionReplacementSource();
+    }
+    notifyListeners();
+    auth.reloadAuthState();
+    await refresh();
+    return result;
   }
 
   /// Aborts an in-progress "add account": switches back to the account we came
@@ -220,8 +277,10 @@ class AccountStore extends ChangeNotifier {
         : slots.firstWhere((s) => s != pending, orElse: () => pending);
     if (target == pending) {
       _activeSlot = TdClient.shared.replaceActiveWithFreshLoginSlot();
+      _activeAccountChanged();
     } else {
       TdClient.shared.setActive(target); // must point away before removing
+      _activeAccountChanged();
       _activeSlot = target;
       TdClient.shared.removeSlot(pending);
     }
@@ -241,6 +300,7 @@ class AccountStore extends ChangeNotifier {
         _persistPending();
       }
       _activeSlot = TdClient.shared.replaceActiveWithFreshLoginSlot();
+      _activeAccountChanged();
       await TdClient.shared.deleteSlotData(slot);
       notifyListeners();
       auth.reloadAuthState();
@@ -250,6 +310,7 @@ class AccountStore extends ChangeNotifier {
     if (slot == _activeSlot) {
       final target = slots.firstWhere((s) => s != slot);
       TdClient.shared.setActive(target);
+      _activeAccountChanged();
       _activeSlot = target;
       auth.reloadAuthState();
     }
@@ -281,6 +342,7 @@ class AccountStore extends ChangeNotifier {
 
     if (isActiveSlot && target != null) {
       TdClient.shared.setActive(target);
+      _activeAccountChanged();
       _activeSlot = target;
       if (slot == _pendingSlot) {
         _pendingSlot = null;
@@ -305,6 +367,7 @@ class AccountStore extends ChangeNotifier {
 
     if (isActiveSlot && target == null) {
       _activeSlot = TdClient.shared.replaceActiveWithFreshLoginSlot();
+      _activeAccountChanged();
       notifyListeners();
       auth.reloadAuthState();
     } else if (TdClient.shared.configuredSlots.contains(slot)) {

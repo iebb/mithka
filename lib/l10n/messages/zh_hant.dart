@@ -15,6 +15,13 @@ const zhHantMessages = <String, String>{
   'accountBackupDeleteTitle': "要刪除已儲存的工作階段嗎？",
   'accountBackupEmpty': "尚未備份任何帳號工作階段。",
   'accountBackupEnabled': "備份帳號",
+  'accountBackupFreshSessionCreate': "建立新工作階段",
+  'accountBackupFreshSessionInteractive': "請繼續登入步驟，以完成新工作階段建立。",
+  'accountBackupFreshSessionMessage':
+      "已成功復原工作階段。為避免在多個裝置上使用同一個 Telegram 工作階段，Mithka 可以基於此工作階段透過 QR Code 登入建立新的工作階段。Telegram 可能會要求輸入兩步驟驗證密碼。",
+  'accountBackupFreshSessionReady': "已在槽位 {value1} 建立新工作階段",
+  'accountBackupFreshSessionTitle': "要建立新工作階段嗎？",
+  'accountBackupFreshSessionUseRestored': "使用已復原的工作階段",
   'accountBackupInvalidImportedMessage': "此工作階段字串已失效，或可能已被撤銷。請從仍登入的裝置重新匯出工作階段。",
   'accountBackupInvalidMessage':
       "{value1} 的已儲存工作階段已失效，或可能已被撤銷。要從 Keychain 刪除此已儲存工作階段嗎？",

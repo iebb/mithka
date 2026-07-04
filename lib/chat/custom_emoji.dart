@@ -78,10 +78,18 @@ class CustomEmojiCenter {
   final Map<int, CustomEmojiSticker> _cache = {};
   final Set<int> _pending = {};
   bool _scheduled = false;
+  int _generation = 0;
   final StreamController<int> _resolved = StreamController.broadcast();
 
   Stream<int> get onResolved => _resolved.stream;
   CustomEmojiSticker? get(int id) => _cache[id];
+
+  void reset() {
+    _generation += 1;
+    _cache.clear();
+    _pending.clear();
+    _scheduled = false;
+  }
 
   void request(int id) {
     if (id == 0 || _cache.containsKey(id) || _pending.contains(id)) return;
@@ -92,6 +100,7 @@ class CustomEmojiCenter {
   }
 
   Future<void> _flush() async {
+    final generation = _generation;
     _scheduled = false;
     final ids = _pending.toList();
     _pending.clear();
@@ -104,6 +113,7 @@ class CustomEmojiCenter {
         });
         final stickers =
             res.objects('stickers') ?? const <Map<String, dynamic>>[];
+        if (generation != _generation) return;
         for (final s in stickers) {
           final cid = s.obj('full_type')?.int64('custom_emoji_id');
           if (cid == null) continue;

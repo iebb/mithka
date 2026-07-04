@@ -36,6 +36,13 @@ class EmojiStore extends ChangeNotifier {
   List<CustomEmojiPack> customPacks = [];
   bool _loaded = false;
 
+  void reset() {
+    isPremium = false;
+    customPacks = [];
+    _loaded = false;
+    notifyListeners();
+  }
+
   void loadIfNeeded() {
     if (_loaded) return;
     _loaded = true;

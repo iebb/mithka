@@ -184,6 +184,10 @@ class AccountBackupService {
     return TdClient.shared.restoreSessionSlot(sessionString);
   }
 
+  Future<TdFreshSessionResult> createFreshSessionFromSlot(int sourceSlot) {
+    return TdClient.shared.createFreshSessionFromSlot(sourceSlot);
+  }
+
   Future<void> delete(AccountSessionBackup backup) async {
     await deleteAccountId(backup.id);
   }

@@ -16,6 +16,15 @@ const frMessages = <String, String>{
   'accountBackupDeleteTitle': "Supprimer la session enregistrée ?",
   'accountBackupEmpty': "Aucune session de compte n’est encore sauvegardée.",
   'accountBackupEnabled': "Sauvegarder les comptes",
+  'accountBackupFreshSessionCreate': "Créer une nouvelle session",
+  'accountBackupFreshSessionInteractive':
+      "Continuez l’étape de connexion pour terminer la création de la nouvelle session.",
+  'accountBackupFreshSessionMessage':
+      "La session restaurée est prête. Pour éviter d’utiliser la même session Telegram sur plusieurs appareils, Mithka peut créer une nouvelle session à partir de celle-ci avec la connexion par QR code. Telegram peut demander votre mot de passe de validation en deux étapes.",
+  'accountBackupFreshSessionReady':
+      "Nouvelle session créée dans l’emplacement {value1}",
+  'accountBackupFreshSessionTitle': "Créer une nouvelle session ?",
+  'accountBackupFreshSessionUseRestored': "Utiliser la session restaurée",
   'accountBackupInvalidImportedMessage':
       "Cette chaîne de session n’est plus valide ou a peut-être été révoquée. Exportez une nouvelle session depuis un appareil encore connecté.",
   'accountBackupInvalidMessage':

@@ -16,6 +16,13 @@ const koMessages = <String, String>{
   'accountBackupDeleteTitle': "저장된 세션을 삭제할까요?",
   'accountBackupEmpty': "아직 백업된 계정 세션이 없습니다.",
   'accountBackupEnabled': "계정 백업",
+  'accountBackupFreshSessionCreate': "새 세션 만들기",
+  'accountBackupFreshSessionInteractive': "새 세션 만들기를 완료하려면 로그인 단계를 계속 진행하세요.",
+  'accountBackupFreshSessionMessage':
+      "복원된 세션을 사용할 수 있습니다. 같은 Telegram 세션을 여러 기기에서 사용하는 것을 피하기 위해 Mithka가 이 세션을 기반으로 QR 로그인으로 새 세션을 만들 수 있습니다. Telegram에서 2단계 인증 비밀번호를 요청할 수 있습니다.",
+  'accountBackupFreshSessionReady': "슬롯 {value1}에 새 세션을 만들었습니다",
+  'accountBackupFreshSessionTitle': "새 세션을 만들까요?",
+  'accountBackupFreshSessionUseRestored': "복원된 세션 사용",
   'accountBackupInvalidImportedMessage':
       "이 세션 문자열은 더 이상 유효하지 않거나 해지되었을 수 있습니다. 로그인된 기기에서 새 세션을 내보내세요.",
   'accountBackupInvalidMessage':

@@ -72,13 +72,6 @@ class _TdSessionStringInfo {
   final bool isBot;
 }
 
-class _TemporaryRestoreClient {
-  const _TemporaryRestoreClient({required this.slot, required this.clientId});
-
-  final int slot;
-  final int clientId;
-}
-
 class TdClient {
   TdClient._();
   static final TdClient shared = TdClient._();
@@ -105,7 +98,6 @@ class TdClient {
   final Set<int> _proxyAppliedClients = {};
   int _activeClientId = 0;
   int _activeSlot = 0;
-  int _temporarySlotCursor = -1;
   List<int> _slots = [0];
 
   late SharedPreferences _prefs;
@@ -220,15 +212,7 @@ class TdClient {
         return existingSlot;
       }
     }
-    final source = await _createTemporaryRestoreClient(
-      trimmedSessionString,
-      info.userId,
-    );
-    try {
-      return await _restoreSessionSlotWithQrLogin(source, info.userId);
-    } finally {
-      await _closeTemporaryRestoreClient(source);
-    }
+    return _restoreImportedSessionSlot(trimmedSessionString, info.userId);
   }
 
   Future<void> acceptLoginQrLink(String link) async {
@@ -238,10 +222,69 @@ class TdClient {
     }).timeout(const Duration(seconds: 20));
   }
 
-  Future<int> _restoreSessionSlotWithQrLogin(
-    _TemporaryRestoreClient source,
+  Future<TdFreshSessionResult> createFreshSessionFromSlot(
+    int sourceSlot,
+  ) async {
+    final sourceClientId = clientId(sourceSlot);
+    if (sourceClientId == null) {
+      throw ArgumentError.value(sourceSlot, 'sourceSlot', 'is not configured');
+    }
+    final me = await queryTo({
+      '@type': 'getMe',
+    }, sourceClientId).timeout(const Duration(seconds: 5));
+    final expectedUserId = me.int64('id');
+    if (expectedUserId == null) {
+      throw StateError('Source session did not return a user id');
+    }
+    return _createFreshSessionWithQrLogin(
+      sourceClientId: sourceClientId,
+      expectedUserId: expectedUserId,
+    );
+  }
+
+  Future<int> _restoreImportedSessionSlot(
+    String sessionString,
     int expectedUserId,
   ) async {
+    final newSlot = _nextSlot();
+    final dbDir = Directory(_databaseDirectory(newSlot));
+    if (await dbDir.exists()) {
+      await dbDir.delete(recursive: true);
+    }
+    await dbDir.create(recursive: true);
+    final sessionFile = File('${dbDir.path}/td.binlog');
+    _bindings.importSessionString(sessionString, sessionFile.path);
+
+    final cid = _bindings.createClientId();
+    if (!_slots.contains(newSlot)) _slots.add(newSlot);
+    _clientForSlot[newSlot] = cid;
+    _slotForClient[cid] = newSlot;
+    if (kDebugMode) unawaited(_persistDebugLiveClientIds());
+    _bindings.send(cid, jsonEncode({'@type': 'getOption', 'name': 'version'}));
+    try {
+      await _waitForRestoredSessionReady(newSlot, cid, expectedUserId);
+      setActive(newSlot);
+      _persist();
+      return newSlot;
+    } catch (error) {
+      _closeAndForgetSlot(newSlot);
+      await _deleteDirectoryIfPresent(dbDir);
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      await _deleteDirectoryIfPresent(dbDir);
+      if (kDebugMode) unawaited(_persistDebugLiveClientIds());
+      if (_isRequestAborted(error)) {
+        throw const TdSessionRestoreException(
+          'Saved account session is invalid or has been revoked',
+        );
+      }
+      rethrow;
+    }
+  }
+
+  Future<TdFreshSessionResult> _createFreshSessionWithQrLogin({
+    required int sourceClientId,
+    required int expectedUserId,
+  }) async {
     final newSlot = _nextSlot();
     final dbDir = Directory(_databaseDirectory(newSlot));
     if (await dbDir.exists()) {
@@ -265,11 +308,15 @@ class TdClient {
       await queryTo({
         '@type': 'confirmQrCodeAuthentication',
         'link': link,
-      }, source.clientId).timeout(const Duration(seconds: 20));
-      await _waitForRestoredSessionReady(newSlot, cid, expectedUserId);
+      }, sourceClientId).timeout(const Duration(seconds: 20));
+      final ready = await _waitForFreshSessionReadyOrInteractive(
+        newSlot,
+        cid,
+        expectedUserId,
+      );
       setActive(newSlot);
       _persist();
-      return newSlot;
+      return TdFreshSessionResult(slot: newSlot, needsInteractiveLogin: !ready);
     } catch (error) {
       _closeAndForgetSlot(newSlot);
       await _deleteDirectoryIfPresent(dbDir);
@@ -285,46 +332,41 @@ class TdClient {
     }
   }
 
-  Future<_TemporaryRestoreClient> _createTemporaryRestoreClient(
-    String sessionString,
+  Future<bool> _waitForFreshSessionReadyOrInteractive(
+    int slot,
+    int clientId,
     int expectedUserId,
   ) async {
-    final slot = _nextTemporarySlot();
-    final dbDir = Directory(_databaseDirectory(slot));
-    if (await dbDir.exists()) {
-      await dbDir.delete(recursive: true);
-    }
-    await dbDir.create(recursive: true);
-    final sessionFile = File('${dbDir.path}/td.binlog');
-    _bindings.importSessionString(sessionString, sessionFile.path);
-
-    final cid = _bindings.createClientId();
-    _clientForSlot[slot] = cid;
-    _slotForClient[cid] = slot;
-    if (kDebugMode) unawaited(_persistDebugLiveClientIds());
-    _bindings.send(cid, jsonEncode({'@type': 'getOption', 'name': 'version'}));
-    try {
-      await _waitForRestoredSessionReady(slot, cid, expectedUserId);
-      return _TemporaryRestoreClient(slot: slot, clientId: cid);
-    } catch (error) {
-      await _closeTemporaryRestoreClient(
-        _TemporaryRestoreClient(slot: slot, clientId: cid),
-      );
-      if (_isRequestAborted(error)) {
-        throw const TdSessionRestoreException(
-          'Saved account session is invalid or has been revoked',
-        );
+    final deadline = DateTime.now().add(const Duration(seconds: 20));
+    while (DateTime.now().isBefore(deadline)) {
+      final state = await queryTo({
+        '@type': 'getAuthorizationState',
+      }, clientId).timeout(const Duration(seconds: 3));
+      switch (state.type) {
+        case 'authorizationStateWaitTdlibParameters':
+          _sendParameters(clientId);
+        case 'authorizationStateReady':
+          await _verifyRestoredSessionStable(slot, clientId, expectedUserId);
+          return true;
+        case 'authorizationStateWaitCode':
+        case 'authorizationStateWaitPassword':
+        case 'authorizationStateWaitRegistration':
+          return false;
+        case 'authorizationStateWaitPhoneNumber':
+          throw StateError(
+            'Fresh account session is not authorized for slot $slot',
+          );
+        case 'authorizationStateWaitOtherDeviceConfirmation':
+          final link = state.str('link') ?? '';
+          if (link.isNotEmpty) {
+            return false;
+          }
       }
-      rethrow;
+      await Future<void>.delayed(const Duration(milliseconds: 250));
     }
-  }
-
-  Future<void> _closeTemporaryRestoreClient(
-    _TemporaryRestoreClient source,
-  ) async {
-    _closeClientForSlot(source.slot);
-    await _deleteDirectoryIfPresent(Directory(_databaseDirectory(source.slot)));
-    if (kDebugMode) unawaited(_persistDebugLiveClientIds());
+    throw TimeoutException(
+      'Timed out creating fresh account session for slot $slot',
+    );
   }
 
   Future<void> _waitForQrLoginReady(int clientId) async {
@@ -397,8 +439,8 @@ class TdClient {
         case 'authorizationStateWaitPassword':
         case 'authorizationStateWaitRegistration':
         case 'authorizationStateWaitOtherDeviceConfirmation':
-          throw StateError(
-            'Restored account session requires interactive login for slot $slot',
+          throw const TdSessionRestoreException(
+            'Saved account session requires reauthorization',
           );
       }
       await Future<void>.delayed(const Duration(milliseconds: 250));
@@ -728,8 +770,6 @@ class TdClient {
   int _nextSlot() =>
       (_slots.isEmpty ? -1 : _slots.reduce((a, b) => a > b ? a : b)) + 1;
 
-  int _nextTemporarySlot() => _temporarySlotCursor--;
-
   /// The database directory for a slot. Slot 0 keeps the legacy path so an
   /// existing single-account login is preserved.
   String _databaseDirectory(int slot) {
@@ -1005,6 +1045,16 @@ class TdClient {
       return Platform.operatingSystem;
     }
   }
+}
+
+class TdFreshSessionResult {
+  const TdFreshSessionResult({
+    required this.slot,
+    required this.needsInteractiveLogin,
+  });
+
+  final int slot;
+  final bool needsInteractiveLogin;
 }
 
 // MARK: - Receive isolate

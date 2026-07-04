@@ -16,6 +16,13 @@ const jaMessages = <String, String>{
   'accountBackupDeleteTitle': "保存済みセッションを削除しますか？",
   'accountBackupEmpty': "バックアップ済みのアカウントセッションはまだありません。",
   'accountBackupEnabled': "アカウントをバックアップ",
+  'accountBackupFreshSessionCreate': "新しいセッションを作成",
+  'accountBackupFreshSessionInteractive': "新しいセッションの作成を完了するには、ログイン手順を続けてください。",
+  'accountBackupFreshSessionMessage':
+      "復元したセッションは利用できます。同じ Telegram セッションを複数の端末で使うことを避けるため、Mithka はこのセッションから QR ログインで新しいセッションを作成できます。Telegram の2段階認証パスワードが必要になる場合があります。",
+  'accountBackupFreshSessionReady': "スロット {value1} に新しいセッションを作成しました",
+  'accountBackupFreshSessionTitle': "新しいセッションを作成しますか？",
+  'accountBackupFreshSessionUseRestored': "復元したセッションを使う",
   'accountBackupInvalidImportedMessage':
       "このセッション文字列は無効になったか、取り消された可能性があります。ログイン済みの端末から新しいセッションをエクスポートしてください。",
   'accountBackupInvalidMessage':

@@ -15,6 +15,13 @@ const zhHansMessages = <String, String>{
   'accountBackupDeleteTitle': "删除已保存的会话？",
   'accountBackupEmpty': "还没有备份任何账号会话。",
   'accountBackupEnabled': "备份账号",
+  'accountBackupFreshSessionCreate': "创建新会话",
+  'accountBackupFreshSessionInteractive': "继续登录步骤以完成新会话创建。",
+  'accountBackupFreshSessionMessage':
+      "已成功恢复会话。为避免在多个设备上使用同一个 Telegram 会话，Mithka 可以基于该会话通过二维码登录创建一个新会话。Telegram 可能会要求输入两步验证密码。",
+  'accountBackupFreshSessionReady': "已在槽位 {value1} 创建新会话",
+  'accountBackupFreshSessionTitle': "创建新会话？",
+  'accountBackupFreshSessionUseRestored': "使用已恢复的会话",
   'accountBackupInvalidImportedMessage': "此会话字符串已失效，或可能已被撤销。请从仍登录的设备重新导出会话。",
   'accountBackupInvalidMessage':
       "{value1} 的已保存会话已失效，或可能已被撤销。要从 Keychain 删除这个已保存会话吗？",
