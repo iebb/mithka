@@ -8,6 +8,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../chat/chat_view.dart';
 import '../chat/custom_emoji.dart';
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
@@ -42,7 +43,7 @@ class _ForumTopicBrowserViewState extends State<ForumTopicBrowserView> {
   List<ChatSummary> get _chats {
     final byId = <int, ChatSummary>{};
     for (final chat in [widget.initialChat, ...widget.chats]) {
-      if (chat.isForum) byId[chat.id] = chat;
+      byId[chat.id] = chat;
     }
     return byId.values.toList()..sort((a, b) => b.date.compareTo(a.date));
   }
@@ -55,6 +56,18 @@ class _ForumTopicBrowserViewState extends State<ForumTopicBrowserView> {
 
   void _selectChat(ChatSummary chat) {
     if (_selectedChat.id == chat.id) return;
+    if (!chat.isForum) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => ChatView(
+            chatId: chat.id,
+            title: chat.title,
+            seedMessage: chat.lastChatMessage,
+          ),
+        ),
+      );
+      return;
+    }
     setState(() => _selectedChat = chat);
     _loadTopics(chat);
   }
@@ -71,7 +84,7 @@ class _ForumTopicBrowserViewState extends State<ForumTopicBrowserView> {
         'query': '',
         'offset_date': 0,
         'offset_message_id': 0,
-        'offset_forum_topic_id': 0,
+        'offset_message_thread_id': 0,
         'limit': 120,
       });
       final rawTopics =

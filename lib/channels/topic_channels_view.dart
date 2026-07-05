@@ -119,7 +119,7 @@ class _TopicChannelsViewState extends State<TopicChannelsView> {
         'query': '',
         'offset_date': 0,
         'offset_message_id': 0,
-        'offset_forum_topic_id': 0,
+        'offset_message_thread_id': 0,
         'limit': 40,
       });
       final topics =

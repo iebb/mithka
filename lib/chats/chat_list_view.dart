@@ -210,14 +210,14 @@ class _ChatListViewState extends State<ChatListView> {
       return;
     }
     if (chat.isForum) {
-      final forumChats = <int, ChatSummary>{};
+      final railChats = <int, ChatSummary>{};
       for (final summary in [..._model.chats, ..._model.archived]) {
-        if (summary.isForum) forumChats[summary.id] = summary;
+        railChats[summary.id] = summary;
       }
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => ForumTopicBrowserView(
-            chats: forumChats.values.toList(),
+            chats: railChats.values.toList(),
             initialChat: chat,
           ),
         ),

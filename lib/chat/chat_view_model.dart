@@ -1376,7 +1376,7 @@ class ChatViewModel extends ChangeNotifier {
         'query': '',
         'offset_date': 0,
         'offset_message_id': 0,
-        'offset_forum_topic_id': 0,
+        'offset_message_thread_id': 0,
         'limit': 80,
       });
       final raw = response.objects('topics') ?? const <Map<String, dynamic>>[];
