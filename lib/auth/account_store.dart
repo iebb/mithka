@@ -75,6 +75,7 @@ class AccountStore extends ChangeNotifier {
   int? _pendingSlot;
   int _returnSlot = 0;
   int? _pendingSessionReplacementSourceSlot;
+  int? _pendingSessionReplacementTargetSlot;
   bool _removingSessionReplacementSource = false;
 
   void _persistPending() {
@@ -102,6 +103,7 @@ class AccountStore extends ChangeNotifier {
     if (source == _activeSlot) return;
     if (!TdClient.shared.configuredSlots.contains(source)) {
       _pendingSessionReplacementSourceSlot = null;
+      _pendingSessionReplacementTargetSlot = null;
       return;
     }
     _removingSessionReplacementSource = true;
@@ -109,6 +111,7 @@ class AccountStore extends ChangeNotifier {
       TdClient.shared.removeSlot(source);
       await TdClient.shared.deleteSlotData(source);
       _pendingSessionReplacementSourceSlot = null;
+      _pendingSessionReplacementTargetSlot = null;
       await refresh();
     } finally {
       _removingSessionReplacementSource = false;
@@ -117,6 +120,14 @@ class AccountStore extends ChangeNotifier {
 
   /// True while an add-account login is in progress on the active slot.
   bool get hasPendingAdd => _pendingSlot != null && _pendingSlot == _activeSlot;
+
+  /// True while the active account slot is the replacement session being
+  /// created from a restored session. QR confirmation is handled internally by
+  /// the restored source slot, so the login UI should only show follow-up auth
+  /// steps such as 2FA/code entry.
+  bool get isActiveSessionReplacementPending =>
+      _pendingSessionReplacementSourceSlot != null &&
+      _pendingSessionReplacementTargetSlot == _activeSlot;
 
   /// Display name of the account we'd return to if the pending add is aborted.
   String? get returnAccountName {
@@ -252,6 +263,7 @@ class AccountStore extends ChangeNotifier {
     final result = await TdClient.shared.createFreshSessionFromSlot(sourceSlot);
     _activeAccountChanged();
     _activeSlot = result.slot;
+    _pendingSessionReplacementTargetSlot = result.slot;
     if (result.needsInteractiveLogin) {
       _pendingSessionReplacementSourceSlot = sourceSlot;
     } else {

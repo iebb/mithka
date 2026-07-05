@@ -22,6 +22,7 @@ const zhHansMessages = <String, String>{
   'accountBackupFreshSessionReady': "已在槽位 {value1} 创建新会话",
   'accountBackupFreshSessionTitle': "创建新会话？",
   'accountBackupFreshSessionUseRestored': "使用已恢复的会话",
+  'accountBackupFreshSessionWaiting': "正在创建新会话...",
   'accountBackupInvalidImportedMessage': "此会话字符串已失效，或可能已被撤销。请从仍登录的设备重新导出会话。",
   'accountBackupInvalidMessage':
       "{value1} 的已保存会话已失效，或可能已被撤销。要从 Keychain 删除这个已保存会话吗？",

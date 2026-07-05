@@ -357,10 +357,11 @@ class TdClient {
             'Fresh account session is not authorized for slot $slot',
           );
         case 'authorizationStateWaitOtherDeviceConfirmation':
-          final link = state.str('link') ?? '';
-          if (link.isNotEmpty) {
-            return false;
-          }
+          // The target client can briefly keep reporting the QR confirmation
+          // state after the source session has accepted the login token. Keep
+          // waiting for the real interactive state, otherwise the login UI
+          // exposes a QR code that has already been handled internally.
+          break;
       }
       await Future<void>.delayed(const Duration(milliseconds: 250));
     }

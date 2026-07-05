@@ -24,6 +24,7 @@ const enMessages = <String, String>{
   'accountBackupFreshSessionReady': "Created a new session in slot {value1}",
   'accountBackupFreshSessionTitle': "Create a new session?",
   'accountBackupFreshSessionUseRestored': "Use Restored Session",
+  'accountBackupFreshSessionWaiting': "Creating the new session...",
   'accountBackupInvalidImportedMessage':
       "This session string is no longer valid or may have been revoked. Please export a fresh session from a logged-in device.",
   'accountBackupInvalidMessage':

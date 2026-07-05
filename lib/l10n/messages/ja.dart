@@ -23,6 +23,7 @@ const jaMessages = <String, String>{
   'accountBackupFreshSessionReady': "スロット {value1} に新しいセッションを作成しました",
   'accountBackupFreshSessionTitle': "新しいセッションを作成しますか？",
   'accountBackupFreshSessionUseRestored': "復元したセッションを使う",
+  'accountBackupFreshSessionWaiting': "新しいセッションを作成しています...",
   'accountBackupInvalidImportedMessage':
       "このセッション文字列は無効になったか、取り消された可能性があります。ログイン済みの端末から新しいセッションをエクスポートしてください。",
   'accountBackupInvalidMessage':

@@ -23,6 +23,7 @@ const koMessages = <String, String>{
   'accountBackupFreshSessionReady': "슬롯 {value1}에 새 세션을 만들었습니다",
   'accountBackupFreshSessionTitle': "새 세션을 만들까요?",
   'accountBackupFreshSessionUseRestored': "복원된 세션 사용",
+  'accountBackupFreshSessionWaiting': "새 세션을 만드는 중...",
   'accountBackupInvalidImportedMessage':
       "이 세션 문자열은 더 이상 유효하지 않거나 해지되었을 수 있습니다. 로그인된 기기에서 새 세션을 내보내세요.",
   'accountBackupInvalidMessage':

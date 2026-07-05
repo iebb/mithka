@@ -24,6 +24,7 @@ const esMessages = <String, String>{
   'accountBackupFreshSessionReady': "Nueva sesión creada en la ranura {value1}",
   'accountBackupFreshSessionTitle': "¿Crear una nueva sesión?",
   'accountBackupFreshSessionUseRestored': "Usar sesión restaurada",
+  'accountBackupFreshSessionWaiting': "Creando la nueva sesión...",
   'accountBackupInvalidImportedMessage':
       "Esta cadena de sesión ya no es válida o puede haber sido revocada. Exporta una sesión nueva desde un dispositivo que siga conectado.",
   'accountBackupInvalidMessage':

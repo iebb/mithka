@@ -25,6 +25,7 @@ const deMessages = <String, String>{
   'accountBackupFreshSessionTitle': "Neue Sitzung erstellen?",
   'accountBackupFreshSessionUseRestored':
       "Wiederhergestellte Sitzung verwenden",
+  'accountBackupFreshSessionWaiting': "Neue Sitzung wird erstellt...",
   'accountBackupInvalidImportedMessage':
       "Diese Sitzungszeichenfolge ist nicht mehr gültig oder wurde möglicherweise widerrufen. Exportiere eine neue Sitzung von einem noch angemeldeten Gerät.",
   'accountBackupInvalidMessage':

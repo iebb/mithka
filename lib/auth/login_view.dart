@@ -154,7 +154,7 @@ class _LoginViewState extends State<LoginView> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _stepFor(auth),
+                        _stepFor(auth, accounts),
                         if (auth.errorMessage != null) ...[
                           const SizedBox(height: 18),
                           Align(
@@ -281,11 +281,14 @@ class _LoginViewState extends State<LoginView> {
     setState(() => _forcePhone = true);
   }
 
-  Widget _stepFor(AuthManager auth) {
+  Widget _stepFor(AuthManager auth, AccountStore accounts) {
     if (_forcePhone) return _phoneStep(auth);
     return switch (auth.step) {
       AuthMissingCredentials() => _credentialsNotice(auth),
-      AuthWaitQrCode(:final link) => _qrCodeStep(auth, link),
+      AuthWaitQrCode(:final link) =>
+        accounts.isActiveSessionReplacementPending
+            ? _freshSessionWaitingStep()
+            : _qrCodeStep(auth, link),
       AuthWaitCode(:final info) => _codeStep(auth, info),
       AuthWaitPassword(:final hint) => _passwordStep(auth, hint),
       AuthWaitRegistration() => _registrationStep(auth),
@@ -676,6 +679,35 @@ class _LoginViewState extends State<LoginView> {
               fontSize: 14,
               fontWeight: FontWeight.w500,
               color: AppTheme.brand,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _freshSessionWaitingStep() {
+    final c = context.colors;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          AppStrings.t(AppStringKeys.accountBackupFreshSessionWaiting),
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: c.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 24),
+        Center(
+          child: SizedBox(
+            width: 28,
+            height: 28,
+            child: CircularProgressIndicator.adaptive(
+              strokeWidth: 2.4,
+              valueColor: AlwaysStoppedAnimation<Color>(AppTheme.brand),
             ),
           ),
         ),

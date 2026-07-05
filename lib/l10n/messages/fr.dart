@@ -25,6 +25,7 @@ const frMessages = <String, String>{
       "Nouvelle session créée dans l’emplacement {value1}",
   'accountBackupFreshSessionTitle': "Créer une nouvelle session ?",
   'accountBackupFreshSessionUseRestored': "Utiliser la session restaurée",
+  'accountBackupFreshSessionWaiting': "Création de la nouvelle session...",
   'accountBackupInvalidImportedMessage':
       "Cette chaîne de session n’est plus valide ou a peut-être été révoquée. Exportez une nouvelle session depuis un appareil encore connecté.",
   'accountBackupInvalidMessage':

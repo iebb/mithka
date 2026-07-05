@@ -22,6 +22,7 @@ const zhHantMessages = <String, String>{
   'accountBackupFreshSessionReady': "已在槽位 {value1} 建立新工作階段",
   'accountBackupFreshSessionTitle': "要建立新工作階段嗎？",
   'accountBackupFreshSessionUseRestored': "使用已復原的工作階段",
+  'accountBackupFreshSessionWaiting': "正在建立新工作階段...",
   'accountBackupInvalidImportedMessage': "此工作階段字串已失效，或可能已被撤銷。請從仍登入的裝置重新匯出工作階段。",
   'accountBackupInvalidMessage':
       "{value1} 的已儲存工作階段已失效，或可能已被撤銷。要從 Keychain 刪除此已儲存工作階段嗎？",

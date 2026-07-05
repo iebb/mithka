@@ -154,6 +154,8 @@ abstract final class AppStringKeys {
       'accountBackupFreshSessionTitle';
   static const accountBackupFreshSessionUseRestored =
       'accountBackupFreshSessionUseRestored';
+  static const accountBackupFreshSessionWaiting =
+      'accountBackupFreshSessionWaiting';
   static const accountBackupInvalidImportedMessage =
       'accountBackupInvalidImportedMessage';
   static const accountBackupInvalidMessage = 'accountBackupInvalidMessage';
