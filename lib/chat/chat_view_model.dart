@@ -180,6 +180,7 @@ class ChatViewModel extends ChangeNotifier {
   bool isChannel = false; // broadcast channel (members can't post)
   bool isMuted =
       false; // notifications muted (channel subscribers get a toggle)
+  bool canDeleteMessagesBySender = false;
   String sendDisabledReason = ''; // shown in the disabled composer bar
   bool isTelegramTosRestricted = false;
   String telegramTosRestrictionText = '';
@@ -1256,6 +1257,7 @@ class ChatViewModel extends ChangeNotifier {
     canJoin = false;
     joinByRequest = false;
     isChannel = false;
+    canDeleteMessagesBySender = false;
     sendDisabledReason = '';
 
     final type = chat.obj('type');
@@ -1457,7 +1459,12 @@ class ChatViewModel extends ChangeNotifier {
   void _applyGroupStatus(Map<String, dynamic>? status) {
     switch (status?.type) {
       case 'chatMemberStatusCreator':
+        canDeleteMessagesBySender = true;
+        isMember = true;
+        canSendMessages = true;
       case 'chatMemberStatusAdministrator':
+        canDeleteMessagesBySender =
+            status?.obj('rights')?.boolean('can_delete_messages') ?? false;
         isMember = true;
         canSendMessages = true;
       case 'chatMemberStatusMember':

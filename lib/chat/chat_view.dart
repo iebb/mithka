@@ -71,10 +71,12 @@ class _MessageDeleteOptions {
 class _MessageDeleteOptionsDialog extends StatefulWidget {
   const _MessageDeleteOptionsDialog({
     required this.canActOnSender,
+    required this.canDeleteAllFromSender,
     required this.senderName,
   });
 
   final bool canActOnSender;
+  final bool canDeleteAllFromSender;
   final String senderName;
 
   @override
@@ -152,16 +154,17 @@ class _MessageDeleteOptionsDialogState
                   value: _blockSender,
                   onTap: () => setState(() => _blockSender = !_blockSender),
                 ),
-                _optionRow(
-                  label: AppStrings.t(
-                    AppStringKeys.chatDeleteOptionDeleteAllFromSender,
-                    {'value1': widget.senderName},
+                if (widget.canDeleteAllFromSender)
+                  _optionRow(
+                    label: AppStrings.t(
+                      AppStringKeys.chatDeleteOptionDeleteAllFromSender,
+                      {'value1': widget.senderName},
+                    ),
+                    value: _deleteAllFromSender,
+                    onTap: () => setState(
+                      () => _deleteAllFromSender = !_deleteAllFromSender,
+                    ),
                   ),
-                  value: _deleteAllFromSender,
-                  onTap: () => setState(
-                    () => _deleteAllFromSender = !_deleteAllFromSender,
-                  ),
-                ),
               ],
               const SizedBox(height: 14),
               Row(
@@ -1776,6 +1779,10 @@ class _ChatViewState extends State<ChatView> {
       transitionDuration: const Duration(milliseconds: 180),
       pageBuilder: (dialogContext, _, _) => _MessageDeleteOptionsDialog(
         canActOnSender: !message.isOutgoing && message.senderId != null,
+        canDeleteAllFromSender:
+            !message.isOutgoing &&
+            message.senderId != null &&
+            _vm.canDeleteMessagesBySender,
         senderName: senderName,
       ),
       transitionBuilder: (context, animation, secondaryAnimation, child) {
