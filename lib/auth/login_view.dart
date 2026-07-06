@@ -16,6 +16,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import 'terms_sheet.dart';
 import '../components/app_icons.dart';
 import '../settings/api_credentials_view.dart';
 import '../settings/account_backup_view.dart';
@@ -150,7 +151,7 @@ class _LoginViewState extends State<LoginView> {
                 _header(),
                 Expanded(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(24),
+                    padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -172,6 +173,7 @@ class _LoginViewState extends State<LoginView> {
                     ),
                   ),
                 ),
+                _termsFooter(),
               ],
             ),
             if (canGoBack)
@@ -204,6 +206,31 @@ class _LoginViewState extends State<LoginView> {
               child: _topRightActions(auth, showingPhone),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _termsFooter() {
+    final c = context.colors;
+    return SafeArea(
+      top: false,
+      minimum: const EdgeInsets.fromLTRB(24, 0, 24, 14),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => showTelegramTermsSheet(context),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Text(
+            AppStrings.t(AppStringKeys.loginTermsButton),
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: c.textSecondary,
+              decoration: TextDecoration.none,
+            ),
+          ),
         ),
       ),
     );

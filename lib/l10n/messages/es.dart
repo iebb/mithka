@@ -641,7 +641,9 @@ const esMessages = <String, String>{
       "Introduce tu api_id y api_hash de cliente de Telegram",
   'loginTermsAccept': "Aceptar y continuar",
   'loginTermsBody':
-      "Mithka solo inicia sesión en cuentas de Telegram existentes. Las cuentas nuevas de Telegram solo pueden crearse en la app oficial de Telegram para iOS. El uso de la cuenta de Telegram, los datos del usuario y las reglas de contenido se rigen por los Términos de uso de Telegram. Telegram no tolera contenido objetable ni usuarios abusivos; en Mithka puedes filtrar mensajes con el bloqueador de palabras clave, reportar mensajes mediante Telegram y bloquear usuarios abusivos. Al bloquear, los mensajes de ese remitente se eliminan de tu vista de inmediato.",
+      "Al usar esta app, debes cumplir los Términos de servicio de Telegram. Mithka inicia sesión en cuentas de Telegram existentes y sigue las reglas de la red de Telegram.",
+  'loginTermsButton': "Términos de servicio",
+  'loginTermsOpenTelegram': "Abrir los términos de Telegram",
   'loginTermsTitle': "Términos de uso de Telegram",
   'loginTwoStepPassword': "Contraseña de verificación en dos pasos",
   'loginVerificationCode': "Código de verificación",

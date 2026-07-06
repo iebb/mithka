@@ -1742,11 +1742,11 @@ class _ChatViewState extends State<ChatView> {
     final options = await _confirmMessageDeleteOptions(message);
     if (!mounted || options == null) return;
     try {
-      if (options.reportSpam) {
+      if (options.reportSpam && !options.blockSender) {
         await _vm.reportMessage(message);
       }
       if (options.blockSender) {
-        await _vm.blockSender(message);
+        await _vm.blockAndReportSender(message);
       }
       if (options.deleteAllFromSender) {
         await _vm.deleteMessagesFromSender(message);

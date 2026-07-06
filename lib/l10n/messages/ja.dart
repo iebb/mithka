@@ -594,7 +594,9 @@ const jaMessages = <String, String>{
       "ご自身の Telegram クライアントの api_id と api_hash を入力してください",
   'loginTermsAccept': "同意して続ける",
   'loginTermsBody':
-      "Mithka は既存の Telegram アカウントへのログイン専用です。新しい Telegram アカウントは Telegram 公式 iOS アプリでのみ作成できます。Telegram アカウントの利用、ユーザーデータ、コンテンツ規則は Telegram の利用規約に従います。Telegram は不適切なコンテンツや迷惑ユーザーを許容しません。Mithka ではキーワードブロックでメッセージをフィルターし、Telegram 経由でメッセージを報告し、迷惑ユーザーをブロックできます。ブロックすると、その送信者のメッセージはあなたの表示からすぐに削除されます。",
+      "このアプリを使用するには、Telegram の利用規約に従う必要があります。Mithka は既存の Telegram アカウントにログインし、Telegram のネットワーク規則に従います。",
+  'loginTermsButton': "利用規約",
+  'loginTermsOpenTelegram': "Telegram の利用規約を開く",
   'loginTermsTitle': "Telegram 利用規約",
   'loginTwoStepPassword': "2段階認証パスワード",
   'loginVerificationCode': "認証コード",

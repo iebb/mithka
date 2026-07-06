@@ -593,7 +593,9 @@ const koMessages = <String, String>{
       "본인의 Telegram 클라이언트 api_id와 api_hash를 입력하세요",
   'loginTermsAccept': "동의하고 계속",
   'loginTermsBody':
-      "Mithka는 기존 Telegram 계정에만 로그인합니다. 새 Telegram 계정은 Telegram 공식 iOS 앱에서만 만들 수 있습니다. Telegram 계정 사용, 사용자 데이터 및 콘텐츠 규칙은 Telegram 이용 약관의 적용을 받습니다. Telegram은 불쾌한 콘텐츠와 악성 사용자를 허용하지 않습니다. Mithka에서는 키워드 차단으로 메시지를 필터링하고, Telegram을 통해 메시지를 신고하며, 악성 사용자를 차단할 수 있습니다. 차단하면 해당 발신자의 메시지가 내 보기에서 즉시 제거됩니다.",
+      "이 앱을 사용하려면 Telegram 서비스 약관을 따라야 합니다. Mithka는 기존 Telegram 계정에 로그인하며 Telegram의 네트워크 규칙을 따릅니다.",
+  'loginTermsButton': "서비스 약관",
+  'loginTermsOpenTelegram': "Telegram 서비스 약관 열기",
   'loginTermsTitle': "Telegram 이용 약관",
   'loginTwoStepPassword': "2단계 인증 비밀번호",
   'loginVerificationCode': "인증 코드",

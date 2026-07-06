@@ -623,7 +623,9 @@ const enMessages = <String, String>{
       "Enter your own Telegram client api_id and api_hash",
   'loginTermsAccept': "Agree and continue",
   'loginTermsBody':
-      "Mithka signs in to existing Telegram accounts only. New Telegram accounts can only be created in Telegram's official iOS app. Telegram account use, user data, and content rules are governed by Telegram's Terms of Use. Objectionable content and abusive users are not tolerated by Telegram; in Mithka you can filter messages with Keyword Blocker, report messages through Telegram, and block abusive users. Blocking removes that sender's messages from your view immediately.",
+      "By using this app, you must follow Telegram's Terms of Service. Mithka signs in to existing Telegram accounts and has zero tolerance for objectionable content or abusive users. You can filter messages with Keyword Blocker, report objectionable content through Telegram, and block abusive users through Telegram. Blocking removes that sender's messages from your view immediately.",
+  'loginTermsButton': "Terms of Service",
+  'loginTermsOpenTelegram': "Open Telegram Terms of Service",
   'loginTermsTitle': "Telegram Terms of Use",
   'loginTwoStepPassword': "Two-step verification password",
   'loginVerificationCode': "Verification code",

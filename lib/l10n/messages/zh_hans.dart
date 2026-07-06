@@ -584,7 +584,9 @@ const zhHansMessages = <String, String>{
       "请填写你自己的 Telegram 客户端 api_id 与 api_hash",
   'loginTermsAccept': "同意并继续",
   'loginTermsBody':
-      "Mithka 只能登录现有 Telegram 账号。新的 Telegram 账号只能在 Telegram 官方 iOS App 中创建。Telegram 账号使用、用户数据和内容规则均受 Telegram 使用条款约束。Telegram 不容忍令人反感的内容和滥用用户；在 Mithka 中，你可以使用关键词屏蔽过滤消息、通过 Telegram 举报消息并屏蔽滥用用户。屏蔽会立即从你的视图中移除该发送者的消息。",
+      "使用本应用即表示你需要遵守 Telegram 服务条款。Mithka 用于登录现有 Telegram 账号，并遵循 Telegram 的网络规则。",
+  'loginTermsButton': "服务条款",
+  'loginTermsOpenTelegram': "打开 Telegram 服务条款",
   'loginTermsTitle': "Telegram 使用条款",
   'loginTwoStepPassword': "两步验证密码",
   'loginVerificationCode': "验证码",

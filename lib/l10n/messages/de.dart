@@ -644,7 +644,9 @@ const deMessages = <String, String>{
       "Gib deine eigene api_id und deinen api_hash für den Telegram-Client ein",
   'loginTermsAccept': "Zustimmen und fortfahren",
   'loginTermsBody':
-      "Mithka meldet sich nur bei bestehenden Telegram-Konten an. Neue Telegram-Konten können nur in der offiziellen iOS-App von Telegram erstellt werden. Die Nutzung des Telegram-Kontos, Nutzerdaten und Inhaltsregeln unterliegen den Nutzungsbedingungen von Telegram. Telegram toleriert keine anstößigen Inhalte oder missbräuchlichen Nutzer; in Mithka kannst du Nachrichten mit der Schlüsselwortsperre filtern, Nachrichten über Telegram melden und missbräuchliche Nutzer blockieren. Beim Blockieren werden die Nachrichten dieses Absenders sofort aus deiner Ansicht entfernt.",
+      "Wenn du diese App nutzt, musst du die Nutzungsbedingungen von Telegram einhalten. Mithka meldet sich bei bestehenden Telegram-Konten an und folgt den Netzwerkregeln von Telegram.",
+  'loginTermsButton': "Nutzungsbedingungen",
+  'loginTermsOpenTelegram': "Telegram-Nutzungsbedingungen öffnen",
   'loginTermsTitle': "Telegram-Nutzungsbedingungen",
   'loginTwoStepPassword': "Passwort für zweistufige Verifizierung",
   'loginVerificationCode': "Bestätigungscode",

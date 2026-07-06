@@ -985,6 +985,8 @@ abstract final class AppStringKeys {
       'loginTelegramApiSecretsInstructions';
   static const loginTermsAccept = 'loginTermsAccept';
   static const loginTermsBody = 'loginTermsBody';
+  static const loginTermsButton = 'loginTermsButton';
+  static const loginTermsOpenTelegram = 'loginTermsOpenTelegram';
   static const loginTermsTitle = 'loginTermsTitle';
   static const loginTwoStepPassword = 'loginTwoStepPassword';
   static const loginVerificationCode = 'loginVerificationCode';

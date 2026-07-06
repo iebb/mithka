@@ -11,7 +11,6 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
-import 'package:sentry_flutter/sentry_flutter.dart';
 
 import '../l10n/telegram_language_controller.dart';
 import '../settings/keyword_blocker.dart';
@@ -1119,12 +1118,6 @@ class ChatViewModel extends ChangeNotifier {
 
   Future<void> reportMessage(ChatMessage message) async {
     await _reportTelegramContent(message);
-    unawaited(
-      _notifyDeveloperContentReport(
-        message,
-        action: 'report',
-      ).catchError((_) {}),
-    );
   }
 
   Future<void> blockSender(ChatMessage message) async {
@@ -1151,12 +1144,6 @@ class ChatViewModel extends ChangeNotifier {
   Future<void> blockAndReportSender(ChatMessage message) async {
     await blockSender(message);
     unawaited(_reportTelegramContent(message).catchError((_) {}));
-    unawaited(
-      _notifyDeveloperContentReport(
-        message,
-        action: 'block',
-      ).catchError((_) {}),
-    );
   }
 
   Map<String, dynamic>? _messageSenderFor(ChatMessage message) {
@@ -1183,25 +1170,6 @@ class ChatViewModel extends ChangeNotifier {
     final options = result.objects('options') ?? const <Map<String, dynamic>>[];
     if (options.isEmpty) return;
     await _client.query({...base, 'option_id': options.first['id'] ?? ''});
-  }
-
-  Future<void> _notifyDeveloperContentReport(
-    ChatMessage message, {
-    required String action,
-  }) async {
-    await Sentry.captureMessage(
-      'user_content_report',
-      level: SentryLevel.warning,
-      withScope: (scope) async {
-        await scope.setTag('content_report.action', action);
-        await scope.setTag('content_report.chat_id', '$chatId');
-        await scope.setTag('content_report.message_id', '${message.id}');
-        final senderId = message.senderId;
-        if (senderId != null) {
-          await scope.setTag('content_report.sender_id', '$senderId');
-        }
-      },
-    );
   }
 
   void editMessageText(int id, String text) {

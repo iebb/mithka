@@ -28,8 +28,8 @@ import 'app/app_navigator.dart';
 import 'app/chat_deep_link_controller.dart';
 import 'auth/account_store.dart';
 import 'auth/auth_manager.dart';
+import 'auth/terms_sheet.dart';
 import 'chat/music_player_controller.dart';
-import 'components/app_icons.dart';
 import 'components/drawer_controller.dart' as dc;
 import 'l10n/app_locale_controller.dart';
 import 'l10n/app_localizations.dart';
@@ -381,182 +381,19 @@ class _FirstLaunchTermsGateState extends State<FirstLaunchTermsGate> {
       return;
     }
     _shown = true;
-    await showModalBottomSheet<void>(
-      context: context,
+    await showTelegramTermsSheet(
+      context,
       isDismissible: false,
       enableDrag: false,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) => _TermsSheet(
-        onAccept: () async {
-          await widget.prefs.setBool(FirstLaunchTermsGate.acceptedKey, true);
-          if (sheetContext.mounted) Navigator.of(sheetContext).pop();
-        },
-      ),
+      onAccept: () async {
+        await widget.prefs.setBool(FirstLaunchTermsGate.acceptedKey, true);
+      },
     );
     _shown = false;
   }
 
   @override
   Widget build(BuildContext context) => widget.child;
-}
-
-class _TermsSheet extends StatelessWidget {
-  const _TermsSheet({required this.onAccept});
-
-  final Future<void> Function() onAccept;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    final height = MediaQuery.sizeOf(context).height;
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 10,
-        right: 10,
-        bottom: MediaQuery.viewInsetsOf(context).bottom + 10,
-      ),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxHeight: height * 0.86),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: c.card,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.18),
-                blurRadius: 28,
-                offset: const Offset(0, -6),
-              ),
-            ],
-          ),
-          child: SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(22, 10, 22, 18),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Align(
-                    child: Container(
-                      width: 42,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: c.divider,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 22),
-                  Row(
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(14),
-                        child: const Image(
-                          image: AssetImage('assets/penguin.png'),
-                          width: 48,
-                          height: 48,
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Text(
-                          AppStrings.t(AppStringKeys.loginTermsTitle),
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                            color: c.textPrimary,
-                          ),
-                        ),
-                      ),
-                      AppIcon(
-                        HeroAppIcons.shieldHalved,
-                        size: 24,
-                        color: c.textSecondary,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 18),
-                  Flexible(
-                    child: SingleChildScrollView(
-                      child: Text(
-                        AppStrings.t(AppStringKeys.loginTermsBody),
-                        style: TextStyle(
-                          fontSize: 15,
-                          height: 1.48,
-                          color: c.textSecondary,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  _TermsAcceptButton(onPressed: onAccept),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _TermsAcceptButton extends StatefulWidget {
-  const _TermsAcceptButton({required this.onPressed});
-
-  final Future<void> Function() onPressed;
-
-  @override
-  State<_TermsAcceptButton> createState() => _TermsAcceptButtonState();
-}
-
-class _TermsAcceptButtonState extends State<_TermsAcceptButton> {
-  bool _working = false;
-
-  Future<void> _submit() async {
-    if (_working) return;
-    setState(() => _working = true);
-    await widget.onPressed();
-    if (mounted) setState(() => _working = false);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 54,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: AppTheme.brandGradient,
-          borderRadius: BorderRadius.circular(18),
-        ),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: _working ? null : _submit,
-          child: Center(
-            child: _working
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.2,
-                      valueColor: AlwaysStoppedAnimation(Colors.white),
-                    ),
-                  )
-                : Text(
-                    AppStrings.t(AppStringKeys.loginTermsAccept),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 List<NavigatorObserver> _analyticsNavigatorObservers() {
