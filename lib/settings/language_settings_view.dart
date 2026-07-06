@@ -267,6 +267,7 @@ class _NavLanguageRow extends StatelessWidget {
               AppIcon(icon, size: 22, color: AppTheme.brand),
               const SizedBox(width: 12),
               Expanded(
+                flex: 3,
                 child: Text(
                   title,
                   maxLines: 1,
@@ -275,13 +276,17 @@ class _NavLanguageRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              Flexible(
-                child: Text(
-                  subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.right,
-                  style: TextStyle(fontSize: 13, color: c.textTertiary),
+              Expanded(
+                flex: 2,
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.right,
+                    style: TextStyle(fontSize: 13, color: c.textTertiary),
+                  ),
                 ),
               ),
               const SizedBox(width: 6),
