@@ -68,7 +68,7 @@ class VoicePlayer extends ChangeNotifier {
         await player.stopPlayer();
       } catch (_) {}
     }
-    _progress?.cancel();
+    unawaited(_progress?.cancel());
     _progress = null;
     _fileId = null;
     _path = null;
@@ -127,7 +127,7 @@ class VoicePlayer extends ChangeNotifier {
       final session = await AudioSession.instance;
       await session.setActive(true);
       final player = _sound;
-      _progress?.cancel();
+      unawaited(_progress?.cancel());
       _progress = player.onProgress?.listen((e) {
         position = e.position;
         if (e.duration.inMilliseconds > 0) total = e.duration;

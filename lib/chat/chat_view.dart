@@ -10,37 +10,38 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import '../components/toast.dart';
 import 'package:flutter/services.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
 import '../app/video_split_controller.dart';
 import '../call/call_manager.dart';
 import '../channels/topic_chat_view.dart';
+import '../components/app_icons.dart';
 import '../components/confirm_dialog.dart';
 import '../components/drawer_controller.dart' as dc;
 import '../components/photo_avatar.dart';
-import '../components/app_icons.dart';
+import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/telegram_language_controller.dart';
 import '../profile/profile_detail_view.dart';
-import '../theme/app_theme.dart';
-import '../theme/date_text.dart';
-import '../theme/theme_controller.dart';
-import '../tdlib/json_helpers.dart';
-import '../tdlib/td_models.dart';
 import '../settings/edit_field_view.dart';
 import '../settings/translation_api.dart';
 import '../settings/translation_controller.dart';
+import '../tdlib/json_helpers.dart';
+import '../tdlib/td_models.dart';
+import '../theme/app_theme.dart';
+import '../theme/date_text.dart';
+import '../theme/theme_controller.dart';
 import 'chat_info_view.dart';
 import 'chat_input_bar.dart';
 import 'chat_picker_view.dart';
+import 'chat_view_model.dart';
 import 'custom_emoji.dart';
 import 'emoji_store.dart';
-import 'chat_view_model.dart';
 import 'full_image_viewer.dart';
 import 'link_handler.dart';
 import 'media_album_layout.dart';
@@ -49,7 +50,6 @@ import 'message_bubble.dart';
 import 'sticker_set_detail_view.dart';
 import 'sticker_viewer.dart';
 import 'video_player_view.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 class _MessageDeleteOptions {
   const _MessageDeleteOptions({
@@ -477,11 +477,7 @@ class _ChatViewState extends State<ChatView> {
     final opening = inset > _keyboardInset;
     _keyboardInset = inset;
     if ((wasNearBottom || opening) && _scrollTargetId == null) {
-      _scheduleScrollToBottom(
-        animated: true,
-        keyboardSettle: true,
-        force: opening,
-      );
+      _scheduleScrollToBottom(keyboardSettle: true, force: opening);
     }
   }
 
@@ -548,7 +544,7 @@ class _ChatViewState extends State<ChatView> {
         _liveNewMessageCount = 0;
         _bannerDismissed = _vm.unreadCount <= 0;
       });
-      _scheduleScrollToBottom(animated: true, force: true);
+      _scheduleScrollToBottom(force: true);
       unawaited(_vm.markLoadedMessagesRead());
     } finally {
       _loadingLatestFromAnchor = false;
@@ -770,12 +766,7 @@ class _ChatViewState extends State<ChatView> {
   }) async {
     final ctx = key.currentContext;
     if (ctx == null || !ctx.mounted) return false;
-    await Scrollable.ensureVisible(
-      ctx,
-      alignment: alignment,
-      duration: Duration.zero,
-      alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
-    );
+    await Scrollable.ensureVisible(ctx, alignment: alignment);
     return true;
   }
 
@@ -856,7 +847,6 @@ class _ChatViewState extends State<ChatView> {
       ],
       maxWidth: maxWidth - 8,
       gap: 4,
-      minSingleHeight: 120,
       maxSingleHeight: 300,
       minRowHeight: 82,
       maxRowHeight: 230,
@@ -990,7 +980,7 @@ class _ChatViewState extends State<ChatView> {
     if (_vm.unreadCount > 0 && i >= 0 && boundaryLoaded) {
       final ctx = _unreadKey.currentContext;
       if (ctx != null) {
-        Scrollable.ensureVisible(ctx, alignment: 0.12, duration: Duration.zero);
+        Scrollable.ensureVisible(ctx, alignment: 0.12);
         return;
       }
     }
@@ -1286,7 +1276,6 @@ class _ChatViewState extends State<ChatView> {
           height: message.imageHeight,
           sourceChatId: widget.chatId,
           messageId: message.id,
-          currentMode: VideoDisplayMode.fullscreen,
           initialMuted: muted,
           onSwitchMode: (mode) => _switchVideoMode(routeContext, message, mode),
         ),
@@ -1632,17 +1621,17 @@ class _ChatViewState extends State<ChatView> {
     });
     switch (action) {
       case MessageAction.copy:
-        Clipboard.setData(ClipboardData(text: message.text));
+        unawaited(Clipboard.setData(ClipboardData(text: message.text)));
       case MessageAction.selectText:
         await _showTextSelection(message);
       case MessageAction.edit:
-        _editMessage(message);
+        unawaited(_editMessage(message));
       case MessageAction.translate:
-        _translateMessage(message);
+        unawaited(_translateMessage(message));
       case MessageAction.reply:
         _vm.setReply(message);
       case MessageAction.forward:
-        _forwardMessage(message);
+        unawaited(_forwardMessage(message));
       case MessageAction.report:
         final confirmed = await confirmDialog(
           context,
@@ -1738,8 +1727,12 @@ class _ChatViewState extends State<ChatView> {
       case MessageAction.viewStickerSet:
         final sid = message.stickerSetId;
         if (sid != null) {
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => StickerSetDetailView(setId: sid)),
+          unawaited(
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => StickerSetDetailView(setId: sid),
+              ),
+            ),
           );
         }
       case MessageAction.delete:
@@ -3259,7 +3252,6 @@ class _ChatViewState extends State<ChatView> {
       behavior: HitTestBehavior.opaque,
       onTap: () => _toggleSelection(selectable),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           const SizedBox(width: 16),
           Container(
@@ -3465,7 +3457,6 @@ class _ChatViewState extends State<ChatView> {
       ],
       maxWidth: maxWidth - padding * 2,
       gap: 4,
-      minSingleHeight: 120,
       maxSingleHeight: 300,
       minRowHeight: 82,
       maxRowHeight: 230,
@@ -3561,7 +3552,6 @@ class _ChatViewState extends State<ChatView> {
             TDImage(
               photo: message.image,
               cornerRadius: 5,
-              fit: BoxFit.cover,
               cacheWidth: _cachePx(width),
               cacheHeight: _cachePx(height),
               showProgress: true,
@@ -4256,7 +4246,6 @@ void _switchPiPSessionMode(
             height: session.height,
             sourceChatId: session.chatId,
             messageId: session.messageId,
-            currentMode: VideoDisplayMode.fullscreen,
             onSwitchMode: (nextMode) {
               switch (nextMode) {
                 case VideoDisplayMode.fullscreen:

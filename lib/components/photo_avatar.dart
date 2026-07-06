@@ -13,10 +13,10 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../theme/app_theme.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
+import '../theme/app_theme.dart';
 
 /// Clips its child to a circle or rounded square.
 class AvatarClip extends StatelessWidget {
@@ -34,14 +34,13 @@ class AvatarClip extends StatelessWidget {
   Widget build(BuildContext context) {
     if (square) {
       return ClipRRect(
-        clipBehavior: Clip.antiAlias,
         borderRadius: BorderRadius.circular(
           size * AppTheme.groupAvatarCornerRatio,
         ),
         child: child,
       );
     }
-    return ClipOval(clipBehavior: Clip.antiAlias, child: child);
+    return ClipOval(child: child);
   }
 }
 
@@ -155,9 +154,6 @@ class _PhotoAvatarState extends State<PhotoAvatar> {
         cacheWidth: cacheSize,
         cacheHeight: cacheSize,
         gaplessPlayback: true,
-        // medium = trilinear/mipmapped sampling, so a large source photo shrunk
-        // to a small avatar isn't aliased/shimmery (low is the default).
-        filterQuality: FilterQuality.medium,
         errorBuilder: (_, _, _) => _placeholder(),
       );
     }
@@ -168,7 +164,6 @@ class _PhotoAvatarState extends State<PhotoAvatar> {
         cacheWidth: cacheSize,
         cacheHeight: cacheSize,
         gaplessPlayback: true,
-        filterQuality: FilterQuality.medium,
         errorBuilder: (_, _, _) => _placeholder(),
       );
     }

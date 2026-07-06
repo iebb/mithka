@@ -8,13 +8,13 @@
 //
 
 import 'package:flutter/foundation.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import 'custom_emoji.dart';
 import 'sticker_item.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 class StickerPack {
   StickerPack({

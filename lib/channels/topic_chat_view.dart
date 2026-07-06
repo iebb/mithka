@@ -7,6 +7,7 @@
 //
 
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -14,10 +15,11 @@ import '../chat/chat_members_view.dart';
 import '../chat/chat_picker_view.dart';
 import '../chat/custom_emoji.dart';
 import '../chat/rich_text_composer_view.dart';
+import '../chat/rich_text_format.dart';
+import '../components/app_icons.dart';
 import '../components/confirm_dialog.dart';
 import '../components/drawer_controller.dart' as dc;
 import '../components/photo_avatar.dart';
-import '../components/app_icons.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
@@ -27,7 +29,6 @@ import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
-import '../chat/rich_text_format.dart';
 import 'topic_post_content.dart';
 
 class TopicChatView extends StatefulWidget {
@@ -228,10 +229,10 @@ class _TopicChatViewState extends State<TopicChatView> {
       _topicMessages[topic.id] = messages.isEmpty
           ? [topic.lastMessage]
           : messages;
-      _resolveSenders(_topicMessages[topic.id]!);
+      unawaited(_resolveSenders(_topicMessages[topic.id]!));
     } catch (_) {
       _topicMessages[topic.id] = [topic.lastMessage];
-      _resolveSenders(_topicMessages[topic.id]!);
+      unawaited(_resolveSenders(_topicMessages[topic.id]!));
     } finally {
       _loadingThreads.remove(topic.id);
       if (mounted) setState(() {});
@@ -351,8 +352,6 @@ class _TopicChatViewState extends State<TopicChatView> {
     final result = await showRichTextComposerSheet(
       context,
       initialText: _input.text,
-      title: AppStringKeys.topicChatShare,
-      submitText: AppStringKeys.topicChatPublish,
       hintText: AppStringKeys.topicChatComposerPlaceholder,
     );
     if (result == null) return;
@@ -1292,7 +1291,6 @@ class _TopicCommentsSheetState extends State<_TopicCommentsSheet> {
     final result = await showRichTextComposerSheet(
       context,
       initialText: _replyController.text,
-      title: AppStringKeys.topicChatShare,
       submitText: AppStringKeys.composerSend,
       hintText: AppStringKeys.topicChatBeKindPrompt,
       allowMedia: false,
@@ -1816,11 +1814,7 @@ class _SearchResultRow extends StatelessWidget {
                     child: SizedBox(
                       width: 160,
                       height: 92,
-                      child: TDImage(
-                        photo: message.image,
-                        cornerRadius: 6,
-                        fit: BoxFit.cover,
-                      ),
+                      child: TDImage(photo: message.image, cornerRadius: 6),
                     ),
                   ),
                 ],

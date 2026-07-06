@@ -8,6 +8,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
 import '../components/app_icons.dart';
@@ -16,7 +17,6 @@ import '../l10n/telegram_language_controller.dart';
 import '../theme/app_theme.dart';
 import 'translation_api.dart';
 import 'translation_controller.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 class TranslationSettingsView extends StatefulWidget {
   const TranslationSettingsView({super.key});

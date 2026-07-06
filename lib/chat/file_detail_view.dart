@@ -11,6 +11,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 import 'package:open_filex/open_filex.dart';
 
 import '../components/app_icons.dart';
@@ -20,7 +21,6 @@ import '../tdlib/td_client.dart';
 import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 class FileDetailView extends StatefulWidget {
   const FileDetailView({super.key, required this.doc});
@@ -58,7 +58,6 @@ class _FileDetailViewState extends State<FileDetailView> {
       final resp = await TdFileCenter.shared.downloadPriorityFile(
         id,
         total: _total,
-        priority: 32,
       );
       if (resp != null) _apply(resp);
     } catch (_) {}

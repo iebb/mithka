@@ -10,13 +10,13 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 
 import '../settings/keyword_blocker.dart';
 import '../tdlib/chat_membership.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 class ChatFilterOption {
   const ChatFilterOption({required this.title, this.folderId});

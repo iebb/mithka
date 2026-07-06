@@ -10,17 +10,16 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import '../components/app_icons.dart';
 import 'package:provider/provider.dart';
 
-import 'chat_deep_link_controller.dart';
 import '../call/call_manager.dart';
 import '../call/call_screen.dart';
+import '../channels/topic_channels_view.dart';
+import '../channels/topic_chat_view.dart';
 import '../chat/chat_view.dart';
 import '../chat/video_player_view.dart';
-import '../channels/topic_chat_view.dart';
-import '../channels/topic_channels_view.dart';
 import '../chats/chat_list_view.dart';
+import '../components/app_icons.dart';
 import '../components/drawer_controller.dart' as dc;
 import '../components/ui_components.dart';
 import '../contacts/contacts_view.dart';
@@ -33,6 +32,7 @@ import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import '../update/update_checker.dart';
+import 'chat_deep_link_controller.dart';
 import 'video_split_controller.dart';
 
 /// Global unread badge source.
@@ -495,7 +495,6 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
               height: session.height,
               sourceChatId: session.chatId,
               messageId: session.messageId,
-              currentMode: VideoDisplayMode.fullscreen,
             ),
           ),
         );
@@ -556,7 +555,6 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
                 height: modeSession.height,
                 sourceChatId: modeSession.chatId,
                 messageId: modeSession.messageId,
-                currentMode: VideoDisplayMode.fullscreen,
                 onSwitchMode: (nextMode) {
                   switch (nextMode) {
                     case VideoDisplayMode.fullscreen:
@@ -1315,9 +1313,7 @@ class _ClassicTabBar extends StatelessWidget {
                       child: SizedBox(
                         width: 64,
                         child: Column(
-                          mainAxisSize: MainAxisSize.max,
                           mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
                             SizedBox(
                               width: 36,

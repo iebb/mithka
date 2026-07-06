@@ -10,13 +10,14 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
-import '../components/toast.dart';
 
 import '../chat/chat_view.dart';
+import '../components/app_icons.dart';
 import '../components/icon_grid.dart';
 import '../components/photo_avatar.dart';
-import '../components/app_icons.dart';
+import '../components/toast.dart';
 import '../profile/profile_detail_view.dart';
 import '../settings/edit_field_view.dart';
 import '../tdlib/json_helpers.dart';
@@ -25,7 +26,6 @@ import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import 'create_group_view.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 class _ChatHit {
   _ChatHit(this.id, this.title, this.photo, this.subtitle, this.square);
@@ -252,9 +252,11 @@ class _AddPeopleViewState extends State<AddPeopleView> {
       });
       final id = chat.int64('id') ?? chat.int64('chat_id');
       if (!mounted || id == null) return;
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => ChatView(chatId: id, title: title),
+      unawaited(
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => ChatView(chatId: id, title: title),
+          ),
         ),
       );
     } catch (_) {

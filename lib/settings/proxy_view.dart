@@ -12,16 +12,16 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 
-import '../components/confirm_dialog.dart';
 import '../components/app_icons.dart';
+import '../components/confirm_dialog.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
 import 'proxy_config.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 class ProxyView extends StatefulWidget {
   const ProxyView({super.key});
@@ -65,7 +65,7 @@ class _ProxyViewState extends State<ProxyView> {
       await ProxyConfig.save(ProxyConfig.fromTdProxy(proxy));
       unawaited(_client.applySavedProxyToActive());
     } catch (_) {}
-    _load();
+    unawaited(_load());
   }
 
   Future<void> _disable() async {
@@ -74,7 +74,7 @@ class _ProxyViewState extends State<ProxyView> {
     } catch (_) {}
     await ProxyConfig.disable();
     unawaited(_client.applySavedProxyToActive());
-    _load();
+    unawaited(_load());
   }
 
   Future<void> _remove(int id) async {
@@ -97,14 +97,14 @@ class _ProxyViewState extends State<ProxyView> {
         unawaited(_client.applySavedProxyToActive());
       }
     } catch (_) {}
-    _load();
+    unawaited(_load());
   }
 
   Future<void> _add() async {
     final added = await Navigator.of(
       context,
     ).push<bool>(MaterialPageRoute(builder: (_) => const ProxyEditView()));
-    if (added == true) _load();
+    if (added == true) unawaited(_load());
   }
 
   static String _typeLabel(Map<String, dynamic> proxy) {

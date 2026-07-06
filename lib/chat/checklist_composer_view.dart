@@ -8,11 +8,11 @@
 //
 
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
 import '../components/ui_components.dart';
 import '../theme/app_theme.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 class ChecklistComposerView extends StatefulWidget {
   const ChecklistComposerView({super.key});
@@ -158,7 +158,6 @@ class _ChecklistComposerViewState extends State<ChecklistComposerView> {
       child: TextField(
         controller: controller,
         autofocus: autofocus,
-        maxLines: 1,
         style: TextStyle(fontSize: 16, color: c.textPrimary),
         cursorColor: AppTheme.brand,
         decoration: InputDecoration(

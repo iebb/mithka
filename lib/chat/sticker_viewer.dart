@@ -6,9 +6,10 @@
 //
 
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 
-import '../components/photo_avatar.dart';
 import '../components/app_icons.dart';
+import '../components/photo_avatar.dart';
 import '../components/ui_components.dart';
 import '../l10n/telegram_language_controller.dart';
 import '../tdlib/json_helpers.dart';
@@ -18,7 +19,6 @@ import '../theme/app_theme.dart';
 import 'animated_sticker_view.dart';
 import 'sticker_set_detail_view.dart';
 import 'video_sticker_view.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 class StickerViewer extends StatefulWidget {
   const StickerViewer({super.key, required this.message});
@@ -150,7 +150,7 @@ class _StickerViewerState extends State<StickerViewer> {
         fallback: _message.image,
       );
     }
-    return TDImage(photo: ref, cornerRadius: 8, fit: BoxFit.contain);
+    return TDImage(photo: ref, fit: BoxFit.contain);
   }
 
   Widget _setBar() {

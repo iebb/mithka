@@ -8,18 +8,20 @@
 //  either end dismisses. Port of the Swift `StoryViewerView`.
 //
 
+import 'dart:async';
+
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 import 'package:video_player/video_player.dart';
 
-import '../components/photo_avatar.dart';
 import '../components/app_icons.dart';
+import '../components/photo_avatar.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 class _StoryMedia {
   _StoryMedia(this.imageFile, this.caption, this.isVideo, this.videoFile);
@@ -84,8 +86,10 @@ class _StoryViewerViewState extends State<StoryViewerView> {
   Future<void> _load(int index) async {
     if (index < 0 || index >= widget.storyIds.length) return;
     final sid = widget.storyIds[index];
-    // Tear down any inline video from the previous story.
-    _videoController?.dispose();
+    unawaited(
+      // Tear down any inline video from the previous story.
+      _videoController?.dispose(),
+    );
     _videoController = null;
     _videoStarting = false;
     setState(() {
@@ -400,7 +404,7 @@ class _StoryViewerViewState extends State<StoryViewerView> {
             ),
           )
         else
-          TDImage(photo: story.imageFile, cornerRadius: 0, fit: BoxFit.cover),
+          TDImage(photo: story.imageFile, cornerRadius: 0),
         if (showPlayButton)
           Container(
             width: 70,
@@ -410,7 +414,11 @@ class _StoryViewerViewState extends State<StoryViewerView> {
               color: Colors.black.withValues(alpha: 0.35),
               shape: BoxShape.circle,
             ),
-            child: const AppIcon(HeroAppIcons.play, size: 30, color: Colors.white),
+            child: const AppIcon(
+              HeroAppIcons.play,
+              size: 30,
+              color: Colors.white,
+            ),
           ),
       ],
     );

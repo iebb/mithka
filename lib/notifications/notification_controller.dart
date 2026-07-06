@@ -11,6 +11,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 
 import '../app/chat_deep_link_controller.dart';
 import '../l10n/telegram_language_controller.dart';
@@ -18,7 +19,6 @@ import '../settings/keyword_blocker.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 class NotificationController with WidgetsBindingObserver {
   NotificationController._();

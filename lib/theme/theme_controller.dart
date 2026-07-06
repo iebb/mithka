@@ -10,15 +10,15 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import '../components/app_icons.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:mithka/l10n/app_localizations.dart';
+import 'package:mithka/l10n/preview_texts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../components/app_icons.dart';
 import 'app_theme.dart';
 import 'emoji_font_catalog.dart';
 import 'system_font_catalog.dart';
-import 'package:mithka/l10n/app_localizations.dart';
-import 'package:mithka/l10n/preview_texts.dart';
 
 enum AppearanceMode {
   system(AppStringKeys.appLocaleFollowSystem, HeroAppIcons.circleHalfStroke),
@@ -1139,9 +1139,9 @@ class ThemeController extends ChangeNotifier {
       license: entry.license,
       fontFamily: family,
     );
-    _prefs.setString(_emojiFontChoiceKey, entry.key);
-    _prefs.setString(_emojiFontLabelKey, entry.label);
-    _prefs.setString(_emojiFontLicenseKey, entry.license);
+    unawaited(_prefs.setString(_emojiFontChoiceKey, entry.key));
+    unawaited(_prefs.setString(_emojiFontLabelKey, entry.label));
+    unawaited(_prefs.setString(_emojiFontLicenseKey, entry.license));
     notifyListeners();
   }
 
@@ -1194,22 +1194,22 @@ class ThemeController extends ChangeNotifier {
     var changed = false;
     if (nextPrimary != _customPrimaryFontFamily) {
       _customPrimaryFontFamily = nextPrimary;
-      _prefs.setString(_customPrimaryFontFamilyKey, nextPrimary);
+      unawaited(_prefs.setString(_customPrimaryFontFamilyKey, nextPrimary));
       changed = true;
     }
     if (nextCjk != _customCjkFontFamily) {
       _customCjkFontFamily = nextCjk;
-      _prefs.setString(_customCjkFontFamilyKey, nextCjk);
+      unawaited(_prefs.setString(_customCjkFontFamilyKey, nextCjk));
       changed = true;
     }
     if (nextMono != _customMonospaceFontFamily) {
       _customMonospaceFontFamily = nextMono;
-      _prefs.setString(_customMonospaceFontFamilyKey, nextMono);
+      unawaited(_prefs.setString(_customMonospaceFontFamilyKey, nextMono));
       changed = true;
     }
     if (!listEquals(nextChain, _fontFallbackChain)) {
       _fontFallbackChain = nextChain;
-      _prefs.setStringList(_fontFallbackChainKey, nextChain);
+      unawaited(_prefs.setStringList(_fontFallbackChainKey, nextChain));
       changed = true;
     }
     if (changed) notifyListeners();

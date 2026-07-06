@@ -9,9 +9,10 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 
-import '../components/photo_avatar.dart';
 import '../components/app_icons.dart';
+import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../l10n/telegram_language_controller.dart';
 import '../tdlib/json_helpers.dart';
@@ -26,7 +27,6 @@ import 'link_handler.dart';
 import 'music_player_controller.dart';
 import 'video_player_view.dart';
 import 'voice_audio.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 class _MediaTab {
   const _MediaTab(
@@ -785,7 +785,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          TDImage(photo: message.image, fit: BoxFit.cover),
+          TDImage(photo: message.image),
           if (video != null) ...[
             Container(color: Colors.black.withValues(alpha: 0.16)),
             Center(
@@ -1048,7 +1048,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
                     width: 48,
                     height: 48,
                     child: music.cover != null
-                        ? TDImage(photo: music.cover, fit: BoxFit.cover)
+                        ? TDImage(photo: music.cover)
                         : Container(
                             alignment: Alignment.center,
                             color: musicPlayerAccent.withValues(alpha: 0.14),
@@ -1174,7 +1174,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    TDImage(photo: message.image, fit: BoxFit.cover),
+                    TDImage(photo: message.image),
                     Container(color: Colors.black.withValues(alpha: 0.12)),
                     Center(
                       child: Container(

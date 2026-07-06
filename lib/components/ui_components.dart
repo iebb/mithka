@@ -12,11 +12,11 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../l10n/app_localizations.dart';
+import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
 import '../theme/theme_controller.dart';
-import '../tdlib/td_models.dart';
-import '../l10n/app_localizations.dart';
 import 'app_icons.dart';
 
 /// Flat reference-style header bar: optional back chevron, leading title,
@@ -625,38 +625,4 @@ class ChatPreviewText extends StatelessWidget {
     }
     return text;
   }
-}
-
-/// Rounded bubble with a small tail (leading = incoming, trailing = outgoing).
-class BubbleClipper extends CustomClipper<Path> {
-  BubbleClipper({required this.isOutgoing, this.radius = 9, this.tail = 6});
-  final bool isOutgoing;
-  final double radius;
-  final double tail;
-
-  @override
-  Path getClip(Size size) {
-    final p = Path();
-    final body = isOutgoing
-        ? Rect.fromLTWH(0, 0, size.width - tail, size.height)
-        : Rect.fromLTWH(tail, 0, size.width - tail, size.height);
-    p.addRRect(RRect.fromRectAndRadius(body, Radius.circular(radius)));
-
-    const ty = 16.0;
-    if (isOutgoing) {
-      p.moveTo(body.right - 1, ty - 5);
-      p.lineTo(size.width, ty);
-      p.lineTo(body.right - 1, ty + 6);
-    } else {
-      p.moveTo(body.left + 1, ty - 5);
-      p.lineTo(0, ty);
-      p.lineTo(body.left + 1, ty + 6);
-    }
-    p.close();
-    return p;
-  }
-
-  @override
-  bool shouldReclip(BubbleClipper old) =>
-      old.isOutgoing != isOutgoing || old.radius != radius || old.tail != tail;
 }

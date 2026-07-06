@@ -4,11 +4,11 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../components/app_icons.dart';
 import '../theme/app_theme.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 enum _EditTool { crop, mask, draw, text }
 
@@ -379,9 +379,7 @@ class _ImageEditViewState extends State<ImageEditView> {
           color: Colors.white,
           fontSize: label.size,
           fontWeight: FontWeight.w600,
-          shadows: const [
-            Shadow(color: Colors.black, blurRadius: 3, offset: Offset(0, 1)),
-          ],
+          shadows: const [Shadow(blurRadius: 3, offset: Offset(0, 1))],
         ),
       ),
       textDirection: TextDirection.ltr,
@@ -812,9 +810,7 @@ class _ImageEditPainter extends CustomPainter {
           color: Colors.white,
           fontSize: screenSize,
           fontWeight: FontWeight.w600,
-          shadows: const [
-            Shadow(color: Colors.black, blurRadius: 3, offset: Offset(0, 1)),
-          ],
+          shadows: const [Shadow(blurRadius: 3, offset: Offset(0, 1))],
         ),
       ),
       textDirection: TextDirection.ltr,

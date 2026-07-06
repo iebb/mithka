@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 
 import '../chat/file_detail_view.dart';
 import '../chat/link_handler.dart';
 import '../chat/telegram_rich_text.dart';
-import '../components/photo_avatar.dart';
 import '../components/app_icons.dart';
+import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../l10n/telegram_language_controller.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 class TopicPostContent extends StatelessWidget {
   const TopicPostContent({
@@ -89,7 +89,6 @@ class _TopicContentImage extends StatelessWidget {
         child: TDImage(
           photo: message.image,
           cornerRadius: 6,
-          fit: BoxFit.cover,
           cacheWidth: (width * MediaQuery.of(context).devicePixelRatio).round(),
           cacheHeight: (height * MediaQuery.of(context).devicePixelRatio)
               .round(),

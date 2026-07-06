@@ -5,17 +5,19 @@
 //  the new group's chat opens. Contacts are loaded with getContacts/getUser.
 //
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import '../components/toast.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 
 import '../chat/chat_view.dart';
-import '../components/photo_avatar.dart';
 import '../components/app_icons.dart';
+import '../components/photo_avatar.dart';
+import '../components/toast.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 class CreateGroupView extends StatefulWidget {
   const CreateGroupView({super.key});
@@ -92,9 +94,11 @@ class _CreateGroupViewState extends State<CreateGroupView> {
       final chatId = chat.int64('id') ?? chat.int64('chat_id');
       if (!mounted) return;
       if (chatId != null) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (_) => ChatView(chatId: chatId, title: title),
+        unawaited(
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (_) => ChatView(chatId: chatId, title: title),
+            ),
           ),
         );
       } else {

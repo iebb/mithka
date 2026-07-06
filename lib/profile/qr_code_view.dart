@@ -8,6 +8,7 @@
 //
 
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
@@ -18,7 +19,6 @@ import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 class QRCodeView extends StatefulWidget {
   const QRCodeView({
@@ -222,7 +222,6 @@ class _QRCodeViewState extends State<QRCodeView> {
             child: PhotoAvatar(
               title: _name.l10n(context),
               photo: _photo,
-              size: 50,
               square: squareGroupAvatar,
             ),
           ),
@@ -292,9 +291,7 @@ class _QRCodeViewState extends State<QRCodeView> {
         children: [
           QrImageView(
             data: _link!,
-            version: QrVersions.auto,
             size: 224,
-            backgroundColor: Colors.transparent,
             errorCorrectionLevel: QrErrorCorrectLevel.H,
             // Fancy custom QR: rounded position eyes + circular data dots.
             eyeStyle: QrEyeStyle(

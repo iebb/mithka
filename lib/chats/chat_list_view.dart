@@ -12,16 +12,17 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import '../components/toast.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
 import '../channels/forum_topic_browser_view.dart';
 import '../chat/chat_view.dart';
 import '../chat/custom_emoji.dart';
+import '../components/app_icons.dart';
 import '../components/confirm_dialog.dart';
 import '../components/drawer_controller.dart' as dc;
 import '../components/photo_avatar.dart';
-import '../components/app_icons.dart';
+import '../components/toast.dart';
 import '../contacts/add_people_view.dart';
 import '../contacts/create_group_view.dart';
 import '../profile/emoji_status_picker.dart';
@@ -35,7 +36,6 @@ import 'archived_chats_view.dart';
 import 'chat_list_view_model.dart';
 import 'chat_row_view.dart';
 import 'search_view.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 class ChatListController extends ChangeNotifier {
   int _scrollToFirstUnreadRequests = 0;
@@ -272,9 +272,11 @@ class _ChatListViewState extends State<ChatListView> {
         widget.onChatSelected!(selection);
         return;
       }
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => ChatView(chatId: id, title: title),
+      unawaited(
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => ChatView(chatId: id, title: title),
+          ),
         ),
       );
     } catch (_) {

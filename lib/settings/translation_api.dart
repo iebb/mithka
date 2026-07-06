@@ -9,9 +9,9 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 
 import 'translation_controller.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 class NativeTranslationApi {
   const NativeTranslationApi._();

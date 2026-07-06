@@ -8,6 +8,7 @@
 //
 
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
 import '../components/toast.dart';
@@ -17,7 +18,6 @@ import '../theme/app_theme.dart';
 import 'custom_emoji.dart'; // parseStickers
 import 'sticker_item.dart';
 import 'sticker_preview.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 class StickerSetDetailView extends StatefulWidget {
   const StickerSetDetailView({super.key, required this.setId});

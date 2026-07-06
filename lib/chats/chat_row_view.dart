@@ -10,13 +10,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../chat/custom_emoji.dart';
-import '../components/photo_avatar.dart';
 import '../components/app_icons.dart';
+import '../components/photo_avatar.dart';
 import '../components/ui_components.dart';
+import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
 import '../theme/theme_controller.dart';
-import '../tdlib/td_models.dart';
 
 const List<Color> _telegramAccentColors = [
   Color(0xFFCC5049),

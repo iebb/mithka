@@ -11,31 +11,31 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
 import '../auth/account_store.dart';
 import '../auth/auth_manager.dart';
 import '../chat/chat_view.dart';
 import '../chat/custom_emoji.dart';
+import '../chat/shared_media_view.dart';
+import '../components/app_icons.dart';
 import '../components/confirm_dialog.dart';
 import '../components/drawer_controller.dart' as dc;
 import '../components/photo_avatar.dart';
-import '../components/app_icons.dart';
 import '../components/ui_components.dart';
-import '../chat/shared_media_view.dart';
 import '../l10n/telegram_language_controller.dart';
 import '../settings/edit_profile_view.dart';
 import '../settings/settings_view.dart';
-import 'my_album_view.dart';
-import 'emoji_status_picker.dart';
-import 'profile_detail_view.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
+import 'emoji_status_picker.dart';
+import 'my_album_view.dart';
+import 'profile_detail_view.dart';
 import 'qr_code_view.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 class ProfileViewModel extends ChangeNotifier {
   CurrentUser? user;
@@ -216,7 +216,7 @@ class _ProfileViewState extends State<ProfileView> {
           _banner(),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.only(top: 0, bottom: 0),
+              padding: const EdgeInsets.only(),
               children: [
                 _rowsCard(),
                 const SizedBox(height: 12),
@@ -387,7 +387,6 @@ class _ProfileViewState extends State<ProfileView> {
                   shape: BoxShape.circle,
                   border: Border.all(
                     color: Colors.white.withValues(alpha: 0.55),
-                    width: 1,
                   ),
                 ),
                 child: AppIcon(
@@ -505,7 +504,7 @@ class _ProfileViewState extends State<ProfileView> {
     final accounts = context.watch<AccountStore>();
     final hidePhone = context.watch<ThemeController>().hideSidebarPhone;
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 0),
+      margin: const EdgeInsets.symmetric(),
       decoration: BoxDecoration(
         color: c.card,
         borderRadius: BorderRadius.circular(14),

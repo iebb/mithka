@@ -11,6 +11,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 
 import '../l10n/telegram_language_controller.dart';
 import '../settings/keyword_blocker.dart';
@@ -18,7 +19,6 @@ import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import 'sticker_item.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 class _SenderInfo {
   _SenderInfo(
@@ -566,7 +566,7 @@ class ChatViewModel extends ChangeNotifier {
   void send() {
     final trimmed = draft.trim();
     if (trimmed.isEmpty) return;
-    _clearDraft(syncRemote: true);
+    _clearDraft();
 
     final request = <String, dynamic>{
       '@type': 'sendMessage',
@@ -589,7 +589,7 @@ class ChatViewModel extends ChangeNotifier {
 
   void sendBotStart() {
     if (!peerIsBot) return;
-    _clearDraft(syncRemote: true);
+    _clearDraft();
     botStartSent = true;
     _sendText('/start');
     notifyListeners();
@@ -615,7 +615,7 @@ class ChatViewModel extends ChangeNotifier {
     if (text.trim().isEmpty) return;
     if (entities.isEmpty && _sendDiceIfNeeded(text)) return;
     final allEntities = [...entities, ..._mentionEntitiesFor(text, entities)];
-    _clearDraft(syncRemote: true);
+    _clearDraft();
     final request = <String, dynamic>{
       '@type': 'sendMessage',
       'chat_id': chatId,
@@ -644,7 +644,7 @@ class ChatViewModel extends ChangeNotifier {
   bool _sendDiceIfNeeded(String text) {
     final emoji = text.trim();
     if (!_diceEmojis.contains(emoji)) return false;
-    _clearDraft(syncRemote: true);
+    _clearDraft();
     final request = <String, dynamic>{
       '@type': 'sendMessage',
       'chat_id': chatId,
@@ -1311,7 +1311,7 @@ class ChatViewModel extends ChangeNotifier {
       forumTopics = const [];
     }
     notifyListeners();
-    _loadPinnedMessage();
+    unawaited(_loadPinnedMessage());
   }
 
   void _primeLastMessage(Map<String, dynamic> chat) {

@@ -8,6 +8,7 @@
 //
 
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
 import '../components/app_icons.dart';
@@ -15,7 +16,6 @@ import '../l10n/telegram_language_controller.dart';
 import '../settings/translation_controller.dart';
 import '../tdlib/td_models.dart';
 import 'emoji_store.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 enum MessageAction {
   copy(HeroAppIcons.file, AppStringKeys.messageActionCopy),

@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../components/app_icons.dart';
 import '../components/toast.dart';
 import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 class QrLoginScannerView extends StatefulWidget {
   const QrLoginScannerView({super.key});
@@ -66,7 +66,6 @@ class _QrLoginScannerViewState extends State<QrLoginScannerView> {
           Positioned.fill(
             child: MobileScanner(
               controller: _controller,
-              fit: BoxFit.cover,
               onDetect: _handleCapture,
               placeholderBuilder: (context) => const ColoredBox(
                 color: Colors.black,
@@ -237,7 +236,7 @@ class _CircleButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: active ? AppTheme.brand : const Color(0x66000000),
           shape: BoxShape.circle,
-          border: Border.all(color: const Color(0x33FFFFFF), width: 1),
+          border: Border.all(color: const Color(0x33FFFFFF)),
         ),
         child: Center(
           child: AppIcon(

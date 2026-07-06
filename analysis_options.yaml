@@ -30,3 +30,11 @@ linter:
     prefer_const_declarations: true
     unnecessary_lambdas: true
     prefer_final_locals: true
+    unawaited_futures: true
+    cancel_subscriptions: true
+    close_sinks: true
+    unnecessary_statements: true
+    throw_in_finally: true
+    test_types_in_equals: true
+    directives_ordering: true
+    avoid_redundant_argument_values: true

@@ -13,29 +13,30 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../components/confirm_dialog.dart';
-import '../components/toast.dart';
 import 'package:flutter_sound/flutter_sound.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-import '../components/photo_avatar.dart';
-import '../components/icon_grid.dart';
 import '../components/app_icons.dart';
+import '../components/confirm_dialog.dart';
+import '../components/icon_grid.dart';
+import '../components/photo_avatar.dart';
+import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/telegram_language_controller.dart';
-import '../theme/app_theme.dart';
 import '../tdlib/td_models.dart';
+import '../theme/app_theme.dart';
 import 'audio_search_view.dart';
 import 'chat_view_model.dart';
+import 'checklist_composer_view.dart';
 import 'custom_emoji.dart';
 import 'emoji_catalog.dart';
 import 'emoji_store.dart';
 import 'emoji_text_controller.dart';
-import 'checklist_composer_view.dart';
 import 'image_edit_view.dart';
 import 'link_handler.dart';
 import 'location_picker_view.dart';
@@ -43,7 +44,6 @@ import 'poll_composer_view.dart';
 import 'rich_text_composer_view.dart';
 import 'sticker_preview.dart';
 import 'sticker_store.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 enum _Panel { none, function, emoji, sticker, voice }
 
@@ -232,12 +232,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
     _recordCancelled = false;
     _elapsed = 0;
     try {
-      await r.startRecorder(
-        toFile: _recPath,
-        codec: codec,
-        sampleRate: 48000,
-        numChannels: 1,
-      );
+      await r.startRecorder(toFile: _recPath, codec: codec, sampleRate: 48000);
     } catch (_) {
       return;
     }
@@ -311,7 +306,6 @@ class _ChatInputBarState extends State<ChatInputBar> {
       initialText: _controller.text,
       title: AppStringKeys.composerRichTextMessageTitle,
       submitText: AppStringKeys.composerSend,
-      hintText: AppStringKeys.richTextComposerContentPlaceholder,
       allowMedia: false,
     );
     if (result == null || !mounted) return;
@@ -674,7 +668,6 @@ class _ChatInputBarState extends State<ChatInputBar> {
               ),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   if (vm.canChooseMessageSender && sender != null) ...[
                     GestureDetector(
@@ -1089,7 +1082,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
           'amr',
         ],
       );
-      result ??= await FilePicker.platform.pickFiles(type: FileType.any);
+      result ??= await FilePicker.platform.pickFiles();
       final path = result?.files.single.path;
       if (path != null) widget.vm.sendAudio(path);
     } catch (_) {
@@ -1172,7 +1165,6 @@ class _ChatInputBarState extends State<ChatInputBar> {
       padding: const EdgeInsets.fromLTRB(12, 16, 12, 16),
       child: IconGrid(
         perRow: 5,
-        runSpacing: 14,
         children: [
           for (final item in items)
             GestureDetector(

@@ -4,9 +4,9 @@
 //  Persisted message translation preferences.
 //
 
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
 import 'package:mithka/l10n/app_localizations.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class TranslationLanguage {
   const TranslationLanguage(this.code, this.label);

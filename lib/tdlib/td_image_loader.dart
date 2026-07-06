@@ -106,6 +106,9 @@ class TdFileCenter {
       isActive: local.boolean('is_downloading_active') == true,
       isCompleted: completed,
     );
+    // Lifecycle is map-owned: closed on completion below and via onCancel
+    // when the last listener detaches.
+    // ignore: close_sinks
     final controller = _progressControllers[k];
     if (controller != null && !controller.isClosed) {
       controller.add(progress);
@@ -113,6 +116,12 @@ class TdFileCenter {
 
     if (!completed) return;
     if (path == null || path.isEmpty) return;
+
+    // The completed event above is the stream's last; dispose the controller
+    // so per-file controllers don't accumulate over a session. A re-download
+    // gets a fresh controller from the next progress() call.
+    final finished = _progressControllers.remove(k);
+    unawaited(finished?.close());
 
     _cache[k] = path;
     final pending = _waiters.remove(k) ?? [];
@@ -126,10 +135,20 @@ class TdFileCenter {
 
     final slot = _client.activeSlot;
     final k = _key(slot, fileId);
-    final controller = _progressControllers.putIfAbsent(
-      k,
-      StreamController<TdFileProgress>.broadcast,
-    );
+    final controller = _progressControllers.putIfAbsent(k, () {
+      late final StreamController<TdFileProgress> created;
+      created = StreamController<TdFileProgress>.broadcast(
+        // Last listener gone → drop the controller so abandoned downloads
+        // (screen closed mid-transfer) don't leak an entry per file.
+        onCancel: () {
+          if (identical(_progressControllers[k], created)) {
+            _progressControllers.remove(k);
+          }
+          created.close();
+        },
+      );
+      return created;
+    });
     scheduleMicrotask(() async {
       try {
         final file = await _client.query({

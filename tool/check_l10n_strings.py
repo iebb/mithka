@@ -36,6 +36,7 @@ ALLOWED_VISIBLE_VALUES = {
     "ieb",
     "mithka.ieb.app",
     "t.me/mithka",
+    "telegram.org/tos",
 }
 SUSPICIOUS_RENDER_FIELDS = {
     "action.label",
@@ -187,6 +188,7 @@ def direct_text_key_renders(text: str) -> list[int]:
             and ".l10n(" not in expression
             and "AppStrings.t(" not in expression
             and "AppLocalizations.of(" not in expression
+            and "telegramText(" not in expression
         ):
             offsets.append(index)
         index = close_index + 1
@@ -220,13 +222,21 @@ def indirect_key_render_failures(text: str) -> list[tuple[int, str]]:
     )
     for field in sorted(fields):
         for offset, expression in text_expressions(text):
-            if f"widget.{field}" not in expression or ".l10n(" in expression:
+            if (
+                f"widget.{field}" not in expression
+                or ".l10n(" in expression
+                or "telegramText(" in expression
+            ):
                 continue
             if expression in CONTENT_RENDER_EXPRESSIONS:
                 continue
             failures.append((offset, f"default AppStringKeys field: {expression}"))
     for offset, expression in text_expressions(text):
-        if ".l10n(" in expression or "AppStrings.t(" in expression:
+        if (
+            ".l10n(" in expression
+            or "AppStrings.t(" in expression
+            or "telegramText(" in expression
+        ):
             continue
         if expression in CONTENT_RENDER_EXPRESSIONS:
             continue

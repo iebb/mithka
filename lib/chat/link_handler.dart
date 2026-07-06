@@ -6,21 +6,23 @@
 //  corresponding chat; everything else launches in the external browser.
 //
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
+import 'package:url_launcher/url_launcher.dart';
+
 import '../chats/search_view.dart';
 import '../components/confirm_dialog.dart';
 import '../components/toast.dart';
 import '../settings/proxy_config.dart';
 import '../settings/proxy_view.dart';
-import 'package:url_launcher/url_launcher.dart';
-
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import 'chat_picker_view.dart';
 import 'chat_view.dart';
 import 'sticker_set_detail_view.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 Future<void> openLink(BuildContext context, String url) async {
   final nav = Navigator.of(context);
@@ -92,7 +94,9 @@ Future<void> openLink(BuildContext context, String url) async {
         await _openStickerSet(nav, type.str('sticker_set_name') ?? '');
       case 'internalLinkTypeSearch':
         if (nav.mounted) {
-          nav.push(MaterialPageRoute(builder: (_) => const SearchView()));
+          unawaited(
+            nav.push(MaterialPageRoute(builder: (_) => const SearchView())),
+          );
         }
       case 'internalLinkTypeAuthenticationCode':
         await TdClient.shared.query({
@@ -332,10 +336,7 @@ Future<void> _openBotStartInGroup(
   final botUserId = botChat.obj('type')?.int64('user_id');
   if (botUserId == null || !context.mounted) return;
   final picked = await nav.push<ChatSummary>(
-    MaterialPageRoute(
-      builder: (_) =>
-          const ChatPickerView(title: AppStringKeys.chatPickerChooseChat),
-    ),
+    MaterialPageRoute(builder: (_) => const ChatPickerView()),
   );
   if (picked == null) return;
   final parameter = type.str('start_parameter') ?? '';
@@ -420,8 +421,10 @@ Future<void> _openStickerSet(NavigatorState nav, String name) async {
   });
   final setId = set.int64('id');
   if (setId == null || !nav.mounted) return;
-  nav.push(
-    MaterialPageRoute(builder: (_) => StickerSetDetailView(setId: setId)),
+  unawaited(
+    nav.push(
+      MaterialPageRoute(builder: (_) => StickerSetDetailView(setId: setId)),
+    ),
   );
 }
 
@@ -493,12 +496,14 @@ Future<void> _openChat(
     title = chat.str('title') ?? '';
   } catch (_) {}
   if (!nav.mounted) return;
-  nav.push(
-    MaterialPageRoute(
-      builder: (_) => ChatView(
-        chatId: chatId,
-        title: title,
-        initialMessageId: initialMessageId,
+  unawaited(
+    nav.push(
+      MaterialPageRoute(
+        builder: (_) => ChatView(
+          chatId: chatId,
+          title: title,
+          initialMessageId: initialMessageId,
+        ),
       ),
     ),
   );

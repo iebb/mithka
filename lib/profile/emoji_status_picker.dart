@@ -1,15 +1,15 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 
 import '../chat/custom_emoji.dart';
 import '../chat/emoji_store.dart';
+import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
-import '../components/app_icons.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 Future<void> showEmojiStatusPicker(
   BuildContext context, {
@@ -19,7 +19,6 @@ Future<void> showEmojiStatusPicker(
   final optionsFuture = _statusOptions();
   await showCupertinoModalPopup<void>(
     context: context,
-    useRootNavigator: true,
     builder: (sheetContext) {
       final c = sheetContext.colors;
       final maxHeight = MediaQuery.of(sheetContext).size.height * 0.6;

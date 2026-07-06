@@ -1,25 +1,25 @@
 // Unit tests for the ported pure logic (date formatting, JSON helpers, parsing).
 
-import 'dart:ui' as ui;
 import 'dart:io';
+import 'dart:ui' as ui;
 
-import 'package:mithka/tdlib/json_helpers.dart';
-import 'package:mithka/tdlib/td_models.dart';
-import 'package:mithka/l10n/app_locale_controller.dart';
-import 'package:mithka/l10n/app_localizations.dart';
-import 'package:mithka/settings/keyword_blocker.dart';
-import 'package:mithka/settings/translation_controller.dart';
-import 'package:mithka/chat/emoji_catalog.dart';
-import 'package:mithka/chat/emoji_text_controller.dart';
-import 'package:mithka/chat/media_album_layout.dart';
-import 'package:mithka/chat/rich_text_composer_view.dart';
-import 'package:mithka/theme/date_text.dart';
-import 'package:mithka/theme/emoji_font_catalog.dart';
-import 'package:mithka/theme/theme_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/intl.dart';
+import 'package:mithka/chat/emoji_catalog.dart';
+import 'package:mithka/chat/emoji_text_controller.dart';
+import 'package:mithka/chat/media_album_layout.dart';
+import 'package:mithka/chat/rich_text_composer_view.dart';
+import 'package:mithka/l10n/app_locale_controller.dart';
+import 'package:mithka/l10n/app_localizations.dart';
+import 'package:mithka/settings/keyword_blocker.dart';
+import 'package:mithka/settings/translation_controller.dart';
+import 'package:mithka/tdlib/json_helpers.dart';
+import 'package:mithka/tdlib/td_models.dart';
+import 'package:mithka/theme/date_text.dart';
+import 'package:mithka/theme/emoji_font_catalog.dart';
+import 'package:mithka/theme/theme_controller.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -211,7 +211,6 @@ void main() {
           MediaAlbumItem(width: 768, height: 1024),
         ],
         maxWidth: 330,
-        gap: 3,
       );
 
       expect(layout.tiles, hasLength(5));

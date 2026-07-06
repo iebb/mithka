@@ -3,6 +3,7 @@
 //
 
 import 'dart:io';
+
 //  外观: theme mode (跟随系统 / 浅色 / 深色) + tab-bar style (经典 / 系统), driving
 //  ThemeController live. Mapped from the reference app's 外观/装扮 entry.
 //
@@ -12,6 +13,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:mithka/l10n/app_localizations.dart';
+import 'package:mithka/l10n/preview_texts.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 
@@ -23,8 +26,6 @@ import '../theme/emoji_font_catalog.dart';
 import '../theme/system_font_catalog.dart';
 import '../theme/theme_controller.dart';
 import 'app_icon_controller.dart';
-import 'package:mithka/l10n/app_localizations.dart';
-import 'package:mithka/l10n/preview_texts.dart';
 
 class AppearanceView extends StatelessWidget {
   const AppearanceView({super.key});
@@ -2177,7 +2178,6 @@ class _EmojiPreviewImage extends StatelessWidget {
         asset,
         width: 26,
         height: 26,
-        fit: BoxFit.contain,
         placeholderBuilder: (_) => const _TearJoyFallbackIcon(),
         errorBuilder: (_, _, _) => const _TearJoyFallbackIcon(),
       );
@@ -2186,7 +2186,6 @@ class _EmojiPreviewImage extends StatelessWidget {
       asset,
       width: 26,
       height: 26,
-      filterQuality: FilterQuality.medium,
       errorBuilder: (_, _, _) => const _TearJoyFallbackIcon(),
     );
   }
@@ -2309,7 +2308,6 @@ class _FontAddViewState extends State<FontAddView> {
           source: 'Google',
           google: true,
           downloaded: cachedGoogleFamilies.contains(family),
-          priority: 0,
         ),
     ];
     return candidates..sort((a, b) {

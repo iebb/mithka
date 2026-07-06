@@ -10,22 +10,22 @@
 import 'dart:async';
 import 'dart:ui' as ui;
 
-import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:fvp/fvp.dart' as fvp;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 
-import 'app/content_view.dart';
-import 'app/app_version.dart';
 import 'app/app_navigator.dart';
+import 'app/app_version.dart';
 import 'app/chat_deep_link_controller.dart';
+import 'app/content_view.dart';
 import 'auth/account_store.dart';
 import 'auth/auth_manager.dart';
 import 'auth/terms_sheet.dart';

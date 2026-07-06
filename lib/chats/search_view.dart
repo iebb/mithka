@@ -9,10 +9,11 @@
 import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 
 import '../chat/chat_view.dart';
-import '../components/photo_avatar.dart';
 import '../components/app_icons.dart';
+import '../components/photo_avatar.dart';
 import '../components/ui_components.dart';
 import '../l10n/telegram_language_controller.dart';
 import '../tdlib/json_helpers.dart';
@@ -21,7 +22,6 @@ import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
 import 'chat_row_view.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 class SearchView extends StatefulWidget {
   const SearchView({super.key});
@@ -318,7 +318,7 @@ class _SearchViewState extends State<SearchView> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              TDImage(photo: image, fit: BoxFit.cover),
+              TDImage(photo: image),
               if (hit.message?.video != null)
                 Center(
                   child: Container(

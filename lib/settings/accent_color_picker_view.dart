@@ -8,11 +8,11 @@
 //
 
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
 import '../components/ui_components.dart';
 import '../theme/app_theme.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 /// The 7 built-in Telegram peer/name accent colors (ids 0–6, light theme).
 /// These ids are universal across clients; higher ids are premium palettes

@@ -13,28 +13,28 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
-import '../components/photo_avatar.dart';
 import '../components/app_icons.dart';
+import '../components/photo_avatar.dart';
 import '../components/ui_components.dart';
-import '../profile/profile_detail_view.dart';
-import '../theme/app_theme.dart';
-import '../theme/date_text.dart';
-import '../theme/theme_controller.dart';
 import '../l10n/telegram_language_controller.dart';
+import '../profile/profile_detail_view.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
+import '../theme/app_theme.dart';
+import '../theme/date_text.dart';
+import '../theme/theme_controller.dart';
 import 'animated_sticker_view.dart';
 import 'custom_emoji.dart';
 import 'file_detail_view.dart';
-import 'message_action_menu.dart';
-import 'video_sticker_view.dart';
 import 'link_handler.dart';
 import 'location_detail_view.dart';
+import 'message_action_menu.dart';
+import 'video_sticker_view.dart';
 import 'voice_audio.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 const List<Color> _telegramAccentColors = [
   Color(0xFFCC5049),
@@ -271,7 +271,6 @@ class _MessageBubbleState extends State<MessageBubble>
                 Expanded(
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.end,
-                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Flexible(
                         child: Align(
@@ -353,7 +352,6 @@ class _MessageBubbleState extends State<MessageBubble>
                           ),
                         ),
                       Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           Flexible(child: content),
                           if (widget.showRepeat) const SizedBox(width: 6),
@@ -394,9 +392,7 @@ class _MessageBubbleState extends State<MessageBubble>
                     ? AppTheme.brand.withValues(alpha: 0.18)
                     : c.searchFill,
                 borderRadius: BorderRadius.circular(12),
-                border: r.chosen
-                    ? Border.all(color: AppTheme.brand, width: 1)
-                    : null,
+                border: r.chosen ? Border.all(color: AppTheme.brand) : null,
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -469,7 +465,6 @@ class _MessageBubbleState extends State<MessageBubble>
             if (message.image != null && !_stickerReady)
               TDImage(
                 photo: message.image,
-                cornerRadius: 8,
                 cacheWidth: _cachePx(s.width),
                 cacheHeight: _cachePx(s.height),
               ),
@@ -497,7 +492,6 @@ class _MessageBubbleState extends State<MessageBubble>
             if (message.image != null && !_videoStickerReady)
               TDImage(
                 photo: message.image,
-                cornerRadius: 8,
                 cacheWidth: _cachePx(s.width),
                 cacheHeight: _cachePx(s.height),
               ),
@@ -885,7 +879,6 @@ class _MessageBubbleState extends State<MessageBubble>
                   outgoing,
                   false,
                   message.translationEntities,
-                  14,
                 ),
               ],
             ),
@@ -931,7 +924,6 @@ class _MessageBubbleState extends State<MessageBubble>
           outgoing,
           false,
           preview.descriptionEntities,
-          14,
         ),
       if (preview.displayUrl.isNotEmpty)
         Text(
@@ -1005,7 +997,6 @@ class _MessageBubbleState extends State<MessageBubble>
           TDImage(
             photo: media,
             cornerRadius: 0,
-            fit: BoxFit.cover,
             cacheWidth: _cachePx(size.width),
             cacheHeight: _cachePx(size.height),
           ),
@@ -1067,7 +1058,6 @@ class _MessageBubbleState extends State<MessageBubble>
               Padding(
                 padding: const EdgeInsets.fromLTRB(14, 13, 14, 12),
                 child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Expanded(
                       child: Column(
@@ -1239,8 +1229,6 @@ class _MessageBubbleState extends State<MessageBubble>
     final art = cover != null
         ? TDImage(
             photo: cover,
-            cornerRadius: 8,
-            fit: BoxFit.cover,
             cacheWidth: _cachePx(size),
             cacheHeight: _cachePx(size),
           )
@@ -1495,7 +1483,6 @@ class _MessageBubbleState extends State<MessageBubble>
         ? Colors.white.withValues(alpha: 0.65)
         : context.colors.textTertiary;
     return WidgetSpan(
-      alignment: PlaceholderAlignment.bottom,
       child: Padding(
         padding: const EdgeInsets.only(left: 6, top: 2),
         child: Row(
@@ -2209,7 +2196,6 @@ class _MessageBubbleState extends State<MessageBubble>
         height: size.height,
         child: TDImage(
           photo: image,
-          cornerRadius: 8,
           fit: BoxFit.contain,
           cacheWidth: _cachePx(size.width),
           cacheHeight: _cachePx(size.height),
@@ -2241,7 +2227,6 @@ class _MessageBubbleState extends State<MessageBubble>
                   ? TDImage(
                       photo: message.image,
                       cornerRadius: mediaRadius,
-                      fit: BoxFit.cover,
                       cacheWidth: _cachePx(size.width),
                       cacheHeight: _cachePx(size.height),
                       showProgress: true,

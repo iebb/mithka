@@ -16,11 +16,11 @@ import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
-import '../components/photo_avatar.dart'; // PhotoAvatar + TDImage
-import '../components/app_icons.dart';
-import 'call_manager.dart';
 import 'package:mithka/l10n/app_localizations.dart';
+
+import '../components/app_icons.dart';
+import '../components/photo_avatar.dart'; // PhotoAvatar + TDImage
+import 'call_manager.dart';
 
 class CallScreen extends StatefulWidget {
   const CallScreen({super.key, required this.manager});
@@ -100,11 +100,7 @@ class _CallScreenState extends State<CallScreen> {
         if (hasPhoto)
           ImageFiltered(
             imageFilter: ImageFilter.blur(sigmaX: 32, sigmaY: 32),
-            child: TDImage(
-              photo: call.peerPhoto,
-              cornerRadius: 0,
-              fit: BoxFit.cover,
-            ),
+            child: TDImage(photo: call.peerPhoto, cornerRadius: 0),
           )
         else
           const DecoratedBox(
@@ -186,7 +182,11 @@ class _CallScreenState extends State<CallScreen> {
           shape: BoxShape.circle,
           border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
         ),
-        child: const AppIcon(HeroAppIcons.rotate, size: 22, color: Colors.white),
+        child: const AppIcon(
+          HeroAppIcons.rotate,
+          size: 22,
+          color: Colors.white,
+        ),
       ),
     );
   }

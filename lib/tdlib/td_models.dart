@@ -9,10 +9,10 @@ import 'dart:convert';
 
 import 'package:dlibphonenumber/dlibphonenumber.dart';
 import 'package:flutter/foundation.dart';
-
-import 'json_helpers.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/l10n/telegram_language_controller.dart';
+
+import 'json_helpers.dart';
 
 /// Reference to a downloadable TDLib file (profile photo, thumbnail, …).
 class TdFileRef {
@@ -20,45 +20,6 @@ class TdFileRef {
   final int id;
   Uint8List? miniThumb; // decoded JPEG for instant placeholder
   TdFileRef? thumbnail; // downloadable thumbnail with the real aspect ratio
-}
-
-// MARK: - Navigation values (route arguments)
-
-class ChatRoute {
-  const ChatRoute(this.id, this.title);
-  final int id;
-  final String title;
-}
-
-class ArchiveRoute {
-  const ArchiveRoute();
-}
-
-class UserRoute {
-  const UserRoute(this.id, this.name);
-  final int id;
-  final String name;
-}
-
-class ChatInfoRoute {
-  const ChatInfoRoute(this.id, this.title);
-  final int id;
-  final String title;
-}
-
-class ChatSearchRoute {
-  const ChatSearchRoute(this.chatId, this.title, this.isGroup);
-  final int chatId;
-  final String title;
-  final bool isGroup;
-}
-
-class ChatMediaRoute {
-  const ChatMediaRoute(this.chatId, this.title, this.category, this.isGroup);
-  final int chatId;
-  final String title;
-  final ChatMediaCategory category;
-  final bool isGroup;
 }
 
 /// Categories surfaced by the search hub and the media browser.

@@ -9,30 +9,30 @@
 
 import 'dart:async';
 
-import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
+import '../components/app_icons.dart';
 import '../components/confirm_dialog.dart';
 import '../components/icon_grid.dart';
 import '../components/photo_avatar.dart';
-import '../components/app_icons.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/telegram_language_controller.dart';
+import '../profile/qr_code_view.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
-import '../profile/qr_code_view.dart';
 import 'add_members_view.dart';
 import 'chat_members_view.dart';
+import 'chat_search_view.dart';
 import 'group_management_view.dart';
 import 'pinned_messages_view.dart';
-import 'chat_search_view.dart';
 import 'shared_media_view.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 class ChatMember {
   ChatMember(this.id, this.name, this.photo);
@@ -541,7 +541,6 @@ class _ChatInfoViewState extends State<ChatInfoView> {
                         builder: (_) => SharedMediaView(
                           chatId: widget.chatId,
                           title: widget.title,
-                          initialTab: 0,
                           displayTitle: AppStringKeys.chatInfoGroupAlbum,
                           lockedTab: true,
                         ),

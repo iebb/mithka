@@ -7,6 +7,7 @@
 //
 
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
 import '../chat/chat_view.dart';
@@ -17,7 +18,6 @@ import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
 import '../theme/theme_controller.dart';
 import 'chat_row_view.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 /// Collapsed "群助手" entry summarizing archived chats.
 class GroupAssistantRow extends StatelessWidget {

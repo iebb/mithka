@@ -11,18 +11,18 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
 
-import 'chat_picker_view.dart';
-import '../components/photo_avatar.dart';
 import '../components/app_icons.dart';
+import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../tdlib/json_helpers.dart';
-import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_client.dart';
+import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
-import 'package:mithka/l10n/app_localizations.dart';
+import 'chat_picker_view.dart';
 
 class _TdVideoStreamServer {
   _TdVideoStreamServer(this.fileId);
@@ -809,7 +809,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
       left: pip || embedded ? null : (phoneFullscreen ? 8 : 30),
       right: pip ? 4 : (embedded ? 8 : null),
       child: pip || embedded
-          ? _plainIconButton(HeroAppIcons.xmark.data, _close, size: 34)
+          ? _plainIconButton(HeroAppIcons.xmark.data, _close)
           : _roundIconButton(
               HeroAppIcons.chevronLeft.data,
               _close,
@@ -933,7 +933,6 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
 
   Widget _pendingSecondaryControls(_VideoControlsLayout layout) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         const Spacer(),
         _secondaryVolumeSlider(layout),
@@ -1121,7 +1120,6 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     _VideoControlsLayout layout,
   ) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         const Spacer(),
         _secondaryVolumeSlider(layout),
@@ -1265,7 +1263,6 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
               overlayColor: Colors.white.withValues(alpha: 0.14),
             ),
             child: Slider(
-              min: 0,
               max: duration <= 0 ? 1 : duration.toDouble(),
               value: duration <= 0 ? 0 : position.toDouble(),
               onChanged: duration <= 0
@@ -1435,8 +1432,6 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                 overlayColor: Colors.white.withValues(alpha: 0.14),
               ),
               child: Slider(
-                min: 0,
-                max: 1,
                 value: _volume,
                 onChangeStart: (_) => _hideTimer?.cancel(),
                 onChanged: _setVolume,
@@ -1517,7 +1512,11 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
           SizedBox(
             width: 20,
             child: mode == widget.currentMode
-                ? const AppIcon(HeroAppIcons.check, size: 14, color: Colors.white)
+                ? const AppIcon(
+                    HeroAppIcons.check,
+                    size: 14,
+                    color: Colors.white,
+                  )
                 : null,
           ),
           const SizedBox(width: 8),

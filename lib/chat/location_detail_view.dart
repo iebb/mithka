@@ -14,12 +14,12 @@ import 'package:apple_maps_flutter/apple_maps_flutter.dart' as amap;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
 import '../components/ui_components.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 class LocationDetailView extends StatefulWidget {
   const LocationDetailView({super.key, required this.location});
@@ -102,8 +102,6 @@ class _LocationDetailViewState extends State<LocationDetailView> {
           target: amap.LatLng(_point.latitude, _point.longitude),
           zoom: 16,
         ),
-        scrollGesturesEnabled: true,
-        zoomGesturesEnabled: true,
         rotateGesturesEnabled: false,
         pitchGesturesEnabled: false,
         annotations: {

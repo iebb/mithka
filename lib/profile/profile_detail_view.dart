@@ -11,8 +11,8 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import '../components/toast.dart';
 import 'package:flutter/services.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
 import '../call/call_manager.dart';
@@ -22,14 +22,14 @@ import '../chat/chat_view.dart';
 import '../chat/custom_emoji.dart';
 import '../chat/full_image_viewer.dart';
 import '../chat/voice_audio.dart';
-import '../components/photo_avatar.dart';
 import '../components/app_icons.dart';
+import '../components/photo_avatar.dart';
+import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 class ProfileDetailView extends StatefulWidget {
   const ProfileDetailView({
@@ -599,7 +599,7 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
           children: [
             ImageFiltered(
               imageFilter: ui.ImageFilter.blur(sigmaX: 28, sigmaY: 28),
-              child: TDImage(photo: _photo, cornerRadius: 0, fit: BoxFit.cover),
+              child: TDImage(photo: _photo, cornerRadius: 0),
             ),
             Container(color: Colors.black.withValues(alpha: 0.18)),
           ],
@@ -997,7 +997,7 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
       child: SizedBox(
         width: s,
         height: s,
-        child: TDImage(photo: _photos[i], cornerRadius: 10, fit: BoxFit.cover),
+        child: TDImage(photo: _photos[i], cornerRadius: 10),
       ),
     );
   }

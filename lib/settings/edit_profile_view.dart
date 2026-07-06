@@ -12,12 +12,13 @@ import 'dart:io';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import '../components/toast.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 
 import '../chat/image_edit_view.dart';
-import '../components/photo_avatar.dart';
 import '../components/app_icons.dart';
+import '../components/photo_avatar.dart';
+import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -25,7 +26,6 @@ import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import 'accent_color_picker_view.dart';
 import 'edit_field_view.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 class EditProfileView extends StatefulWidget {
   const EditProfileView({super.key});

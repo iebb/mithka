@@ -6,11 +6,13 @@
 //  feeds from chats that TDLib exposes as view_as_topics.
 //
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../chats/chat_list_view_model.dart';
-import '../components/photo_avatar.dart';
 import '../components/app_icons.dart';
+import '../components/photo_avatar.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../l10n/telegram_language_controller.dart';
@@ -105,7 +107,7 @@ class _TopicChannelsViewState extends State<TopicChannelsView> {
         continue;
       }
       _loadingChats.add(chat.id);
-      _loadTopicsForChat(chat, _loadGeneration);
+      unawaited(_loadTopicsForChat(chat, _loadGeneration));
     }
     if (mounted) setState(() => _loading = _loadingChats.isNotEmpty);
   }

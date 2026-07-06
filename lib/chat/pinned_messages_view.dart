@@ -6,9 +6,10 @@
 //
 
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 
-import '../components/photo_avatar.dart';
 import '../components/app_icons.dart';
+import '../components/photo_avatar.dart';
 import '../l10n/telegram_language_controller.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -18,7 +19,6 @@ import '../theme/date_text.dart';
 import 'chat_view.dart';
 import 'full_image_viewer.dart';
 import 'video_player_view.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 class PinnedMessagesView extends StatefulWidget {
   const PinnedMessagesView({
@@ -268,7 +268,7 @@ class _PinnedMessagesViewState extends State<PinnedMessagesView> {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  TDImage(photo: media, cornerRadius: 8, fit: BoxFit.contain),
+                  TDImage(photo: media, fit: BoxFit.contain),
                   if (message.video != null)
                     Center(
                       child: Container(

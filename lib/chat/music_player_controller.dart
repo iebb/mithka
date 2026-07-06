@@ -12,6 +12,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:heroicons_flutter/heroicons_flutter.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app/app_navigator.dart';
@@ -24,7 +25,6 @@ import '../theme/app_theme.dart';
 import 'audio_search_view.dart';
 import 'chat_view.dart';
 import 'voice_audio.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 const Color musicPlayerAccent = Color(0xFF22C7A9);
 
@@ -732,7 +732,7 @@ class _MusicCover extends StatelessWidget {
         width: size,
         height: size,
         child: music.cover != null
-            ? TDImage(photo: music.cover, fit: BoxFit.cover)
+            ? TDImage(photo: music.cover)
             : Container(
                 alignment: Alignment.center,
                 color: musicPlayerAccent.withValues(alpha: 0.14),

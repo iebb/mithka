@@ -8,10 +8,11 @@
 //
 
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 
+import '../components/app_icons.dart';
 import '../components/confirm_dialog.dart';
 import '../components/photo_avatar.dart';
-import '../components/app_icons.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../tdlib/json_helpers.dart';
@@ -19,7 +20,6 @@ import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import 'qr_login_scanner_view.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 // MARK: - Privacy rule chooser (所有人 / 我的联系人 / 没有人)
 

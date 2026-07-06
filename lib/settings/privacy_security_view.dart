@@ -6,11 +6,14 @@
 //  Port of the Swift `PrivacySecurityView`.
 //
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../components/confirm_dialog.dart';
 import '../components/app_icons.dart';
+import '../components/confirm_dialog.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../tdlib/json_helpers.dart';
@@ -20,7 +23,6 @@ import 'account_backup_view.dart';
 import 'auto_delete_view.dart';
 import 'keyword_blocker_view.dart';
 import 'privacy_detail_views.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 class PrivacySecurityView extends StatefulWidget {
   const PrivacySecurityView({super.key});
@@ -46,7 +48,7 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
       'userPrivacySettingShowProfilePhoto',
       'userPrivacySettingAllowCalls',
     ]) {
-      _loadRule(setting);
+      unawaited(_loadRule(setting));
     }
     try {
       final state = await _client.query({'@type': 'getPasswordState'});

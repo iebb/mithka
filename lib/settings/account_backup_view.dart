@@ -480,7 +480,6 @@ class _AccountBackupViewState extends State<AccountBackupView> {
         value: _enabled,
         onChanged: Platform.isIOS && !_working ? _setEnabled : (_) {},
         leading: Icon(HeroAppIcons.key.data, size: 20, color: AppTheme.brand),
-        leadingInset: 16,
       ),
     );
   }

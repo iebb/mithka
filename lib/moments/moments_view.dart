@@ -14,8 +14,8 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../chat/chat_picker_view.dart';
-import '../chat/full_image_viewer.dart';
 import '../chat/chat_view.dart';
+import '../chat/full_image_viewer.dart';
 import '../chat/media_album_layout.dart';
 import '../chat/rich_text_composer_view.dart';
 import '../chat/rich_text_format.dart';
@@ -23,9 +23,9 @@ import '../chat/shared_media_view.dart';
 import '../chat/telegram_rich_text.dart';
 import '../chat/video_player_view.dart';
 import '../chats/chat_list_view_model.dart';
-import '../components/toast.dart';
-import '../components/photo_avatar.dart';
 import '../components/app_icons.dart';
+import '../components/photo_avatar.dart';
+import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../l10n/telegram_language_controller.dart';
@@ -491,7 +491,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
         _meAccentColorId = me.integer('accent_color_id') ?? -1;
         _meProfileAccentColorId = me.integer('profile_accent_color_id') ?? -1;
       });
-      _loadPostableChannels();
+      unawaited(_loadPostableChannels());
     } catch (_) {}
   }
 
@@ -727,12 +727,14 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
         continue;
       }
       _loadingChannels.add(channel.id);
-      _loadPostsForChannel(
-        channel,
-        fromMessageId: loadOlder
-            ? (_oldestMessageByChannel[channel.id] ?? 0)
-            : 0,
-        generation: generation,
+      unawaited(
+        _loadPostsForChannel(
+          channel,
+          fromMessageId: loadOlder
+              ? (_oldestMessageByChannel[channel.id] ?? 0)
+              : 0,
+          generation: generation,
+        ),
       );
     }
     _loadingPosts = _loadingChannels.isNotEmpty;
@@ -1234,10 +1236,12 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
       _scroll.position.maxScrollExtent,
     );
     if ((next - _scroll.offset).abs() < 1) return;
-    _scroll.animateTo(
-      next,
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
+    unawaited(
+      _scroll.animateTo(
+        next,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+      ),
     );
   }
 
@@ -2386,7 +2390,7 @@ class _ChannelPostDetailViewState extends State<ChannelPostDetailView> {
         'is_big': false,
         'update_recent_reactions': true,
       });
-      _loadComments();
+      unawaited(_loadComments());
     } catch (e) {
       if (mounted) {
         showToast(
@@ -3638,7 +3642,6 @@ class _PostImageGroup extends StatelessWidget {
           ),
       ],
       maxWidth: width,
-      gap: 3,
       minSingleHeight: 140,
       maxSingleHeight: 420,
       minRowHeight: 92,
@@ -3755,7 +3758,6 @@ class _PostImageTile extends StatelessWidget {
             TDImage(
               photo: message.image,
               cornerRadius: 3,
-              fit: BoxFit.cover,
               cacheWidth: (width * MediaQuery.of(context).devicePixelRatio)
                   .round(),
               cacheHeight: (height * MediaQuery.of(context).devicePixelRatio)

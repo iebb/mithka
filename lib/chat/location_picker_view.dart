@@ -17,11 +17,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
 import '../components/ui_components.dart';
 import '../theme/app_theme.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 
 class LocationPickerView extends StatefulWidget {
   const LocationPickerView({super.key, required this.initial});
@@ -104,17 +104,19 @@ class _LocationPickerViewState extends State<LocationPickerView> {
       final pos = await Geolocator.getCurrentPosition();
       final p = LatLng(pos.latitude, pos.longitude);
       if (Platform.isIOS) {
-        _appleCtrl?.animateCamera(
-          amap.CameraUpdate.newLatLngZoom(
-            amap.LatLng(p.latitude, p.longitude),
-            16,
+        unawaited(
+          _appleCtrl?.animateCamera(
+            amap.CameraUpdate.newLatLngZoom(
+              amap.LatLng(p.latitude, p.longitude),
+              16,
+            ),
           ),
         );
       } else {
         _map.move(p, 16);
       }
       _center = p;
-      _reverseGeocode(p);
+      unawaited(_reverseGeocode(p));
     } catch (_) {}
   }
 
@@ -132,7 +134,6 @@ class _LocationPickerViewState extends State<LocationPickerView> {
           zoom: 15,
         ),
         myLocationEnabled: true,
-        myLocationButtonEnabled: false,
         onMapCreated: (c) => _appleCtrl = c,
         onCameraMove: (pos) =>
             _center = LatLng(pos.target.latitude, pos.target.longitude),

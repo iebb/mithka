@@ -13,13 +13,13 @@ import 'package:dlibphonenumber/dlibphonenumber.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
-import 'terms_sheet.dart';
 import '../components/app_icons.dart';
-import '../settings/api_credentials_view.dart';
 import '../settings/account_backup_view.dart';
+import '../settings/api_credentials_view.dart';
 import '../settings/proxy_config.dart';
 import '../settings/proxy_view.dart';
 import '../tdlib/td_client.dart';
@@ -28,7 +28,7 @@ import 'account_backup_service.dart';
 import 'account_store.dart';
 import 'auth_manager.dart';
 import 'country_picker.dart';
-import 'package:mithka/l10n/app_localizations.dart';
+import 'terms_sheet.dart';
 
 class LoginView extends StatefulWidget {
   const LoginView({super.key});
@@ -663,19 +663,7 @@ class _LoginViewState extends State<LoginView> {
                       child: CircularProgressIndicator.adaptive(strokeWidth: 2),
                     ),
                   )
-                : QrImageView(
-                    data: link,
-                    version: QrVersions.auto,
-                    backgroundColor: Colors.white,
-                    eyeStyle: const QrEyeStyle(
-                      eyeShape: QrEyeShape.square,
-                      color: Colors.black,
-                    ),
-                    dataModuleStyle: const QrDataModuleStyle(
-                      dataModuleShape: QrDataModuleShape.square,
-                      color: Colors.black,
-                    ),
-                  ),
+                : QrImageView(data: link, backgroundColor: Colors.white),
           ),
         ),
         const SizedBox(height: 18),
