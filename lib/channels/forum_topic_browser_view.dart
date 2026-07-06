@@ -6,6 +6,8 @@
 //  the selected chat. Opening a row enters the real topic view.
 //
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../chat/chat_view.dart';
@@ -38,6 +40,8 @@ class ForumTopicBrowserView extends StatefulWidget {
 class _ForumTopicBrowserViewState extends State<ForumTopicBrowserView> {
   final _topicsByChat = <int, List<_ForumTopicEntry>>{};
   final _loadingChats = <int>{};
+  final _senderCache = <int, String>{};
+  final _resolvingSenders = <int>{};
   late ChatSummary _selectedChat = widget.initialChat;
 
   List<ChatSummary> get _chats {
@@ -123,6 +127,7 @@ class _ForumTopicBrowserViewState extends State<ForumTopicBrowserView> {
       });
       if (!mounted) return;
       setState(() => _topicsByChat[chat.id] = topics);
+      _resolveTopicSenders(topics);
     } catch (_) {
       if (mounted) setState(() => _topicsByChat[chat.id] = const []);
     } finally {
@@ -171,6 +176,56 @@ class _ForumTopicBrowserViewState extends State<ForumTopicBrowserView> {
     return Color(0xFF000000 | (raw & 0xFFFFFF));
   }
 
+  void _resolveTopicSenders(List<_ForumTopicEntry> topics) {
+    for (final topic in topics) {
+      final message = topic.lastMessage;
+      final senderId = message?.senderId;
+      if (message == null ||
+          senderId == null ||
+          message.senderName?.trim().isNotEmpty == true ||
+          _senderCache.containsKey(senderId) ||
+          _resolvingSenders.contains(senderId)) {
+        continue;
+      }
+      _resolvingSenders.add(senderId);
+      unawaited(_resolveSender(senderId));
+    }
+  }
+
+  Future<void> _resolveSender(int senderId) async {
+    try {
+      if (senderId > 0) {
+        final user = await TdClient.shared.query({
+          '@type': 'getUser',
+          'user_id': senderId,
+        });
+        _senderCache[senderId] = TDParse.userName(user);
+      } else {
+        final chat = await TdClient.shared.query({
+          '@type': 'getChat',
+          'chat_id': senderId,
+        });
+        _senderCache[senderId] =
+            chat.str('title') ?? AppStrings.t(AppStringKeys.topicChatUsers);
+      }
+    } catch (_) {
+      _senderCache[senderId] = AppStrings.t(AppStringKeys.topicChatUsers);
+    } finally {
+      _resolvingSenders.remove(senderId);
+      if (mounted) {
+        for (final topics in _topicsByChat.values) {
+          for (final topic in topics) {
+            final message = topic.lastMessage;
+            if (message?.senderId == senderId) {
+              message?.senderName = _senderCache[senderId];
+            }
+          }
+        }
+        setState(() {});
+      }
+    }
+  }
+
   void _openTopic(_ForumTopicEntry topic) {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -206,9 +261,8 @@ class _ForumTopicBrowserViewState extends State<ForumTopicBrowserView> {
                           padding: EdgeInsets.zero,
                           itemCount: topics.length,
                           separatorBuilder: (_, _) =>
-                              const InsetDivider(leadingInset: 72),
+                              const InsetDivider(leadingInset: 58),
                           itemBuilder: (_, index) => _TopicBrowserRow(
-                            chat: _selectedChat,
                             topic: topics[index],
                             onTap: () => _openTopic(topics[index]),
                           ),
@@ -372,13 +426,8 @@ class _ForumChatRailItem extends StatelessWidget {
 }
 
 class _TopicBrowserRow extends StatelessWidget {
-  const _TopicBrowserRow({
-    required this.chat,
-    required this.topic,
-    required this.onTap,
-  });
+  const _TopicBrowserRow({required this.topic, required this.onTap});
 
-  final ChatSummary chat;
   final _ForumTopicEntry topic;
   final VoidCallback onTap;
 
@@ -387,20 +436,25 @@ class _TopicBrowserRow extends StatelessWidget {
     final c = context.colors;
     final message = topic.lastMessage;
     final preview = message?.text.trim() ?? '';
+    final sender = message?.senderName?.trim();
+    final secondLine = [
+      if (sender != null && sender.isNotEmpty) sender,
+      if (preview.isNotEmpty) preview,
+    ].join(' · ');
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Container(
         color: c.background,
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 13),
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _TopicEmojiIcon(topic: topic),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Row(
                     children: [
@@ -410,7 +464,7 @@ class _TopicBrowserRow extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 16,
+                            fontSize: 15,
                             fontWeight: FontWeight.w600,
                             color: c.textPrimary,
                           ),
@@ -419,33 +473,33 @@ class _TopicBrowserRow extends StatelessWidget {
                       if (message != null)
                         Text(
                           DateText.listLabel(message.date),
-                          style: TextStyle(fontSize: 13, color: c.textTertiary),
+                          style: TextStyle(fontSize: 12, color: c.textTertiary),
                         ),
+                      if (topic.unreadCount > 0) ...[
+                        const SizedBox(width: 8),
+                        UnreadBadge(
+                          count: topic.unreadCount,
+                          muted: topic.isMuted,
+                        ),
+                      ],
                     ],
                   ),
-                  const SizedBox(height: 5),
+                  const SizedBox(height: 3),
                   Text(
-                    preview.isEmpty
+                    secondLine.isEmpty
                         ? AppStrings.t(AppStringKeys.topicChatTopicTitle)
-                        : preview,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 14, color: c.textSecondary),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    chat.title,
+                        : secondLine,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 12, color: c.textTertiary),
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.15,
+                      color: c.textSecondary,
+                    ),
                   ),
                 ],
               ),
             ),
-            if (topic.unreadCount > 0) ...[
-              const SizedBox(width: 10),
-              UnreadBadge(count: topic.unreadCount, muted: topic.isMuted),
-            ],
           ],
         ),
       ),
@@ -466,15 +520,15 @@ class _TopicEmojiIcon extends StatelessWidget {
     );
     final fg = topic.iconColor ?? AppTheme.brand;
     return Container(
-      width: 44,
-      height: 44,
+      width: 36,
+      height: 36,
       alignment: Alignment.center,
       decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
       child: topic.iconCustomEmojiId != 0
-          ? CustomEmojiView(id: topic.iconCustomEmojiId, size: 28)
+          ? CustomEmojiView(id: topic.iconCustomEmojiId, size: 24)
           : AppIcon(
               HeroAppIcons.hashtag,
-              size: 24,
+              size: 20,
               color: topic.isMuted ? c.textTertiary : fg,
             ),
     );
