@@ -25,6 +25,7 @@ import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../l10n/telegram_language_controller.dart';
+import '../settings/topic_group_display_mode.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -518,17 +519,21 @@ class _TopicChatViewState extends State<TopicChatView> {
     );
   }
 
-  void _openChatView() {
+  Future<void> _openChatView() async {
+    await TopicGroupDisplayPreference.set(TopicGroupDisplayMode.chat);
+    if (!mounted) return;
     if (widget.chatRouteBelow) {
       Navigator.of(context).pop();
       return;
     }
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => ChatView(
-          chatId: widget.chat.id,
-          title: widget.chat.title,
-          seedMessage: widget.chat.lastChatMessage,
+    unawaited(
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => ChatView(
+            chatId: widget.chat.id,
+            title: widget.chat.title,
+            seedMessage: widget.chat.lastChatMessage,
+          ),
         ),
       ),
     );

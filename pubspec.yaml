@@ -84,6 +84,10 @@ dev_dependencies:
   # Generates iOS/Android launcher icons from the Drachma app icon.
   flutter_launcher_icons: ^0.14.1
 
+dependency_overrides:
+  fvp:
+    path: third_party/fvp
+
 flutter_launcher_icons:
   image_path: "assets/app_icon.png"
   ios: true

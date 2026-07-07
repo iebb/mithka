@@ -29,6 +29,7 @@ import '../components/ui_components.dart';
 import '../l10n/telegram_language_controller.dart';
 import '../profile/profile_detail_view.dart';
 import '../settings/edit_field_view.dart';
+import '../settings/topic_group_display_mode.dart';
 import '../settings/translation_api.dart';
 import '../settings/translation_controller.dart';
 import '../tdlib/json_helpers.dart';
@@ -2575,20 +2576,6 @@ class _ChatViewState extends State<ChatView> {
               else
                 const SizedBox(width: 4),
               Expanded(child: _headerTitleBlock(subtitle, typing)),
-              if (_vm.isForum) ...[
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _openTopicMode,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    child: AppIcon(
-                      HeroAppIcons.hashtag,
-                      size: 22,
-                      color: c.textPrimary,
-                    ),
-                  ),
-                ),
-              ],
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () => Navigator.of(context).push(
@@ -2605,6 +2592,18 @@ class _ChatViewState extends State<ChatView> {
                   color: c.textPrimary,
                 ),
               ),
+              if (_vm.isForum) ...[
+                const SizedBox(width: 18),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _openTopicMode,
+                  child: AppIcon(
+                    HeroAppIcons.hashtag,
+                    size: 22,
+                    color: c.textPrimary,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -2676,13 +2675,16 @@ class _ChatViewState extends State<ChatView> {
     isForum: true,
   );
 
-  void _openTopicMode([int? threadId]) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => TopicChatView(
-          chat: _topicChatSummary(),
-          initialThreadId: threadId,
-          chatRouteBelow: true,
+  Future<void> _openTopicMode([int? threadId]) async {
+    await TopicGroupDisplayPreference.set(TopicGroupDisplayMode.channel);
+    if (!mounted) return;
+    unawaited(
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => TopicChatView(
+            chat: _topicChatSummary(),
+            initialThreadId: threadId,
+          ),
         ),
       ),
     );

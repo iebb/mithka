@@ -8,6 +8,7 @@
 //
 
 import 'dart:async';
+import 'dart:io' as io;
 import 'dart:ui' as ui;
 
 import 'package:firebase_analytics/firebase_analytics.dart';
@@ -37,6 +38,7 @@ import 'l10n/telegram_language_controller.dart';
 import 'notifications/notification_controller.dart';
 import 'notifications/push_device_registrar.dart';
 import 'settings/app_icon_controller.dart';
+import 'settings/auto_download_media_controller.dart';
 import 'settings/keyword_blocker.dart';
 import 'settings/translation_controller.dart';
 import 'theme/app_theme.dart';
@@ -69,8 +71,7 @@ void _configureAndroidImageCache() {
 
 Future<void> _bootstrapAndRunApp() async {
   GoogleFonts.config.allowRuntimeFetching = true;
-  const useFvp = true;
-  if (useFvp) {
+  if (_shouldUseFvp()) {
     // Route video_player through the MDK/FFmpeg backend so .webm (VP9 + alpha)
     // video stickers decode + play (and stay transparent).
     fvp.registerWith(
@@ -97,6 +98,25 @@ Future<void> _bootstrapAndRunApp() async {
   unawaited(_initTelemetry());
   final app = MithkaApp(prefs: prefs);
   _runAppWithNonFatalGoogleFonts(app);
+}
+
+bool _shouldUseFvp() {
+  if (kIsWeb) return false;
+  if (defaultTargetPlatform == TargetPlatform.iOS) {
+    // Older iOS devices have native MdkPrepare crashes under thread pressure.
+    // Keep ordinary MP4 playback on AVFoundation there; WebM stickers fall back
+    // to their static thumbnail when the native player cannot initialize them.
+    return (_operatingSystemMajorVersion() ?? 0) >= 17;
+  }
+  return true;
+}
+
+int? _operatingSystemMajorVersion() {
+  final match = RegExp(
+    r'(?:Version )?(\d+)',
+  ).firstMatch(io.Platform.operatingSystemVersion);
+  if (match == null) return null;
+  return int.tryParse(match.group(1) ?? '');
 }
 
 Future<void> _initTelemetry() async {
@@ -198,11 +218,14 @@ class _MithkaAppState extends State<MithkaApp> {
   late final ChatDeepLinkController _chatDeepLinks =
       ChatDeepLinkController.shared;
   late final AppIconController _appIcons = AppIconController(widget.prefs);
+  late final AutoDownloadMediaController _autoDownload =
+      AutoDownloadMediaController.shared;
 
   @override
   void initState() {
     super.initState();
     _theme.loadSelectedEmojiFontIfAvailable();
+    _autoDownload.initialize(widget.prefs);
     _auth.start();
     unawaited(_telegramLanguage.initialize(widget.prefs));
     unawaited(_appIcons.initialize());
@@ -266,6 +289,7 @@ class _MithkaAppState extends State<MithkaApp> {
         ChangeNotifierProvider.value(value: _accounts),
         ChangeNotifierProvider.value(value: _chatDeepLinks),
         ChangeNotifierProvider.value(value: _appIcons),
+        ChangeNotifierProvider.value(value: _autoDownload),
         ChangeNotifierProvider<dc.DrawerController>.value(value: _drawer),
       ],
       child: Consumer3<ThemeController, AccountStore, AppLocaleController>(

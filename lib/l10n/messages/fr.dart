@@ -484,6 +484,13 @@ const frMessages = <String, String>{
   'generalCacheSize': "Taille du cache",
   'generalClearCache': "Vider le cache",
   'generalClearingCache': "Suppression…",
+  'generalAutoDownloadDisabled': "Désactivé",
+  'generalAutoDownloadFailed':
+      "Impossible de mettre à jour le téléchargement automatique",
+  'generalAutoDownloadHighResImages': "Images haute résolution",
+  'generalAutoDownloadMedia': "Téléchargement auto des médias",
+  'generalAutoDownloadMobileData': "Données mobiles",
+  'generalAutoDownloadWifi': "Wi-Fi",
   'generalOpenChatAtLatestMessage': "Ouvrir les discussions au dernier message",
   'generalSendMessageWithEnter': "Envoyer avec Entrée",
   'generalStorage': "Stockage",

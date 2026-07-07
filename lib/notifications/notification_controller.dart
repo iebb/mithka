@@ -10,6 +10,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
@@ -37,6 +38,7 @@ class NotificationController with WidgetsBindingObserver {
   StreamSubscription? _sub;
   AppLifecycleState _state = AppLifecycleState.resumed;
   bool _ready = false;
+  bool _notificationsAvailable = true;
   int _notificationSeed = 0;
 
   Future<void> start() async {
@@ -80,16 +82,24 @@ class NotificationController with WidgetsBindingObserver {
   }
 
   Future<void> requestPermissions() async {
-    await _plugin
-        .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin
-        >()
-        ?.requestNotificationsPermission();
-    await _plugin
-        .resolvePlatformSpecificImplementation<
-          IOSFlutterLocalNotificationsPlugin
-        >()
-        ?.requestPermissions(alert: true, badge: true, sound: true);
+    try {
+      final androidGranted = await _plugin
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >()
+          ?.requestNotificationsPermission();
+      final iosGranted = await _plugin
+          .resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin
+          >()
+          ?.requestPermissions(alert: true, badge: true, sound: true);
+      if (androidGranted == false || iosGranted == false) {
+        _notificationsAvailable = false;
+      }
+    } on PlatformException catch (error) {
+      _notificationsAvailable = false;
+      debugPrint('Local notification permission request failed: $error');
+    }
   }
 
   @override
@@ -100,6 +110,7 @@ class NotificationController with WidgetsBindingObserver {
   Future<void> _handle(Map<String, dynamic> update) async {
     if (update.type != 'updateNewMessage') return;
     if (_state == AppLifecycleState.resumed) return;
+    if (!_notificationsAvailable) return;
 
     final raw = update.obj('message');
     if (raw == null || (raw.boolean('is_outgoing') ?? false)) return;
@@ -118,27 +129,41 @@ class NotificationController with WidgetsBindingObserver {
     final payload = jsonEncode({'chat_id': chatId, 'message_id': messageId});
 
     _notificationSeed = (_notificationSeed + 1) & 0x7fffffff;
-    await _plugin.show(
-      id: _notificationSeed,
-      title: title,
-      body: body,
-      notificationDetails: const NotificationDetails(
-        android: AndroidNotificationDetails(
-          'messages',
-          'Messages',
-          channelDescription: 'Incoming Mithka messages',
-          importance: Importance.high,
-          priority: Priority.high,
-          category: AndroidNotificationCategory.message,
+    try {
+      await _plugin.show(
+        id: _notificationSeed,
+        title: title,
+        body: body,
+        notificationDetails: const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'messages',
+            'Messages',
+            channelDescription: 'Incoming Mithka messages',
+            importance: Importance.high,
+            priority: Priority.high,
+            category: AndroidNotificationCategory.message,
+          ),
+          iOS: DarwinNotificationDetails(
+            presentAlert: true,
+            presentBadge: true,
+            presentSound: true,
+          ),
         ),
-        iOS: DarwinNotificationDetails(
-          presentAlert: true,
-          presentBadge: true,
-          presentSound: true,
-        ),
-      ),
-      payload: payload,
-    );
+        payload: payload,
+      );
+    } on PlatformException catch (error) {
+      if (_isNotificationAuthorizationError(error)) {
+        _notificationsAvailable = false;
+      }
+      debugPrint('Local notification display failed: $error');
+    }
+  }
+
+  bool _isNotificationAuthorizationError(PlatformException error) {
+    final text = '${error.code} ${error.message} ${error.details}';
+    return text.contains('not authorized') ||
+        text.contains('UNErrorDomain') ||
+        text.contains('Error 2003');
   }
 
   Future<Map<String, dynamic>?> _chat(int chatId) async {

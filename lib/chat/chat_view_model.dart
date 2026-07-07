@@ -143,6 +143,7 @@ class ChatViewModel extends ChangeNotifier {
   bool isGroup = false;
   int memberCount = 0;
   int? peerUserId; // private chat → call target
+  int? peerSupergroupId;
   String meName = AppStrings.t(AppStringKeys.chatMeLabel);
   int? meId;
   TdFileRef? mePhoto;
@@ -272,6 +273,25 @@ class ChatViewModel extends ChangeNotifier {
     final id = _pendingScrollToId;
     _pendingScrollToId = null;
     return id;
+  }
+
+  Map<String, dynamic> _withPaidMessageOptions(Map<String, dynamic> request) {
+    final count = paidMessageStarCount;
+    if (count <= 0) return request;
+    final existing = request.obj('options') ?? const <String, dynamic>{};
+    request['options'] = {
+      ...existing,
+      '@type': 'messageSendOptions',
+      'paid_message_star_count': count,
+    };
+    return request;
+  }
+
+  void _setPaidMessageStarCount(int count, {bool notify = true}) {
+    final next = count < 0 ? 0 : count;
+    if (paidMessageStarCount == next) return;
+    paidMessageStarCount = next;
+    if (notify) notifyListeners();
   }
 
   // MARK: - Lifecycle
@@ -583,7 +603,7 @@ class ChatViewModel extends ChangeNotifier {
       };
     }
     replyTo = null;
-    _client.send(request);
+    _client.send(_withPaidMessageOptions(request));
     notifyListeners();
   }
 
@@ -598,14 +618,16 @@ class ChatViewModel extends ChangeNotifier {
   void _sendText(String text) {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
-    _client.send({
-      '@type': 'sendMessage',
-      'chat_id': chatId,
-      'input_message_content': {
-        '@type': 'inputMessageText',
-        'text': {'@type': 'formattedText', 'text': trimmed},
-      },
-    });
+    _client.send(
+      _withPaidMessageOptions({
+        '@type': 'sendMessage',
+        'chat_id': chatId,
+        'input_message_content': {
+          '@type': 'inputMessageText',
+          'text': {'@type': 'formattedText', 'text': trimmed},
+        },
+      }),
+    );
   }
 
   /// Sends text that may contain inline custom emoji — [entities] is the list of
@@ -635,7 +657,7 @@ class ChatViewModel extends ChangeNotifier {
       };
     }
     replyTo = null;
-    _client.send(request);
+    _client.send(_withPaidMessageOptions(request));
     notifyListeners();
   }
 
@@ -657,7 +679,7 @@ class ChatViewModel extends ChangeNotifier {
       };
     }
     replyTo = null;
-    _client.send(request);
+    _client.send(_withPaidMessageOptions(request));
     notifyListeners();
     return true;
   }
@@ -715,131 +737,147 @@ class ChatViewModel extends ChangeNotifier {
   }
 
   void sendPhoto(String path, {String caption = ''}) {
-    _client.send({
-      '@type': 'sendMessage',
-      'chat_id': chatId,
-      'input_message_content': {
-        '@type': 'inputMessagePhoto',
-        'photo': {
-          '@type': 'inputPhoto',
-          'photo': {'@type': 'inputFileLocal', 'path': path},
+    _client.send(
+      _withPaidMessageOptions({
+        '@type': 'sendMessage',
+        'chat_id': chatId,
+        'input_message_content': {
+          '@type': 'inputMessagePhoto',
+          'photo': {
+            '@type': 'inputPhoto',
+            'photo': {'@type': 'inputFileLocal', 'path': path},
+          },
+          if (caption.trim().isNotEmpty)
+            'caption': {'@type': 'formattedText', 'text': caption.trim()},
         },
-        if (caption.trim().isNotEmpty)
-          'caption': {'@type': 'formattedText', 'text': caption.trim()},
-      },
-    });
+      }),
+    );
   }
 
   void sendVideo(String path, {String caption = ''}) {
-    _client.send({
-      '@type': 'sendMessage',
-      'chat_id': chatId,
-      'input_message_content': {
-        '@type': 'inputMessageVideo',
-        'video': {
-          '@type': 'inputVideo',
-          'video': {'@type': 'inputFileLocal', 'path': path},
-          'supports_streaming': true,
+    _client.send(
+      _withPaidMessageOptions({
+        '@type': 'sendMessage',
+        'chat_id': chatId,
+        'input_message_content': {
+          '@type': 'inputMessageVideo',
+          'video': {
+            '@type': 'inputVideo',
+            'video': {'@type': 'inputFileLocal', 'path': path},
+            'supports_streaming': true,
+          },
+          if (caption.trim().isNotEmpty)
+            'caption': {'@type': 'formattedText', 'text': caption.trim()},
         },
-        if (caption.trim().isNotEmpty)
-          'caption': {'@type': 'formattedText', 'text': caption.trim()},
-      },
-    });
+      }),
+    );
   }
 
   void sendAnimation(String path, {String caption = ''}) {
-    _client.send({
-      '@type': 'sendMessage',
-      'chat_id': chatId,
-      'input_message_content': {
-        '@type': 'inputMessageAnimation',
-        'animation': {'@type': 'inputFileLocal', 'path': path},
-        'duration': 0,
-        'width': 0,
-        'height': 0,
-        if (caption.trim().isNotEmpty)
-          'caption': {'@type': 'formattedText', 'text': caption.trim()},
-      },
-    });
+    _client.send(
+      _withPaidMessageOptions({
+        '@type': 'sendMessage',
+        'chat_id': chatId,
+        'input_message_content': {
+          '@type': 'inputMessageAnimation',
+          'animation': {'@type': 'inputFileLocal', 'path': path},
+          'duration': 0,
+          'width': 0,
+          'height': 0,
+          if (caption.trim().isNotEmpty)
+            'caption': {'@type': 'formattedText', 'text': caption.trim()},
+        },
+      }),
+    );
   }
 
   void sendSticker(StickerItem sticker) {
     final input = sticker.remoteId != null
         ? {'@type': 'inputFileRemote', 'id': sticker.remoteId}
         : {'@type': 'inputFileId', 'id': sticker.id};
-    _client.send({
-      '@type': 'sendMessage',
-      'chat_id': chatId,
-      'input_message_content': {
-        '@type': 'inputMessageSticker',
-        'sticker': input,
-        'width': sticker.width,
-        'height': sticker.height,
-        'emoji': sticker.emoji,
-      },
-    });
+    _client.send(
+      _withPaidMessageOptions({
+        '@type': 'sendMessage',
+        'chat_id': chatId,
+        'input_message_content': {
+          '@type': 'inputMessageSticker',
+          'sticker': input,
+          'width': sticker.width,
+          'height': sticker.height,
+          'emoji': sticker.emoji,
+        },
+      }),
+    );
   }
 
   void sendDocument(String path, {String caption = ''}) {
-    _client.send({
-      '@type': 'sendMessage',
-      'chat_id': chatId,
-      'input_message_content': {
-        '@type': 'inputMessageDocument',
-        'document': {
-          '@type': 'inputDocument',
-          'document': {'@type': 'inputFileLocal', 'path': path},
+    _client.send(
+      _withPaidMessageOptions({
+        '@type': 'sendMessage',
+        'chat_id': chatId,
+        'input_message_content': {
+          '@type': 'inputMessageDocument',
+          'document': {
+            '@type': 'inputDocument',
+            'document': {'@type': 'inputFileLocal', 'path': path},
+          },
+          if (caption.trim().isNotEmpty)
+            'caption': {'@type': 'formattedText', 'text': caption.trim()},
         },
-        if (caption.trim().isNotEmpty)
-          'caption': {'@type': 'formattedText', 'text': caption.trim()},
-      },
-    });
+      }),
+    );
   }
 
   void sendLocation(double latitude, double longitude) {
-    _client.send({
-      '@type': 'sendMessage',
-      'chat_id': chatId,
-      'input_message_content': {
-        '@type': 'inputMessageLocation',
-        'location': {
-          '@type': 'location',
-          'latitude': latitude,
-          'longitude': longitude,
-          'horizontal_accuracy': 0,
+    _client.send(
+      _withPaidMessageOptions({
+        '@type': 'sendMessage',
+        'chat_id': chatId,
+        'input_message_content': {
+          '@type': 'inputMessageLocation',
+          'location': {
+            '@type': 'location',
+            'latitude': latitude,
+            'longitude': longitude,
+            'horizontal_accuracy': 0,
+          },
         },
-      },
-    });
+      }),
+    );
   }
 
   void sendVoice(String path, int duration) {
-    _client.send({
-      '@type': 'sendMessage',
-      'chat_id': chatId,
-      'input_message_content': {
-        '@type': 'inputMessageVoiceNote',
-        'voice_note': {'@type': 'inputFileLocal', 'path': path},
-        'duration': duration,
-      },
-    });
+    _client.send(
+      _withPaidMessageOptions({
+        '@type': 'sendMessage',
+        'chat_id': chatId,
+        'input_message_content': {
+          '@type': 'inputMessageVoiceNote',
+          'voice_note': {'@type': 'inputFileLocal', 'path': path},
+          'duration': duration,
+        },
+      }),
+    );
   }
 
   /// 音频: send a picked audio file as a music message (TDLib computes metadata).
   void sendAudio(String path) {
-    _client.send({
-      '@type': 'sendMessage',
-      'chat_id': chatId,
-      'input_message_content': {
-        '@type': 'inputMessageAudio',
-        'audio': {
-          '@type': 'inputAudio',
-          'audio': {'@type': 'inputFileLocal', 'path': path},
-          'duration': 0,
-          'title': '',
-          'performer': '',
+    _client.send(
+      _withPaidMessageOptions({
+        '@type': 'sendMessage',
+        'chat_id': chatId,
+        'input_message_content': {
+          '@type': 'inputMessageAudio',
+          'audio': {
+            '@type': 'inputAudio',
+            'audio': {'@type': 'inputFileLocal', 'path': path},
+            'duration': 0,
+            'title': '',
+            'performer': '',
+          },
         },
-      },
-    });
+      }),
+    );
   }
 
   /// 音频搜索: send a clean copy of an existing Telegram audio message.
@@ -851,32 +889,36 @@ class ChatViewModel extends ChangeNotifier {
     final fileId = music?.file?.id;
     if (music != null && fileId != null && fileId > 0) {
       try {
-        await _client.query({
-          '@type': 'sendMessage',
-          'chat_id': chatId,
-          'input_message_content': {
-            '@type': 'inputMessageAudio',
-            'audio': {
-              '@type': 'inputAudio',
-              'audio': {'@type': 'inputFileId', 'id': fileId},
-              'duration': music.duration,
-              'title': music.title,
-              'performer': music.performer ?? '',
+        await _client.query(
+          _withPaidMessageOptions({
+            '@type': 'sendMessage',
+            'chat_id': chatId,
+            'input_message_content': {
+              '@type': 'inputMessageAudio',
+              'audio': {
+                '@type': 'inputAudio',
+                'audio': {'@type': 'inputFileId', 'id': fileId},
+                'duration': music.duration,
+                'title': music.title,
+                'performer': music.performer ?? '',
+              },
             },
-          },
-        });
+          }),
+        );
         return;
       } catch (_) {}
     }
-    await _client.query({
-      '@type': 'forwardMessages',
-      'chat_id': chatId,
-      'from_chat_id': sourceChatId,
-      'message_ids': [message.id],
-      'options': {'@type': 'messageSendOptions'},
-      'send_copy': true,
-      'remove_caption': false,
-    });
+    await _client.query(
+      _withPaidMessageOptions({
+        '@type': 'forwardMessages',
+        'chat_id': chatId,
+        'from_chat_id': sourceChatId,
+        'message_ids': [message.id],
+        'options': {'@type': 'messageSendOptions'},
+        'send_copy': true,
+        'remove_caption': false,
+      }),
+    );
   }
 
   /// 清单: send a checklist (to-do list). Creating checklists needs Premium.
@@ -886,27 +928,29 @@ class ChatViewModel extends ChangeNotifier {
         .where((t) => t.isNotEmpty)
         .toList();
     if (title.trim().isEmpty || items.isEmpty) return;
-    _client.send({
-      '@type': 'sendMessage',
-      'chat_id': chatId,
-      'input_message_content': {
-        '@type': 'inputMessageChecklist',
-        'checklist': {
-          '@type': 'inputChecklist',
-          'title': {'@type': 'formattedText', 'text': title.trim()},
-          'tasks': [
-            for (var i = 0; i < items.length; i++)
-              {
-                '@type': 'inputChecklistTask',
-                'id': i + 1,
-                'text': {'@type': 'formattedText', 'text': items[i]},
-              },
-          ],
-          'others_can_add_tasks': false,
-          'others_can_mark_tasks_as_done': true,
+    _client.send(
+      _withPaidMessageOptions({
+        '@type': 'sendMessage',
+        'chat_id': chatId,
+        'input_message_content': {
+          '@type': 'inputMessageChecklist',
+          'checklist': {
+            '@type': 'inputChecklist',
+            'title': {'@type': 'formattedText', 'text': title.trim()},
+            'tasks': [
+              for (var i = 0; i < items.length; i++)
+                {
+                  '@type': 'inputChecklistTask',
+                  'id': i + 1,
+                  'text': {'@type': 'formattedText', 'text': items[i]},
+                },
+            ],
+            'others_can_add_tasks': false,
+            'others_can_mark_tasks_as_done': true,
+          },
         },
-      },
-    });
+      }),
+    );
   }
 
   void sendPoll(String question, List<String> options) {
@@ -916,18 +960,20 @@ class ChatViewModel extends ChangeNotifier {
         .where((o) => o.isNotEmpty)
         .toList();
     if (q.isEmpty || opts.length < 2) return;
-    _client.send({
-      '@type': 'sendMessage',
-      'chat_id': chatId,
-      'input_message_content': {
-        '@type': 'inputMessagePoll',
-        'question': {'@type': 'formattedText', 'text': q},
-        'options': opts
-            .map((o) => {'@type': 'formattedText', 'text': o})
-            .toList(),
-        'type': {'@type': 'pollTypeRegular', 'allow_multiple_answers': false},
-      },
-    });
+    _client.send(
+      _withPaidMessageOptions({
+        '@type': 'sendMessage',
+        'chat_id': chatId,
+        'input_message_content': {
+          '@type': 'inputMessagePoll',
+          'question': {'@type': 'formattedText', 'text': q},
+          'options': opts
+              .map((o) => {'@type': 'formattedText', 'text': o})
+              .toList(),
+          'type': {'@type': 'pollTypeRegular', 'allow_multiple_answers': false},
+        },
+      }),
+    );
   }
 
   /// Re-sends the same content (the "+1" quick repeat) — only plain text and
@@ -936,39 +982,45 @@ class ChatViewModel extends ChangeNotifier {
     // Photo: send a clean copy (forwardMessages send_copy drops the "转发"
     // header and works regardless of the original file's upload state).
     if (message.isPhoto && message.image != null) {
-      _client.send({
-        '@type': 'forwardMessages',
-        'chat_id': chatId,
-        'from_chat_id': chatId,
-        'message_ids': [message.id],
-        'send_copy': true,
-      });
+      _client.send(
+        _withPaidMessageOptions({
+          '@type': 'forwardMessages',
+          'chat_id': chatId,
+          'from_chat_id': chatId,
+          'message_ids': [message.id],
+          'send_copy': true,
+        }),
+      );
       return;
     }
     if (!message.isPlainText) return;
     final text = message.text.trim();
     if (text.isEmpty) return;
-    _client.send({
-      '@type': 'sendMessage',
-      'chat_id': chatId,
-      'input_message_content': {
-        '@type': 'inputMessageText',
-        'text': {'@type': 'formattedText', 'text': text},
-      },
-    });
+    _client.send(
+      _withPaidMessageOptions({
+        '@type': 'sendMessage',
+        'chat_id': chatId,
+        'input_message_content': {
+          '@type': 'inputMessageText',
+          'text': {'@type': 'formattedText', 'text': text},
+        },
+      }),
+    );
   }
 
   void sendKeyboardButtonText(String text) {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
-    _client.send({
-      '@type': 'sendMessage',
-      'chat_id': chatId,
-      'input_message_content': {
-        '@type': 'inputMessageText',
-        'text': {'@type': 'formattedText', 'text': trimmed},
-      },
-    });
+    _client.send(
+      _withPaidMessageOptions({
+        '@type': 'sendMessage',
+        'chat_id': chatId,
+        'input_message_content': {
+          '@type': 'inputMessageText',
+          'text': {'@type': 'formattedText', 'text': trimmed},
+        },
+      }),
+    );
   }
 
   void sendCommand(String command) {
@@ -1238,7 +1290,7 @@ class ChatViewModel extends ChangeNotifier {
     isMuted = (chat.obj('notification_settings')?.integer('mute_for') ?? 0) > 0;
     isForum = chat.boolean('view_as_topics') ?? false;
     messageAutoDeleteTime = _autoDeleteSeconds(chat);
-    paidMessageStarCount = _paidMessageStars(chat);
+    _setPaidMessageStarCount(_paidMessageStars(chat), notify: false);
     _applyRemoteDraft(chat.obj('draft_message'), force: true, notify: false);
     final kind = TDParse.chatKind(chat);
     isGroup = kind == ChatKind.group || kind == ChatKind.channel;
@@ -1275,6 +1327,7 @@ class ChatViewModel extends ChangeNotifier {
             peerOnline = TDParse.isUserOnline(user);
             peerStatusText = TDParse.userStatus(user);
           } catch (_) {}
+          unawaited(_loadPrivatePaidMessageInfo(uid));
           if (peerIsBot) await _loadBotInfo(uid);
         }
       case 'chatTypeBasicGroup':
@@ -1291,6 +1344,7 @@ class ChatViewModel extends ChangeNotifier {
         }
       case 'chatTypeSupergroup':
         final sgid = type?.int64('supergroup_id');
+        peerSupergroupId = sgid;
         if (sgid != null) {
           try {
             final sg = await _client.query({
@@ -1298,7 +1352,9 @@ class ChatViewModel extends ChangeNotifier {
               'supergroup_id': sgid,
             });
             isChannel = sg.boolean('is_channel') ?? false;
+            isForum = isForum || (sg.boolean('is_forum') ?? false);
             joinByRequest = sg.boolean('join_by_request') ?? false;
+            _setPaidMessageStarCount(_paidMessageStars(sg), notify: false);
             _applyGroupStatus(sg.obj('status'));
           } catch (_) {}
           unawaited(_loadSupergroupFullInfo(sgid));
@@ -1331,8 +1387,33 @@ class ChatViewModel extends ChangeNotifier {
         'supergroup_id': supergroupId,
       });
       memberCount = full.integer('member_count') ?? memberCount;
+      _setPaidMessageStarCount(_paidMessageStars(full), notify: false);
       notifyListeners();
     } catch (_) {}
+  }
+
+  Future<void> _loadPrivatePaidMessageInfo(int userId) async {
+    var next = 0;
+    try {
+      final full = await _client.query({
+        '@type': 'getUserFullInfo',
+        'user_id': userId,
+      });
+      next = _paidMessageStars(full);
+    } catch (_) {}
+    if (next <= 0) {
+      try {
+        final result = await _client.query({
+          '@type': 'canSendMessageToUser',
+          'user_id': userId,
+          'only_local': false,
+        });
+        if (result.type == 'canSendMessageToUserResultUserHasPaidMessages') {
+          next = _paidMessageStars(result);
+        }
+      } catch (_) {}
+    }
+    _setPaidMessageStarCount(next);
   }
 
   Future<void> loadForumTopics() async {
@@ -1401,16 +1482,19 @@ class ChatViewModel extends ChangeNotifier {
         0;
   }
 
-  int _paidMessageStars(Map<String, dynamic> chat) {
-    final direct = chat.obj('direct_messages_chat_topic');
-    final settings = chat.obj('paid_message_settings');
-    return chat.integer('paid_message_star_count') ??
-        chat.integer('send_paid_message_star_count') ??
-        chat.integer('paid_messages_star_count') ??
-        direct?.integer('paid_message_star_count') ??
-        direct?.integer('send_paid_message_star_count') ??
-        settings?.integer('paid_message_star_count') ??
-        settings?.integer('send_paid_message_star_count') ??
+  int _paidMessageStars(Map<String, dynamic> object) {
+    final direct = object.obj('direct_messages_chat_topic');
+    final settings = object.obj('paid_message_settings');
+    return object.int64('outgoing_paid_message_star_count') ??
+        object.int64('paid_message_star_count') ??
+        object.int64('send_paid_message_star_count') ??
+        object.int64('paid_messages_star_count') ??
+        direct?.int64('outgoing_paid_message_star_count') ??
+        direct?.int64('paid_message_star_count') ??
+        direct?.int64('send_paid_message_star_count') ??
+        settings?.int64('outgoing_paid_message_star_count') ??
+        settings?.int64('paid_message_star_count') ??
+        settings?.int64('send_paid_message_star_count') ??
         0;
   }
 
@@ -2016,7 +2100,7 @@ class ChatViewModel extends ChangeNotifier {
         final chat = update.obj('chat');
         if (chat == null || chat.int64('id') != chatId) return;
         messageAutoDeleteTime = _autoDeleteSeconds(chat);
-        paidMessageStarCount = _paidMessageStars(chat);
+        _setPaidMessageStarCount(_paidMessageStars(chat), notify: false);
         if (chat.containsKey('draft_message')) {
           _applyRemoteDraft(chat.obj('draft_message'), notify: false);
         }
@@ -2037,11 +2121,12 @@ class ChatViewModel extends ChangeNotifier {
 
       case 'updateChatPaidMessageStarCount':
         if (update.int64('chat_id') != chatId) return;
-        paidMessageStarCount =
-            update.integer('paid_message_star_count') ??
-            update.integer('star_count') ??
-            0;
-        notifyListeners();
+        _setPaidMessageStarCount(
+          update.int64('paid_message_star_count') ??
+              update.int64('outgoing_paid_message_star_count') ??
+              update.int64('star_count') ??
+              0,
+        );
 
       case 'updateDeleteMessages':
         if (update.int64('chat_id') != chatId) return;
@@ -2115,6 +2200,25 @@ class ChatViewModel extends ChangeNotifier {
           }
         }
         _loadAvailableMessageSenders();
+
+      case 'updateUserFullInfo':
+        if (isGroup || update.int64('user_id') != peerUserId) return;
+        _setPaidMessageStarCount(
+          _paidMessageStars(update.obj('user_full_info') ?? update),
+        );
+
+      case 'updateSupergroup':
+        final supergroup = update.obj('supergroup');
+        if (supergroup == null || supergroup.int64('id') != peerSupergroupId) {
+          return;
+        }
+        _setPaidMessageStarCount(_paidMessageStars(supergroup));
+
+      case 'updateSupergroupFullInfo':
+        if (update.int64('supergroup_id') != peerSupergroupId) return;
+        _setPaidMessageStarCount(
+          _paidMessageStars(update.obj('supergroup_full_info') ?? update),
+        );
 
       case 'updateUserStatus':
         if (isGroup || update.int64('user_id') != peerUserId) return;

@@ -11,6 +11,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../components/app_icons.dart';
+import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../tdlib/json_helpers.dart';
@@ -18,6 +19,7 @@ import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import 'api_credentials_view.dart';
+import 'auto_download_media_controller.dart';
 
 class GeneralSettingsView extends StatefulWidget {
   const GeneralSettingsView({super.key});
@@ -107,6 +109,8 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
               children: [
                 _storageCard(),
                 const SizedBox(height: 14),
+                _autoDownloadCard(),
+                const SizedBox(height: 14),
                 _accelerationCard(),
                 const SizedBox(height: 14),
                 _chatCard(),
@@ -141,6 +145,55 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
         ).push(MaterialPageRoute(builder: (_) => const ApiCredentialsView())),
       ),
     ]);
+  }
+
+  Widget _autoDownloadCard() {
+    final auto = context.watch<AutoDownloadMediaController>();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionHeader(AppStrings.t(AppStringKeys.generalAutoDownloadMedia)),
+        _card([
+          _toggleRowWithSubtitle(
+            HeroAppIcons.mobileScreenButton.data,
+            const Color(0xFF34C759),
+            AppStrings.t(AppStringKeys.generalAutoDownloadMobileData),
+            auto.mobileHighResImages
+                ? AppStrings.t(AppStringKeys.generalAutoDownloadHighResImages)
+                : AppStrings.t(AppStringKeys.generalAutoDownloadDisabled),
+            auto.mobileHighResImages,
+            auto.isApplying,
+            (value) =>
+                _setAutoDownload(() => auto.setMobileHighResImages(value)),
+          ),
+          const InsetDivider(leadingInset: 56),
+          _toggleRowWithSubtitle(
+            HeroAppIcons.image.data,
+            const Color(0xFF1D9BF0),
+            AppStrings.t(AppStringKeys.generalAutoDownloadWifi),
+            auto.wifiHighResImages
+                ? AppStrings.t(AppStringKeys.generalAutoDownloadHighResImages)
+                : AppStrings.t(AppStringKeys.generalAutoDownloadDisabled),
+            auto.wifiHighResImages,
+            auto.isApplying,
+            (value) => _setAutoDownload(() => auto.setWifiHighResImages(value)),
+          ),
+        ]),
+      ],
+    );
+  }
+
+  Future<void> _setAutoDownload(Future<void> Function() update) async {
+    try {
+      await update();
+    } catch (_) {
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(AppStringKeys.generalAutoDownloadFailed),
+        );
+      }
+    }
   }
 
   Widget _iconBadge(IconData icon, Color color) => Container(
@@ -290,6 +343,57 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
               value: value,
               activeTrackColor: AppTheme.brand,
               onChanged: onChanged,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _toggleRowWithSubtitle(
+    IconData icon,
+    Color color,
+    String title,
+    String subtitle,
+    bool value,
+    bool disabled,
+    ValueChanged<bool> onChanged,
+  ) {
+    final c = context.colors;
+    return SizedBox(
+      height: 66,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(
+          children: [
+            _iconBadge(icon, color),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title.l10n(context),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 17, color: c.textPrimary),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle.l10n(context),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 15, color: c.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            CupertinoSwitch(
+              value: value,
+              activeTrackColor: AppTheme.brand,
+              onChanged: disabled ? null : onChanged,
             ),
           ],
         ),

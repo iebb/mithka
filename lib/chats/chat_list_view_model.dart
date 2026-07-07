@@ -56,6 +56,7 @@ class ChatListViewModel extends ChangeNotifier {
   final Map<int, String?> _lastSenderKeys = {};
   final Set<String> _resolvingSenders = {};
   final Set<int> _resolvingPeers = {};
+  final Set<int> _resolvingForums = {};
   final Set<int> _resolvingFolders = {};
 
   final TdClient _client = TdClient.shared;
@@ -612,6 +613,7 @@ class ChatListViewModel extends ChangeNotifier {
     summary.lastMessage = _previewText(summary.lastMessage);
     _map[summary.id] = summary;
     _applyPositions(summary.id, raw.objects('positions'));
+    _resolveForumIfNeeded(summary, raw);
     _resolvePeerIfNeeded(summary);
     _resolveSenderIfNeeded(summary.id, raw.obj('last_message'));
     if (schedule) {
@@ -619,6 +621,23 @@ class ChatListViewModel extends ChangeNotifier {
     } else {
       _resort();
     }
+  }
+
+  void _resolveForumIfNeeded(ChatSummary summary, Map<String, dynamic> raw) {
+    if (summary.isForum) return;
+    final type = raw.obj('type');
+    if (type?.type != 'chatTypeSupergroup') return;
+    final supergroupId = type?.int64('supergroup_id');
+    if (supergroupId == null || !_resolvingForums.add(summary.id)) return;
+    _client
+        .query({'@type': 'getSupergroup', 'supergroup_id': supergroupId})
+        .then((supergroup) {
+          if (supergroup.boolean('is_forum') != true) return;
+          _mutate(summary.id, (s) => s.isForum = true);
+          _scheduleResort();
+        })
+        .catchError((_) {})
+        .whenComplete(() => _resolvingForums.remove(summary.id));
   }
 
   Future<bool> _isJoinedSummary(

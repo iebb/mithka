@@ -7,8 +7,10 @@
 //
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../chats/chat_list_view_model.dart';
 import '../components/app_icons.dart';
@@ -16,6 +18,7 @@ import '../components/photo_avatar.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../l10n/telegram_language_controller.dart';
+import '../settings/topic_group_display_mode.dart';
 import '../tdlib/chat_membership.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -49,6 +52,9 @@ class _TopicPost {
 }
 
 class _TopicChannelsViewState extends State<TopicChannelsView> {
+  static const _cachePrefix = 'topicChannels.feed.v1';
+  static const _cacheLimit = 120;
+
   final _model = ChatListViewModel();
   final _postsByChat = <int, List<_TopicPost>>{};
   final _loadingChats = <int>{};
@@ -60,6 +66,8 @@ class _TopicChannelsViewState extends State<TopicChannelsView> {
   @override
   void initState() {
     super.initState();
+    unawaited(_loadCachedPosts());
+    unawaited(TopicGroupDisplayPreference.set(TopicGroupDisplayMode.channel));
     _model.addListener(_onModel);
     _model.onAppear();
   }
@@ -155,6 +163,7 @@ class _TopicChannelsViewState extends State<TopicChannelsView> {
       }
       if (generation != _loadGeneration) return;
       _postsByChat[chat.id] = posts;
+      unawaited(_saveCachedPosts());
     } catch (_) {
       if (generation != _loadGeneration) return;
       _postsByChat[chat.id] = const [];
@@ -164,6 +173,114 @@ class _TopicChannelsViewState extends State<TopicChannelsView> {
         if (mounted) setState(() => _loading = _loadingChats.isNotEmpty);
       }
     }
+  }
+
+  String get _cacheKey => '$_cachePrefix.${TdClient.shared.activeSlot}';
+
+  Future<void> _loadCachedPosts() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_cacheKey);
+      if (raw == null || raw.isEmpty) return;
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return;
+      final grouped = <int, List<_TopicPost>>{};
+      for (final item in decoded.whereType<Map<String, dynamic>>()) {
+        final post = _topicPostFromCache(item);
+        if (post == null) continue;
+        grouped.putIfAbsent(post.chat.id, () => []).add(post);
+      }
+      if (grouped.isEmpty || !mounted || _postsByChat.isNotEmpty) return;
+      setState(() {
+        _postsByChat.addAll(grouped);
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _saveCachedPosts() async {
+    try {
+      final posts = _posts.take(_cacheLimit).map(_topicPostToCache).toList();
+      if (posts.isEmpty) return;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_cacheKey, jsonEncode(posts));
+    } catch (_) {}
+  }
+
+  Map<String, dynamic> _topicPostToCache(_TopicPost post) {
+    final reactionCount = post.message.reactions.fold<int>(
+      0,
+      (sum, reaction) => sum + reaction.count,
+    );
+    return {
+      'chat_id': post.chat.id,
+      'chat_title': post.chat.title,
+      'topic_name': post.topicName,
+      'thread_id': post.threadId,
+      'message_id': post.message.id,
+      'date': post.message.date,
+      'text': post.message.text,
+      'comment_count': post.message.commentCount,
+      'reaction_count': reactionCount,
+    };
+  }
+
+  _TopicPost? _topicPostFromCache(Map<String, dynamic> item) {
+    final chatId = _cachedInt(item['chat_id']);
+    final messageId = _cachedInt(item['message_id']);
+    final threadId = _cachedInt(item['thread_id']);
+    if (chatId == null || messageId == null || threadId == null) return null;
+    final chatTitle = (item['chat_title'] as String?)?.trim();
+    final topicName = (item['topic_name'] as String?)?.trim();
+    if (chatTitle == null ||
+        chatTitle.isEmpty ||
+        topicName == null ||
+        topicName.isEmpty) {
+      return null;
+    }
+    final text = (item['text'] as String?) ?? '';
+    final date = _cachedInt(item['date']) ?? 0;
+    final commentCount = _cachedInt(item['comment_count']) ?? 0;
+    final reactionCount = _cachedInt(item['reaction_count']) ?? 0;
+    final message =
+        ChatMessage(
+            id: messageId,
+            isOutgoing: false,
+            text: text,
+            date: date,
+            chatId: chatId,
+            contentType: 'messageText',
+            commentCount: commentCount,
+          )
+          ..reactions = [
+            if (reactionCount > 0)
+              MessageReaction(count: reactionCount, chosen: false),
+          ];
+    final chat = ChatSummary(
+      id: chatId,
+      title: chatTitle,
+      lastMessage: text,
+      lastMessageId: messageId,
+      date: date,
+      unreadCount: 0,
+      order: 0,
+      isMuted: false,
+      kind: ChatKind.group,
+      isForum: true,
+      lastChatMessage: message,
+    );
+    return _TopicPost(
+      chat: chat,
+      topicName: topicName,
+      threadId: threadId,
+      message: message,
+    );
+  }
+
+  int? _cachedInt(Object? value) {
+    if (value is int) return value;
+    if (value is double) return value.toInt();
+    if (value is String) return int.tryParse(value);
+    return null;
   }
 
   int? _topicId(Map<String, dynamic> topic, Map<String, dynamic> info) {
@@ -200,9 +317,12 @@ class _TopicChannelsViewState extends State<TopicChannelsView> {
               .map(TDParse.message)
               .whereType<ChatMessage>()
               .where((message) => !message.isService)
-              .where((message) => message.replyToMessageId == null)
               .toList()
             ..sort((a, b) => b.date.compareTo(a.date));
+      final roots = messages
+          .where((message) => message.replyToMessageId == null)
+          .toList();
+      if (roots.isNotEmpty) return roots;
       if (messages.isNotEmpty) return messages;
     } catch (_) {
       // Fall through to the topic's last message as a best-effort preview.
@@ -332,6 +452,9 @@ class _TopicPostRow extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () {
+        unawaited(
+          TopicGroupDisplayPreference.set(TopicGroupDisplayMode.channel),
+        );
         final detail = TopicChatView(
           chat: post.chat,
           initialThreadId: post.threadId,

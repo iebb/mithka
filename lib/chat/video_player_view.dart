@@ -728,7 +728,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   }
 
   Widget _videoFrame(VideoPlayerController c) {
-    final videoSize = c.value.size;
+    final videoSize = _displayVideoSize(c);
     if (videoSize.width <= 0 || videoSize.height <= 0) {
       return const SizedBox.expand();
     }
@@ -744,12 +744,43 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
             child: SizedBox(
               width: fitted.width,
               height: fitted.height,
-              child: VideoPlayer(c),
+              child: ClipRect(
+                child: FittedBox(
+                  child: SizedBox(
+                    width: videoSize.width,
+                    height: videoSize.height,
+                    child: VideoPlayer(c),
+                  ),
+                ),
+              ),
             ),
           );
         },
       ),
     );
+  }
+
+  Size _displayVideoSize(VideoPlayerController c) {
+    final metadataAspect = _metadataAspectRatio();
+    if (metadataAspect != null) return Size(metadataAspect, 1);
+
+    final controllerAspect = c.value.aspectRatio;
+    if (controllerAspect.isFinite && controllerAspect > 0) {
+      return Size(controllerAspect, 1);
+    }
+
+    final size = c.value.size;
+    if (size.width > 0 && size.height > 0) return size;
+    return Size.zero;
+  }
+
+  double? _metadataAspectRatio() {
+    final width = widget.width;
+    final height = widget.height;
+    if (width == null || height == null || width <= 0 || height <= 0) {
+      return null;
+    }
+    return width / height;
   }
 
   Size _containSize(Size content, Size bounds) {

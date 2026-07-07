@@ -408,10 +408,9 @@ packages:
   fvp:
     dependency: "direct main"
     description:
-      name: fvp
-      sha256: "0f147516a2520bb37efc9027bce1f20a0aa4487428e9f1437ad7dfa449aa93bd"
-      url: "https://pub.dev"
-    source: hosted
+      path: "third_party/fvp"
+      relative: true
+    source: path
     version: "0.37.2"
   geolocator:
     dependency: "direct main"

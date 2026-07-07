@@ -27,6 +27,7 @@ import '../contacts/add_people_view.dart';
 import '../contacts/create_group_view.dart';
 import '../profile/emoji_status_picker.dart';
 import '../settings/edit_field_view.dart';
+import '../settings/topic_group_display_mode.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -203,33 +204,53 @@ class _ChatListViewState extends State<ChatListView> {
     } catch (_) {}
   }
 
-  void _openChat(ChatSummary chat) {
+  Future<void> _openChat(ChatSummary chat) async {
     final onChatSelected = widget.onChatSelected;
     if (onChatSelected != null) {
       onChatSelected(ChatListSelection.fromChat(chat));
       return;
     }
     if (chat.isForum) {
+      final mode = await TopicGroupDisplayPreference.load();
+      if (!mounted) return;
+      if (mode.isChat) {
+        unawaited(
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => ChatView(
+                chatId: chat.id,
+                title: chat.title,
+                seedMessage: chat.lastChatMessage,
+              ),
+            ),
+          ),
+        );
+        return;
+      }
       final railChats = <int, ChatSummary>{};
       for (final summary in [..._model.chats, ..._model.archived]) {
         railChats[summary.id] = summary;
       }
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => ForumTopicBrowserView(
-            chats: railChats.values.toList(),
-            initialChat: chat,
+      unawaited(
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => ForumTopicBrowserView(
+              chats: railChats.values.toList(),
+              initialChat: chat,
+            ),
           ),
         ),
       );
       return;
     }
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ChatView(
-          chatId: chat.id,
-          title: chat.title,
-          seedMessage: chat.lastChatMessage,
+    unawaited(
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ChatView(
+            chatId: chat.id,
+            title: chat.title,
+            seedMessage: chat.lastChatMessage,
+          ),
         ),
       ),
     );

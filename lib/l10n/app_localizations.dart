@@ -790,6 +790,13 @@ abstract final class AppStringKeys {
   static const generalCacheSize = 'generalCacheSize';
   static const generalClearCache = 'generalClearCache';
   static const generalClearingCache = 'generalClearingCache';
+  static const generalAutoDownloadDisabled = 'generalAutoDownloadDisabled';
+  static const generalAutoDownloadFailed = 'generalAutoDownloadFailed';
+  static const generalAutoDownloadHighResImages =
+      'generalAutoDownloadHighResImages';
+  static const generalAutoDownloadMedia = 'generalAutoDownloadMedia';
+  static const generalAutoDownloadMobileData = 'generalAutoDownloadMobileData';
+  static const generalAutoDownloadWifi = 'generalAutoDownloadWifi';
   static const generalOpenChatAtLatestMessage =
       'generalOpenChatAtLatestMessage';
   static const generalSendMessageWithEnter = 'generalSendMessageWithEnter';

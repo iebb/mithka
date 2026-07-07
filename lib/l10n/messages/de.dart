@@ -484,6 +484,13 @@ const deMessages = <String, String>{
   'generalCacheSize': "Cache-Größe",
   'generalClearCache': "Cache leeren",
   'generalClearingCache': "Wird geleert…",
+  'generalAutoDownloadDisabled': "Deaktiviert",
+  'generalAutoDownloadFailed':
+      "Auto-Download-Einstellungen konnten nicht aktualisiert werden",
+  'generalAutoDownloadHighResImages': "Hochauflösende Bilder",
+  'generalAutoDownloadMedia': "Medien automatisch herunterladen",
+  'generalAutoDownloadMobileData': "Mobile Daten",
+  'generalAutoDownloadWifi': "WLAN",
   'generalOpenChatAtLatestMessage': "Chat mit neuester Nachricht öffnen",
   'generalSendMessageWithEnter': "Nachricht mit Eingabetaste senden",
   'generalStorage': "Speicher",
