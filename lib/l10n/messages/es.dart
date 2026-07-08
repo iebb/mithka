@@ -682,6 +682,7 @@ const esMessages = <String, String>{
   'messageActionMultiSelect': "Selección múltiple",
   'messageActionPlayMuted': "Reproducir sin sonido",
   'messageActionQuote': "Citar",
+  'messageActionReplies': "Respuestas",
   'messageActionReport': "Reportar",
   'messageActionSelectText': "Seleccionar texto",
   'messageActionSetTodo': "Marcar como tarea",
@@ -698,6 +699,10 @@ const esMessages = <String, String>{
   'messageBubbleExpandQuote': "Expandir cita",
   'messageBubbleForwardedFrom': "Reenviado de {value1}",
   'messageBubbleTranslating': "Traduciendo…",
+  'messageRepliesEmpty': "Aún no hay respuestas",
+  'messageRepliesTitle': "Respuestas",
+  'messageRepliesUnavailable':
+      "Las respuestas no están disponibles para este mensaje",
   'momentsCommentCount': "{value1} comentarios",
   'momentsCommentPlaceholder': "Di algo...",
   'momentsCreatePostTitle': "Publicar actualización",

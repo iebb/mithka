@@ -687,6 +687,7 @@ const deMessages = <String, String>{
   'messageActionMultiSelect': "Mehrfachauswahl",
   'messageActionPlayMuted': "Stumm abspielen",
   'messageActionQuote': "Zitieren",
+  'messageActionReplies': "Antworten",
   'messageActionReport': "Melden",
   'messageActionSelectText': "Text auswählen",
   'messageActionSetTodo': "Als Aufgabe markieren",
@@ -703,6 +704,10 @@ const deMessages = <String, String>{
   'messageBubbleExpandQuote': "Zitat erweitern",
   'messageBubbleForwardedFrom': "Weitergeleitet von {value1}",
   'messageBubbleTranslating': "Wird übersetzt…",
+  'messageRepliesEmpty': "Noch keine Antworten",
+  'messageRepliesTitle': "Antworten",
+  'messageRepliesUnavailable':
+      "Antworten sind für diese Nachricht nicht verfügbar",
   'momentsCommentCount': "{value1} Kommentare",
   'momentsCommentPlaceholder': "Schreib etwas...",
   'momentsCreatePostTitle': "Beitrag erstellen",

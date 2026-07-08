@@ -691,6 +691,7 @@ const frMessages = <String, String>{
   'messageActionMultiSelect': "Sélection multiple",
   'messageActionPlayMuted': "Lire sans son",
   'messageActionQuote': "Citer",
+  'messageActionReplies': "Réponses",
   'messageActionReport': "Signaler",
   'messageActionSelectText': "Sélectionner le texte",
   'messageActionSetTodo': "Marquer comme tâche",
@@ -707,6 +708,10 @@ const frMessages = <String, String>{
   'messageBubbleExpandQuote': "Développer la citation",
   'messageBubbleForwardedFrom': "Transféré de {value1}",
   'messageBubbleTranslating': "Traduction…",
+  'messageRepliesEmpty': "Aucune réponse pour le moment",
+  'messageRepliesTitle': "Réponses",
+  'messageRepliesUnavailable':
+      "Les réponses ne sont pas disponibles pour ce message",
   'momentsCommentCount': "{value1} commentaires",
   'momentsCommentPlaceholder': "Écrivez quelque chose...",
   'momentsCreatePostTitle': "Publier un moment",

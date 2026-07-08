@@ -758,7 +758,6 @@ class _TopicChatViewState extends State<TopicChatView> {
       body: Column(
         children: [
           _header(),
-          _topicTabs(),
           if (_selectedThreadId == null && widget.chat.lastMessage.isNotEmpty)
             _pinnedLine(),
           Expanded(child: _content()),
@@ -772,7 +771,7 @@ class _TopicChatViewState extends State<TopicChatView> {
     final c = context.colors;
     final top = MediaQuery.of(context).padding.top;
     return Container(
-      height: top + widget.headerHeight,
+      height: top + widget.headerHeight + 44,
       padding: EdgeInsets.only(top: top),
       decoration: BoxDecoration(
         color: widget.headerColor ?? c.navBar,
@@ -782,103 +781,119 @@ class _TopicChatViewState extends State<TopicChatView> {
           opacity: 0.04,
         ),
       ),
-      child: Row(
+      child: Column(
         children: [
-          if (widget.showBackButton)
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => Navigator.of(context).pop(),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-                child: AppIcon(
-                  HeroAppIcons.chevronLeft,
-                  size: 24,
-                  color: c.textPrimary,
-                ),
-              ),
-            )
-          else
-            const SizedBox(width: AppSpacing.sm),
-          PhotoAvatar(
-            title: widget.chat.title,
-            photo: widget.chat.photo,
-            size: 32,
-            square: true,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
+          SizedBox(
+            height: widget.headerHeight,
+            child: Row(
               children: [
-                Text(
-                  widget.chat.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                    color: c.textPrimary,
+                if (widget.showBackButton)
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => Navigator.of(context).pop(),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.sm,
+                      ),
+                      child: AppIcon(
+                        HeroAppIcons.chevronLeft,
+                        size: 24,
+                        color: c.textPrimary,
+                      ),
+                    ),
+                  )
+                else
+                  const SizedBox(width: AppSpacing.sm),
+                PhotoAvatar(
+                  title: widget.chat.title,
+                  photo: widget.chat.photo,
+                  size: 32,
+                  square: true,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.chat.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                          color: c.textPrimary,
+                        ),
+                      ),
+                      Text(
+                        _topics.isEmpty
+                            ? AppStrings.t(
+                                AppStringKeys.topicChatGroupChatTitle,
+                              )
+                            : AppStrings.t(AppStringKeys.topicChatTopicCount, {
+                                'value1': _topics.length,
+                              }),
+                        style: TextStyle(fontSize: 12, color: c.textSecondary),
+                      ),
+                    ],
                   ),
                 ),
-                Text(
-                  _topics.isEmpty
-                      ? AppStrings.t(AppStringKeys.topicChatGroupChatTitle)
-                      : AppStrings.t(AppStringKeys.topicChatTopicCount, {
-                          'value1': _topics.length,
-                        }),
-                  style: TextStyle(fontSize: 12, color: c.textSecondary),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _openSearch,
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: AppIcon(
+                      HeroAppIcons.magnifyingGlass,
+                      size: 25,
+                      color: c.textPrimary,
+                    ),
+                  ),
                 ),
+                const SizedBox(width: AppSpacing.md),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _openChatView,
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: AppIcon(
+                      HeroAppIcons.message,
+                      size: 25,
+                      color: c.textPrimary,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.xl),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _openSettings,
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: AppIcon(
+                      HeroAppIcons.bars,
+                      size: 25,
+                      color: c.textPrimary,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.xl),
               ],
             ),
           ),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: _openSearch,
-            child: Padding(
-              padding: const EdgeInsets.all(4),
-              child: AppIcon(
-                HeroAppIcons.magnifyingGlass,
-                size: 25,
-                color: c.textPrimary,
-              ),
-            ),
-          ),
-          const SizedBox(width: AppSpacing.md),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: _openChatView,
-            child: Padding(
-              padding: const EdgeInsets.all(4),
-              child: AppIcon(
-                HeroAppIcons.message,
-                size: 25,
-                color: c.textPrimary,
-              ),
-            ),
-          ),
-          const SizedBox(width: AppSpacing.xl),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: _openSettings,
-            child: Padding(
-              padding: const EdgeInsets.all(4),
-              child: AppIcon(HeroAppIcons.bars, size: 25, color: c.textPrimary),
-            ),
-          ),
-          const SizedBox(width: AppSpacing.xl),
+          _topicTabs(inHeader: true),
         ],
       ),
     );
   }
 
-  Widget _topicTabs() {
+  Widget _topicTabs({bool inHeader = false}) {
     final c = context.colors;
     final visibleTopics = _topics.take(8).toList();
     return Container(
-      height: 52,
+      height: inHeader ? 44 : 52,
       decoration: BoxDecoration(
-        color: c.background,
+        color: inHeader ? Colors.transparent : c.background,
         border: Border(bottom: BorderSide(color: c.divider, width: 0.5)),
       ),
       child: ListView.separated(
@@ -893,7 +908,7 @@ class _TopicChatViewState extends State<TopicChatView> {
             behavior: HitTestBehavior.opaque,
             onTap: () => _selectTopic(id),
             child: SizedBox(
-              height: 52,
+              height: inHeader ? 44 : 52,
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
@@ -918,7 +933,7 @@ class _TopicChatViewState extends State<TopicChatView> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 9),
+                  SizedBox(height: inHeader ? 7 : 9),
                   Container(
                     width: 38,
                     height: 4,

@@ -69,6 +69,7 @@ class MessageBubble extends StatefulWidget {
     this.onButtonTap,
     this.onBotCommandTap,
     this.onOpenComments,
+    this.showCommentAttachment = false,
     this.onToggleReaction,
     this.onShowReactionUsers,
     this.onRedial,
@@ -99,6 +100,7 @@ class MessageBubble extends StatefulWidget {
   final void Function(ChatMessage message, MessageButton button)? onButtonTap;
   final ValueChanged<String>? onBotCommandTap;
   final ValueChanged<ChatMessage>? onOpenComments;
+  final bool showCommentAttachment;
   final ValueChanged<MessageReaction>? onToggleReaction;
   final void Function(ChatMessage message, MessageReaction reaction)?
   onShowReactionUsers;
@@ -590,7 +592,8 @@ class _MessageBubbleState extends State<MessageBubble>
   );
 
   Widget _withButtonRows(Widget body, bool outgoing) {
-    final showComments = message.commentCount > 0;
+    final showComments =
+        widget.showCommentAttachment && message.commentCount > 0;
     if (message.buttonRows.isEmpty && !showComments) return body;
     final extras = <Widget>[
       if (showComments) _commentThreadRow(outgoing),
@@ -622,38 +625,41 @@ class _MessageBubbleState extends State<MessageBubble>
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => widget.onOpenComments?.call(message),
-      child: Container(
-        width: _bubbleMaxWidth(),
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: outgoing
-                ? Colors.white.withValues(alpha: 0.12)
-                : c.divider.withValues(alpha: 0.7),
-            width: 0.5,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: _bubbleMaxWidth()),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: outgoing
+                  ? Colors.white.withValues(alpha: 0.12)
+                  : c.divider.withValues(alpha: 0.7),
+              width: 0.5,
+            ),
           ),
-        ),
-        child: Row(
-          children: [
-            AppIcon(HeroAppIcons.comments, size: 18, color: sub),
-            const SizedBox(width: 7),
-            Expanded(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: fg,
-                  decoration: TextDecoration.none,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppIcon(HeroAppIcons.comments, size: 18, color: sub),
+              const SizedBox(width: 7),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: fg,
+                    decoration: TextDecoration.none,
+                  ),
                 ),
               ),
-            ),
-            AppIcon(HeroAppIcons.chevronRight, size: 17, color: sub),
-          ],
+              AppIcon(HeroAppIcons.chevronRight, size: 17, color: sub),
+            ],
+          ),
         ),
       ),
     );

@@ -1026,6 +1026,7 @@ abstract final class AppStringKeys {
   static const messageActionMultiSelect = 'messageActionMultiSelect';
   static const messageActionPlayMuted = 'messageActionPlayMuted';
   static const messageActionQuote = 'messageActionQuote';
+  static const messageActionReplies = 'messageActionReplies';
   static const messageActionReport = 'messageActionReport';
   static const messageActionSelectText = 'messageActionSelectText';
   static const messageActionSetTodo = 'messageActionSetTodo';
@@ -1043,6 +1044,9 @@ abstract final class AppStringKeys {
   static const messageBubbleExpandQuote = 'messageBubbleExpandQuote';
   static const messageBubbleForwardedFrom = 'messageBubbleForwardedFrom';
   static const messageBubbleTranslating = 'messageBubbleTranslating';
+  static const messageRepliesEmpty = 'messageRepliesEmpty';
+  static const messageRepliesTitle = 'messageRepliesTitle';
+  static const messageRepliesUnavailable = 'messageRepliesUnavailable';
   static const momentsCommentCount = 'momentsCommentCount';
   static const momentsCommentPlaceholder = 'momentsCommentPlaceholder';
   static const momentsCreatePostTitle = 'momentsCreatePostTitle';

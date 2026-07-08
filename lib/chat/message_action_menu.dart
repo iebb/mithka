@@ -23,6 +23,7 @@ enum MessageAction {
   edit(HeroAppIcons.pen, AppStringKeys.messageActionEdit),
   translate(HeroAppIcons.language, AppStringKeys.messageActionTranslate),
   reply(HeroAppIcons.quoteLeft, AppStringKeys.messageActionQuote),
+  replies(HeroAppIcons.comments, AppStringKeys.messageActionReplies),
   forward(HeroAppIcons.share, AppStringKeys.messageActionForward),
   report(HeroAppIcons.triangleExclamation, AppStringKeys.messageActionReport),
   block(HeroAppIcons.ban, AppStringKeys.messageActionBlock),
@@ -83,6 +84,11 @@ class MessageActionMenu extends StatelessWidget {
       if (translationEnabled) result.add(MessageAction.translate);
     }
     result.add(MessageAction.reply);
+    if (message.hasCommentThread ||
+        message.commentCount > 0 ||
+        message.lastCommentMessageId != null) {
+      result.add(MessageAction.replies);
+    }
     result.add(MessageAction.forward);
     if (message.video != null && source == MessageActionSource.video) {
       result.add(MessageAction.playMuted);
