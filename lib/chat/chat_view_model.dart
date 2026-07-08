@@ -18,6 +18,7 @@ import '../settings/keyword_blocker.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
+import 'forward_options.dart';
 import 'sticker_item.dart';
 
 class _SenderInfo {
@@ -1083,21 +1084,26 @@ class ChatViewModel extends ChangeNotifier {
 
   // MARK: - Message actions (long-press menu)
 
-  Future<void> forward(int messageId, int targetChatId) async {
-    await forwardMany([messageId], targetChatId);
+  Future<void> forward(
+    int messageId,
+    int targetChatId, {
+    ForwardOptions options = const ForwardOptions(),
+  }) async {
+    await forwardMany([messageId], targetChatId, options: options);
   }
 
-  Future<void> forwardMany(List<int> messageIds, int targetChatId) async {
-    if (messageIds.isEmpty) return;
-    await _client.query({
-      '@type': 'forwardMessages',
-      'chat_id': targetChatId,
-      'from_chat_id': chatId,
-      'message_ids': messageIds,
-      'options': {'@type': 'messageSendOptions'},
-      'send_copy': false,
-      'remove_caption': false,
-    });
+  Future<void> forwardMany(
+    List<int> messageIds,
+    int targetChatId, {
+    ForwardOptions options = const ForwardOptions(),
+  }) async {
+    await forwardMessagesWithOptions(
+      client: _client,
+      targetChatId: targetChatId,
+      fromChatId: chatId,
+      messageIds: messageIds,
+      options: options,
+    );
   }
 
   Future<void> saveToFavorites(int messageId) async {

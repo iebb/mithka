@@ -15,6 +15,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../chat/chat_picker_view.dart';
 import '../chat/chat_view.dart';
+import '../chat/forward_options.dart';
 import '../chat/full_image_viewer.dart';
 import '../chat/media_album_layout.dart';
 import '../chat/rich_text_composer_view.dart';
@@ -3916,23 +3917,24 @@ class _PostActions extends StatelessWidget {
   }
 
   Future<void> _forward(BuildContext context) async {
-    final target = await Navigator.of(context).push<ChatSummary>(
+    final result = await Navigator.of(context).push<ChatPickerResult>(
       MaterialPageRoute(
-        builder: (_) =>
-            const ChatPickerView(title: AppStringKeys.chatForwardToTitle),
+        builder: (_) => const ChatPickerView(
+          title: AppStringKeys.chatForwardToTitle,
+          showForwardOptions: true,
+        ),
       ),
     );
-    if (target == null || !context.mounted) return;
+    if (result == null || !context.mounted) return;
+    final target = result.chat;
     try {
-      await TdClient.shared.query({
-        '@type': 'forwardMessages',
-        'chat_id': target.id,
-        'from_chat_id': channel.id,
-        'message_ids': [message.id],
-        'options': {'@type': 'messageSendOptions'},
-        'send_copy': false,
-        'remove_caption': false,
-      });
+      await forwardMessagesWithOptions(
+        client: TdClient.shared,
+        targetChatId: target.id,
+        fromChatId: channel.id,
+        messageIds: [message.id],
+        options: result.forwardOptions,
+      );
       if (context.mounted) {
         showToast(
           context,
@@ -3945,7 +3947,9 @@ class _PostActions extends StatelessWidget {
       if (context.mounted) {
         showToast(
           context,
-          AppStrings.t(AppStringKeys.chatForwardFailed, {'value1': e}),
+          isForwardProtectedError(e)
+              ? AppStringKeys.chatForwardProtected
+              : AppStrings.t(AppStringKeys.chatForwardFailed, {'value1': e}),
         );
       }
     }

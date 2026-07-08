@@ -230,6 +230,10 @@ const deMessages = <String, String>{
   'chatBlockUserTitle': "Missbräuchlichen Nutzer blockieren?",
   'chatForwardedToName': "Weitergeleitet an {value1}",
   'chatForwardFailed': "Weiterleiten fehlgeschlagen: {value1}",
+  'chatForwardProtected':
+      "Diese Nachricht ist geschützt und kann nicht weitergeleitet werden",
+  'chatForwardRemoveCaption': "Beschriftung entfernen",
+  'chatForwardRemoveSender': "Absender ausblenden",
   'chatForwardToTitle': "Weiterleiten an",
   'chatInfoAlbum': "Album",
   'chatInfoAutoDeleteMessages': "Nachrichten automatisch löschen",

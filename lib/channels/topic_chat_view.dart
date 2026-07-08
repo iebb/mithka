@@ -15,6 +15,7 @@ import '../chat/chat_members_view.dart';
 import '../chat/chat_picker_view.dart';
 import '../chat/chat_view.dart';
 import '../chat/custom_emoji.dart';
+import '../chat/forward_options.dart';
 import '../chat/rich_text_composer_view.dart';
 import '../chat/rich_text_format.dart';
 import '../components/app_icons.dart';
@@ -558,23 +559,24 @@ class _TopicChatViewState extends State<TopicChatView> {
   }
 
   Future<void> _sharePost(_TopicPost post) async {
-    final target = await Navigator.of(context).push<ChatSummary>(
+    final result = await Navigator.of(context).push<ChatPickerResult>(
       MaterialPageRoute(
-        builder: (_) =>
-            const ChatPickerView(title: AppStringKeys.chatForwardToTitle),
+        builder: (_) => const ChatPickerView(
+          title: AppStringKeys.chatForwardToTitle,
+          showForwardOptions: true,
+        ),
       ),
     );
-    if (target == null || !mounted) return;
+    if (result == null || !mounted) return;
+    final target = result.chat;
     try {
-      await TdClient.shared.query({
-        '@type': 'forwardMessages',
-        'chat_id': target.id,
-        'from_chat_id': widget.chat.id,
-        'message_ids': [post.message.id],
-        'options': {'@type': 'messageSendOptions'},
-        'send_copy': false,
-        'remove_caption': false,
-      });
+      await forwardMessagesWithOptions(
+        client: TdClient.shared,
+        targetChatId: target.id,
+        fromChatId: widget.chat.id,
+        messageIds: [post.message.id],
+        options: result.forwardOptions,
+      );
       if (!mounted) return;
       showToast(
         context,
@@ -586,7 +588,9 @@ class _TopicChatViewState extends State<TopicChatView> {
       if (!mounted) return;
       showToast(
         context,
-        AppStrings.t(AppStringKeys.chatForwardFailed, {'value1': e}),
+        isForwardProtectedError(e)
+            ? AppStringKeys.chatForwardProtected
+            : AppStrings.t(AppStringKeys.chatForwardFailed, {'value1': e}),
       );
     }
   }

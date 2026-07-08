@@ -18,13 +18,23 @@ import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
+import 'forward_options.dart';
+
+class ChatPickerResult {
+  const ChatPickerResult({required this.chat, required this.forwardOptions});
+
+  final ChatSummary chat;
+  final ForwardOptions forwardOptions;
+}
 
 class ChatPickerView extends StatefulWidget {
   const ChatPickerView({
     super.key,
     this.title = AppStringKeys.chatPickerChooseChat,
+    this.showForwardOptions = false,
   });
   final String title;
+  final bool showForwardOptions;
 
   @override
   State<ChatPickerView> createState() => _ChatPickerViewState();
@@ -37,6 +47,8 @@ class _ChatPickerViewState extends State<ChatPickerView> {
   final List<Contact> _contacts = [];
   bool _contactsLoading = false;
   String _query = '';
+  bool _removeCaption = false;
+  bool _removeSender = false;
 
   @override
   void initState() {
@@ -115,7 +127,7 @@ class _ChatPickerViewState extends State<ChatPickerView> {
   Future<void> _pick(_PickerEntry entry) async {
     final chat = entry.chat;
     if (chat != null) {
-      Navigator.of(context).pop(chat);
+      _popPickedChat(chat);
       return;
     }
     final contact = entry.contact;
@@ -128,8 +140,24 @@ class _ChatPickerViewState extends State<ChatPickerView> {
       });
       final summary = TDParse.chat(raw);
       if (!mounted || summary == null) return;
-      Navigator.of(context).pop(summary);
+      _popPickedChat(summary);
     } catch (_) {}
+  }
+
+  void _popPickedChat(ChatSummary chat) {
+    if (widget.showForwardOptions) {
+      Navigator.of(context).pop(
+        ChatPickerResult(
+          chat: chat,
+          forwardOptions: ForwardOptions(
+            removeCaption: _removeCaption,
+            removeSender: _removeSender,
+          ),
+        ),
+      );
+    } else {
+      Navigator.of(context).pop(chat);
+    }
   }
 
   @override
@@ -224,6 +252,97 @@ class _ChatPickerViewState extends State<ChatPickerView> {
                     ),
                   ),
                 ],
+              ),
+            ),
+          ),
+          if (widget.showForwardOptions) _forwardOptions(),
+        ],
+      ),
+    );
+  }
+
+  Widget _forwardOptions() {
+    final c = context.colors;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: c.card,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: c.divider, width: 0.5),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: _forwardOption(
+                label: AppStringKeys.chatForwardRemoveCaption,
+                selected: _removeCaption,
+                onTap: () {
+                  setState(() {
+                    _removeCaption = !_removeCaption;
+                    if (_removeCaption) _removeSender = true;
+                  });
+                },
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _forwardOption(
+                label: AppStringKeys.chatForwardRemoveSender,
+                selected: _removeSender,
+                onTap: () {
+                  setState(() {
+                    _removeSender = !_removeSender;
+                    if (!_removeSender) _removeCaption = false;
+                  });
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _forwardOption({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    final c = context.colors;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 20,
+            height: 20,
+            decoration: BoxDecoration(
+              color: selected ? c.linkBlue : c.searchFill,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: selected ? c.linkBlue : c.divider),
+            ),
+            child: selected
+                ? const AppIcon(
+                    HeroAppIcons.check,
+                    size: 14,
+                    color: Colors.white,
+                  )
+                : null,
+          ),
+          const SizedBox(width: 7),
+          Flexible(
+            child: Text(
+              label.l10n(context),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: c.textPrimary,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ),

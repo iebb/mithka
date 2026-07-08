@@ -24,6 +24,7 @@ import '../tdlib/td_client.dart';
 import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
 import 'chat_picker_view.dart';
+import 'forward_options.dart';
 
 class _TdVideoStreamServer {
   _TdVideoStreamServer(this.fileId);
@@ -1876,23 +1877,24 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
       showToast(context, AppStringKeys.videoPlayerForwardUnsupported);
       return;
     }
-    final target = await Navigator.of(context).push<ChatSummary>(
+    final result = await Navigator.of(context).push<ChatPickerResult>(
       MaterialPageRoute(
-        builder: (_) =>
-            const ChatPickerView(title: AppStringKeys.chatForwardToTitle),
+        builder: (_) => const ChatPickerView(
+          title: AppStringKeys.chatForwardToTitle,
+          showForwardOptions: true,
+        ),
       ),
     );
-    if (target == null || !mounted) return;
+    if (result == null || !mounted) return;
+    final target = result.chat;
     try {
-      await TdClient.shared.query({
-        '@type': 'forwardMessages',
-        'chat_id': target.id,
-        'from_chat_id': sourceChatId,
-        'message_ids': [messageId],
-        'options': {'@type': 'messageSendOptions'},
-        'send_copy': false,
-        'remove_caption': false,
-      });
+      await forwardMessagesWithOptions(
+        client: TdClient.shared,
+        targetChatId: target.id,
+        fromChatId: sourceChatId,
+        messageIds: [messageId],
+        options: result.forwardOptions,
+      );
       if (mounted) {
         showToast(
           context,
@@ -1905,7 +1907,9 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
       if (mounted) {
         showToast(
           context,
-          AppStrings.t(AppStringKeys.chatForwardFailed, {'value1': e}),
+          isForwardProtectedError(e)
+              ? AppStringKeys.chatForwardProtected
+              : AppStrings.t(AppStringKeys.chatForwardFailed, {'value1': e}),
         );
       }
     }

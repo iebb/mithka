@@ -234,6 +234,10 @@ const frMessages = <String, String>{
   'chatBlockUserTitle': "Bloquer un utilisateur abusif ?",
   'chatForwardedToName': "Transféré à {value1}",
   'chatForwardFailed': "Échec du transfert : {value1}",
+  'chatForwardProtected':
+      "Ce message est protégé et ne peut pas être transféré",
+  'chatForwardRemoveCaption': "Supprimer la légende",
+  'chatForwardRemoveSender': "Masquer l’expéditeur",
   'chatForwardToTitle': "Transférer vers",
   'chatInfoAlbum': "Album",
   'chatInfoAutoDeleteMessages': "Suppression automatique des messages",

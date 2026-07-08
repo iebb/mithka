@@ -43,6 +43,7 @@ import 'chat_picker_view.dart';
 import 'chat_view_model.dart';
 import 'custom_emoji.dart';
 import 'emoji_store.dart';
+import 'forward_options.dart';
 import 'full_image_viewer.dart';
 import 'link_handler.dart';
 import 'media_album_layout.dart';
@@ -1228,15 +1229,18 @@ class _ChatViewState extends State<ChatView> {
   Future<void> _forwardSelected() async {
     final ids = _orderedSelectedIds();
     if (ids.isEmpty) return;
-    final target = await Navigator.of(context).push<ChatSummary>(
+    final result = await Navigator.of(context).push<ChatPickerResult>(
       MaterialPageRoute(
-        builder: (_) =>
-            const ChatPickerView(title: AppStringKeys.chatForwardToTitle),
+        builder: (_) => const ChatPickerView(
+          title: AppStringKeys.chatForwardToTitle,
+          showForwardOptions: true,
+        ),
       ),
     );
-    if (target == null || !mounted) return;
+    if (result == null || !mounted) return;
+    final target = result.chat;
     try {
-      await _vm.forwardMany(ids, target.id);
+      await _vm.forwardMany(ids, target.id, options: result.forwardOptions);
       if (!mounted) return;
       showToast(
         context,
@@ -1247,10 +1251,7 @@ class _ChatViewState extends State<ChatView> {
       _exitSelection();
     } catch (e) {
       if (!mounted) return;
-      showToast(
-        context,
-        AppStrings.t(AppStringKeys.chatForwardFailed, {'value1': e}),
-      );
+      _showForwardFailure(e);
     }
   }
 
@@ -2084,15 +2085,18 @@ class _ChatViewState extends State<ChatView> {
   }
 
   Future<void> _forwardMessage(ChatMessage message) async {
-    final target = await Navigator.of(context).push<ChatSummary>(
+    final result = await Navigator.of(context).push<ChatPickerResult>(
       MaterialPageRoute(
-        builder: (_) =>
-            const ChatPickerView(title: AppStringKeys.chatForwardToTitle),
+        builder: (_) => const ChatPickerView(
+          title: AppStringKeys.chatForwardToTitle,
+          showForwardOptions: true,
+        ),
       ),
     );
-    if (target == null || !mounted) return;
+    if (result == null || !mounted) return;
+    final target = result.chat;
     try {
-      await _vm.forward(message.id, target.id);
+      await _vm.forward(message.id, target.id, options: result.forwardOptions);
       if (!mounted) return;
       showToast(
         context,
@@ -2102,11 +2106,17 @@ class _ChatViewState extends State<ChatView> {
       );
     } catch (e) {
       if (!mounted) return;
-      showToast(
-        context,
-        AppStrings.t(AppStringKeys.chatForwardFailed, {'value1': e}),
-      );
+      _showForwardFailure(e);
     }
+  }
+
+  void _showForwardFailure(Object error) {
+    showToast(
+      context,
+      isForwardProtectedError(error)
+          ? AppStringKeys.chatForwardProtected
+          : AppStrings.t(AppStringKeys.chatForwardFailed, {'value1': error}),
+    );
   }
 
   @override
