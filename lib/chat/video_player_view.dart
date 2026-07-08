@@ -18,6 +18,7 @@ import 'package:video_player/video_player.dart';
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
+import '../platform/system_picture_in_picture.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_image_loader.dart';
@@ -344,6 +345,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   int _lastSavedPositionMs = 0;
   _TdVideoStreamServer? _streamServer;
   bool _openedCompletedLocalFile = false;
+  bool _systemPiPHandoff = false;
 
   static const _speeds = <double>[0.5, 0.75, 1, 1.25, 1.5, 2];
   static const _resumePrefix = 'mithka.video.resume.';
@@ -594,6 +596,40 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     } catch (_) {}
   }
 
+  Future<bool> _startSystemPictureInPicture() async {
+    final c = _controller;
+    final source = _localPath;
+    if (c == null || !c.value.isInitialized || source == null) return false;
+    if (!await SystemPictureInPicture.isSupported()) return false;
+
+    final uri = source.startsWith('http://') || source.startsWith('https://')
+        ? Uri.parse(source)
+        : Uri.file(source);
+    final server = _streamServer;
+    final shouldCancelOnStop =
+        !_openedCompletedLocalFile && _progress?.isCompleted != true;
+    final id = '${widget.video.id}-${DateTime.now().microsecondsSinceEpoch}';
+    final started = await SystemPictureInPicture.start(
+      id: id,
+      uri: uri,
+      position: c.value.position,
+      speed: _speed,
+      muted: _volume <= 0.01,
+      onStop: () async {
+        await server?.close();
+        if (shouldCancelOnStop) {
+          TdFileCenter.shared.cancelDownload(widget.video.id);
+        }
+      },
+    );
+    if (!started) return false;
+    _systemPiPHandoff = true;
+    _streamServer = null;
+    unawaited(c.pause());
+    _close();
+    return true;
+  }
+
   void _close() {
     unawaited(_storePlaybackPosition(force: true));
     final onClose = widget.onClose;
@@ -612,7 +648,9 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     _controller?.removeListener(_onTick);
     _controller?.dispose();
     unawaited(_streamServer?.close());
-    if (!_openedCompletedLocalFile && _progress?.isCompleted != true) {
+    if (!_systemPiPHandoff &&
+        !_openedCompletedLocalFile &&
+        _progress?.isCompleted != true) {
       TdFileCenter.shared.cancelDownload(widget.video.id);
     }
     super.dispose();
@@ -1504,7 +1542,9 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
       },
       onCanceled: _scheduleHide,
       onSelected: (mode) {
-        if (mode != widget.currentMode) callback(mode);
+        if (mode != widget.currentMode) {
+          unawaited(_selectDisplayMode(mode, callback));
+        }
         _scheduleHide();
       },
       itemBuilder: (_) => [
@@ -1530,6 +1570,18 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
         ),
       ),
     );
+  }
+
+  Future<void> _selectDisplayMode(
+    VideoDisplayMode mode,
+    ValueChanged<VideoDisplayMode> callback,
+  ) async {
+    if (mode == VideoDisplayMode.pictureInPicture &&
+        await _startSystemPictureInPicture()) {
+      return;
+    }
+    if (!mounted) return;
+    callback(mode);
   }
 
   PopupMenuItem<VideoDisplayMode> _modeItem(

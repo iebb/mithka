@@ -1,3 +1,5 @@
+import AVFoundation
+import AVKit
 import Flutter
 import Security
 import Sentry
@@ -12,6 +14,7 @@ import UIKit
   private var pushChannel: FlutterMethodChannel?
   private var apnsDeviceToken: String?
   private var didRegisterFlutterPlugins = false
+  private var systemPictureInPictureBridge: SystemPictureInPictureBridge?
 
   override func application(
     _ application: UIApplication,
@@ -206,6 +209,11 @@ import UIKit
       result(self?.apnsDeviceToken)
     }
 
+    let systemPiPBridge = SystemPictureInPictureBridge(
+      messenger: engineBridge.applicationRegistrar.messenger()
+    )
+    systemPictureInPictureBridge = systemPiPBridge
+
     let nativeTranslationChannel = FlutterMethodChannel(
       name: "mithka/native_translation",
       binaryMessenger: engineBridge.applicationRegistrar.messenger()
@@ -258,6 +266,221 @@ import UIKit
   ) {
     pushChannel?.invokeMethod("registrationError", arguments: error.localizedDescription)
     super.application(application, didFailToRegisterForRemoteNotificationsWithError: error)
+  }
+}
+
+@MainActor
+private final class SystemPictureInPictureBridge: NSObject, AVPictureInPictureControllerDelegate {
+  private let channel: FlutterMethodChannel
+  private var player: AVPlayer?
+  private var playerLayer: AVPlayerLayer?
+  private var pictureInPictureController: AVPictureInPictureController?
+  private var hostView: UIView?
+  private var activeId: String?
+  private var pendingStartResult: FlutterResult?
+  private var startTimeout: DispatchWorkItem?
+
+  init(messenger: FlutterBinaryMessenger) {
+    channel = FlutterMethodChannel(
+      name: "mithka/system_picture_in_picture",
+      binaryMessenger: messenger
+    )
+    super.init()
+    channel.setMethodCallHandler { [weak self] call, result in
+      Task { @MainActor in
+        self?.handle(call: call, result: result)
+      }
+    }
+  }
+
+  private func handle(call: FlutterMethodCall, result: @escaping FlutterResult) {
+    switch call.method {
+    case "isSupported":
+      result(AVPictureInPictureController.isPictureInPictureSupported())
+    case "start":
+      start(call: call, result: result)
+    case "stop":
+      stop()
+      result(nil)
+    default:
+      result(FlutterMethodNotImplemented)
+    }
+  }
+
+  private func start(call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard AVPictureInPictureController.isPictureInPictureSupported() else {
+      result(false)
+      return
+    }
+    guard
+      let args = call.arguments as? [String: Any],
+      let id = args["id"] as? String,
+      let rawURL = args["url"] as? String,
+      let url = URL(string: rawURL)
+    else {
+      result(false)
+      return
+    }
+
+    stop(notifyFlutter: false)
+
+    do {
+      let audioSession = AVAudioSession.sharedInstance()
+      try audioSession.setCategory(.playback, mode: .moviePlayback)
+      try audioSession.setActive(true)
+    } catch {
+      // PiP can still work when another owner already configured the session.
+    }
+
+    let item = AVPlayerItem(url: url)
+    let player = AVPlayer(playerItem: item)
+    player.isMuted = args["muted"] as? Bool ?? false
+    let speed = (args["speed"] as? NSNumber)?.floatValue ?? 1.0
+    let positionMs = (args["positionMs"] as? NSNumber)?.doubleValue ?? 0
+    if positionMs > 0 {
+      player.seek(
+        to: CMTime(seconds: positionMs / 1000.0, preferredTimescale: 600),
+        toleranceBefore: .zero,
+        toleranceAfter: .zero
+      )
+    }
+
+    guard let (layer, pipController, hostView) = attach(player: player) else {
+      result(false)
+      return
+    }
+
+    self.activeId = id
+    self.player = player
+    self.playerLayer = layer
+    self.pictureInPictureController = pipController
+    self.hostView = hostView
+    self.pendingStartResult = result
+
+    player.play()
+    if speed > 0, speed != 1.0 {
+      player.rate = speed
+    }
+
+    let timeout = DispatchWorkItem { [weak self] in
+      guard let self, self.pendingStartResult != nil else { return }
+      self.pendingStartResult?(false)
+      self.pendingStartResult = nil
+      self.stop(notifyFlutter: false)
+    }
+    startTimeout = timeout
+    DispatchQueue.main.asyncAfter(deadline: .now() + 3.0, execute: timeout)
+
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+      guard let self, self.pictureInPictureController === pipController else { return }
+      pipController.startPictureInPicture()
+    }
+  }
+
+  private func attach(player: AVPlayer) -> (AVPlayerLayer, AVPictureInPictureController, UIView)? {
+    guard let root = Self.rootViewController() else { return nil }
+    let hostView = UIView(frame: CGRect(x: 1, y: 1, width: 2, height: 2))
+    hostView.alpha = 0.02
+    hostView.isUserInteractionEnabled = false
+    let layer = AVPlayerLayer(player: player)
+    layer.frame = hostView.bounds
+    layer.videoGravity = .resizeAspect
+    hostView.layer.addSublayer(layer)
+    root.view.addSubview(hostView)
+
+    guard let pipController = AVPictureInPictureController(playerLayer: layer) else {
+      hostView.removeFromSuperview()
+      return nil
+    }
+    pipController.delegate = self
+    if #available(iOS 14.2, *) {
+      pipController.canStartPictureInPictureAutomaticallyFromInline = true
+    }
+    return (layer, pipController, hostView)
+  }
+
+  private func stop(notifyFlutter: Bool = true) {
+    startTimeout?.cancel()
+    startTimeout = nil
+    pendingStartResult?(false)
+    pendingStartResult = nil
+
+    let stoppedId = activeId
+    player?.pause()
+    if pictureInPictureController?.isPictureInPictureActive == true {
+      pictureInPictureController?.stopPictureInPicture()
+    }
+    pictureInPictureController?.delegate = nil
+    pictureInPictureController = nil
+    playerLayer?.player = nil
+    playerLayer?.removeFromSuperlayer()
+    playerLayer = nil
+    hostView?.removeFromSuperview()
+    hostView = nil
+    player = nil
+    activeId = nil
+
+    if notifyFlutter, let stoppedId {
+      channel.invokeMethod("didStop", arguments: ["id": stoppedId])
+    }
+  }
+
+  nonisolated func pictureInPictureControllerDidStartPictureInPicture(
+    _ pictureInPictureController: AVPictureInPictureController
+  ) {
+    Task { @MainActor in
+      startTimeout?.cancel()
+      startTimeout = nil
+      pendingStartResult?(true)
+      pendingStartResult = nil
+    }
+  }
+
+  nonisolated func pictureInPictureController(
+    _ pictureInPictureController: AVPictureInPictureController,
+    failedToStartPictureInPictureWithError error: Error
+  ) {
+    Task { @MainActor in
+      pendingStartResult?(false)
+      pendingStartResult = nil
+      stop(notifyFlutter: false)
+    }
+  }
+
+  nonisolated func pictureInPictureControllerDidStopPictureInPicture(
+    _ pictureInPictureController: AVPictureInPictureController
+  ) {
+    Task { @MainActor in
+      stop()
+    }
+  }
+
+  nonisolated func pictureInPictureController(
+    _ pictureInPictureController: AVPictureInPictureController,
+    restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler:
+      @escaping (Bool) -> Void
+  ) {
+    completionHandler(false)
+  }
+
+  private static func rootViewController() -> UIViewController? {
+    let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+    let activeScene = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
+    let root = activeScene?.windows.first { $0.isKeyWindow }?.rootViewController
+    return topViewController(from: root)
+  }
+
+  private static func topViewController(from root: UIViewController?) -> UIViewController? {
+    if let nav = root as? UINavigationController {
+      return topViewController(from: nav.visibleViewController)
+    }
+    if let tab = root as? UITabBarController {
+      return topViewController(from: tab.selectedViewController)
+    }
+    if let presented = root?.presentedViewController {
+      return topViewController(from: presented)
+    }
+    return root
   }
 }
 

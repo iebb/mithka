@@ -48,6 +48,7 @@ import 'link_handler.dart';
 import 'media_album_layout.dart';
 import 'message_action_menu.dart';
 import 'message_bubble.dart';
+import 'music_player_controller.dart';
 import 'sticker_set_detail_view.dart';
 import 'sticker_viewer.dart';
 import 'video_player_view.dart';
@@ -1701,6 +1702,14 @@ class _ChatViewState extends State<ChatView> {
         }
       case MessageAction.playMuted:
         _playVideo(message, muted: true);
+      case MessageAction.addToPlaylist:
+        final added = MusicPlayerController.shared.addToPlaylist(message);
+        showToast(
+          context,
+          added
+              ? AppStringKeys.musicPlayerAddedToPlaylist
+              : AppStringKeys.musicPlayerAlreadyInPlaylist,
+        );
       case MessageAction.multiSelect:
         _enterSelection(message);
       case MessageAction.pinTodo:

@@ -27,6 +27,7 @@ enum MessageAction {
   report(HeroAppIcons.triangleExclamation, AppStringKeys.messageActionReport),
   block(HeroAppIcons.ban, AppStringKeys.messageActionBlock),
   playMuted(HeroAppIcons.volumeXmark, AppStringKeys.messageActionPlayMuted),
+  addToPlaylist(HeroAppIcons.music, AppStringKeys.musicPlayerAddToPlaylist),
   multiSelect(HeroAppIcons.circleCheck, AppStringKeys.messageActionMultiSelect),
   pinTodo(HeroAppIcons.thumbtack, AppStringKeys.messageActionSetTodo),
   unpinTodo(HeroAppIcons.thumbtack, AppStringKeys.messageActionUnsetTodo),
@@ -86,6 +87,9 @@ class MessageActionMenu extends StatelessWidget {
     if (message.video != null && source == MessageActionSource.video) {
       result.add(MessageAction.playMuted);
     }
+    if (message.music?.file != null) {
+      result.add(MessageAction.addToPlaylist);
+    }
     result.add(MessageAction.multiSelect);
     result.add(isPinned ? MessageAction.unpinTodo : MessageAction.pinTodo);
     result.add(MessageAction.save);
@@ -120,7 +124,7 @@ class MessageActionMenu extends StatelessWidget {
         : secondRow.length;
     return LayoutBuilder(
       builder: (context, constraints) {
-        final maxWidth = MediaQuery.of(context).size.width - 24;
+        final maxWidth = (MediaQuery.of(context).size.width - 24) * 0.8;
         final availableWidth = constraints.hasBoundedWidth
             ? constraints.maxWidth.clamp(0.0, maxWidth)
             : maxWidth;
@@ -143,6 +147,7 @@ class MessageActionMenu extends StatelessWidget {
             ],
           ),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
               _ActionRow(
