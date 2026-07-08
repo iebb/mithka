@@ -6,6 +6,7 @@
 //  it, compact detail rows, and a fixed bottom bar (音视频通话 / 发消息).
 //
 
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -66,6 +67,10 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
   bool _musicPressed = false;
   bool _hideIdentity = false;
   bool _isMe = false;
+  bool _isContact = true;
+  String _firstName = '';
+  String _lastName = '';
+  String _rawPhone = '';
 
   @override
   void initState() {
@@ -98,11 +103,15 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
       if (mounted) {
         setState(() {
           _name = TDParse.userName(user);
+          _firstName = user.str('first_name') ?? '';
+          _lastName = user.str('last_name') ?? '';
           _username = user.obj('usernames')?.str('editable_username');
-          _phone = TDParse.formatPhone(user.str('phone_number'));
+          _rawPhone = user.str('phone_number') ?? '';
+          _phone = TDParse.formatPhone(_rawPhone);
           _photo = TDParse.smallPhoto(user.obj('profile_photo'));
           _isOnline = TDParse.isUserOnline(user);
           _isPremium = user.boolean('is_premium') ?? false;
+          _isContact = _isMe || (user.boolean('is_contact') ?? false);
           _emojiStatusId =
               user.obj('emoji_status')?.obj('type')?.int64('custom_emoji_id') ??
               user.obj('emoji_status')?.int64('custom_emoji_id') ??
@@ -168,6 +177,35 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
 
   void _call(bool isVideo) =>
       context.read<CallManager>().startCall(widget.userId, isVideo);
+
+  Future<void> _addToContacts() async {
+    final fallbackName = _name.trim().isNotEmpty ? _name.trim() : widget.name;
+    final firstName = _firstName.trim().isNotEmpty
+        ? _firstName.trim()
+        : fallbackName.trim();
+    try {
+      await TdClient.shared.query({
+        '@type': 'addContact',
+        'contact': {
+          '@type': 'contact',
+          'phone_number': _rawPhone,
+          'first_name': firstName.isEmpty
+              ? widget.userId.toString()
+              : firstName,
+          'last_name': _lastName.trim(),
+          'vcard': '',
+          'user_id': widget.userId,
+        },
+        'share_phone_number': false,
+      });
+      if (!mounted) return;
+      setState(() => _isContact = true);
+      showToast(context, AppStringKeys.profileDetailAddFriendDone);
+    } catch (_) {
+      if (!mounted) return;
+      showToast(context, AppStringKeys.profileDetailAddFriendFailed);
+    }
+  }
 
   void _callMenu() {
     showCupertinoModalPopup<void>(
@@ -878,9 +916,15 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
             children: [
               Expanded(
                 child: _barButton(
-                  AppStrings.t(AppStringKeys.profileDetailAudioVideoCall),
+                  AppStrings.t(
+                    _isContact
+                        ? AppStringKeys.profileDetailAudioVideoCall
+                        : AppStringKeys.profileDetailAddFriend,
+                  ),
                   primary: false,
-                  onTap: _callMenu,
+                  onTap: _isContact
+                      ? _callMenu
+                      : () => unawaited(_addToContacts()),
                 ),
               ),
               const SizedBox(width: 12),

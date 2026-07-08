@@ -431,7 +431,9 @@ class _ChatViewState extends State<ChatView> {
     }
     if (nearBottom) _markReadAtBottomIfNeeded();
     // Show the jump-to-bottom button once scrolled up from the newest message.
-    final show = _vm.anchoredHistory || pos.maxScrollExtent - pos.pixels > 120;
+    final show =
+        !_isAtLoadedBottom() &&
+        (_vm.anchoredHistory || pos.maxScrollExtent - pos.pixels > 120);
     if (show != _showJumpDown) setState(() => _showJumpDown = show);
   }
 
@@ -439,6 +441,28 @@ class _ChatViewState extends State<ChatView> {
     if (!_scroll.hasClients) return true;
     final pos = _scroll.position;
     return pos.maxScrollExtent - pos.pixels <= threshold;
+  }
+
+  bool _isAtLoadedBottom([double threshold = 24]) {
+    return !_vm.anchoredHistory && _isNearBottom(threshold);
+  }
+
+  void _clearBottomIndicatorsIfNeeded() {
+    if (!_scroll.hasClients || !_isAtLoadedBottom()) return;
+    var changed = false;
+    if (_showJumpDown) {
+      _showJumpDown = false;
+      changed = true;
+    }
+    if (_liveNewMessageCount > 0) {
+      _liveNewMessageCount = 0;
+      changed = true;
+    }
+    if (!_bannerDismissed) {
+      _bannerDismissed = true;
+      changed = true;
+    }
+    if (changed && mounted) setState(() {});
   }
 
   bool get _isUserScrolling =>
@@ -894,6 +918,7 @@ class _ChatViewState extends State<ChatView> {
     if (!_scroll.hasClients) return;
     _scroll.jumpTo(_scroll.position.maxScrollExtent);
     _markReadAtBottomIfNeeded();
+    _clearBottomIndicatorsIfNeeded();
     if (settle) {
       _settleAtBottom(keyboardSettle: true, force: forceSettle);
     }
@@ -926,6 +951,7 @@ class _ChatViewState extends State<ChatView> {
         if (_scroll.hasClients && (force || _isNearBottom(420))) {
           _scroll.jumpTo(_scroll.position.maxScrollExtent);
           _markReadAtBottomIfNeeded();
+          _clearBottomIndicatorsIfNeeded();
         }
       }
     }();
@@ -2221,6 +2247,7 @@ class _ChatViewState extends State<ChatView> {
     if ((_vm.unreadCount + _liveNewMessageCount) <= 0 || _bannerDismissed) {
       return false;
     }
+    if (_isAtLoadedBottom()) return false;
     return _openAtLatest || !_isNearBottom(80);
   }
 

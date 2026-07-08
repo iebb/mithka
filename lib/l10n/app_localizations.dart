@@ -1141,6 +1141,9 @@ abstract final class AppStringKeys {
   static const privacyVisibilityNobody = 'privacyVisibilityNobody';
   static const profileAddAccount = 'profileAddAccount';
   static const profileDayMode = 'profileDayMode';
+  static const profileDetailAddFriend = 'profileDetailAddFriend';
+  static const profileDetailAddFriendDone = 'profileDetailAddFriendDone';
+  static const profileDetailAddFriendFailed = 'profileDetailAddFriendFailed';
   static const profileDetailAudioVideoCall = 'profileDetailAudioVideoCall';
   static const profileDetailBio = 'profileDetailBio';
   static const profileDetailBirthday = 'profileDetailBirthday';
