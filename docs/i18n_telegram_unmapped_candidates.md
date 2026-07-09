@@ -3,8 +3,8 @@
 Generated for the Telegram language-pack migration. Mapped strings use Telegram language-pack keys at runtime; unmapped strings keep Mithka localizations until reviewed.
 
 - Total app strings: 989
-- Mapped to Telegram keys: 508
-- Unmapped app strings: 481
+- Mapped to Telegram keys: 531
+- Unmapped app strings: 458
 
 ## Unmapped Strings
 
@@ -114,7 +114,6 @@ Generated for the Telegram language-pack migration. Mapped strings use Telegram 
 | `appearanceShowPremiumStatusEmoji` | Show Premium Status Emoji | Emoji1..Emoji7 / SetEmojiStatus; TelegramPremiumShort |
 | `appearanceShowUnreadChatCount` | Show Unread Chat Count | SearchAllChatsShort / SelectChat |
 | `appearanceSize` | Size | - |
-| `appearanceSystem` | System | - |
 | `appearanceSystemEmojiFont` | System emoji font | FontSize; Emoji1..Emoji7 / SetEmojiStatus |
 | `appearanceTextFont` | Text Font | FontSize |
 | `appearanceTextFontOrderHint` | Text fonts are applied in order. Characters not covered continue using the system font. | FontSize |
@@ -143,7 +142,6 @@ Generated for the Telegram language-pack migration. Mapped strings use Telegram 
 | `appLocaleVietnamese` | Tiếng Việt | - |
 | `archivedChatsGroupAssistant` | Group Assistant | SearchAllChatsShort / SelectChat; NewGroup / GroupMembers / Groups |
 | `audioSearchFetchingSource` | Fetching source… | Search / SearchMessages / NoResult; AttachAudio / AttachMusic |
-| `authCodeExpiredRetry` | The verification code has expired. Please request a new one. | - |
 | `authCodeSent` | Verification code sent | - |
 | `authCodeSentByFlashCall` | You will receive a flash call | Call / VideoCall / VoipConnecting |
 | `authCodeSentByPhoneCall` | You’ll receive a phone call with the verification code | Call / VideoCall / VoipConnecting; Phone |
@@ -169,7 +167,6 @@ Generated for the Telegram language-pack migration. Mapped strings use Telegram 
 | `chatInfoClearHistoryDescription` | This deletes the local chat history but does not leave the chat. | SearchAllChatsShort / SelectChat; LeaveMegaMenu / LeaveChannel |
 | `chatInfoClearHistoryIrreversibleWarning` | After clearing, history on this device can’t be recovered. | SearchAllChatsShort / SelectChat; Devices / CurrentSession / OtherSessions |
 | `chatInfoConfirmAgain` | Confirm again | SearchAllChatsShort / SelectChat |
-| `chatInfoConfirmClearHistory` | Confirm clear | SearchAllChatsShort / SelectChat |
 | `chatInfoDisableExplicitFolderWarning` | Turning off explicit folders will remove this chat. If it still matches automatic folder rules, it will be added to the exclusions list. | Delete / Remove; SearchAllChatsShort / SelectChat; SettingsFolders / FilterNew / FilterNameHeader |
 | `chatInfoFolderName` | Folder {value1} | SearchAllChatsShort / SelectChat; SettingsFolders / FilterNew / FilterNameHeader |
 | `chatInfoGroupAlbum` | Group album | SearchAllChatsShort / SelectChat; NewGroup / GroupMembers / Groups; Album |
@@ -189,16 +186,13 @@ Generated for the Telegram language-pack migration. Mapped strings use Telegram 
 | `chatMessageRequired` | Message can’t be empty | Message / SendMessage / SearchMessages; SearchAllChatsShort / SelectChat |
 | `chatMessagesSavedCount` | Saved {value1} messages | Message / SendMessage / SearchMessages; SearchAllChatsShort / SelectChat; Save |
 | `chatMoreActionsUnsupported` | More actions aren’t supported yet | SearchAllChatsShort / SelectChat |
-| `chatReportFailed` | Could not send report: {value1} | ReportChat / ReportChatSent; SearchAllChatsShort / SelectChat; ErrorOccurred |
 | `chatReportMessage` | Report this message as objectionable or abusive content? | ReportChat / ReportChatSent; Message / SendMessage / SearchMessages; SearchAllChatsShort / SelectChat |
-| `chatReportTitle` | Report content? | ReportChat / ReportChatSent; SearchAllChatsShort / SelectChat |
 | `chatPeopleDoingAction` | {value1} people active… | SearchAllChatsShort / SelectChat |
 | `chatPeopleTyping` | {value1} people are typing… | SearchAllChatsShort / SelectChat |
 | `chatRestrictedTelegramTosMessage` | This group can’t be displayed because it violated Telegram's Terms of Service. You can go back or leave the group. | Message / SendMessage / SearchMessages; SearchAllChatsShort / SelectChat; NewGroup / GroupMembers / Groups; LeaveMegaMenu / LeaveChannel |
 | `chatRestrictedTitle` | Safety notice | SearchAllChatsShort / SelectChat |
 | `chatSavedToSavedMessages` | Saved to Saved Messages | Message / SendMessage / SearchMessages; SearchAllChatsShort / SelectChat; Save |
 | `chatSelectedMessagesCount` | {value1} messages selected | Message / SendMessage / SearchMessages; SearchAllChatsShort / SelectChat |
-| `chatSelectUntilHere` | Select up to here | Select / SelectChat / SelectContact; SearchAllChatsShort / SelectChat |
 | `chatsSearchPublicGroupsAndChannels` | Public groups/channels | Search / SearchMessages / NoResult; SearchAllChatsShort / SelectChat; NewGroup / GroupMembers / Groups; Channel / ChannelSettings / ChannelMembers |
 | `chatStickerAddSuccess` | Added to emoji | SearchAllChatsShort / SelectChat; Emoji1..Emoji7 / SetEmojiStatus; AttachSticker / ViewPackPreview |
 | `chatActionWatchingAnimations` | watching animations… | SearchAllChatsShort / SelectChat |
@@ -258,10 +252,8 @@ Generated for the Telegram language-pack migration. Mapped strings use Telegram 
 | `groupManagementAdminApprovalRequired` | Admin approval required | NewGroup / GroupMembers / Groups |
 | `groupManagementBasicSection` | Basic management | NewGroup / GroupMembers / Groups |
 | `groupManagementEditable` | Editable | NewGroup / GroupMembers / Groups |
-| `groupManagementEditFailed` | Failed to update | NewGroup / GroupMembers / Groups; ErrorOccurred |
 | `groupManagementJoinBeforePosting` | Join before posting | NewGroup / GroupMembers / Groups; JoinGroup / RequestToJoin / ChannelJoinRequestSent |
 | `groupManagementJoinSection` | Join settings | NewGroup / GroupMembers / Groups; JoinGroup / RequestToJoin / ChannelJoinRequestSent |
-| `groupManagementLoadFailed` | Failed to load group management | NewGroup / GroupMembers / Groups; ErrorOccurred |
 | `groupManagementLogApprovedJoinRequest` | Approved join request | NewGroup / GroupMembers / Groups; JoinGroup / RequestToJoin / ChannelJoinRequestSent |
 | `groupManagementLogChangedAdmin` | Changed admin | NewGroup / GroupMembers / Groups |
 | `groupManagementLogChangedGroupDescription` | Changed group description | NewGroup / GroupMembers / Groups |
@@ -290,7 +282,6 @@ Generated for the Telegram language-pack migration. Mapped strings use Telegram 
 | `groupManagementLogRevokedInviteLink` | Revoked invite link | NewGroup / GroupMembers / Groups; SharedLinksTab / ShareLink; AddMember / VoipGroupInviteMember |
 | `groupManagementLogStartedVideoChat` | Started video chat | SearchAllChatsShort / SelectChat; NewGroup / GroupMembers / Groups; AttachVideo / Videos |
 | `groupManagementMembersSection` | Member Management | NewGroup / GroupMembers / Groups; Members / GroupMembers / ChannelMembers |
-| `groupManagementNoEditInfoPermission` | No permission to edit group info | NewGroup / GroupMembers / Groups |
 | `groupManagementNotSet` | Not set | NewGroup / GroupMembers / Groups |
 | `groupManagementPermissionEditGroupInfo` | Edit group info | NewGroup / GroupMembers / Groups |
 | `groupManagementPermissionSendFiles` | Send files | NewGroup / GroupMembers / Groups; AttachDocument / SharedFilesTab |
@@ -343,7 +334,6 @@ Generated for the Telegram language-pack migration. Mapped strings use Telegram 
 | `loginTelegramApiCredentialsMissing` | Telegram API credentials are not configured | BotAuthLogin / AuthAnotherClient |
 | `loginTelegramApiPortalInstructions` | (You can get them from my.telegram.org.) | BotAuthLogin / AuthAnotherClient |
 | `loginTelegramApiSecretsInstructions` | Enter your own Telegram client api_id and api_hash | BotAuthLogin / AuthAnotherClient |
-| `loginTermsAccept` | Agree and continue | BotAuthLogin / AuthAnotherClient |
 | `loginTermsBody` | By using this app, you must follow Telegram's Terms of Service. Mithka signs in to existing Telegram accounts and has zero tolerance for objectionable content or abusive users. You can filter messages with Keyword Blocker, report objectionable content through Telegram, and block abusive users through Telegram. Blocking removes that sender's messages from your view immediately. | BlockUser / BlockedUsers; ReportChat / ReportChatSent; Message / SendMessage / SearchMessages; SettingsFolders / FilterNoChatsToDisplay; BotAuthLogin / AuthAnotherClient |
 | `loginTwoStepPassword` | Two-step verification password | TwoStepVerification / Password; BotAuthLogin / AuthAnotherClient |
 | `loginVerify` | Verify | BotAuthLogin / AuthAnotherClient |
@@ -360,12 +350,9 @@ Generated for the Telegram language-pack migration. Mapped strings use Telegram 
 | `momentsLikedByCount` | Liked by {value1} | - |
 | `momentsLikedByListWithOthers` | {value1}, ... and {value2} others liked this | - |
 | `momentsLikeFailed` | Like failed: {value1} | ErrorOccurred |
-| `momentsLoadingPosts` | Loading posts… | Loading |
 | `momentsNewPostsCount` | {value1} new posts | - |
-| `momentsNoChannelContent` | No channel content yet | Channel / ChannelSettings / ChannelMembers |
 | `momentsNoFriendPosts` | No posts from friends yet | - |
 | `momentsNoPostableChannels` | No channels available to post to | Channel / ChannelSettings / ChannelMembers |
-| `momentsNoPostsFound` | No posts found | - |
 | `momentsNoSearchableChannels` | No searchable channels | Channel / ChannelSettings / ChannelMembers |
 | `momentsNotifySubscribers` | Notify subscribers | - |
 | `momentsPostAction` | Post | StarsTransactionMessage |
@@ -378,9 +365,7 @@ Generated for the Telegram language-pack migration. Mapped strings use Telegram 
 | `momentsReplyToUserPlaceholder` | Reply to {value1}... | RepliesTitle / Reply |
 | `momentsReplyUnavailable` | Replies are not available for this post | RepliesTitle / Reply; RepliesTitle |
 | `momentsSearchChannelPosts` | Search channel posts | Search / SearchMessages / NoResult; Channel / ChannelSettings / ChannelMembers |
-| `momentsSearching` | Searching… | - |
 | `momentsSearchJoinedChannelPosts` | Search posts from joined channels | Search / SearchMessages / NoResult; Channel / ChannelSettings / ChannelMembers |
-| `momentsSelectChannel` | Select channel | Select / SelectChat / SelectContact; Channel / ChannelSettings / ChannelMembers |
 | `momentsShareSomethingPlaceholder` | Share something new... | - |
 | `momentsUserLiked` | {value1} liked this | - |
 | `musicPlayerAddedToPlaylist` | Added to playlist | AttachMusic / SharedMusicTab |
@@ -390,7 +375,6 @@ Generated for the Telegram language-pack migration. Mapped strings use Telegram 
 | `notificationGroupMessages` | Group messages | Message / SendMessage / SearchMessages; NewGroup / GroupMembers / Groups; Notifications / NotificationsPrivateChats |
 | `pollComposerQuestionRequired` | Enter a question | Poll / NewPoll / AddAnOption |
 | `pollComposerSingleChoiceLimitHint` | Single choice · Up to 10 options | Poll / NewPoll / AddAnOption |
-| `privacyBlockedUsersEmpty` | No blocked users | BlockedUsers; PrivacySettings / PrivacyTitle |
 | `privacyDeleteTelegramAccountMessage` | Telegram accounts are managed by Telegram and can be set to delete automatically after a period of inactivity in Telegram settings. To delete sooner, open Telegram's official account deletion page and complete deletion directly with Telegram. | Delete / DeleteChat / DeleteAll / DeleteAllFrom; Message / SendMessage / SearchMessages; PrivacySettings / PrivacyTitle; Open |
 | `privacyDeleteTelegramAccountOpen` | Open deletion page | Delete / DeleteChat / DeleteAll / DeleteAllFrom; PrivacySettings / PrivacyTitle; Open |
 | `privacyDeviceApp` | App | PrivacySettings / PrivacyTitle; Devices / CurrentSession / OtherSessions |
@@ -429,22 +413,16 @@ Generated for the Telegram language-pack migration. Mapped strings use Telegram 
 | `stickerSetDetailAddSuccess` | Sticker added | AttachSticker / ViewPackPreview |
 | `stickerSetDetailRemoved` | Sticker removed | AttachSticker / ViewPackPreview |
 | `stickerSetDetailTitle` | Sticker Details | AttachSticker / ViewPackPreview |
-| `storyUnsupported` | Unsupported story | - |
 | `tabFriendMoments` | Friends' Moments | - |
 | `tabMoments` | Moments | - |
 | `tdMessageBoostedGroup` | Boosted this group | Message / SendMessage / SearchMessages; NewGroup / GroupMembers / Groups |
-| `tdMessageDaysDuration` | {value1} days | Message / SendMessage / SearchMessages |
-| `tdMessageHoursDuration` | {value1} hours | Message / SendMessage / SearchMessages |
 | `tdMessageLastSeenMonthDay` | Last seen {value1}/{value2} | Message / SendMessage / SearchMessages |
 | `tdMessageLastSeenTodayTime` | Last seen today at {value1}:{value2} | Message / SendMessage / SearchMessages |
-| `tdMessageLastSeenUnknown` | Last seen unknown | Message / SendMessage / SearchMessages |
 | `tdMessageLastSeenYearMonthDay` | Last seen {value1}/{value2}/{value3} | Message / SendMessage / SearchMessages |
 | `tdMessageLastSeenYesterdayTime` | Last seen yesterday at {value1}:{value2} | Message / SendMessage / SearchMessages |
-| `tdMessageMinutesDuration` | {value1} minutes | Message / SendMessage / SearchMessages |
 | `tdMessagePaidMessagePriceChanged` | Message price changed to {value1} Stars | Message / SendMessage / SearchMessages |
 | `tdMessagePaidMessagesDisabled` | Paid messages turned off | Message / SendMessage / SearchMessages |
 | `tdMessagePaidMessageSettingsChanged` | [Paid message settings changed] | Message / SendMessage / SearchMessages |
-| `tdMessageSecondsDuration` | {value1} seconds | Message / SendMessage / SearchMessages |
 | `themeApplePingFangFamily` | Apple / PingFang | ThemeDay / ThemeDark / ThemeNight |
 | `themeGroupAssistantSecondPageFirst` | First on second screen | NewGroup / GroupMembers / Groups; ThemeDay / ThemeDark / ThemeNight |
 | `themeGroupAssistantSortByTime` | Sort by time | NewGroup / GroupMembers / Groups; ThemeDay / ThemeDark / ThemeNight |
@@ -481,7 +459,6 @@ Generated for the Telegram language-pack migration. Mapped strings use Telegram 
 | `translationServiceUrlInvalid` | Invalid translation service URL | - |
 | `translationSettingsService` | Translation Service | - |
 | `translationSettingsTargetLanguage` | Target Language | SettingsLanguage |
-| `translationSettingsTitle` | Message Translation | Message / SendMessage / SearchMessages |
 | `translationSystem` | System Translation | - |
 | `translationTelegram` | Telegram Translation | - |
 | `updateNewVersionFound` | New Version Available | - |
