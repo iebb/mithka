@@ -9,6 +9,7 @@
 //
 
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -2338,31 +2339,77 @@ class _MessageBubbleState extends State<MessageBubble>
       (logical * MediaQuery.devicePixelRatioOf(context)).ceil();
 
   Widget _imageContent(TdFileRef image, bool outgoing) {
-    final size = _imageDisplaySize();
+    final imageSize = _imageDisplaySize();
+    final frameSize = _imageFrameSize(imageSize);
     final caption = _caption();
     final grouped = _groupsMediaCaption(caption);
     final mediaRadius = grouped ? 0.0 : 10.0;
     final media = GestureDetector(
       onTap: () => widget.onOpenImage?.call(message),
       child: SizedBox(
-        width: size.width,
-        height: size.height,
-        // Fit (contain) so the whole image shows at its aspect ratio — never
-        // cropped. The box is already aspect-correct when dimensions are known.
-        child: TDImage(
-          photo: image,
-          cornerRadius: mediaRadius,
-          fit: BoxFit.contain,
-          cacheWidth: _cachePx(size.width),
-          cacheHeight: _cachePx(size.height),
-          showProgress: true,
-        ),
+        width: frameSize.width,
+        height: frameSize.height,
+        child: _usesBlurredImageFrame(imageSize)
+            ? _blurredImageFrame(image, imageSize, frameSize, mediaRadius)
+            : TDImage(
+                photo: image,
+                cornerRadius: mediaRadius,
+                fit: BoxFit.contain,
+                cacheWidth: _cachePx(imageSize.width),
+                cacheHeight: _cachePx(imageSize.height),
+                showProgress: true,
+              ),
       ),
     );
     return _mediaWithCaption(
       media: media,
       caption: caption,
       outgoing: outgoing,
+    );
+  }
+
+  Widget _blurredImageFrame(
+    TdFileRef image,
+    Size imageSize,
+    Size frameSize,
+    double radius,
+  ) {
+    final frameCacheWidth = _cachePx(frameSize.width);
+    final frameCacheHeight = _cachePx(frameSize.height);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(radius),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          ImageFiltered(
+            imageFilter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+            child: Transform.scale(
+              scale: 1.08,
+              child: TDImage(
+                photo: image,
+                cornerRadius: 0,
+                cacheWidth: frameCacheWidth,
+                cacheHeight: frameCacheHeight,
+              ),
+            ),
+          ),
+          ColoredBox(color: Colors.black.withValues(alpha: 0.10)),
+          Center(
+            child: SizedBox(
+              width: imageSize.width,
+              height: imageSize.height,
+              child: TDImage(
+                photo: image,
+                cornerRadius: 0,
+                fit: BoxFit.contain,
+                cacheWidth: _cachePx(imageSize.width),
+                cacheHeight: _cachePx(imageSize.height),
+                showProgress: true,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -2535,6 +2582,20 @@ class _MessageBubbleState extends State<MessageBubble>
       maxHeight: maxWidth,
       fallback: Size(maxWidth, maxWidth),
     );
+  }
+
+  Size _imageFrameSize(Size imageSize) {
+    if (!_usesBlurredImageFrame(imageSize)) return imageSize;
+    return Size(_mediaMaxWidth(), imageSize.height);
+  }
+
+  bool _usesBlurredImageFrame(Size imageSize) {
+    final w = message.imageWidth;
+    final h = message.imageHeight;
+    if (w == null || h == null || w <= 0 || h <= 0) return false;
+    final maxWidth = _mediaMaxWidth();
+    final sourceAspect = w / h;
+    return sourceAspect <= 0.68 && imageSize.width < maxWidth * 0.78;
   }
 
   Size _fitSize({
