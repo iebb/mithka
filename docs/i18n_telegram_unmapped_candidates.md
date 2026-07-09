@@ -3,8 +3,8 @@
 Generated for the Telegram language-pack migration. Mapped strings use Telegram language-pack keys at runtime; unmapped strings keep Mithka localizations until reviewed.
 
 - Total app strings: 989
-- Mapped to Telegram keys: 531
-- Unmapped app strings: 458
+- Mapped to Telegram keys: 561
+- Unmapped app strings: 428
 
 ## Unmapped Strings
 
@@ -79,7 +79,6 @@ Generated for the Telegram language-pack migration. Mapped strings use Telegram 
 | `appearanceClearTextFonts` | Clear Text Fonts | - |
 | `appearanceColor` | Color | NotificationsLedColor |
 | `appearanceDisplay` | Display | - |
-| `appearanceDownloadFailed` | Download failed | Download / Downloaded; ErrorOccurred |
 | `appearanceEmojiFont` | Emoji Font | FontSize; Emoji1..Emoji7 / SetEmojiStatus |
 | `appearanceEmojiFontCatalogDescription` | The font list comes from the iebb/emojifonts manifest. Selected fonts are downloaded from GitHub Releases. Previews come from Emojipedia. | Download / Downloaded; FontSize; Emoji1..Emoji7 / SetEmojiStatus |
 | `appearanceFileCount` | {value1} | AttachDocument / SharedFilesTab |
@@ -89,7 +88,6 @@ Generated for the Telegram language-pack migration. Mapped strings use Telegram 
 | `appearanceFontChainDescription` | Text fonts are applied in order across the interface. The emoji font is preferred for emoji. The monospace font is used for code blocks. | FontSize; Emoji1..Emoji7 / SetEmojiStatus |
 | `appearanceFontDownloadFailedName` | {value1} · Download failed | Download / Downloaded; FontSize; ErrorOccurred |
 | `appearanceFontInUse` | In Use | FontSize |
-| `appearanceFontLoadFailed` | Failed to load | FontSize; ErrorOccurred |
 | `appearanceFontUnused` | Unused | FontSize |
 | `appearanceGoogleDownloaded` | Google downloaded | Download / Downloaded |
 | `appearanceGroupAssistantPosition` | Group Assistant Position | NewGroup / GroupMembers / Groups |
@@ -102,10 +100,8 @@ Generated for the Telegram language-pack migration. Mapped strings use Telegram 
 | `appearanceMonospaceFont` | Monospace Font | FontSize |
 | `appearanceNoCleanableFonts` | Nothing to clean | - |
 | `appearanceNoDownloadedFontCache` | No downloaded font cache. | Download / Downloaded; ClearCache / StorageUsage; FontSize |
-| `appearanceNoMatchingFonts` | No matching fonts | - |
 | `appearanceRefreshCacheList` | Refresh Cache List | ClearCache / StorageUsage |
 | `appearanceRoundGroupAvatars` | Show Group Avatars as Circles | NewGroup / GroupMembers / Groups |
-| `appearanceSearchFont` | Search fonts | Search / SearchMessages / NoResult; FontSize |
 | `appearanceShowChatFiltersOnTop` | Show Chat Filters at Top | SearchAllChatsShort / SelectChat |
 | `appearanceShowChatListSearch` | Show Chat List Search | Search / SearchMessages / NoResult; SearchAllChatsShort / SelectChat |
 | `appearanceShowEditAndReadMarks` | Show Edit and Read Marks | - |
@@ -141,26 +137,21 @@ Generated for the Telegram language-pack migration. Mapped strings use Telegram 
 | `appLocaleUkrainian` | Українська | - |
 | `appLocaleVietnamese` | Tiếng Việt | - |
 | `archivedChatsGroupAssistant` | Group Assistant | SearchAllChatsShort / SelectChat; NewGroup / GroupMembers / Groups |
-| `audioSearchFetchingSource` | Fetching source… | Search / SearchMessages / NoResult; AttachAudio / AttachMusic |
 | `authCodeSent` | Verification code sent | - |
 | `authCodeSentByFlashCall` | You will receive a flash call | Call / VideoCall / VoipConnecting |
 | `authCodeSentByPhoneCall` | You’ll receive a phone call with the verification code | Call / VideoCall / VoipConnecting; Phone |
 | `authCodeSentBySms` | The verification code was sent by SMS | - |
 | `authCodeSentToTelegramDevices` | The verification code was sent to your other Telegram devices | Devices / CurrentSession / OtherSessions |
-| `authInvalidVerificationCode` | Incorrect verification code | - |
 | `autoDeleteDescription` | New messages will be automatically deleted from the chat after the set time. | Delete / DeleteChat / DeleteAll / DeleteAllFrom; Message / SendMessage / SearchMessages; SearchAllChatsShort / SelectChat |
 | `callIncomingCallInvite` | invited you to a {value1} call | Call / VideoCall / VoipConnecting; AddMember / VoipGroupInviteMember |
 | `callWaitingForInviteAccept` | Waiting for the other person to accept… | Call / VideoCall / VoipConnecting; AddMember / VoipGroupInviteMember |
 | `chatAdminsOnlyPosting` | Only admins can post | SearchAllChatsShort / SelectChat |
 | `chatAllMembersMuted` | All members are muted | SearchAllChatsShort / SelectChat; Members / GroupMembers / ChannelMembers |
 | `chatAndOthersCount` |  and {value1} others | SearchAllChatsShort / SelectChat |
-| `chatButtonUnsupported` | This button isn’t supported yet | SearchAllChatsShort / SelectChat |
 | `chatContactCallsOnly` | Calls are only supported with contacts | SearchAllChatsShort / SelectChat; Contacts / AddContactChat / SelectContact; Call / VideoCall / VoipConnecting |
-| `chatDeleteActionsFailed` | Could not apply action: {value1} | Delete / DeleteChat / DeleteAll / DeleteAllFrom; SearchAllChatsShort / SelectChat; ErrorOccurred |
 | `chatDeleteSelectedMessagesConfirmation` | Delete the selected {value1} messages? | Delete / DeleteChat / DeleteAll / DeleteAllFrom; Message / SendMessage / SearchMessages; SearchAllChatsShort / SelectChat |
 | `chatBlockUserMessage` | Block this sender, report the message for review, and remove their messages from this chat immediately? | Delete / Remove; BlockUser / BlockedUsers; ReportChat / ReportChatSent; Message / SendMessage / SearchMessages; SearchAllChatsShort / SelectChat |
 | `chatForwardedToName` | Forwarded to {value1} | SearchAllChatsShort / SelectChat |
-| `chatForwardFailed` | Forward failed: {value1} | Forward / ForwardTo; SearchAllChatsShort / SelectChat; ErrorOccurred |
 | `chatForwardProtected` | This message is protected and can’t be forwarded | Forward / ForwardTo; Message / SendMessage / SearchMessages; SearchAllChatsShort / SelectChat |
 | `chatForwardRemoveCaption` | Remove caption | Forward / ForwardTo; Delete / Remove; SearchAllChatsShort / SelectChat; AddCaption |
 | `chatForwardRemoveSender` | Remove sender | Forward / ForwardTo; Delete / Remove; SearchAllChatsShort / SelectChat |
@@ -174,9 +165,7 @@ Generated for the Telegram language-pack migration. Mapped strings use Telegram 
 | `chatInfoGroupChat` | Group chat | SearchAllChatsShort / SelectChat; NewGroup / GroupMembers / Groups |
 | `chatInfoGroupId` | Group ID: {value1} | SearchAllChatsShort / SelectChat; NewGroup / GroupMembers / Groups |
 | `chatInfoMoveToGroupAssistant` | Move to Group Assistant | SearchAllChatsShort / SelectChat; NewGroup / GroupMembers / Groups |
-| `chatInfoPinFailedWithReason` | Pin failed: {value1} | PinMessage / PinToTop / PinnedMessages; SearchAllChatsShort / SelectChat; ErrorOccurred |
 | `chatInfoTitle` | Chat Info | SearchAllChatsShort / SelectChat |
-| `chatInlineSwitchButtonUnsupported` | Inline switch buttons aren’t supported yet | SearchAllChatsShort / SelectChat |
 | `chatListAddFriendOrGroup` | Add friend/group | SearchAllChatsShort / SelectChat; NewGroup / GroupMembers / Groups |
 | `chatListBlockedPlaceholder` | [Blocked] | BlockedUsers; SearchAllChatsShort / SelectChat |
 | `chatMeLabel` | Me | SearchAllChatsShort / SelectChat |
@@ -185,7 +174,6 @@ Generated for the Telegram language-pack migration. Mapped strings use Telegram 
 | `chatMembersRemoveMemberTitle` | Remove Member | Delete / Remove; SearchAllChatsShort / SelectChat; Members / GroupMembers / ChannelMembers |
 | `chatMessageRequired` | Message can’t be empty | Message / SendMessage / SearchMessages; SearchAllChatsShort / SelectChat |
 | `chatMessagesSavedCount` | Saved {value1} messages | Message / SendMessage / SearchMessages; SearchAllChatsShort / SelectChat; Save |
-| `chatMoreActionsUnsupported` | More actions aren’t supported yet | SearchAllChatsShort / SelectChat |
 | `chatReportMessage` | Report this message as objectionable or abusive content? | ReportChat / ReportChatSent; Message / SendMessage / SearchMessages; SearchAllChatsShort / SelectChat |
 | `chatPeopleDoingAction` | {value1} people active… | SearchAllChatsShort / SelectChat |
 | `chatPeopleTyping` | {value1} people are typing… | SearchAllChatsShort / SelectChat |
@@ -217,7 +205,6 @@ Generated for the Telegram language-pack migration. Mapped strings use Telegram 
 | `composerMicrophonePermissionSettings` | Allow microphone access in system settings | - |
 | `composerNoEmoji` | No emoji yet | Emoji1..Emoji7 / SetEmojiStatus |
 | `composerPaidMessageCost` | Sending this message costs {value1} Stars. | Message / SendMessage / SearchMessages |
-| `composerPastedImageReadFailed` | Could not read pasted image | AttachPhoto / SharedMediaTab; ErrorOccurred |
 | `composerRichText` | Rich text | - |
 | `composerRichTextMessageTitle` | Rich text message | Message / SendMessage / SearchMessages |
 | `composerSendPaidMessageQuestion` | Send paid message? | Message / SendMessage / SearchMessages |
@@ -272,7 +259,6 @@ Generated for the Telegram language-pack migration. Mapped strings use Telegram 
 | `groupManagementLogEditedMessage` | Edited message | Message / SendMessage / SearchMessages; NewGroup / GroupMembers / Groups |
 | `groupManagementLogEditedTopic` | Edited topic | NewGroup / GroupMembers / Groups; Topics / NoTopics / CreateTopicsPermission |
 | `groupManagementLogEmpty` | No management log yet | NewGroup / GroupMembers / Groups |
-| `groupManagementLogEndedVideoChat` | Ended video chat | SearchAllChatsShort / SelectChat; NewGroup / GroupMembers / Groups; AttachVideo / Videos |
 | `groupManagementLogGenericAdminAction` | Performed an admin action | NewGroup / GroupMembers / Groups |
 | `groupManagementLogInvitedMember` | Invited member | NewGroup / GroupMembers / Groups; Members / GroupMembers / ChannelMembers |
 | `groupManagementLogJoinedByInviteLink` | Joined via invite link | NewGroup / GroupMembers / Groups; SharedLinksTab / ShareLink; AddMember / VoipGroupInviteMember |
@@ -280,7 +266,6 @@ Generated for the Telegram language-pack migration. Mapped strings use Telegram 
 | `groupManagementLogLeftGroup` | Left the group | NewGroup / GroupMembers / Groups |
 | `groupManagementLogNoPermission` | You do not have permission to view the group management log | NewGroup / GroupMembers / Groups |
 | `groupManagementLogRevokedInviteLink` | Revoked invite link | NewGroup / GroupMembers / Groups; SharedLinksTab / ShareLink; AddMember / VoipGroupInviteMember |
-| `groupManagementLogStartedVideoChat` | Started video chat | SearchAllChatsShort / SelectChat; NewGroup / GroupMembers / Groups; AttachVideo / Videos |
 | `groupManagementMembersSection` | Member Management | NewGroup / GroupMembers / Groups; Members / GroupMembers / ChannelMembers |
 | `groupManagementNotSet` | Not set | NewGroup / GroupMembers / Groups |
 | `groupManagementPermissionEditGroupInfo` | Edit group info | NewGroup / GroupMembers / Groups |
@@ -307,7 +292,6 @@ Generated for the Telegram language-pack migration. Mapped strings use Telegram 
 | `languageTelegramOfficial` | Official | SettingsLanguage |
 | `languageTelegramUsing` | Using {value1} | SettingsLanguage |
 | `linkHandlerQrLoginWarning` | This link can approve another device signing in to your Telegram account. Make sure it is you signing in. | SharedLinksTab / ShareLink; Devices / CurrentSession / OtherSessions; BotAuthLogin / AuthAnotherClient; AuthAnotherClient |
-| `linkHandlerUnsupportedTelegramLink` | Opening this Telegram link is not supported yet | SharedLinksTab / ShareLink |
 | `listSeparator` | ,  | - |
 | `loginBackToAccount` | Back to {value1} | BotAuthLogin / AuthAnotherClient |
 | `loginBackToPreviousAccount` | Back to previous account | BotAuthLogin / AuthAnotherClient |
@@ -326,9 +310,7 @@ Generated for the Telegram language-pack migration. Mapped strings use Telegram 
 | `loginPasswordHint` | Password hint: {value1} | TwoStepVerification / Password; BotAuthLogin / AuthAnotherClient |
 | `loginPhoneNumberWithCountryCode` | Phone number with country code | BotAuthLogin / AuthAnotherClient; Phone |
 | `loginQrCodeSubtitle` | Scan this QR code with another phone already signed in to Telegram. | BotAuthLogin / AuthAnotherClient; AuthAnotherClient; Phone |
-| `loginQrCodeTitle` | QR Code Login | BotAuthLogin / AuthAnotherClient; AuthAnotherClient |
 | `loginReenterPhoneNumber` | Re-enter phone number | BotAuthLogin / AuthAnotherClient; Phone |
-| `loginRefreshQrCode` | Refresh QR code | BotAuthLogin / AuthAnotherClient; AuthAnotherClient |
 | `loginSwitchAccount` | Switch account | BotAuthLogin / AuthAnotherClient |
 | `loginTelegramAccountTitle` | Log in to Telegram | BotAuthLogin / AuthAnotherClient |
 | `loginTelegramApiCredentialsMissing` | Telegram API credentials are not configured | BotAuthLogin / AuthAnotherClient |
@@ -340,7 +322,6 @@ Generated for the Telegram language-pack migration. Mapped strings use Telegram 
 | `markdownLabel` | Markdown | - |
 | `messageActionBlockKeyword` | Block keyword | BlockUser / BlockedUsers; Message / SendMessage / SearchMessages |
 | `messageActionPlayMuted` | Play muted | Message / SendMessage / SearchMessages |
-| `messageBubbleCallDeclinedByOther` | Declined by the other person | Message / SendMessage / SearchMessages; Call / VideoCall / VoipConnecting |
 | `messageBubbleCallDuration` | Call duration {value1} | Message / SendMessage / SearchMessages; Call / VideoCall / VoipConnecting |
 | `messageBubbleExpandQuote` | Expand quote | QuoteMessage; Message / SendMessage / SearchMessages |
 | `messageRepliesUnavailable` | Replies are not available for this message | RepliesTitle; Message / SendMessage / SearchMessages |
@@ -349,7 +330,6 @@ Generated for the Telegram language-pack migration. Mapped strings use Telegram 
 | `momentsLiked` | Liked | - |
 | `momentsLikedByCount` | Liked by {value1} | - |
 | `momentsLikedByListWithOthers` | {value1}, ... and {value2} others liked this | - |
-| `momentsLikeFailed` | Like failed: {value1} | ErrorOccurred |
 | `momentsNewPostsCount` | {value1} new posts | - |
 | `momentsNoFriendPosts` | No posts from friends yet | - |
 | `momentsNoPostableChannels` | No channels available to post to | Channel / ChannelSettings / ChannelMembers |
@@ -363,7 +343,6 @@ Generated for the Telegram language-pack migration. Mapped strings use Telegram 
 | `momentsReplyToPlaceholder` | Reply to {value1}… | RepliesTitle / Reply |
 | `momentsReplyToUser` | Reply to {value1} | RepliesTitle / Reply |
 | `momentsReplyToUserPlaceholder` | Reply to {value1}... | RepliesTitle / Reply |
-| `momentsReplyUnavailable` | Replies are not available for this post | RepliesTitle / Reply; RepliesTitle |
 | `momentsSearchChannelPosts` | Search channel posts | Search / SearchMessages / NoResult; Channel / ChannelSettings / ChannelMembers |
 | `momentsSearchJoinedChannelPosts` | Search posts from joined channels | Search / SearchMessages / NoResult; Channel / ChannelSettings / ChannelMembers |
 | `momentsShareSomethingPlaceholder` | Share something new... | - |
@@ -391,7 +370,6 @@ Generated for the Telegram language-pack migration. Mapped strings use Telegram 
 | `profileLogOutAccountConfirm` | This will revoke the Telegram session for {value1}, remove its local data, and delete its saved Keychain backup. | Delete / DeleteChat / DeleteAll / DeleteAllFrom; Delete / Remove; CurrentSession / OtherSessions; MyProfile / UserBio; Save |
 | `profileRemoveAccountConfirm` | {value1} will be removed from this device. The Telegram session stays active on Telegram and can be restored from a saved backup. | Delete / Remove; CurrentSession / OtherSessions; Devices / CurrentSession / OtherSessions; MyProfile / UserBio; Save |
 | `proxyDescription` | The proxy is only used to connect to Telegram and may slow down your connection. | - |
-| `qrCodeMineTitle` | My QR code | AuthAnotherClient |
 | `qrCodeNoGroupQrCode` | No group QR code yet | NewGroup / GroupMembers / Groups; AuthAnotherClient |
 | `qrCodeScanToAddFriend` | Scan the QR code above to add me as a friend | AuthAnotherClient |
 | `richTextComposerAddColumn` | Add column | - |
@@ -401,9 +379,6 @@ Generated for the Telegram language-pack migration. Mapped strings use Telegram 
 | `richTextComposerFormatItalicMark` | I | - |
 | `richTextComposerFormatStrikethroughMark` | S | SecretChatTimerSeconds; CalendarWeekNameShortSaturday; CalendarWeekNameShortSunday |
 | `richTextComposerFormatUnderlineMark` | U | - |
-| `richTextComposerRemoveColumn` | Remove column | Delete / Remove |
-| `richTextComposerRemoveRow` | Remove row | Delete / Remove |
-| `richTextComposerRemoveTable` | Remove table | Delete / Remove |
 | `settingsAboutMithka` | About Mithka | - |
 | `sharedMediaCacheDeleted` | Local cache deleted | ClearCache / StorageUsage |
 | `sharedMediaDownloadedSize` | Downloaded {value1} | Download / Downloaded |
@@ -446,14 +421,10 @@ Generated for the Telegram language-pack migration. Mapped strings use Telegram 
 | `topicChatNoMoreContent` | No more content | SearchAllChatsShort / SelectChat; Topics / NoTopics / CreateTopicsPermission |
 | `topicChatPinnedPrefix` | Pinned \|  | PinnedMessages / PinMessage; SearchAllChatsShort / SelectChat; Topics / NoTopics / CreateTopicsPermission |
 | `translationInternalNoExternalApi` | Internal translation does not use an external API | - |
-| `translationLibreTranslateNoResult` | LibreTranslate returned no translation | TranslateMessage |
 | `translationLibreTranslateUrlRequired` | Set the LibreTranslate URL first | TranslateMessage |
-| `translationLingvaNoResult` | Lingva returned no translation | - |
 | `translationMlKitLocal` | ML Kit (local) | - |
-| `translationMyMemoryNoResult` | MyMemory returned no translation | - |
 | `translationNativeCancelledOrTimedOut` | Native translation was canceled or timed out | - |
 | `translationNativeNoExternalApi` | Native translation does not use an external API | - |
-| `translationNativeNoResult` | Native translation returned no translation | - |
 | `translationServiceInvalidResponse` | Invalid response format from translation service | - |
 | `translationServiceReturnedStatus` | Translation service returned {value1} | - |
 | `translationServiceUrlInvalid` | Invalid translation service URL | - |
@@ -462,7 +433,6 @@ Generated for the Telegram language-pack migration. Mapped strings use Telegram 
 | `translationSystem` | System Translation | - |
 | `translationTelegram` | Telegram Translation | - |
 | `updateNewVersionFound` | New Version Available | - |
-| `videoPlayerForwardUnsupported` | This video cannot be forwarded | Forward / ForwardTo; AttachVideo / Videos |
 | `videoPlayerPictureInPicture` | Picture in Picture | AttachVideo / Videos |
 | `videoPlayerSplitScreen` | Split Screen | AttachVideo / Videos |
 | `videoPlayerStreamingWhileDownloading` | Streaming while downloading | AttachVideo / Videos |
