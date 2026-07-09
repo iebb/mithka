@@ -21,9 +21,15 @@ import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
 
 class ChatSearchView extends StatefulWidget {
-  const ChatSearchView({super.key, required this.chatId, required this.title});
+  const ChatSearchView({
+    super.key,
+    required this.chatId,
+    required this.title,
+    this.initialQuery,
+  });
   final int chatId;
   final String title;
+  final String? initialQuery;
 
   @override
   State<ChatSearchView> createState() => _ChatSearchViewState();
@@ -41,7 +47,23 @@ class _ChatSearchViewState extends State<ChatSearchView> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _focus.requestFocus());
+    final initial = widget.initialQuery?.trim();
+    if (initial != null && initial.isNotEmpty) {
+      _query = initial;
+      _controller.text = initial;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _focus.requestFocus();
+        _controller.selection = TextSelection.collapsed(
+          offset: _controller.text.length,
+        );
+        unawaited(_run(initial));
+      });
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _focus.requestFocus(),
+      );
+    }
   }
 
   @override
@@ -222,59 +244,95 @@ class _ChatSearchViewState extends State<ChatSearchView> {
 
   Widget _row(ChatMessage m) {
     final c = context.colors;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: c.background,
-        border: Border(bottom: BorderSide(color: c.divider, width: 0.5)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          PhotoAvatar(
-            title: m.senderName ?? widget.title,
-            photo: m.senderPhoto,
-            size: 40,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        m.senderName ?? widget.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w500,
-                          color: c.textPrimary,
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => Navigator.of(context).pop(m.id),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: c.background,
+          border: Border(bottom: BorderSide(color: c.divider, width: 0.5)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            PhotoAvatar(
+              title: m.senderName ?? widget.title,
+              photo: m.senderPhoto,
+              size: 40,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          m.senderName ?? widget.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w500,
+                            color: c.textPrimary,
+                          ),
                         ),
                       ),
+                      Text(
+                        DateText.listLabel(m.date),
+                        style: TextStyle(fontSize: 12, color: c.textTertiary),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  RichText(
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    text: TextSpan(
+                      style: TextStyle(fontSize: 13, color: c.textSecondary),
+                      children: _snippetSpans(m),
                     ),
-                    Text(
-                      DateText.listLabel(m.date),
-                      style: TextStyle(fontSize: 12, color: c.textTertiary),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  m.text.isEmpty
-                      ? telegramText(AppStringKeys.chatSearchMessageResultLabel)
-                      : m.text.replaceAll('\n', ' '),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 13, color: c.textSecondary),
-                ),
-              ],
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
+  }
+
+  List<InlineSpan> _snippetSpans(ChatMessage message) {
+    final c = context.colors;
+    final text = message.text.isEmpty
+        ? telegramText(AppStringKeys.chatSearchMessageResultLabel)
+        : message.text.replaceAll('\n', ' ');
+    final query = _query.trim();
+    if (query.isEmpty) return [TextSpan(text: text)];
+    final lowerText = text.toLowerCase();
+    final lowerQuery = query.toLowerCase();
+    final spans = <InlineSpan>[];
+    var start = 0;
+    while (start < text.length) {
+      final index = lowerText.indexOf(lowerQuery, start);
+      if (index < 0) break;
+      if (index > start) {
+        spans.add(TextSpan(text: text.substring(start, index)));
+      }
+      final end = index + query.length;
+      spans.add(
+        TextSpan(
+          text: text.substring(index, end),
+          style: TextStyle(color: c.linkBlue, fontWeight: FontWeight.w700),
+        ),
+      );
+      start = end;
+    }
+    if (start < text.length) {
+      spans.add(TextSpan(text: text.substring(start)));
+    }
+    return spans.isEmpty ? [TextSpan(text: text)] : spans;
   }
 }

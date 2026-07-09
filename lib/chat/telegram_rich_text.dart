@@ -19,6 +19,7 @@ class TelegramRichText extends StatefulWidget {
     this.maxLines,
     this.overflow = TextOverflow.clip,
     this.onBotCommandTap,
+    this.onHashtagTap,
     this.quoteBackgroundColor,
   });
 
@@ -29,6 +30,7 @@ class TelegramRichText extends StatefulWidget {
   final int? maxLines;
   final TextOverflow overflow;
   final ValueChanged<String>? onBotCommandTap;
+  final ValueChanged<String>? onHashtagTap;
   final Color? quoteBackgroundColor;
 
   @override
@@ -37,8 +39,9 @@ class TelegramRichText extends StatefulWidget {
 
 class _TelegramRichTextState extends State<TelegramRichText> {
   static final _linkRegExp = RegExp(
-    r'((?:https?:\/\/|www\.|t\.me\/|telegram\.me\/|tg:\/\/)[^\s]+)|(?<![\w@])(@[A-Za-z0-9_]{4,32})',
+    r'((?:https?:\/\/|www\.|t\.me\/|telegram\.me\/|tg:\/\/)[^\s]+)|(?<![\w@])(@[A-Za-z0-9_]{4,32})|(?<![\w#])(#[A-Za-z0-9_\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]+)',
     caseSensitive: false,
+    unicode: true,
   );
 
   final _recognizers = <GestureRecognizer>[];
@@ -290,6 +293,15 @@ class _TelegramRichTextState extends State<TelegramRichText> {
       _recognizers.add(recognizer);
       return [TextSpan(text: segment, style: style, recognizer: recognizer)];
     }
+    if (target == '__hashtag__') {
+      if (widget.onHashtagTap == null) {
+        return [TextSpan(text: segment, style: style)];
+      }
+      final recognizer = TapGestureRecognizer()
+        ..onTap = () => widget.onHashtagTap?.call(_normalizeHashtag(segment));
+      _recognizers.add(recognizer);
+      return [TextSpan(text: segment, style: style, recognizer: recognizer)];
+    }
     if (target != null) {
       final recognizer = TapGestureRecognizer()
         ..onTap = () => openLink(context, target);
@@ -444,6 +456,8 @@ class _TelegramRichTextState extends State<TelegramRichText> {
           return segment.startsWith('@')
               ? 'https://t.me/${segment.substring(1)}'
               : null;
+        case 'textEntityTypeHashtag':
+          return '__hashtag__';
         case 'textEntityTypeBotCommand':
           return '__bot_command__';
         case 'textEntityTypeEmailAddress':
@@ -469,18 +483,35 @@ class _TelegramRichTextState extends State<TelegramRichText> {
       }
       final matched = text.substring(match.start, match.end);
       final isMention = match.group(2) != null;
+      final isHashtag = match.group(3) != null;
       final target = isMention
           ? 'https://t.me/${matched.substring(1)}'
           : matched;
+      if (isHashtag && widget.onHashtagTap == null) {
+        spans.add(
+          TextSpan(
+            text: matched,
+            style: baseStyle.copyWith(color: linkColor),
+          ),
+        );
+        last = match.end;
+        continue;
+      }
       final recognizer = TapGestureRecognizer()
-        ..onTap = () => openLink(context, target);
+        ..onTap = () {
+          if (isHashtag) {
+            widget.onHashtagTap?.call(_normalizeHashtag(matched));
+          } else {
+            openLink(context, target);
+          }
+        };
       _recognizers.add(recognizer);
       spans.add(
         TextSpan(
           text: matched,
           style: baseStyle.copyWith(
             color: linkColor,
-            decoration: isMention
+            decoration: isMention || isHashtag
                 ? baseStyle.decoration
                 : TextDecoration.underline,
             decorationColor: linkColor,
@@ -492,6 +523,11 @@ class _TelegramRichTextState extends State<TelegramRichText> {
     }
     if (last < text.length) spans.add(TextSpan(text: text.substring(last)));
     return spans;
+  }
+
+  String _normalizeHashtag(String tag) {
+    final trimmed = tag.trim();
+    return trimmed.startsWith('#') ? trimmed : '#$trimmed';
   }
 }
 

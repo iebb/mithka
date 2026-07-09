@@ -69,6 +69,7 @@ class MessageBubble extends StatefulWidget {
     this.onPlayVideo,
     this.onButtonTap,
     this.onBotCommandTap,
+    this.onHashtagTap,
     this.onOpenComments,
     this.showCommentAttachment = false,
     this.onToggleReaction,
@@ -100,6 +101,7 @@ class MessageBubble extends StatefulWidget {
   final ValueChanged<ChatMessage>? onPlayVideo;
   final void Function(ChatMessage message, MessageButton button)? onButtonTap;
   final ValueChanged<String>? onBotCommandTap;
+  final ValueChanged<String>? onHashtagTap;
   final ValueChanged<ChatMessage>? onOpenComments;
   final bool showCommentAttachment;
   final ValueChanged<MessageReaction>? onToggleReaction;
@@ -1701,11 +1703,13 @@ class _MessageBubbleState extends State<MessageBubble>
     return Color.lerp(base, dark ? Colors.white : Colors.black, 0.10)!;
   }
 
-  // URLs (group 1) and @username mentions (group 2). The lookbehind stops email
-  // local-parts (user@host) and @@ from being matched as mentions.
+  // URLs (group 1), @username mentions (group 2), and #hashtags (group 3).
+  // The lookbehind stops email local-parts (user@host), @@ and ## from being
+  // matched as mentions/tags.
   static final _linkRegExp = RegExp(
-    r'((?:https?:\/\/|www\.|t\.me\/|tg:\/\/)[^\s]+)|(?<![\w@])(@[A-Za-z0-9_]{4,32})',
+    r'((?:https?:\/\/|www\.|t\.me\/|tg:\/\/)[^\s]+)|(?<![\w@])(@[A-Za-z0-9_]{4,32})|(?<![\w#])(#[A-Za-z0-9_\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]+)',
     caseSensitive: false,
+    unicode: true,
   );
 
   /// Trailing inline meta after the text: edited pencil + send/read tick.
@@ -2152,6 +2156,15 @@ class _MessageBubbleState extends State<MessageBubble>
       _linkRecognizers.add(recognizer);
       return [TextSpan(text: segment, style: style, recognizer: recognizer)];
     }
+    if (target == '__hashtag__') {
+      if (widget.onHashtagTap == null) {
+        return [TextSpan(text: segment, style: style)];
+      }
+      final recognizer = TapGestureRecognizer()
+        ..onTap = () => widget.onHashtagTap?.call(_normalizeHashtag(segment));
+      _linkRecognizers.add(recognizer);
+      return [TextSpan(text: segment, style: style, recognizer: recognizer)];
+    }
     if (target != null) {
       final recognizer = TapGestureRecognizer()
         ..onTap = () => openLink(context, target);
@@ -2296,6 +2309,7 @@ class _MessageBubbleState extends State<MessageBubble>
               ? 'https://t.me/${segment.substring(1)}'
               : null;
         case 'textEntityTypeHashtag':
+          return '__hashtag__';
         case 'textEntityTypeCashtag':
         case 'textEntityTypeBotCommand':
           return e.type == 'textEntityTypeBotCommand'
@@ -2338,18 +2352,35 @@ class _MessageBubbleState extends State<MessageBubble>
       }
       final matched = text.substring(m.start, m.end);
       final isMention = m.group(2) != null;
+      final isHashtag = m.group(3) != null;
       final target = isMention
           ? 'https://t.me/${matched.substring(1)}'
           : matched;
+      if (isHashtag && widget.onHashtagTap == null) {
+        spans.add(
+          TextSpan(
+            text: matched,
+            style: baseStyle.copyWith(color: link),
+          ),
+        );
+        last = m.end;
+        continue;
+      }
       final recognizer = TapGestureRecognizer()
-        ..onTap = () => openLink(context, target);
+        ..onTap = () {
+          if (isHashtag) {
+            widget.onHashtagTap?.call(_normalizeHashtag(matched));
+          } else {
+            openLink(context, target);
+          }
+        };
       _linkRecognizers.add(recognizer);
       spans.add(
         TextSpan(
           text: matched,
           style: baseStyle.copyWith(
             color: link,
-            decoration: isMention
+            decoration: isMention || isHashtag
                 ? baseStyle.decoration
                 : TextDecoration.underline,
             decorationColor: link,
@@ -2363,6 +2394,11 @@ class _MessageBubbleState extends State<MessageBubble>
       spans.add(TextSpan(text: text.substring(last), style: baseStyle));
     }
     return spans;
+  }
+
+  String _normalizeHashtag(String tag) {
+    final trimmed = tag.trim();
+    return trimmed.startsWith('#') ? trimmed : '#$trimmed';
   }
 
   // MARK: - Image

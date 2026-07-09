@@ -43,6 +43,7 @@ import '../theme/theme_controller.dart';
 import 'chat_info_view.dart';
 import 'chat_input_bar.dart';
 import 'chat_picker_view.dart';
+import 'chat_search_view.dart';
 import 'chat_view_model.dart';
 import 'custom_emoji.dart';
 import 'emoji_store.dart';
@@ -3399,6 +3400,22 @@ class _ChatViewState extends State<ChatView> {
     await _ensureMessageVisible(messageId, pinnedJump: pinnedJump);
   }
 
+  Future<void> _openHashtagSearch(String hashtag) async {
+    final tag = hashtag.trim();
+    if (tag.isEmpty) return;
+    final result = await Navigator.of(context).push<int>(
+      MaterialPageRoute(
+        builder: (_) => ChatSearchView(
+          chatId: widget.chatId,
+          title: _vm.peerTitle,
+          initialQuery: tag.startsWith('#') ? tag : '#$tag',
+        ),
+      ),
+    );
+    if (!mounted || result == null) return;
+    await _scrollToMessage(result);
+  }
+
   Future<void> _ensureMessageVisible(
     int messageId, {
     bool pinnedJump = false,
@@ -3540,6 +3557,7 @@ class _ChatViewState extends State<ChatView> {
                     onPlayVideo: _playVideo,
                     onButtonTap: _pressMessageButton,
                     onBotCommandTap: _vm.sendCommand,
+                    onHashtagTap: _openHashtagSearch,
                     isRead: _vm.isRead(message),
                     onToggleReaction: (r) => _vm.toggleReaction(message, r),
                     onShowReactionUsers: _showReactionUsers,
