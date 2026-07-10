@@ -465,8 +465,8 @@ class _ChatListViewState extends State<ChatListView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final useFilterMenu = context.watch<ThemeController>().showChatFolderFilter;
-    if (!useFilterMenu && !_model.isAllFilter) {
+    final folderMode = context.watch<ThemeController>().chatFolderDisplayMode;
+    if (folderMode == ChatFolderDisplayMode.hidden && !_model.isAllFilter) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && !_model.isAllFilter) {
           _model.selectFilter(_model.filters.first);
@@ -480,12 +480,16 @@ class _ChatListViewState extends State<ChatListView> {
           child: Column(
             children: [
               _header(),
+              if (folderMode == ChatFolderDisplayMode.tabs &&
+                  _model.filters.length > 1)
+                _chatFolderTabs(),
               Expanded(child: _chatList()),
             ],
           ),
         ),
         if (_showPlusMenu) _plusMenuOverlay(),
-        if (useFilterMenu && _showFilterMenu) _filterMenuOverlay(),
+        if (folderMode == ChatFolderDisplayMode.menu && _showFilterMenu)
+          _filterMenuOverlay(),
       ],
     );
   }
@@ -494,7 +498,9 @@ class _ChatListViewState extends State<ChatListView> {
 
   Widget _header() {
     final c = context.colors;
-    final useFilterMenu = context.watch<ThemeController>().showChatFolderFilter;
+    final useFilterMenu =
+        context.watch<ThemeController>().chatFolderDisplayMode ==
+        ChatFolderDisplayMode.menu;
     final activeFilter = _model.selectedFilter;
     return Container(
       color: c.listHeaderTint,
@@ -636,6 +642,75 @@ class _ChatListViewState extends State<ChatListView> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _chatFolderTabs() {
+    final c = context.colors;
+    final selectedFolderId = _model.selectedFilter.folderId;
+    return Container(
+      height: 44,
+      decoration: BoxDecoration(
+        color: c.listHeaderTint,
+        border: Border(bottom: BorderSide(color: c.divider, width: 0.5)),
+      ),
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+        itemCount: _model.filters.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 28),
+        itemBuilder: (context, index) {
+          final filter = _model.filters[index];
+          final selected = filter.folderId == selectedFolderId;
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _selectFilter(filter),
+            child: SizedBox(
+              height: 44,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      AppIcon(
+                        filter.isAll ? HeroAppIcons.inbox : HeroAppIcons.folder,
+                        size: 17,
+                        color: selected ? AppTheme.brand : c.textSecondary,
+                      ),
+                      const SizedBox(width: AppSpacing.xs + 1),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 168),
+                        child: Text(
+                          filter.title.l10n(context),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: AppTextSize.callout,
+                            fontWeight: selected
+                                ? FontWeight.w600
+                                : FontWeight.w500,
+                            color: c.textPrimary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 7),
+                  Container(
+                    width: 38,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: selected ? AppTheme.brand : Colors.transparent,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }

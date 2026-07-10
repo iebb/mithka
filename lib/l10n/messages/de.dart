@@ -82,6 +82,10 @@ const deMessages = <String, String>{
   'appearanceCacheFiles': "Cache-Dateien",
   'appearanceCacheRefreshed': "Aktualisiert",
   'appearanceCapUnreadCountAt99': "Über 99 als 99+ anzeigen",
+  'appearanceChatFolders': "Chatordner",
+  'appearanceChatFoldersHidden': "Nicht anzeigen",
+  'appearanceChatFoldersMenu': "Ordner oben rechts",
+  'appearanceChatFoldersTabs': "Tabs oben",
   'appearanceChatList': "Chatliste",
   'appearanceChatView': "Chatansicht",
   'appearanceCleanableSize': "Bereinigbar",
@@ -122,7 +126,6 @@ const deMessages = <String, String>{
   'appearanceRefreshCacheList': "Cache-Liste aktualisieren",
   'appearanceRoundGroupAvatars': "Gruppenavatare rund anzeigen",
   'appearanceSearchFont': "Schriftart suchen",
-  'appearanceShowChatFiltersOnTop': "Chatfilter oben anzeigen",
   'appearanceShowChatListSearch': "Chatlistensuche anzeigen",
   'appearanceShowEditAndReadMarks':
       "Bearbeitet- und Gelesen-Markierungen anzeigen",

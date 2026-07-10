@@ -346,12 +346,16 @@ class DisplaySettingsView extends StatelessWidget {
                 const SizedBox(height: AppSpacing.xl),
                 _label(context, AppStrings.t(AppStringKeys.appearanceChatList)),
                 _card(context, [
-                  _toggleRow(
+                  _navigationRow(
                     context,
-                    HeroAppIcons.filter.data,
-                    AppStrings.t(AppStringKeys.appearanceShowChatFiltersOnTop),
-                    theme.showChatFolderFilter,
-                    (v) => theme.showChatFolderFilter = v,
+                    AppStrings.t(AppStringKeys.appearanceChatFolders),
+                    AppStrings.t(theme.chatFolderDisplayMode.label),
+                    () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const ChatFolderSettingsView(),
+                      ),
+                    ),
+                    icon: HeroAppIcons.folder.data,
                   ),
                   _toggleRow(
                     context,
@@ -443,6 +447,63 @@ class DisplaySettingsView extends StatelessWidget {
     ValueChanged<bool> onChanged,
   ) =>
       const AppearanceView()._toggleRow(context, icon, label, value, onChanged);
+
+  Widget _navigationRow(
+    BuildContext context,
+    String label,
+    String? value,
+    VoidCallback onTap, {
+    IconData? icon,
+  }) => const AppearanceView()._navigationRow(
+    context,
+    label,
+    value,
+    onTap,
+    icon: icon,
+  );
+}
+
+class ChatFolderSettingsView extends StatelessWidget {
+  const ChatFolderSettingsView({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final theme = context.watch<ThemeController>();
+    return Scaffold(
+      backgroundColor: c.groupedBackground,
+      body: Column(
+        children: [
+          NavHeader(
+            title: AppStrings.t(AppStringKeys.appearanceChatFolders),
+            onBack: () => Navigator.of(context).pop(),
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                AppSpacing.xl,
+                AppSpacing.lg,
+                AppSpacing.section,
+              ),
+              children: [
+                const AppearanceView()._card(context, [
+                  for (final mode in ChatFolderDisplayMode.values)
+                    const AppearanceView()._choiceRow(
+                      context,
+                      mode.icon,
+                      mode.label,
+                      theme.chatFolderDisplayMode == mode,
+                      () => theme.chatFolderDisplayMode = mode,
+                    ),
+                ]),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 extension _DisplayAppearanceHelpers on AppearanceView {

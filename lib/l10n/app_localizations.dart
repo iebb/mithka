@@ -215,6 +215,10 @@ abstract final class AppStringKeys {
   static const appearanceCacheFiles = 'appearanceCacheFiles';
   static const appearanceCacheRefreshed = 'appearanceCacheRefreshed';
   static const appearanceCapUnreadCountAt99 = 'appearanceCapUnreadCountAt99';
+  static const appearanceChatFolders = 'appearanceChatFolders';
+  static const appearanceChatFoldersHidden = 'appearanceChatFoldersHidden';
+  static const appearanceChatFoldersMenu = 'appearanceChatFoldersMenu';
+  static const appearanceChatFoldersTabs = 'appearanceChatFoldersTabs';
   static const appearanceChatList = 'appearanceChatList';
   static const appearanceChatView = 'appearanceChatView';
   static const appearanceCleanableSize = 'appearanceCleanableSize';
@@ -257,8 +261,6 @@ abstract final class AppStringKeys {
   static const appearanceRefreshCacheList = 'appearanceRefreshCacheList';
   static const appearanceRoundGroupAvatars = 'appearanceRoundGroupAvatars';
   static const appearanceSearchFont = 'appearanceSearchFont';
-  static const appearanceShowChatFiltersOnTop =
-      'appearanceShowChatFiltersOnTop';
   static const appearanceShowChatListSearch = 'appearanceShowChatListSearch';
   static const appearanceShowEditAndReadMarks =
       'appearanceShowEditAndReadMarks';

@@ -83,6 +83,18 @@ enum GroupAssistantPlacement {
   IconData get icon => _icon.data;
 }
 
+enum ChatFolderDisplayMode {
+  hidden(AppStringKeys.appearanceChatFoldersHidden, HeroAppIcons.eyeSlash),
+  menu(AppStringKeys.appearanceChatFoldersMenu, HeroAppIcons.folder),
+  tabs(AppStringKeys.appearanceChatFoldersTabs, HeroAppIcons.tableColumns);
+
+  const ChatFolderDisplayMode(this.label, this._icon);
+  final String label;
+  final AppIconData _icon;
+
+  IconData get icon => _icon.data;
+}
+
 enum AppFontChoice {
   system(
     AppStringKeys.emojiFontCatalogSystemDefault,
@@ -808,7 +820,13 @@ class ThemeController extends ChangeNotifier {
     _fontScale = _prefs.getDouble(_fontKey) ?? 1.0;
     _interfaceScale = _prefs.getDouble(_interfaceScaleKey) ?? 1.0;
     _circularGroupAvatars = _prefs.getBool(_groupAvatarCircleKey) ?? true;
-    _showChatFolderFilter = _prefs.getBool(_chatFolderFilterKey) ?? true;
+    final storedChatFolderMode = _prefs.getString(_chatFolderDisplayModeKey);
+    _chatFolderDisplayMode = ChatFolderDisplayMode.values.firstWhere(
+      (mode) => mode.name == storedChatFolderMode,
+      orElse: () => (_prefs.getBool(_chatFolderFilterKey) ?? true)
+          ? ChatFolderDisplayMode.menu
+          : ChatFolderDisplayMode.hidden,
+    );
     _showChatListSearch = _prefs.getBool(_chatListSearchKey) ?? true;
     _hideSidebarPhone = _prefs.getBool(_hideSidebarPhoneKey) ?? false;
     _showMemberTags = _prefs.getBool(_memberTagsKey) ?? false;
@@ -854,6 +872,8 @@ class ThemeController extends ChangeNotifier {
   static const _fontKey = 'fontScale';
   static const _interfaceScaleKey = 'interfaceScale';
   static const _groupAvatarCircleKey = 'circularGroupAvatars';
+  static const _chatFolderDisplayModeKey = 'chatFolderDisplayMode';
+  // Retained only to migrate the former show/hide toggle.
   static const _chatFolderFilterKey = 'showChatFolderFilter';
   static const _chatListSearchKey = 'showChatListSearch';
   static const _hideSidebarPhoneKey = 'hideSidebarPhone';
@@ -890,7 +910,7 @@ class ThemeController extends ChangeNotifier {
   late double _fontScale;
   late double _interfaceScale;
   late bool _circularGroupAvatars;
-  bool _showChatFolderFilter = true;
+  late ChatFolderDisplayMode _chatFolderDisplayMode;
   bool _showChatListSearch = true;
   bool _hideSidebarPhone = false;
   bool _showMemberTags = false;
@@ -943,7 +963,7 @@ class ThemeController extends ChangeNotifier {
   }
 
   bool get circularGroupAvatars => _circularGroupAvatars;
-  bool get showChatFolderFilter => _showChatFolderFilter;
+  ChatFolderDisplayMode get chatFolderDisplayMode => _chatFolderDisplayMode;
   bool get showChatListSearch => _showChatListSearch;
   bool get hideSidebarPhone => _hideSidebarPhone;
   bool get showMemberTags => _showMemberTags;
@@ -1254,9 +1274,10 @@ class ThemeController extends ChangeNotifier {
     notifyListeners();
   }
 
-  set showChatFolderFilter(bool value) {
-    _showChatFolderFilter = value;
-    _prefs.setBool(_chatFolderFilterKey, value);
+  set chatFolderDisplayMode(ChatFolderDisplayMode value) {
+    if (_chatFolderDisplayMode == value) return;
+    _chatFolderDisplayMode = value;
+    _prefs.setString(_chatFolderDisplayModeKey, value.name);
     notifyListeners();
   }
 

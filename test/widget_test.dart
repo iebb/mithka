@@ -262,6 +262,37 @@ void main() {
     });
   });
 
+  group('ThemeController chat folders', () {
+    test('migrates the former folder visibility toggle', () async {
+      SharedPreferences.setMockInitialValues({'showChatFolderFilter': false});
+      var prefs = await SharedPreferences.getInstance();
+      expect(
+        ThemeController(prefs).chatFolderDisplayMode,
+        ChatFolderDisplayMode.hidden,
+      );
+
+      SharedPreferences.setMockInitialValues({'showChatFolderFilter': true});
+      prefs = await SharedPreferences.getInstance();
+      expect(
+        ThemeController(prefs).chatFolderDisplayMode,
+        ChatFolderDisplayMode.menu,
+      );
+    });
+
+    test('prefers and persists the explicit display mode', () async {
+      SharedPreferences.setMockInitialValues({
+        'showChatFolderFilter': false,
+        'chatFolderDisplayMode': 'tabs',
+      });
+      final prefs = await SharedPreferences.getInstance();
+      final theme = ThemeController(prefs);
+
+      expect(theme.chatFolderDisplayMode, ChatFolderDisplayMode.tabs);
+      theme.chatFolderDisplayMode = ChatFolderDisplayMode.menu;
+      expect(prefs.getString('chatFolderDisplayMode'), 'menu');
+    });
+  });
+
   group('ThemeController fonts', () {
     test('applies explicit fallback chain in order', () async {
       SharedPreferences.setMockInitialValues({

@@ -84,6 +84,10 @@ const frMessages = <String, String>{
   'appearanceCacheFiles': "Fichiers en cache",
   'appearanceCacheRefreshed': "Actualisé",
   'appearanceCapUnreadCountAt99': "Afficher 99+ au-delà de 99",
+  'appearanceChatFolders': "Dossiers de discussions",
+  'appearanceChatFoldersHidden': "Ne pas afficher",
+  'appearanceChatFoldersMenu': "Dossier en haut à droite",
+  'appearanceChatFoldersTabs': "Onglets en haut",
   'appearanceChatList': "Liste des discussions",
   'appearanceChatView': "Vue de discussion",
   'appearanceCleanableSize': "Nettoyable",
@@ -122,8 +126,6 @@ const frMessages = <String, String>{
   'appearanceRefreshCacheList': "Actualiser la liste du cache",
   'appearanceRoundGroupAvatars': "Afficher les avatars de groupe en cercle",
   'appearanceSearchFont': "Rechercher une police",
-  'appearanceShowChatFiltersOnTop':
-      "Afficher les filtres de discussions en haut",
   'appearanceShowChatListSearch': "Afficher la recherche dans la liste",
   'appearanceShowEditAndReadMarks':
       "Afficher les marques de modification et de lecture",
