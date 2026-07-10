@@ -49,14 +49,24 @@ import 'sticker_store.dart';
 
 enum _Panel { none, function, emoji, sticker, voice }
 
+enum _ClipboardImageAction { cancel, edit, richText, send }
+
+typedef _ClipboardImage = ({Uint8List data, String mimeType});
+
 class _SendComposerIntent extends Intent {
   const _SendComposerIntent();
 }
 
 class ChatInputBar extends StatefulWidget {
-  const ChatInputBar({super.key, required this.vm, required this.onStartCall});
+  const ChatInputBar({
+    super.key,
+    required this.vm,
+    required this.onStartCall,
+    required this.onMessageSent,
+  });
   final ChatViewModel vm;
   final FutureOr<void> Function(bool isVideo) onStartCall;
+  final VoidCallback onMessageSent;
 
   @override
   State<ChatInputBar> createState() => _ChatInputBarState();
@@ -263,6 +273,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
     setState(() => _recording = false);
     if (cancelled || secs < 1 || url == null) return;
     vm.sendVoice(url, secs);
+    widget.onMessageSent();
     setState(() => _panel = _Panel.none);
   }
 
@@ -301,6 +312,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
     }
     final (text, entities) = _controller.toFormatted();
     vm.sendFormatted(text, entities);
+    widget.onMessageSent();
     _controller.clear();
     _focus.requestFocus();
   }
@@ -327,13 +339,27 @@ class _ChatInputBarState extends State<ChatInputBar> {
       if (!mounted || !ok) return;
     }
     vm.sendFormatted(result.text, result.entities);
+    widget.onMessageSent();
     _controller.clear();
     _focus.requestFocus();
   }
 
-  Future<void> _handlePaste(ContextMenuButtonItem pasteItem) async {
-    final pastedImage = await _pasteImageFromClipboard(showNoImageToast: false);
-    if (!pastedImage) pasteItem.onPressed?.call();
+  Future<void> _handlePaste([ContextMenuButtonItem? pasteItem]) async {
+    final image = await _readClipboardImage();
+    if (image != null) {
+      _focus.unfocus();
+      await _handlePastedImage(image.data, image.mimeType);
+      _restoreKeyboardFocus();
+      return;
+    }
+
+    final clipboard = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = clipboard?.text;
+    if (text != null && text.isNotEmpty) {
+      _controller.insertText(text);
+    } else {
+      pasteItem?.onPressed?.call();
+    }
     _restoreKeyboardFocus();
   }
 
@@ -738,6 +764,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
                                 BuildContext context,
                                 EditableTextState editableTextState,
                               ) {
+                                var hasPasteAction = false;
                                 final items = editableTextState
                                     .contextMenuButtonItems
                                     .map((item) {
@@ -745,6 +772,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
                                           ContextMenuButtonType.paste) {
                                         return item;
                                       }
+                                      hasPasteAction = true;
                                       return ContextMenuButtonItem(
                                         type: item.type,
                                         label: item.label,
@@ -753,6 +781,18 @@ class _ChatInputBarState extends State<ChatInputBar> {
                                       );
                                     })
                                     .toList();
+                                if (!hasPasteAction) {
+                                  items.add(
+                                    ContextMenuButtonItem(
+                                      type: ContextMenuButtonType.paste,
+                                      label: AppStringKeys
+                                          .accountBackupLoadPyrogramPaste
+                                          .l10n(context),
+                                      onPressed: () =>
+                                          unawaited(_handlePaste()),
+                                    ),
+                                  );
+                                }
                                 return AdaptiveTextSelectionToolbar.buttonItems(
                                   anchors: editableTextState.contextMenuAnchors,
                                   buttonItems: items,
@@ -874,6 +914,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
   Future<void> _pickPhotos() async {
     try {
       final media = await ImagePicker().pickMultipleMedia();
+      var sent = false;
       for (final x in media) {
         final lower = x.name.toLowerCase();
         final isVideo =
@@ -882,15 +923,19 @@ class _ChatInputBarState extends State<ChatInputBar> {
             lower.endsWith('.m4v');
         if (isVideo) {
           widget.vm.sendVideo(x.path);
+          sent = true;
         } else if (_isGifPath(x.path) || lower.endsWith('.gif')) {
           widget.vm.sendAnimation(x.path);
+          sent = true;
         } else {
           final edited = await _editImage(x.path);
           if (edited != null) {
             widget.vm.sendPhoto(edited.path, caption: edited.caption);
+            sent = true;
           }
         }
       }
+      if (sent) widget.onMessageSent();
     } catch (_) {
       _pickFailed(AppStrings.t(AppStringKeys.composerImage));
     }
@@ -904,17 +949,22 @@ class _ChatInputBarState extends State<ChatInputBar> {
       final edited = await _editImage(shot.path);
       if (edited != null) {
         widget.vm.sendPhoto(edited.path, caption: edited.caption);
+        widget.onMessageSent();
       }
     } catch (_) {
       _pickFailed(AppStrings.t(AppStringKeys.composerCamera));
     }
   }
 
-  Future<ImageEditResult?> _editImage(String path) {
+  Future<ImageEditResult?> _editImage(
+    String path, {
+    String initialCaption = '',
+  }) {
     return Navigator.of(context).push<ImageEditResult>(
       MaterialPageRoute(
         fullscreenDialog: true,
-        builder: (_) => ImageEditView(sourcePath: path),
+        builder: (_) =>
+            ImageEditView(sourcePath: path, initialCaption: initialCaption),
       ),
     );
   }
@@ -935,59 +985,26 @@ class _ChatInputBarState extends State<ChatInputBar> {
       }
       return;
     }
-    if (_isGifMime(content.mimeType)) {
-      await _sendAnimationBytes(data, content.mimeType);
-      return;
-    }
-    await _editAndSendImageBytes(data, content.mimeType);
+    _focus.unfocus();
+    await _handlePastedImage(data, content.mimeType);
+    _restoreKeyboardFocus();
   }
 
-  Future<bool> _pasteImageFromClipboard({bool showNoImageToast = true}) async {
+  Future<_ClipboardImage?> _readClipboardImage() async {
     try {
       final image = await _clipboardChannel.invokeMapMethod<String, dynamic>(
         'readImage',
       );
       final data = image?['data'];
-      if (data is! Uint8List || data.isEmpty) {
-        if (showNoImageToast && mounted) {
-          showToast(
-            context,
-            AppStrings.t(AppStringKeys.composerClipboardNoImage),
-          );
-        }
-        return false;
-      }
+      if (data is! Uint8List || data.isEmpty) return null;
       final mimeType = (image?['mimeType'] as String?) ?? 'image/png';
-      if (_isGifMime(mimeType)) {
-        await _sendAnimationBytes(data, mimeType);
-        _restoreKeyboardFocus();
-        return true;
-      }
-      await _editAndSendImageBytes(data, mimeType);
-      _restoreKeyboardFocus();
-      return true;
+      return (data: data, mimeType: mimeType);
     } catch (_) {
-      if (showNoImageToast && mounted) {
-        showToast(
-          context,
-          AppStrings.t(AppStringKeys.composerPastedImageReadFailed),
-        );
-      }
-      return false;
+      return null;
     }
   }
 
-  Future<void> _sendAnimationBytes(Uint8List data, String mimeType) async {
-    final dir = await getTemporaryDirectory();
-    final ext = _extensionForMime(mimeType);
-    final file = File(
-      '${dir.path}/mithka-animation-${DateTime.now().microsecondsSinceEpoch}.$ext',
-    );
-    await file.writeAsBytes(data, flush: true);
-    widget.vm.sendAnimation(file.path);
-  }
-
-  Future<void> _editAndSendImageBytes(Uint8List data, String mimeType) async {
+  Future<void> _handlePastedImage(Uint8List data, String mimeType) async {
     final dir = await getTemporaryDirectory();
     final ext = _extensionForMime(mimeType);
     final file = File(
@@ -995,10 +1012,239 @@ class _ChatInputBarState extends State<ChatInputBar> {
     );
     await file.writeAsBytes(data, flush: true);
     if (!mounted) return;
-    final edited = await _editImage(file.path);
-    if (edited != null) {
-      widget.vm.sendPhoto(edited.path, caption: edited.caption);
+    var path = file.path;
+    var caption = '';
+    while (mounted) {
+      final action = await _showClipboardImagePreview(path, caption);
+      if (!mounted ||
+          action == null ||
+          action == _ClipboardImageAction.cancel) {
+        return;
+      }
+      if (action == _ClipboardImageAction.edit) {
+        final edited = await _editImage(path, initialCaption: caption);
+        if (edited != null) {
+          path = edited.path;
+          caption = edited.caption;
+        }
+        continue;
+      }
+      if (action == _ClipboardImageAction.richText) {
+        final result = await showRichTextComposerSheet(
+          context,
+          initialText: caption,
+          initialMedia: [XFile(path)],
+          title: AppStringKeys.composerRichTextMessageTitle,
+          submitText: AppStringKeys.composerSend,
+        );
+        if (result != null && mounted) {
+          _sendRichTextResult(result);
+        }
+        return;
+      }
+      if (_isGifPath(path)) {
+        widget.vm.sendAnimation(path, caption: caption);
+      } else {
+        widget.vm.sendPhoto(path, caption: caption);
+      }
+      widget.onMessageSent();
+      return;
     }
+  }
+
+  Future<_ClipboardImageAction?> _showClipboardImagePreview(
+    String path,
+    String caption,
+  ) {
+    return showGeneralDialog<_ClipboardImageAction>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: AppStringKeys.countryPickerCancel.l10n(context),
+      barrierColor: Colors.black.withValues(alpha: 0.38),
+      transitionDuration: const Duration(milliseconds: 180),
+      pageBuilder: (dialogContext, _, _) {
+        final c = dialogContext.colors;
+        final previewHeight = (MediaQuery.sizeOf(dialogContext).height * 0.42)
+            .clamp(180.0, 360.0);
+        return SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Container(
+                width: double.infinity,
+                constraints: const BoxConstraints(maxWidth: 420),
+                decoration: BoxDecoration(
+                  color: c.card,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    GestureDetector(
+                      key: const ValueKey('clipboardImagePreview'),
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => Navigator.of(
+                        dialogContext,
+                      ).pop(_ClipboardImageAction.edit),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(18, 18, 18, 12),
+                        child: Stack(
+                          alignment: Alignment.bottomRight,
+                          children: [
+                            SizedBox(
+                              width: double.infinity,
+                              height: previewHeight,
+                              child: Image.file(
+                                File(path),
+                                fit: BoxFit.contain,
+                              ),
+                            ),
+                            Container(
+                              width: 34,
+                              height: 34,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.58),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const AppIcon(
+                                HeroAppIcons.pen,
+                                size: 17,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (caption.trim().isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            caption,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: c.textPrimary,
+                              decoration: TextDecoration.none,
+                            ),
+                          ),
+                        ),
+                      ),
+                    Divider(height: 1, color: c.divider),
+                    Row(
+                      children: [
+                        _clipboardPreviewAction(
+                          dialogContext,
+                          AppStringKeys.countryPickerCancel.l10n(dialogContext),
+                          _ClipboardImageAction.cancel,
+                        ),
+                        _clipboardPreviewAction(
+                          dialogContext,
+                          AppStringKeys.composerEditInRichText.l10n(
+                            dialogContext,
+                          ),
+                          _ClipboardImageAction.richText,
+                        ),
+                        _clipboardPreviewAction(
+                          dialogContext,
+                          AppStringKeys.composerSend.l10n(dialogContext),
+                          _ClipboardImageAction.send,
+                          primary: true,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (_, animation, _, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        );
+        return FadeTransition(
+          opacity: curved,
+          child: ScaleTransition(
+            scale: Tween(begin: 0.96, end: 1.0).animate(curved),
+            child: child,
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _clipboardPreviewAction(
+    BuildContext dialogContext,
+    String label,
+    _ClipboardImageAction action, {
+    bool primary = false,
+  }) {
+    final c = dialogContext.colors;
+    return Expanded(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => Navigator.of(dialogContext).pop(action),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 58),
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: primary ? FontWeight.w600 : FontWeight.w400,
+              color: primary ? AppTheme.brand : c.textPrimary,
+              decoration: TextDecoration.none,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _sendRichTextResult(RichTextComposerResult result) {
+    if (result.media.isEmpty) {
+      if (result.text.trim().isEmpty) return;
+      widget.vm.sendFormatted(result.text, result.entities);
+      widget.onMessageSent();
+      return;
+    }
+    for (var index = 0; index < result.media.length; index++) {
+      final media = result.media[index];
+      final isFirst = index == 0;
+      final caption = isFirst ? result.text : '';
+      final entities = isFirst
+          ? result.entities
+          : const <Map<String, dynamic>>[];
+      if (_isVideoPath(media.path)) {
+        widget.vm.sendVideo(
+          media.path,
+          caption: caption,
+          captionEntities: entities,
+        );
+      } else if (_isGifPath(media.path)) {
+        widget.vm.sendAnimation(
+          media.path,
+          caption: caption,
+          captionEntities: entities,
+        );
+      } else {
+        widget.vm.sendPhoto(
+          media.path,
+          caption: caption,
+          captionEntities: entities,
+        );
+      }
+    }
+    widget.onMessageSent();
   }
 
   String _extensionForMime(String mimeType) {
@@ -1020,7 +1266,12 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   bool _isGifPath(String path) => path.toLowerCase().endsWith('.gif');
 
-  bool _isGifMime(String mimeType) => mimeType.toLowerCase() == 'image/gif';
+  bool _isVideoPath(String path) {
+    final lower = path.toLowerCase();
+    return lower.endsWith('.mp4') ||
+        lower.endsWith('.mov') ||
+        lower.endsWith('.m4v');
+  }
 
   /// 文件: pick an arbitrary document and send it.
   Future<void> _pickFile() async {
@@ -1033,6 +1284,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
         } else {
           widget.vm.sendDocument(path);
         }
+        widget.onMessageSent();
       }
     } catch (_) {
       _pickFailed(telegramText(AppStringKeys.topicPostContentFile));
@@ -1060,6 +1312,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
     );
     if (picked != null) {
       widget.vm.sendLocation(picked.latitude, picked.longitude);
+      widget.onMessageSent();
     }
   }
 
@@ -1072,6 +1325,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
     final (question, options) = result;
     if (question.isEmpty || options.length < 2) return;
     widget.vm.sendPoll(question, options);
+    widget.onMessageSent();
   }
 
   /// 音频: pick a local audio file and send it as a music message.
@@ -1092,7 +1346,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
       );
       result ??= await FilePicker.platform.pickFiles();
       final path = result?.files.single.path;
-      if (path != null) widget.vm.sendAudio(path);
+      if (path != null) {
+        widget.vm.sendAudio(path);
+        widget.onMessageSent();
+      }
     } catch (_) {
       _pickFailed(telegramText(AppStringKeys.composerAudio));
     }
@@ -1103,7 +1360,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => AudioSearchView(
-          onSend: widget.vm.sendAudioFromMessage,
+          onSend: (sourceChatId, message) async {
+            await widget.vm.sendAudioFromMessage(sourceChatId, message);
+            widget.onMessageSent();
+          },
           onPickLocal: _pickLocalAudio,
         ),
       ),
@@ -1119,6 +1379,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
     final (title, tasks) = result;
     if (title.isEmpty || tasks.isEmpty) return;
     widget.vm.sendChecklist(title, tasks);
+    widget.onMessageSent();
   }
 
   // MARK: - Function panel
@@ -1536,6 +1797,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
           behavior: HitTestBehavior.opaque,
           onTap: () {
             widget.vm.sendSticker(item);
+            widget.onMessageSent();
             setState(() => _panel = _Panel.none);
           },
           child: StickerPreview(item: item),
@@ -1574,6 +1836,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
             final sent = await widget.vm.sendGif(item);
             if (!mounted) return;
             if (sent) {
+              widget.onMessageSent();
               setState(() => _panel = _Panel.none);
             } else {
               showToast(

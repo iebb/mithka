@@ -738,7 +738,12 @@ class ChatViewModel extends ChangeNotifier {
     return out;
   }
 
-  void sendPhoto(String path, {String caption = ''}) {
+  void sendPhoto(
+    String path, {
+    String caption = '',
+    List<Map<String, dynamic>> captionEntities = const [],
+  }) {
+    final captionText = captionEntities.isEmpty ? caption.trim() : caption;
     _client.send(
       _withPaidMessageOptions({
         '@type': 'sendMessage',
@@ -749,14 +754,23 @@ class ChatViewModel extends ChangeNotifier {
             '@type': 'inputPhoto',
             'photo': {'@type': 'inputFileLocal', 'path': path},
           },
-          if (caption.trim().isNotEmpty)
-            'caption': {'@type': 'formattedText', 'text': caption.trim()},
+          if (captionText.trim().isNotEmpty)
+            'caption': {
+              '@type': 'formattedText',
+              'text': captionText,
+              if (captionEntities.isNotEmpty) 'entities': captionEntities,
+            },
         },
       }),
     );
   }
 
-  void sendVideo(String path, {String caption = ''}) {
+  void sendVideo(
+    String path, {
+    String caption = '',
+    List<Map<String, dynamic>> captionEntities = const [],
+  }) {
+    final captionText = captionEntities.isEmpty ? caption.trim() : caption;
     _client.send(
       _withPaidMessageOptions({
         '@type': 'sendMessage',
@@ -768,14 +782,23 @@ class ChatViewModel extends ChangeNotifier {
             'video': {'@type': 'inputFileLocal', 'path': path},
             'supports_streaming': true,
           },
-          if (caption.trim().isNotEmpty)
-            'caption': {'@type': 'formattedText', 'text': caption.trim()},
+          if (captionText.trim().isNotEmpty)
+            'caption': {
+              '@type': 'formattedText',
+              'text': captionText,
+              if (captionEntities.isNotEmpty) 'entities': captionEntities,
+            },
         },
       }),
     );
   }
 
-  void sendAnimation(String path, {String caption = ''}) {
+  void sendAnimation(
+    String path, {
+    String caption = '',
+    List<Map<String, dynamic>> captionEntities = const [],
+  }) {
+    final captionText = captionEntities.isEmpty ? caption.trim() : caption;
     _client.send(
       _withPaidMessageOptions({
         '@type': 'sendMessage',
@@ -786,8 +809,12 @@ class ChatViewModel extends ChangeNotifier {
           'duration': 0,
           'width': 0,
           'height': 0,
-          if (caption.trim().isNotEmpty)
-            'caption': {'@type': 'formattedText', 'text': caption.trim()},
+          if (captionText.trim().isNotEmpty)
+            'caption': {
+              '@type': 'formattedText',
+              'text': captionText,
+              if (captionEntities.isNotEmpty) 'entities': captionEntities,
+            },
         },
       }),
     );

@@ -424,6 +424,7 @@ const frMessages = <String, String>{
   'composerReleaseFingerToCancel': "Relâchez pour annuler l’envoi",
   'composerReleaseToSendSlideToCancel':
       "Relâchez pour envoyer, glissez vers le haut pour annuler",
+  'composerEditInRichText': "Modifier en texte enrichi",
   'composerRichText': "Texte enrichi",
   'composerRichTextMessageTitle': "Message en texte enrichi",
   'composerSend': "Envoyer",

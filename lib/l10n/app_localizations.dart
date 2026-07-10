@@ -555,6 +555,7 @@ abstract final class AppStringKeys {
   static const composerReleaseFingerToCancel = 'composerReleaseFingerToCancel';
   static const composerReleaseToSendSlideToCancel =
       'composerReleaseToSendSlideToCancel';
+  static const composerEditInRichText = 'composerEditInRichText';
   static const composerRichText = 'composerRichText';
   static const composerRichTextMessageTitle = 'composerRichTextMessageTitle';
   static const composerSend = 'composerSend';

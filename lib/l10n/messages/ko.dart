@@ -398,6 +398,7 @@ const koMessages = <String, String>{
   'composerPoll': "투표",
   'composerReleaseFingerToCancel': "손가락을 떼면 전송이 취소됩니다",
   'composerReleaseToSendSlideToCancel': "손을 떼면 전송, 위로 밀면 취소",
+  'composerEditInRichText': "서식 있는 텍스트로 편집",
   'composerRichText': "서식 있는 텍스트",
   'composerRichTextMessageTitle': "서식 있는 메시지",
   'composerSend': "보내기",

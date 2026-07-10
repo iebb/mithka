@@ -7,6 +7,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import '../components/app_icons.dart';
 import '../theme/app_theme.dart';
 import 'emoji_text_controller.dart';
+import 'image_edit_view.dart';
 import 'rich_text_format.dart';
 
 class RichTextComposerResult {
@@ -28,6 +29,7 @@ Future<RichTextComposerResult?> showRichTextComposerSheet(
   BuildContext context, {
   required String initialText,
   List<Map<String, dynamic>> initialEntities = const [],
+  List<XFile> initialMedia = const [],
   String title = AppStringKeys.topicChatShare,
   String submitText = AppStringKeys.topicChatPublish,
   String hintText = AppStringKeys.richTextComposerContentPlaceholder,
@@ -43,6 +45,7 @@ Future<RichTextComposerResult?> showRichTextComposerSheet(
       return RichTextComposerView(
         initialText: initialText,
         initialEntities: initialEntities,
+        initialMedia: initialMedia,
         title: title,
         submitText: submitText,
         hintText: hintText,
@@ -72,6 +75,7 @@ class RichTextComposerView extends StatefulWidget {
     super.key,
     required this.initialText,
     this.initialEntities = const [],
+    this.initialMedia = const [],
     this.title = AppStringKeys.topicChatShare,
     this.submitText = AppStringKeys.topicChatPublish,
     this.hintText = AppStringKeys.richTextComposerContentPlaceholder,
@@ -81,6 +85,7 @@ class RichTextComposerView extends StatefulWidget {
 
   final String initialText;
   final List<Map<String, dynamic>> initialEntities;
+  final List<XFile> initialMedia;
   final String title;
   final String submitText;
   final String hintText;
@@ -223,6 +228,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
     );
     _blocks = [_RichContentBlock.text(first)];
     _activeTextBlock = first;
+    _media.addAll(widget.initialMedia.take(9));
   }
 
   @override
@@ -900,56 +906,98 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
   Widget _mediaTile(AppColors c, int index) {
     final item = _media[index];
     final isVideo = _isVideoPath(item.path);
-    return Stack(
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: Image.file(
-            File(item.path),
-            width: 84,
-            height: 84,
-            fit: BoxFit.cover,
-            errorBuilder: (_, _, _) => Container(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: isVideo ? null : () => _editMedia(index),
+      child: Stack(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.file(
+              File(item.path),
               width: 84,
               height: 84,
-              color: c.searchFill,
-              child: AppIcon(
-                isVideo ? HeroAppIcons.solidFileVideo : HeroAppIcons.image,
-                color: c.textTertiary,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => Container(
+                width: 84,
+                height: 84,
+                color: c.searchFill,
+                child: AppIcon(
+                  isVideo ? HeroAppIcons.solidFileVideo : HeroAppIcons.image,
+                  color: c.textTertiary,
+                ),
               ),
             ),
           ),
-        ),
-        if (isVideo)
-          const Positioned.fill(
-            child: Center(
-              child: AppIcon(HeroAppIcons.play, color: Colors.white, size: 24),
-            ),
-          ),
-        Positioned(
-          top: 4,
-          right: 4,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => setState(() => _media.removeAt(index)),
-            child: Container(
-              width: 22,
-              height: 22,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.55),
-                shape: BoxShape.circle,
-              ),
-              child: const AppIcon(
-                HeroAppIcons.xmark,
-                size: 12,
-                color: Colors.white,
+          if (isVideo)
+            const Positioned.fill(
+              child: Center(
+                child: AppIcon(
+                  HeroAppIcons.play,
+                  color: Colors.white,
+                  size: 24,
+                ),
               ),
             ),
+          if (!isVideo)
+            Positioned(
+              left: 4,
+              bottom: 4,
+              child: Container(
+                width: 22,
+                height: 22,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.55),
+                  shape: BoxShape.circle,
+                ),
+                child: const AppIcon(
+                  HeroAppIcons.pen,
+                  size: 12,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          Positioned(
+            top: 4,
+            right: 4,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => setState(() => _media.removeAt(index)),
+              child: Container(
+                width: 22,
+                height: 22,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.55),
+                  shape: BoxShape.circle,
+                ),
+                child: const AppIcon(
+                  HeroAppIcons.xmark,
+                  size: 12,
+                  color: Colors.white,
+                ),
+              ),
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
+  }
+
+  Future<void> _editMedia(int index) async {
+    if (index < 0 || index >= _media.length) return;
+    final result = await Navigator.of(context).push<ImageEditResult>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => ImageEditView(sourcePath: _media[index].path),
+      ),
+    );
+    if (!mounted || result == null || index >= _media.length) return;
+    setState(() => _media[index] = XFile(result.path));
+    if (result.caption.trim().isNotEmpty) {
+      _activeTextBlock.controller.insertText(result.caption);
+    }
   }
 
   Future<void> _pickMedia() async {

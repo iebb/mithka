@@ -637,6 +637,17 @@ class _ChatViewState extends State<ChatView> {
     unawaited(_vm.markLoadedMessagesRead());
   }
 
+  void _onComposerMessageSent() {
+    _scrollTargetId = null;
+    _liveNewMessageCount = 0;
+    _bannerDismissed = true;
+    if (_vm.anchoredHistory) {
+      unawaited(_returnToLatest());
+      return;
+    }
+    _scheduleScrollToBottom(keyboardSettle: true, force: true);
+  }
+
   /// Jump to the first unread incoming message (where the "以下为新消息" divider
   /// sits); fall back to the bottom if none is loaded.
   void _jumpToFirstUnread() {
@@ -669,7 +680,9 @@ class _ChatViewState extends State<ChatView> {
       final appendedNewest =
           newest != null &&
           newest.id != previousNewestId &&
-          (previousNewestId == null || newest.id > previousNewestId);
+          (newest.isOutgoing ||
+              previousNewestId == null ||
+              newest.id > previousNewestId);
       final restore = _vm.consumeRestoreTop();
       _lastCount = _vm.messages.length;
       _lastNewestMessageId = newest?.id ?? _lastNewestMessageId;
@@ -2739,7 +2752,11 @@ class _ChatViewState extends State<ChatView> {
       return _botStartBar();
     }
     if (_vm.canSendMessages) {
-      return ChatInputBar(vm: _vm, onStartCall: _startCall);
+      return ChatInputBar(
+        vm: _vm,
+        onStartCall: _startCall,
+        onMessageSent: _onComposerMessageSent,
+      );
     }
     if (!_vm.isMember && _vm.canJoin) return _joinBar();
     // Subscribed to a channel you can't post in → mute/unmute (like official).

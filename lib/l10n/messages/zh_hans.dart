@@ -391,6 +391,7 @@ const zhHansMessages = <String, String>{
   'composerPoll': "投票",
   'composerReleaseFingerToCancel': "松开手指，取消发送",
   'composerReleaseToSendSlideToCancel': "松开发送，上滑取消",
+  'composerEditInRichText': "在富文本中编辑",
   'composerRichText': "富文本",
   'composerRichTextMessageTitle': "富文本消息",
   'composerSend': "发送",

@@ -398,6 +398,7 @@ const jaMessages = <String, String>{
   'composerPoll': "投票",
   'composerReleaseFingerToCancel': "指を離すと送信をキャンセル",
   'composerReleaseToSendSlideToCancel': "離すと送信、上にスライドでキャンセル",
+  'composerEditInRichText': "リッチテキストで編集",
   'composerRichText': "リッチテキスト",
   'composerRichTextMessageTitle': "リッチテキストメッセージ",
   'composerSend': "送信",

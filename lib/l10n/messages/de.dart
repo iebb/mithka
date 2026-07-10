@@ -423,6 +423,7 @@ const deMessages = <String, String>{
       "Finger loslassen, um das Senden abzubrechen",
   'composerReleaseToSendSlideToCancel':
       "Loslassen zum Senden, nach oben wischen zum Abbrechen",
+  'composerEditInRichText': "Im Rich-Text-Editor bearbeiten",
   'composerRichText': "Formatierter Text",
   'composerRichTextMessageTitle': "Formatierte Nachricht",
   'composerSend': "Senden",

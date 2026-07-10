@@ -26,10 +26,12 @@ class ImageEditView extends StatefulWidget {
     super.key,
     required this.sourcePath,
     this.avatar = false,
+    this.initialCaption = '',
   });
 
   final String sourcePath;
   final bool avatar;
+  final String initialCaption;
 
   @override
   State<ImageEditView> createState() => _ImageEditViewState();
@@ -60,6 +62,7 @@ class _ImageEditViewState extends State<ImageEditView> {
   @override
   void initState() {
     super.initState();
+    _captionController.text = widget.initialCaption;
     _load();
   }
 

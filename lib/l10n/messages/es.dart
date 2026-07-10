@@ -417,6 +417,7 @@ const esMessages = <String, String>{
   'composerReleaseFingerToCancel': "Suelta el dedo para cancelar",
   'composerReleaseToSendSlideToCancel':
       "Suelta para enviar, desliza hacia arriba para cancelar",
+  'composerEditInRichText': "Editar como texto enriquecido",
   'composerRichText': "Texto enriquecido",
   'composerRichTextMessageTitle': "Mensaje de texto enriquecido",
   'composerSend': "Enviar",

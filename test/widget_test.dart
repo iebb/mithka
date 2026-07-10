@@ -1,12 +1,16 @@
 // Unit tests for the ported pure logic (date formatting, JSON helpers, parsing).
 
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/intl.dart';
+import 'package:mithka/chat/chat_input_bar.dart';
+import 'package:mithka/chat/chat_view_model.dart';
 import 'package:mithka/chat/emoji_catalog.dart';
 import 'package:mithka/chat/emoji_text_controller.dart';
 import 'package:mithka/chat/media_album_layout.dart';
@@ -82,6 +86,21 @@ void main() {
   });
 
   group('EmojiTextEditingController', () {
+    test('inserts pasted text at the current selection', () {
+      final controller = EmojiTextEditingController();
+      addTearDown(controller.dispose);
+
+      controller.text = 'hello world';
+      controller.selection = const TextSelection(
+        baseOffset: 6,
+        extentOffset: 11,
+      );
+      controller.insertText('Mithka');
+
+      expect(controller.text, 'hello Mithka');
+      expect(controller.selection, const TextSelection.collapsed(offset: 12));
+    });
+
     test('inserts preformatted table without corrupting existing entities', () {
       final controller = EmojiTextEditingController();
       addTearDown(controller.dispose);
@@ -130,6 +149,94 @@ void main() {
       expect(find.byType(RichTextComposerView), findsOneWidget);
       expect(tester.takeException(), isNull);
       semantics.dispose();
+    });
+  });
+
+  group('ChatInputBar', () {
+    testWidgets('offers paste even when Flutter omits its paste action', (
+      tester,
+    ) async {
+      const clipboardChannel = MethodChannel('mithka/clipboard');
+      const pathProviderChannel = MethodChannel(
+        'plugins.flutter.io/path_provider',
+      );
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(clipboardChannel, (call) async {
+        if (call.method != 'readImage') return null;
+        return <String, dynamic>{
+          'mimeType': 'image/png',
+          'data': base64Decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+          ),
+        };
+      });
+      messenger.setMockMethodCallHandler(pathProviderChannel, (call) async {
+        if (call.method == 'getTemporaryDirectory') {
+          return Directory.systemTemp.path;
+        }
+        return null;
+      });
+      addTearDown(() {
+        messenger.setMockMethodCallHandler(clipboardChannel, null);
+        messenger.setMockMethodCallHandler(pathProviderChannel, null);
+      });
+      final vm = ChatViewModel(chatId: 1, title: 'Test', markReadOnOpen: false);
+      addTearDown(vm.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.bottomCenter,
+              child: ChatInputBar(
+                vm: vm,
+                onStartCall: (_) {},
+                onMessageSent: () {},
+              ),
+            ),
+          ),
+        ),
+      );
+      final textFieldFinder = find.byType(TextField).first;
+      final textField = tester.widget<TextField>(textFieldFinder);
+      final editableTextState = tester.state<EditableTextState>(
+        find.descendant(
+          of: textFieldFinder,
+          matching: find.byType(EditableText),
+        ),
+      );
+      final toolbar = textField.contextMenuBuilder!(
+        tester.element(textFieldFinder),
+        editableTextState,
+      );
+      final buttonItems = (toolbar as AdaptiveTextSelectionToolbar).buttonItems;
+
+      final pasteItems = buttonItems!.where(
+        (item) => item.type == ContextMenuButtonType.paste,
+      );
+      expect(pasteItems, hasLength(1));
+
+      await tester.runAsync(() async {
+        pasteItems.single.onPressed?.call();
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      });
+      await tester.pumpAndSettle();
+
+      expect(find.text('Cancel'), findsOneWidget);
+      expect(find.text('Edit in rich text'), findsOneWidget);
+      expect(find.text('Send'), findsOneWidget);
+      expect(find.byType(Image), findsOneWidget);
+      final preview = tester.widget<GestureDetector>(
+        find.byKey(const ValueKey('clipboardImagePreview')),
+      );
+      expect(preview.onTap, isNotNull);
     });
   });
 

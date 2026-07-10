@@ -391,6 +391,7 @@ const zhHantMessages = <String, String>{
   'composerPoll': "投票",
   'composerReleaseFingerToCancel': "放開手指即可取消傳送",
   'composerReleaseToSendSlideToCancel': "放開傳送，上滑取消",
+  'composerEditInRichText': "在富文字中編輯",
   'composerRichText': "富文字",
   'composerRichTextMessageTitle': "富文字訊息",
   'composerSend': "傳送",

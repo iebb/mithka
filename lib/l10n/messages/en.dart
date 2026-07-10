@@ -414,6 +414,7 @@ const enMessages = <String, String>{
   'composerPoll': "Poll",
   'composerReleaseFingerToCancel': "Release to cancel",
   'composerReleaseToSendSlideToCancel': "Release to send, slide up to cancel",
+  'composerEditInRichText': "Edit in rich text",
   'composerRichText': "Rich text",
   'composerRichTextMessageTitle': "Rich text message",
   'composerSend': "Send",
