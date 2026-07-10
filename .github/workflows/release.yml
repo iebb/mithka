@@ -15,6 +15,8 @@ name: 🚀 Release APK
 #   ANDROID_KEYSTORE_PASSWORD            — store password
 #   ANDROID_KEY_PASSWORD                 — key password
 #   ANDROID_KEY_ALIAS                    — key alias (e.g. nekoko)
+# The google-play-production environment also requires:
+#   GOOGLE_PLAY_SERVICE_ACCOUNT_JSON      — Play Developer API service account
 # Without the ANDROID_* secrets the build still runs but is debug-signed.
 
 on:
@@ -31,6 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       app_version: ${{ steps.version.outputs.app_version }}
+      version_code: ${{ steps.version.outputs.version_code }}
       build_stamp: ${{ steps.version.outputs.build_stamp }}
       release_tag: ${{ steps.version.outputs.release_tag }}
       release_name: ${{ steps.version.outputs.release_name }}
@@ -47,6 +50,11 @@ jobs:
           raw_version="$(awk '/^version:/ { print $2; exit }' pubspec.yaml)"
           test -n "$raw_version"
           app_version="${raw_version%%+*}"
+          version_code="${raw_version##*+}"
+          test "$raw_version" != "$version_code"
+          case "$version_code" in
+            ''|*[!0-9]*) echo "Invalid Android version code: $version_code" >&2; exit 1 ;;
+          esac
           build_stamp="$(date -u '+%y%m%d%H')"
           short_sha="${GITHUB_SHA::7}"
           branch_name="${GITHUB_REF_NAME:-${GITHUB_REF#refs/heads/}}"
@@ -71,6 +79,7 @@ jobs:
               ;;
           esac
           echo "app_version=$app_version" >> "$GITHUB_OUTPUT"
+          echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
           echo "build_stamp=$build_stamp" >> "$GITHUB_OUTPUT"
           echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
           echo "release_name=$release_name" >> "$GITHUB_OUTPUT"
@@ -80,6 +89,7 @@ jobs:
           echo "short_sha=$short_sha" >> "$GITHUB_OUTPUT"
           echo "Release tag: $release_tag"
           echo "Release channel: $release_channel"
+          echo "Android version code: $version_code"
           echo "GMT build stamp: $build_stamp"
 
   build:
@@ -231,6 +241,167 @@ jobs:
           name: apk-${{ matrix.abi }}-${{ needs.prepare.outputs.build_stamp }}
           path: dist/mithka-${{ needs.prepare.outputs.app_version }}+${{ needs.prepare.outputs.build_stamp }}-${{ matrix.abi }}-release.apk
           if-no-files-found: error
+
+  google-play:
+    name: Publish AAB to Google Play
+    if: github.ref == 'refs/heads/release'
+    needs: prepare
+    runs-on: ubuntu-latest
+    environment: google-play-production
+    concurrency:
+      group: google-play-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    env:
+      TDJSON_REPO: iebb/mithka-tdjson
+      FVP_DEPS_URL: https://github.com/wang-bin/mdk-sdk/releases/download/v0.36.0
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.2'
+          channel: stable
+          cache: true
+
+      - name: Install Android NDK 28.2.13676358
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;28.2.13676358" >/dev/null 2>&1 || \
+          yes | sdkmanager "ndk;28.2.13676358" >/dev/null 2>&1 || true
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+
+      - name: Resolve tdjson release
+        id: tdjson_release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -n "${TDJSON_RELEASE_TAG:-}" ]; then
+            tag="$TDJSON_RELEASE_TAG"
+          else
+            tag="$(curl -fsSL \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              "https://api.github.com/repos/$TDJSON_REPO/releases/latest" \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"])')"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Using tdjson release $tag"
+
+      - name: Cache Android tdjson libraries
+        id: jnilibs-cache
+        uses: actions/cache@v4
+        with:
+          path: android/app/src/main/jniLibs
+          key: jnilibs-${{ runner.os }}-${{ steps.tdjson_release.outputs.tag }}-play-aab
+          restore-keys: |
+            jnilibs-${{ runner.os }}-${{ steps.tdjson_release.outputs.tag }}-
+            jnilibs-${{ runner.os }}-
+
+      - name: Download prebuilt tdjson libraries
+        env:
+          TDJSON_RELEASE_TAG: ${{ steps.tdjson_release.outputs.tag }}
+        run: |
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            output="android/app/src/main/jniLibs/$abi/libtdjson.so"
+            if [ -s "$output" ]; then
+              ls -lh "$output"
+              continue
+            fi
+            archive="$RUNNER_TEMP/tdjson-android-$abi.zip"
+            unpacked="$RUNNER_TEMP/tdjson-android-$abi"
+            curl -fsSL \
+              "https://github.com/$TDJSON_REPO/releases/download/$TDJSON_RELEASE_TAG/tdjson-android-$abi.zip" \
+              -o "$archive"
+            rm -rf "$unpacked"
+            mkdir -p "$unpacked" "$(dirname "$output")"
+            unzip -q -o "$archive" -d "$unpacked"
+            install -m 0644 "$unpacked/$abi/libtdjson.so" "$output"
+            ls -lh "$output"
+          done
+
+      - name: Flutter dependencies
+        run: flutter pub get
+
+      - name: Write Firebase Android config
+        env:
+          FIREBASE_ANDROID_GOOGLE_SERVICES_JSON_B64: ${{ secrets.FIREBASE_ANDROID_GOOGLE_SERVICES_JSON_B64 }}
+        run: |
+          : "${FIREBASE_ANDROID_GOOGLE_SERVICES_JSON_B64:?set FIREBASE_ANDROID_GOOGLE_SERVICES_JSON_B64 in repository secrets}"
+          mkdir -p android/app
+          printf '%s' "$FIREBASE_ANDROID_GOOGLE_SERVICES_JSON_B64" | base64 -d > android/app/google-services.json
+
+      - name: Write Telegram client credentials
+        env:
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+        run: |
+          : "${TELEGRAM_API_ID:?set TELEGRAM_API_ID in repository secrets}"
+          : "${TELEGRAM_API_HASH:?set TELEGRAM_API_HASH in repository secrets}"
+          mkdir -p lib/config
+          cat > lib/config/secrets.dart <<EOF
+          class Secrets {
+            static const int apiId = $TELEGRAM_API_ID;
+            static const String apiHash = '$TELEGRAM_API_HASH';
+            static bool get isConfigured => apiId != 0 && apiHash.isNotEmpty;
+          }
+          EOF
+
+      - name: Decode Play signing keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          : "${KEYSTORE_B64:?set ANDROID_KEYSTORE_BASE64 in repository secrets}"
+          : "${STORE_PASSWORD:?set ANDROID_KEYSTORE_PASSWORD in repository secrets}"
+          : "${KEY_ALIAS:?set ANDROID_KEY_ALIAS in repository secrets}"
+          printf '%s' "$KEYSTORE_B64" | base64 -d > android/app/upload-keystore.jks
+          cat > android/key.properties <<EOF
+          storePassword=$STORE_PASSWORD
+          keyPassword=${KEY_PASSWORD:-$STORE_PASSWORD}
+          keyAlias=$KEY_ALIAS
+          storeFile=upload-keystore.jks
+          EOF
+
+      - name: Build signed release AAB
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        run: |
+          flutter build appbundle --release \
+            --target-platform android-arm,android-arm64,android-x64 \
+            --build-name="${{ needs.prepare.outputs.app_version }}" \
+            --build-number="${{ needs.prepare.outputs.version_code }}" \
+            --dart-define="GIT_COMMIT=${{ needs.prepare.outputs.short_sha }}" \
+            --dart-define="CI_BUILD_STAMP=${{ needs.prepare.outputs.build_stamp }}" \
+            --dart-define="SENTRY_DSN=$SENTRY_DSN"
+          jarsigner -verify build/app/outputs/bundle/release/app-release.aab
+
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: google-play-aab-${{ needs.prepare.outputs.app_version }}+${{ needs.prepare.outputs.version_code }}
+          path: build/app/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Submit production release to Google Play
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: ad.neko.mithka
+          releaseFiles: build/app/outputs/bundle/release/app-release.aab
+          tracks: production
+          status: completed
+          releaseName: Mithka ${{ needs.prepare.outputs.app_version }}
+          whatsNewDirectory: distribution/google-play/whatsnew
+          changesNotSentForReview: false
 
   release:
     name: Publish GitHub Release

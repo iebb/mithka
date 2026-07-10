@@ -51,6 +51,13 @@ lib/config/secrets.dart
 # Raw local secrets consumed by scripts/gen-secrets.sh: Telegram api_id/api_hash
 # + base64 signing keystore & passwords. Never commit.
 .env
+/.env.*
+
+# Google Play publishing credentials stay in ~/.config/google-play and GitHub
+# Actions secrets. Ignore common local copies if one is placed in the repo.
+/.google-play/
+/google-play-service-account*.json
+/service-account*.json
 
 # Firebase client config. These are generated from repository / Xcode Cloud
 # secrets in CI and may exist locally for simulator/device runs.
@@ -84,3 +91,7 @@ android/app/src/main/jniLibs/
 
 # Stray icon-generator output at repo root (real icons live in android/.../res/)
 /res/
+
+# Generated native-player downloads and local Android CMake output.
+/third_party/fvp/android/.cxx/
+/third_party/fvp/android/mdk-sdk/
