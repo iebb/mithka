@@ -108,4 +108,4 @@ assets or trademarks.
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/chart?repos=iebb/mithka&type=date&legend=top-left)](https://www.star-history.com/?repos=iebb%2Fmithka&type=date&legend=top-left)
+[![Star History Chart](https://api.star-history.com/chart?repos=iebb/mithka&type=date&legend=top-left&sealed_token=1PtDobhZ9XXhT7wgN5YMBVDBa9coSe7MIPcmYtH78U0zAurRU1n2ZU9n_8HKCB7KYraJOet0tyGPTh3jXh_oq-RkR9els5W0T0EDz-_nvt0ce-n1AvOOKgljMdSc-FOc5j0X3RVcRmyyq0qoVZBdWqIPFKMpBvKO8yoRgRc9i9ck-r4-RmWM0FqWLjXG)](https://www.star-history.com/?repos=iebb%2Fmithka&type=date&legend=top-left)
