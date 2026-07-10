@@ -968,6 +968,8 @@ class ThemeController extends ChangeNotifier {
 
   /// App-wide text scale factor, applied at the root via MediaQuery.textScaler.
   double get fontScale => _fontScale;
+  double chatTextSize(double base) =>
+      base * _fontScale.clamp(minFontScale, maxFontScale).toDouble();
   double get interfaceScale => _interfaceScale;
   double get rowHeight => AppMetric.listRowHeight;
   double get avatarSize => AppMetric.avatarSize;

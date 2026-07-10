@@ -154,15 +154,8 @@ class _MessageBubbleState extends State<MessageBubble>
 
   double _mediaMaxWidth() => _bubbleMaxWidth();
 
-  double _chatTextScale() {
-    return context
-        .watch<ThemeController>()
-        .fontScale
-        .clamp(ThemeController.minFontScale, ThemeController.maxFontScale)
-        .toDouble();
-  }
-
-  double _chatFontSize(double base) => base * _chatTextScale();
+  double _chatFontSize(double base) =>
+      context.watch<ThemeController>().chatTextSize(base);
 
   @override
   void initState() {

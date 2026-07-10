@@ -10,6 +10,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../chats/chat_list_view_model.dart';
@@ -25,6 +26,7 @@ import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
+import '../theme/theme_controller.dart';
 import 'topic_chat_view.dart';
 import 'topic_post_content.dart';
 
@@ -449,6 +451,7 @@ class _TopicPostRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.colors;
     final text = _displayText;
+    final chatTextSize = context.watch<ThemeController>().chatTextSize(15);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () {
@@ -518,7 +521,7 @@ class _TopicPostRow extends StatelessWidget {
                 maxTextLines: 6,
                 textOverflow: TextOverflow.ellipsis,
                 textStyle: TextStyle(
-                  fontSize: 17,
+                  fontSize: chatTextSize,
                   height: 1.35,
                   color: c.textPrimary,
                 ),

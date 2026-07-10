@@ -60,6 +60,10 @@ class TopicPostContent extends StatelessWidget {
           document: message.document!,
           caption: documentCaption,
           captionEntities: message.textEntities,
+          captionStyle: textStyle.copyWith(
+            fontSize: (textStyle.fontSize ?? 15) * (14 / 15),
+            decoration: TextDecoration.none,
+          ),
         ),
       );
     }
@@ -118,11 +122,13 @@ class _TopicFileCard extends StatelessWidget {
     required this.document,
     required this.caption,
     required this.captionEntities,
+    required this.captionStyle,
   });
 
   final MessageDocument document;
   final String caption;
   final List<MessageTextEntity> captionEntities;
+  final TextStyle captionStyle;
 
   @override
   Widget build(BuildContext context) {
@@ -174,12 +180,7 @@ class _TopicFileCard extends StatelessWidget {
               TelegramRichText(
                 text: caption,
                 entities: captionEntities,
-                style: TextStyle(
-                  fontSize: 14,
-                  height: 1.35,
-                  color: c.textPrimary,
-                  decoration: TextDecoration.none,
-                ),
+                style: captionStyle,
               ),
             ],
           ],

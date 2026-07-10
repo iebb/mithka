@@ -32,6 +32,7 @@ import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
+import '../theme/theme_controller.dart';
 import 'topic_post_content.dart';
 
 class TopicChatView extends StatefulWidget {
@@ -1134,6 +1135,7 @@ class _TopicPostRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.colors;
     final text = _displayText;
+    final chatTextSize = context.watch<ThemeController>().chatTextSize(15);
     final name = sender?.name.trim().isNotEmpty == true
         ? sender!.name.trim()
         : post.message.senderName ?? post.topic.name;
@@ -1178,7 +1180,7 @@ class _TopicPostRow extends StatelessWidget {
               message: post.message,
               text: text,
               textStyle: TextStyle(
-                fontSize: 16,
+                fontSize: chatTextSize,
                 height: 1.35,
                 color: c.textPrimary,
               ),
