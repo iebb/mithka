@@ -69,7 +69,7 @@ class AppearanceView extends StatelessWidget {
                   _navigationRow(
                     context,
                     AppStrings.t(AppStringKeys.appIconTitle),
-                    AppStrings.t(appIcons.variant.labelKey),
+                    null,
                     () => Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => const AppIconSettingsView(),
@@ -128,18 +128,15 @@ class AppIconSettingsView extends StatelessWidget {
             onBack: () => Navigator.of(context).pop(),
           ),
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.lg,
-                AppSpacing.xl,
-                AppSpacing.lg,
-                AppSpacing.section,
-              ),
+            child: Column(
               children: [
-                if (!controller.supported) ...[
+                if (!controller.supported)
                   Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.xxl,
+                    padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.xl,
+                      AppSpacing.xl,
+                      AppSpacing.xl,
+                      0,
                     ),
                     child: Text(
                       AppStrings.t(AppStringKeys.appIconUnsupported),
@@ -149,31 +146,30 @@ class AppIconSettingsView extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(height: AppSpacing.md),
-                ],
-                Container(
-                  decoration: BoxDecoration(
-                    color: c.card,
-                    borderRadius: BorderRadius.circular(AppRadius.card),
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: Column(
-                    children: [
-                      for (
-                        var i = 0;
-                        i < AppIconVariant.values.length;
-                        i++
-                      ) ...[
-                        _AppIconVariantRow(
-                          variant: AppIconVariant.values[i],
-                          selected:
-                              controller.variant == AppIconVariant.values[i],
-                          loading: controller.loading,
+                Expanded(
+                  child: GridView.builder(
+                    padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.xl,
+                      AppSpacing.xl,
+                      AppSpacing.xl,
+                      AppSpacing.section,
+                    ),
+                    gridDelegate:
+                        const SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: 132,
+                          mainAxisExtent: 116,
+                          mainAxisSpacing: AppSpacing.xl,
+                          crossAxisSpacing: AppSpacing.xl,
                         ),
-                        if (i < AppIconVariant.values.length - 1)
-                          const InsetDivider(leadingInset: 78),
-                      ],
-                    ],
+                    itemCount: AppIconVariant.values.length,
+                    itemBuilder: (context, index) {
+                      final variant = AppIconVariant.values[index];
+                      return _AppIconVariantTile(
+                        variant: variant,
+                        selected: controller.variant == variant,
+                        loading: controller.loading,
+                      );
+                    },
                   ),
                 ),
               ],
@@ -185,8 +181,8 @@ class AppIconSettingsView extends StatelessWidget {
   }
 }
 
-class _AppIconVariantRow extends StatelessWidget {
-  const _AppIconVariantRow({
+class _AppIconVariantTile extends StatelessWidget {
+  const _AppIconVariantTile({
     required this.variant,
     required this.selected,
     required this.loading,
@@ -200,46 +196,61 @@ class _AppIconVariantRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.colors;
     final controller = context.read<AppIconController>();
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: loading
-          ? null
-          : () async {
-              final ok = await controller.setVariant(variant);
-              if (!ok && context.mounted) {
-                showToast(context, AppStringKeys.appIconChangeFailed);
-              }
-            },
-      child: SizedBox(
-        height: AppMetric.menuRowHeight + AppSpacing.xl,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
-          child: Row(
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: AppStrings.t(variant.labelKey),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: loading
+            ? null
+            : () async {
+                final ok = await controller.setVariant(variant);
+                if (!ok && context.mounted) {
+                  showToast(context, AppStringKeys.appIconChangeFailed);
+                }
+              },
+        child: Center(
+          child: Stack(
+            clipBehavior: Clip.none,
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(AppRadius.lg),
-                child: Image.asset(
-                  variant.asset,
-                  width: AppMetric.headerAvatarSize,
-                  height: AppMetric.headerAvatarSize,
-                ),
-              ),
-              const SizedBox(width: AppSpacing.xl),
-              Expanded(
-                child: Text(
-                  AppStrings.t(variant.labelKey),
-                  style: TextStyle(
-                    fontSize: AppTextSize.bodyLarge,
-                    color: c.textPrimary,
-                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                width: 96,
+                height: 96,
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  color: c.card,
+                  borderRadius: BorderRadius.circular(23),
+                  border: Border.all(
+                    color: selected ? AppTheme.brand : c.divider,
+                    width: selected ? 3 : 1,
                   ),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(18),
+                  child: Image.asset(variant.asset, fit: BoxFit.cover),
                 ),
               ),
               if (selected)
-                AppIcon(
-                  HeroAppIcons.check,
-                  size: AppIconSize.lg,
-                  color: AppTheme.brand,
+                Positioned(
+                  right: -6,
+                  bottom: -6,
+                  child: Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: AppTheme.brand,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: c.groupedBackground, width: 3),
+                    ),
+                    alignment: Alignment.center,
+                    child: const AppIcon(
+                      HeroAppIcons.check,
+                      size: 15,
+                      color: Colors.white,
+                    ),
+                  ),
                 ),
             ],
           ),
@@ -751,7 +762,7 @@ extension _DisplayAppearanceHelpers on AppearanceView {
   Widget _navigationRow(
     BuildContext context,
     String label,
-    String value,
+    String? value,
     VoidCallback onTap, {
     IconData? icon,
     Widget? preview,
@@ -783,19 +794,22 @@ extension _DisplayAppearanceHelpers on AppearanceView {
                   color: c.textPrimary,
                 ),
               ),
-              const SizedBox(width: AppSpacing.lg),
-              Expanded(
-                child: Text(
-                  value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.right,
-                  style: TextStyle(
-                    fontSize: AppTextSize.body,
-                    color: c.textTertiary,
+              if (value != null) ...[
+                const SizedBox(width: AppSpacing.lg),
+                Expanded(
+                  child: Text(
+                    value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.right,
+                    style: TextStyle(
+                      fontSize: AppTextSize.body,
+                      color: c.textTertiary,
+                    ),
                   ),
                 ),
-              ),
+              ] else
+                const Spacer(),
               const SizedBox(width: AppSpacing.sm),
               AppIcon(
                 HeroAppIcons.chevronRight,

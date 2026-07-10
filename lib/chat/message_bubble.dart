@@ -1747,7 +1747,7 @@ class _MessageBubbleState extends State<MessageBubble>
     bool outgoing,
     bool appendMeta, [
     List<MessageTextEntity>? entities,
-    double fontSize = 16,
+    double fontSize = 15,
   ]) {
     final sourceEntities = entities ?? message.textEntities;
     final blocks =
@@ -1855,7 +1855,7 @@ class _MessageBubbleState extends State<MessageBubble>
     bool appendMeta, {
     int? maxLines,
     List<MessageTextEntity>? entities,
-    double fontSize = 16,
+    double fontSize = 15,
   }) {
     final effectiveFontSize = _chatFontSize(fontSize);
     final children = _entitySpans(

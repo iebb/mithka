@@ -763,7 +763,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
 
   Future<void> _refreshSystemPictureInPictureSupport() async {
     final supported = await _isSystemPictureInPictureSupported();
-    if (supported && widget.onSwitchMode == null) {
+    if (supported) {
       unawaited(_prepareSystemPictureInPicture());
     }
   }
@@ -1774,12 +1774,14 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   }
 
   Future<void> _enterPictureInPicture() async {
+    if (SystemPictureInPicture.isSupportedPlatform) {
+      await _startSystemPictureInPicture();
+      return;
+    }
     final callback = widget.onSwitchMode;
     if (callback != null) {
       callback(VideoDisplayMode.pictureInPicture);
-      return;
     }
-    await _startSystemPictureInPicture();
   }
 
   Widget _modeSwitchButton({double size = 50}) {
@@ -1829,8 +1831,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     ValueChanged<VideoDisplayMode> callback,
   ) async {
     if (mode == VideoDisplayMode.pictureInPicture) {
-      if (!mounted) return;
-      callback(mode);
+      await _enterPictureInPicture();
       return;
     }
     if (!mounted) return;
