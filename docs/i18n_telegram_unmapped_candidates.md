@@ -6,6 +6,37 @@ Generated for the Telegram language-pack migration. Mapped strings use Telegram 
 - Mapped to Telegram keys: 598
 - Unmapped app strings: 391
 
+## Custom Chinese Telegram Pack Overrides
+
+The `zhhanscn-qq` Telegram language pack keeps standard Telegram concepts on
+the upstream keys, while overriding familiar Chinese glossary terms only where
+the app maps to the same Telegram concept. These overrides were applied to the
+Android pack on `translations.telegram.org` because Mithka resolves TDLib-style
+language-pack keys:
+
+| Telegram key | Custom Chinese value | Reason |
+| --- | --- | --- |
+| `PinMessage` | 群待办 | Message pin action uses the familiar group-todo term. |
+| `UnpinMessage` | 取消群待办 | Message unpin action matches `PinMessage`. |
+| `MessagePinnedHint` | 已设为群待办。 | Toast after setting a message pin. |
+| `MessageUnpinnedHint` | 已取消群待办。 | Toast after removing a message pin. |
+| `PinnedMessages` | 群待办 | Pinned message list label. |
+| `PinnedMessage` | 群待办 | Singular pinned-message label. |
+| `UserRestrictionsPinMessages` | 设置群待办 | Group permission label for pinning messages. |
+| `SearchAllChatsShort` | 消息 | Chat-list tab/search concept in the familiar glossary. |
+| `NewGroup` | 创建群聊 | Familiar group-chat wording. |
+| `JoinGroup` | 加入群聊 | Familiar group-chat wording. |
+| `LeaveMegaMenu` | 退出群聊 | Familiar group-chat wording. |
+| `GroupName` | 群名称 | Familiar group wording. |
+| `ManageGroup` | 管理群 | Familiar group wording. |
+| `SettingsFolders` | 聊天分组 | Familiar folder/grouping wording. |
+| `FilterNew` | 新建分组 | Familiar folder/grouping wording. |
+| `FilterNameHeader` | 分组名称 | Familiar folder/grouping wording. |
+| `AddContactChat` | 加好友 | Familiar contact-add wording. |
+| `AttachSticker` | 表情包 | Familiar sticker wording. |
+| `BlockedUsers` | 黑名单 | Familiar blocked-user list wording. |
+| `NoBlocked` | 黑名单为空 | Familiar blocked-user empty state. |
+
 ## Unmapped Strings
 
 | Mithka key | English text | Similar Telegram concept candidates |
