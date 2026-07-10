@@ -10,6 +10,11 @@ mobile-native messaging interface.
 > endorsed by, or connected to Telegram** in any way. "Telegram" is a trademark
 > of its respective owner.
 >
+> Mithka is also **not affiliated with, endorsed by, sponsored by, or otherwise
+> connected to Tencent or QQ**. It does not use, include, copy, or redistribute
+> any proprietary QQ assets. "Tencent" and "QQ" and their associated trademarks
+> and assets belong to their respective owners.
+>
 > The app talks to Telegram's network through TDLib using your own Telegram API
 > credentials. Use it at your own risk and in accordance with Telegram's
 > [Terms of Service](https://telegram.org/tos) and API
