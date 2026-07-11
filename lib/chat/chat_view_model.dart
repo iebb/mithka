@@ -14,6 +14,7 @@ import 'package:flutter/foundation.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
 import '../l10n/telegram_language_controller.dart';
+import '../notifications/notification_settings_payload.dart';
 import '../settings/keyword_blocker.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -1446,7 +1447,11 @@ class ChatViewModel extends ChangeNotifier {
     lastReadInboxId = chat.int64('last_read_inbox_message_id') ?? 0;
     unreadCount = chat.integer('unread_count') ?? 0;
     isMarkedUnread = chat.boolean('is_marked_as_unread') ?? false;
-    isMuted = (chat.obj('notification_settings')?.integer('mute_for') ?? 0) > 0;
+    final notificationSettings = chat.obj('notification_settings');
+    isMuted = (notificationSettings?.integer('mute_for') ?? 0) > 0;
+    if (hasLegacyHiddenNotificationPreview(notificationSettings)) {
+      unawaited(_repairLegacyNotificationPreview(notificationSettings!));
+    }
     isForum = chat.boolean('view_as_topics') ?? false;
     messageAutoDeleteTime = _autoDeleteSeconds(chat);
     _setPaidMessageStarCount(_paidMessageStars(chat), notify: false);
@@ -1756,23 +1761,26 @@ class ChatViewModel extends ChangeNotifier {
       await _client.query({
         '@type': 'setChatNotificationSettings',
         'chat_id': chatId,
-        'notification_settings': {
-          '@type': 'chatNotificationSettings',
-          'use_default_mute_for': false,
-          'mute_for': target ? 0 : 2147483647, // INT32_MAX = "forever"
-          'use_default_sound': true,
-          'use_default_show_preview': true,
-          'use_default_mute_stories': true,
-          'use_default_story_sound': true,
-          'use_default_show_story_sender': true,
-          'use_default_disable_pinned_message_notifications': true,
-          'use_default_disable_mention_notifications': true,
-        },
+        'notification_settings': inheritedChatNotificationSettings(
+          muteFor: target ? 0 : 2147483647,
+        ),
       });
     } catch (_) {
       isMuted = target; // revert on failure
       notifyListeners();
     }
+  }
+
+  Future<void> _repairLegacyNotificationPreview(
+    Map<String, dynamic> settings,
+  ) async {
+    try {
+      await _client.query({
+        '@type': 'setChatNotificationSettings',
+        'chat_id': chatId,
+        'notification_settings': repairedChatNotificationSettings(settings),
+      });
+    } catch (_) {}
   }
 
   /// Joins (or, for approval-required chats, requests to join) the current chat.

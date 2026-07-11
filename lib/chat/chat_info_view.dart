@@ -21,6 +21,7 @@ import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/telegram_language_controller.dart';
+import '../notifications/notification_settings_payload.dart';
 import '../profile/qr_code_view.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -1464,11 +1465,9 @@ class ChatInfoViewModel extends ChangeNotifier {
     TdClient.shared.send({
       '@type': 'setChatNotificationSettings',
       'chat_id': chatId,
-      'notification_settings': {
-        '@type': 'chatNotificationSettings',
-        'use_default_mute_for': false,
-        'mute_for': value ? 2147483647 : 0,
-      },
+      'notification_settings': inheritedChatNotificationSettings(
+        muteFor: value ? 2147483647 : 0,
+      ),
     });
   }
 

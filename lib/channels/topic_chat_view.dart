@@ -26,6 +26,7 @@ import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../l10n/telegram_language_controller.dart';
+import '../notifications/notification_settings_payload.dart';
 import '../settings/topic_group_display_mode.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -2152,11 +2153,9 @@ class _TopicChannelSettingsViewState extends State<_TopicChannelSettingsView> {
         'chat_id': widget.chat.id,
         'forum_topic_id': topic.id,
         'message_thread_id': topic.id,
-        'notification_settings': {
-          '@type': 'chatNotificationSettings',
-          'use_default_mute_for': false,
-          'mute_for': value ? 2147483647 : 0,
-        },
+        'notification_settings': inheritedChatNotificationSettings(
+          muteFor: value ? 2147483647 : 0,
+        ),
       });
       await widget.onTopicChanged();
     } catch (e) {

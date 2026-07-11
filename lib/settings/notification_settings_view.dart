@@ -6,6 +6,8 @@
 //  Swift `NotificationSettingsView`.
 //
 
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
@@ -61,6 +63,9 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
   bool _preview(String scope) =>
       _settings[scope]?.boolean('show_preview') ?? true;
 
+  bool get _allPreviewsEnabled =>
+      const [_private, _group, _channel].every(_preview);
+
   bool _hasSound(String scope) =>
       (_settings[scope]?.int64('sound_id') ?? 0) != 0;
 
@@ -95,9 +100,17 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
     _push(scope);
   }
 
-  void _togglePreview(String scope, bool on) {
-    setState(() => _settings[scope]?['show_preview'] = on);
-    _push(scope);
+  void _togglePreview(bool on) {
+    setState(() {
+      for (final scope in const [_private, _group, _channel]) {
+        _settings[scope]?['show_preview'] = on;
+      }
+    });
+    unawaited(
+      Future.wait([
+        for (final scope in const [_private, _group, _channel]) _push(scope),
+      ]),
+    );
   }
 
   void _toggleSound(String scope, bool on) {
@@ -162,8 +175,8 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
                       HeroAppIcons.file.data,
                       const Color(0xFF8E7BFF),
                       AppStrings.t(AppStringKeys.notificationPreview),
-                      _preview(_private),
-                      (v) => _togglePreview(_private, v),
+                      _allPreviewsEnabled,
+                      _togglePreview,
                     ),
                     const InsetDivider(leadingInset: 56),
                     _toggle(
