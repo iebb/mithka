@@ -839,6 +839,9 @@ const enMessages = <String, String>{
   'proxyDeleteProxy': "Delete proxy",
   'proxyDescription':
       "The proxy is only used to connect to Telegram and may slow down your connection.",
+  'proxyAddFromLink': "Add from link",
+  'proxyAddFromLinkHint': "Paste t.me or tg:// proxy link",
+  'proxyAddFromLinkTitle': "Add Proxy from Link",
   'proxyDisabled': "No proxy",
   'proxyHostOrIp': "Host or IP",
   'proxyOptional': "Optional",
