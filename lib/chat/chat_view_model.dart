@@ -2455,7 +2455,10 @@ class ChatViewModel extends ChangeNotifier {
       '@type': 'addMessageReaction',
       'chat_id': chatId,
       'message_id': messageId,
-      'reaction_type': {'@type': 'reactionTypeEmoji', 'emoji': emoji},
+      'reaction_type': {
+        '@type': 'reactionTypeEmoji',
+        'emoji': emoji.replaceAll(RegExp('[\uFE0E\uFE0F]'), ''),
+      },
       'is_big': false,
       'update_recent_reactions': true,
     });
