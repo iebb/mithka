@@ -159,6 +159,8 @@ class ChatViewModel extends ChangeNotifier {
 
   List<ChatMessage> messages = [];
   List<ChatMessage> _allMessages = [];
+  int _messageVersion = 0;
+  int get messageVersion => _messageVersion;
   String peerTitle;
   TdFileRef? peerPhoto;
   bool isGroup = false;
@@ -3322,6 +3324,7 @@ class ChatViewModel extends ChangeNotifier {
           : pinnedMessages[pinnedMessageIndex];
       pinnedDismissed = pinnedMessage == null ? false : pinnedDismissed;
     }
+    _messageVersion++;
     notifyListeners();
   }
 
