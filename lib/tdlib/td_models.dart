@@ -283,6 +283,7 @@ class ChatSummary {
     this.peerEmojiStatusId = 0,
     this.isForum = false,
     this.lastChatMessage,
+    this.isSavedMessages = false,
   });
 
   final int id;
@@ -307,6 +308,7 @@ class ChatSummary {
   int peerEmojiStatusId;
   bool isForum;
   ChatMessage? lastChatMessage;
+  bool isSavedMessages; // true when this is the Saved Messages chat (private chat with yourself)
 
   /// Groups & channels use a rounded-square avatar unless UI preferences
   /// override them; people use a circle.
