@@ -50,6 +50,7 @@ import 'forward_options.dart';
 import 'full_image_viewer.dart';
 import 'link_handler.dart';
 import 'media_album_layout.dart';
+import 'media_library_saver.dart';
 import 'message_action_menu.dart';
 import 'message_bubble.dart';
 import 'message_replies_sheet.dart';
@@ -1878,6 +1879,34 @@ class _ChatViewState extends State<ChatView> {
               ? AppStringKeys.musicPlayerAddedToPlaylist
               : AppStringKeys.musicPlayerAlreadyInPlaylist,
         );
+      case MessageAction.saveToPhotos:
+        DateTime? progressShownAt;
+        final progressTimer = Timer(const Duration(milliseconds: 500), () {
+          if (!mounted) return;
+          progressShownAt = DateTime.now();
+          showToast(
+            context,
+            AppStringKeys.chatSavingToPhotos,
+            visibleFor: const Duration(milliseconds: 900),
+          );
+        });
+        final result = await MediaLibrarySaver.save(message);
+        progressTimer.cancel();
+        if (!mounted) return;
+        if (progressShownAt case final shownAt?) {
+          final remaining =
+              const Duration(milliseconds: 1400) -
+              DateTime.now().difference(shownAt);
+          if (remaining > Duration.zero) await Future<void>.delayed(remaining);
+          if (!mounted) return;
+        }
+        showToast(context, switch (result) {
+          MediaLibrarySaveResult.saved => AppStringKeys.chatSavedToPhotos,
+          MediaLibrarySaveResult.permissionDenied =>
+            AppStringKeys.chatSaveToPhotosPermissionDenied,
+          MediaLibrarySaveResult.failed || MediaLibrarySaveResult.unsupported =>
+            AppStringKeys.chatSaveToPhotosFailed,
+        }, visibleFor: const Duration(seconds: 2));
       case MessageAction.multiSelect:
         _enterSelection(message);
       case MessageAction.pinTodo:

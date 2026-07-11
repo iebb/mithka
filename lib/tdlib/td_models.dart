@@ -369,6 +369,7 @@ class ChatMessage {
     this.isTranslating = false,
     this.buttonRows = const [],
     this.richBlocks = const [],
+    this.richMessageIsFull = true,
     this.isEdited = false,
     this.hasCommentThread = false,
     this.commentCount = 0,
@@ -437,6 +438,7 @@ class ChatMessage {
   bool isTranslating;
   List<List<MessageButton>> buttonRows;
   List<RichMessageBlock> richBlocks;
+  bool richMessageIsFull;
 
   bool isEdited; // shows a "已编辑" tag
   bool hasCommentThread;
@@ -786,6 +788,12 @@ abstract final class TDParse {
     var displayText = markdown?.text ?? text;
     var displayEntities = markdown?.entities ?? parsedEntities;
     final richBlocks = <RichMessageBlock>[...richMessageBlocks(content)];
+    if (content?.type == 'messageRichMessage' &&
+        richBlocks.isNotEmpty &&
+        displayText ==
+            telegramText(AppStringKeys.chatSearchMessageResultLabel)) {
+      displayText = '';
+    }
     if (content?.type != 'messageRichMessage') {
       final extracted = _extractMarkdownTables(displayText, displayEntities);
       displayText = extracted.text;
@@ -837,6 +845,9 @@ abstract final class TDParse {
         linkPreview: linkPreview(content?.obj('link_preview')),
         buttonRows: messageButtonRows(message.obj('reply_markup')),
         richBlocks: richBlocks,
+        richMessageIsFull:
+            content?.type != 'messageRichMessage' ||
+            (content?.obj('message')?.boolean('is_full') ?? false),
         isEdited: (message.integer('edit_date') ?? 0) > 0,
         hasCommentThread: replyInfo != null,
         commentCount:
@@ -2141,6 +2152,16 @@ abstract final class TDParse {
         }
         return telegramText(AppStringKeys.chatSearchMessageResultLabel);
     }
+  }
+
+  static String richMessageDisplayText(Map<String, dynamic> content) {
+    final text = messageText(content);
+    if (content.type == 'messageRichMessage' &&
+        richMessageBlocks(content).isNotEmpty &&
+        text == telegramText(AppStringKeys.chatSearchMessageResultLabel)) {
+      return '';
+    }
+    return text;
   }
 
   static String _nestedFormattedText(Object? value) {

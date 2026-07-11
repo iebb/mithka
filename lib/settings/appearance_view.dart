@@ -366,26 +366,29 @@ class DisplaySettingsView extends StatelessWidget {
                     theme.displayOwnChatAsFavorites,
                     (v) => theme.displayOwnChatAsFavorites = v,
                   ),
-                  _toggleRow(
-                    context,
-                    HeroAppIcons.pictureInPicture.data,
-                    AppStrings.t(
-                      AppStringKeys.appearanceDisableChatListSwipeActions,
+                  if (theme.chatFolderDisplayMode ==
+                      ChatFolderDisplayMode.tabs) ...[
+                    _toggleRow(
+                      context,
+                      HeroAppIcons.pictureInPicture.data,
+                      AppStrings.t(
+                        AppStringKeys.appearanceDisableChatListSwipeActions,
+                      ),
+                      theme.disableChatListSwipeActions,
+                      (v) => theme.disableChatListSwipeActions = v,
                     ),
-                    theme.disableChatListSwipeActions,
-                    (v) => theme.disableChatListSwipeActions = v,
-                  ),
-                  _toggleRow(
-                    context,
-                    HeroAppIcons.arrowsUpDown.data,
-                    AppStrings.t(
-                      AppStringKeys.appearanceChatListFolderSwipeSwitching,
+                    _toggleRow(
+                      context,
+                      HeroAppIcons.arrowsUpDown.data,
+                      AppStrings.t(
+                        AppStringKeys.appearanceChatListFolderSwipeSwitching,
+                      ),
+                      theme.chatListFolderSwipeSwitching,
+                      theme.disableChatListSwipeActions
+                          ? (v) => theme.chatListFolderSwipeSwitching = v
+                          : null,
                     ),
-                    theme.chatListFolderSwipeSwitching,
-                    theme.disableChatListSwipeActions
-                        ? (v) => theme.chatListFolderSwipeSwitching = v
-                        : null,
-                  ),
+                  ],
                   _toggleRow(
                     context,
                     HeroAppIcons.palette.data,

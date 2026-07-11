@@ -32,9 +32,11 @@ class ChatPickerView extends StatefulWidget {
     super.key,
     this.title = AppStringKeys.chatPickerChooseChat,
     this.showForwardOptions = false,
+    this.allowChannels = true,
   });
   final String title;
   final bool showForwardOptions;
+  final bool allowChannels;
 
   @override
   State<ChatPickerView> createState() => _ChatPickerViewState();
@@ -77,7 +79,9 @@ class _ChatPickerViewState extends State<ChatPickerView> {
         .whereType<int>()
         .toSet();
     final all = <_PickerEntry>[
-      for (final chat in chats) _PickerEntry.chat(chat),
+      for (final chat in chats)
+        if (widget.allowChannels || chat.kind != ChatKind.channel)
+          _PickerEntry.chat(chat),
       for (final contact in _contacts)
         if (!chatPeerUserIds.contains(contact.id))
           _PickerEntry.contact(contact),

@@ -463,6 +463,16 @@ void main() {
   });
 
   group('ThemeController chat folders', () {
+    test('defaults to tabbed folders when no preference exists', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+
+      expect(
+        ThemeController(prefs).chatFolderDisplayMode,
+        ChatFolderDisplayMode.tabs,
+      );
+    });
+
     test('migrates the former folder visibility toggle', () async {
       SharedPreferences.setMockInitialValues({'showChatFolderFilter': false});
       var prefs = await SharedPreferences.getInstance();
@@ -490,6 +500,27 @@ void main() {
       expect(theme.chatFolderDisplayMode, ChatFolderDisplayMode.tabs);
       theme.chatFolderDisplayMode = ChatFolderDisplayMode.menu;
       expect(prefs.getString('chatFolderDisplayMode'), 'menu');
+    });
+
+    test('only applies chat list swipe settings in tabbed mode', () async {
+      SharedPreferences.setMockInitialValues({
+        'chatFolderDisplayMode': 'tabs',
+        'disableChatListSwipeActions': true,
+        'chatListFolderSwipeSwitching': true,
+      });
+      final prefs = await SharedPreferences.getInstance();
+      final theme = ThemeController(prefs);
+
+      expect(theme.disableChatListSwipeActions, isTrue);
+      expect(theme.chatListFolderSwipeSwitching, isTrue);
+
+      theme.chatFolderDisplayMode = ChatFolderDisplayMode.menu;
+      expect(theme.disableChatListSwipeActions, isFalse);
+      expect(theme.chatListFolderSwipeSwitching, isFalse);
+
+      theme.chatFolderDisplayMode = ChatFolderDisplayMode.tabs;
+      expect(theme.disableChatListSwipeActions, isTrue);
+      expect(theme.chatListFolderSwipeSwitching, isTrue);
     });
   });
 
@@ -802,7 +833,8 @@ void main() {
       });
 
       expect(message, isNotNull);
-      expect(message!.text, 'Hello bold and link\n\nfinal x = 1;');
+      expect(message!.richMessageIsFull, isTrue);
+      expect(message.text, 'Hello bold and link\n\nfinal x = 1;');
       expect(message.textEntities.map((e) => e.type), [
         'textEntityTypeBold',
         'textEntityTypeTextUrl',
@@ -820,6 +852,45 @@ void main() {
       expect(table.tableRows[1][1].text, '42');
       expect(table.tableRows[1][1].entities.single.type, 'textEntityTypeBold');
     });
+
+    test(
+      'does not render the generic placeholder for table-only rich messages',
+      () {
+        final message = TDParse.message({
+          '@type': 'message',
+          'id': 102,
+          'date': 1,
+          'is_outgoing': true,
+          'content': {
+            '@type': 'messageRichMessage',
+            'message': {
+              '@type': 'richMessage',
+              'is_rtl': false,
+              'is_full': false,
+              'blocks': [
+                {
+                  '@type': 'pageBlockTable',
+                  'cells': [
+                    [
+                      {
+                        '@type': 'pageBlockTableCell',
+                        'is_header': true,
+                        'text': {'@type': 'richTextPlain', 'text': 'Name'},
+                      },
+                    ],
+                  ],
+                },
+              ],
+            },
+          },
+        });
+
+        expect(message, isNotNull);
+        expect(message!.text, isEmpty);
+        expect(message.richBlocks, hasLength(1));
+        expect(message.richMessageIsFull, isFalse);
+      },
+    );
 
     test('extracts markdown pipe tables into rich table blocks', () {
       final message = TDParse.message({

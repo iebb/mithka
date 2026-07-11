@@ -18,7 +18,6 @@ import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
-import 'api_credentials_view.dart';
 import 'auto_download_media_controller.dart';
 
 class GeneralSettingsView extends StatefulWidget {
@@ -111,8 +110,6 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
                 const SizedBox(height: 14),
                 _autoDownloadCard(),
                 const SizedBox(height: 14),
-                _accelerationCard(),
-                const SizedBox(height: 14),
                 _chatCard(),
               ],
             ),
@@ -132,20 +129,6 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
       ),
     ),
   );
-
-  Widget _accelerationCard() {
-    return _card([
-      _navRow(
-        HeroAppIcons.cloudArrowDown.data,
-        const Color(0xFF2FBF71),
-        AppStrings.t(AppStringKeys.apiCredentialsTitle),
-        AppStrings.t(AppStringKeys.apiCredentialsCustomClientApi),
-        () => Navigator.of(
-          context,
-        ).push(MaterialPageRoute(builder: (_) => const ApiCredentialsView())),
-      ),
-    ]);
-  }
 
   Widget _autoDownloadCard() {
     final auto = context.watch<AutoDownloadMediaController>();
@@ -396,57 +379,6 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
               onChanged: disabled ? null : onChanged,
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _navRow(
-    IconData icon,
-    Color color,
-    String title,
-    String value,
-    VoidCallback onTap,
-  ) {
-    final c = context.colors;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: SizedBox(
-        height: 52,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              _iconBadge(icon, color),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  title.l10n(context),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 16, color: c.textPrimary),
-                ),
-              ),
-              const SizedBox(width: 12),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 150),
-                child: Text(
-                  value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.right,
-                  style: TextStyle(fontSize: 15, color: c.textSecondary),
-                ),
-              ),
-              const SizedBox(width: 6),
-              AppIcon(
-                HeroAppIcons.chevronRight,
-                size: 14,
-                color: c.textTertiary,
-              ),
-            ],
-          ),
         ),
       ),
     );

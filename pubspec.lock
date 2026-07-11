@@ -533,7 +533,7 @@ packages:
     source: hosted
     version: "4.1.2"
   image:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: image
       sha256: f31d52537dc417fdcde36088fdf11d191026fd5e4fae742491ebd40e5a8bea7d
@@ -925,7 +925,7 @@ packages:
     source: hosted
     version: "7.0.2"
   photo_manager:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: photo_manager
       sha256: bf840253a7a5a48774f3a23b042a673614785e9874e0c86e2837681d576ef252

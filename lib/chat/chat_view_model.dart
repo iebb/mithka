@@ -12,6 +12,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:mithka/l10n/app_localizations.dart';
+import 'package:mithka/notifications/scope_notification_settings.dart';
 
 import '../l10n/telegram_language_controller.dart';
 import '../notifications/notification_settings_payload.dart';
@@ -19,10 +20,10 @@ import '../settings/keyword_blocker.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
-import 'package:mithka/notifications/scope_notification_settings.dart';
 import 'forward_options.dart';
 import 'gif_item.dart';
 import 'outgoing_attachment.dart';
+import 'rich_message_source.dart';
 import 'sticker_item.dart';
 
 class _SenderInfo {
@@ -158,6 +159,9 @@ class ChatViewModel extends ChangeNotifier {
   int? peerSupergroupId;
   String meName = AppStrings.t(AppStringKeys.chatMeLabel);
   int? meId;
+  bool? _currentUserIsPremium;
+  Future<bool>? _currentUserCapabilityLoad;
+  bool get currentUserIsPremium => _currentUserIsPremium ?? false;
   TdFileRef? mePhoto;
   String draft = '';
   String _draftFormattedText = '';
@@ -322,14 +326,31 @@ class ChatViewModel extends ChangeNotifier {
   }
 
   Future<void> _loadMe() async {
+    await canSendRichMessages();
+  }
+
+  Future<bool> canSendRichMessages() {
+    final cached = _currentUserIsPremium;
+    if (cached != null) return Future.value(cached);
+    return _currentUserCapabilityLoad ??= _loadCurrentUserCapability();
+  }
+
+  Future<bool> _loadCurrentUserCapability() async {
     try {
       final me = await _client.query({'@type': 'getMe'});
       meId = me.int64('id');
+      final premium = me.boolean('is_premium') ?? false;
+      _currentUserIsPremium = premium;
       final name = TDParse.userName(me);
       if (name.isNotEmpty) meName = name;
       mePhoto = TDParse.smallPhoto(me.obj('profile_photo'));
       notifyListeners();
-    } catch (_) {}
+      return premium;
+    } catch (_) {
+      return false;
+    } finally {
+      _currentUserCapabilityLoad = null;
+    }
   }
 
   Future<void> _loadAvailableMessageSenders() async {
@@ -664,6 +685,105 @@ class ChatViewModel extends ChangeNotifier {
     replyTo = null;
     _client.send(_withPaidMessageOptions(request));
     notifyListeners();
+  }
+
+  Future<void> sendRichMessageHtml(
+    String html, {
+    List<RichMessageSendFile> files = const [],
+  }) async {
+    if (html.trim().isEmpty) return;
+    _clearDraft();
+    final request = <String, dynamic>{
+      '@type': 'sendMessage',
+      'chat_id': chatId,
+      'input_message_content': {
+        '@type': 'inputMessageRichMessage',
+        'message': {
+          '@type': 'inputRichMessage',
+          'source': {'@type': 'richMessageSourceHtml', 'text': html},
+          'is_rtl': false,
+          'detect_automatic_blocks': true,
+          if (files.isNotEmpty)
+            'files': files.map(_richMessageFilePayload).toList(),
+        },
+        'clear_draft': true,
+      },
+    };
+    if (replyTo != null) {
+      request['reply_to'] = {
+        '@type': 'inputMessageReplyToMessage',
+        'message_id': replyTo!.id,
+      };
+    }
+    replyTo = null;
+    await _client.query(_withPaidMessageOptions(request));
+    notifyListeners();
+  }
+
+  Map<String, dynamic> _richMessageFilePayload(RichMessageSendFile file) {
+    final attachment = file.attachment;
+    final inputFile = {'@type': 'inputFileLocal', 'path': attachment.path};
+    final segments = Uri.file(attachment.path).pathSegments;
+    final fileName = segments.isEmpty ? attachment.path : segments.last;
+    return switch (attachment.kind) {
+      OutgoingAttachmentKind.photo => {
+        '@type': 'inputRichMessageFilePhoto',
+        'id': file.id,
+        'photo': {
+          '@type': 'inputPhoto',
+          'photo': inputFile,
+          'added_sticker_file_ids': <int>[],
+          'width': 0,
+          'height': 0,
+        },
+      },
+      OutgoingAttachmentKind.video => {
+        '@type': 'inputRichMessageFileVideo',
+        'id': file.id,
+        'video': {
+          '@type': 'inputVideo',
+          'video': inputFile,
+          'start_timestamp': 0,
+          'added_sticker_file_ids': <int>[],
+          'duration': 0,
+          'width': 0,
+          'height': 0,
+          'supports_streaming': true,
+        },
+      },
+      OutgoingAttachmentKind.animation => {
+        '@type': 'inputRichMessageFileAnimation',
+        'id': file.id,
+        'animation': {
+          '@type': 'inputAnimation',
+          'animation': inputFile,
+          'added_sticker_file_ids': <int>[],
+          'duration': 0,
+          'width': 0,
+          'height': 0,
+        },
+      },
+      OutgoingAttachmentKind.audio => {
+        '@type': 'inputRichMessageFileAudio',
+        'id': file.id,
+        'audio': {
+          '@type': 'inputAudio',
+          'audio': inputFile,
+          'duration': 0,
+          'title': fileName,
+          'performer': '',
+        },
+      },
+      OutgoingAttachmentKind.document => {
+        '@type': 'inputRichMessageFileDocument',
+        'id': file.id,
+        'document': {
+          '@type': 'inputDocument',
+          'document': inputFile,
+          'disable_content_type_detection': false,
+        },
+      },
+    };
   }
 
   static const _diceEmojis = {'🎲', '🎯', '🏀', '⚽', '🎳', '🎰'};
@@ -1139,6 +1259,7 @@ class ChatViewModel extends ChangeNotifier {
       final refreshed = TDParse.message(raw);
       if (refreshed == null) return;
       _merge([refreshed]);
+      _resolveRichMessagesIfNeeded([refreshed]);
       _resolveSendersIfNeeded([refreshed]);
       _resolveRepliesIfNeeded([refreshed]);
       _resolveForwardsIfNeeded([refreshed]);
@@ -1402,15 +1523,23 @@ class ChatViewModel extends ChangeNotifier {
         if (entities.isNotEmpty) 'entities': entities,
       },
     });
-    _replaceText(id, caption, edited: true, entities: TDParse.textEntities({
-      '@type': 'formattedText',
-      'text': caption,
-      'entities': entities,
-    }), customEmoji: TDParse.customEmojiEntitiesFrom(TDParse.textEntities({
-      '@type': 'formattedText',
-      'text': caption,
-      'entities': entities,
-    })));
+    _replaceText(
+      id,
+      caption,
+      edited: true,
+      entities: TDParse.textEntities({
+        '@type': 'formattedText',
+        'text': caption,
+        'entities': entities,
+      }),
+      customEmoji: TDParse.customEmojiEntitiesFrom(
+        TDParse.textEntities({
+          '@type': 'formattedText',
+          'text': caption,
+          'entities': entities,
+        }),
+      ),
+    );
   }
 
   Future<void> editMessageMedia(
@@ -1596,6 +1725,7 @@ class ChatViewModel extends ChangeNotifier {
     if (lastMessage == null) return;
     if (_markTelegramTosRestrictedText(lastMessage.text)) return;
     _merge([lastMessage]);
+    _resolveRichMessagesIfNeeded([lastMessage]);
     _resolveRepliesIfNeeded([lastMessage]);
     _resolveForwardsIfNeeded([lastMessage]);
   }
@@ -2055,6 +2185,7 @@ class ChatViewModel extends ChangeNotifier {
     anchoredHistory = true;
     if (scrollToTarget) _pendingScrollToId = messageId;
     _merge(visibleBatch);
+    _resolveRichMessagesIfNeeded(visibleBatch);
     _resolveSendersIfNeeded(visibleBatch);
     _resolveRepliesIfNeeded(visibleBatch);
     _resolveForwardsIfNeeded(visibleBatch);
@@ -2087,11 +2218,12 @@ class ChatViewModel extends ChangeNotifier {
       return false;
     }
 
-    final parsed =
-        (response.objects('messages') ?? const <Map<String, dynamic>>[])
-            .map(TDParse.message)
-            .whereType<ChatMessage>()
-            .toList();
+    final rawMessages =
+        response.objects('messages') ?? const <Map<String, dynamic>>[];
+    final parsed = rawMessages
+        .map(TDParse.message)
+        .whereType<ChatMessage>()
+        .toList();
     final visibleMessages = _withoutRestrictedNoticeMessages(parsed);
     if (parsed.isNotEmpty && visibleMessages.isEmpty) {
       notifyListeners();
@@ -2103,6 +2235,7 @@ class ChatViewModel extends ChangeNotifier {
     }
 
     _merge(visibleMessages);
+    _resolveRichMessagesIfNeeded(visibleMessages);
     if (isOlder &&
         restorePosition &&
         anchor != null &&
@@ -2280,6 +2413,7 @@ class ChatViewModel extends ChangeNotifier {
         final message = TDParse.message(raw);
         if (message == null) return;
         _merge([message]);
+        _resolveRichMessagesIfNeeded([message]);
         _resolveSendersIfNeeded([message]);
         _resolveRepliesIfNeeded([message]);
         _resolveForwardsIfNeeded([message]);
@@ -2304,7 +2438,11 @@ class ChatViewModel extends ChangeNotifier {
           linkPreview: TDParse.linkPreview(content.obj('link_preview')),
           updateLinkPreview: true,
         );
-
+        if (content.type == 'messageRichMessage') {
+          _replaceRichMessageContent(messageId, content);
+          final target = _messageRefs(messageId);
+          _resolveRichMessagesIfNeeded(target);
+        }
 
       case 'updateChat':
         final chat = update.obj('chat');
@@ -2886,6 +3024,56 @@ class ChatViewModel extends ChangeNotifier {
     if (updateLinkPreview) target.linkPreview = linkPreview;
     if (edited) target.isEdited = true;
     _applyKeywordFilter();
+  }
+
+  final Set<int> _loadingFullRichMessageIds = <int>{};
+
+  void _replaceRichMessageContent(int messageId, Map<String, dynamic> content) {
+    final refs = _messageRefs(messageId);
+    if (refs.isEmpty) return;
+    final full = content.obj('message')?.boolean('is_full') ?? false;
+    final text = TDParse.richMessageDisplayText(content);
+    final entities = TDParse.messageTextEntities(content);
+    final blocks = TDParse.richMessageBlocks(content);
+    final customEmoji = TDParse.customEmojiEntitiesForContent(content);
+    for (final message in refs) {
+      message.text = text;
+      message.textEntities = entities;
+      message.richBlocks = blocks;
+      message.customEmoji = customEmoji;
+      message.richMessageIsFull = full;
+    }
+    _applyKeywordFilter();
+  }
+
+  void _resolveRichMessagesIfNeeded(List<ChatMessage> candidates) {
+    for (final message in candidates) {
+      if (message.contentType != 'messageRichMessage' ||
+          message.richMessageIsFull ||
+          !_loadingFullRichMessageIds.add(message.id)) {
+        continue;
+      }
+      unawaited(_loadFullRichMessage(message.id));
+    }
+  }
+
+  Future<void> _loadFullRichMessage(int messageId) async {
+    try {
+      final richMessage = await _client.query({
+        '@type': 'getFullRichMessage',
+        'chat_id': chatId,
+        'message_id': messageId,
+      });
+      _replaceRichMessageContent(messageId, {
+        '@type': 'messageRichMessage',
+        'message': richMessage,
+      });
+    } catch (error) {
+      // Keep the partial placeholder; a later content/history update retries it.
+      debugPrint('Failed to load full rich message $messageId: $error');
+    } finally {
+      _loadingFullRichMessageIds.remove(messageId);
+    }
   }
 
   void _replaceButtonRows(int messageId, List<List<MessageButton>> buttonRows) {

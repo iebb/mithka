@@ -31,6 +31,7 @@ enum MessageAction {
   block(HeroAppIcons.ban, AppStringKeys.messageActionBlock),
   playMuted(HeroAppIcons.volumeXmark, AppStringKeys.messageActionPlayMuted),
   addToPlaylist(HeroAppIcons.music, AppStringKeys.musicPlayerAddToPlaylist),
+  saveToPhotos(HeroAppIcons.download, AppStringKeys.messageActionSaveToPhotos),
   multiSelect(HeroAppIcons.circleCheck, AppStringKeys.messageActionMultiSelect),
   pinTodo(HeroAppIcons.thumbtack, AppStringKeys.messageActionSetTodo),
   unpinTodo(HeroAppIcons.thumbtack, AppStringKeys.messageActionUnsetTodo),
@@ -100,6 +101,9 @@ class MessageActionMenu extends StatelessWidget {
     }
     if (message.music?.file != null) {
       result.add(MessageAction.addToPlaylist);
+    }
+    if (message.isPhoto || message.video != null) {
+      result.add(MessageAction.saveToPhotos);
     }
     result.add(MessageAction.multiSelect);
     result.add(isPinned ? MessageAction.unpinTodo : MessageAction.pinTodo);

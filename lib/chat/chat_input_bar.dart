@@ -43,6 +43,7 @@ import 'gif_store.dart';
 import 'image_edit_view.dart';
 import 'link_handler.dart';
 import 'location_picker_view.dart';
+import 'media_send_preview_view.dart';
 import 'outgoing_attachment.dart';
 import 'poll_composer_view.dart';
 import 'rich_text_composer_view.dart';
@@ -911,44 +912,50 @@ class _ChatInputBarState extends State<ChatInputBar> {
   /// 图片: pick one or more photos/videos and preserve their album order.
   Future<void> _pickPhotos() async {
     try {
-      final media = await AppAssetPicker.pick(
+      final selection = await AppAssetPicker.pickDetailed(
         context,
         type: AppAssetPickerType.imageAndVideo,
         maxAssets: 10,
       );
-      final attachments = <OutgoingAttachment>[];
-      for (final x in media) {
-        if (isPickedAssetVideo(x)) {
-          attachments.add(
-            OutgoingAttachment(
-              path: x.path,
-              kind: OutgoingAttachmentKind.video,
-            ),
-          );
-        } else if (isPickedAssetGif(x)) {
-          attachments.add(
-            OutgoingAttachment(
-              path: x.path,
-              kind: OutgoingAttachmentKind.animation,
-            ),
-          );
-        } else {
-          final edited = await _editImage(x.path);
-          if (edited != null) {
-            attachments.add(
-              OutgoingAttachment(
-                path: edited.path,
-                kind: OutgoingAttachmentKind.photo,
-                caption: edited.caption,
-              ),
-            );
-          }
-        }
+      if (!mounted) return;
+      if (selection.failedCount > 0) {
+        showToast(
+          context,
+          AppStrings.t(AppStringKeys.composerOpenAttachmentFailed, {
+            'value1': AppStrings.t(AppStringKeys.composerImage),
+          }),
+        );
       }
+      final attachments = selection.assets
+          .map((asset) {
+            final file = asset.file;
+            final kind = isPickedAssetVideo(file)
+                ? OutgoingAttachmentKind.video
+                : isPickedAssetGif(file)
+                ? OutgoingAttachmentKind.animation
+                : OutgoingAttachmentKind.photo;
+            return OutgoingAttachment(
+              path: file.path,
+              kind: kind,
+              previewBytes: asset.thumbnailBytes,
+            );
+          })
+          .toList(growable: false);
       if (attachments.isEmpty) return;
-      await widget.vm.sendAttachments(attachments);
+      final preview = await Navigator.of(context).push<MediaSendPreviewResult>(
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (_) => MediaSendPreviewView(attachments: attachments),
+        ),
+      );
+      if (!mounted || preview == null || preview.attachments.isEmpty) return;
+      await widget.vm.sendAttachments(
+        preview.attachments,
+        caption: preview.caption,
+      );
       widget.onMessageSent();
-    } catch (_) {
+    } catch (error, stackTrace) {
+      debugPrint('Failed to send selected media: $error\n$stackTrace');
       _pickFailed(AppStrings.t(AppStringKeys.composerImage));
     }
   }
@@ -1224,18 +1231,43 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   Future<void> _sendRichTextResult(RichTextComposerResult result) async {
     try {
-      if (result.attachments.isEmpty) {
-        if (result.text.trim().isEmpty) return;
-        widget.vm.sendFormatted(result.text, result.entities);
+      if (!await widget.vm.canSendRichMessages()) {
+        var sentAny = false;
+        if (result.text.trim().isNotEmpty) {
+          widget.vm.sendFormatted(result.text, result.entities);
+          sentAny = true;
+        }
+        if (result.attachments.isNotEmpty) {
+          await widget.vm.sendAttachments(result.attachments);
+          sentAny = true;
+        }
+        if (!sentAny) return;
+        if (mounted) {
+          showToast(
+            context,
+            AppStringKeys.composerRichTextPremiumRequired.l10n(context),
+          );
+        }
         widget.onMessageSent();
-      } else {
-        await widget.vm.sendAttachments(
-          result.attachments,
-          caption: result.text,
-          captionEntities: result.entities,
-        );
-        widget.onMessageSent();
+        _controller.clear();
+        _focus.requestFocus();
+        return;
       }
+      var sentAny = false;
+      for (final segment in result.segments) {
+        if (segment.isHtml) {
+          await widget.vm.sendRichMessageHtml(
+            segment.html,
+            files: segment.richFiles,
+          );
+          sentAny = true;
+        } else if (segment.attachments.isNotEmpty) {
+          await widget.vm.sendAttachments(segment.attachments);
+          sentAny = true;
+        }
+      }
+      if (!sentAny) return;
+      widget.onMessageSent();
       _controller.clear();
       _focus.requestFocus();
     } catch (_) {

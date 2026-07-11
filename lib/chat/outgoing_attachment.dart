@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 enum OutgoingAttachmentKind { photo, video, animation, document, audio }
 
 enum AttachmentAlbumKind { visual, document, audio, standalone }
@@ -8,12 +10,14 @@ class OutgoingAttachment {
     required this.kind,
     this.caption = '',
     this.captionEntities = const [],
+    this.previewBytes,
   });
 
   final String path;
   final OutgoingAttachmentKind kind;
   final String caption;
   final List<Map<String, dynamic>> captionEntities;
+  final Uint8List? previewBytes;
 
   AttachmentAlbumKind get albumKind => switch (kind) {
     OutgoingAttachmentKind.photo ||
@@ -28,12 +32,17 @@ class OutgoingAttachment {
     OutgoingAttachmentKind? kind,
     String? caption,
     List<Map<String, dynamic>>? captionEntities,
+    Uint8List? previewBytes,
+    bool clearPreviewBytes = false,
   }) {
     return OutgoingAttachment(
       path: path ?? this.path,
       kind: kind ?? this.kind,
       caption: caption ?? this.caption,
       captionEntities: captionEntities ?? this.captionEntities,
+      previewBytes: clearPreviewBytes
+          ? null
+          : previewBytes ?? this.previewBytes,
     );
   }
 }
@@ -149,21 +158,20 @@ List<Map<String, dynamic>> buildAttachmentSendRequests({
   Map<String, dynamic>? replyTo,
 }) {
   final requests = <Map<String, dynamic>>[];
-  var attachmentIndex = 0;
+  var primaryCaptionApplied = false;
   for (final batch in groupOutgoingAttachments(attachments)) {
     final contents = <Map<String, dynamic>>[];
     for (final attachment in batch.attachments) {
-      final isFirst = attachmentIndex == 0;
+      final appliesPrimaryCaption =
+          !primaryCaptionApplied && caption.trim().isNotEmpty;
       contents.add(
         attachmentInputMessageContent(
           attachment,
-          caption: isFirst && caption.trim().isNotEmpty ? caption : null,
-          captionEntities: isFirst && caption.trim().isNotEmpty
-              ? captionEntities
-              : null,
+          caption: appliesPrimaryCaption ? caption : null,
+          captionEntities: appliesPrimaryCaption ? captionEntities : null,
         ),
       );
-      attachmentIndex++;
+      primaryCaptionApplied = primaryCaptionApplied || appliesPrimaryCaption;
     }
     requests.add({
       '@type': batch.isAlbum ? 'sendMessageAlbum' : 'sendMessage',

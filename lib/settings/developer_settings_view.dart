@@ -7,9 +7,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../components/app_icons.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
+import 'api_credentials_view.dart';
 import 'developer_mode_controller.dart';
 
 class DeveloperSettingsView extends StatelessWidget {
@@ -38,6 +40,23 @@ class DeveloperSettingsView extends StatelessWidget {
               children: [
                 SettingsCard(
                   children: [
+                    SettingsRow(
+                      title: AppStrings.t(AppStringKeys.apiCredentialsTitle),
+                      value: AppStrings.t(
+                        AppStringKeys.apiCredentialsCustomClientApi,
+                      ),
+                      leading: AppIcon(
+                        HeroAppIcons.cloudArrowDown,
+                        size: 21,
+                        color: AppTheme.brand,
+                      ),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const ApiCredentialsView(),
+                        ),
+                      ),
+                    ),
+                    const InsetDivider(leadingInset: 48),
                     SettingsSwitchRow(
                       title: AppStrings.t(
                         AppStringKeys.developerModePiPBoundsOverlay,

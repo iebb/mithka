@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
@@ -11,6 +12,7 @@ import '../theme/app_theme.dart';
 import 'emoji_text_controller.dart';
 import 'image_edit_view.dart';
 import 'outgoing_attachment.dart';
+import 'rich_message_source.dart';
 import 'rich_text_format.dart';
 
 class RichTextComposerResult {
@@ -18,11 +20,13 @@ class RichTextComposerResult {
     required this.text,
     required this.entities,
     required this.attachments,
+    required this.segments,
   });
 
   final String text;
   final List<Map<String, dynamic>> entities;
   final List<OutgoingAttachment> attachments;
+  final List<RichMessageSendSegment> segments;
 
   FormattedTextPayload get formattedText =>
       FormattedTextPayload(text, entities);
@@ -183,6 +187,24 @@ class _RichTableDraft {
     return buffer.toString().trimRight();
   }
 
+  String toHtml() {
+    if (cells.isEmpty || cells.first.isEmpty) return '';
+    final buffer = StringBuffer('<table bordered striped>');
+    for (var rowIndex = 0; rowIndex < cells.length; rowIndex++) {
+      buffer.write('<tr>');
+      for (final cell in cells[rowIndex]) {
+        final tag = rowIndex == 0 ? 'th' : 'td';
+        buffer
+          ..write('<$tag>')
+          ..write(escapeRichHtml(cell.text.trim()))
+          ..write('</$tag>');
+      }
+      buffer.write('</tr>');
+    }
+    buffer.write('</table>');
+    return buffer.toString();
+  }
+
   static String _escapeCell(String value) {
     return value
         .replaceAll('\n', ' ')
@@ -209,20 +231,44 @@ class _RichTextBlock {
   final FocusNode focusNode;
   final VoidCallback onTextChanged;
   String lastText;
+  int headingLevel = 0;
+}
+
+class _RichMathDraft {
+  _RichMathDraft() : controller = TextEditingController(text: r'E = mc^2');
+
+  final TextEditingController controller;
+
+  void dispose() => controller.dispose();
 }
 
 class _RichContentBlock {
-  const _RichContentBlock.text(this.text) : table = null;
-  const _RichContentBlock.table(this.table) : text = null;
+  const _RichContentBlock.text(this.text)
+    : table = null,
+      math = null,
+      attachment = null;
+  const _RichContentBlock.table(this.table)
+    : text = null,
+      math = null,
+      attachment = null;
+  const _RichContentBlock.math(this.math)
+    : text = null,
+      table = null,
+      attachment = null;
+  const _RichContentBlock.attachment(this.attachment)
+    : text = null,
+      table = null,
+      math = null;
 
   final _RichTextBlock? text;
   final _RichTableDraft? table;
+  final _RichMathDraft? math;
+  final OutgoingAttachment? attachment;
 }
 
 class _RichTextComposerViewState extends State<RichTextComposerView> {
   static const _maxAttachments = 10;
 
-  final _attachments = <OutgoingAttachment>[];
   late final List<_RichContentBlock> _blocks;
   late _RichTextBlock _activeTextBlock;
 
@@ -237,11 +283,11 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
     );
     _blocks = [_RichContentBlock.text(first)];
     _activeTextBlock = first;
-    _attachments.addAll(widget.initialAttachments.take(_maxAttachments));
-    final remaining = _maxAttachments - _attachments.length;
-    _attachments.addAll(
-      widget.initialMedia.take(remaining).map(_attachmentFromPickedMedia),
-    );
+    final initialAttachments = <OutgoingAttachment>[
+      ...widget.initialAttachments,
+      ...widget.initialMedia.map(_attachmentFromPickedMedia),
+    ].take(_maxAttachments);
+    _blocks.addAll(initialAttachments.map(_RichContentBlock.attachment));
   }
 
   @override
@@ -288,21 +334,88 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
     final text = block.text;
     if (text != null) _disposeTextBlock(text);
     block.table?.dispose();
+    block.math?.dispose();
   }
 
   void _submit() {
     final buffer = StringBuffer();
     final entities = <Map<String, dynamic>>[];
+    final attachments = <OutgoingAttachment>[];
+    final segments = <RichMessageSendSegment>[];
+    final htmlBuffer = StringBuffer();
+    final htmlFiles = <RichMessageSendFile>[];
+    final pendingAttachments = <OutgoingAttachment>[];
     var hasContent = false;
+
+    void flushHtml() {
+      final html = htmlBuffer.toString().trim();
+      if (html.isNotEmpty) {
+        segments.add(
+          RichMessageSendSegment.html(
+            html,
+            richFiles: List<RichMessageSendFile>.unmodifiable(htmlFiles),
+          ),
+        );
+      }
+      htmlBuffer.clear();
+      htmlFiles.clear();
+    }
+
+    void flushAttachments() {
+      if (pendingAttachments.isEmpty) return;
+      segments.add(
+        RichMessageSendSegment.attachments(
+          List<OutgoingAttachment>.unmodifiable(pendingAttachments),
+        ),
+      );
+      pendingAttachments.clear();
+    }
+
     for (final block in _blocks) {
+      final attachment = block.attachment;
+      if (attachment != null) {
+        attachments.add(attachment);
+        if (attachment.kind == OutgoingAttachmentKind.document) {
+          flushHtml();
+          pendingAttachments.add(attachment);
+          continue;
+        }
+        flushAttachments();
+        final id = 'mithka-rich-${segments.length}-${htmlFiles.length}';
+        htmlFiles.add(RichMessageSendFile(id: id, attachment: attachment));
+        htmlBuffer.write(switch (attachment.kind) {
+          OutgoingAttachmentKind.photo => '<img src="$id"/>',
+          OutgoingAttachmentKind.video ||
+          OutgoingAttachmentKind.animation => '<video src="$id"></video>',
+          OutgoingAttachmentKind.audio => '<audio src="$id"></audio>',
+          OutgoingAttachmentKind.document => '',
+        });
+        continue;
+      }
+      flushAttachments();
       String text;
       List<Map<String, dynamic>> blockEntities = const [];
       if (block.text != null) {
         final formatted = block.text!.controller.toFormatted();
         text = formatted.$1;
         blockEntities = formatted.$2;
+        htmlBuffer.write(
+          formattedTextToRichHtml(
+            text,
+            blockEntities,
+            headingLevel: block.text!.headingLevel,
+          ),
+        );
+      } else if (block.math != null) {
+        text = block.math!.controller.text.trim();
+        if (text.isNotEmpty) {
+          htmlBuffer.write(
+            '<tg-math-block>${escapeRichHtml(text)}</tg-math-block>',
+          );
+        }
       } else {
         text = block.table?.toMarkdown() ?? '';
+        htmlBuffer.write(block.table?.toHtml() ?? '');
       }
       if (text.trim().isEmpty) continue;
       if (hasContent) buffer.write('\n\n');
@@ -313,11 +426,14 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
       }
       hasContent = true;
     }
+    flushAttachments();
+    flushHtml();
     Navigator.of(context).pop(
       RichTextComposerResult(
         text: buffer.toString(),
         entities: entities,
-        attachments: List.unmodifiable(_attachments),
+        attachments: List.unmodifiable(attachments),
+        segments: List.unmodifiable(segments),
       ),
     );
   }
@@ -350,23 +466,12 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
   }
 
   void _insertHeading() {
-    final selection = _controller.selection;
-    if (selection.isValid && !selection.isCollapsed) {
-      final start = selection.start < selection.end
-          ? selection.start
-          : selection.end;
-      final end = selection.start < selection.end
-          ? selection.end
-          : selection.start;
-      _controller.formatRange(start, end, 'textEntityTypeBold');
-      return;
+    setState(() {
+      _activeTextBlock.headingLevel = (_activeTextBlock.headingLevel + 1) % 4;
+    });
+    if (_controller.text.trim().isEmpty) {
+      _insertPlaceholder('Heading');
     }
-    final range = _currentLineRange();
-    if (range.end > range.start) {
-      _controller.formatRange(range.start, range.end, 'textEntityTypeBold');
-      return;
-    }
-    _insertPlaceholder('Heading', type: 'textEntityTypeBold');
   }
 
   void _insertList(String marker) {
@@ -393,17 +498,6 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
         offset: lineStart + replacement.length,
       ),
     );
-  }
-
-  ({int start, int end}) _currentLineRange() {
-    final text = _controller.text;
-    final selection = _controller.selection;
-    final offset = selection.isValid
-        ? selection.start.clamp(0, text.length)
-        : text.length;
-    final start = text.lastIndexOf('\n', offset > 0 ? offset - 1 : 0) + 1;
-    final nextBreak = text.indexOf('\n', offset);
-    return (start: start, end: nextBreak < 0 ? text.length : nextBreak);
   }
 
   void _insertTable() {
@@ -435,6 +529,19 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) nextText.focusNode.requestFocus();
+    });
+  }
+
+  void _insertMathBlock() {
+    final index = _blocks.indexWhere((block) => block.text == _activeTextBlock);
+    final nextText = _createTextBlock('');
+    setState(() {
+      final insertIndex = index < 0 ? _blocks.length : index + 1;
+      _blocks.insertAll(insertIndex, [
+        _RichContentBlock.math(_RichMathDraft()),
+        _RichContentBlock.text(nextText),
+      ]);
+      _activeTextBlock = nextText;
     });
   }
 
@@ -553,6 +660,14 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
     if (text != null) {
       return _textEditor(c, availableHeight, text);
     }
+    final attachment = block.attachment;
+    if (attachment != null) {
+      return _inlineAttachmentBlock(c, index, attachment);
+    }
+    final math = block.math;
+    if (math != null) {
+      return _mathEditor(c, index, math);
+    }
     final table = block.table;
     if (table == null) return const SizedBox.shrink();
     final tableNumber = _blocks
@@ -600,10 +715,88 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
   );
 
   double _textBlockHeight(_RichTextBlock block, double availableHeight) {
-    final hasTables = _blocks.any((block) => block.table != null);
-    if (!hasTables && _blocks.length == 1) return availableHeight;
+    final hasStructuredBlocks = _blocks.any(
+      (block) =>
+          block.table != null || block.math != null || block.attachment != null,
+    );
+    if (!hasStructuredBlocks && _blocks.length == 1) return availableHeight;
     final lineCount = block.controller.text.split('\n').length;
     return (86.0 + lineCount * 23.0).clamp(120.0, 260.0);
+  }
+
+  Widget _mathEditor(AppColors c, int index, _RichMathDraft math) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: c.card,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: c.divider),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Text(
+                  'LaTeX',
+                  style: AppTextStyle.callout(
+                    c.textPrimary,
+                    weight: AppTextWeight.semibold,
+                  ),
+                ),
+                const Spacer(),
+                _miniIconButton(
+                  c,
+                  icon: HeroAppIcons.trash,
+                  label: AppStringKeys.richTextComposerRemoveTable.l10n(
+                    context,
+                  ),
+                  destructive: true,
+                  onTap: () => _removeStructuredBlock(index),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: math.controller,
+              maxLines: 3,
+              onChanged: (_) => setState(() {}),
+              style: AppTextStyle.callout(c.textPrimary),
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: c.searchFill,
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.all(10),
+              ),
+            ),
+            if (math.controller.text.trim().isNotEmpty) ...[
+              const SizedBox(height: 12),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Math.tex(
+                  math.controller.text,
+                  textStyle: TextStyle(fontSize: 18, color: c.textPrimary),
+                  onErrorFallback: (_) => Text(
+                    math.controller.text,
+                    style: TextStyle(color: c.textSecondary),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _removeStructuredBlock(int index) {
+    if (index < 0 || index >= _blocks.length) return;
+    setState(() {
+      final removed = _blocks.removeAt(index);
+      _disposeBlock(removed);
+    });
   }
 
   void _removeTable(_RichTableDraft table) {
@@ -836,6 +1029,24 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
               'textEntityTypeSpoiler',
               AppStringKeys.richTextComposerFormatSpoiler.l10n(context),
             ),
+            _formatChip(
+              c,
+              'M',
+              'textEntityTypeMarked',
+              AppStringKeys.richTextComposerFormatMarked.l10n(context),
+            ),
+            _formatChip(
+              c,
+              'x₂',
+              'textEntityTypeSubscript',
+              AppStringKeys.richTextComposerFormatSubscript.l10n(context),
+            ),
+            _formatChip(
+              c,
+              'x²',
+              'textEntityTypeSuperscript',
+              AppStringKeys.richTextComposerFormatSuperscript.l10n(context),
+            ),
             _iconButton(
               c,
               icon: HeroAppIcons.quoteLeft,
@@ -854,7 +1065,13 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
           ],
           _toolbarDivider(c),
           ...[
-            _actionChip(c, 'H1', _insertHeading),
+            _actionChip(
+              c,
+              _activeTextBlock.headingLevel == 0
+                  ? 'H'
+                  : 'H${_activeTextBlock.headingLevel}',
+              _insertHeading,
+            ),
             _actionChip(c, '•', () => _insertList('- ')),
             _actionChip(c, '1.', () => _insertList('1. ')),
             _actionChip(c, '☑', () => _insertList('- [ ] ')),
@@ -870,6 +1087,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
               label: AppStringKeys.richTextComposerInsertTable.l10n(context),
               onTap: _insertTable,
             ),
+            _actionChip(c, '∑', _insertMathBlock),
           ],
         ],
       ),
@@ -891,54 +1109,49 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
         color: c.background,
         border: Border(top: BorderSide(color: c.divider)),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (_attachments.isNotEmpty) _attachmentStrip(c),
-          SizedBox(
-            height: 52,
-            child: Row(
-              children: [
-                Expanded(
-                  child: _attachmentAction(
-                    c,
-                    icon: HeroAppIcons.image,
-                    label: AppStringKeys.richTextComposerPhotoVideo.l10n(
-                      context,
-                    ),
-                    onTap: _pickMedia,
-                  ),
-                ),
-                Expanded(
-                  child: _attachmentAction(
-                    c,
-                    icon: HeroAppIcons.file,
-                    label: AppStringKeys.topicPostContentFile.l10n(context),
-                    onTap: _pickFiles,
-                  ),
-                ),
-                Expanded(
-                  child: _attachmentAction(
-                    c,
-                    icon: HeroAppIcons.music,
-                    label: AppStringKeys.composerAudio.l10n(context),
-                    onTap: _pickMusic,
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(right: 14),
-                  child: Text(
-                    '${_attachments.length}/$_maxAttachments',
-                    style: AppTextStyle.caption(c.textTertiary),
-                  ),
-                ),
-              ],
+      child: SizedBox(
+        height: 52,
+        child: Row(
+          children: [
+            Expanded(
+              child: _attachmentAction(
+                c,
+                icon: HeroAppIcons.image,
+                label: AppStringKeys.richTextComposerPhotoVideo.l10n(context),
+                onTap: _pickMedia,
+              ),
             ),
-          ),
-        ],
+            Expanded(
+              child: _attachmentAction(
+                c,
+                icon: HeroAppIcons.file,
+                label: AppStringKeys.topicPostContentFile.l10n(context),
+                onTap: _pickFiles,
+              ),
+            ),
+            Expanded(
+              child: _attachmentAction(
+                c,
+                icon: HeroAppIcons.music,
+                label: AppStringKeys.composerAudio.l10n(context),
+                onTap: _pickMusic,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(right: 14),
+              child: Text(
+                '$_attachmentCount/$_maxAttachments',
+                style: AppTextStyle.caption(c.textTertiary),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
+
+  int get _attachmentCount =>
+      _blocks.where((block) => block.attachment != null).length;
 
   Widget _attachmentAction(
     AppColors c, {
@@ -946,7 +1159,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
     required String label,
     required VoidCallback onTap,
   }) {
-    final enabled = _attachments.length < _maxAttachments;
+    final enabled = _attachmentCount < _maxAttachments;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: enabled ? onTap : null,
@@ -977,62 +1190,113 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
     );
   }
 
-  Widget _attachmentStrip(AppColors c) {
-    return SizedBox(
-      height: 82,
-      child: ReorderableListView.builder(
-        scrollDirection: Axis.horizontal,
-        buildDefaultDragHandles: false,
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
-        itemCount: _attachments.length,
-        onReorderItem: (oldIndex, newIndex) {
-          setState(() {
-            final item = _attachments.removeAt(oldIndex);
-            _attachments.insert(newIndex, item);
-          });
-        },
-        proxyDecorator: (child, _, animation) => FadeTransition(
-          opacity: Tween<double>(begin: 0.72, end: 1).animate(animation),
-          child: child,
-        ),
-        itemBuilder: (context, index) => Padding(
-          key: ObjectKey(_attachments[index]),
-          padding: const EdgeInsets.only(right: 8),
-          child: _attachmentTile(c, index),
-        ),
-      ),
-    );
-  }
-
-  Widget _attachmentTile(AppColors c, int index) {
-    final item = _attachments[index];
+  Widget _inlineAttachmentBlock(
+    AppColors c,
+    int blockIndex,
+    OutgoingAttachment item,
+  ) {
     final isPhoto = item.kind == OutgoingAttachmentKind.photo;
     final isVisual = isPhoto || item.kind == OutgoingAttachmentKind.video;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: isPhoto ? () => _editAttachment(index) : null,
+    if (isVisual) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+        child: Container(
+          height: 190,
+          decoration: BoxDecoration(
+            color: c.searchFill,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: c.divider),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: isPhoto ? () => _editAttachment(blockIndex) : null,
+                child: _attachmentPreview(
+                  c,
+                  item,
+                  width: double.infinity,
+                  height: 190,
+                  fit: BoxFit.contain,
+                ),
+              ),
+              Positioned(
+                top: 8,
+                right: 8,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: const Color(0xB8000000),
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _mediaOverlayAction(
+                        HeroAppIcons.arrowUp,
+                        blockIndex <= 0
+                            ? null
+                            : () => _moveBlock(blockIndex, blockIndex - 1),
+                      ),
+                      _mediaOverlayAction(
+                        HeroAppIcons.arrowDown,
+                        blockIndex >= _blocks.length - 1
+                            ? null
+                            : () => _moveBlock(blockIndex, blockIndex + 1),
+                      ),
+                      _mediaOverlayAction(
+                        HeroAppIcons.trash,
+                        () => _removeStructuredBlock(blockIndex),
+                        destructive: true,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              if (item.kind == OutgoingAttachmentKind.video)
+                const Center(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Color(0x99000000),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Padding(
+                      padding: EdgeInsets.all(12),
+                      child: AppIcon(
+                        HeroAppIcons.play,
+                        size: 24,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
       child: Container(
-        width: 164,
-        padding: const EdgeInsets.all(6),
+        constraints: const BoxConstraints(minHeight: 86),
+        padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           color: c.searchFill,
           borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: c.divider),
         ),
         child: Row(
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: isVisual
-                  ? Image.file(
-                      File(item.path),
-                      width: 52,
-                      height: 52,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => _attachmentIcon(c, item),
-                    )
-                  : _attachmentIcon(c, item),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: isPhoto ? () => _editAttachment(blockIndex) : null,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: _attachmentIcon(c, item, size: 70),
+              ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
             Expanded(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -1040,7 +1304,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
                 children: [
                   Text(
                     _fileName(item.path),
-                    maxLines: 1,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: AppTextStyle.callout(
                       c.textPrimary,
@@ -1058,30 +1322,32 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
               ),
             ),
             Column(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => setState(() => _attachments.removeAt(index)),
-                  child: Padding(
-                    padding: const EdgeInsets.all(2),
-                    child: AppIcon(
-                      HeroAppIcons.xmark,
-                      size: 16,
-                      color: c.textSecondary,
-                    ),
-                  ),
+                _miniIconButton(
+                  c,
+                  icon: HeroAppIcons.arrowUp,
+                  label: AppStringKeys.richTextComposerMoveUp.l10n(context),
+                  onTap: blockIndex <= 0
+                      ? null
+                      : () => _moveBlock(blockIndex, blockIndex - 1),
                 ),
-                ReorderableDragStartListener(
-                  index: index,
-                  child: Padding(
-                    padding: const EdgeInsets.all(2),
-                    child: AppIcon(
-                      HeroAppIcons.grip,
-                      size: 16,
-                      color: c.textTertiary,
-                    ),
+                _miniIconButton(
+                  c,
+                  icon: HeroAppIcons.arrowDown,
+                  label: AppStringKeys.richTextComposerMoveDown.l10n(context),
+                  onTap: blockIndex >= _blocks.length - 1
+                      ? null
+                      : () => _moveBlock(blockIndex, blockIndex + 1),
+                ),
+                _miniIconButton(
+                  c,
+                  icon: HeroAppIcons.trash,
+                  label: AppStringKeys.richTextComposerRemoveTable.l10n(
+                    context,
                   ),
+                  destructive: true,
+                  onTap: () => _removeStructuredBlock(blockIndex),
                 ),
               ],
             ),
@@ -1091,10 +1357,66 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
     );
   }
 
-  Widget _attachmentIcon(AppColors c, OutgoingAttachment attachment) {
+  Widget _mediaOverlayAction(
+    AppIconData icon,
+    VoidCallback? onTap, {
+    bool destructive = false,
+  }) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: SizedBox(
+        width: 36,
+        height: 36,
+        child: Center(
+          child: AppIcon(
+            icon,
+            size: 17,
+            color: onTap == null
+                ? Colors.white38
+                : destructive
+                ? const Color(0xFFFF706A)
+                : Colors.white,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _attachmentPreview(
+    AppColors c,
+    OutgoingAttachment attachment, {
+    required double width,
+    required double height,
+    BoxFit fit = BoxFit.cover,
+  }) {
+    final previewBytes = attachment.previewBytes;
+    if (previewBytes != null && previewBytes.isNotEmpty) {
+      return Image.memory(
+        previewBytes,
+        width: width,
+        height: height,
+        fit: fit,
+        errorBuilder: (_, _, _) => _attachmentIcon(c, attachment, size: height),
+      );
+    }
+    return Image.file(
+      File(attachment.path),
+      width: width,
+      height: height,
+      fit: fit,
+      errorBuilder: (_, _, _) => _attachmentIcon(c, attachment, size: height),
+    );
+  }
+
+  Widget _attachmentIcon(
+    AppColors c,
+    OutgoingAttachment attachment, {
+    double size = 52,
+  }) {
     return Container(
-      width: 52,
-      height: 52,
+      width: size,
+      height: size,
       color: c.card,
       alignment: Alignment.center,
       child: AppIcon(
@@ -1129,8 +1451,9 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
   }
 
   Future<void> _editAttachment(int index) async {
-    if (index < 0 || index >= _attachments.length) return;
-    final item = _attachments[index];
+    if (index < 0 || index >= _blocks.length) return;
+    final item = _blocks[index].attachment;
+    if (item == null) return;
     if (item.kind != OutgoingAttachmentKind.photo) return;
     final result = await Navigator.of(context).push<ImageEditResult>(
       MaterialPageRoute(
@@ -1138,8 +1461,12 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
         builder: (_) => ImageEditView(sourcePath: item.path),
       ),
     );
-    if (!mounted || result == null || index >= _attachments.length) return;
-    setState(() => _attachments[index] = item.copyWith(path: result.path));
+    if (!mounted || result == null || index >= _blocks.length) return;
+    setState(() {
+      _blocks[index] = _RichContentBlock.attachment(
+        item.copyWith(path: result.path, clearPreviewBytes: true),
+      );
+    });
     if (result.caption.trim().isNotEmpty) {
       _activeTextBlock.controller.insertText(result.caption);
     }
@@ -1154,46 +1481,78 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
     return OutgoingAttachment(path: file.path, kind: kind);
   }
 
+  OutgoingAttachment _attachmentFromAppPickedAsset(AppPickedAsset asset) {
+    return _attachmentFromPickedMedia(
+      asset.file,
+    ).copyWith(previewBytes: asset.thumbnailBytes);
+  }
+
+  void _moveBlock(int from, int to) {
+    if (from < 0 || from >= _blocks.length || to < 0 || to >= _blocks.length) {
+      return;
+    }
+    setState(() {
+      final block = _blocks.removeAt(from);
+      _blocks.insert(to, block);
+    });
+  }
+
+  void _insertAttachmentsAfterActive(Iterable<OutgoingAttachment> attachments) {
+    final items = attachments.take(_maxAttachments - _attachmentCount).toList();
+    if (items.isEmpty) return;
+    var index = _blocks.indexWhere((block) => block.text == _activeTextBlock);
+    if (index < 0) index = _blocks.length - 1;
+    final trailingText = _createTextBlock('');
+    setState(() {
+      _blocks.insertAll(index + 1, [
+        ...items.map(_RichContentBlock.attachment),
+        _RichContentBlock.text(trailingText),
+      ]);
+      _activeTextBlock = trailingText;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) trailingText.focusNode.requestFocus();
+    });
+  }
+
   Future<void> _pickMedia() async {
-    final remaining = _maxAttachments - _attachments.length;
+    final remaining = _maxAttachments - _attachmentCount;
     if (remaining <= 0) return;
     try {
-      final picked = await AppAssetPicker.pick(
+      final picked = await AppAssetPicker.pickDetailed(
         context,
         type: AppAssetPickerType.imageAndVideo,
         maxAssets: remaining,
       );
-      if (picked.isEmpty || !mounted) return;
-      setState(() {
-        _attachments.addAll(picked.map(_attachmentFromPickedMedia));
-      });
+      if (picked.assets.isEmpty || !mounted) return;
+      _insertAttachmentsAfterActive(
+        picked.assets.map(_attachmentFromAppPickedAsset),
+      );
     } catch (_) {}
   }
 
   Future<void> _pickFiles() async {
-    final remaining = _maxAttachments - _attachments.length;
+    final remaining = _maxAttachments - _attachmentCount;
     if (remaining <= 0) return;
     try {
       final result = await FilePicker.platform.pickFiles(allowMultiple: true);
       if (!mounted || result == null) return;
       final paths = result.files.map((file) => file.path).whereType<String>();
-      setState(() {
-        _attachments.addAll(
-          paths
-              .take(remaining)
-              .map(
-                (path) => OutgoingAttachment(
-                  path: path,
-                  kind: OutgoingAttachmentKind.document,
-                ),
+      _insertAttachmentsAfterActive(
+        paths
+            .take(remaining)
+            .map(
+              (path) => OutgoingAttachment(
+                path: path,
+                kind: OutgoingAttachmentKind.document,
               ),
-        );
-      });
+            ),
+      );
     } catch (_) {}
   }
 
   Future<void> _pickMusic() async {
-    final remaining = _maxAttachments - _attachments.length;
+    final remaining = _maxAttachments - _attachmentCount;
     if (remaining <= 0) return;
     try {
       final result = await FilePicker.platform.pickFiles(
@@ -1212,18 +1571,16 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
       );
       if (!mounted || result == null) return;
       final paths = result.files.map((file) => file.path).whereType<String>();
-      setState(() {
-        _attachments.addAll(
-          paths
-              .take(remaining)
-              .map(
-                (path) => OutgoingAttachment(
-                  path: path,
-                  kind: OutgoingAttachmentKind.audio,
-                ),
+      _insertAttachmentsAfterActive(
+        paths
+            .take(remaining)
+            .map(
+              (path) => OutgoingAttachment(
+                path: path,
+                kind: OutgoingAttachmentKind.audio,
               ),
-        );
-      });
+            ),
+      );
     } catch (_) {}
   }
 

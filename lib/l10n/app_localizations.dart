@@ -492,6 +492,11 @@ abstract final class AppStringKeys {
   static const chatRestrictedTitle = 'chatRestrictedTitle';
   static const chatSavedToSavedMessages = 'chatSavedToSavedMessages';
   static const chatSaveFailed = 'chatSaveFailed';
+  static const chatSavingToPhotos = 'chatSavingToPhotos';
+  static const chatSavedToPhotos = 'chatSavedToPhotos';
+  static const chatSaveToPhotosPermissionDenied =
+      'chatSaveToPhotosPermissionDenied';
+  static const chatSaveToPhotosFailed = 'chatSaveToPhotosFailed';
   static const chatSearchHistoryTitle = 'chatSearchHistoryTitle';
   static const chatSearchMessagePlaceholder = 'chatSearchMessagePlaceholder';
   static const chatSearchMessageResultLabel = 'chatSearchMessageResultLabel';
@@ -564,6 +569,8 @@ abstract final class AppStringKeys {
   static const composerEditInRichText = 'composerEditInRichText';
   static const composerRichText = 'composerRichText';
   static const composerRichTextMessageTitle = 'composerRichTextMessageTitle';
+  static const composerRichTextPremiumRequired =
+      'composerRichTextPremiumRequired';
   static const composerSend = 'composerSend';
   static const composerSendPaidMessageQuestion =
       'composerSendPaidMessageQuestion';
@@ -987,6 +994,7 @@ abstract final class AppStringKeys {
       'linkHandlerJoinNamedGroupQuestion';
   static const linkHandlerOpenTelegramLinkFailed =
       'linkHandlerOpenTelegramLinkFailed';
+  static const mediaSendPreviewTitle = 'mediaSendPreviewTitle';
   static const linkHandlerQrLoginWarning = 'linkHandlerQrLoginWarning';
   static const linkHandlerUnsupportedTelegramLink =
       'linkHandlerUnsupportedTelegramLink';
@@ -1043,6 +1051,7 @@ abstract final class AppStringKeys {
   static const messageActionBlock = 'messageActionBlock';
   static const messageActionBlockKeyword = 'messageActionBlockKeyword';
   static const messageActionCopy = 'messageActionCopy';
+  static const messageActionSaveToPhotos = 'messageActionSaveToPhotos';
   static const messageActionEdit = 'messageActionEdit';
   static const messageActionFavorite = 'messageActionFavorite';
   static const messageActionForward = 'messageActionForward';
@@ -1148,9 +1157,15 @@ abstract final class AppStringKeys {
   static const pollComposerSingleChoiceLimitHint =
       'pollComposerSingleChoiceLimitHint';
   static const premiumLabel = 'premiumLabel';
+  static const privacyAddExceptions = 'privacyAddExceptions';
+  static const privacyAddUsers = 'privacyAddUsers';
+  static const privacyAlwaysShareWith = 'privacyAlwaysShareWith';
+  static const privacyBio = 'privacyBio';
+  static const privacyBirthDate = 'privacyBirthDate';
   static const privacyBlockedUsers = 'privacyBlockedUsers';
   static const privacyBlockedUsersEmpty = 'privacyBlockedUsersEmpty';
   static const privacyCurrentDevice = 'privacyCurrentDevice';
+  static const privacyCalls = 'privacyCalls';
   static const privacyDeleteTelegramAccount = 'privacyDeleteTelegramAccount';
   static const privacyDeleteTelegramAccountMessage =
       'privacyDeleteTelegramAccountMessage';
@@ -1162,7 +1177,26 @@ abstract final class AppStringKeys {
   static const privacyLastSeen = 'privacyLastSeen';
   static const privacyLoggedInDevices = 'privacyLoggedInDevices';
   static const privacyOtherDevices = 'privacyOtherDevices';
+  static const privacyExceptionsHint = 'privacyExceptionsHint';
+  static const privacyNeverShareWith = 'privacyNeverShareWith';
+  static const privacyForwardedMessages = 'privacyForwardedMessages';
+  static const privacyGroupsAndChannels = 'privacyGroupsAndChannels';
+  static const privacyPeerToPeerCalls = 'privacyPeerToPeerCalls';
+  static const privacyPeerToPeerHint = 'privacyPeerToPeerHint';
+  static const privacyPhoneDiscoveryHint = 'privacyPhoneDiscoveryHint';
+  static const privacyPhoneNumber = 'privacyPhoneNumber';
   static const privacyProfilePhoto = 'privacyProfilePhoto';
+  static const privacyProfileAudio = 'privacyProfileAudio';
+  static const privacyProfilePhotoVisibilityHint =
+      'privacyProfilePhotoVisibilityHint';
+  static const privacyPublicPhotoHint = 'privacyPublicPhotoHint';
+  static const privacyPublicPhotoRemoved = 'privacyPublicPhotoRemoved';
+  static const privacyPublicPhotoUpdated = 'privacyPublicPhotoUpdated';
+  static const privacyPublicPhotoUpdateFailed =
+      'privacyPublicPhotoUpdateFailed';
+  static const privacyRemovePublicPhoto = 'privacyRemovePublicPhoto';
+  static const privacyRemovePublicPhotoQuestion =
+      'privacyRemovePublicPhotoQuestion';
   static const privacyLoginQrAcceptFailed = 'privacyLoginQrAcceptFailed';
   static const privacyLoginQrAccepted = 'privacyLoginQrAccepted';
   static const privacyLoginQrInvalid = 'privacyLoginQrInvalid';
@@ -1172,6 +1206,8 @@ abstract final class AppStringKeys {
   static const privacySectionTitle = 'privacySectionTitle';
   static const privacySecuritySectionTitle = 'privacySecuritySectionTitle';
   static const privacySecurityTitle = 'privacySecurityTitle';
+  static const privacyShowReadDate = 'privacyShowReadDate';
+  static const privacyShowReadDateHint = 'privacyShowReadDateHint';
   static const privacyTerminateAllOtherSessions =
       'privacyTerminateAllOtherSessions';
   static const privacyTerminateSession = 'privacyTerminateSession';
@@ -1184,6 +1220,10 @@ abstract final class AppStringKeys {
   static const privacyVisibilityContacts = 'privacyVisibilityContacts';
   static const privacyVisibilityEveryone = 'privacyVisibilityEveryone';
   static const privacyVisibilityNobody = 'privacyVisibilityNobody';
+  static const privacyVoiceMessages = 'privacyVoiceMessages';
+  static const privacyUpdatePublicPhoto = 'privacyUpdatePublicPhoto';
+  static const privacyWhoCanFindByPhone = 'privacyWhoCanFindByPhone';
+  static const privacyWhoCanSeeProfilePhoto = 'privacyWhoCanSeeProfilePhoto';
   static const profileAddAccount = 'profileAddAccount';
   static const profileDayMode = 'profileDayMode';
   static const profileDetailAddFriend = 'profileDetailAddFriend';
@@ -1234,6 +1274,11 @@ abstract final class AppStringKeys {
   static const richTextComposerFormatBoldMark =
       'richTextComposerFormatBoldMark';
   static const richTextComposerFormatCode = 'richTextComposerFormatCode';
+  static const richTextComposerFormatMarked = 'richTextComposerFormatMarked';
+  static const richTextComposerFormatSubscript =
+      'richTextComposerFormatSubscript';
+  static const richTextComposerFormatSuperscript =
+      'richTextComposerFormatSuperscript';
   static const richTextComposerFormatItalic = 'richTextComposerFormatItalic';
   static const richTextComposerFormatItalicMark =
       'richTextComposerFormatItalicMark';
@@ -1247,6 +1292,8 @@ abstract final class AppStringKeys {
   static const richTextComposerFormatUnderlineMark =
       'richTextComposerFormatUnderlineMark';
   static const richTextComposerInsertTable = 'richTextComposerInsertTable';
+  static const richTextComposerMoveDown = 'richTextComposerMoveDown';
+  static const richTextComposerMoveUp = 'richTextComposerMoveUp';
   static const richTextComposerPhotoVideo = 'richTextComposerPhotoVideo';
   static const richTextComposerRemoveColumn = 'richTextComposerRemoveColumn';
   static const richTextComposerRemoveRow = 'richTextComposerRemoveRow';

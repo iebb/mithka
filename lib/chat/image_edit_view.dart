@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:image/image.dart' as image_lib;
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -331,13 +332,38 @@ class _ImageEditViewState extends State<ImageEditView> {
       canvas.restore();
       final picture = recorder.endRecording();
       final out = await picture.toImage(outW, outH);
-      final data = await out.toByteData(format: ui.ImageByteFormat.png);
+      final data = await out.toByteData(
+        format: widget.avatar
+            ? ui.ImageByteFormat.png
+            : ui.ImageByteFormat.rawRgba,
+      );
       if (data == null) return;
       final dir = await getTemporaryDirectory();
+      final extension = widget.avatar ? 'png' : 'jpg';
       final file = File(
-        '${dir.path}/mithka_edit_${DateTime.now().microsecondsSinceEpoch}.png',
+        '${dir.path}/mithka_edit_${DateTime.now().microsecondsSinceEpoch}.$extension',
       );
-      await file.writeAsBytes(data.buffer.asUint8List());
+      if (widget.avatar) {
+        await file.writeAsBytes(data.buffer.asUint8List(), flush: true);
+      } else {
+        final image = image_lib.Image.fromBytes(
+          width: outW,
+          height: outH,
+          bytes: data.buffer,
+          bytesOffset: data.offsetInBytes,
+          numChannels: 4,
+          order: image_lib.ChannelOrder.rgba,
+        );
+        await file.writeAsBytes(
+          image_lib.encodeJpg(
+            image,
+            quality: 88,
+            chroma: image_lib.JpegChroma.yuv420,
+          ),
+          flush: true,
+        );
+      }
+      out.dispose();
       if (mounted) {
         if (widget.avatar) {
           Navigator.of(context).pop(file.path);

@@ -37,6 +37,59 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
   final Map<String, String> _ruleValue = {};
   String _twoStep = '';
 
+  static const _privacyRules = <_PrivacyRuleEntry>[
+    _PrivacyRuleEntry(
+      icon: HeroAppIcons.mobileScreenButton,
+      title: AppStringKeys.privacyPhoneNumber,
+      setting: 'userPrivacySettingShowPhoneNumber',
+    ),
+    _PrivacyRuleEntry(
+      icon: HeroAppIcons.clock,
+      title: AppStringKeys.privacyLastSeen,
+      setting: 'userPrivacySettingShowStatus',
+    ),
+    _PrivacyRuleEntry(
+      icon: HeroAppIcons.circleUser,
+      title: AppStringKeys.privacyProfilePhoto,
+      setting: 'userPrivacySettingShowProfilePhoto',
+    ),
+    _PrivacyRuleEntry(
+      icon: HeroAppIcons.circleInfo,
+      title: AppStringKeys.privacyBio,
+      setting: 'userPrivacySettingShowBio',
+    ),
+    _PrivacyRuleEntry(
+      icon: HeroAppIcons.idBadge,
+      title: AppStringKeys.privacyBirthDate,
+      setting: 'userPrivacySettingShowBirthdate',
+    ),
+    _PrivacyRuleEntry(
+      icon: HeroAppIcons.quoteLeft,
+      title: AppStringKeys.privacyForwardedMessages,
+      setting: 'userPrivacySettingShowLinkInForwardedMessages',
+    ),
+    _PrivacyRuleEntry(
+      icon: HeroAppIcons.phone,
+      title: AppStringKeys.privacyCalls,
+      setting: 'userPrivacySettingAllowCalls',
+    ),
+    _PrivacyRuleEntry(
+      icon: HeroAppIcons.microphone,
+      title: AppStringKeys.privacyVoiceMessages,
+      setting: 'userPrivacySettingAllowPrivateVoiceAndVideoNoteMessages',
+    ),
+    _PrivacyRuleEntry(
+      icon: HeroAppIcons.music,
+      title: AppStringKeys.privacyProfileAudio,
+      setting: 'userPrivacySettingShowProfileAudio',
+    ),
+    _PrivacyRuleEntry(
+      icon: HeroAppIcons.users,
+      title: AppStringKeys.privacyGroupsAndChannels,
+      setting: 'userPrivacySettingAllowChatInvites',
+    ),
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -44,12 +97,8 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
   }
 
   Future<void> _load() async {
-    for (final setting in const [
-      'userPrivacySettingShowStatus',
-      'userPrivacySettingShowProfilePhoto',
-      'userPrivacySettingAllowCalls',
-    ]) {
-      unawaited(_loadRule(setting));
+    for (final entry in _privacyRules) {
+      unawaited(_loadRule(entry.setting));
     }
     try {
       final state = await _client.query({'@type': 'getPasswordState'});
@@ -110,101 +159,65 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
               padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
               children: [
                 _group(AppStrings.t(AppStringKeys.privacySectionTitle), [
-                  _Row(
-                    HeroAppIcons.clock.data,
-                    AppStrings.t(AppStringKeys.privacyLastSeen),
-                    _ruleValue['userPrivacySettingShowStatus'] ?? '',
-                    () {
-                      unawaited(
-                        _open(
-                          const PrivacyRuleView(
-                            title: AppStringKeys.privacyLastSeen,
-                            setting: 'userPrivacySettingShowStatus',
-                          ),
-                        ).then(
-                          (_) => _loadRule('userPrivacySettingShowStatus'),
-                        ),
-                      );
-                    },
-                  ),
-                  _Row(
-                    HeroAppIcons.circleUser.data,
-                    AppStrings.t(AppStringKeys.privacyProfilePhoto),
-                    _ruleValue['userPrivacySettingShowProfilePhoto'] ?? '',
-                    () {
-                      unawaited(
-                        _open(
-                          const PrivacyRuleView(
-                            title: AppStringKeys.privacyProfilePhoto,
-                            setting: 'userPrivacySettingShowProfilePhoto',
-                          ),
-                        ).then(
-                          (_) =>
-                              _loadRule('userPrivacySettingShowProfilePhoto'),
-                        ),
-                      );
-                    },
-                  ),
-                  _Row(
-                    HeroAppIcons.phone.data,
-                    AppStringKeys.composerVoiceCall,
-                    _ruleValue['userPrivacySettingAllowCalls'] ?? '',
-                    () {
-                      unawaited(
-                        _open(
-                          const PrivacyRuleView(
-                            title: AppStringKeys.composerVoiceCall,
-                            setting: 'userPrivacySettingAllowCalls',
-                          ),
-                        ).then(
-                          (_) => _loadRule('userPrivacySettingAllowCalls'),
-                        ),
-                      );
-                    },
-                  ),
+                  for (final entry in _privacyRules)
+                    _Row(
+                      entry.icon,
+                      AppStrings.t(entry.title),
+                      _ruleValue[entry.setting] ?? '',
+                      () {
+                        unawaited(
+                          _open(
+                            PrivacyRuleView(
+                              title: entry.title,
+                              setting: entry.setting,
+                            ),
+                          ).then((_) => _loadRule(entry.setting)),
+                        );
+                      },
+                    ),
                 ]),
                 const SizedBox(height: 14),
                 _group(
                   AppStrings.t(AppStringKeys.privacySecuritySectionTitle),
                   [
                     _Row(
-                      HeroAppIcons.lock.data,
+                      HeroAppIcons.lock,
                       AppStrings.t(AppStringKeys.privacyTwoStepVerification),
                       _twoStep,
                       null,
                     ),
                     _Row(
-                      HeroAppIcons.mobileScreenButton.data,
+                      HeroAppIcons.mobileScreenButton,
                       AppStrings.t(AppStringKeys.privacyLoggedInDevices),
                       '',
                       () => _open(const ActiveSessionsView()),
                     ),
                     _Row(
-                      HeroAppIcons.key.data,
+                      HeroAppIcons.key,
                       AppStrings.t(AppStringKeys.accountBackupTitle),
                       '',
                       () => _open(const AccountBackupView()),
                     ),
                     _Row(
-                      HeroAppIcons.users.data,
+                      HeroAppIcons.users,
                       AppStrings.t(AppStringKeys.privacyBlockedUsers),
                       '',
                       () => _open(const BlockedUsersView()),
                     ),
                     _Row(
-                      HeroAppIcons.ban.data,
+                      HeroAppIcons.ban,
                       AppStrings.t(AppStringKeys.keywordBlockerTitle),
                       '',
                       () => _open(const KeywordBlockerView()),
                     ),
                     _Row(
-                      HeroAppIcons.trash.data,
+                      HeroAppIcons.trash,
                       AppStrings.t(AppStringKeys.privacyDeleteTelegramAccount),
                       '',
                       _openDeleteAccountPage,
                     ),
                     _Row(
-                      HeroAppIcons.stopwatch.data,
+                      HeroAppIcons.stopwatch,
                       AppStringKeys.chatInfoAutoDeleteMessages,
                       '',
                       () => _open(const AutoDeleteView()),
@@ -249,7 +262,7 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: Row(
                         children: [
-                          Icon(row.icon, size: 20, color: AppTheme.brand),
+                          AppIcon(row.icon, size: 20, color: AppTheme.brand),
                           const SizedBox(width: 14),
                           Text(
                             row.title.l10n(context),
@@ -290,9 +303,21 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
   }
 }
 
+class _PrivacyRuleEntry {
+  const _PrivacyRuleEntry({
+    required this.icon,
+    required this.title,
+    required this.setting,
+  });
+
+  final AppIconData icon;
+  final String title;
+  final String setting;
+}
+
 class _Row {
   _Row(this.icon, this.title, this.value, this.onTap);
-  final IconData icon;
+  final AppIconData icon;
   final String title;
   final String value;
   final VoidCallback? onTap;

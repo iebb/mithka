@@ -126,9 +126,12 @@ const frMessages = <String, String>{
   'appearanceRefreshCacheList': "Actualiser la liste du cache",
   'appearanceRoundGroupAvatars': "Afficher les avatars de groupe en cercle",
   'appearanceSearchFont': "Rechercher une police",
-  'appearanceDisableChatListSwipeActions': 'Désactiver les actions de balayage de la liste de chats',
-  'appearanceDisplayOwnChatAsFavorites': 'Afficher comme messages enregistrés dans la liste de chats',
-  'appearanceChatListFolderSwipeSwitching': 'Balayer pour changer de dossier de chats',
+  'appearanceDisableChatListSwipeActions':
+      'Désactiver les actions de balayage de la liste de chats',
+  'appearanceDisplayOwnChatAsFavorites':
+      'Afficher comme messages enregistrés dans la liste de chats',
+  'appearanceChatListFolderSwipeSwitching':
+      'Balayer pour changer de dossier de chats',
   'appearanceShowChatListSearch': "Afficher la recherche dans la liste",
   'appearanceShowEditAndReadMarks':
       "Afficher les marques de modification et de lecture",
@@ -347,6 +350,11 @@ const frMessages = <String, String>{
   'chatRestrictedTitle': "Avertissement de sécurité",
   'chatSavedToSavedMessages': "Enregistré dans Saved Messages",
   'chatSaveFailed': "Échec de l’enregistrement : {value1}",
+  'chatSavingToPhotos': "Téléchargement du média original…",
+  'chatSavedToPhotos': "Enregistré dans Photos",
+  'chatSaveToPhotosPermissionDenied':
+      "Autorisez l’accès à Photos pour enregistrer ce média.",
+  'chatSaveToPhotosFailed': "Impossible d’enregistrer dans Photos.",
   'chatSearchHistoryTitle': "Rechercher dans l’historique",
   'chatSearchMessagePlaceholder':
       "Rechercher des messages dans cette discussion",
@@ -430,6 +438,8 @@ const frMessages = <String, String>{
   'composerEditInRichText': "Modifier en texte enrichi",
   'composerRichText': "Texte enrichi",
   'composerRichTextMessageTitle': "Message en texte enrichi",
+  'composerRichTextPremiumRequired':
+      "Les messages enrichis nécessitent Telegram Premium. Envoi au format compatible.",
   'composerSend': "Envoyer",
   'composerSendPaidMessageQuestion': "Envoyer le message payant ?",
   'composerVideoCall': "Appel vidéo",
@@ -640,6 +650,7 @@ const frMessages = <String, String>{
   'linkHandlerJoin': "Rejoindre",
   'linkHandlerJoinNamedGroupQuestion': "Rejoindre « {value1} » ?",
   'linkHandlerOpenTelegramLinkFailed': "Impossible d’ouvrir le lien Telegram",
+  'mediaSendPreviewTitle': "Aperçu des médias",
   'linkHandlerQrLoginWarning':
       "Ce lien peut servir à approuver la connexion d’un autre appareil à votre compte Telegram. Vérifiez que c’est bien vous qui tentez de vous connecter.",
   'linkHandlerUnsupportedTelegramLink':
@@ -704,6 +715,7 @@ const frMessages = <String, String>{
   'messageActionBlock': "Bloquer",
   'messageActionBlockKeyword': "Bloquer mot",
   'messageActionCopy': "Copier",
+  'messageActionSaveToPhotos': "Enregistrer dans Photos",
   'messageActionEdit': "Modifier",
   'messageActionFavorite': "Ajouter aux favoris",
   'messageActionForward': "Transférer",
@@ -822,6 +834,41 @@ const frMessages = <String, String>{
   'privacyLoginQrInvalid': "Ce n’est pas un QR code de connexion Telegram",
   'privacyNoOtherDevices': "Aucun autre appareil connecté",
   'privacyOtherDevices': "Autres appareils",
+  'privacyBio': "Biographie",
+  'privacyBirthDate': "Date de naissance",
+  'privacyCalls': "Appels",
+  'privacyForwardedMessages': "Messages transférés",
+  'privacyGroupsAndChannels': "Groupes et canaux",
+  'privacyPhoneNumber': "Numéro de téléphone",
+  'privacyProfileAudio': "Musique du profil",
+  'privacyVoiceMessages': "Messages vocaux",
+  'privacyPeerToPeerCalls': "Appels pair à pair",
+  'privacyPeerToPeerHint':
+      "En désactivant le pair à pair, les appels passent par les serveurs Telegram afin de masquer votre adresse IP.",
+  'privacyPhoneDiscoveryHint':
+      "Les utilisateurs qui ajoutent votre numéro ne peuvent vous trouver sur Telegram que si vous les autorisez ici.",
+  'privacyShowReadDate': "Afficher l’heure de lecture",
+  'privacyShowReadDateHint':
+      "L’heure de lecture est toujours visible par les utilisateurs qui peuvent voir votre statut en ligne.",
+  'privacyWhoCanFindByPhone': "Qui peut me trouver avec mon numéro ?",
+  'privacyAddExceptions': "Ajouter des exceptions",
+  'privacyAddUsers': "Ajouter des utilisateurs",
+  'privacyAlwaysShareWith': "Toujours partager avec",
+  'privacyExceptionsHint':
+      "Les exceptions peuvent inclure des utilisateurs et des groupes entiers.",
+  'privacyNeverShareWith': "Ne jamais partager avec",
+  'privacyProfilePhotoVisibilityHint':
+      "Vous pouvez limiter précisément qui peut voir votre photo de profil.",
+  'privacyPublicPhotoHint':
+      "Vous pouvez définir une photo publique pour les utilisateurs qui ne peuvent pas voir votre vraie photo de profil.",
+  'privacyPublicPhotoRemoved': "Photo publique supprimée",
+  'privacyPublicPhotoUpdated': "Photo publique mise à jour",
+  'privacyPublicPhotoUpdateFailed':
+      "Impossible de mettre à jour la photo publique : {value1}",
+  'privacyRemovePublicPhoto': "Supprimer la photo publique",
+  'privacyRemovePublicPhotoQuestion': "Supprimer votre photo publique ?",
+  'privacyUpdatePublicPhoto': "Mettre à jour la photo publique",
+  'privacyWhoCanSeeProfilePhoto': "Qui peut voir ma photo de profil ?",
   'privacyProfilePhoto': "Photo de profil",
   'privacyScanLoginQr': "Scanner un QR code de connexion",
   'privacyScanLoginQrSubtitle':
@@ -890,6 +937,9 @@ const frMessages = <String, String>{
   'richTextComposerFormatBold': "Gras",
   'richTextComposerFormatBoldMark': "B",
   'richTextComposerFormatCode': "Code",
+  'richTextComposerFormatMarked': "Surligner",
+  'richTextComposerFormatSubscript': "Indice",
+  'richTextComposerFormatSuperscript': "Exposant",
   'richTextComposerFormatItalic': "Italique",
   'richTextComposerFormatItalicMark': "I",
   'richTextComposerFormatSpoiler': "Spoiler",
@@ -898,6 +948,8 @@ const frMessages = <String, String>{
   'richTextComposerFormatUnderline': "Souligné",
   'richTextComposerFormatUnderlineMark': "U",
   'richTextComposerInsertTable': "Tableau",
+  'richTextComposerMoveDown': "Déplacer vers le bas",
+  'richTextComposerMoveUp': "Déplacer vers le haut",
   'richTextComposerPhotoVideo': "Photo/vidéo",
   'richTextComposerRemoveColumn': "Supprimer la colonne",
   'richTextComposerRemoveRow': "Supprimer la ligne",

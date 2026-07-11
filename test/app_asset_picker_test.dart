@@ -89,4 +89,19 @@ void main() {
     expect(isPickedAssetGif(XFile('/tmp/reaction.GIF')), isTrue);
     expect(isPickedAssetVideo(XFile('/tmp/photo.jpg')), isFalse);
   });
+
+  test('photo send thumbnail size preserves aspect ratio', () {
+    expect(
+      scaledPhotoThumbnailSize(4032, 3024, 4096),
+      const ThumbnailSize(4032, 3024),
+    );
+    expect(
+      scaledPhotoThumbnailSize(8064, 6048, 4096),
+      const ThumbnailSize(4096, 3072),
+    );
+    expect(
+      scaledPhotoThumbnailSize(3024, 4032, 3200),
+      const ThumbnailSize(2400, 3200),
+    );
+  });
 }

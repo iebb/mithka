@@ -1046,28 +1046,7 @@ class _ChatListViewState extends State<ChatListView> {
   }
 
   PageRoute<T> _chatEntryRoute<T>(Widget child) {
-    return PageRouteBuilder<T>(
-      transitionDuration: const Duration(milliseconds: 240),
-      reverseTransitionDuration: const Duration(milliseconds: 180),
-      pageBuilder: (_, _, _) => child,
-      transitionsBuilder: (_, animation, _, child) {
-        final curved = CurvedAnimation(
-          parent: animation,
-          curve: Curves.easeOutCubic,
-          reverseCurve: Curves.easeInCubic,
-        );
-        return FadeTransition(
-          opacity: Tween<double>(begin: 0.90, end: 1).animate(curved),
-          child: SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(0.045, 0),
-              end: Offset.zero,
-            ).animate(curved),
-            child: child,
-          ),
-        );
-      },
-    );
+    return MaterialPageRoute<T>(builder: (_) => child);
   }
 
   Widget _assistantRow() {

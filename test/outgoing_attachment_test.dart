@@ -92,4 +92,28 @@ void main() {
     final content = requests.single['input_message_content'] as Map;
     expect((content['caption'] as Map)['text'], 'Document caption');
   });
+
+  test('applies album caption to first attachment after reordering', () {
+    final requests = buildAttachmentSendRequests(
+      chatId: 1,
+      caption: 'Reordered album caption',
+      attachments: [
+        attachment('third.jpg', OutgoingAttachmentKind.photo),
+        attachment('first.jpg', OutgoingAttachmentKind.photo),
+        attachment('second.mp4', OutgoingAttachmentKind.video),
+      ],
+    );
+
+    final album = requests.single['input_message_contents'] as List;
+    expect(((album.first as Map)['photo'] as Map)['photo'], {
+      '@type': 'inputFileLocal',
+      'path': 'third.jpg',
+    });
+    expect(
+      ((album.first as Map)['caption'] as Map)['text'],
+      'Reordered album caption',
+    );
+    expect((album[1] as Map)['caption'], isNull);
+    expect((album[2] as Map)['caption'], isNull);
+  });
 }

@@ -126,9 +126,12 @@ const deMessages = <String, String>{
   'appearanceRefreshCacheList': "Cache-Liste aktualisieren",
   'appearanceRoundGroupAvatars': "Gruppenavatare rund anzeigen",
   'appearanceSearchFont': "Schriftart suchen",
-  'appearanceDisableChatListSwipeActions': 'Chatlisten-Wischaktionen deaktivieren',
-  'appearanceDisplayOwnChatAsFavorites': 'Als gespeicherte Nachrichten im Chat anzeigen',
-  'appearanceChatListFolderSwipeSwitching': 'Wischen zum Wechseln der Chatordner',
+  'appearanceDisableChatListSwipeActions':
+      'Chatlisten-Wischaktionen deaktivieren',
+  'appearanceDisplayOwnChatAsFavorites':
+      'Als gespeicherte Nachrichten im Chat anzeigen',
+  'appearanceChatListFolderSwipeSwitching':
+      'Wischen zum Wechseln der Chatordner',
   'appearanceShowChatListSearch': "Chatlistensuche anzeigen",
   'appearanceShowEditAndReadMarks':
       "Bearbeitet- und Gelesen-Markierungen anzeigen",
@@ -345,6 +348,11 @@ const deMessages = <String, String>{
   'chatRestrictedTitle': "Sicherheitshinweis",
   'chatSavedToSavedMessages': "In Saved Messages gespeichert",
   'chatSaveFailed': "Speichern fehlgeschlagen: {value1}",
+  'chatSavingToPhotos': "Originalmedium wird heruntergeladen…",
+  'chatSavedToPhotos': "In Fotos gesichert",
+  'chatSaveToPhotosPermissionDenied':
+      "Erlaube den Fotozugriff, um dieses Medium zu sichern.",
+  'chatSaveToPhotosFailed': "In Fotos konnte nicht gesichert werden.",
   'chatSearchHistoryTitle': "Chatverlauf durchsuchen",
   'chatSearchMessagePlaceholder': "Nachrichten in diesem Chat suchen",
   'chatSearchMessageResultLabel': "[Nachricht]",
@@ -429,6 +437,8 @@ const deMessages = <String, String>{
   'composerEditInRichText': "Im Rich-Text-Editor bearbeiten",
   'composerRichText': "Formatierter Text",
   'composerRichTextMessageTitle': "Formatierte Nachricht",
+  'composerRichTextPremiumRequired':
+      "Rich-Nachrichten erfordern Telegram Premium. Im kompatiblen Format gesendet.",
   'composerSend': "Senden",
   'composerSendPaidMessageQuestion': "Kostenpflichtige Nachricht senden?",
   'composerVideoCall': "Videoanruf",
@@ -640,6 +650,7 @@ const deMessages = <String, String>{
   'linkHandlerJoinNamedGroupQuestion': "„{value1}“ beitreten?",
   'linkHandlerOpenTelegramLinkFailed':
       "Telegram-Link konnte nicht geöffnet werden",
+  'mediaSendPreviewTitle': "Medienvorschau",
   'linkHandlerQrLoginWarning':
       "Mit diesem Link kann die Anmeldung eines anderen Geräts bei deinem Telegram-Konto bestätigt werden. Stelle sicher, dass du dich selbst anmeldest.",
   'linkHandlerUnsupportedTelegramLink':
@@ -701,6 +712,7 @@ const deMessages = <String, String>{
   'messageActionBlock': "Blockieren",
   'messageActionBlockKeyword': "Wort blockieren",
   'messageActionCopy': "Kopieren",
+  'messageActionSaveToPhotos': "In Fotos sichern",
   'messageActionEdit': "Bearbeiten",
   'messageActionFavorite': "Favorit",
   'messageActionForward': "Weiterleiten",
@@ -821,6 +833,41 @@ const deMessages = <String, String>{
   'privacyLoginQrInvalid': "Dies ist kein Telegram-Login-QR-Code",
   'privacyNoOtherDevices': "Keine weiteren Geräte angemeldet",
   'privacyOtherDevices': "Andere Geräte",
+  'privacyBio': "Biografie",
+  'privacyBirthDate': "Geburtsdatum",
+  'privacyCalls': "Anrufe",
+  'privacyForwardedMessages': "Weitergeleitete Nachrichten",
+  'privacyGroupsAndChannels': "Gruppen und Kanäle",
+  'privacyPhoneNumber': "Telefonnummer",
+  'privacyProfileAudio': "Profilmusik",
+  'privacyVoiceMessages': "Sprachnachrichten",
+  'privacyPeerToPeerCalls': "Peer-to-Peer-Anrufe",
+  'privacyPeerToPeerHint':
+      "Ohne Peer-to-Peer werden Anrufe über Telegram-Server geleitet, damit deine IP-Adresse verborgen bleibt.",
+  'privacyPhoneDiscoveryHint':
+      "Nutzer, die deine Nummer speichern, finden dich auf Telegram nur, wenn es hier erlaubt ist.",
+  'privacyShowReadDate': "Lesezeit anzeigen",
+  'privacyShowReadDateHint':
+      "Nutzer, die deinen Online-Status sehen können, sehen immer auch die Lesezeit.",
+  'privacyWhoCanFindByPhone': "Wer kann mich über meine Nummer finden?",
+  'privacyAddExceptions': "Ausnahmen hinzufügen",
+  'privacyAddUsers': "Benutzer hinzufügen",
+  'privacyAlwaysShareWith': "Immer teilen mit",
+  'privacyExceptionsHint':
+      "Ausnahmen können einzelne Benutzer und ganze Gruppen enthalten.",
+  'privacyNeverShareWith': "Nie teilen mit",
+  'privacyProfilePhotoVisibilityHint':
+      "Du kannst genau festlegen, wer dein Profilbild sehen kann.",
+  'privacyPublicPhotoHint':
+      "Du kannst ein öffentliches Foto für Benutzer festlegen, die dein echtes Profilbild nicht sehen dürfen.",
+  'privacyPublicPhotoRemoved': "Öffentliches Foto entfernt",
+  'privacyPublicPhotoUpdated': "Öffentliches Foto aktualisiert",
+  'privacyPublicPhotoUpdateFailed':
+      "Öffentliches Foto konnte nicht aktualisiert werden: {value1}",
+  'privacyRemovePublicPhoto': "Öffentliches Foto entfernen",
+  'privacyRemovePublicPhotoQuestion': "Öffentliches Foto entfernen?",
+  'privacyUpdatePublicPhoto': "Öffentliches Foto aktualisieren",
+  'privacyWhoCanSeeProfilePhoto': "Wer kann mein Profilbild sehen?",
   'privacyProfilePhoto': "Profilbild",
   'privacyScanLoginQr': "Login-QR-Code scannen",
   'privacyScanLoginQrSubtitle':
@@ -889,6 +936,9 @@ const deMessages = <String, String>{
   'richTextComposerFormatBold': "Fett",
   'richTextComposerFormatBoldMark': "B",
   'richTextComposerFormatCode': "Code",
+  'richTextComposerFormatMarked': "Hervorheben",
+  'richTextComposerFormatSubscript': "Tiefgestellt",
+  'richTextComposerFormatSuperscript': "Hochgestellt",
   'richTextComposerFormatItalic': "Kursiv",
   'richTextComposerFormatItalicMark': "I",
   'richTextComposerFormatSpoiler': "Spoiler",
@@ -897,6 +947,8 @@ const deMessages = <String, String>{
   'richTextComposerFormatUnderline': "Unterstrichen",
   'richTextComposerFormatUnderlineMark': "U",
   'richTextComposerInsertTable': "Tabelle",
+  'richTextComposerMoveDown': "Nach unten",
+  'richTextComposerMoveUp': "Nach oben",
   'richTextComposerPhotoVideo': "Foto/Video",
   'richTextComposerRemoveColumn': "Spalte entfernen",
   'richTextComposerRemoveRow': "Zeile entfernen",

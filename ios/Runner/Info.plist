@@ -42,7 +42,9 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Mithka uses the microphone for voice messages and Telegram voice or video calls.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Mithka needs photo access to send images.</string>
+	<string>Mithka needs photo access to send and save images and videos.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Mithka needs permission to save images and videos to Photos.</string>
 	<key>SentryDSNEncoded</key>
 	<string>$(SENTRY_DSN_ENCODED)</string>
 	<key>SentryEnvironment</key>

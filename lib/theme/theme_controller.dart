@@ -823,9 +823,13 @@ class ThemeController extends ChangeNotifier {
     final storedChatFolderMode = _prefs.getString(_chatFolderDisplayModeKey);
     _chatFolderDisplayMode = ChatFolderDisplayMode.values.firstWhere(
       (mode) => mode.name == storedChatFolderMode,
-      orElse: () => (_prefs.getBool(_chatFolderFilterKey) ?? true)
-          ? ChatFolderDisplayMode.menu
-          : ChatFolderDisplayMode.hidden,
+      orElse: () {
+        final legacyFolderFilter = _prefs.getBool(_chatFolderFilterKey);
+        if (legacyFolderFilter == null) return ChatFolderDisplayMode.tabs;
+        return legacyFolderFilter
+            ? ChatFolderDisplayMode.menu
+            : ChatFolderDisplayMode.hidden;
+      },
     );
     _showChatListSearch = _prefs.getBool(_chatListSearchKey) ?? true;
     _disableChatListSwipeActions =
@@ -979,8 +983,13 @@ class ThemeController extends ChangeNotifier {
   bool get circularGroupAvatars => _circularGroupAvatars;
   ChatFolderDisplayMode get chatFolderDisplayMode => _chatFolderDisplayMode;
   bool get showChatListSearch => _showChatListSearch;
-  bool get disableChatListSwipeActions => _disableChatListSwipeActions;
-  bool get chatListFolderSwipeSwitching => _chatListFolderSwipeSwitching;
+  bool get disableChatListSwipeActions =>
+      _chatFolderDisplayMode == ChatFolderDisplayMode.tabs &&
+      _disableChatListSwipeActions;
+  bool get chatListFolderSwipeSwitching =>
+      _chatFolderDisplayMode == ChatFolderDisplayMode.tabs &&
+      _disableChatListSwipeActions &&
+      _chatListFolderSwipeSwitching;
   bool get displayOwnChatAsFavorites => _displayOwnChatAsFavorites;
   bool get hideSidebarPhone => _hideSidebarPhone;
   bool get showMemberTags => _showMemberTags;
