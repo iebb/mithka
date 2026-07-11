@@ -120,6 +120,7 @@ class HeroAppIcons {
   static const share = AppIconData(HeroiconsOutline.share);
   static const shieldHalved = AppIconData(HeroiconsOutline.shieldCheck);
   static const solidBell = AppIconData(HeroiconsSolid.bell);
+  static const solidBookmark = AppIconData(HeroiconsSolid.bookmark);
   static const solidCircle = AppIconData(HeroiconsSolid.stopCircle);
   static const solidCircleUser = AppIconData(HeroiconsSolid.userCircle);
   static const solidCircleXmark = AppIconData(HeroiconsSolid.xCircle);
