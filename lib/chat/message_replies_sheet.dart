@@ -8,6 +8,7 @@ import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
+import '../profile/profile_detail_view.dart';
 import 'telegram_rich_text.dart';
 
 Future<void> showMessageRepliesSheet({
@@ -321,6 +322,14 @@ class _MessageRepliesSheetState extends State<_MessageRepliesSheet> {
                     color: c.textPrimary,
                     decoration: TextDecoration.none,
                   ),
+                  onMentionTap: (userId, name) {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            ProfileDetailView(userId: userId, name: name),
+                      ),
+                    );
+                  },
                 ),
               ],
             ),
