@@ -13,6 +13,7 @@ import '../chat/custom_emoji.dart';
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
 import '../components/ui_components.dart';
+import '../l10n/app_localizations.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
@@ -72,7 +73,9 @@ class ChatRowView extends StatelessWidget {
                   children: [
                     Flexible(
                       child: Text(
-                        chat.title,
+                        chat.isSelfChat
+                            ? AppStringKeys.chatSavedMessages.l10n(context)
+                            : chat.title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -122,18 +125,37 @@ class ChatRowView extends StatelessWidget {
     final theme = context.watch<ThemeController>();
     final circleGroups = theme.circularGroupAvatars;
     final avatarSize = theme.avatarSize;
+    final c = context.colors;
     return SizedBox(
       width: avatarSize,
       height: avatarSize,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          PhotoAvatar(
-            title: chat.title,
-            photo: chat.photo,
-            size: avatarSize,
-            square: chat.usesSquareAvatar && !circleGroups,
-          ),
+          if (chat.isSelfChat)
+            Container(
+              width: avatarSize,
+              height: avatarSize,
+              decoration: BoxDecoration(
+                color: c.saveIconBg,
+                borderRadius: circleGroups
+                    ? BorderRadius.circular(avatarSize / 2)
+                    : BorderRadius.circular(AppSpacing.md),
+              ),
+              alignment: Alignment.center,
+              child: AppIcon(
+                HeroAppIcons.solidBookmark,
+                size: avatarSize * 0.48,
+                color: c.saveIconFg,
+              ),
+            )
+          else
+            PhotoAvatar(
+              title: chat.title,
+              photo: chat.photo,
+              size: avatarSize,
+              square: chat.usesSquareAvatar && !circleGroups,
+            ),
           if (chat.unreadCount > 0)
             Positioned(
               right: 0,
