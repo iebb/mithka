@@ -836,6 +836,7 @@ class ThemeController extends ChangeNotifier {
         _prefs.getBool(_disableChatListSwipeActionsKey) ?? false;
     _chatListFolderSwipeSwitching =
         _disableChatListSwipeActions &&
+        _chatFolderDisplayMode == ChatFolderDisplayMode.tabs &&
         (_prefs.getBool(_chatListFolderSwipeSwitchingKey) ?? false);
     _displayOwnChatAsFavorites =
         _prefs.getBool(_displayOwnChatAsFavoritesKey) ?? false;
@@ -1304,6 +1305,10 @@ class ThemeController extends ChangeNotifier {
     if (_chatFolderDisplayMode == value) return;
     _chatFolderDisplayMode = value;
     _prefs.setString(_chatFolderDisplayModeKey, value.name);
+    if (value != ChatFolderDisplayMode.tabs && _chatListFolderSwipeSwitching) {
+      _chatListFolderSwipeSwitching = false;
+      _prefs.setBool(_chatListFolderSwipeSwitchingKey, false);
+    }
     notifyListeners();
   }
 
@@ -1331,7 +1336,9 @@ class ThemeController extends ChangeNotifier {
   }
 
   set chatListFolderSwipeSwitching(bool value) {
-    final next = value && _disableChatListSwipeActions;
+    final next = value &&
+        _disableChatListSwipeActions &&
+        _chatFolderDisplayMode == ChatFolderDisplayMode.tabs;
     if (_chatListFolderSwipeSwitching == next) return;
     _chatListFolderSwipeSwitching = next;
     _prefs.setBool(_chatListFolderSwipeSwitchingKey, next);
