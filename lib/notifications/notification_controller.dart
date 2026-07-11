@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:mithka/l10n/app_localizations.dart';
+import 'scope_notification_settings.dart';
 
 import '../app/chat_deep_link_controller.dart';
 import '../l10n/telegram_language_controller.dart';
@@ -175,8 +176,7 @@ class NotificationController with WidgetsBindingObserver {
   }
 
   bool _isMuted(Map<String, dynamic> chat) {
-    final settings = chat.obj('notification_settings');
-    return (settings?.integer('mute_for') ?? 0) > 0;
+      return ScopeNotificationSettings.shared.isMuted(chat);
   }
 
   String _notificationText(Map<String, dynamic> content) {

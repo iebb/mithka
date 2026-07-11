@@ -18,6 +18,7 @@ import '../components/app_icons.dart';
 import '../components/confirm_dialog.dart';
 import '../components/icon_grid.dart';
 import '../components/photo_avatar.dart';
+import 'package:mithka/notifications/scope_notification_settings.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/telegram_language_controller.dart';
@@ -1258,7 +1259,7 @@ class ChatInfoViewModel extends ChangeNotifier {
     isChannel = kind == ChatKind.channel;
     isGroup = kind == ChatKind.group || kind == ChatKind.channel;
     canChangeAutoDelete = !isGroup;
-    isMuted = (chat.obj('notification_settings')?.integer('mute_for') ?? 0) > 0;
+    isMuted = ScopeNotificationSettings.shared.isMuted(chat);
     autoDeleteTime =
         chat.obj('message_auto_delete_time')?.integer('time') ??
         chat.integer('message_auto_delete_time') ??

@@ -13,6 +13,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/l10n/telegram_language_controller.dart';
 
 import 'json_helpers.dart';
+import 'package:mithka/notifications/scope_notification_settings.dart';
 
 /// Reference to a downloadable TDLib file (profile photo, thumbnail, …).
 class TdFileRef {
@@ -686,8 +687,7 @@ abstract final class TDParse {
       }
     }
 
-    final muted =
-        (chat.obj('notification_settings')?.integer('mute_for') ?? 0) > 0;
+    final muted = ScopeNotificationSettings.shared.isMuted(chat);
 
     final type = chat.obj('type');
     return ChatSummary(

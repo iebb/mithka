@@ -15,6 +15,7 @@ import '../config/secrets.dart';
 import '../settings/api_credentials_config.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
+import 'package:mithka/notifications/scope_notification_settings.dart';
 import 'account_backup_service.dart';
 import 'review_login_code_service.dart';
 
@@ -163,6 +164,7 @@ class AuthManager extends ChangeNotifier {
       if (state != null) _handle(state);
     });
     await _client.start();
+    await ScopeNotificationSettings.shared.load();
   }
 
   void retryStart() {

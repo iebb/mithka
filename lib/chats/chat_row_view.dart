@@ -154,7 +154,7 @@ class ChatRowView extends StatelessWidget {
                   color: Colors.white,
                   shape: BoxShape.circle,
                 ),
-                child: RedDot(size: AppMetric.unreadDot, muted: archived),
+                child: RedDot(size: AppMetric.unreadDot, muted: archived || chat.isMuted),
               ),
             ),
         ],
