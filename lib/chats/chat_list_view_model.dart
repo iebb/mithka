@@ -63,6 +63,7 @@ class ChatListViewModel extends ChangeNotifier {
   StreamSubscription? _sub;
   bool _listening = false;
   bool _prefetchingMain = false;
+  int? _selfUserId;
   final Set<String> _loadingChatLists = {};
   final Set<String> _exhaustedChatLists = {};
   static const _pageSize = 100;
@@ -77,6 +78,7 @@ class ChatListViewModel extends ChangeNotifier {
     _loadFilters();
     _loadChats(_initialPageSize);
     _deferWarmCaches();
+    _resolveSelfUserId();
   }
 
   @override
@@ -229,6 +231,13 @@ class ChatListViewModel extends ChangeNotifier {
       if (!_listening) return;
       if (_selectedFilter.isAll) _prefetchMainChats();
     });
+  }
+
+  Future<void> _resolveSelfUserId() async {
+    try {
+      final me = await _client.query({'@type': 'getMe'});
+      _selfUserId = me.int64('id');
+    } catch (_) {}
   }
 
   void _prefetchMainChats() {
@@ -745,16 +754,19 @@ class ChatListViewModel extends ChangeNotifier {
         user.obj('emoji_status')?.obj('type')?.int64('custom_emoji_id') ??
         user.obj('emoji_status')?.int64('custom_emoji_id') ??
         0;
+    final isSelf = (userId == _selfUserId);
     for (final chat in _map.values) {
       if (chat.peerUserId != userId) continue;
       if (chat.peerIsPremium == isPremium &&
           chat.peerAccentColorId == accent &&
-          chat.peerEmojiStatusId == status) {
+          chat.peerEmojiStatusId == status &&
+          chat.isSelfChat == isSelf) {
         continue;
       }
       chat.peerIsPremium = isPremium;
       chat.peerAccentColorId = accent;
       chat.peerEmojiStatusId = status;
+      chat.isSelfChat = isSelf;
       changed = true;
     }
     if (changed) notifyListeners();
