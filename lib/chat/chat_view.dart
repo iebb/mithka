@@ -3770,12 +3770,14 @@ class _ChatViewState extends State<ChatView> {
   bool _transcriptCacheGrouped = false;
   int _transcriptCacheUnreadCount = -1;
   int _transcriptCacheLastReadInboxId = -1;
+  int _transcriptCacheMessageVersion = -1;
 
   List<_TranscriptEntry> _transcriptEntries(bool groupImages) {
     final messages = _vm.messages;
     final cached = _transcriptCache;
     if (cached != null &&
         identical(_transcriptCacheMessages, messages) &&
+        _transcriptCacheMessageVersion == _vm.messageVersion &&
         _transcriptCacheGrouped == groupImages &&
         _transcriptCacheUnreadCount == _vm.unreadCount &&
         _transcriptCacheLastReadInboxId == _vm.lastReadInboxId) {
@@ -3785,6 +3787,7 @@ class _ChatViewState extends State<ChatView> {
     _transcriptCache = entries;
     _transcriptCacheMessages = messages;
     _transcriptCacheGrouped = groupImages;
+    _transcriptCacheMessageVersion = _vm.messageVersion;
     _transcriptCacheUnreadCount = _vm.unreadCount;
     _transcriptCacheLastReadInboxId = _vm.lastReadInboxId;
     _transcriptIndexByKey = {
