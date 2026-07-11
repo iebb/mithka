@@ -489,6 +489,7 @@ abstract final class AppStringKeys {
       'chatRestrictedTelegramTosMessage';
   static const chatRestrictedTitle = 'chatRestrictedTitle';
   static const chatSavedToSavedMessages = 'chatSavedToSavedMessages';
+  static const chatSavedMessages = 'chatSavedMessages';
   static const chatSaveFailed = 'chatSaveFailed';
   static const chatSearchHistoryTitle = 'chatSearchHistoryTitle';
   static const chatSearchMessagePlaceholder = 'chatSearchMessagePlaceholder';
