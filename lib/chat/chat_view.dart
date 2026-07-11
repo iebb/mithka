@@ -4201,12 +4201,20 @@ class _ChatViewState extends State<ChatView> {
               top: reactionTop,
               left: 10,
               right: 10,
-              child: Align(
-                alignment: align,
-                child: _reactionExpanded
-                    ? _expandedReactionPicker()
-                    : _quickReactionBar(),
-              ),
+              child: _reactionExpanded
+                  ? Align(
+                      alignment: align,
+                      child: _expandedReactionPicker(),
+                    )
+                  : SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      reverse: align == Alignment.centerRight,
+                      physics: const ClampingScrollPhysics(),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [_quickReactionBar()],
+                      ),
+                    ),
             ),
           if (showActionMenu)
             Positioned(
