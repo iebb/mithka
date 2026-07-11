@@ -228,7 +228,7 @@ class _ChatListViewState extends State<ChatListView> {
       MaterialPageRoute(builder: (_) => const ProxyView()),
     );
     // Refresh in case the user added or removed a proxy.
-    if (mounted) _loadProxyStatus();
+    if (mounted) unawaited(_loadProxyStatus());
   }
 
   Future<void> _openChat(ChatSummary chat) async {
@@ -663,7 +663,7 @@ class _ChatListViewState extends State<ChatListView> {
             if (_showProxyIcon)
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: () => _navigateToProxyView(),
+                onTap: _navigateToProxyView,
                 child: SizedBox(
                   width: AppMetric.hitTarget,
                   height: AppMetric.hitTarget,
