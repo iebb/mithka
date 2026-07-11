@@ -384,7 +384,9 @@ class DisplaySettingsView extends StatelessWidget {
                         AppStringKeys.appearanceChatListFolderSwipeSwitching,
                       ),
                       theme.chatListFolderSwipeSwitching,
-                      theme.disableChatListSwipeActions
+                      (theme.disableChatListSwipeActions &&
+                              theme.chatFolderDisplayMode ==
+                                  ChatFolderDisplayMode.tabs)
                           ? (v) => theme.chatListFolderSwipeSwitching = v
                           : null,
                     ),
