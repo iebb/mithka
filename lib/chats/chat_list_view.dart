@@ -765,10 +765,9 @@ class _ChatListViewState extends State<ChatListView> {
 
   Widget _chatList() {
     final c = context.colors;
-    final showSearch = context.watch<ThemeController>().showChatListSearch;
-    final assistantPlacement = context
-        .watch<ThemeController>()
-        .groupAssistantPlacement;
+    final theme = context.watch<ThemeController>();
+    final showSearch = theme.showChatListSearch;
+    final assistantPlacement = theme.groupAssistantPlacement;
     return Container(
       color: c.background,
       child: LayoutBuilder(
@@ -836,7 +835,7 @@ class _ChatListViewState extends State<ChatListView> {
               (topAssistant ? 1 : 0) +
               (showSearch ? 1 : 0) +
               (showInlineAssistant ? 1 : 0);
-          return ListView.builder(
+          final list = ListView.builder(
             controller: _scrollController,
             padding:
                 EdgeInsets.zero, // header already consumed the top safe-area
@@ -849,6 +848,16 @@ class _ChatListViewState extends State<ChatListView> {
               showInlineAssistant: showInlineAssistant,
               assistantIndex: assistantIndex,
             ),
+          );
+          if (!theme.chatListFolderSwipeSwitching ||
+              _model.filters.length < 2) {
+            return list;
+          }
+          return GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onHorizontalDragEnd: (details) =>
+                _switchFolderBySwipe(details.primaryVelocity),
+            child: list,
           );
         },
       ),
@@ -879,6 +888,24 @@ class _ChatListViewState extends State<ChatListView> {
     return _swipeRow(chats[chatIndex]);
   }
 
+  void _switchFolderBySwipe(double? velocity) {
+    if (velocity == null || velocity.abs() < 240) return;
+    final filters = _model.filters;
+    if (filters.length < 2) return;
+    final current = filters.indexWhere(
+      (filter) => filter.folderId == _model.selectedFilter.folderId,
+    );
+    if (current < 0) return;
+    final next = velocity < 0 ? current + 1 : current - 1;
+    if (next < 0 || next >= filters.length) return;
+    _model.selectFilter(filters[next]);
+    _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
   int _assistantInsertionIndex(
     List<ChatSummary> chats,
     int visibleRows,
@@ -907,6 +934,17 @@ class _ChatListViewState extends State<ChatListView> {
   }
 
   Widget _swipeRow(ChatSummary chat) {
+    if (context.watch<ThemeController>().disableChatListSwipeActions) {
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _openChat(chat),
+        child: ChatRowView(
+          chat: chat,
+          selected: widget.selectedChatId == chat.id,
+          onClearUnread: () => _model.markRead(chat),
+        ),
+      );
+    }
     final actions = chat.isPinned
         ? [
             SwipeActionItem(

@@ -262,6 +262,10 @@ abstract final class AppStringKeys {
   static const appearanceRoundGroupAvatars = 'appearanceRoundGroupAvatars';
   static const appearanceSearchFont = 'appearanceSearchFont';
   static const appearanceShowChatListSearch = 'appearanceShowChatListSearch';
+  static const appearanceDisableChatListSwipeActions =
+      'appearanceDisableChatListSwipeActions';
+  static const appearanceChatListFolderSwipeSwitching =
+      'appearanceChatListFolderSwipeSwitching';
   static const appearanceShowEditAndReadMarks =
       'appearanceShowEditAndReadMarks';
   static const appearanceShowGroupMemberTitles =

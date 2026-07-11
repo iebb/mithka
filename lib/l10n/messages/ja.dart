@@ -120,6 +120,8 @@ const jaMessages = <String, String>{
   'appearanceRefreshCacheList': "キャッシュ一覧を更新",
   'appearanceRoundGroupAvatars': "グループチャットのアイコンを丸く表示",
   'appearanceSearchFont': "フォントを検索",
+  'appearanceDisableChatListSwipeActions': 'チャットリストのスワイプアクションを無効化',
+  'appearanceChatListFolderSwipeSwitching': 'スワイプでチャットフォルダーを切り替え',
   'appearanceShowChatListSearch': "チャットリスト検索を表示",
   'appearanceShowEditAndReadMarks': "編集済み・既読マークを表示",
   'appearanceShowGroupMemberTitles': "グループメンバーの肩書きを表示",

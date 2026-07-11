@@ -828,6 +828,11 @@ class ThemeController extends ChangeNotifier {
           : ChatFolderDisplayMode.hidden,
     );
     _showChatListSearch = _prefs.getBool(_chatListSearchKey) ?? true;
+    _disableChatListSwipeActions =
+        _prefs.getBool(_disableChatListSwipeActionsKey) ?? false;
+    _chatListFolderSwipeSwitching =
+        _disableChatListSwipeActions &&
+        (_prefs.getBool(_chatListFolderSwipeSwitchingKey) ?? false);
     _hideSidebarPhone = _prefs.getBool(_hideSidebarPhoneKey) ?? false;
     _showMemberTags = _prefs.getBool(_memberTagsKey) ?? false;
     _showPremiumNameColors = _prefs.getBool(_premiumNameColorsKey) ?? true;
@@ -876,6 +881,9 @@ class ThemeController extends ChangeNotifier {
   // Retained only to migrate the former show/hide toggle.
   static const _chatFolderFilterKey = 'showChatFolderFilter';
   static const _chatListSearchKey = 'showChatListSearch';
+  static const _disableChatListSwipeActionsKey = 'disableChatListSwipeActions';
+  static const _chatListFolderSwipeSwitchingKey =
+      'chatListFolderSwipeSwitching';
   static const _hideSidebarPhoneKey = 'hideSidebarPhone';
   static const _memberTagsKey = 'showMemberTags';
   static const _premiumNameColorsKey = 'showPremiumNameColors';
@@ -912,6 +920,8 @@ class ThemeController extends ChangeNotifier {
   late bool _circularGroupAvatars;
   late ChatFolderDisplayMode _chatFolderDisplayMode;
   bool _showChatListSearch = true;
+  bool _disableChatListSwipeActions = false;
+  bool _chatListFolderSwipeSwitching = false;
   bool _hideSidebarPhone = false;
   bool _showMemberTags = false;
   bool _showPremiumNameColors = true;
@@ -965,6 +975,8 @@ class ThemeController extends ChangeNotifier {
   bool get circularGroupAvatars => _circularGroupAvatars;
   ChatFolderDisplayMode get chatFolderDisplayMode => _chatFolderDisplayMode;
   bool get showChatListSearch => _showChatListSearch;
+  bool get disableChatListSwipeActions => _disableChatListSwipeActions;
+  bool get chatListFolderSwipeSwitching => _chatListFolderSwipeSwitching;
   bool get hideSidebarPhone => _hideSidebarPhone;
   bool get showMemberTags => _showMemberTags;
   bool get showPremiumNameColors => _showPremiumNameColors;
@@ -1284,6 +1296,25 @@ class ThemeController extends ChangeNotifier {
   set showChatListSearch(bool value) {
     _showChatListSearch = value;
     _prefs.setBool(_chatListSearchKey, value);
+    notifyListeners();
+  }
+
+  set disableChatListSwipeActions(bool value) {
+    if (_disableChatListSwipeActions == value) return;
+    _disableChatListSwipeActions = value;
+    _prefs.setBool(_disableChatListSwipeActionsKey, value);
+    if (!value && _chatListFolderSwipeSwitching) {
+      _chatListFolderSwipeSwitching = false;
+      _prefs.setBool(_chatListFolderSwipeSwitchingKey, false);
+    }
+    notifyListeners();
+  }
+
+  set chatListFolderSwipeSwitching(bool value) {
+    final next = value && _disableChatListSwipeActions;
+    if (_chatListFolderSwipeSwitching == next) return;
+    _chatListFolderSwipeSwitching = next;
+    _prefs.setBool(_chatListFolderSwipeSwitchingKey, next);
     notifyListeners();
   }
 

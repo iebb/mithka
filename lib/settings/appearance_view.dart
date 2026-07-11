@@ -366,6 +366,26 @@ class DisplaySettingsView extends StatelessWidget {
                   ),
                   _toggleRow(
                     context,
+                    HeroAppIcons.pictureInPicture.data,
+                    AppStrings.t(
+                      AppStringKeys.appearanceDisableChatListSwipeActions,
+                    ),
+                    theme.disableChatListSwipeActions,
+                    (v) => theme.disableChatListSwipeActions = v,
+                  ),
+                  _toggleRow(
+                    context,
+                    HeroAppIcons.arrowsUpDown.data,
+                    AppStrings.t(
+                      AppStringKeys.appearanceChatListFolderSwipeSwitching,
+                    ),
+                    theme.chatListFolderSwipeSwitching,
+                    theme.disableChatListSwipeActions
+                        ? (v) => theme.chatListFolderSwipeSwitching = v
+                        : null,
+                  ),
+                  _toggleRow(
+                    context,
                     HeroAppIcons.palette.data,
                     AppStrings.t(AppStringKeys.appearanceShowPremiumNameColor),
                     theme.showPremiumNameColors,
@@ -444,7 +464,7 @@ class DisplaySettingsView extends StatelessWidget {
     IconData icon,
     String label,
     bool value,
-    ValueChanged<bool> onChanged,
+    ValueChanged<bool>? onChanged,
   ) =>
       const AppearanceView()._toggleRow(context, icon, label, value, onChanged);
 
@@ -790,22 +810,27 @@ extension _DisplayAppearanceHelpers on AppearanceView {
     IconData icon,
     String label,
     bool value,
-    ValueChanged<bool> onChanged,
+    ValueChanged<bool>? onChanged,
   ) {
     final c = context.colors;
+    final enabled = onChanged != null;
     return SizedBox(
       height: AppMetric.menuRowHeight + AppSpacing.xxs,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
         child: Row(
           children: [
-            Icon(icon, size: AppIconSize.xl, color: AppTheme.brand),
+            Icon(
+              icon,
+              size: AppIconSize.xl,
+              color: enabled ? AppTheme.brand : c.textTertiary,
+            ),
             const SizedBox(width: AppSpacing.xl),
             Text(
               label,
               style: TextStyle(
                 fontSize: AppTextSize.bodyLarge,
-                color: c.textPrimary,
+                color: enabled ? c.textPrimary : c.textTertiary,
               ),
             ),
             const Spacer(),

@@ -117,6 +117,8 @@ const zhHansMessages = <String, String>{
   'appearanceRefreshCacheList': "刷新缓存列表",
   'appearanceRoundGroupAvatars': "群聊头像显示为圆形",
   'appearanceSearchFont': "搜索字体",
+  'appearanceDisableChatListSwipeActions': '禁用聊天列表侧滑选项',
+  'appearanceChatListFolderSwipeSwitching': '滑动切换聊天文件夹',
   'appearanceShowChatListSearch': "显示聊天列表搜索",
   'appearanceShowEditAndReadMarks': "显示编辑和已读标记",
   'appearanceShowGroupMemberTitles': "群成员显示头衔",
