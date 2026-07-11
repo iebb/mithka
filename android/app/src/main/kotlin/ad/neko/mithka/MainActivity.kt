@@ -169,16 +169,23 @@ class MainActivity : FlutterActivity() {
     private fun setLauncherIcon(name: String) {
         val aliases = launcherAliases()
         val target = if (aliases.containsKey(name)) name else "default"
+
+        // Enable the target alias first so there's never a window where no
+        // launcher icon alias is active — that can cause a crash when the
+        // user returns to the launcher before the switch completes.
+        val targetComponent = ComponentName(packageName, aliases[target]!!)
+        packageManager.setComponentEnabledSetting(
+            targetComponent,
+            PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+            PackageManager.DONT_KILL_APP,
+        )
+
         for ((key, className) in aliases) {
+            if (key == target) continue
             val component = ComponentName(packageName, className)
-            val state = if (key == target) {
-                PackageManager.COMPONENT_ENABLED_STATE_ENABLED
-            } else {
-                PackageManager.COMPONENT_ENABLED_STATE_DISABLED
-            }
             packageManager.setComponentEnabledSetting(
                 component,
-                state,
+                PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
                 PackageManager.DONT_KILL_APP,
             )
         }
