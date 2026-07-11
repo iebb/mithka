@@ -2254,14 +2254,6 @@ class ChatViewModel extends ChangeNotifier {
           updateLinkPreview: true,
         );
 
-      case 'updateMessageReplyMarkup':
-        if (update.int64('chat_id') != chatId) return;
-        final messageId = update.int64('message_id');
-        if (messageId == null) return;
-        _replaceButtonRows(
-          messageId,
-          TDParse.messageButtonRows(update.obj('reply_markup')),
-        );
 
       case 'updateChat':
         final chat = update.obj('chat');
@@ -2400,6 +2392,9 @@ class ChatViewModel extends ChangeNotifier {
       case 'updateMessageEdited':
         if (update.int64('chat_id') != chatId) return;
         final mid = update.int64('message_id');
+        if (mid == null) return;
+        final replyMarkup = update.obj('reply_markup');
+        _replaceButtonRows(mid, TDParse.messageButtonRows(replyMarkup));
         final i = messages.indexWhere((m) => m.id == mid);
         if (i >= 0) {
           messages[i].isEdited = true;
