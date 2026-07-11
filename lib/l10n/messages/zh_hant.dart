@@ -317,6 +317,7 @@ const zhHantMessages = <String, String>{
       "該群因違反 Telegram 服務條款，無法顯示內容。你可以返回聊天列表，或退出該群聊。",
   'chatRestrictedTitle': "安全提示",
   'chatSavedToSavedMessages': "已儲存到 Saved Messages",
+  'chatSavedMessages': "收藏夾",
   'chatSaveFailed': "儲存失敗：{value1}",
   'chatSearchHistoryTitle': "搜尋聊天記錄",
   'chatSearchMessagePlaceholder': "搜尋此聊天的訊息",

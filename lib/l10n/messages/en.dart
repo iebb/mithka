@@ -337,6 +337,7 @@ const enMessages = <String, String>{
       "This group can’t be displayed because it violated Telegram's Terms of Service. You can go back or leave the group.",
   'chatRestrictedTitle': "Safety notice",
   'chatSavedToSavedMessages': "Saved to Saved Messages",
+  'chatSavedMessages': "Saved Messages",
   'chatSaveFailed': "Save failed: {value1}",
   'chatSearchHistoryTitle': "Search chat history",
   'chatSearchMessagePlaceholder': "Search messages in this chat",

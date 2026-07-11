@@ -338,6 +338,7 @@ const esMessages = <String, String>{
       "Este grupo no se puede mostrar porque infringió las Condiciones de servicio de Telegram. Puedes volver a la lista de chats o salir del grupo.",
   'chatRestrictedTitle': "Aviso de seguridad",
   'chatSavedToSavedMessages': "Guardado en Saved Messages",
+  'chatSavedMessages': "Mensajes guardados",
   'chatSaveFailed': "No se pudo guardar: {value1}",
   'chatSearchHistoryTitle': "Buscar en el historial del chat",
   'chatSearchMessagePlaceholder': "Buscar mensajes en este chat",

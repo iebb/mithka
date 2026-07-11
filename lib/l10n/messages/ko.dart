@@ -323,6 +323,7 @@ const koMessages = <String, String>{
       "이 그룹은 Telegram 서비스 약관을 위반하여 표시할 수 없습니다. 채팅 목록으로 돌아가거나 그룹을 나갈 수 있습니다.",
   'chatRestrictedTitle': "안전 안내",
   'chatSavedToSavedMessages': "Saved Messages에 저장됨",
+  'chatSavedMessages': "저장된 메시지",
   'chatSaveFailed': "저장 실패: {value1}",
   'chatSearchHistoryTitle': "채팅 기록 검색",
   'chatSearchMessagePlaceholder': "이 채팅의 메시지 검색",

@@ -317,6 +317,7 @@ const zhHansMessages = <String, String>{
       "该群因违反 Telegram 服务条款，无法显示内容。你可以返回聊天列表，或退出该群聊。",
   'chatRestrictedTitle': "安全提示",
   'chatSavedToSavedMessages': "已保存到 Saved Messages",
+  'chatSavedMessages': "收藏夹",
   'chatSaveFailed': "保存失败：{value1}",
   'chatSearchHistoryTitle': "搜索聊天记录",
   'chatSearchMessagePlaceholder': "搜索本聊天的消息",

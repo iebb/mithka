@@ -323,6 +323,7 @@ const jaMessages = <String, String>{
       "このグループは Telegram の利用規約に違反したため表示できません。チャット一覧へ戻るか、グループを退出できます。",
   'chatRestrictedTitle': "安全に関するお知らせ",
   'chatSavedToSavedMessages': "Saved Messages に保存しました",
+  'chatSavedMessages': "保存済みメッセージ",
   'chatSaveFailed': "保存に失敗しました：{value1}",
   'chatSearchHistoryTitle': "チャット履歴を検索",
   'chatSearchMessagePlaceholder': "このチャットのメッセージを検索",

@@ -343,6 +343,7 @@ const deMessages = <String, String>{
       "Diese Gruppe kann nicht angezeigt werden, weil sie gegen die Nutzungsbedingungen von Telegram verstoßen hat. Du kannst zur Chatliste zurückkehren oder die Gruppe verlassen.",
   'chatRestrictedTitle': "Sicherheitshinweis",
   'chatSavedToSavedMessages': "In Saved Messages gespeichert",
+  'chatSavedMessages': "Gespeicherte Nachrichten",
   'chatSaveFailed': "Speichern fehlgeschlagen: {value1}",
   'chatSearchHistoryTitle': "Chatverlauf durchsuchen",
   'chatSearchMessagePlaceholder': "Nachrichten in diesem Chat suchen",

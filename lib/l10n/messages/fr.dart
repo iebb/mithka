@@ -345,6 +345,7 @@ const frMessages = <String, String>{
       "Ce groupe ne peut pas être affiché, car il a enfreint les conditions d’utilisation de Telegram. Vous pouvez revenir à la liste des discussions ou quitter le groupe.",
   'chatRestrictedTitle': "Avertissement de sécurité",
   'chatSavedToSavedMessages': "Enregistré dans Saved Messages",
+  'chatSavedMessages': "Messages enregistrés",
   'chatSaveFailed': "Échec de l’enregistrement : {value1}",
   'chatSearchHistoryTitle': "Rechercher dans l’historique",
   'chatSearchMessagePlaceholder':
