@@ -281,6 +281,7 @@ class ChatSummary {
     this.peerAccentColorId = -1,
     this.peerEmojiStatusId = 0,
     this.isForum = false,
+    this.isSelfChat = false,
     this.lastChatMessage,
   });
 
@@ -305,6 +306,7 @@ class ChatSummary {
   int peerAccentColorId;
   int peerEmojiStatusId;
   bool isForum;
+  bool isSelfChat;
   ChatMessage? lastChatMessage;
 
   /// Groups & channels use a rounded-square avatar unless UI preferences
