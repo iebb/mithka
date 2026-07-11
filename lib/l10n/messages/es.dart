@@ -858,6 +858,9 @@ const esMessages = <String, String>{
   'proxyDeleteProxy': "Eliminar proxy",
   'proxyDescription':
       "El proxy solo se usa para conectar con Telegram y puede reducir la velocidad de conexión.",
+  'proxyAddFromLink': "Añadir desde enlace",
+  'proxyAddFromLinkHint': "Pega un enlace proxy t.me o tg://",
+  'proxyAddFromLinkTitle': "Añadir proxy desde enlace",
   'proxyDisabled': "No usar proxy",
   'proxyHostOrIp': "Host o IP",
   'proxyOptional': "Opcional",

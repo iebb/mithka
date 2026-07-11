@@ -10,6 +10,7 @@
 
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mithka/l10n/app_localizations.dart';
@@ -151,7 +152,7 @@ class _ProxyViewState extends State<ProxyView> {
                         ]),
                       ],
                       const SizedBox(height: 14),
-                      _card([_addRow()]),
+                      _card([_addRow(), const InsetDivider(leadingInset: 16), _addFromLinkRow()]),
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                         child: Text(
@@ -279,6 +280,94 @@ class _ProxyViewState extends State<ProxyView> {
               const SizedBox(width: 10),
               Text(
                 AppStrings.t(AppStringKeys.proxyAddProxy),
+                style: TextStyle(fontSize: 16, color: AppTheme.brand),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _addFromLink() async {
+    final ctrl = TextEditingController();
+    final result = await showCupertinoDialog<String>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            return CupertinoAlertDialog(
+              title: Text(AppStrings.t(
+                AppStringKeys.proxyAddFromLinkTitle,
+              )),
+              content: Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: CupertinoTextField(
+                  controller: ctrl,
+                  autofocus: true,
+                  placeholder: AppStrings.t(
+                    AppStringKeys.proxyAddFromLinkHint,
+                  ),
+                  onChanged: (_) => setDialogState(() {}),
+                  clearButtonMode: OverlayVisibilityMode.editing,
+                ),
+              ),
+              actions: [
+                CupertinoDialogAction(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: Text(AppStrings.t(
+                    AppStringKeys.countryPickerCancel,
+                  )),
+                ),
+                CupertinoDialogAction(
+                  isDefaultAction: true,
+                  onPressed: ctrl.text.trim().isNotEmpty
+                      ? () => Navigator.of(ctx).pop(ctrl.text.trim())
+                      : null,
+                  child: Text(AppStrings.t(AppStringKeys.proxyAddProxy)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    ctrl.dispose();
+    if (result == null || result.isEmpty) return;
+
+    final config = ProxyConfig.fromTelegramUrl(result);
+    if (config == null) {
+      if (mounted) {
+        showToast(context, AppStrings.t(AppStringKeys.proxyAddFailed));
+      }
+      return;
+    }
+
+    try {
+      await TdClient.shared.applyProxyConfig(config);
+      await ProxyConfig.save(config);
+      unawaited(_load());
+    } catch (_) {
+      if (mounted) {
+        showToast(context, AppStrings.t(AppStringKeys.proxyAddFailed));
+      }
+    }
+  }
+
+  Widget _addFromLinkRow() {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _addFromLink,
+      child: SizedBox(
+        height: 52,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              AppIcon(HeroAppIcons.plus, size: 18, color: AppTheme.brand),
+              const SizedBox(width: 10),
+              Text(
+                AppStrings.t(AppStringKeys.proxyAddFromLink),
                 style: TextStyle(fontSize: 16, color: AppTheme.brand),
               ),
             ],

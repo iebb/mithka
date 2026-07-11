@@ -1206,6 +1206,9 @@ abstract final class AppStringKeys {
   static const profileSettings = 'profileSettings';
   static const proxyAddFailed = 'proxyAddFailed';
   static const proxyAddProxy = 'proxyAddProxy';
+  static const proxyAddFromLink = 'proxyAddFromLink';
+  static const proxyAddFromLinkHint = 'proxyAddFromLinkHint';
+  static const proxyAddFromLinkTitle = 'proxyAddFromLinkTitle';
   static const proxyDeleteProxy = 'proxyDeleteProxy';
   static const proxyDescription = 'proxyDescription';
   static const proxyDisabled = 'proxyDisabled';

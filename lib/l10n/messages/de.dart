@@ -865,6 +865,9 @@ const deMessages = <String, String>{
   'proxyDeleteProxy': "Proxy löschen",
   'proxyDescription':
       "Der Proxy wird nur für die Verbindung mit Telegram verwendet und kann die Verbindung verlangsamen.",
+  'proxyAddFromLink': "Über Link hinzufügen",
+  'proxyAddFromLinkHint': "t.me oder tg:// Proxy-Link einfügen",
+  'proxyAddFromLinkTitle': "Proxy über Link hinzufügen",
   'proxyDisabled': "Keinen Proxy verwenden",
   'proxyHostOrIp': "Host oder IP",
   'proxyOptional': "Optional",
