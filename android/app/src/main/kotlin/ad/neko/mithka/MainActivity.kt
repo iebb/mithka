@@ -275,6 +275,7 @@ class MainActivity : FlutterActivity() {
             add("com.mediadevkit.fvp.FvpPlugin")
             add("com.baseflow.geolocator.GeolocatorPlugin")
             add("io.flutter.plugins.imagepicker.ImagePickerPlugin")
+            add("com.fluttercandies.photo_manager.PhotoManagerPlugin")
             add("com.github.dart_lang.jni.JniPlugin")
             add("com.crazecoder.openfile.OpenFilePlugin")
             add("dev.fluttercommunity.plus.packageinfo.PackageInfoPlugin")

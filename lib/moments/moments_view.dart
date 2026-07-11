@@ -30,6 +30,7 @@ import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../l10n/telegram_language_controller.dart';
+import '../media/app_asset_picker.dart';
 import '../settings/accent_color_picker_view.dart';
 import '../tdlib/chat_membership.dart';
 import '../tdlib/json_helpers.dart';
@@ -2805,7 +2806,6 @@ class ChannelPostComposerView extends StatefulWidget {
 class _ChannelPostComposerViewState extends State<ChannelPostComposerView> {
   final _controller = TextEditingController();
   final _focus = FocusNode();
-  final _imagePicker = ImagePicker();
   final List<XFile> _pickedImages = [];
   FormattedTextPayload? _richTextPayload;
   ChatSummary? _channel;
@@ -3152,10 +3152,14 @@ class _ChannelPostComposerViewState extends State<ChannelPostComposerView> {
 
   Future<void> _pickImages() async {
     try {
-      final images = await _imagePicker.pickMultiImage(imageQuality: 92);
-      if (images.isEmpty || !mounted) return;
       final remaining = 9 - _pickedImages.length;
-      setState(() => _pickedImages.addAll(images.take(remaining)));
+      final images = await AppAssetPicker.pick(
+        context,
+        type: AppAssetPickerType.image,
+        maxAssets: remaining,
+      );
+      if (images.isEmpty || !mounted) return;
+      setState(() => _pickedImages.addAll(images));
     } catch (_) {
       if (mounted) showToast(context, AppStringKeys.momentsPickPhotoFailed);
     }

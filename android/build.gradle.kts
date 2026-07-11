@@ -1,3 +1,6 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
 allprojects {
     repositories {
         google()
@@ -17,6 +20,12 @@ subprojects {
             android.javaClass
                 .getMethod("compileSdkVersion", Int::class.javaPrimitiveType)
                 .invoke(android, 36)
+        }
+    }
+
+    if (name == "photo_manager") {
+        tasks.withType<KotlinCompile>().configureEach {
+            compilerOptions.jvmTarget.set(JvmTarget.JVM_17)
         }
     }
 }

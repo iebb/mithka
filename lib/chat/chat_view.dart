@@ -28,6 +28,7 @@ import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/telegram_language_controller.dart';
+import '../media/app_asset_picker.dart';
 import '../profile/profile_detail_view.dart';
 import '../settings/developer_mode_controller.dart';
 import '../settings/keyword_blocker.dart';
@@ -2219,7 +2220,7 @@ class _ChatViewState extends State<ChatView> {
         await _vm.editMessageMedia(
           message.id,
           media.path,
-          isVideo: _isVideoMediaPath(media.path),
+          isVideo: isPickedAssetVideo(media),
           caption: result.text,
           entities: result.entities,
         );
@@ -2233,7 +2234,7 @@ class _ChatViewState extends State<ChatView> {
         );
       }
       for (final media in result.media.skip(mediaStart)) {
-        if (_isVideoMediaPath(media.path)) {
+        if (isPickedAssetVideo(media)) {
           _vm.sendVideo(media.path);
         } else {
           _vm.sendPhoto(media.path);
@@ -2242,14 +2243,6 @@ class _ChatViewState extends State<ChatView> {
     } catch (e) {
       if (mounted) showToast(context, '$e');
     }
-  }
-
-  bool _isVideoMediaPath(String path) {
-    final lower = path.toLowerCase();
-    return lower.endsWith('.mp4') ||
-        lower.endsWith('.mov') ||
-        lower.endsWith('.m4v') ||
-        lower.endsWith('.webm');
   }
 
   bool _sameFormattedEntities(

@@ -26,6 +26,7 @@ import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../l10n/telegram_language_controller.dart';
+import '../media/app_asset_picker.dart';
 import '../notifications/notification_settings_payload.dart';
 import '../settings/topic_group_display_mode.dart';
 import '../tdlib/json_helpers.dart';
@@ -423,7 +424,7 @@ class _TopicChatViewState extends State<TopicChatView> {
     for (var i = 0; i < result.media.length; i++) {
       final file = result.media[i];
       final caption = i == 0 ? result.formattedText.toTdJson() : null;
-      final isVideo = _isVideoPath(file.path);
+      final isVideo = isPickedAssetVideo(file);
       final request = <String, dynamic>{
         '@type': 'sendMessage',
         'chat_id': widget.chat.id,
@@ -446,14 +447,6 @@ class _TopicChatViewState extends State<TopicChatView> {
     _input.clear();
     _topicMessages.clear();
     await _loadTopics();
-  }
-
-  bool _isVideoPath(String path) {
-    final lower = path.toLowerCase();
-    return lower.endsWith('.mp4') ||
-        lower.endsWith('.mov') ||
-        lower.endsWith('.m4v') ||
-        lower.endsWith('.webm');
   }
 
   void _attachForumTopic(Map<String, dynamic> request, int forumTopicId) {

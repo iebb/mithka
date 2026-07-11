@@ -12,7 +12,6 @@ import 'dart:io';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
 import '../chat/image_edit_view.dart';
@@ -20,6 +19,7 @@ import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
+import '../media/app_asset_picker.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -394,11 +394,13 @@ class _EditProfileViewState extends State<EditProfileView> {
 
   Future<void> _changeStaticAvatar() async {
     try {
-      final img = await ImagePicker().pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1280,
+      final images = await AppAssetPicker.pick(
+        context,
+        type: AppAssetPickerType.image,
+        maxAssets: 1,
       );
-      if (img == null) return;
+      if (images.isEmpty) return;
+      final img = images.first;
       if (!mounted) return;
       final edited = await Navigator.of(context).push<String>(
         MaterialPageRoute(
@@ -432,11 +434,14 @@ class _EditProfileViewState extends State<EditProfileView> {
 
   Future<void> _changeAnimatedAvatar() async {
     try {
-      final video = await ImagePicker().pickVideo(
-        source: ImageSource.gallery,
-        maxDuration: const Duration(seconds: 10),
+      final videos = await AppAssetPicker.pick(
+        context,
+        type: AppAssetPickerType.video,
+        maxAssets: 1,
+        maxVideoDuration: const Duration(seconds: 10),
       );
-      if (video == null) return;
+      if (videos.isEmpty) return;
+      final video = videos.first;
       final file = File(video.path);
       if (!await file.exists() || await file.length() == 0) {
         _toast(AppStrings.t(AppStringKeys.editProfileInvalidAvatarFile));

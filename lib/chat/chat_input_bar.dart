@@ -28,6 +28,7 @@ import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/telegram_language_controller.dart';
+import '../media/app_asset_picker.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import 'audio_search_view.dart';
@@ -913,18 +914,16 @@ class _ChatInputBarState extends State<ChatInputBar> {
   /// 图片: pick one or more photos/videos from the library and send each.
   Future<void> _pickPhotos() async {
     try {
-      final media = await ImagePicker().pickMultipleMedia();
+      final media = await AppAssetPicker.pick(
+        context,
+        type: AppAssetPickerType.imageAndVideo,
+      );
       var sent = false;
       for (final x in media) {
-        final lower = x.name.toLowerCase();
-        final isVideo =
-            lower.endsWith('.mp4') ||
-            lower.endsWith('.mov') ||
-            lower.endsWith('.m4v');
-        if (isVideo) {
+        if (isPickedAssetVideo(x)) {
           widget.vm.sendVideo(x.path);
           sent = true;
-        } else if (_isGifPath(x.path) || lower.endsWith('.gif')) {
+        } else if (isPickedAssetGif(x)) {
           widget.vm.sendAnimation(x.path);
           sent = true;
         } else {
@@ -1224,13 +1223,13 @@ class _ChatInputBarState extends State<ChatInputBar> {
       final entities = isFirst
           ? result.entities
           : const <Map<String, dynamic>>[];
-      if (_isVideoPath(media.path)) {
+      if (isPickedAssetVideo(media)) {
         widget.vm.sendVideo(
           media.path,
           caption: caption,
           captionEntities: entities,
         );
-      } else if (_isGifPath(media.path)) {
+      } else if (isPickedAssetGif(media)) {
         widget.vm.sendAnimation(
           media.path,
           caption: caption,
@@ -1265,13 +1264,6 @@ class _ChatInputBarState extends State<ChatInputBar> {
   }
 
   bool _isGifPath(String path) => path.toLowerCase().endsWith('.gif');
-
-  bool _isVideoPath(String path) {
-    final lower = path.toLowerCase();
-    return lower.endsWith('.mp4') ||
-        lower.endsWith('.mov') ||
-        lower.endsWith('.m4v');
-  }
 
   /// 文件: pick an arbitrary document and send it.
   Future<void> _pickFile() async {

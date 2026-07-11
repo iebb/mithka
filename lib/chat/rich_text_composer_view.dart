@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
+import '../media/app_asset_picker.dart';
 import '../theme/app_theme.dart';
 import 'emoji_text_controller.dart';
 import 'image_edit_view.dart';
@@ -212,7 +213,6 @@ class _RichContentBlock {
 class _RichTextComposerViewState extends State<RichTextComposerView> {
   static const _obsidianAccent = Color(0xFF7C3AED);
 
-  final _picker = ImagePicker();
   final _media = <XFile>[];
   late final List<_RichContentBlock> _blocks;
   late _RichTextBlock _activeTextBlock;
@@ -905,7 +905,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
 
   Widget _mediaTile(AppColors c, int index) {
     final item = _media[index];
-    final isVideo = _isVideoPath(item.path);
+    final isVideo = isPickedAssetVideo(item);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: isVideo ? null : () => _editMedia(index),
@@ -1002,10 +1002,14 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
 
   Future<void> _pickMedia() async {
     try {
-      final picked = await _picker.pickMultipleMedia();
-      if (picked.isEmpty || !mounted) return;
       final remaining = 9 - _media.length;
-      setState(() => _media.addAll(picked.take(remaining)));
+      final picked = await AppAssetPicker.pick(
+        context,
+        type: AppAssetPickerType.imageAndVideo,
+        maxAssets: remaining,
+      );
+      if (picked.isEmpty || !mounted) return;
+      setState(() => _media.addAll(picked));
     } catch (_) {}
   }
 
@@ -1098,13 +1102,5 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
         ),
       ),
     );
-  }
-
-  bool _isVideoPath(String path) {
-    final lower = path.toLowerCase();
-    return lower.endsWith('.mp4') ||
-        lower.endsWith('.mov') ||
-        lower.endsWith('.m4v') ||
-        lower.endsWith('.webm');
   }
 }
