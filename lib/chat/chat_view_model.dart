@@ -1387,6 +1387,32 @@ class ChatViewModel extends ChangeNotifier {
     );
   }
 
+  Future<void> editMessageCaption(
+    int id,
+    String caption, {
+    List<Map<String, dynamic>> entities = const [],
+  }) async {
+    await _client.query({
+      '@type': 'editMessageCaption',
+      'chat_id': chatId,
+      'message_id': id,
+      'caption': {
+        '@type': 'formattedText',
+        'text': caption,
+        if (entities.isNotEmpty) 'entities': entities,
+      },
+    });
+    _replaceText(id, caption, edited: true, entities: TDParse.textEntities({
+      '@type': 'formattedText',
+      'text': caption,
+      'entities': entities,
+    }), customEmoji: TDParse.customEmojiEntitiesFrom(TDParse.textEntities({
+      '@type': 'formattedText',
+      'text': caption,
+      'entities': entities,
+    })));
+  }
+
   Future<void> editMessageMedia(
     int id,
     String path, {

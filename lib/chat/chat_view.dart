@@ -2237,11 +2237,20 @@ class _ChatViewState extends State<ChatView> {
       if (mediaStart == 0 &&
           (result.text != message.text ||
               !_sameFormattedEntities(result.entities, message.textEntities))) {
-        await _vm.editMessageText(
-          message.id,
-          result.text,
-          entities: result.entities,
-        );
+        if (message.contentType == 'messagePhoto' ||
+            message.contentType == 'messageVideo') {
+          await _vm.editMessageCaption(
+            message.id,
+            result.text,
+            entities: result.entities,
+          );
+        } else {
+          await _vm.editMessageText(
+            message.id,
+            result.text,
+            entities: result.entities,
+          );
+        }
       }
       final extras = result.attachments.skip(mediaStart).toList();
       if (extras.isNotEmpty) {

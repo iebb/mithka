@@ -71,7 +71,10 @@ class MessageActionMenu extends StatelessWidget {
   static const preferredHeight = 152.0;
 
   bool get _isEditableTextMessage =>
-      message.contentType == 'messageText' && message.text.isNotEmpty;
+      message.text.isNotEmpty &&
+      (message.contentType == 'messageText' ||
+       message.contentType == 'messagePhoto' ||
+       message.contentType == 'messageVideo');
 
   bool get _hasCopyableText => message.text.trim().isNotEmpty;
 
