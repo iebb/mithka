@@ -272,6 +272,8 @@ class AppColors extends ThemeExtension<AppColors> {
     required this.textTertiary,
     required this.divider,
     required this.linkBlue,
+    required this.saveIconBg,
+    required this.saveIconFg,
   });
 
   final Color background; // list row background
@@ -291,6 +293,8 @@ class AppColors extends ThemeExtension<AppColors> {
   final Color textTertiary;
   final Color divider;
   final Color linkBlue;
+  final Color saveIconBg;
+  final Color saveIconFg;
 
   static final AppColors light = AppColors(
     background: _hex(0xFFFFFF),
@@ -310,6 +314,8 @@ class AppColors extends ThemeExtension<AppColors> {
     textTertiary: _hex(0xB0B3B8),
     divider: _hex(0xECECEC),
     linkBlue: _hex(0x4B8DEE),
+    saveIconBg: _hex(0xFFF4DF),
+    saveIconFg: _hex(0xE59900),
   );
 
   static final AppColors dark = AppColors(
@@ -330,6 +336,8 @@ class AppColors extends ThemeExtension<AppColors> {
     textTertiary: _hex(0x707276),
     divider: _hex(0x303234),
     linkBlue: _hex(0x5EA0FF),
+    saveIconBg: _hex(0x3D2E00),
+    saveIconFg: _hex(0xF0B800),
   );
 
   @override
@@ -351,6 +359,8 @@ class AppColors extends ThemeExtension<AppColors> {
     Color? textTertiary,
     Color? divider,
     Color? linkBlue,
+    Color? saveIconBg,
+    Color? saveIconFg,
   }) {
     return AppColors(
       background: background ?? this.background,
@@ -370,6 +380,8 @@ class AppColors extends ThemeExtension<AppColors> {
       textTertiary: textTertiary ?? this.textTertiary,
       divider: divider ?? this.divider,
       linkBlue: linkBlue ?? this.linkBlue,
+      saveIconBg: saveIconBg ?? this.saveIconBg,
+      saveIconFg: saveIconFg ?? this.saveIconFg,
     );
   }
 
@@ -406,6 +418,8 @@ class AppColors extends ThemeExtension<AppColors> {
       textTertiary: Color.lerp(textTertiary, other.textTertiary, t)!,
       divider: Color.lerp(divider, other.divider, t)!,
       linkBlue: Color.lerp(linkBlue, other.linkBlue, t)!,
+      saveIconBg: Color.lerp(saveIconBg, other.saveIconBg, t)!,
+      saveIconFg: Color.lerp(saveIconFg, other.saveIconFg, t)!,
     );
   }
 }
