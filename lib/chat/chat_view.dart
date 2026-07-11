@@ -681,6 +681,18 @@ class _ChatViewState extends State<ChatView> {
   void _onModel() {
     if (!mounted) return;
     if (_vm.messages.length != _lastCount) {
+      final visibleMessageIds = _vm.messages
+          .map((message) => message.id)
+          .toSet();
+      _selectedMessageIds.removeWhere(
+        (messageId) => !visibleMessageIds.contains(messageId),
+      );
+      if (_selectedMessageIds.isEmpty) {
+        _selectionAnchorId = null;
+      } else if (!visibleMessageIds.contains(_selectionAnchorId)) {
+        _selectionAnchorId = _selectedMessageIds.first;
+      }
+
       final wasNearBottom = _isNearBottom(72);
       final previousNewestId = _lastNewestMessageId;
       final newest = _vm.messages.isEmpty ? null : _vm.messages.last;
