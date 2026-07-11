@@ -375,6 +375,7 @@ class _ChatViewState extends State<ChatView> {
   double _backSwipeDy = 0;
   bool _backSwipePopping = false;
   bool _loadingOlderFromScroll = false;
+  bool _loadingOlderPreservingOffset = false;
   VelocityTracker? _backSwipeVelocity;
   dc.TabBarVisibility? _tabBarVisibility;
 
@@ -531,11 +532,14 @@ class _ChatViewState extends State<ChatView> {
       return;
     }
     _loadingOlderFromScroll = true;
+    _loadingOlderPreservingOffset = true;
     final oldPixels = _scroll.position.pixels;
     final oldMax = _scroll.position.maxScrollExtent;
     try {
       final loaded = await _vm.loadOlder();
       if (!loaded) return;
+      // Rebuild now that older messages are merged.
+      if (mounted) setState(() {});
       await WidgetsBinding.instance.endOfFrame;
       if (!mounted || !_scroll.hasClients || _scrollTargetId != null) return;
       final delta = _scroll.position.maxScrollExtent - oldMax;
@@ -544,10 +548,17 @@ class _ChatViewState extends State<ChatView> {
           _scroll.position.minScrollExtent,
           _scroll.position.maxScrollExtent,
         );
-        _scroll.jumpTo(target);
+        // Use correctBy instead of jumpTo so that an ongoing fling
+        // (ballistic scroll) is not killed by the position correction.
+        final pos = _scroll.position;
+        final correction = target - pos.pixels;
+        if (correction.abs() > 2.0) {
+          pos.correctBy(correction);
+        }
       }
     } finally {
       _loadingOlderFromScroll = false;
+      _loadingOlderPreservingOffset = false;
     }
   }
 
@@ -749,7 +760,9 @@ class _ChatViewState extends State<ChatView> {
         if (mounted) setState(() => _bannerDismissed = true);
       });
     }
-    setState(() {});
+    if (!_loadingOlderPreservingOffset) {
+      setState(() {});
+    }
   }
 
   int _firstUnreadIndex() => _vm.messages.indexWhere(
