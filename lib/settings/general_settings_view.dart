@@ -19,6 +19,8 @@ import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import 'auto_download_media_controller.dart';
+import 'rich_message_relay_config.dart';
+import 'rich_message_relay_view.dart';
 
 class GeneralSettingsView extends StatefulWidget {
   const GeneralSettingsView({super.key});
@@ -32,6 +34,7 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
   bool _loadingCache = true;
   bool _clearing = false;
   bool _enterToSend = false;
+  bool _richMessageRelayConfigured = false;
   SharedPreferences? _prefs;
 
   @override
@@ -43,9 +46,11 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
 
   Future<void> _loadPrefs() async {
     _prefs = await SharedPreferences.getInstance();
+    final relayConfigured = await RichMessageRelayConfig.isConfigured();
     if (!mounted) return;
     setState(() {
       _enterToSend = _prefs!.getBool('enterToSend') ?? false;
+      _richMessageRelayConfigured = relayConfigured;
     });
   }
 
@@ -110,12 +115,73 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
                 const SizedBox(height: 14),
                 _autoDownloadCard(),
                 const SizedBox(height: 14),
+                _richMessageCard(),
+                const SizedBox(height: 14),
                 _chatCard(),
               ],
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _richMessageCard() {
+    final c = context.colors;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionHeader(AppStringKeys.richTextRelayBotTitle),
+        _card([
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () async {
+              await Navigator.of(context).push<void>(
+                PageRouteBuilder<void>(
+                  pageBuilder: (_, _, _) => const RichMessageRelayView(),
+                  transitionsBuilder: (_, animation, _, child) =>
+                      FadeTransition(opacity: animation, child: child),
+                ),
+              );
+              final configured = await RichMessageRelayConfig.isConfigured();
+              if (mounted) {
+                setState(() => _richMessageRelayConfigured = configured);
+              }
+            },
+            child: SizedBox(
+              height: 56,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    _iconBadge(HeroAppIcons.key.data, const Color(0xFF8E7BFF)),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        AppStringKeys.richTextRelayBotTitle.l10n(context),
+                        style: TextStyle(fontSize: 16, color: c.textPrimary),
+                      ),
+                    ),
+                    Text(
+                      (_richMessageRelayConfigured
+                              ? AppStringKeys.richTextRelayBotConfigured
+                              : AppStringKeys.richTextRelayBotNotConfigured)
+                          .l10n(context),
+                      style: TextStyle(fontSize: 14, color: c.textSecondary),
+                    ),
+                    const SizedBox(width: 8),
+                    AppIcon(
+                      HeroAppIcons.chevronRight,
+                      size: AppIconSize.chevron,
+                      color: c.textTertiary,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ]),
+      ],
     );
   }
 

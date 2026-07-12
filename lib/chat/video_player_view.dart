@@ -162,8 +162,18 @@ class _TdVideoStreamServer {
       request.response.add(bytes);
       await request.response.close();
     } catch (_) {
-      request.response.statusCode = HttpStatus.internalServerError;
-      await request.response.close();
+      // The player may cancel a range request after headers were sent. Do not
+      // attempt to mutate that response again; just finish it if it is open.
+      try {
+        request.response.statusCode = HttpStatus.internalServerError;
+      } on StateError {
+        // Headers were already sent.
+      }
+      try {
+        await request.response.close();
+      } on StateError {
+        // The client already closed the response.
+      }
     }
   }
 

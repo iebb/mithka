@@ -9,6 +9,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -28,6 +29,7 @@ import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/telegram_language_controller.dart';
+import '../media/app_asset_picker.dart';
 import '../profile/profile_detail_view.dart';
 import '../settings/blocked_user_service.dart';
 import '../settings/developer_mode_controller.dart';
@@ -36,6 +38,7 @@ import '../settings/topic_group_display_mode.dart';
 import '../settings/translation_api.dart';
 import '../settings/translation_controller.dart';
 import '../tdlib/json_helpers.dart';
+import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
@@ -50,8 +53,10 @@ import 'chat_unread_progress.dart';
 import 'chat_view_model.dart';
 import 'custom_emoji.dart';
 import 'emoji_store.dart';
+import 'emoji_text_controller.dart';
 import 'forward_options.dart';
 import 'full_image_viewer.dart';
+import 'image_edit_view.dart';
 import 'link_handler.dart';
 import 'media_album_layout.dart';
 import 'media_library_saver.dart';
@@ -285,6 +290,333 @@ class _MessageDeleteOptionsDialogState
   }
 }
 
+enum _MediaEditAction { edit, replace, delete }
+
+enum _MessageEditorMode { plain, richText }
+
+class _PlainMessageEditResult {
+  const _PlainMessageEditResult(this.text, this.entities);
+
+  final String text;
+  final List<Map<String, dynamic>> entities;
+}
+
+class _MediaEditActionDialog extends StatelessWidget {
+  const _MediaEditActionDialog({required this.mediaLabel});
+
+  final String mediaLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return _ChatEditChoiceDialog<_MediaEditAction>(
+      title: mediaLabel,
+      choices: const [
+        (
+          value: _MediaEditAction.edit,
+          icon: HeroAppIcons.penToSquare,
+          label: AppStringKeys.messageActionEdit,
+          destructive: false,
+        ),
+        (
+          value: _MediaEditAction.replace,
+          icon: HeroAppIcons.images,
+          label: AppStringKeys.chatMediaReplace,
+          destructive: false,
+        ),
+        (
+          value: _MediaEditAction.delete,
+          icon: HeroAppIcons.trash,
+          label: AppStringKeys.chatMediaDelete,
+          destructive: true,
+        ),
+      ],
+    );
+  }
+}
+
+class _MessageEditorModeDialog extends StatelessWidget {
+  const _MessageEditorModeDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    return const _ChatEditChoiceDialog<_MessageEditorMode>(
+      title: AppStringKeys.chatEditMessageTitle,
+      choices: [
+        (
+          value: _MessageEditorMode.plain,
+          icon: HeroAppIcons.font,
+          label: AppStringKeys.chatEditPlainText,
+          destructive: false,
+        ),
+        (
+          value: _MessageEditorMode.richText,
+          icon: HeroAppIcons.wandMagicSparkles,
+          label: AppStringKeys.composerRichText,
+          destructive: false,
+        ),
+      ],
+    );
+  }
+}
+
+typedef _ChatEditChoice<T> = ({
+  T value,
+  AppIconData icon,
+  String label,
+  bool destructive,
+});
+
+class _ChatEditChoiceDialog<T> extends StatelessWidget {
+  const _ChatEditChoiceDialog({required this.title, required this.choices});
+
+  final String title;
+  final List<_ChatEditChoice<T>> choices;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Center(
+      child: Container(
+        width: math.min(MediaQuery.sizeOf(context).width - 40, 360),
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 12),
+        decoration: BoxDecoration(
+          color: c.card,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.22),
+              blurRadius: 28,
+              offset: const Offset(0, 12),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(6, 0, 6, 10),
+              child: Text(
+                title.l10n(context),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: c.textPrimary,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ),
+            for (final choice in choices)
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => Navigator.of(context).pop(choice.value),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 12,
+                  ),
+                  child: Row(
+                    children: [
+                      AppIcon(
+                        choice.icon,
+                        size: 22,
+                        color: choice.destructive
+                            ? const Color(0xFFFF6961)
+                            : c.textSecondary,
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Text(
+                          choice.label.l10n(context),
+                          style: TextStyle(
+                            color: choice.destructive
+                                ? const Color(0xFFFF6961)
+                                : c.textPrimary,
+                            fontSize: 16,
+                            decoration: TextDecoration.none,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PlainMessageEditDialog extends StatefulWidget {
+  const _PlainMessageEditDialog({
+    required this.initialText,
+    required this.initialEntities,
+  });
+
+  final String initialText;
+  final List<Map<String, dynamic>> initialEntities;
+
+  @override
+  State<_PlainMessageEditDialog> createState() =>
+      _PlainMessageEditDialogState();
+}
+
+class _PlainMessageEditDialogState extends State<_PlainMessageEditDialog> {
+  late final EmojiTextEditingController _controller;
+  final FocusNode _focusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = EmojiTextEditingController()
+      ..setFormattedText(widget.initialText, widget.initialEntities);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focusNode.requestFocus();
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final (text, entities) = _controller.toFormatted();
+    Navigator.of(context).pop(_PlainMessageEditResult(text, entities));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 150),
+      curve: Curves.easeOutCubic,
+      padding: EdgeInsets.fromLTRB(
+        20,
+        20,
+        20,
+        MediaQuery.viewInsetsOf(context).bottom + 20,
+      ),
+      child: Center(
+        child: Container(
+          width: math.min(MediaQuery.sizeOf(context).width - 40, 480),
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
+          decoration: BoxDecoration(
+            color: c.card,
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.22),
+                blurRadius: 28,
+                offset: const Offset(0, 12),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                AppStringKeys.chatEditMessageTitle.l10n(context),
+                style: TextStyle(
+                  color: c.textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+              const SizedBox(height: 14),
+              Container(
+                constraints: const BoxConstraints(
+                  minHeight: 88,
+                  maxHeight: 220,
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: c.searchFill,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: EditableText(
+                  controller: _controller,
+                  focusNode: _focusNode,
+                  style: TextStyle(
+                    color: c.textPrimary,
+                    fontSize: 16,
+                    height: 1.35,
+                  ),
+                  cursorColor: AppTheme.brand,
+                  backgroundCursorColor: c.textTertiary,
+                  keyboardType: TextInputType.multiline,
+                  maxLines: null,
+                  textInputAction: TextInputAction.newline,
+                  selectionColor: AppTheme.brand.withValues(alpha: 0.24),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  _PlainEditButton(
+                    label: AppStringKeys.countryPickerCancel,
+                    color: c.textSecondary,
+                    onTap: () => Navigator.of(context).pop(),
+                  ),
+                  const SizedBox(width: 8),
+                  _PlainEditButton(
+                    label: AppStringKeys.messageActionEdit,
+                    color: AppTheme.brand,
+                    onTap: _submit,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PlainEditButton extends StatelessWidget {
+  const _PlainEditButton({
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Text(
+          label.l10n(context),
+          style: TextStyle(
+            color: color,
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            decoration: TextDecoration.none,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class ChatView extends StatefulWidget {
   const ChatView({
     super.key,
@@ -340,15 +672,30 @@ class _ChatScrollSnapshot {
   const _ChatScrollSnapshot({
     required this.pixels,
     required this.wasAtLoadedBottom,
+    this.anchorMessageId,
+    this.anchorViewportOffset,
   });
 
   final double pixels;
   final bool wasAtLoadedBottom;
+  final int? anchorMessageId;
+  final double? anchorViewportOffset;
+}
+
+class _ChatSessionRenderState {
+  const _ChatSessionRenderState({
+    required this.messages,
+    required this.anchoredHistory,
+  });
+
+  final List<ChatMessage> messages;
+  final bool anchoredHistory;
 }
 
 class _ChatViewState extends State<ChatView> {
   late final bool _openAtLatest;
   late final _ChatScrollSnapshot? _sessionScrollSnapshot;
+  late final _ChatSessionRenderState? _sessionRenderState;
   late final ChatViewModel _vm;
   late final ScrollController _scroll;
   final _pinnedKey = GlobalKey(); // the pinned message's row, for scroll-to
@@ -368,12 +715,16 @@ class _ChatViewState extends State<ChatView> {
   bool _showJumpDown = false; // scrolled up → show jump-to-bottom button
   bool _bannerDismissed = false; // "N条新消息" banner dismissed / caught up
   Timer? _bannerTimer; // auto-hides the banner a few seconds after it appears
+  Timer? _readSyncTimer;
   int? _scrollTargetId;
   int? _lastNewestMessageId;
   final ChatUnreadProgress _unreadProgress = ChatUnreadProgress();
   int get _liveNewMessageCount => _unreadProgress.liveCount;
-  int get _remainingUnreadCount =>
-      _unreadProgress.remaining(initialUnreadCount: _vm.unreadCount);
+  int get _remainingUnreadCount => _showEntryUnreadBanner
+      ? _entryUnreadCount
+      : _unreadProgress.remaining(initialUnreadCount: _vm.unreadCount);
+  int _entryUnreadCount = 0;
+  bool _showEntryUnreadBanner = false;
   double _keyboardInset = 0;
   bool _shortTranscriptFillScheduled = false;
   bool _isFillingShortTranscript = false;
@@ -388,6 +739,10 @@ class _ChatViewState extends State<ChatView> {
   double _backSwipeDy = 0;
   bool _backSwipePopping = false;
   bool _loadingOlderFromScroll = false;
+  bool _maintainSessionScrollAnchor = false;
+  bool _sessionAnchorMaintenanceScheduled = false;
+  bool _openingUnreadMention = false;
+  bool _exitStatePrepared = false;
   VelocityTracker? _backSwipeVelocity;
   dc.TabBarVisibility? _tabBarVisibility;
 
@@ -398,6 +753,7 @@ class _ChatViewState extends State<ChatView> {
   static const _initialUnreadAlignment = 0.12;
   static OverlayEntry? _globalPictureInPictureVideo;
   static final Map<int, _ChatScrollSnapshot> _sessionScrollSnapshots = {};
+  static final Map<int, _ChatSessionRenderState> _sessionRenderStates = {};
   late final ChatAutoScrollPolicy _autoScrollPolicy;
 
   double _messageMediaMaxWidth([double? chatWidth]) {
@@ -409,10 +765,16 @@ class _ChatViewState extends State<ChatView> {
   void initState() {
     super.initState();
     _openAtLatest = context.read<ThemeController>().openChatsAtLatest;
+    _sessionRenderState = widget.initialMessageId == null
+        ? _sessionRenderStates[widget.chatId]
+        : null;
     _sessionScrollSnapshot = widget.initialMessageId == null
         ? _sessionScrollSnapshots[widget.chatId]
         : null;
     final sessionScrollSnapshot = _sessionScrollSnapshot;
+    _maintainSessionScrollAnchor =
+        sessionScrollSnapshot?.anchorMessageId != null &&
+        sessionScrollSnapshot?.anchorViewportOffset != null;
     _autoScrollPolicy = ChatAutoScrollPolicy(
       preserveViewport:
           sessionScrollSnapshot != null &&
@@ -421,18 +783,34 @@ class _ChatViewState extends State<ChatView> {
     _scroll = ScrollController(
       initialScrollOffset: _shouldRestoreSessionScroll
           ? _sessionScrollSnapshot!.pixels
-          : (_openAtLatest ? _initialBottomScrollOffset : 0),
+          : (_shouldOpenAtBottom ? _initialBottomScrollOffset : 0),
     )..addListener(_onScroll);
     _vm = ChatViewModel(
       chatId: widget.chatId,
       title: widget.title,
-      markReadOnOpen: _openAtLatest,
+      markReadOnOpen: _shouldOpenAtBottom,
       initialMessageId: widget.initialMessageId,
+      sessionAnchorMessageId: _shouldRestoreSessionScroll
+          ? _sessionScrollSnapshot?.anchorMessageId
+          : null,
+      sessionMessages: _sessionRenderState?.messages,
+      sessionAnchoredHistory: _sessionRenderState?.anchoredHistory ?? false,
       seedMessage: widget.seedMessage,
     );
+    if (_sessionRenderState != null && _vm.messages.isNotEmpty) {
+      _didInitialScroll = true;
+      _initialTranscriptReady = true;
+      _lastCount = _vm.messages.length;
+      _lastNewestMessageId = _vm.messages.last.id;
+    }
     _vm.addListener(_onModel);
     _scrollTargetId = widget.initialMessageId;
     _vm.onAppear();
+    _readSyncTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (mounted && _isAtLoadedBottom(80)) {
+        _markReadAtBottomIfNeeded();
+      }
+    });
     // Sync blocked-user-hiding toggle from theme.
     final theme = context.read<ThemeController>();
     BlockedUserService.shared.enabled = theme.hideBlockedUserMessages;
@@ -446,10 +824,26 @@ class _ChatViewState extends State<ChatView> {
 
   bool get _shouldRestoreSessionScroll {
     final snapshot = _sessionScrollSnapshot;
-    if (snapshot == null || widget.initialMessageId != null) return false;
-    if (snapshot.wasAtLoadedBottom && _openAtLatest) return false;
-    return true;
+    return shouldRestoreChatSessionOffset(
+      hasExplicitTarget: widget.initialMessageId != null,
+      hasSnapshot: snapshot != null,
+      snapshotWasAtBottom: snapshot?.wasAtLoadedBottom ?? false,
+    );
   }
+
+  bool get _shouldOpenAtBottom {
+    final snapshot = _sessionScrollSnapshot;
+    return shouldOpenChatAtBottom(
+      hasExplicitTarget: widget.initialMessageId != null,
+      openAtLatest: _openAtLatest,
+      hasSnapshot: snapshot != null,
+      snapshotWasAtBottom: snapshot?.wasAtLoadedBottom ?? false,
+    );
+  }
+
+  bool get _hasSessionScrollAnchor =>
+      _sessionScrollSnapshot?.anchorMessageId != null &&
+      _sessionScrollSnapshot?.anchorViewportOffset != null;
 
   void _retainTabBarSuppression() {
     if (!mounted) return;
@@ -510,18 +904,106 @@ class _ChatViewState extends State<ChatView> {
     if (show != _showJumpDown) setState(() => _showJumpDown = show);
   }
 
+  bool _onTranscriptUserScroll(UserScrollNotification notification) {
+    if (_initialTranscriptReady &&
+        notification.direction != ScrollDirection.idle) {
+      _maintainSessionScrollAnchor = false;
+    }
+    return false;
+  }
+
   void _saveSessionScrollSnapshot() {
     if (!_didInitialScroll ||
         !_initialTranscriptReady ||
+        _maintainSessionScrollAnchor ||
         !_scroll.hasClients ||
         widget.initialMessageId != null) {
       return;
     }
     final pos = _scroll.position;
     if (!pos.hasContentDimensions) return;
+    final wasAtLoadedBottom = _isAtLoadedBottom(80);
+    final anchor = wasAtLoadedBottom ? null : _captureSessionScrollAnchor();
     _sessionScrollSnapshots[widget.chatId] = _ChatScrollSnapshot(
       pixels: pos.pixels.clamp(pos.minScrollExtent, pos.maxScrollExtent),
-      wasAtLoadedBottom: _isAtLoadedBottom(),
+      wasAtLoadedBottom: wasAtLoadedBottom,
+      anchorMessageId: anchor?.messageId,
+      anchorViewportOffset: anchor?.viewportOffset,
+    );
+  }
+
+  void _prepareExitState() {
+    if (_exitStatePrepared) return;
+    _exitStatePrepared = true;
+    if (!_maintainSessionScrollAnchor) _saveSessionScrollSnapshot();
+    final snapshot = _sessionScrollSnapshots[widget.chatId];
+    if (snapshot != null && _vm.messages.isNotEmpty) {
+      _sessionRenderStates[widget.chatId] = _ChatSessionRenderState(
+        messages: List<ChatMessage>.unmodifiable(_vm.messages),
+        anchoredHistory: _vm.anchoredHistory,
+      );
+    }
+    if (_isAtLoadedBottom(80)) {
+      unawaited(_vm.markLoadedMessagesRead());
+    }
+  }
+
+  void _handleBack() {
+    _prepareExitState();
+    final onBack = widget.onBack;
+    if (onBack != null) {
+      onBack();
+    } else {
+      Navigator.of(context).pop();
+    }
+  }
+
+  Widget _withExitState(Widget child) {
+    return PopScope(
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) _prepareExitState();
+      },
+      child: child,
+    );
+  }
+
+  ({int messageId, double viewportOffset})? _captureSessionScrollAnchor() {
+    final viewportContext = _transcriptViewportKey.currentContext;
+    final viewportRenderObject = viewportContext?.findRenderObject();
+    if (viewportRenderObject is! RenderBox || !viewportRenderObject.attached) {
+      return null;
+    }
+    final viewportTop = viewportRenderObject.localToGlobal(Offset.zero).dy;
+    final viewportBottom = viewportTop + viewportRenderObject.size.height;
+    int? visibleAnchorMessageId;
+    double? visibleAnchorTop;
+    int? partialAnchorMessageId;
+    double? partialAnchorTop;
+    for (final entry in _trackedTranscriptEntries.entries) {
+      final itemContext = _entryVisibilityKeys[entry.key]?.currentContext;
+      final itemRenderObject = itemContext?.findRenderObject();
+      if (itemRenderObject is! RenderBox || !itemRenderObject.attached) {
+        continue;
+      }
+      final itemTop = itemRenderObject.localToGlobal(Offset.zero).dy;
+      final itemBottom = itemTop + itemRenderObject.size.height;
+      if (itemBottom <= viewportTop || itemTop >= viewportBottom) continue;
+      if (itemTop >= viewportTop) {
+        if (visibleAnchorTop == null || itemTop < visibleAnchorTop) {
+          visibleAnchorMessageId = entry.key;
+          visibleAnchorTop = itemTop;
+        }
+      } else if (partialAnchorTop == null || itemTop > partialAnchorTop) {
+        partialAnchorMessageId = entry.key;
+        partialAnchorTop = itemTop;
+      }
+    }
+    final anchorMessageId = visibleAnchorMessageId ?? partialAnchorMessageId;
+    final anchorTop = visibleAnchorTop ?? partialAnchorTop;
+    if (anchorMessageId == null || anchorTop == null) return null;
+    return (
+      messageId: anchorMessageId,
+      viewportOffset: anchorTop - viewportTop,
     );
   }
 
@@ -590,8 +1072,10 @@ class _ChatViewState extends State<ChatView> {
       changed = true;
     }
     if (!_bannerDismissed) {
-      _bannerDismissed = true;
-      changed = true;
+      if (!_showEntryUnreadBanner) {
+        _bannerDismissed = true;
+        changed = true;
+      }
     }
     if (changed && mounted) setState(() {});
   }
@@ -736,6 +1220,7 @@ class _ChatViewState extends State<ChatView> {
   void _jumpToFirstUnread() {
     setState(() {
       _unreadProgress.clearLiveMessages();
+      _showEntryUnreadBanner = false;
       _bannerDismissed = true;
     });
     final i = _vm.messages.indexWhere(
@@ -811,6 +1296,8 @@ class _ChatViewState extends State<ChatView> {
     // boundary) is loaded, jump to the first unread message — or stay at the
     // bottom when caught up. Runs exactly once per chat open.
     if (!_didInitialScroll && _vm.initialLoaded) {
+      _entryUnreadCount = _vm.unreadCount;
+      _showEntryUnreadBanner = _openAtLatest && _entryUnreadCount > 0;
       _didInitialScroll = true;
       if (_vm.messages.isEmpty) {
         _initialTranscriptReady = true;
@@ -837,6 +1324,25 @@ class _ChatViewState extends State<ChatView> {
     if (!_loadingOlderFromScroll) {
       setState(() {});
     }
+    _scheduleSessionScrollAnchorMaintenance();
+  }
+
+  void _scheduleSessionScrollAnchorMaintenance() {
+    if (!_maintainSessionScrollAnchor ||
+        !_initialTranscriptReady ||
+        _sessionAnchorMaintenanceScheduled) {
+      return;
+    }
+    final snapshot = _sessionScrollSnapshot;
+    if (snapshot == null) return;
+    _sessionAnchorMaintenanceScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _sessionAnchorMaintenanceScheduled = false;
+      if (!mounted || !_maintainSessionScrollAnchor || !_scroll.hasClients) {
+        return;
+      }
+      _restoreSessionScrollAnchor(snapshot);
+    });
   }
 
   int _firstUnreadIndex() => _vm.messages.indexWhere(
@@ -862,6 +1368,19 @@ class _ChatViewState extends State<ChatView> {
   Future<void> _restoreSessionScrollPosition() async {
     final snapshot = _sessionScrollSnapshot;
     if (snapshot == null || !_scroll.hasClients) return;
+    if (_hasSessionScrollAnchor) {
+      final estimate = _estimateMessageOffset(snapshot.anchorMessageId!, 0);
+      if (estimate != null) _scroll.jumpTo(estimate);
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted || !_scroll.hasClients) return;
+      if (_restoreSessionScrollAnchor(snapshot)) {
+        await WidgetsBinding.instance.endOfFrame;
+        if (mounted && _scroll.hasClients) {
+          _restoreSessionScrollAnchor(snapshot);
+        }
+        return;
+      }
+    }
     _jumpToSessionScrollSnapshot(snapshot);
     await WidgetsBinding.instance.endOfFrame;
     if (!mounted || !_scroll.hasClients) return;
@@ -884,6 +1403,36 @@ class _ChatViewState extends State<ChatView> {
     if (!mounted || !_scroll.hasClients) return;
     _jumpToSessionScrollSnapshot(snapshot);
     _saveSessionScrollSnapshot();
+  }
+
+  bool _restoreSessionScrollAnchor(_ChatScrollSnapshot snapshot) {
+    final messageId = snapshot.anchorMessageId;
+    final desiredOffset = snapshot.anchorViewportOffset;
+    if (messageId == null || desiredOffset == null || !_scroll.hasClients) {
+      return false;
+    }
+    final viewportContext = _transcriptViewportKey.currentContext;
+    final itemContext = _entryVisibilityKeys[messageId]?.currentContext;
+    final viewportRenderObject = viewportContext?.findRenderObject();
+    final itemRenderObject = itemContext?.findRenderObject();
+    if (viewportRenderObject is! RenderBox ||
+        !viewportRenderObject.attached ||
+        itemRenderObject is! RenderBox ||
+        !itemRenderObject.attached) {
+      return false;
+    }
+    final viewportTop = viewportRenderObject.localToGlobal(Offset.zero).dy;
+    final itemTop = itemRenderObject.localToGlobal(Offset.zero).dy;
+    final position = _scroll.position;
+    final target = correctedChatSessionScrollOffset(
+      currentPixels: position.pixels,
+      currentAnchorViewportOffset: itemTop - viewportTop,
+      savedAnchorViewportOffset: desiredOffset,
+      minScrollExtent: position.minScrollExtent,
+      maxScrollExtent: position.maxScrollExtent,
+    );
+    _scroll.jumpTo(target);
+    return true;
   }
 
   void _jumpToSessionScrollSnapshot(_ChatScrollSnapshot snapshot) {
@@ -924,7 +1473,7 @@ class _ChatViewState extends State<ChatView> {
     if (_vm.anchoredHistory) {
       return null;
     }
-    if (_openAtLatest) {
+    if (_shouldOpenAtBottom) {
       return max;
     }
     final i = _firstUnreadIndex();
@@ -961,7 +1510,7 @@ class _ChatViewState extends State<ChatView> {
       return corrected;
     }
     if (_vm.anchoredHistory) return true;
-    if (_openAtLatest) {
+    if (_shouldOpenAtBottom) {
       _scrollToBottom(settle: settleBottom, forceSettle: settleBottom);
       unawaited(_vm.markLoadedMessagesRead());
       return true;
@@ -1156,6 +1705,7 @@ class _ChatViewState extends State<ChatView> {
           _scroll.jumpTo(_scroll.position.maxScrollExtent);
           _markReadAtBottomIfNeeded();
           _clearBottomIndicatorsIfNeeded();
+          _saveSessionScrollSnapshot();
         }
       }
     }();
@@ -1263,6 +1813,7 @@ class _ChatViewState extends State<ChatView> {
     if (_backSwipePopping || !mounted) return;
     _backSwipePopping = true;
     try {
+      _prepareExitState();
       final onBack = widget.onBack;
       if (onBack != null) {
         onBack();
@@ -1427,9 +1978,10 @@ class _ChatViewState extends State<ChatView> {
 
   @override
   void dispose() {
-    _saveSessionScrollSnapshot();
+    _prepareExitState();
     _tabBarVisibility?.releaseChatSuppression();
     _bannerTimer?.cancel();
+    _readSyncTimer?.cancel();
     _vm.removeListener(_onModel);
     _vm.onDisappear();
     _vm.dispose();
@@ -2343,7 +2895,235 @@ class _ChatViewState extends State<ChatView> {
     return locale.languageCode;
   }
 
+  bool _isEditableMediaMessage(ChatMessage message) =>
+      message.contentType == 'messagePhoto' ||
+      message.contentType == 'messageVideo' ||
+      message.contentType == 'messageAnimation' ||
+      message.contentType == 'messageAudio' ||
+      message.contentType == 'messageDocument';
+
   Future<void> _editMessage(ChatMessage message) async {
+    if (_isEditableMediaMessage(message)) {
+      final action = await showGeneralDialog<_MediaEditAction>(
+        context: context,
+        barrierDismissible: true,
+        barrierLabel: AppStringKeys.countryPickerCancel.l10n(context),
+        barrierColor: Colors.black.withValues(alpha: 0.38),
+        transitionDuration: const Duration(milliseconds: 170),
+        pageBuilder: (_, _, _) =>
+            _MediaEditActionDialog(mediaLabel: _mediaLabel(message)),
+      );
+      if (!mounted || action == null) return;
+      switch (action) {
+        case _MediaEditAction.edit:
+          if (message.contentType == 'messagePhoto') {
+            await _editPhotoInPlace(message);
+          } else {
+            await _editMessageText(message);
+          }
+        case _MediaEditAction.replace:
+          await _replaceMessageMedia(message);
+        case _MediaEditAction.delete:
+          await _deleteMessageMedia(message);
+      }
+      return;
+    }
+    await _editMessageText(message);
+  }
+
+  Future<void> _editMessageText(ChatMessage message) async {
+    var premium = false;
+    try {
+      premium = await _vm.currentUserIsPremium();
+    } catch (_) {}
+    if (!mounted) return;
+    var mode = _MessageEditorMode.plain;
+    if (premium) {
+      final selected = await showGeneralDialog<_MessageEditorMode>(
+        context: context,
+        barrierDismissible: true,
+        barrierLabel: AppStringKeys.countryPickerCancel.l10n(context),
+        barrierColor: Colors.black.withValues(alpha: 0.38),
+        transitionDuration: const Duration(milliseconds: 170),
+        pageBuilder: (_, _, _) => const _MessageEditorModeDialog(),
+      );
+      if (!mounted || selected == null) return;
+      mode = selected;
+    }
+    if (mode == _MessageEditorMode.richText) {
+      await _editMessageWithRichText(message);
+    } else {
+      await _editMessagePlain(message);
+    }
+  }
+
+  Future<void> _editMessagePlain(ChatMessage message) async {
+    final result = await showGeneralDialog<_PlainMessageEditResult>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: AppStringKeys.countryPickerCancel.l10n(context),
+      barrierColor: Colors.black.withValues(alpha: 0.38),
+      transitionDuration: const Duration(milliseconds: 170),
+      pageBuilder: (_, _, _) => _PlainMessageEditDialog(
+        initialText: _editableMessageText(message),
+        initialEntities: [
+          for (final entity in message.textEntities) entity.toTdJson(),
+        ],
+      ),
+    );
+    if (!mounted || result == null) return;
+    try {
+      if (_isEditableMediaMessage(message)) {
+        await _vm.editMessageCaption(
+          message.id,
+          result.text,
+          entities: result.entities,
+        );
+      } else {
+        if (result.text.trim().isEmpty) {
+          showToast(context, AppStringKeys.chatMessageRequired);
+          return;
+        }
+        await _vm.editMessageText(
+          message.id,
+          result.text,
+          entities: result.entities,
+        );
+      }
+    } catch (e) {
+      if (mounted) showToast(context, '$e');
+    }
+  }
+
+  Future<void> _editPhotoInPlace(ChatMessage message) async {
+    final image = message.image;
+    if (image == null) return;
+    final path = await TdFileCenter.shared.pathFor(image);
+    if (!mounted) return;
+    if (path == null || path.isEmpty) {
+      showToast(context, AppStringKeys.composerOpenAttachmentFailed);
+      return;
+    }
+    final result = await Navigator.of(context).push<ImageEditResult>(
+      MaterialPageRoute(
+        builder: (_) => ImageEditView(
+          sourcePath: path,
+          initialCaption: _editableMessageText(message),
+        ),
+      ),
+    );
+    if (!mounted || result == null) return;
+    try {
+      await _vm.editMessageMedia(
+        message.id,
+        OutgoingAttachment(
+          path: result.path,
+          kind: OutgoingAttachmentKind.photo,
+        ),
+        caption: result.caption,
+      );
+    } catch (e) {
+      if (mounted) showToast(context, '$e');
+    }
+  }
+
+  Future<void> _replaceMessageMedia(ChatMessage message) async {
+    OutgoingAttachment? replacement;
+    if (message.contentType == 'messagePhoto' ||
+        message.contentType == 'messageVideo' ||
+        message.contentType == 'messageAnimation') {
+      final selection = await AppAssetPicker.pickDetailed(
+        context,
+        type: AppAssetPickerType.imageAndVideo,
+        maxAssets: 1,
+      );
+      if (!mounted || selection.assets.isEmpty) return;
+      final asset = selection.assets.first;
+      final file = asset.file;
+      final kind = isPickedAssetVideo(file)
+          ? OutgoingAttachmentKind.video
+          : isPickedAssetGif(file)
+          ? OutgoingAttachmentKind.animation
+          : OutgoingAttachmentKind.photo;
+      replacement = OutgoingAttachment(
+        path: file.path,
+        kind: kind,
+        previewBytes: asset.thumbnailBytes,
+        width: asset.width,
+        height: asset.height,
+      );
+    } else {
+      final picked = await FilePicker.platform.pickFiles(
+        type: message.contentType == 'messageAudio'
+            ? FileType.audio
+            : FileType.any,
+      );
+      final path = picked?.files.single.path;
+      if (!mounted || path == null) return;
+      replacement = OutgoingAttachment(
+        path: path,
+        kind: message.contentType == 'messageAudio'
+            ? OutgoingAttachmentKind.audio
+            : OutgoingAttachmentKind.document,
+      );
+    }
+    try {
+      await _vm.editMessageMedia(
+        message.id,
+        replacement,
+        caption: _editableMessageText(message),
+        entities: [
+          for (final entity in message.textEntities) entity.toTdJson(),
+        ],
+      );
+    } catch (e) {
+      if (mounted) showToast(context, '$e');
+    }
+  }
+
+  Future<void> _deleteMessageMedia(ChatMessage message) async {
+    final confirmed = await confirmDialog(
+      context,
+      title: AppStringKeys.chatDeleteSingleMessageQuestion,
+      confirmText: AppStringKeys.chatDelete,
+      destructive: true,
+    );
+    if (!mounted || !confirmed) return;
+    try {
+      await _vm.deleteMessage(message.id);
+    } catch (e) {
+      if (mounted) showToast(context, '$e');
+    }
+  }
+
+  String _editableMessageText(ChatMessage message) {
+    final text = message.text.trim();
+    if (text.isEmpty || (text.startsWith('[') && text.endsWith(']'))) return '';
+    final placeholders = <String>{
+      telegramText(AppStringKeys.composerImagePreview),
+      telegramText(AppStringKeys.chatVideoPlaceholder),
+      telegramText(AppStringKeys.composerAnimatedEmojiPreview),
+      telegramText(AppStringKeys.tdMessageMusic),
+      telegramText(AppStringKeys.channelsFileAttachment),
+      if (message.document != null)
+        telegramText(AppStringKeys.tdMessageFileWithName, {
+          'value1': message.document!.fileName,
+        }),
+    };
+    return placeholders.contains(text) ? '' : message.text;
+  }
+
+  String _mediaLabel(ChatMessage message) => switch (message.contentType) {
+    'messagePhoto' => telegramText(AppStringKeys.composerImagePreview),
+    'messageVideo' => telegramText(AppStringKeys.chatVideoPlaceholder),
+    'messageAnimation' => telegramText(
+      AppStringKeys.composerAnimatedEmojiPreview,
+    ),
+    'messageAudio' => telegramText(AppStringKeys.tdMessageMusic),
+    _ => telegramText(AppStringKeys.topicPostContentFile),
+  };
+
+  Future<void> _editMessageWithRichText(ChatMessage message) async {
     final result = await showRichTextComposerSheet(
       context,
       initialText: message.text,
@@ -2371,8 +3151,7 @@ class _ChatViewState extends State<ChatView> {
         if (canReplaceMedia) {
           await _vm.editMessageMedia(
             message.id,
-            media.path,
-            isVideo: media.kind == OutgoingAttachmentKind.video,
+            media,
             caption: result.text,
             entities: result.entities,
           );
@@ -2516,40 +3295,41 @@ class _ChatViewState extends State<ChatView> {
     // Not a member, joinable, and nothing to preview → a custom join screen
     // (header + centered card) instead of the transcript + composer.
     if (!_vm.isMember && _vm.canJoin && _vm.messages.isEmpty) {
-      return Scaffold(
-        backgroundColor: c.groupedBackground,
-        body: _joinScreenBody(),
+      return _withExitState(
+        Scaffold(backgroundColor: c.groupedBackground, body: _joinScreenBody()),
       );
     }
-    return Scaffold(
-      backgroundColor: c.inputBarBackground,
-      resizeToAvoidBottomInset: true,
-      body: ColoredBox(
-        color: c.chatBackground,
-        child: ChatMediaDropRegion(
-          enabled: _vm.canSendMessages && !_isSelecting,
-          onImagesDropped: _previewAndSendDroppedImages,
-          child: Listener(
-            behavior: HitTestBehavior.translucent,
-            onPointerDown: _onBackSwipePointerDown,
-            onPointerMove: _onBackSwipePointerMove,
-            onPointerUp: _onBackSwipePointerEnd,
-            onPointerCancel: _onBackSwipePointerEnd,
-            child: Stack(
-              children: [
-                Positioned.fill(
-                  child: Column(
-                    children: [
-                      _isSelecting ? _selectionHeader() : _header(),
-                      Expanded(child: _transcriptLayer()),
-                      _isSelecting ? _selectionActionBar() : _composerArea(),
-                    ],
+    return _withExitState(
+      Scaffold(
+        backgroundColor: c.inputBarBackground,
+        resizeToAvoidBottomInset: true,
+        body: ColoredBox(
+          color: c.chatBackground,
+          child: ChatMediaDropRegion(
+            enabled: _vm.canSendMessages && !_isSelecting,
+            onImagesDropped: _previewAndSendDroppedImages,
+            child: Listener(
+              behavior: HitTestBehavior.translucent,
+              onPointerDown: _onBackSwipePointerDown,
+              onPointerMove: _onBackSwipePointerMove,
+              onPointerUp: _onBackSwipePointerEnd,
+              onPointerCancel: _onBackSwipePointerEnd,
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: Column(
+                      children: [
+                        _isSelecting ? _selectionHeader() : _header(),
+                        Expanded(child: _transcriptLayer()),
+                        _isSelecting ? _selectionActionBar() : _composerArea(),
+                      ],
+                    ),
                   ),
-                ),
-                if (_actionTarget != null && !_isSelecting)
-                  _actionMenuOverlay(),
-                if (_vm.isTelegramTosRestricted) _restrictedChatOverlay(),
-              ],
+                  if (_actionTarget != null && !_isSelecting)
+                    _actionMenuOverlay(),
+                  if (_vm.isTelegramTosRestricted) _restrictedChatOverlay(),
+                ],
+              ),
             ),
           ),
         ),
@@ -2760,6 +3540,14 @@ class _ChatViewState extends State<ChatView> {
                   bottom: 12,
                   child: _newMessagesBanner(pointsDown: true),
                 ),
+        if (transcriptReady && _vm.unreadMentionCount > 0)
+          Positioned(
+            top:
+                (showPinnedTodo ? 72.0 : 8.0) +
+                (_shouldShowNewMessagesBanner && _openAtLatest ? 42.0 : 0.0),
+            right: 12,
+            child: _unreadMentionIndicator(),
+          ),
         if (transcriptReady &&
             _showJumpDown &&
             !(!_openAtLatest && _shouldShowNewMessagesBanner))
@@ -2845,6 +3633,7 @@ class _ChatViewState extends State<ChatView> {
     if (_remainingUnreadCount <= 0 || _bannerDismissed) {
       return false;
     }
+    if (_showEntryUnreadBanner) return true;
     if (_isAtLoadedBottom()) return false;
     return _openAtLatest || !_isNearBottom(80);
   }
@@ -2926,6 +3715,48 @@ class _ChatViewState extends State<ChatView> {
         ),
       ),
     );
+  }
+
+  Widget _unreadMentionIndicator() {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _openingUnreadMention ? null : _openUnreadMention,
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 120),
+        opacity: _openingUnreadMention ? 0.62 : 1,
+        child: Container(
+          width: 40,
+          height: 34,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: AppTheme.brand,
+            borderRadius: BorderRadius.circular(17),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.12),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: const Text(
+            '@',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openUnreadMention() async {
+    if (_openingUnreadMention || _vm.unreadMentionCount <= 0) return;
+    setState(() => _openingUnreadMention = true);
+    await _vm.openNextUnreadMention();
+    if (mounted) setState(() => _openingUnreadMention = false);
   }
 
   // MARK: - Composer area (input bar / join bar / disabled bar)
@@ -3195,7 +4026,7 @@ class _ChatViewState extends State<ChatView> {
                   if (widget.showBackButton)
                     GestureDetector(
                       behavior: HitTestBehavior.opaque,
-                      onTap: widget.onBack ?? () => Navigator.of(context).pop(),
+                      onTap: _handleBack,
                       child: Padding(
                         padding: const EdgeInsets.only(right: 10),
                         child: AppIcon(
@@ -3574,18 +4405,10 @@ class _ChatViewState extends State<ChatView> {
         ),
         child: Row(
           children: [
-            Container(
-              width: 16,
-              height: 16,
-              decoration: BoxDecoration(
-                border: Border.all(color: const Color(0xFFFFB300), width: 2),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: const AppIcon(
-                HeroAppIcons.check,
-                size: 15,
-                color: Color(0xFFFFB300),
-              ),
+            const AppIcon(
+              HeroAppIcons.thumbtack,
+              size: 16,
+              color: Color(0xFFFFB300),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -3793,96 +4616,100 @@ class _ChatViewState extends State<ChatView> {
     _scheduleUnreadProgressUpdate();
     return Container(
       color: context.colors.chatBackground,
-      child: ListView.builder(
-        key: _transcriptViewportKey,
-        controller: _scroll,
-        physics: const ClampingScrollPhysics(
-          parent: AlwaysScrollableScrollPhysics(),
-        ),
-        scrollCacheExtent: ScrollCacheExtent.pixels(
-          defaultTargetPlatform == TargetPlatform.android ? 260 : 420,
-        ),
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        itemCount: entries.length,
-        // Lets keyed children be reused when history pages shift indices
-        // instead of being torn down and rebuilt.
-        findChildIndexCallback: (key) => _transcriptIndexByKey[key],
-        itemBuilder: (context, index) {
-          final entry = entries[index];
-          final message = entry.first;
-          final messageIndex = entry.startIndex;
-          final isTarget = entry.messages.any((m) => m.id == _scrollTargetId);
-          final isPinned = entry.messages.any(
-            (m) => m.id == _vm.pinnedMessage?.id,
-          );
-          final content = Column(
-            key: isTarget
-                ? _targetKey
-                : isPinned
-                ? _pinnedKey
-                : null,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (_needsUnreadDivider(messageIndex, messages: messages))
-                KeyedSubtree(key: _unreadKey, child: _unreadDivider()),
-              if (_needsSeparator(messageIndex, messages: messages))
-                TimeSeparator(unix: message.date),
-              if (message.isService)
-                SystemBanner(text: message.text)
-              else if (message.blockedByUser)
-                _blockedMessagePlaceholder(context)
-              else if (entry.isImageGroup)
-                _selectionEntry(entry, _imageGroupBubble(entry.messages))
-              else
-                _selectionEntry(
-                  entry,
-                  MessageBubble(
-                    message: message,
-                    peerTitle: _vm.peerTitle,
-                    peerPhoto: _vm.peerPhoto,
-                    isGroup: _vm.isGroup,
-                    meName: _vm.meName,
-                    mePhoto: _vm.mePhoto,
-                    showRepeat: _isRepeatTail(messageIndex),
-                    onRepeat: () => _vm.repeatMessage(message),
-                    onLongPress: _isSelecting
-                        ? null
-                        : _showActionMenuForMessage,
-                    onReply: (m) => _vm.setReply(m),
-                    onAvatarTap: _openSenderProfile,
-                    onAvatarLongPress: (m) {
-                      if (_vm.isGroup && (m.senderName?.isNotEmpty ?? false)) {
-                        _vm.insertMention(m);
-                      }
-                    },
-                    onOpenReply: _scrollToMessage,
-                    onOpenComments: _openMessageComments,
-                    showCommentAttachment: _vm.isChannel,
-                    onOpenImage: _openImage,
-                    onOpenSticker: _openSticker,
-                    onPlayVideo: _playVideo,
-                    onButtonTap: _pressMessageButton,
-                    onBotCommandTap: _vm.sendCommand,
-                    onHashtagTap: _openHashtagSearch,
-                    isRead: _vm.isRead(message),
-                    onToggleReaction: (r) => _vm.toggleReaction(message, r),
-                    onShowReactionUsers: _showReactionUsers,
-                    onRedial: _startCall,
+      child: NotificationListener<UserScrollNotification>(
+        onNotification: _onTranscriptUserScroll,
+        child: ListView.builder(
+          key: _transcriptViewportKey,
+          controller: _scroll,
+          physics: const ClampingScrollPhysics(
+            parent: AlwaysScrollableScrollPhysics(),
+          ),
+          scrollCacheExtent: ScrollCacheExtent.pixels(
+            defaultTargetPlatform == TargetPlatform.android ? 260 : 420,
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          itemCount: entries.length,
+          // Lets keyed children be reused when history pages shift indices
+          // instead of being torn down and rebuilt.
+          findChildIndexCallback: (key) => _transcriptIndexByKey[key],
+          itemBuilder: (context, index) {
+            final entry = entries[index];
+            final message = entry.first;
+            final messageIndex = entry.startIndex;
+            final isTarget = entry.messages.any((m) => m.id == _scrollTargetId);
+            final isPinned = entry.messages.any(
+              (m) => m.id == _vm.pinnedMessage?.id,
+            );
+            final content = Column(
+              key: isTarget
+                  ? _targetKey
+                  : isPinned
+                  ? _pinnedKey
+                  : null,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_needsUnreadDivider(messageIndex, messages: messages))
+                  KeyedSubtree(key: _unreadKey, child: _unreadDivider()),
+                if (_needsSeparator(messageIndex, messages: messages))
+                  TimeSeparator(unix: message.date),
+                if (message.isService)
+                  SystemBanner(text: message.text)
+                else if (message.blockedByUser)
+                  _blockedMessagePlaceholder(context)
+                else if (entry.isImageGroup)
+                  _selectionEntry(entry, _imageGroupBubble(entry.messages))
+                else
+                  _selectionEntry(
+                    entry,
+                    MessageBubble(
+                      message: message,
+                      peerTitle: _vm.peerTitle,
+                      peerPhoto: _vm.peerPhoto,
+                      isGroup: _vm.isGroup,
+                      meName: _vm.meName,
+                      mePhoto: _vm.mePhoto,
+                      showRepeat: _isRepeatTail(messageIndex),
+                      onRepeat: () => _vm.repeatMessage(message),
+                      onLongPress: _isSelecting
+                          ? null
+                          : _showActionMenuForMessage,
+                      onReply: (m) => _vm.setReply(m),
+                      onAvatarTap: _openSenderProfile,
+                      onAvatarLongPress: (m) {
+                        if (_vm.isGroup &&
+                            (m.senderName?.isNotEmpty ?? false)) {
+                          _vm.insertMention(m);
+                        }
+                      },
+                      onOpenReply: _scrollToMessage,
+                      onOpenComments: _openMessageComments,
+                      showCommentAttachment: _vm.isChannel,
+                      onOpenImage: _openImage,
+                      onOpenSticker: _openSticker,
+                      onPlayVideo: _playVideo,
+                      onButtonTap: _pressMessageButton,
+                      onBotCommandTap: _vm.sendCommand,
+                      onHashtagTap: _openHashtagSearch,
+                      isRead: _vm.isRead(message),
+                      onToggleReaction: (r) => _vm.toggleReaction(message, r),
+                      onShowReactionUsers: _showReactionUsers,
+                      onRedial: _startCall,
+                    ),
                   ),
+              ],
+            );
+            return KeyedSubtree(
+              key: entry.key,
+              child: KeyedSubtree(
+                key: _entryVisibilityKeys.putIfAbsent(
+                  entry.first.id,
+                  GlobalKey.new,
                 ),
-            ],
-          );
-          return KeyedSubtree(
-            key: entry.key,
-            child: KeyedSubtree(
-              key: _entryVisibilityKeys.putIfAbsent(
-                entry.first.id,
-                GlobalKey.new,
+                child: RepaintBoundary(child: content),
               ),
-              child: RepaintBoundary(child: content),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }
@@ -3928,40 +4755,56 @@ class _ChatViewState extends State<ChatView> {
     if (!_isSelecting) return child;
     final selectable = entry.messages.where((m) => !m.isService).toList();
     if (selectable.isEmpty) return child;
-    final selected = selectable.every(
-      (m) => _selectedMessageIds.contains(m.id),
-    );
+    final selectedCount = selectable
+        .where((m) => _selectedMessageIds.contains(m.id))
+        .length;
+    final selected = selectedCount == selectable.length;
+    final partiallySelected = selectedCount > 0 && !selected;
     final c = context.colors;
-    return GestureDetector(
+    final rowSelector = GestureDetector(
+      key: ValueKey('message-row-selection-${entry.first.id}'),
       behavior: HitTestBehavior.opaque,
       onTap: () => _toggleSelection(selectable),
-      child: Row(
-        children: [
-          const SizedBox(width: 16),
-          Container(
-            width: 24,
-            height: 24,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: selected ? AppTheme.brand : Colors.transparent,
-              border: Border.all(
-                color: selected ? AppTheme.brand : c.textTertiary,
-                width: selected ? 0 : 1.4,
-              ),
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Container(
+          width: 24,
+          height: 24,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: selected || partiallySelected
+                ? AppTheme.brand
+                : Colors.transparent,
+            border: Border.all(
+              color: selected || partiallySelected
+                  ? AppTheme.brand
+                  : c.textTertiary,
+              width: selected || partiallySelected ? 0 : 1.4,
             ),
-            child: selected
-                ? const AppIcon(
-                    HeroAppIcons.check,
-                    size: 17,
-                    color: Colors.white,
-                  )
-                : null,
           ),
-          const SizedBox(width: 8),
-          Expanded(child: IgnorePointer(child: child)),
-        ],
+          child: selected
+              ? const AppIcon(HeroAppIcons.check, size: 17, color: Colors.white)
+              : partiallySelected
+              ? const AppIcon(HeroAppIcons.minus, size: 15, color: Colors.white)
+              : null,
+        ),
       ),
+    );
+    return Row(
+      children: [
+        const SizedBox(width: 8),
+        rowSelector,
+        entry.isImageGroup
+            ? Expanded(child: child)
+            : Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _toggleSelection(selectable),
+                  child: IgnorePointer(child: child),
+                ),
+              ),
+      ],
     );
   }
 
@@ -4045,15 +4888,13 @@ class _ChatViewState extends State<ChatView> {
     final avatarPhoto = outgoing
         ? _vm.mePhoto
         : (_vm.isGroup ? first.senderPhoto : _vm.peerPhoto);
-    final captions = group
-        .map((m) => m.text.trim())
-        .where(
-          (text) =>
-              text.isNotEmpty &&
-              text != AppStringKeys.composerImagePreview &&
-              text != AppStringKeys.chatVideoPlaceholder,
-        )
-        .toList();
+    ChatMessage? captionMessage;
+    for (final message in group) {
+      if (_albumCaption(message).isNotEmpty) {
+        captionMessage = message;
+        break;
+      }
+    }
     Widget avatar() => GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => _openSenderProfile(first),
@@ -4075,7 +4916,7 @@ class _ChatViewState extends State<ChatView> {
         final gallery = _imageGroupGallery(
           group,
           outgoing,
-          captions,
+          captionMessage,
           maxWidth: _messageMediaMaxWidth(chatWidth),
         );
         final Widget body = outgoing
@@ -4125,7 +4966,7 @@ class _ChatViewState extends State<ChatView> {
   Widget _imageGroupGallery(
     List<ChatMessage> group,
     bool outgoing,
-    List<String> captions, {
+    ChatMessage? captionMessage, {
     required double maxWidth,
   }) {
     final c = context.colors;
@@ -4177,21 +5018,37 @@ class _ChatViewState extends State<ChatView> {
               ],
             ),
           ),
-          if (captions.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(6, 7, 6, 3),
-              child: Text(
-                captions.first,
-                style: TextStyle(
-                  fontSize: 15,
-                  height: 1.25,
-                  color: outgoing ? AppTheme.bubbleOutgoingText : c.textPrimary,
+          if (captionMessage != null)
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: outgoing
+                  ? () => unawaited(_editMessageText(captionMessage))
+                  : null,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(6, 7, 6, 3),
+                child: Text(
+                  _albumCaption(captionMessage),
+                  style: TextStyle(
+                    fontSize: 15,
+                    height: 1.25,
+                    color: outgoing
+                        ? AppTheme.bubbleOutgoingText
+                        : c.textPrimary,
+                  ),
                 ),
               ),
             ),
         ],
       ),
     );
+  }
+
+  String _albumCaption(ChatMessage message) {
+    final text = message.text.trim();
+    if (text.isEmpty || (text.startsWith('[') && text.endsWith(']'))) return '';
+    final imagePlaceholder = telegramText(AppStringKeys.composerImagePreview);
+    final videoPlaceholder = telegramText(AppStringKeys.chatVideoPlaceholder);
+    return text == imagePlaceholder || text == videoPlaceholder ? '' : text;
   }
 
   Widget _imageGroupTile(
@@ -4204,6 +5061,10 @@ class _ChatViewState extends State<ChatView> {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () {
+        if (_isSelecting) {
+          _toggleSelection([message]);
+          return;
+        }
         if (message.video != null) {
           _playVideo(message);
         } else {
@@ -4273,9 +5134,39 @@ class _ChatViewState extends State<ChatView> {
                   ),
                 ),
               ),
+            if (_isSelecting)
+              Positioned(
+                top: 6,
+                right: 6,
+                child: IgnorePointer(child: _mediaSelectionIndicator(message)),
+              ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _mediaSelectionIndicator(ChatMessage message) {
+    final selected = _selectedMessageIds.contains(message.id);
+    return Container(
+      key: ValueKey('media-selection-${message.id}'),
+      width: 24,
+      height: 24,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: selected ? AppTheme.brand : Colors.black.withValues(alpha: 0.28),
+        border: Border.all(
+          color: selected ? AppTheme.brand : Colors.white,
+          width: selected ? 0 : 1.4,
+        ),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.18), blurRadius: 4),
+        ],
+      ),
+      child: selected
+          ? const AppIcon(HeroAppIcons.check, size: 17, color: Colors.white)
+          : null,
     );
   }
 
@@ -4402,13 +5293,15 @@ class _ChatViewState extends State<ChatView> {
               right: 10,
               child: _reactionExpanded
                   ? Align(alignment: align, child: _expandedReactionPicker())
-                  : SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      reverse: align == Alignment.centerRight,
-                      physics: const ClampingScrollPhysics(),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [_quickReactionBar()],
+                  : Align(
+                      alignment: align,
+                      child: QuickReactionBar(
+                        reactions: _quickReactions,
+                        onReaction: _react,
+                        onExpand: () {
+                          EmojiStore.shared.loadIfNeeded();
+                          setState(() => _reactionExpanded = true);
+                        },
                       ),
                     ),
             ),
@@ -4427,63 +5320,6 @@ class _ChatViewState extends State<ChatView> {
                 ),
               ),
             ),
-        ],
-      ),
-    );
-  }
-
-  Widget _quickReactionBar() {
-    return Container(
-      width: MessageActionMenu.widthForAvailable(
-        MediaQuery.sizeOf(context).width - 24,
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      decoration: BoxDecoration(
-        color: const Color(0xFF2C2C2E),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 12),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final e in _quickReactions)
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => _react(e),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                child: Text(
-                  e,
-                  textScaler: TextScaler.noScaling,
-                  style: const TextStyle(fontSize: 28),
-                ),
-              ),
-            ),
-          // Expand → full (tabbed, for premium) reaction picker.
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () {
-              EmojiStore.shared.loadIfNeeded();
-              setState(() => _reactionExpanded = true);
-            },
-            child: Container(
-              margin: const EdgeInsets.only(left: 2),
-              width: 34,
-              height: 34,
-              alignment: Alignment.center,
-              decoration: const BoxDecoration(
-                color: Color(0xFF3A3A3C),
-                shape: BoxShape.circle,
-              ),
-              child: const AppIcon(
-                HeroAppIcons.chevronDown,
-                size: 22,
-                color: Colors.white,
-              ),
-            ),
-          ),
         ],
       ),
     );

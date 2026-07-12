@@ -31,12 +31,12 @@ import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../l10n/telegram_language_controller.dart';
 import '../media/app_asset_picker.dart';
+import '../profile/profile_detail_view.dart';
 import '../settings/accent_color_picker_view.dart';
 import '../tdlib/chat_membership.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
-import '../profile/profile_detail_view.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
 import 'story_viewer_view.dart';
@@ -833,8 +833,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
     for (final post in posts) {
       final message = post.message;
       final replyToMessageId = message.replyToMessageId;
-      if (replyToMessageId == null ||
-          (message.replyToPreview?.trim().isNotEmpty ?? false)) {
+      if (replyToMessageId == null || message.replyToPreview != null) {
         continue;
       }
       final key = '${post.channel.id}:${message.id}:$replyToMessageId';
@@ -860,6 +859,9 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
       final quoted = TDParse.message(raw);
       if (quoted == null) return;
       message.replyToPreview = _replyPreview(quoted);
+      message.replyToImage = quoted.image;
+      message.replyToImageWidth = quoted.imageWidth;
+      message.replyToImageHeight = quoted.imageHeight;
       message.replyToSender = await _senderName(quoted) ?? post.channel.title;
     } catch (_) {
       message.replyToPreview ??= '';
@@ -1005,14 +1007,18 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
       return telegramText(AppStringKeys.composerAnimatedEmojiPreview);
     }
     if (message.video != null) {
-      return message.text.isEmpty
-          ? telegramText(AppStringKeys.chatVideoPlaceholder)
-          : message.text;
+      final placeholder = telegramText(AppStringKeys.chatVideoPlaceholder);
+      return message.text == placeholder ? '' : message.text;
     }
     if (message.image != null) {
-      return message.text.isEmpty
-          ? telegramText(AppStringKeys.composerImagePreview)
-          : message.text;
+      final placeholder = switch (message.contentType) {
+        'messagePhoto' => telegramText(AppStringKeys.composerImagePreview),
+        'messageAnimation' => telegramText(
+          AppStringKeys.composerAnimatedEmojiPreview,
+        ),
+        _ => null,
+      };
+      return message.text == placeholder ? '' : message.text;
     }
     final text = message.text.trim();
     return text.isEmpty
@@ -1044,6 +1050,9 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
         }
         post.message.replyToSender = previous.message.replyToSender;
         post.message.replyToPreview = previous.message.replyToPreview;
+        post.message.replyToImage = previous.message.replyToImage;
+        post.message.replyToImageWidth = previous.message.replyToImageWidth;
+        post.message.replyToImageHeight = previous.message.replyToImageHeight;
         final likesChanged =
             _reactionCount(previous.message) != _reactionCount(post.message);
         final commentsChanged =

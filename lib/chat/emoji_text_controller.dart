@@ -84,6 +84,38 @@ class EmojiTextEditingController extends TextEditingController {
     insertFormattedText(s);
   }
 
+  /// Replaces [start]..[end] with an ID-backed Telegram user mention.
+  void insertTextMention({
+    required int start,
+    required int end,
+    required String label,
+    required int userId,
+  }) {
+    if (start < 0 || end < start || end > text.length || userId <= 0) return;
+    final mention = '@${label.trim()}';
+    if (mention.length <= 1) return;
+    final replaceEnd = end < text.length && _isWhitespace(text[end])
+        ? end + 1
+        : end;
+    final newText = text.replaceRange(start, replaceEnd, '$mention ');
+    _replaceEntityRange(start, replaceEnd, mention.length + 1);
+    _entities.add(
+      _ComposerTextEntity(
+        offset: start,
+        length: mention.length,
+        type: {'@type': 'textEntityTypeMentionName', 'user_id': userId},
+      ),
+    );
+    _lastText = newText;
+    super.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: start + mention.length + 1),
+    );
+    notifyListeners();
+  }
+
+  bool _isWhitespace(String value) => value.trim().isEmpty;
+
   /// Inserts text at the selection and optionally applies one entity over it.
   void insertFormattedText(String s, {String? type}) {
     final sel = selection;

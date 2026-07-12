@@ -126,6 +126,7 @@ class _AccountBackupViewState extends State<AccountBackupView> {
     Object error,
   ) async {
     if (!_isInvalidSessionError(error)) return false;
+    if (!mounted) return true;
     final delete = await confirmDialog(
       context,
       title: AppStringKeys.accountBackupInvalidTitle,

@@ -8,7 +8,6 @@
 //
 
 import 'dart:async';
-import 'dart:io' as io;
 import 'dart:ui' as ui;
 
 import 'package:firebase_analytics/firebase_analytics.dart';
@@ -114,20 +113,12 @@ bool _shouldUseFvp() {
     return false;
   }
   if (defaultTargetPlatform == TargetPlatform.iOS) {
-    // Older iOS devices have native MdkPrepare crashes under thread pressure.
-    // Keep ordinary MP4 playback on AVFoundation there; WebM stickers fall back
-    // to their static thumbnail when the native player cannot initialize them.
-    return (_operatingSystemMajorVersion() ?? 0) >= 17;
+    // AVFoundation owns the drawable lifecycle when iOS changes display scale,
+    // resolution, or external-screen attachment. FVP/MDK can retain textures
+    // from the old Flutter surface and crash while the surface is rebuilt.
+    return false;
   }
   return true;
-}
-
-int? _operatingSystemMajorVersion() {
-  final match = RegExp(
-    r'(?:Version )?(\d+)',
-  ).firstMatch(io.Platform.operatingSystemVersion);
-  if (match == null) return null;
-  return int.tryParse(match.group(1) ?? '');
 }
 
 Future<void> _initTelemetry() async {

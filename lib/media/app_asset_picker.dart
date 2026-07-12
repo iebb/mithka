@@ -16,12 +16,16 @@ class AppPickedAsset {
     this.thumbnailBytes,
     this.width,
     this.height,
+    this.isAnimatedImage = false,
+    this.isLivePhoto = false,
   });
 
   final XFile file;
   final Uint8List? thumbnailBytes;
   final int? width;
   final int? height;
+  final bool isAnimatedImage;
+  final bool isLivePhoto;
 }
 
 class AppAssetPickerSelection {
@@ -42,12 +46,14 @@ abstract final class AppAssetPicker {
     required AppAssetPickerType type,
     int maxAssets = 9,
     Duration? maxVideoDuration,
+    bool preferLivePhotoVideo = false,
   }) async {
     final selection = await pickDetailed(
       context,
       type: type,
       maxAssets: maxAssets,
       maxVideoDuration: maxVideoDuration,
+      preferLivePhotoVideo: preferLivePhotoVideo,
     );
     return selection.assets.map((asset) => asset.file).toList(growable: false);
   }
@@ -57,6 +63,7 @@ abstract final class AppAssetPicker {
     required AppAssetPickerType type,
     int maxAssets = 9,
     Duration? maxVideoDuration,
+    bool preferLivePhotoVideo = false,
   }) async {
     if (maxAssets <= 0) {
       return const AppAssetPickerSelection(assets: [], failedCount: 0);
@@ -78,7 +85,9 @@ abstract final class AppAssetPicker {
     var failedCount = 0;
     for (final asset in assets) {
       try {
-        resolved.add(await _materialize(asset));
+        resolved.add(
+          await _materialize(asset, preferLivePhotoVideo: preferLivePhotoVideo),
+        );
       } catch (_) {
         failedCount++;
       }
@@ -175,18 +184,40 @@ abstract final class AppAssetPicker {
     );
   }
 
-  static Future<AppPickedAsset> _materialize(AssetEntity asset) async {
-    final mimeType = asset.mimeType ?? await asset.mimeTypeAsync;
-    final isGif = mimeType?.toLowerCase() == 'image/gif';
+  static Future<AppPickedAsset> _materialize(
+    AssetEntity asset, {
+    required bool preferLivePhotoVideo,
+  }) async {
+    final originalMimeType = asset.mimeType ?? await asset.mimeTypeAsync;
+    final livePhotoAsVideo = preferLivePhotoVideo && asset.isLivePhoto;
+    final lowerMimeType = originalMimeType?.toLowerCase();
+    final lowerTitle = asset.title?.toLowerCase() ?? '';
+    final preserveOriginalAnimatedImage =
+        lowerMimeType == 'image/gif' ||
+        lowerMimeType == 'image/apng' ||
+        lowerMimeType == 'image/png' ||
+        lowerTitle.endsWith('.gif') ||
+        lowerTitle.endsWith('.apng') ||
+        lowerTitle.endsWith('.png');
     final file = await asset.loadFile(
-      isOrigin: asset.type == AssetType.video || isGif,
+      isOrigin:
+          asset.type == AssetType.video ||
+          livePhotoAsVideo ||
+          preserveOriginalAnimatedImage,
+      withSubtype: livePhotoAsVideo,
+      darwinFileType: livePhotoAsVideo ? PMDarwinAVFileType.mp4 : null,
     );
     if (file == null) {
       throw StateError('Unable to read selected asset ${asset.id}');
     }
+    final mimeType = livePhotoAsVideo ? 'video/mp4' : originalMimeType;
+    final isGif = await _isGifFile(file, mimeType);
+    final isApng = await _isApngFile(file, mimeType);
+    final isAnimatedImage = isGif || isApng;
     final shouldCompressPhoto =
         asset.type == AssetType.image &&
-        !isGif &&
+        !isAnimatedImage &&
+        !livePhotoAsVideo &&
         (await file.length() > _photoSendByteLimit ||
             asset.width > 4096 ||
             asset.height > 4096);
@@ -198,7 +229,13 @@ abstract final class AppAssetPicker {
     }
     final extension = shouldCompressPhoto
         ? 'jpg'
-        : _fileExtension(file.path, mimeType, asset.type);
+        : (livePhotoAsVideo
+              ? 'mp4'
+              : isGif
+              ? 'gif'
+              : isApng
+              ? 'png'
+              : _fileExtension(file.path, mimeType, asset.type));
     final directory = await getTemporaryDirectory();
     final durableFile = File(
       '${directory.path}/mithka-picker-${DateTime.now().microsecondsSinceEpoch}-${asset.id.hashCode}.$extension',
@@ -220,7 +257,55 @@ abstract final class AppAssetPicker {
       thumbnailBytes: thumbnailBytes,
       width: asset.width > 0 ? asset.width : null,
       height: asset.height > 0 ? asset.height : null,
+      isAnimatedImage: isAnimatedImage,
+      isLivePhoto: asset.isLivePhoto,
     );
+  }
+
+  static Future<bool> _isGifFile(File file, String? mimeType) async {
+    if (mimeType?.toLowerCase() == 'image/gif' ||
+        file.path.toLowerCase().endsWith('.gif')) {
+      return true;
+    }
+    final bytes = await _readPrefix(file, 6);
+    if (bytes.length < 6) return false;
+    return String.fromCharCodes(bytes) == 'GIF87a' ||
+        String.fromCharCodes(bytes) == 'GIF89a';
+  }
+
+  static Future<bool> _isApngFile(File file, String? mimeType) async {
+    final lowerMimeType = mimeType?.toLowerCase();
+    if (lowerMimeType == 'image/apng' ||
+        file.path.toLowerCase().endsWith('.apng')) {
+      return true;
+    }
+    if (lowerMimeType != null && lowerMimeType != 'image/png') return false;
+    final bytes = await _readPrefix(file, 1024 * 1024);
+    if (bytes.length < 12 ||
+        bytes[0] != 0x89 ||
+        bytes[1] != 0x50 ||
+        bytes[2] != 0x4e ||
+        bytes[3] != 0x47) {
+      return false;
+    }
+    for (var i = 8; i + 8 <= bytes.length; i++) {
+      if (bytes[i] == 0x61 &&
+          bytes[i + 1] == 0x63 &&
+          bytes[i + 2] == 0x54 &&
+          bytes[i + 3] == 0x4c) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static Future<Uint8List> _readPrefix(File file, int maxBytes) async {
+    final handle = await file.open();
+    try {
+      return await handle.read(maxBytes);
+    } finally {
+      await handle.close();
+    }
   }
 
   static Future<Uint8List?> _compressedPhotoBytes(AssetEntity asset) async {

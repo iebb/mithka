@@ -129,12 +129,13 @@ class _UnreadBadgeState extends State<UnreadBadge> {
   }
 
   void _finishDrag() {
-    if (widget.onClear != null && _dragOffset.distance >= _breakDistance) {
+    final onClear = widget.onClear;
+    if (onClear != null && _dragOffset.distance >= _breakDistance) {
       setState(() {
         _dragging = false;
         _broken = true;
       });
-      widget.onClear!();
+      onClear();
       Future<void>.delayed(const Duration(milliseconds: 180), _reset);
       return;
     }
@@ -572,10 +573,12 @@ class ChatPreviewText extends StatelessWidget {
     this.sender,
     required this.message,
     this.draft = false,
+    this.alertPrefix,
   });
   final String? sender;
   final String message;
   final bool draft; // render a red "[草稿]" prefix and ignore sender
+  final String? alertPrefix;
 
   static const _redTags = [
     AppStringKeys.commonUiNewFileBadge,
@@ -597,6 +600,11 @@ class ChatPreviewText extends StatelessWidget {
       text: TextSpan(
         style: baseStyle,
         children: [
+          if (!draft && alertPrefix != null && alertPrefix!.isNotEmpty)
+            TextSpan(
+              text: '${alertPrefix!.l10n(context)} ',
+              style: TextStyle(color: AppTheme.tagRed),
+            ),
           if (draft)
             TextSpan(
               text: '${AppStringKeys.commonUiDraftBadge.l10n(context)} ',

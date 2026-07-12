@@ -12,11 +12,15 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:video_player/video_player.dart';
 
+import '../tdlib/animated_avatar_repository.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
+import '../theme/theme_controller.dart';
 
 /// Clips its child to a circle or rounded square.
 class AvatarClip extends StatelessWidget {
@@ -73,8 +77,12 @@ class PhotoAvatar extends StatefulWidget {
 
 class _PhotoAvatarState extends State<PhotoAvatar> {
   File? _file;
+  VideoPlayerController? _animationController;
   int? _loadedId;
   int? _loadedSlot;
+  bool _animateAvatars = true;
+  int _animationGeneration = 0;
+  int? _animationSlot;
 
   @override
   void initState() {
@@ -86,6 +94,74 @@ class _PhotoAvatarState extends State<PhotoAvatar> {
   void didUpdateWidget(PhotoAvatar oldWidget) {
     super.didUpdateWidget(oldWidget);
     _load();
+    if (oldWidget.photo?.id != widget.photo?.id ||
+        oldWidget.photo?.hasAnimation != widget.photo?.hasAnimation ||
+        oldWidget.photo?.photoId != widget.photo?.photoId ||
+        _animationSlot != TdClient.shared.activeSlot) {
+      _syncAnimation();
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    var enabled = true;
+    try {
+      enabled = context.watch<ThemeController>().animateAvatars;
+    } on ProviderNotFoundException catch (_) {
+      // Standalone widget tests and previews may not install app providers.
+    }
+    if (_animateAvatars != enabled) {
+      _animateAvatars = enabled;
+      _syncAnimation();
+    } else if (_animationController == null) {
+      _syncAnimation();
+    }
+  }
+
+  @override
+  void dispose() {
+    _animationGeneration++;
+    unawaited(_animationController?.dispose());
+    super.dispose();
+  }
+
+  Future<void> _syncAnimation() async {
+    final generation = ++_animationGeneration;
+    final oldController = _animationController;
+    _animationController = null;
+    if (oldController != null) {
+      await oldController.dispose();
+      if (mounted) setState(() {});
+    }
+    final photo = widget.photo;
+    final slot = TdClient.shared.activeSlot;
+    _animationSlot = slot;
+    if (!_animateAvatars || photo == null || !photo.hasAnimation) return;
+
+    final animation = await AnimatedAvatarRepository.shared.resolve(photo);
+    if (!mounted || generation != _animationGeneration || animation == null) {
+      return;
+    }
+    final path = await TdFileCenter.shared.pathFor(animation);
+    if (!mounted || generation != _animationGeneration || path == null) return;
+    final controller = VideoPlayerController.file(File(path));
+    try {
+      await controller.initialize();
+      await controller.setLooping(true);
+      await controller.setVolume(0);
+      await controller.play();
+    } catch (_) {
+      await controller.dispose();
+      return;
+    }
+    if (!mounted ||
+        generation != _animationGeneration ||
+        slot != TdClient.shared.activeSlot) {
+      await controller.dispose();
+      return;
+    }
+    setState(() => _animationController = controller);
   }
 
   void _load() {
@@ -147,6 +223,19 @@ class _PhotoAvatarState extends State<PhotoAvatar> {
   Widget _content() {
     final ref = widget.photo;
     final cacheSize = _cacheSizePx(context, widget.size);
+    final animation = _animationController;
+    if (animation != null && animation.value.isInitialized) {
+      final videoSize = animation.value.size;
+      return FittedBox(
+        fit: BoxFit.cover,
+        clipBehavior: Clip.hardEdge,
+        child: SizedBox(
+          width: videoSize.width,
+          height: videoSize.height,
+          child: VideoPlayer(animation),
+        ),
+      );
+    }
     if (_file != null) {
       return Image.file(
         _file!,

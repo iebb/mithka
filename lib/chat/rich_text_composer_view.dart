@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -113,6 +112,18 @@ class RichTextComposerView extends StatefulWidget {
   State<RichTextComposerView> createState() => _RichTextComposerViewState();
 }
 
+enum _RichCellHorizontalAlignment { left, center, right }
+
+enum _RichCellVerticalAlignment { top, middle, bottom }
+
+class _RichTableCellStyle {
+  _RichTableCellStyle({this.isHeader = false});
+
+  bool isHeader;
+  _RichCellHorizontalAlignment horizontal = _RichCellHorizontalAlignment.left;
+  _RichCellVerticalAlignment vertical = _RichCellVerticalAlignment.top;
+}
+
 class _RichTableDraft {
   _RichTableDraft({int rows = 3, int columns = 3})
     : cells = List.generate(
@@ -123,11 +134,21 @@ class _RichTableDraft {
             text: row == 0 ? 'Column ${column + 1}' : '',
           ),
         ),
+      ),
+      styles = List.generate(
+        rows,
+        (row) => List.generate(
+          columns,
+          (_) => _RichTableCellStyle(isHeader: row == 0),
+        ),
       );
 
   static const maxColumns = 20;
 
   final List<List<TextEditingController>> cells;
+  final List<List<_RichTableCellStyle>> styles;
+  bool bordered = true;
+  bool striped = true;
 
   int get rowCount => cells.length;
   int get columnCount => cells.isEmpty ? 0 : cells.first.length;
@@ -141,32 +162,54 @@ class _RichTableDraft {
   }
 
   void addRow() {
-    cells.add(List.generate(columnCount, (_) => TextEditingController()));
+    insertRow(rowCount);
+  }
+
+  void insertRow(int index) {
+    final safeIndex = index.clamp(0, rowCount);
+    cells.insert(
+      safeIndex,
+      List.generate(columnCount, (_) => TextEditingController()),
+    );
+    styles.insert(
+      safeIndex,
+      List.generate(columnCount, (_) => _RichTableCellStyle()),
+    );
   }
 
   void removeRowAt(int index) {
     if (rowCount <= 1 || index < 0 || index >= rowCount) return;
     final removed = cells.removeAt(index);
+    styles.removeAt(index);
     for (final cell in removed) {
       cell.dispose();
     }
   }
 
   void addColumn() {
+    insertColumn(columnCount);
+  }
+
+  void insertColumn(int index) {
     if (columnCount >= maxColumns) return;
+    final oldColumnCount = columnCount;
+    final safeIndex = index.clamp(0, oldColumnCount);
     for (var row = 0; row < cells.length; row++) {
-      cells[row].add(
+      cells[row].insert(
+        safeIndex,
         TextEditingController(
-          text: row == 0 ? 'Column ${columnCount + 1}' : '',
+          text: row == 0 ? 'Column ${oldColumnCount + 1}' : '',
         ),
       );
+      styles[row].insert(safeIndex, _RichTableCellStyle(isHeader: row == 0));
     }
   }
 
   void removeColumnAt(int index) {
     if (columnCount <= 1 || index < 0 || index >= columnCount) return;
-    for (final row in cells) {
-      row.removeAt(index).dispose();
+    for (var row = 0; row < cells.length; row++) {
+      cells[row].removeAt(index).dispose();
+      styles[row].removeAt(index);
     }
   }
 
@@ -195,13 +238,25 @@ class _RichTableDraft {
 
   String toHtml() {
     if (cells.isEmpty || cells.first.isEmpty) return '';
-    final buffer = StringBuffer('<table bordered striped>');
+    final tableAttributes = [if (bordered) 'bordered', if (striped) 'striped'];
+    final buffer = StringBuffer(
+      '<table${tableAttributes.isEmpty ? '' : ' ${tableAttributes.join(' ')}'}>',
+    );
     for (var rowIndex = 0; rowIndex < cells.length; rowIndex++) {
       buffer.write('<tr>');
-      for (final cell in cells[rowIndex]) {
-        final tag = rowIndex == 0 ? 'th' : 'td';
+      for (
+        var columnIndex = 0;
+        columnIndex < cells[rowIndex].length;
+        columnIndex++
+      ) {
+        final cell = cells[rowIndex][columnIndex];
+        final style = styles[rowIndex][columnIndex];
+        final tag = style.isHeader ? 'th' : 'td';
         buffer
-          ..write('<$tag>')
+          ..write(
+            '<$tag align="${style.horizontal.name}" '
+            'valign="${style.vertical.name}">',
+          )
           ..write(escapeRichHtml(cell.text.trim()))
           ..write('</$tag>');
       }
@@ -376,7 +431,7 @@ class _RichContentBlock {
 class _RichTextComposerViewState extends State<RichTextComposerView> {
   static const _maxAttachments = 50;
   static const _maxBlocks = 500;
-  static const _maxTextBytes = 32768;
+  static const _maxTextCharacters = telegramRichMessageMaxCharacters;
 
   late final List<_RichContentBlock> _blocks;
   late _RichTextBlock _activeTextBlock;
@@ -449,7 +504,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
 
   void _submit() {
     if (_blocks.length > _maxBlocks ||
-        _documentTextByteCount() > _maxTextBytes ||
+        _documentTextCharacterCount() > _maxTextCharacters ||
         _attachmentCount > _maxAttachments) {
       showToast(
         context,
@@ -571,7 +626,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
     );
   }
 
-  int _documentTextByteCount() {
+  int _documentTextCharacterCount() {
     final text = StringBuffer();
     for (final block in _blocks) {
       text.write(block.text?.controller.text ?? '');
@@ -594,7 +649,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
         }
       }
     }
-    return utf8.encode(text.toString()).length;
+    return telegramUtf8CharacterCount(text.toString());
   }
 
   String _mediaBlockHtml(OutgoingAttachment attachment, String id) {
@@ -790,12 +845,14 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
           ),
         );
       case _RichBlockKind.map:
+        final start = await resolveLocationPickerStart();
+        if (!mounted) return;
         _insertStructuredBlock(
           _RichContentBlock.generic(
             kind,
             _RichGenericDraft(
-              primary: '39.908700',
-              secondary: '116.397500',
+              primary: start.latitude.toStringAsFixed(6),
+              secondary: start.longitude.toStringAsFixed(6),
               number: 16,
             ),
           ),
@@ -1154,39 +1211,39 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
     return switch (block.kind) {
       _RichBlockKind.blockQuotation => Padding(
         padding: const EdgeInsets.fromLTRB(2, 2, 12, 2),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(7),
-          child: ColoredBox(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
             color: AppTheme.brand.withValues(alpha: 0.1),
-            child: IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Container(width: 4, color: AppTheme.brand),
-                  Expanded(
-                    child: Stack(
-                      children: [
-                        editor,
-                        Positioned(
-                          right: 8,
-                          top: 3,
-                          child: IgnorePointer(
-                            child: Text(
-                              '”',
-                              style: TextStyle(
-                                color: AppTheme.brand,
-                                fontSize: 22,
-                                fontWeight: FontWeight.w700,
-                                height: 1,
-                              ),
+            borderRadius: BorderRadius.circular(7),
+          ),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(width: 4, color: AppTheme.brand),
+                Expanded(
+                  child: Stack(
+                    children: [
+                      editor,
+                      Positioned(
+                        right: 8,
+                        top: 3,
+                        child: IgnorePointer(
+                          child: Text(
+                            '”',
+                            style: TextStyle(
+                              color: AppTheme.brand,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w700,
+                              height: 1,
                             ),
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
@@ -1458,8 +1515,12 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
   }
 
   Future<void> _editMapBlock(int index, _RichGenericDraft draft) async {
-    final latitude = double.tryParse(draft.primary.text.trim()) ?? 39.9087;
-    final longitude = double.tryParse(draft.secondary.text.trim()) ?? 116.3975;
+    final latitude =
+        double.tryParse(draft.primary.text.trim()) ??
+        defaultLocationPickerCenter.latitude;
+    final longitude =
+        double.tryParse(draft.secondary.text.trim()) ??
+        defaultLocationPickerCenter.longitude;
     final picked = await Navigator.of(context).push<LocationPickerResult>(
       MaterialPageRoute(
         builder: (_) => LocationPickerView(
@@ -1773,7 +1834,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
   }
 
   Widget _tableEditor(AppColors c, _RichTableDraft table, int tableNumber) {
-    final tableHeight = (table.rowCount * 42.0 + 18).clamp(102.0, 260.0);
+    final tableHeight = (table.rowCount * 54.0 + 18).clamp(102.0, 300.0);
     return Container(
       decoration: BoxDecoration(
         color: c.card,
@@ -1845,25 +1906,139 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
   }
 
   Widget _tableCell(AppColors c, _RichTableDraft table, int row, int column) {
-    final isHeader = row == 0;
+    final cellStyle = table.styles[row][column];
+    final isHeader = cellStyle.isHeader;
+    final stripedFill = table.striped && row.isOdd;
+    final borderSide = table.bordered
+        ? BorderSide(color: c.divider)
+        : BorderSide.none;
     return Container(
       width: 132,
-      height: 42,
+      height: 54,
       decoration: BoxDecoration(
-        color: isHeader ? AppTheme.brand.withValues(alpha: 0.1) : c.background,
+        color: isHeader
+            ? AppTheme.brand.withValues(alpha: 0.1)
+            : stripedFill
+            ? c.searchFill
+            : c.background,
         border: Border(
-          right: BorderSide(color: c.divider),
-          bottom: BorderSide(color: c.divider),
-          left: column == 0 ? BorderSide(color: c.divider) : BorderSide.none,
-          top: row == 0 ? BorderSide(color: c.divider) : BorderSide.none,
+          right: borderSide,
+          bottom: borderSide,
+          left: column == 0 ? borderSide : BorderSide.none,
+          top: row == 0 ? borderSide : BorderSide.none,
         ),
       ),
       child: TextField(
         controller: table.cells[row][column],
         textInputAction: TextInputAction.next,
+        textAlign: switch (cellStyle.horizontal) {
+          _RichCellHorizontalAlignment.left => TextAlign.left,
+          _RichCellHorizontalAlignment.center => TextAlign.center,
+          _RichCellHorizontalAlignment.right => TextAlign.right,
+        },
+        textAlignVertical: switch (cellStyle.vertical) {
+          _RichCellVerticalAlignment.top => TextAlignVertical.top,
+          _RichCellVerticalAlignment.middle => TextAlignVertical.center,
+          _RichCellVerticalAlignment.bottom => TextAlignVertical.bottom,
+        },
         contextMenuBuilder: (context, editableTextState) {
           final items = [...editableTextState.contextMenuButtonItems];
           items.addAll([
+            ContextMenuButtonItem(
+              label: AppStringKeys.richTextTableAddRowAbove.l10n(context),
+              onPressed: () {
+                editableTextState.hideToolbar();
+                setState(() => table.insertRow(row));
+              },
+            ),
+            ContextMenuButtonItem(
+              label: AppStringKeys.richTextTableAddRowBelow.l10n(context),
+              onPressed: () {
+                editableTextState.hideToolbar();
+                setState(() => table.insertRow(row + 1));
+              },
+            ),
+            ContextMenuButtonItem(
+              label: AppStringKeys.richTextTableAddColumnLeft.l10n(context),
+              onPressed: table.columnCount >= _RichTableDraft.maxColumns
+                  ? null
+                  : () {
+                      editableTextState.hideToolbar();
+                      setState(() => table.insertColumn(column));
+                    },
+            ),
+            ContextMenuButtonItem(
+              label: AppStringKeys.richTextTableAddColumnRight.l10n(context),
+              onPressed: table.columnCount >= _RichTableDraft.maxColumns
+                  ? null
+                  : () {
+                      editableTextState.hideToolbar();
+                      setState(() => table.insertColumn(column + 1));
+                    },
+            ),
+            ContextMenuButtonItem(
+              label: _checkedMenuLabel(
+                context,
+                AppStringKeys.richTextTableHeader,
+                cellStyle.isHeader,
+              ),
+              onPressed: () {
+                editableTextState.hideToolbar();
+                setState(() => cellStyle.isHeader = !cellStyle.isHeader);
+              },
+            ),
+            for (final alignment in _RichCellHorizontalAlignment.values)
+              ContextMenuButtonItem(
+                label: _checkedMenuLabel(context, switch (alignment) {
+                  _RichCellHorizontalAlignment.left =>
+                    AppStringKeys.richTextTableAlignLeft,
+                  _RichCellHorizontalAlignment.center =>
+                    AppStringKeys.richTextTableAlignCenter,
+                  _RichCellHorizontalAlignment.right =>
+                    AppStringKeys.richTextTableAlignRight,
+                }, cellStyle.horizontal == alignment),
+                onPressed: () {
+                  editableTextState.hideToolbar();
+                  setState(() => cellStyle.horizontal = alignment);
+                },
+              ),
+            for (final alignment in _RichCellVerticalAlignment.values)
+              ContextMenuButtonItem(
+                label: _checkedMenuLabel(context, switch (alignment) {
+                  _RichCellVerticalAlignment.top =>
+                    AppStringKeys.richTextTableAlignTop,
+                  _RichCellVerticalAlignment.middle =>
+                    AppStringKeys.richTextTableAlignMiddle,
+                  _RichCellVerticalAlignment.bottom =>
+                    AppStringKeys.richTextTableAlignBottom,
+                }, cellStyle.vertical == alignment),
+                onPressed: () {
+                  editableTextState.hideToolbar();
+                  setState(() => cellStyle.vertical = alignment);
+                },
+              ),
+            ContextMenuButtonItem(
+              label: _checkedMenuLabel(
+                context,
+                AppStringKeys.richTextTableBordered,
+                table.bordered,
+              ),
+              onPressed: () {
+                editableTextState.hideToolbar();
+                setState(() => table.bordered = !table.bordered);
+              },
+            ),
+            ContextMenuButtonItem(
+              label: _checkedMenuLabel(
+                context,
+                AppStringKeys.richTextTableStriped,
+                table.striped,
+              ),
+              onPressed: () {
+                editableTextState.hideToolbar();
+                setState(() => table.striped = !table.striped);
+              },
+            ),
             ContextMenuButtonItem(
               label: AppStringKeys.richTextComposerRemoveRow.l10n(context),
               onPressed: () {
@@ -1898,11 +2073,14 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
         decoration: const InputDecoration(
           isCollapsed: true,
           border: InputBorder.none,
-          contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 11),
+          contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         ),
       ),
     );
   }
+
+  String _checkedMenuLabel(BuildContext context, String key, bool checked) =>
+      '${checked ? '✓  ' : ''}${key.l10n(context)}';
 
   Widget _miniIconButton(
     AppColors c, {
@@ -2364,9 +2542,17 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
       ),
     );
     if (!mounted || result == null || index >= _blocks.length) return;
+    final edited = await resolveAttachmentDimensions(
+      item.copyWith(
+        path: result.path,
+        clearPreviewBytes: true,
+        clearDimensions: true,
+      ),
+    );
+    if (!mounted || index >= _blocks.length) return;
     setState(() {
       _blocks[index] = _RichContentBlock.attachment(
-        item.copyWith(path: result.path, clearPreviewBytes: true),
+        edited,
         kind: _blocks[index].kind,
       );
     });
@@ -2385,9 +2571,11 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
   }
 
   OutgoingAttachment _attachmentFromAppPickedAsset(AppPickedAsset asset) {
-    return _attachmentFromPickedMedia(
-      asset.file,
-    ).copyWith(previewBytes: asset.thumbnailBytes);
+    return _attachmentFromPickedMedia(asset.file).copyWith(
+      previewBytes: asset.thumbnailBytes,
+      width: asset.width,
+      height: asset.height,
+    );
   }
 
   void _insertAttachmentsAfterActive(Iterable<OutgoingAttachment> attachments) {
@@ -2676,7 +2864,11 @@ class _RichBlockInsertMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final kinds = _RichBlockKind.values
-        .where((kind) => kind != _RichBlockKind.document)
+        .where(
+          (kind) =>
+              kind != _RichBlockKind.document &&
+              kind != _RichBlockKind.thinking,
+        )
         .toList(growable: false);
     final menuWidth = math.min(360.0, MediaQuery.sizeOf(context).width - 24);
     return _RichAnchoredMenu(

@@ -266,6 +266,7 @@ abstract final class AppStringKeys {
   static const appearanceNoMatchingFonts = 'appearanceNoMatchingFonts';
   static const appearanceRefreshCacheList = 'appearanceRefreshCacheList';
   static const appearanceRoundGroupAvatars = 'appearanceRoundGroupAvatars';
+  static const appearanceAnimateAvatars = 'appearanceAnimateAvatars';
   static const appearanceSearchFont = 'appearanceSearchFont';
   static const appearanceShowChatListSearch = 'appearanceShowChatListSearch';
   static const appearanceDisableChatListSwipeActions =
@@ -388,6 +389,9 @@ abstract final class AppStringKeys {
   static const chatDeleteSingleMessageQuestion =
       'chatDeleteSingleMessageQuestion';
   static const chatEditMessageTitle = 'chatEditMessageTitle';
+  static const chatEditPlainText = 'chatEditPlainText';
+  static const chatMediaReplace = 'chatMediaReplace';
+  static const chatMediaDelete = 'chatMediaDelete';
   static const chatBlockUserConfirm = 'chatBlockUserConfirm';
   static const chatBlockUserDone = 'chatBlockUserDone';
   static const chatBlockUserFailed = 'chatBlockUserFailed';
@@ -603,6 +607,12 @@ abstract final class AppStringKeys {
   static const composerRichText = 'composerRichText';
   static const composerRichTextMessageTitle = 'composerRichTextMessageTitle';
   static const composerRichTextSendFailed = 'composerRichTextSendFailed';
+  static const composerLongMessageTitle = 'composerLongMessageTitle';
+  static const composerLongMessageRichTextPrompt =
+      'composerLongMessageRichTextPrompt';
+  static const composerSendAsRichText = 'composerSendAsRichText';
+  static const composerMessageExceedsRichTextLimit =
+      'composerMessageExceedsRichTextLimit';
   static const composerSend = 'composerSend';
   static const composerSendPaidMessageQuestion =
       'composerSendPaidMessageQuestion';
@@ -1315,6 +1325,19 @@ abstract final class AppStringKeys {
   static const qrScannerTitle = 'qrScannerTitle';
   static const richTextComposerAddColumn = 'richTextComposerAddColumn';
   static const richTextComposerAddRow = 'richTextComposerAddRow';
+  static const richTextTableAddRowAbove = 'richTextTableAddRowAbove';
+  static const richTextTableAddRowBelow = 'richTextTableAddRowBelow';
+  static const richTextTableAddColumnLeft = 'richTextTableAddColumnLeft';
+  static const richTextTableAddColumnRight = 'richTextTableAddColumnRight';
+  static const richTextTableHeader = 'richTextTableHeader';
+  static const richTextTableAlignLeft = 'richTextTableAlignLeft';
+  static const richTextTableAlignCenter = 'richTextTableAlignCenter';
+  static const richTextTableAlignRight = 'richTextTableAlignRight';
+  static const richTextTableAlignTop = 'richTextTableAlignTop';
+  static const richTextTableAlignMiddle = 'richTextTableAlignMiddle';
+  static const richTextTableAlignBottom = 'richTextTableAlignBottom';
+  static const richTextTableBordered = 'richTextTableBordered';
+  static const richTextTableStriped = 'richTextTableStriped';
   static const richTextComposerAnchorName = 'richTextComposerAnchorName';
   static const richTextComposerContentPlaceholder =
       'richTextComposerContentPlaceholder';
@@ -1347,6 +1370,26 @@ abstract final class AppStringKeys {
   static const richTextComposerInsertTable = 'richTextComposerInsertTable';
   static const richTextComposerInsert = 'richTextComposerInsert';
   static const richTextComposerLimitExceeded = 'richTextComposerLimitExceeded';
+  static const richTextRelayBotTitle = 'richTextRelayBotTitle';
+  static const richTextRelayBotDescription = 'richTextRelayBotDescription';
+  static const richTextRelayBotSave = 'richTextRelayBotSave';
+  static const richTextRelayBotRemove = 'richTextRelayBotRemove';
+  static const richTextRelayBotConnected = 'richTextRelayBotConnected';
+  static const richTextRelayBotSaved = 'richTextRelayBotSaved';
+  static const richTextRelayBotRemoved = 'richTextRelayBotRemoved';
+  static const richTextRelayBotConfigured = 'richTextRelayBotConfigured';
+  static const richTextRelayBotNotConfigured = 'richTextRelayBotNotConfigured';
+  static const richTextRelayPremiumOrBotRequired =
+      'richTextRelayPremiumOrBotRequired';
+  static const richTextRelayBotStartRequired = 'richTextRelayBotStartRequired';
+  static const richTextRelayMediaPremiumRequired =
+      'richTextRelayMediaPremiumRequired';
+  static const richTextRelayForwardedWithSender =
+      'richTextRelayForwardedWithSender';
+  static const richTextRelayProgressUpload = 'richTextRelayProgressUpload';
+  static const richTextRelayProgressCompose = 'richTextRelayProgressCompose';
+  static const richTextRelayProgressWait = 'richTextRelayProgressWait';
+  static const richTextRelayProgressForward = 'richTextRelayProgressForward';
   static const richTextComposerMapLatitude = 'richTextComposerMapLatitude';
   static const richTextComposerMapLongitude = 'richTextComposerMapLongitude';
   static const richTextComposerMapZoom = 'richTextComposerMapZoom';

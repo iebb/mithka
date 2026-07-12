@@ -53,6 +53,105 @@ enum MessageAction {
 
 enum MessageActionSource { normal, video }
 
+class QuickReactionBar extends StatelessWidget {
+  const QuickReactionBar({
+    super.key,
+    required this.reactions,
+    required this.onReaction,
+    required this.onExpand,
+  });
+
+  static const maxFittedButtonCount = 10;
+
+  final List<String> reactions;
+  final ValueChanged<String> onReaction;
+  final VoidCallback onExpand;
+
+  @override
+  Widget build(BuildContext context) {
+    final buttonCount = reactions.length + 1;
+    return Container(
+      key: const ValueKey('quick-reaction-bar'),
+      width: MessageActionMenu.widthForAvailable(
+        MediaQuery.sizeOf(context).width - 24,
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFF2C2C2E),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 12),
+        ],
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final buttons = <Widget>[
+            for (final emoji in reactions) _reactionButton(emoji),
+            _expandButton(),
+          ];
+          if (buttonCount <= maxFittedButtonCount) {
+            return Row(
+              children: [for (final button in buttons) Expanded(child: button)],
+            );
+          }
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            child: Row(mainAxisSize: MainAxisSize.min, children: buttons),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _reactionButton(String emoji) {
+    return GestureDetector(
+      key: ValueKey('quick-reaction-$emoji'),
+      behavior: HitTestBehavior.opaque,
+      onTap: () => onReaction(emoji),
+      child: SizedBox(
+        width: 40,
+        height: 34,
+        child: Center(
+          child: Text(
+            emoji,
+            textScaler: TextScaler.noScaling,
+            style: const TextStyle(fontSize: 28),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _expandButton() {
+    return GestureDetector(
+      key: const ValueKey('quick-reaction-expand'),
+      behavior: HitTestBehavior.opaque,
+      onTap: onExpand,
+      child: SizedBox(
+        width: 40,
+        height: 34,
+        child: Center(
+          child: Container(
+            width: 34,
+            height: 34,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(
+              color: Color(0xFF3A3A3C),
+              shape: BoxShape.circle,
+            ),
+            child: const AppIcon(
+              HeroAppIcons.chevronDown,
+              size: 22,
+              color: Colors.white,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class MessageActionMenu extends StatelessWidget {
   const MessageActionMenu({
     super.key,
@@ -83,11 +182,14 @@ class MessageActionMenu extends StatelessWidget {
   static double widthForAvailable(double availableWidth) =>
       math.min(preferredWidth, availableWidth);
 
-  bool get _isEditableTextMessage =>
-      message.text.isNotEmpty &&
-      (message.contentType == 'messageText' ||
-          message.contentType == 'messagePhoto' ||
-          message.contentType == 'messageVideo');
+  bool get _isEditableMessage =>
+      message.contentType == 'messageText' ||
+      message.contentType == 'messageRichMessage' ||
+      message.contentType == 'messagePhoto' ||
+      message.contentType == 'messageVideo' ||
+      message.contentType == 'messageAnimation' ||
+      message.contentType == 'messageAudio' ||
+      message.contentType == 'messageDocument';
 
   bool get _hasCopyableText => message.text.trim().isNotEmpty;
 
@@ -98,10 +200,13 @@ class MessageActionMenu extends StatelessWidget {
     if (_hasCopyableText) {
       result.add(MessageAction.copy);
       result.add(MessageAction.selectText);
-      if (message.isOutgoing && _isEditableTextMessage) {
+      if (message.isOutgoing && _isEditableMessage) {
         result.add(MessageAction.edit);
       }
       if (translationEnabled) result.add(MessageAction.translate);
+    }
+    if (!_hasCopyableText && message.isOutgoing && _isEditableMessage) {
+      result.add(MessageAction.edit);
     }
     result.add(MessageAction.reply);
     if (message.hasActualReplies) {

@@ -8,6 +8,7 @@
 //
 
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -85,6 +86,20 @@ class MessageSenderOption {
   }
 }
 
+class MentionCandidate {
+  const MentionCandidate({
+    required this.userId,
+    required this.name,
+    this.username = '',
+    this.photo,
+  });
+
+  final int userId;
+  final String name;
+  final String username;
+  final TdFileRef? photo;
+}
+
 class MessageReactionUser {
   const MessageReactionUser({
     required this.senderId,
@@ -145,9 +160,18 @@ class ChatViewModel extends ChangeNotifier {
     required String title,
     required this.markReadOnOpen,
     this.initialMessageId,
+    this.sessionAnchorMessageId,
+    List<ChatMessage>? sessionMessages,
+    bool sessionAnchoredHistory = false,
     ChatMessage? seedMessage,
   }) : peerTitle = title {
-    if (seedMessage != null) {
+    if (sessionMessages != null && sessionMessages.isNotEmpty) {
+      _allMessages = List<ChatMessage>.from(sessionMessages);
+      messages = List<ChatMessage>.from(sessionMessages);
+      anchoredHistory = sessionAnchoredHistory;
+      initialLoaded = true;
+      _restoredFromSession = true;
+    } else if (seedMessage != null) {
       _allMessages = [seedMessage];
       messages = [seedMessage];
     }
@@ -155,6 +179,7 @@ class ChatViewModel extends ChangeNotifier {
 
   final int chatId;
   final int? initialMessageId;
+  final int? sessionAnchorMessageId;
   final bool markReadOnOpen;
 
   List<ChatMessage> messages = [];
@@ -182,6 +207,7 @@ class ChatViewModel extends ChangeNotifier {
   int lastReadOutboxId = 0; // outgoing messages with id <= this are read
   int lastReadInboxId = 0; // incoming messages with id <= this are read
   int unreadCount = 0; // unread incoming messages on entry (for the divider)
+  int unreadMentionCount = 0;
   bool isMarkedUnread = false; // manual unread marker on the chat row
   bool initialLoaded = false; // first history page (+ unread boundary) is in
   bool anchoredHistory = false; // transcript is centered on an arbitrary target
@@ -225,6 +251,7 @@ class ChatViewModel extends ChangeNotifier {
   int? _pendingScrollToId;
   int? _lastForcedReadMessageId;
   bool _markReadInFlight = false;
+  bool _restoredFromSession = false;
   final Set<int> _blockedReadIds = {};
   final Set<int> _blockedSenderIds = {};
   final Set<int> _discardedPendingMessageIds = {};
@@ -321,9 +348,31 @@ class ChatViewModel extends ChangeNotifier {
     () async {
       unawaited(_loadMe());
       await _loadChatHeader();
+      if (_restoredFromSession) {
+        _resolveRichMessagesIfNeeded(messages);
+        _resolveSendersIfNeeded(messages);
+        _resolveRepliesIfNeeded(messages);
+        _resolveForwardsIfNeeded(messages);
+        _resolveServiceUsersIfNeeded(messages);
+        notifyListeners();
+        if (!anchoredHistory) {
+          unawaited(_fetchHistory(0, 0, 40, onlyLocal: true));
+        }
+        unawaited(_loadAvailableMessageSenders());
+        return;
+      }
       final target = initialMessageId;
       if (target != null) {
         await loadAroundMessage(target);
+      } else if (sessionAnchorMessageId != null) {
+        final restored = await loadAroundMessage(
+          sessionAnchorMessageId!,
+          scrollToTarget: false,
+          onlyLocal: true,
+        );
+        if (!restored) {
+          await _loadInitialHistory(openAtLatest: markReadOnOpen);
+        }
       } else {
         await _loadInitialHistory(openAtLatest: markReadOnOpen);
       }
@@ -592,6 +641,81 @@ class ChatViewModel extends ChangeNotifier {
     _insertMention(name, userId);
   }
 
+  Future<List<MentionCandidate>> searchMentionCandidates(String query) async {
+    if (!isGroup) return const [];
+    try {
+      final result = await _client.query({
+        '@type': 'searchChatMembers',
+        'chat_id': chatId,
+        'query': query.trim(),
+        'limit': 50,
+        'filter': {'@type': 'chatMembersFilterMembers'},
+      });
+      final members = result.objects('members') ?? const [];
+      final resolved = await Future.wait(
+        members.map(_mentionCandidateFromMember),
+      );
+      return resolved.whereType<MentionCandidate>().toList(growable: false);
+    } catch (_) {
+      return _recentMentionCandidates(query);
+    }
+  }
+
+  Future<MentionCandidate?> _mentionCandidateFromMember(
+    Map<String, dynamic> member,
+  ) async {
+    final sender = member.obj('member_id');
+    if (sender?.type != 'messageSenderUser') return null;
+    final userId = sender?.int64('user_id');
+    if (userId == null || userId <= 0) return null;
+    try {
+      final user = await _client.query({'@type': 'getUser', 'user_id': userId});
+      final name = TDParse.userName(user).trim();
+      if (name.isEmpty) return null;
+      final usernames = user.obj('usernames');
+      final active = usernames?['active_usernames'];
+      final activeUsernames = active is List
+          ? active.whereType<String>().toList(growable: false)
+          : const <String>[];
+      final username = activeUsernames.isNotEmpty
+          ? activeUsernames.first
+          : usernames?.str('editable_username') ?? '';
+      return MentionCandidate(
+        userId: userId,
+        name: name.startsWith('@') ? name.substring(1) : name,
+        username: username,
+        photo: TDParse.smallPhoto(user.obj('profile_photo')),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  List<MentionCandidate> _recentMentionCandidates(String query) {
+    final normalized = query.trim().toLowerCase();
+    final seen = <int>{};
+    final result = <MentionCandidate>[];
+    for (final message in messages.reversed) {
+      final userId = message.senderId;
+      final name = message.senderName?.trim() ?? '';
+      if (userId == null || userId <= 0 || name.isEmpty || !seen.add(userId)) {
+        continue;
+      }
+      if (normalized.isNotEmpty && !name.toLowerCase().contains(normalized)) {
+        continue;
+      }
+      result.add(
+        MentionCandidate(
+          userId: userId,
+          name: name,
+          photo: message.senderPhoto,
+        ),
+      );
+      if (result.length == 30) break;
+    }
+    return result;
+  }
+
   void _insertMention(String name, int userId) {
     final mention = '@$name';
     if (_draftMentions.any((m) => m.text == mention && m.userId == userId)) {
@@ -689,6 +813,12 @@ class ChatViewModel extends ChangeNotifier {
     List<RichMessageSendFile> files = const [],
   }) async {
     if (html.trim().isEmpty) return;
+    for (final file in files) {
+      final localFile = File(file.attachment.path);
+      if (!await localFile.exists() || await localFile.length() <= 0) {
+        throw StateError('Unable to read rich message media');
+      }
+    }
     _clearDraft();
     final request = <String, dynamic>{
       '@type': 'sendMessage',
@@ -701,7 +831,7 @@ class ChatViewModel extends ChangeNotifier {
           'is_rtl': false,
           'detect_automatic_blocks': true,
           if (files.isNotEmpty)
-            'files': files.map(_richMessageFilePayload).toList(),
+            'files': files.map(richMessageFilePayload).toList(),
         },
         'clear_draft': true,
       },
@@ -727,6 +857,13 @@ class ChatViewModel extends ChangeNotifier {
   Future<bool> currentUserIsPremium() async {
     final user = await _client.query({'@type': 'getMe'});
     return user.boolean('is_premium') ?? false;
+  }
+
+  Future<int> currentUserId() async {
+    final user = await _client.query({'@type': 'getMe'});
+    final id = user.int64('id');
+    if (id == null || id <= 0) throw StateError('Current user is unavailable');
+    return id;
   }
 
   Future<void> _waitForMessageSend(int pendingMessageId) {
@@ -789,72 +926,6 @@ class ChatViewModel extends ChangeNotifier {
     while (_recentMessageSendResults.length > 32) {
       _recentMessageSendResults.remove(_recentMessageSendResults.keys.first);
     }
-  }
-
-  Map<String, dynamic> _richMessageFilePayload(RichMessageSendFile file) {
-    final attachment = file.attachment;
-    final inputFile = {'@type': 'inputFileLocal', 'path': attachment.path};
-    final segments = Uri.file(attachment.path).pathSegments;
-    final fileName = segments.isEmpty ? attachment.path : segments.last;
-    return switch (attachment.kind) {
-      OutgoingAttachmentKind.photo => {
-        '@type': 'inputRichMessageFilePhoto',
-        'id': file.id,
-        'photo': {
-          '@type': 'inputPhoto',
-          'photo': inputFile,
-          'added_sticker_file_ids': <int>[],
-          'width': 0,
-          'height': 0,
-        },
-      },
-      OutgoingAttachmentKind.video => {
-        '@type': 'inputRichMessageFileVideo',
-        'id': file.id,
-        'video': {
-          '@type': 'inputVideo',
-          'video': inputFile,
-          'start_timestamp': 0,
-          'added_sticker_file_ids': <int>[],
-          'duration': 0,
-          'width': 0,
-          'height': 0,
-          'supports_streaming': true,
-        },
-      },
-      OutgoingAttachmentKind.animation => {
-        '@type': 'inputRichMessageFileAnimation',
-        'id': file.id,
-        'animation': {
-          '@type': 'inputAnimation',
-          'animation': inputFile,
-          'added_sticker_file_ids': <int>[],
-          'duration': 0,
-          'width': 0,
-          'height': 0,
-        },
-      },
-      OutgoingAttachmentKind.audio => {
-        '@type': 'inputRichMessageFileAudio',
-        'id': file.id,
-        'audio': {
-          '@type': 'inputAudio',
-          'audio': inputFile,
-          'duration': 0,
-          'title': fileName,
-          'performer': '',
-        },
-      },
-      OutgoingAttachmentKind.document => {
-        '@type': 'inputRichMessageFileDocument',
-        'id': file.id,
-        'document': {
-          '@type': 'inputDocument',
-          'document': inputFile,
-          'disable_content_type_detection': false,
-        },
-      },
-    };
   }
 
   static const _diceEmojis = {'🎲', '🎯', '🏀', '⚽', '🎳', '🎰'};
@@ -1615,8 +1686,7 @@ class ChatViewModel extends ChangeNotifier {
 
   Future<void> editMessageMedia(
     int id,
-    String path, {
-    required bool isVideo,
+    OutgoingAttachment attachment, {
     required String caption,
     List<Map<String, dynamic>> entities = const [],
   }) async {
@@ -1624,23 +1694,11 @@ class ChatViewModel extends ChangeNotifier {
       '@type': 'editMessageMedia',
       'chat_id': chatId,
       'message_id': id,
-      'input_message_content': {
-        '@type': isVideo ? 'inputMessageVideo' : 'inputMessagePhoto',
-        isVideo ? 'video' : 'photo': {
-          '@type': isVideo ? 'inputVideo' : 'inputPhoto',
-          isVideo ? 'video' : 'photo': {
-            '@type': 'inputFileLocal',
-            'path': path,
-          },
-          if (isVideo) 'supports_streaming': true,
-        },
-        if (caption.trim().isNotEmpty)
-          'caption': {
-            '@type': 'formattedText',
-            'text': caption,
-            if (entities.isNotEmpty) 'entities': entities,
-          },
-      },
+      'input_message_content': attachmentInputMessageContent(
+        attachment,
+        caption: caption,
+        captionEntities: entities,
+      ),
     });
   }
 
@@ -1702,6 +1760,7 @@ class ChatViewModel extends ChangeNotifier {
     lastReadOutboxId = chat.int64('last_read_outbox_message_id') ?? 0;
     lastReadInboxId = chat.int64('last_read_inbox_message_id') ?? 0;
     unreadCount = chat.integer('unread_count') ?? 0;
+    unreadMentionCount = chat.integer('unread_mention_count') ?? 0;
     isMarkedUnread = chat.boolean('is_marked_as_unread') ?? false;
     final notificationSettings = chat.obj('notification_settings');
     isMuted = ScopeNotificationSettings.shared.isMuted(chat);
@@ -2264,6 +2323,44 @@ class ChatViewModel extends ChangeNotifier {
     return messages.any((m) => m.id == messageId);
   }
 
+  Future<bool> openNextUnreadMention() async {
+    try {
+      final response = await _client.query({
+        '@type': 'searchChatMessages',
+        'chat_id': chatId,
+        'query': '',
+        'sender_id': null,
+        'from_message_id': 0,
+        'offset': 0,
+        'limit': 1,
+        'filter': {'@type': 'searchMessagesFilterUnreadMention'},
+      });
+      final rawMessages =
+          response.objects('messages') ?? const <Map<String, dynamic>>[];
+      final mentions = rawMessages
+          .map(TDParse.message)
+          .whereType<ChatMessage>()
+          .toList();
+      final mention = mentions.isEmpty ? null : mentions.first;
+      if (mention == null) {
+        unreadMentionCount = 0;
+        notifyListeners();
+        return false;
+      }
+      final loaded = await loadAroundMessage(mention.id);
+      if (!loaded) return false;
+      _client.send({
+        '@type': 'viewMessages',
+        'chat_id': chatId,
+        'message_ids': [mention.id],
+        'force_read': true,
+      });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<bool> _fetchHistory(
     int fromMessageId,
     int offset,
@@ -2489,12 +2586,6 @@ class ChatViewModel extends ChangeNotifier {
         _resolveRepliesIfNeeded([message]);
         _resolveForwardsIfNeeded([message]);
         _resolveServiceUsersIfNeeded([message]);
-        _client.send({
-          '@type': 'viewMessages',
-          'chat_id': chatId,
-          'message_ids': [message.id],
-          'force_read': true,
-        });
 
       case 'updateMessageContent':
         if (update.int64('chat_id') != chatId) return;
@@ -2514,6 +2605,12 @@ class ChatViewModel extends ChangeNotifier {
           final target = _messageRefs(messageId);
           _resolveRichMessagesIfNeeded(target);
         }
+
+      case 'updateChatUnreadMentionCount':
+        if (update.int64('chat_id') != chatId) return;
+        unreadMentionCount =
+            update.integer('unread_mention_count') ?? unreadMentionCount;
+        notifyListeners();
 
       case 'updateMessageSendSucceeded':
         if (update.int64('chat_id') != chatId) return;
@@ -2707,9 +2804,11 @@ class ChatViewModel extends ChangeNotifier {
         // Invalidate blocked-user cache so the hide-on-block toggle
         // takes effect immediately without app restart.
         if (BlockedUserService.shared.enabled) {
-          unawaited(BlockedUserService.shared.loadBlockedUsers().then((_) {
-            _applyKeywordFilter();
-          }));
+          unawaited(
+            BlockedUserService.shared.loadBlockedUsers().then((_) {
+              _applyKeywordFilter();
+            }),
+          );
         }
     }
   }
@@ -2971,6 +3070,9 @@ class ChatViewModel extends ChangeNotifier {
   void _applyReply(ChatMessage m, ChatMessage quoted) {
     m.replyToPreview = _replyPreview(quoted);
     m.replyToDate = quoted.date;
+    m.replyToImage = quoted.image;
+    m.replyToImageWidth = quoted.imageWidth;
+    m.replyToImageHeight = quoted.imageHeight;
     if (quoted.isOutgoing) {
       m.replyToSender = meName;
       return;
@@ -3046,9 +3148,15 @@ class ChatViewModel extends ChangeNotifier {
       return telegramText(AppStringKeys.composerAnimatedEmojiPreview);
     }
     if (q.image != null) {
-      return q.text.isEmpty
-          ? telegramText(AppStringKeys.composerImagePreview)
-          : q.text;
+      final placeholder = switch (q.contentType) {
+        'messagePhoto' => telegramText(AppStringKeys.composerImagePreview),
+        'messageVideo' => telegramText(AppStringKeys.chatVideoPlaceholder),
+        'messageAnimation' => telegramText(
+          AppStringKeys.composerAnimatedEmojiPreview,
+        ),
+        _ => null,
+      };
+      return q.text == placeholder ? '' : q.text;
     }
     return q.text;
   }
@@ -3083,7 +3191,8 @@ class ChatViewModel extends ChangeNotifier {
       return;
     }
     for (final m in messages) {
-      m.blockedByUser = !m.isOutgoing &&
+      m.blockedByUser =
+          !m.isOutgoing &&
           !m.isService &&
           m.senderId != null &&
           svc.isBlocked(m.senderId!);

@@ -23,6 +23,25 @@ import '../components/app_icons.dart';
 import '../components/ui_components.dart';
 import '../theme/app_theme.dart';
 
+const defaultLocationPickerCenter = LatLng(35.681236, 139.767125);
+
+Future<LatLng> resolveLocationPickerStart() async {
+  try {
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      return defaultLocationPickerCenter;
+    }
+    final position = await Geolocator.getCurrentPosition();
+    return LatLng(position.latitude, position.longitude);
+  } catch (_) {
+    return defaultLocationPickerCenter;
+  }
+}
+
 class LocationPickerResult {
   const LocationPickerResult({required this.center, required this.zoom});
 
@@ -113,16 +132,7 @@ class _LocationPickerViewState extends State<LocationPickerView> {
 
   Future<void> _myLocation() async {
     try {
-      var perm = await Geolocator.checkPermission();
-      if (perm == LocationPermission.denied) {
-        perm = await Geolocator.requestPermission();
-      }
-      if (perm == LocationPermission.denied ||
-          perm == LocationPermission.deniedForever) {
-        return;
-      }
-      final pos = await Geolocator.getCurrentPosition();
-      final p = LatLng(pos.latitude, pos.longitude);
+      final p = await resolveLocationPickerStart();
       if (Platform.isIOS) {
         unawaited(
           _appleCtrl?.animateCamera(

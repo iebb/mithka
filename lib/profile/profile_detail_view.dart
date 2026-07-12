@@ -28,6 +28,7 @@ import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
+import '../components/vip_badge.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -635,6 +636,7 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
           const SizedBox(width: 6),
           CustomEmojiView(id: _emojiStatusId, size: 24),
         ],
+        if (_isPremium) ...[const SizedBox(width: 6), const VipBadge()],
       ],
     );
   }

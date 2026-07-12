@@ -29,6 +29,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../config/secrets.dart';
 import '../settings/api_credentials_config.dart';
 import '../settings/proxy_config.dart';
+import 'avatar_animation_index.dart';
 import 'json_helpers.dart';
 import 'td_bindings.dart';
 
@@ -179,11 +180,7 @@ class TdClient {
     _receivePort = port;
     _receiveIsolateDead = false;
 
-    Isolate.spawn(
-      _receiveEntry,
-      port.sendPort,
-      debugName: 'TDLibReceive',
-    );
+    Isolate.spawn(_receiveEntry, port.sendPort, debugName: 'TDLibReceive');
     _receiveSub = port.listen((message) {
       if (message is Map<String, dynamic>) {
         _route(message);
@@ -686,11 +683,6 @@ class TdClient {
         'TDLib session string user mismatch: expected $userId, got ${info.userId}',
       );
     }
-    debugPrint(
-      '🔑 [Mithka] session string backup size: '
-      '${sessionString.length} chars, ${info.rawSize} bytes, '
-      'dc ${info.dcId}, user ${info.userId}',
-    );
     return sessionString;
   }
 
@@ -869,6 +861,10 @@ class TdClient {
   // MARK: - Routing (on the main isolate)
 
   void _route(Map<String, dynamic> object) {
+    final clientId = object.integer('@client_id') ?? -1;
+    final slot = _slotForClient[clientId] ?? _activeSlot;
+    AvatarAnimationIndex.shared.observe(slot, object);
+
     // Responses to our requests carry the "@extra" we attached (any client).
     final extra = object.str('@extra');
     if (extra != null) {
@@ -883,7 +879,6 @@ class TdClient {
       }
     }
 
-    final clientId = object.integer('@client_id') ?? -1;
     if (object.type == 'updateAuthorizationState' &&
         object.obj('authorization_state')?.type == 'authorizationStateClosed') {
       final waiter = _clientClosedWaiters.remove(clientId);

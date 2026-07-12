@@ -837,6 +837,7 @@ class ThemeController extends ChangeNotifier {
     _fontScale = _prefs.getDouble(_fontKey) ?? 1.0;
     _interfaceScale = _prefs.getDouble(_interfaceScaleKey) ?? 1.0;
     _circularGroupAvatars = _prefs.getBool(_groupAvatarCircleKey) ?? true;
+    _animateAvatars = _prefs.getBool(_animateAvatarsKey) ?? true;
     final storedChatFolderMode = _prefs.getString(_chatFolderDisplayModeKey);
     _chatFolderDisplayMode = ChatFolderDisplayMode.values.firstWhere(
       (mode) => mode.name == storedChatFolderMode,
@@ -914,6 +915,7 @@ class ThemeController extends ChangeNotifier {
   static const _fontKey = 'fontScale';
   static const _interfaceScaleKey = 'interfaceScale';
   static const _groupAvatarCircleKey = 'circularGroupAvatars';
+  static const _animateAvatarsKey = 'animateAvatars';
   static const _chatFolderDisplayModeKey = 'chatFolderDisplayMode';
   // Retained only to migrate the former show/hide toggle.
   static const _chatFolderFilterKey = 'showChatFolderFilter';
@@ -960,6 +962,7 @@ class ThemeController extends ChangeNotifier {
   late double _fontScale;
   late double _interfaceScale;
   late bool _circularGroupAvatars;
+  late bool _animateAvatars;
   late ChatFolderDisplayMode _chatFolderDisplayMode;
   bool _showChatListSearch = true;
   bool _disableChatListSwipeActions = false;
@@ -1023,6 +1026,7 @@ class ThemeController extends ChangeNotifier {
   }
 
   bool get circularGroupAvatars => _circularGroupAvatars;
+  bool get animateAvatars => _animateAvatars;
   ChatFolderDisplayMode get chatFolderDisplayMode => _chatFolderDisplayMode;
   bool get showChatListSearch => _showChatListSearch;
   bool get disableChatListSwipeActions =>
@@ -1343,6 +1347,13 @@ class ThemeController extends ChangeNotifier {
   set circularGroupAvatars(bool value) {
     _circularGroupAvatars = value;
     _prefs.setBool(_groupAvatarCircleKey, value);
+    notifyListeners();
+  }
+
+  set animateAvatars(bool value) {
+    if (_animateAvatars == value) return;
+    _animateAvatars = value;
+    _prefs.setBool(_animateAvatarsKey, value);
     notifyListeners();
   }
 

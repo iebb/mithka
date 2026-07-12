@@ -20,11 +20,16 @@ class ApiCredentialsConfig {
   bool get isUsable => enabled && apiId > 0 && apiHash.trim().isNotEmpty;
 
   static ApiCredentialsConfig fromPrefs(SharedPreferences prefs) {
-    final rawApiId = prefs.getString(_apiIdKey);
+    final rawApiId = prefs.get(_apiIdKey);
+    final apiId = rawApiId is num
+        ? rawApiId.toInt()
+        : rawApiId is String
+        ? int.tryParse(rawApiId) ?? 0
+        : 0;
     return ApiCredentialsConfig(
       configured: prefs.containsKey(_enabledKey),
       enabled: prefs.getBool(_enabledKey) ?? false,
-      apiId: int.tryParse(rawApiId ?? '') ?? prefs.getInt(_apiIdKey) ?? 0,
+      apiId: apiId,
       apiHash: prefs.getString(_apiHashKey) ?? '',
     );
   }

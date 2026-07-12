@@ -17,9 +17,18 @@ import 'json_helpers.dart';
 
 /// Reference to a downloadable TDLib file (profile photo, thumbnail, …).
 class TdFileRef {
-  TdFileRef({required this.id, this.localPath, this.miniThumb, this.thumbnail});
+  TdFileRef({
+    required this.id,
+    this.localPath,
+    this.miniThumb,
+    this.thumbnail,
+    this.hasAnimation = false,
+    this.photoId,
+  });
   final int id;
   final String? localPath;
+  final bool hasAnimation;
+  final int? photoId;
   Uint8List? miniThumb; // decoded JPEG for instant placeholder
   TdFileRef? thumbnail; // downloadable thumbnail with the real aspect ratio
 
@@ -28,6 +37,8 @@ class TdFileRef {
       id: id,
       localPath: _usablePath(localPath) ?? _usablePath(previous?.localPath),
       miniThumb: miniThumb ?? previous?.miniThumb,
+      hasAnimation: hasAnimation || (previous?.hasAnimation ?? false),
+      photoId: photoId ?? previous?.photoId,
       thumbnail:
           thumbnail?.inheritLocalPathFrom(previous?.thumbnail) ??
           previous?.thumbnail,
@@ -154,37 +165,79 @@ class RichMessageTableCell {
     required this.text,
     this.entities = const [],
     this.isHeader = false,
+    this.horizontalAlignment = 'left',
+    this.verticalAlignment = 'top',
   });
 
   final String text;
   final List<MessageTextEntity> entities;
   final bool isHeader;
+  final String horizontalAlignment;
+  final String verticalAlignment;
 }
 
 class RichMessageBlock {
-  const RichMessageBlock.table(this.tableRows)
-    : mathExpression = null,
-      caption = '',
-      captionEntities = const [];
+  const RichMessageBlock.table(
+    this.tableRows, {
+    this.isBordered = true,
+    this.isStriped = false,
+  }) : mathExpression = null,
+       mapLocation = null,
+       mapZoom = 16,
+       mapWidth = 0,
+       mapHeight = 0,
+       caption = '',
+       captionEntities = const [];
 
   const RichMessageBlock.math(this.mathExpression)
     : tableRows = const [],
+      mapLocation = null,
+      mapZoom = 16,
+      mapWidth = 0,
+      mapHeight = 0,
       caption = '',
-      captionEntities = const [];
+      captionEntities = const [],
+      isBordered = false,
+      isStriped = false;
+
+  const RichMessageBlock.map({
+    required this.mapLocation,
+    this.mapZoom = 16,
+    this.mapWidth = 220,
+    this.mapHeight = 120,
+    this.caption = '',
+    this.captionEntities = const [],
+  }) : tableRows = const [],
+       mathExpression = null,
+       isBordered = false,
+       isStriped = false;
 
   const RichMessageBlock.captionedTable({
     required this.tableRows,
     this.caption = '',
     this.captionEntities = const [],
-  }) : mathExpression = null;
+    this.isBordered = true,
+    this.isStriped = false,
+  }) : mathExpression = null,
+       mapLocation = null,
+       mapZoom = 16,
+       mapWidth = 0,
+       mapHeight = 0;
 
   final List<List<RichMessageTableCell>> tableRows;
   final String? mathExpression;
+  final MessageLocation? mapLocation;
+  final int mapZoom;
+  final int mapWidth;
+  final int mapHeight;
   final String caption;
   final List<MessageTextEntity> captionEntities;
+  final bool isBordered;
+  final bool isStriped;
 
   bool get isTable => tableRows.isNotEmpty;
   bool get isMath => mathExpression != null && mathExpression!.isNotEmpty;
+  bool get isMap => mapLocation != null;
 }
 
 class _ParsedMarkdownText {
@@ -284,6 +337,7 @@ class ChatSummary {
     required this.lastMessageId,
     required this.date,
     required this.unreadCount,
+    this.unreadMentionCount = 0,
     required this.order,
     required this.isMuted,
     this.kind = ChatKind.unknown,
@@ -309,6 +363,7 @@ class ChatSummary {
   int lastMessageId;
   int date;
   int unreadCount;
+  int unreadMentionCount;
   int order;
   bool isMuted;
   ChatKind kind;
@@ -325,7 +380,8 @@ class ChatSummary {
   int peerEmojiStatusId;
   bool isForum;
   ChatMessage? lastChatMessage;
-  bool isSavedMessages; // true when this is the Saved Messages chat (private chat with yourself)
+  bool
+  isSavedMessages; // true when this is the Saved Messages chat (private chat with yourself)
 
   /// Groups & channels use a rounded-square avatar unless UI preferences
   /// override them; people use a circle.
@@ -377,6 +433,9 @@ class ChatMessage {
     this.voice,
     this.replyToMessageId,
     this.replyToDate,
+    this.replyToImage,
+    this.replyToImageWidth,
+    this.replyToImageHeight,
     this.serviceUserIds = const [],
     this.customEmoji = const [],
     this.textEntities = const [],
@@ -443,6 +502,9 @@ class ChatMessage {
   int? replyToDate; // unix timestamp of the quoted message
   String? replyToSender; // resolved sender name of the quoted message
   String? replyToPreview; // one-line preview of the quoted message
+  TdFileRef? replyToImage; // thumbnail/photo shown inside the quote block
+  int? replyToImageWidth;
+  int? replyToImageHeight;
 
   // Service messages such as member joins may carry affected user ids, resolved
   // by the chat view model once TDLib can provide display names.
@@ -782,6 +844,7 @@ abstract final class TDParse {
       lastMessageId: lastMessageId,
       date: date,
       unreadCount: unread,
+      unreadMentionCount: chat.integer('unread_mention_count') ?? 0,
       order: order,
       isMuted: muted,
       kind: chatKind(chat),
@@ -1273,6 +1336,16 @@ abstract final class TDParse {
             tableRows: rows,
             caption: caption.text,
             captionEntities: caption.entities,
+            isBordered:
+                block.boolean('is_bordered') ??
+                block.boolean('isBordered') ??
+                block.boolean('bordered') ??
+                false,
+            isStriped:
+                block.boolean('is_striped') ??
+                block.boolean('isStriped') ??
+                block.boolean('striped') ??
+                false,
           ),
         );
       case 'pageBlockMathematicalExpression':
@@ -1285,6 +1358,39 @@ abstract final class TDParse {
         if (expression.trim().isNotEmpty) {
           out.add(RichMessageBlock.math(expression));
         }
+      case 'pageBlockMap':
+      case 'richBlockMap':
+      case 'RichBlockMap':
+      case 'map':
+        final location = block.obj('location');
+        final latitude =
+            location?.dbl('latitude') ??
+            location?.dbl('lat') ??
+            block.dbl('latitude') ??
+            block.dbl('lat');
+        final longitude =
+            location?.dbl('longitude') ??
+            location?.dbl('long') ??
+            location?.dbl('lon') ??
+            block.dbl('longitude') ??
+            block.dbl('long') ??
+            block.dbl('lon');
+        if (latitude == null || longitude == null) return;
+        final caption = _richBlockCaption(block.obj('caption'));
+        out.add(
+          RichMessageBlock.map(
+            mapLocation: MessageLocation(
+              latitude: latitude,
+              longitude: longitude,
+              title: caption.text.isEmpty ? null : caption.text,
+            ),
+            mapZoom: (block.integer('zoom') ?? 16).clamp(13, 20),
+            mapWidth: (block.integer('width') ?? 220).clamp(1, 4096),
+            mapHeight: (block.integer('height') ?? 120).clamp(1, 4096),
+            caption: caption.text,
+            captionEntities: caption.entities,
+          ),
+        );
       case 'pageBlockCover':
       case 'RichBlockCover':
         final cover = block.obj('cover');
@@ -1333,12 +1439,36 @@ abstract final class TDParse {
                 rawCell.boolean('is_header') ??
                 rawCell.boolean('isHeader') ??
                 false,
+            horizontalAlignment: _richTableHorizontalAlignment(rawCell),
+            verticalAlignment: _richTableVerticalAlignment(rawCell),
           ),
         );
       }
       if (row.isNotEmpty) out.add(row);
     }
     return out;
+  }
+
+  static String _richTableHorizontalAlignment(Map<String, dynamic> cell) {
+    final raw = cell['align'];
+    if (raw is String && const {'left', 'center', 'right'}.contains(raw)) {
+      return raw;
+    }
+    final type = raw is Map<String, dynamic> ? (raw.type ?? '') : '';
+    if (type.toLowerCase().contains('center')) return 'center';
+    if (type.toLowerCase().contains('right')) return 'right';
+    return 'left';
+  }
+
+  static String _richTableVerticalAlignment(Map<String, dynamic> cell) {
+    final raw = cell['valign'];
+    if (raw is String && const {'top', 'middle', 'bottom'}.contains(raw)) {
+      return raw;
+    }
+    final type = raw is Map<String, dynamic> ? (raw.type ?? '') : '';
+    if (type.toLowerCase().contains('middle')) return 'middle';
+    if (type.toLowerCase().contains('bottom')) return 'bottom';
+    return 'top';
   }
 
   static ({
@@ -1454,10 +1584,10 @@ abstract final class TDParse {
 
   static List<String> _splitMarkdownTableRow(String line) {
     final trimmed = line.trim();
-    final content = trimmed.substring(
-      trimmed.startsWith('|') ? 1 : 0,
-      trimmed.endsWith('|') ? trimmed.length - 1 : trimmed.length,
-    );
+    final start = trimmed.startsWith('|') ? 1 : 0;
+    final end = trimmed.endsWith('|') ? trimmed.length - 1 : trimmed.length;
+    if (end <= start) return const [];
+    final content = trimmed.substring(start, end);
     final cells = <String>[];
     final buffer = StringBuffer();
     var escaped = false;
@@ -1786,8 +1916,12 @@ abstract final class TDParse {
       case 'pageBlockVideo':
       case 'pageBlockVoiceNote':
       case 'pageBlockEmbedded':
-      case 'pageBlockMap':
         _appendCaption(builder, block.obj('caption'));
+      case 'pageBlockMap':
+      case 'richBlockMap':
+      case 'RichBlockMap':
+      case 'map':
+        return;
       case 'pageBlockCover':
         final cover = block.obj('cover');
         if (cover != null) _appendPageBlock(builder, cover);
@@ -2448,7 +2582,16 @@ abstract final class TDParse {
     final small = photoInfo.obj('small');
     final id = small?.integer('id');
     if (small == null || id == null) return null;
-    return fileRef(small, miniThumb: thumb);
+    final ref = fileRef(small, miniThumb: thumb);
+    if (ref == null) return null;
+    return TdFileRef(
+      id: ref.id,
+      localPath: ref.localPath,
+      miniThumb: ref.miniThumb,
+      thumbnail: ref.thumbnail,
+      hasAnimation: photoInfo.boolean('has_animation') ?? false,
+      photoId: photoInfo.int64('id'),
+    );
   }
 
   static TdFileRef? fileRef(

@@ -130,6 +130,7 @@ const deMessages = <String, String>{
   'appearanceNoMatchingFonts': "Keine passenden Schriftarten",
   'appearanceRefreshCacheList': "Cache-Liste aktualisieren",
   'appearanceRoundGroupAvatars': "Gruppenavatare rund anzeigen",
+  'appearanceAnimateAvatars': "Animierte Profilbilder abspielen",
   'appearanceSearchFont': "Schriftart suchen",
   'appearanceDisableChatListSwipeActions':
       'Chatlisten-Wischaktionen deaktivieren',
@@ -238,6 +239,9 @@ const deMessages = <String, String>{
       "Möchtest du die ausgewählten {value1} Nachrichten löschen?",
   'chatDeleteSingleMessageQuestion': "Möchtest du diese Nachricht löschen?",
   'chatEditMessageTitle': "Nachricht bearbeiten",
+  'chatEditPlainText': "Nur Text",
+  'chatMediaReplace': "Medien ersetzen",
+  'chatMediaDelete': "Medien löschen",
   'chatBlockUserConfirm': "Nutzer blockieren",
   'chatBlockUserDone': "Nutzer blockiert und Meldung gesendet",
   'chatBlockUserFailed': "Nutzer konnte nicht blockiert werden: {value1}",
@@ -469,6 +473,12 @@ const deMessages = <String, String>{
   'composerRichTextMessageTitle': "Formatierte Nachricht",
   'composerRichTextSendFailed':
       "Formatierte Nachricht konnte nicht gesendet werden",
+  'composerLongMessageTitle': "Nachricht zu lang",
+  'composerLongMessageRichTextPrompt':
+      "Diese Nachricht überschreitet Telegrams Grenze von 4096 Zeichen. Soll sie stattdessen als eine Rich-Text-Nachricht gesendet werden? Rich-Text-Nachrichten unterstützen bis zu 32768 UTF-8-Zeichen.",
+  'composerSendAsRichText': "Als Rich Text senden",
+  'composerMessageExceedsRichTextLimit':
+      "Diese Nachricht überschreitet die Rich-Text-Grenze von 32768 Zeichen.",
   'composerSend': "Senden",
   'composerSendPaidMessageQuestion': "Kostenpflichtige Nachricht senden?",
   'composerVideoCall': "Videoanruf",
@@ -491,7 +501,7 @@ const deMessages = <String, String>{
   'createGroupStartGroupChat': "Gruppenchat starten",
   'editProfileAnimatedAvatar': "Animierter Avatar",
   'editProfileAnimatedAvatarDescription':
-      "Ein kurzes Video als Avatar verwenden",
+      "Kurzes Video, GIF, APNG oder Live Photo verwenden",
   'editProfileAvatarUpdated': "Profilbild aktualisiert",
   'editProfileAvatarUpdateFailed':
       "Profilbild konnte nicht geändert werden: {value1}",
@@ -976,6 +986,19 @@ const deMessages = <String, String>{
   'qrScannerTitle': "QR-Code scannen",
   'richTextComposerAddColumn': "Spalte hinzufügen",
   'richTextComposerAddRow': "Zeile hinzufügen",
+  'richTextTableAddRowAbove': "Zeile darüber einfügen",
+  'richTextTableAddRowBelow': "Zeile darunter einfügen",
+  'richTextTableAddColumnLeft': "Spalte links einfügen",
+  'richTextTableAddColumnRight': "Spalte rechts einfügen",
+  'richTextTableHeader': "Kopfzelle",
+  'richTextTableAlignLeft': "Linksbündig",
+  'richTextTableAlignCenter': "Zentriert",
+  'richTextTableAlignRight': "Rechtsbündig",
+  'richTextTableAlignTop': "Oben ausrichten",
+  'richTextTableAlignMiddle': "Vertikal zentrieren",
+  'richTextTableAlignBottom': "Unten ausrichten",
+  'richTextTableBordered': "Tabellenrahmen",
+  'richTextTableStriped': "Gestreifte Tabelle",
   'richTextComposerAnchorName': "Ankername",
   'richTextComposerContentPlaceholder': "Rich-Text eingeben",
   'richTextComposerDetailsContent': "Detailinhalt",
@@ -998,6 +1021,27 @@ const deMessages = <String, String>{
   'richTextComposerInsert': "Einfügen",
   'richTextComposerLimitExceeded':
       "Diese formatierte Nachricht überschreitet die Telegram-Limits",
+  'richTextRelayBotTitle': "Relay-Bot für formatierte Nachrichten",
+  'richTextRelayBotDescription':
+      "Konten ohne Premium können einen eigenen Bot verwenden, um reine Textnachrichten mit Formatierung weiterzuleiten. Starte den Bot zuerst. Das Token wird sicher auf diesem Gerät gespeichert.",
+  'richTextRelayBotSave': "Prüfen und speichern",
+  'richTextRelayBotRemove': "Bot-Token entfernen",
+  'richTextRelayBotConnected': "Mit {value1} verbunden",
+  'richTextRelayBotSaved': "Relay-Bot {value1} gespeichert",
+  'richTextRelayBotRemoved': "Relay-Bot entfernt",
+  'richTextRelayBotConfigured': "Konfiguriert",
+  'richTextRelayBotNotConfigured': "Nicht konfiguriert",
+  'richTextRelayPremiumOrBotRequired':
+      "Telegram Premium oder ein konfigurierter Relay-Bot ist erforderlich",
+  'richTextRelayBotStartRequired': "Starte den Relay-Bot zuerst in Telegram",
+  'richTextRelayMediaPremiumRequired':
+      "Lokale Medien in formatierten Nachrichten erfordern Telegram Premium",
+  'richTextRelayForwardedWithSender':
+      "Telegram konnte den Verweis auf den Relay-Bot nicht entfernen. Die Nachricht wurde mit sichtbarem Absender weitergeleitet.",
+  'richTextRelayProgressUpload': "Medien hochladen {value1}/{value2}",
+  'richTextRelayProgressCompose': "Rich-Text-Nachricht erstellen",
+  'richTextRelayProgressWait': "Auf Nachricht warten",
+  'richTextRelayProgressForward': "Nachricht weiterleiten",
   'richTextComposerMapLatitude': "Breitengrad",
   'richTextComposerMapLongitude': "Längengrad",
   'richTextComposerMapZoom': "Zoom",

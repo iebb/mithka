@@ -12,6 +12,7 @@ import 'dart:io';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
 import '../chat/image_edit_view.dart';
@@ -20,11 +21,13 @@ import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../media/app_asset_picker.dart';
+import '../platform/animated_avatar_preparer.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import 'accent_color_picker_view.dart';
+import 'animated_avatar_crop_view.dart';
 import 'edit_field_view.dart';
 
 class EditProfileView extends StatefulWidget {
@@ -394,13 +397,19 @@ class _EditProfileViewState extends State<EditProfileView> {
 
   Future<void> _changeStaticAvatar() async {
     try {
-      final images = await AppAssetPicker.pick(
+      final selection = await AppAssetPicker.pickDetailed(
         context,
         type: AppAssetPickerType.image,
         maxAssets: 1,
+        preferLivePhotoVideo: true,
       );
-      if (images.isEmpty) return;
-      final img = images.first;
+      if (selection.assets.isEmpty) return;
+      final selected = selection.assets.first;
+      final img = selected.file;
+      if (selected.isAnimatedImage || selected.isLivePhoto) {
+        await _setAnimatedAvatar(img);
+        return;
+      }
       if (!mounted) return;
       final edited = await Navigator.of(context).push<String>(
         MaterialPageRoute(
@@ -434,15 +443,39 @@ class _EditProfileViewState extends State<EditProfileView> {
 
   Future<void> _changeAnimatedAvatar() async {
     try {
-      final videos = await AppAssetPicker.pick(
+      final selection = await AppAssetPicker.pickDetailed(
         context,
-        type: AppAssetPickerType.video,
+        type: AppAssetPickerType.imageAndVideo,
         maxAssets: 1,
         maxVideoDuration: const Duration(seconds: 10),
+        preferLivePhotoVideo: true,
       );
-      if (videos.isEmpty) return;
-      final video = videos.first;
-      final file = File(video.path);
+      if (selection.assets.isEmpty) return;
+      await _setAnimatedAvatar(selection.assets.first.file);
+    } catch (e) {
+      _toast(
+        AppStrings.t(AppStringKeys.editProfileAvatarUpdateFailed, {
+          'value1': e,
+        }),
+      );
+    }
+  }
+
+  Future<void> _setAnimatedAvatar(XFile animation) async {
+    try {
+      if (!mounted) return;
+      final crop = await Navigator.of(context).push<AnimatedAvatarCrop>(
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (_) => AnimatedAvatarCropView(source: animation),
+        ),
+      );
+      if (crop == null) return;
+      final prepared = await AnimatedAvatarPreparer.prepare(
+        animation,
+        crop: crop,
+      );
+      final file = File(prepared.path);
       if (!await file.exists() || await file.length() == 0) {
         _toast(AppStrings.t(AppStringKeys.editProfileInvalidAvatarFile));
         return;
@@ -451,7 +484,7 @@ class _EditProfileViewState extends State<EditProfileView> {
         '@type': 'setProfilePhoto',
         'photo': {
           '@type': 'inputChatPhotoAnimation',
-          'animation': {'@type': 'inputFileLocal', 'path': video.path},
+          'animation': {'@type': 'inputFileLocal', 'path': prepared.path},
           'main_frame_timestamp': 0.0,
         },
         'is_public': false,

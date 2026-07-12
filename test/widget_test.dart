@@ -379,6 +379,106 @@ void main() {
   });
 
   group('MessageBubble delivery status', () {
+    testWidgets('copying a code block shows copied feedback', (tester) async {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (call) async => null,
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
+        ),
+      );
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final theme = ThemeController(prefs);
+      addTearDown(theme.dispose);
+      final message = ChatMessage(
+        id: 5,
+        isOutgoing: false,
+        text: 'final x = 1;',
+        date: 1,
+        textEntities: const [
+          MessageTextEntity(
+            offset: 0,
+            length: 12,
+            type: 'textEntityTypePreCode',
+            language: 'dart',
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<ThemeController>.value(
+          value: theme,
+          child: MaterialApp(
+            locale: const Locale('en'),
+            localizationsDelegates: const [AppLocalizations.delegate],
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: MessageBubble(
+                message: message,
+                peerTitle: 'Test',
+                isGroup: false,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byKey(const ValueKey('message-code-block')));
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.text('Copied'), findsOneWidget);
+    });
+
+    testWidgets('renders a rich map block with its caption', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final theme = ThemeController(prefs);
+      addTearDown(theme.dispose);
+      final message = ChatMessage(
+        id: 4,
+        isOutgoing: false,
+        text: '',
+        date: 1,
+        contentType: 'messageRichMessage',
+        richBlocks: [
+          RichMessageBlock.map(
+            mapLocation: MessageLocation(
+              latitude: 35.681236,
+              longitude: 139.767125,
+            ),
+            mapZoom: 17,
+            mapWidth: 640,
+            mapHeight: 360,
+            caption: 'Tokyo',
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<ThemeController>.value(
+          value: theme,
+          child: MaterialApp(
+            home: Scaffold(
+              body: MessageBubble(
+                message: message,
+                peerTitle: 'Test',
+                isGroup: false,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byKey(const ValueKey('rich-message-map')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('rich-message-map-caption')),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('always shows one sent dot and two read dots', (tester) async {
       SharedPreferences.setMockInitialValues({
         'showMessageMetaIndicators': false,
@@ -480,6 +580,66 @@ void main() {
         find.byKey(const ValueKey('messageTappedTimestamp')),
         findsNothing,
       );
+    });
+  });
+
+  group('MessageBubble reply quote', () {
+    testWidgets('only the up arrow opens the original and media is inline', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final theme = ThemeController(prefs);
+      addTearDown(theme.dispose);
+      int? openedMessageId;
+      final message =
+          ChatMessage(
+              id: 21,
+              isOutgoing: false,
+              text: 'reply',
+              date: 1,
+              replyToMessageId: 9,
+              replyToDate: 1,
+              replyToImage: TdFileRef(
+                id: 999,
+                miniThumb: base64Decode(
+                  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+                ),
+              ),
+            )
+            ..replyToSender = 'Quoted sender'
+            ..replyToPreview = '';
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<ThemeController>.value(
+          value: theme,
+          child: MaterialApp(
+            home: Scaffold(
+              body: MessageBubble(
+                message: message,
+                peerTitle: 'Test',
+                isGroup: false,
+                onOpenReply: (id) => openedMessageId = id,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(
+        find.byKey(const ValueKey('messageReplyMediaPreview')),
+        findsOneWidget,
+      );
+      expect(find.text('[图片]'), findsNothing);
+
+      await tester.tap(find.byKey(const ValueKey('messageReplyQuote')));
+      expect(openedMessageId, isNull);
+
+      await tester.tap(find.byKey(const ValueKey('messageReplyOpenOriginal')));
+      expect(openedMessageId, 9);
+
+      // Expire the mocked TDLib download timeout before test teardown.
+      await tester.pump(const Duration(minutes: 3, seconds: 1));
     });
   });
 
@@ -1134,6 +1294,8 @@ void main() {
               },
               {
                 '@type': 'pageBlockTable',
+                'is_bordered': true,
+                'is_striped': true,
                 'caption': {
                   '@type': 'pageBlockCaption',
                   'text': {'@type': 'richTextPlain', 'text': 'Metrics'},
@@ -1143,6 +1305,8 @@ void main() {
                     {
                       '@type': 'richBlockTableCell',
                       'is_header': true,
+                      'align': 'center',
+                      'valign': 'middle',
                       'text': {'@type': 'richTextPlain', 'text': 'Name'},
                     },
                     {
@@ -1185,9 +1349,13 @@ void main() {
       expect(message.richBlocks.first.mathExpression, r'x^2');
       final table = message.richBlocks.last;
       expect(table.caption, 'Metrics');
+      expect(table.isBordered, isTrue);
+      expect(table.isStriped, isTrue);
       expect(table.tableRows, hasLength(2));
       expect(table.tableRows.first.first.text, 'Name');
       expect(table.tableRows.first.first.isHeader, isTrue);
+      expect(table.tableRows.first.first.horizontalAlignment, 'center');
+      expect(table.tableRows.first.first.verticalAlignment, 'middle');
       expect(table.tableRows[1][1].text, '42');
       expect(table.tableRows[1][1].entities.single.type, 'textEntityTypeBold');
     });
@@ -1231,6 +1399,51 @@ void main() {
       },
     );
 
+    test('parses rich map blocks and suppresses the generic placeholder', () {
+      final message = TDParse.message({
+        '@type': 'message',
+        'id': 103,
+        'date': 1,
+        'is_outgoing': true,
+        'content': {
+          '@type': 'messageRichMessage',
+          'message': {
+            '@type': 'richMessage',
+            'is_full': true,
+            'blocks': [
+              {
+                '@type': 'pageBlockMap',
+                'location': {
+                  '@type': 'location',
+                  'latitude': 35.681236,
+                  'longitude': 139.767125,
+                },
+                'zoom': 17,
+                'width': 640,
+                'height': 360,
+                'caption': {
+                  '@type': 'pageBlockCaption',
+                  'text': {'@type': 'richTextPlain', 'text': 'Tokyo'},
+                },
+              },
+            ],
+          },
+        },
+      });
+
+      expect(message, isNotNull);
+      expect(message!.text, isEmpty);
+      expect(message.richBlocks, hasLength(1));
+      final map = message.richBlocks.single;
+      expect(map.isMap, isTrue);
+      expect(map.mapLocation?.latitude, 35.681236);
+      expect(map.mapLocation?.longitude, 139.767125);
+      expect(map.mapZoom, 17);
+      expect(map.mapWidth, 640);
+      expect(map.mapHeight, 360);
+      expect(map.caption, 'Tokyo');
+    });
+
     test('extracts markdown pipe tables into rich table blocks', () {
       final message = TDParse.message({
         '@type': 'message',
@@ -1255,6 +1468,23 @@ void main() {
       expect(table.tableRows.first.first.text, 'Name');
       expect(table.tableRows.first.first.isHeader, isTrue);
       expect(table.tableRows[1][1].text, '42');
+    });
+  });
+
+  group('TDParse.chat', () {
+    test('preserves unread mention count for chat-list indicators', () {
+      final chat = TDParse.chat({
+        '@type': 'chat',
+        'id': 42,
+        'title': 'Mentioned chat',
+        'unread_count': 3,
+        'unread_mention_count': 2,
+        'type': {'@type': 'chatTypeBasicGroup', 'basic_group_id': 42},
+        'positions': <Object>[],
+      });
+
+      expect(chat, isNotNull);
+      expect(chat!.unreadMentionCount, 2);
     });
   });
 

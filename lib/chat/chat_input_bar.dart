@@ -15,7 +15,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_sound/flutter_sound.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:mithka/l10n/app_localizations.dart';
@@ -30,6 +29,7 @@ import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/telegram_language_controller.dart';
 import '../media/app_asset_picker.dart';
+import '../settings/rich_message_relay_config.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
@@ -48,6 +48,8 @@ import 'location_picker_view.dart';
 import 'media_send_preview_view.dart';
 import 'outgoing_attachment.dart';
 import 'poll_composer_view.dart';
+import 'rich_message_bot_relay.dart';
+import 'rich_message_source.dart';
 import 'rich_text_composer_view.dart';
 import 'sticker_preview.dart';
 import 'sticker_store.dart';
@@ -55,6 +57,35 @@ import 'sticker_store.dart';
 enum _Panel { none, function, emoji, sticker, voice }
 
 enum _ClipboardImageAction { cancel, edit, richText, send }
+
+enum _RichTextSendMode { premium, botRelay }
+
+class MentionQuery {
+  const MentionQuery({
+    required this.start,
+    required this.end,
+    required this.query,
+  });
+
+  final int start;
+  final int end;
+  final String query;
+}
+
+MentionQuery? activeMentionQuery(String text, TextSelection selection) {
+  if (!selection.isValid || !selection.isCollapsed) return null;
+  final cursor = selection.extentOffset;
+  if (cursor < 0 || cursor > text.length) return null;
+  final beforeCursor = text.substring(0, cursor);
+  final match = RegExp(r'(^|\s)@([^\s@]*)$').firstMatch(beforeCursor);
+  if (match == null) return null;
+  final leading = match.group(1)?.length ?? 0;
+  return MentionQuery(
+    start: match.start + leading,
+    end: cursor,
+    query: match.group(2) ?? '',
+  );
+}
 
 typedef _ClipboardImage = ({Uint8List data, String mimeType});
 
@@ -104,6 +135,12 @@ class _ChatInputBarState extends State<ChatInputBar> {
   Timer? _recTimer;
   String? _recPath;
   late bool _hasText = vm.draft.trim().isNotEmpty;
+  Timer? _mentionSearchTimer;
+  MentionQuery? _mentionQuery;
+  List<MentionCandidate> _mentionCandidates = const [];
+  int _mentionSearchGeneration = 0;
+  OverlayEntry? _relayProgressEntry;
+  RichMessageRelayProgress? _relayProgress;
 
   ChatViewModel get vm => widget.vm;
 
@@ -142,12 +179,68 @@ class _ChatInputBarState extends State<ChatInputBar> {
       _hasText = hasText;
       if (mounted) setState(() {});
     }
+    _updateMentionSuggestions();
     final now = DateTime.now();
     if (_controller.text.isNotEmpty &&
         (_lastTyping == null || now.difference(_lastTyping!).inSeconds >= 4)) {
       _lastTyping = now;
       vm.sendTyping();
     }
+  }
+
+  void _updateMentionSuggestions() {
+    final query = activeMentionQuery(_controller.text, _controller.selection);
+    if (query == null || !vm.isGroup) {
+      _mentionSearchTimer?.cancel();
+      _mentionSearchGeneration++;
+      if (_mentionQuery != null || _mentionCandidates.isNotEmpty) {
+        _mentionQuery = null;
+        _mentionCandidates = const [];
+        if (mounted) setState(() {});
+      }
+      return;
+    }
+    if (_mentionQuery?.start == query.start &&
+        _mentionQuery?.end == query.end &&
+        _mentionQuery?.query == query.query) {
+      return;
+    }
+    _mentionQuery = query;
+    _mentionCandidates = const [];
+    if (mounted) setState(() {});
+    _mentionSearchTimer?.cancel();
+    final generation = ++_mentionSearchGeneration;
+    _mentionSearchTimer = Timer(const Duration(milliseconds: 120), () async {
+      final candidates = await vm.searchMentionCandidates(query.query);
+      if (!mounted || generation != _mentionSearchGeneration) return;
+      final active = activeMentionQuery(
+        _controller.text,
+        _controller.selection,
+      );
+      if (active == null ||
+          active.start != query.start ||
+          active.end != query.end ||
+          active.query != query.query) {
+        return;
+      }
+      setState(() => _mentionCandidates = candidates);
+    });
+  }
+
+  void _selectMention(MentionCandidate candidate) {
+    final query = activeMentionQuery(_controller.text, _controller.selection);
+    if (query == null) return;
+    _mentionSearchTimer?.cancel();
+    _mentionSearchGeneration++;
+    _mentionQuery = null;
+    _mentionCandidates = const [];
+    _controller.insertTextMention(
+      start: query.start,
+      end: query.end,
+      label: candidate.name,
+      userId: candidate.userId,
+    );
+    _focus.requestFocus();
   }
 
   void _syncFromVm() {
@@ -172,6 +265,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
     _controller.dispose();
     _focus.dispose();
     _recTimer?.cancel();
+    _mentionSearchTimer?.cancel();
+    _hideRelayProgress();
     _recorder?.closeRecorder();
     super.dispose();
   }
@@ -304,18 +399,42 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   Future<void> _sendCurrentText() async {
     if (_controller.text.trim().isEmpty) return;
-    if (vm.requiresPaidMessage) {
-      final ok = await confirmDialog(
+    final (text, entities) = _controller.toFormatted();
+    final lengthTier = telegramMessageLengthTier(text);
+    if (lengthTier == TelegramMessageLengthTier.exceeded) {
+      showToast(
         context,
-        title: AppStrings.t(AppStringKeys.composerSendPaidMessageQuestion),
-        message: AppStrings.t(AppStringKeys.composerPaidMessageCost, {
-          'value1': vm.paidMessageStarCount,
-        }),
-        confirmText: AppStrings.t(AppStringKeys.composerSend),
+        AppStringKeys.composerMessageExceedsRichTextLimit.l10n(context),
       );
+      return;
+    }
+    if (lengthTier == TelegramMessageLengthTier.rich) {
+      final sendAsRichText = await _confirmLongMessageAsRichText();
+      if (!mounted || !sendAsRichText) return;
+      if (await _richTextSendMode() == null || !mounted) return;
+      if (vm.requiresPaidMessage) {
+        final ok = await _confirmPaidMessageSend();
+        if (!mounted || !ok) return;
+      }
+      final inline = formattedTextToRichInlineHtml(
+        text,
+        entities,
+      ).replaceAll('\n', '<br>');
+      final html = '<p>$inline</p>';
+      await _sendRichTextResult(
+        RichTextComposerResult(
+          text: text,
+          entities: entities,
+          attachments: const [],
+          segments: [RichMessageSendSegment.html(html)],
+        ),
+      );
+      return;
+    }
+    if (vm.requiresPaidMessage) {
+      final ok = await _confirmPaidMessageSend();
       if (!mounted || !ok) return;
     }
-    final (text, entities) = _controller.toFormatted();
     vm.sendFormatted(text, entities);
     widget.onMessageSent();
     _controller.clear();
@@ -323,7 +442,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
   }
 
   Future<void> _openRichTextComposer() async {
-    if (!await _ensureRichTextPremium()) return;
+    if (await _richTextSendMode() == null) return;
     if (!mounted) return;
     final result = await showRichTextComposerSheet(
       context,
@@ -334,17 +453,50 @@ class _ChatInputBarState extends State<ChatInputBar> {
     if (result == null || !mounted) return;
     if (result.text.trim().isEmpty && result.attachments.isEmpty) return;
     if (vm.requiresPaidMessage) {
-      final ok = await confirmDialog(
-        context,
-        title: AppStrings.t(AppStringKeys.composerSendPaidMessageQuestion),
-        message: AppStrings.t(AppStringKeys.composerPaidMessageCost, {
-          'value1': vm.paidMessageStarCount,
-        }),
-        confirmText: AppStrings.t(AppStringKeys.composerSend),
-      );
+      final ok = await _confirmPaidMessageSend();
       if (!mounted || !ok) return;
     }
     await _sendRichTextResult(result);
+  }
+
+  Future<bool> _confirmPaidMessageSend() {
+    return confirmDialog(
+      context,
+      title: AppStrings.t(AppStringKeys.composerSendPaidMessageQuestion),
+      message: AppStrings.t(AppStringKeys.composerPaidMessageCost, {
+        'value1': vm.paidMessageStarCount,
+      }),
+      confirmText: AppStrings.t(AppStringKeys.composerSend),
+    );
+  }
+
+  Future<bool> _confirmLongMessageAsRichText() async {
+    final result = await showGeneralDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: AppStringKeys.countryPickerCancel.l10n(context),
+      barrierColor: Colors.black.withValues(alpha: 0.42),
+      transitionDuration: const Duration(milliseconds: 180),
+      pageBuilder: (dialogContext, _, _) => _LongMessageRichTextPrompt(
+        onCancel: () => Navigator.of(dialogContext).pop(false),
+        onConfirm: () => Navigator.of(dialogContext).pop(true),
+      ),
+      transitionBuilder: (context, animation, _, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+          reverseCurve: Curves.easeInCubic,
+        );
+        return FadeTransition(
+          opacity: curved,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.96, end: 1).animate(curved),
+            child: child,
+          ),
+        );
+      },
+    );
+    return result ?? false;
   }
 
   Future<void> _handlePaste([ContextMenuButtonItem? pasteItem]) async {
@@ -446,6 +598,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (vm.replyTo != null) _replyBanner(vm.replyTo!),
+            if (_mentionCandidates.isNotEmpty) _mentionMenu(),
             _inputRow(),
             _iconStrip(),
             if (_panel == _Panel.function) _functionPanel(),
@@ -454,6 +607,84 @@ class _ChatInputBarState extends State<ChatInputBar> {
             if (_panel == _Panel.voice) _voicePanel(),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _mentionMenu() {
+    final c = context.colors;
+    return Container(
+      constraints: const BoxConstraints(maxHeight: 260),
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      decoration: BoxDecoration(
+        color: c.card,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: c.divider, width: 0.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 14,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: ListView.separated(
+        shrinkWrap: true,
+        padding: EdgeInsets.zero,
+        itemCount: _mentionCandidates.length,
+        separatorBuilder: (_, _) => const InsetDivider(leadingInset: 54),
+        itemBuilder: (context, index) {
+          final candidate = _mentionCandidates[index];
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _selectMention(candidate),
+            child: SizedBox(
+              height: 52,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Row(
+                  children: [
+                    PhotoAvatar(
+                      title: candidate.name,
+                      photo: candidate.photo,
+                      size: 34,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            candidate.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w500,
+                              color: c.textPrimary,
+                            ),
+                          ),
+                          if (candidate.username.isNotEmpty)
+                            Text(
+                              '@${candidate.username}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: c.textSecondary,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -1130,7 +1361,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
         continue;
       }
       if (action == _ClipboardImageAction.richText) {
-        if (!await _ensureRichTextPremium()) return;
+        if (await _richTextSendMode() == null) return;
         if (!mounted) return;
         final result = await showRichTextComposerSheet(
           context,
@@ -1336,20 +1567,76 @@ class _ChatInputBarState extends State<ChatInputBar> {
   }
 
   Future<void> _sendRichTextResult(RichTextComposerResult result) async {
-    if (!await _ensureRichTextPremium()) return;
+    final mode = await _richTextSendMode();
+    if (mode == null) return;
     if (!mounted) return;
     try {
       var sentAny = false;
-      for (final segment in result.segments) {
-        if (segment.isHtml) {
-          await widget.vm.sendRichMessageHtml(
-            segment.html,
-            files: segment.richFiles,
-          );
-          sentAny = true;
-        } else if (segment.attachments.isNotEmpty) {
-          await widget.vm.sendAttachments(segment.attachments);
-          sentAny = true;
+      if (mode == _RichTextSendMode.premium) {
+        for (final segment in result.segments) {
+          if (segment.isHtml) {
+            final files = await Future.wait(
+              segment.richFiles.map((file) async {
+                final attachment = await resolveAttachmentDimensions(
+                  file.attachment,
+                );
+                return RichMessageSendFile(id: file.id, attachment: attachment);
+              }),
+            );
+            await widget.vm.sendRichMessageHtml(segment.html, files: files);
+            sentAny = true;
+          } else if (segment.attachments.isNotEmpty) {
+            await widget.vm.sendAttachments(segment.attachments);
+            sentAny = true;
+          }
+        }
+      } else {
+        final token = await RichMessageRelayConfig.readToken();
+        if (token == null) return;
+        final currentUserId = await widget.vm.currentUserId();
+        final relay = RichMessageBotRelay();
+        _showRelayProgress();
+        try {
+          for (final segment in result.segments) {
+            if (segment.isHtml) {
+              final files = await Future.wait(
+                segment.richFiles.map((file) async {
+                  final attachment = await resolveAttachmentDimensions(
+                    file.attachment,
+                  );
+                  return RichMessageSendFile(
+                    id: file.id,
+                    attachment: attachment,
+                  );
+                }),
+              );
+              await relay.sendAndCopy(
+                token: token,
+                html: segment.html,
+                currentUserId: currentUserId,
+                targetChatId: widget.vm.chatId,
+                tdClient: TdClient.shared,
+                files: files,
+                onProgress: _updateRelayProgress,
+              );
+              sentAny = true;
+            } else {
+              for (final attachment in segment.attachments) {
+                await relay.sendAttachmentAndCopy(
+                  token: token,
+                  attachment: attachment,
+                  currentUserId: currentUserId,
+                  targetChatId: widget.vm.chatId,
+                  tdClient: TdClient.shared,
+                  onProgress: _updateRelayProgress,
+                );
+                sentAny = true;
+              }
+            }
+          }
+        } finally {
+          relay.close();
+          _hideRelayProgress();
         }
       }
       if (!sentAny) return;
@@ -1361,7 +1648,15 @@ class _ChatInputBarState extends State<ChatInputBar> {
       if (mounted) {
         setState(() => _panel = _Panel.none);
         final message = switch (error) {
-          TimeoutException() => _richTextPremiumRequiredMessage,
+          RichMessageRelayException(:final code)
+              when code == 'bot_not_started' =>
+            AppStringKeys.richTextRelayBotStartRequired.l10n(context),
+          RichMessageRelayException(:final message)
+              when message.trim().isNotEmpty =>
+            message,
+          TimeoutException() => AppStringKeys.composerRichTextSendFailed.l10n(
+            context,
+          ),
           TdError(:final message) when message.trim().isNotEmpty => message,
           _ =>
             error.toString().trim().isNotEmpty
@@ -1373,13 +1668,44 @@ class _ChatInputBarState extends State<ChatInputBar> {
     }
   }
 
-  String get _richTextPremiumRequiredMessage =>
-      '${telegramText(AppStringKeys.composerRichTextSendFailed)} - '
-      '${telegramText(AppStringKeys.premiumLabel)}';
+  void _showRelayProgress() {
+    if (_relayProgressEntry != null || !mounted) return;
+    final overlay = Overlay.of(context, rootOverlay: true);
+    _relayProgress = const RichMessageRelayProgress(
+      stage: RichMessageRelayStage.compose,
+      step: 1,
+      totalSteps: 3,
+    );
+    final entry = OverlayEntry(
+      builder: (_) => _RelaySendingOverlay(progress: _relayProgress!),
+    );
+    _relayProgressEntry = entry;
+    overlay.insert(entry);
+  }
 
-  Future<bool> _ensureRichTextPremium() async {
+  void _updateRelayProgress(RichMessageRelayProgress progress) {
+    _relayProgress = progress;
+    _relayProgressEntry?.markNeedsBuild();
+  }
+
+  void _hideRelayProgress() {
+    final entry = _relayProgressEntry;
+    _relayProgressEntry = null;
+    _relayProgress = null;
+    if (entry?.mounted ?? false) entry!.remove();
+  }
+
+  String get _richTextPremiumRequiredMessage =>
+      AppStringKeys.richTextRelayPremiumOrBotRequired.l10n(context);
+
+  Future<_RichTextSendMode?> _richTextSendMode() async {
     try {
-      if (await widget.vm.currentUserIsPremium()) return true;
+      if (await widget.vm.currentUserIsPremium()) {
+        return _RichTextSendMode.premium;
+      }
+      if (await RichMessageRelayConfig.isConfigured()) {
+        return _RichTextSendMode.botRelay;
+      }
       if (mounted) showToast(context, _richTextPremiumRequiredMessage);
     } catch (error) {
       if (mounted) {
@@ -1390,7 +1716,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
         showToast(context, message);
       }
     }
-    return false;
+    return null;
   }
 
   String _extensionForMime(String mimeType) {
@@ -1437,19 +1763,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   /// 位置: open a map picker centred on the GPS fix; send the chosen point.
   Future<void> _sendLocation() async {
-    // Fallback centre when location is unavailable — user can pan to choose.
-    var start = const LatLng(39.9087, 116.3975);
-    try {
-      var perm = await Geolocator.checkPermission();
-      if (perm == LocationPermission.denied) {
-        perm = await Geolocator.requestPermission();
-      }
-      if (perm != LocationPermission.denied &&
-          perm != LocationPermission.deniedForever) {
-        final pos = await Geolocator.getCurrentPosition();
-        start = LatLng(pos.latitude, pos.longitude);
-      }
-    } catch (_) {}
+    final start = await resolveLocationPickerStart();
     if (!mounted) return;
     final picked = await Navigator.of(context).push<LatLng>(
       MaterialPageRoute(builder: (_) => LocationPickerView(initial: start)),
@@ -2066,6 +2380,264 @@ class _ChatInputBarState extends State<ChatInputBar> {
                       ),
               ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RelaySendingOverlay extends StatefulWidget {
+  const _RelaySendingOverlay({required this.progress});
+
+  final RichMessageRelayProgress progress;
+
+  @override
+  State<_RelaySendingOverlay> createState() => _RelaySendingOverlayState();
+}
+
+class _RelaySendingOverlayState extends State<_RelaySendingOverlay>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _animation = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _animation.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final progress = widget.progress;
+    final percent = (progress.fraction * 100).round().clamp(0, 100);
+    final label = switch (progress.stage) {
+      RichMessageRelayStage.upload => AppStrings.t(
+        AppStringKeys.richTextRelayProgressUpload,
+        {'value1': progress.mediaIndex, 'value2': progress.mediaCount},
+      ),
+      RichMessageRelayStage.compose =>
+        AppStringKeys.richTextRelayProgressCompose.l10n(context),
+      RichMessageRelayStage.waitForMessage =>
+        AppStringKeys.richTextRelayProgressWait.l10n(context),
+      RichMessageRelayStage.forward =>
+        AppStringKeys.richTextRelayProgressForward.l10n(context),
+    };
+    return Positioned.fill(
+      child: AbsorbPointer(
+        child: ColoredBox(
+          color: Colors.black.withValues(alpha: 0.24),
+          child: Center(
+            child: Container(
+              width: 210,
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+              decoration: BoxDecoration(
+                color: c.card,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: c.divider, width: 0.5),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.2),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AnimatedBuilder(
+                    animation: _animation,
+                    builder: (_, _) => Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        for (var index = 0; index < 3; index++) ...[
+                          if (index > 0) const SizedBox(width: 7),
+                          _relayProgressDot(index),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 11),
+                  Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: c.textPrimary,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                  const SizedBox(height: 9),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(2),
+                    child: SizedBox(
+                      height: 4,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          ColoredBox(color: c.divider),
+                          FractionallySizedBox(
+                            alignment: Alignment.centerLeft,
+                            widthFactor: progress.fraction,
+                            child: ColoredBox(color: AppTheme.brand),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 7),
+                  Text(
+                    '${progress.step}/${progress.totalSteps} · $percent%',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: c.textSecondary,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _relayProgressDot(int index) {
+    final phase = (_animation.value - index * 0.16) * math.pi * 2;
+    final strength = (math.sin(phase) + 1) / 2;
+    return Transform.scale(
+      scale: 0.78 + strength * 0.28,
+      child: Container(
+        width: 9,
+        height: 9,
+        decoration: BoxDecoration(
+          color: AppTheme.brand.withValues(alpha: 0.35 + strength * 0.65),
+          shape: BoxShape.circle,
+        ),
+      ),
+    );
+  }
+}
+
+class _LongMessageRichTextPrompt extends StatelessWidget {
+  const _LongMessageRichTextPrompt({
+    required this.onCancel,
+    required this.onConfirm,
+  });
+
+  final VoidCallback onCancel;
+  final VoidCallback onConfirm;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Center(
+      child: SafeArea(
+        minimum: const EdgeInsets.all(24),
+        child: Container(
+          width: math.min(360, MediaQuery.sizeOf(context).width - 48),
+          padding: const EdgeInsets.fromLTRB(22, 22, 22, 16),
+          decoration: BoxDecoration(
+            color: c.card,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: c.divider, width: 0.5),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.22),
+                blurRadius: 22,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                AppStringKeys.composerLongMessageTitle.l10n(context),
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: c.textPrimary,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                AppStringKeys.composerLongMessageRichTextPrompt.l10n(context),
+                style: TextStyle(
+                  fontSize: 14,
+                  height: 1.4,
+                  color: c.textSecondary,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: _LongMessagePromptAction(
+                      label: AppStringKeys.countryPickerCancel.l10n(context),
+                      onTap: onCancel,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _LongMessagePromptAction(
+                      label: AppStringKeys.composerSendAsRichText.l10n(context),
+                      onTap: onConfirm,
+                      primary: true,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LongMessagePromptAction extends StatelessWidget {
+  const _LongMessagePromptAction({
+    required this.label,
+    required this.onTap,
+    this.primary = false,
+  });
+
+  final String label;
+  final VoidCallback onTap;
+  final bool primary;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        height: 44,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: primary ? AppTheme.brand : c.searchFill,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Text(
+          label,
+          maxLines: 2,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: primary ? Colors.white : c.textPrimary,
+            decoration: TextDecoration.none,
+          ),
         ),
       ),
     );

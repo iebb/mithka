@@ -12,12 +12,12 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
+import '../notifications/scope_notification_settings.dart';
 import '../settings/keyword_blocker.dart';
 import '../tdlib/chat_membership.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
-import '../notifications/scope_notification_settings.dart';
 
 class ChatFilterOption {
   const ChatFilterOption({required this.title, this.folderId});
@@ -524,6 +524,16 @@ class ChatListViewModel extends ChangeNotifier {
         );
         _scheduleResort();
 
+      case 'updateChatUnreadMentionCount':
+        final id = update.int64('chat_id');
+        if (id == null) return;
+        _mutate(
+          id,
+          (s) => s.unreadMentionCount =
+              update.integer('unread_mention_count') ?? s.unreadMentionCount,
+        );
+        _scheduleResort();
+
       case 'updateChatIsMarkedAsUnread':
         final id = update.int64('chat_id');
         if (id == null) return;
@@ -549,7 +559,8 @@ class ChatListViewModel extends ChangeNotifier {
               notificationSettings?.boolean('use_default_mute_for') ?? false;
           final muteFor = useDefault
               ? ScopeNotificationSettings.shared.getMuteForScope(
-                  ScopeNotificationSettings.shared.scopeTagForKind(s.kind))
+                  ScopeNotificationSettings.shared.scopeTagForKind(s.kind),
+                )
               : (notificationSettings?.integer('mute_for') ?? 0);
           s.isMuted = muteFor > 0;
         });

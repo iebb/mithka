@@ -78,9 +78,12 @@ dependencies:
   flutter_math_fork: ^0.7.4
   wechat_assets_picker: ^10.1.2
   photo_manager: ^3.10.0
+  flutter_secure_storage: ^10.3.1
 
 dev_dependencies:
   flutter_test:
+    sdk: flutter
+  integration_test:
     sdk: flutter
   flutter_lints: ^6.0.0
 

@@ -20,6 +20,7 @@ import 'package:provider/provider.dart';
 
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
+import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/telegram_language_controller.dart';
 import '../profile/profile_detail_view.dart';
@@ -949,6 +950,8 @@ class _MessageBubbleState extends State<MessageBubble>
         widgets.add(_richTableBlock(block, outgoing));
       } else if (block.isMath) {
         widgets.add(_richMathBlock(block.mathExpression!, outgoing));
+      } else if (block.isMap) {
+        widgets.add(_richMapBlock(block, outgoing));
       }
     }
     return widgets;
@@ -983,6 +986,69 @@ class _MessageBubbleState extends State<MessageBubble>
     );
   }
 
+  Widget _richMapBlock(RichMessageBlock block, bool outgoing) {
+    final location = block.mapLocation!;
+    final c = context.colors;
+    final base = outgoing ? Colors.white : c.textPrimary;
+    final link = outgoing ? Colors.white : c.linkBlue;
+    final sourceWidth = math.max(block.mapWidth, 1);
+    final sourceHeight = math.max(block.mapHeight, 1);
+    final previewHeight = (220 * sourceHeight / sourceWidth).clamp(100, 220);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => LocationDetailView(location: location),
+        ),
+      ),
+      child: Container(
+        key: const ValueKey('rich-message-map'),
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: outgoing
+              ? Colors.white.withValues(alpha: 0.08)
+              : c.card.withValues(alpha: 0.9),
+          borderRadius: BorderRadius.circular(7),
+          border: Border.all(
+            color: outgoing ? Colors.white.withValues(alpha: 0.18) : c.divider,
+            width: 0.5,
+          ),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _MapThumbnail(
+              latitude: location.latitude,
+              longitude: location.longitude,
+              zoom: block.mapZoom,
+              height: previewHeight.toDouble(),
+            ),
+            if (block.caption.isNotEmpty)
+              Padding(
+                key: const ValueKey('rich-message-map-caption'),
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 9),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: _richTextWidgets(
+                    block.caption,
+                    base,
+                    link,
+                    outgoing,
+                    false,
+                    block.captionEntities,
+                    13.5,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _richTableBlock(RichMessageBlock block, bool outgoing) {
     final c = context.colors;
     final base = outgoing ? Colors.white : c.textPrimary;
@@ -999,6 +1065,9 @@ class _MessageBubbleState extends State<MessageBubble>
     final cellFill = outgoing
         ? Colors.white.withValues(alpha: 0.07)
         : c.card.withValues(alpha: 0.88);
+    final stripedFill = outgoing
+        ? Colors.white.withValues(alpha: 0.11)
+        : c.searchFill.withValues(alpha: 0.72);
     final maxColumns = block.tableRows.fold<int>(
       0,
       (max, row) => row.length > max ? row.length : max,
@@ -1021,6 +1090,8 @@ class _MessageBubbleState extends State<MessageBubble>
                     column < row.length &&
                         (row[column].isHeader || rowIndex == 0)
                     ? headerFill
+                    : block.isStriped && rowIndex.isOdd
+                    ? stripedFill
                     : cellFill,
               ),
           ],
@@ -1047,7 +1118,9 @@ class _MessageBubbleState extends State<MessageBubble>
             scrollDirection: Axis.horizontal,
             child: Table(
               defaultColumnWidth: const IntrinsicColumnWidth(),
-              border: TableBorder.all(color: border, width: 0.8),
+              border: block.isBordered
+                  ? TableBorder.all(color: border, width: 0.8)
+                  : null,
               children: rows,
             ),
           ),
@@ -1066,25 +1139,51 @@ class _MessageBubbleState extends State<MessageBubble>
   }) {
     final isHeader = cell?.isHeader ?? isFallbackHeader;
     final text = cell?.text ?? '';
-    return Container(
-      constraints: const BoxConstraints(minWidth: 72, maxWidth: 180),
-      color: fill,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
-      child: text.isEmpty
-          ? Text('', style: TextStyle(fontSize: 13, color: secondary))
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: _richTextWidgets(
-                text,
-                base,
-                link,
-                false,
-                false,
-                cell?.entities ?? const [],
-                isHeader ? 13.5 : 13,
+    final horizontal = switch (cell?.horizontalAlignment) {
+      'center' => 0.0,
+      'right' => 1.0,
+      _ => -1.0,
+    };
+    final vertical = switch (cell?.verticalAlignment) {
+      'middle' => 0.0,
+      'bottom' => 1.0,
+      _ => -1.0,
+    };
+    return TableCell(
+      verticalAlignment: switch (cell?.verticalAlignment) {
+        'middle' => TableCellVerticalAlignment.middle,
+        'bottom' => TableCellVerticalAlignment.bottom,
+        _ => TableCellVerticalAlignment.top,
+      },
+      child: Container(
+        constraints: const BoxConstraints(
+          minWidth: 72,
+          maxWidth: 180,
+          minHeight: 38,
+        ),
+        color: fill,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+        alignment: Alignment(horizontal, vertical),
+        child: text.isEmpty
+            ? Text('', style: TextStyle(fontSize: 13, color: secondary))
+            : Column(
+                crossAxisAlignment: switch (cell?.horizontalAlignment) {
+                  'center' => CrossAxisAlignment.center,
+                  'right' => CrossAxisAlignment.end,
+                  _ => CrossAxisAlignment.start,
+                },
+                mainAxisSize: MainAxisSize.min,
+                children: _richTextWidgets(
+                  text,
+                  base,
+                  link,
+                  false,
+                  false,
+                  cell?.entities ?? const [],
+                  isHeader ? 13.5 : 13,
+                ),
               ),
-            ),
+      ),
     );
   }
 
@@ -1675,54 +1774,77 @@ class _MessageBubbleState extends State<MessageBubble>
     final sender = message.replyToSender ?? '';
     final time = DateText.quoteLabel(message.replyToDate ?? 0);
     final targetId = message.replyToMessageId;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: targetId == null ? null : () => widget.onOpenReply?.call(targetId),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(12, 8, 10, 9),
-        decoration: BoxDecoration(
-          color: _replyQuoteBackground(outgoing),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text.rich(
-                    TextSpan(
-                      children: [
-                        if (sender.isNotEmpty)
-                          TextSpan(
-                            text: sender,
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                        if (time.isNotEmpty)
-                          TextSpan(text: sender.isEmpty ? time : ' $time'),
-                      ],
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 14, color: labelColor),
+    return Container(
+      key: const ValueKey('messageReplyQuote'),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 8, 6, 9),
+      decoration: BoxDecoration(
+        color: _replyQuoteBackground(outgoing),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (message.replyToImage != null) ...[
+            SizedBox(
+              key: const ValueKey('messageReplyMediaPreview'),
+              width: 44,
+              height: 44,
+              child: TDImage(
+                photo: message.replyToImage,
+                cornerRadius: 6,
+                cacheWidth: _cachePx(44),
+                cacheHeight: _cachePx(44),
+              ),
+            ),
+            const SizedBox(width: 9),
+          ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text.rich(
+                  TextSpan(
+                    children: [
+                      if (sender.isNotEmpty)
+                        TextSpan(
+                          text: sender,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      if (time.isNotEmpty)
+                        TextSpan(text: sender.isEmpty ? time : ' $time'),
+                    ],
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 14, color: labelColor),
+                ),
+                if ((message.replyToPreview ?? '').isNotEmpty) ...[
                   const SizedBox(height: 4),
                   Text(
-                    message.replyToPreview ?? '',
+                    message.replyToPreview!,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(fontSize: 14, height: 1.22, color: faded),
                   ),
                 ],
-              ),
+              ],
             ),
-            const SizedBox(width: 10),
-            AppIcon(HeroAppIcons.arrowUp, size: 18, color: faded),
-          ],
-        ),
+          ),
+          const SizedBox(width: 6),
+          GestureDetector(
+            key: const ValueKey('messageReplyOpenOriginal'),
+            behavior: HitTestBehavior.opaque,
+            onTap: targetId == null
+                ? null
+                : () => widget.onOpenReply?.call(targetId),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(6, 1, 4, 9),
+              child: AppIcon(HeroAppIcons.arrowUp, size: 18, color: faded),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2006,6 +2128,7 @@ class _MessageBubbleState extends State<MessageBubble>
     final language = (pre.language ?? '').trim();
     final codeBackground = _codeBackgroundColor;
     return GestureDetector(
+      key: const ValueKey('message-code-block'),
       behavior: HitTestBehavior.opaque,
       onTap: () => _copyMonospaceText(text.substring(start, end)),
       child: Container(
@@ -2070,7 +2193,11 @@ class _MessageBubbleState extends State<MessageBubble>
 
   void _copyMonospaceText(String text) {
     if (text.isEmpty) return;
-    Clipboard.setData(ClipboardData(text: text));
+    Clipboard.setData(ClipboardData(text: text)).then((_) {
+      if (mounted) {
+        showToast(context, AppStringKeys.topicPostContentCopied);
+      }
+    });
   }
 
   List<InlineSpan> _entitySpans(
@@ -2223,6 +2350,7 @@ class _MessageBubbleState extends State<MessageBubble>
       alignment: PlaceholderAlignment.baseline,
       baseline: TextBaseline.alphabetic,
       child: GestureDetector(
+        key: const ValueKey('message-inline-code'),
         behavior: HitTestBehavior.opaque,
         onTap: () => _copyMonospaceText(segment),
         child: Container(
@@ -2942,7 +3070,10 @@ class _MessageBubbleState extends State<MessageBubble>
 
   Widget _fileCard(MessageDocument doc, bool outgoing) {
     final c = context.colors;
-    final caption = _fileCaptionText;
+    final caption = _fileCaptionText(doc);
+    final isGif =
+        doc.ext.toLowerCase() == 'gif' ||
+        doc.fileName.toLowerCase().endsWith('.gif');
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => Navigator.of(
@@ -2950,7 +3081,7 @@ class _MessageBubbleState extends State<MessageBubble>
       ).push(MaterialPageRoute(builder: (_) => FileDetailView(doc: doc))),
       child: Container(
         width: 244,
-        padding: const EdgeInsets.all(12),
+        padding: EdgeInsets.all(isGif ? 4 : 12),
         decoration: BoxDecoration(
           color: c.card,
           borderRadius: BorderRadius.circular(6),
@@ -2959,48 +3090,66 @@ class _MessageBubbleState extends State<MessageBubble>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        doc.fileName,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 15,
-                          color: c.bubbleIncomingText,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        _byteString(doc.size),
-                        style: TextStyle(fontSize: 12, color: c.textSecondary),
-                      ),
-                    ],
-                  ),
+            if (isGif && doc.file != null)
+              SizedBox(
+                width: 236,
+                height: 180,
+                child: TDImage(
+                  photo: doc.file,
+                  fit: BoxFit.contain,
+                  cornerRadius: 4,
+                  showProgress: true,
                 ),
-                const SizedBox(width: 8),
-                _fileGlyph(doc.ext),
-              ],
-            ),
+              )
+            else
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          doc.fileName,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 15,
+                            color: c.bubbleIncomingText,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          _byteString(doc.size),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: c.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  _fileGlyph(doc.ext),
+                ],
+              ),
             if (caption.isNotEmpty) ...[
               const SizedBox(height: 10),
-              Container(height: 0.5, color: c.divider),
+              if (!isGif) Container(height: 0.5, color: c.divider),
               const SizedBox(height: 8),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  ..._richTextWidgets(
-                    caption,
-                    c.textPrimary,
-                    c.linkBlue,
-                    outgoing,
-                    false,
-                  ),
-                ],
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: isGif ? 8 : 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ..._richTextWidgets(
+                      caption,
+                      c.textPrimary,
+                      c.linkBlue,
+                      outgoing,
+                      false,
+                    ),
+                  ],
+                ),
               ),
             ],
           ],
@@ -3009,12 +3158,17 @@ class _MessageBubbleState extends State<MessageBubble>
     );
   }
 
-  String get _fileCaptionText {
+  String _fileCaptionText(MessageDocument document) {
     final text = message.text.trim();
+    final generatedWithName = telegramText(
+      AppStringKeys.tdMessageFileWithName,
+      {'value1': document.fileName},
+    );
     if (text.isEmpty ||
-        text == AppStringKeys.channelsFileAttachment ||
-        text == AppStringKeys.composerImagePreview ||
-        text == AppStringKeys.chatVideoPlaceholder ||
+        text == telegramText(AppStringKeys.channelsFileAttachment) ||
+        text == telegramText(AppStringKeys.composerImagePreview) ||
+        text == telegramText(AppStringKeys.chatVideoPlaceholder) ||
+        text == generatedWithName ||
         (text.startsWith('[') && text.endsWith(']'))) {
       return '';
     }
@@ -3124,9 +3278,16 @@ class _MessageBubbleState extends State<MessageBubble>
 /// Static map preview for a location message. Telegram renders the map tile via
 /// getMapThumbnailFile (no marker); we overlay a centre pin.
 class _MapThumbnail extends StatefulWidget {
-  const _MapThumbnail({required this.latitude, required this.longitude});
+  const _MapThumbnail({
+    required this.latitude,
+    required this.longitude,
+    this.zoom = 16,
+    this.height = 120,
+  });
   final double latitude;
   final double longitude;
+  final int zoom;
+  final double height;
 
   @override
   State<_MapThumbnail> createState() => _MapThumbnailState();
@@ -3150,9 +3311,9 @@ class _MapThumbnailState extends State<_MapThumbnail> {
           'latitude': widget.latitude,
           'longitude': widget.longitude,
         },
-        'zoom': 16,
+        'zoom': widget.zoom.clamp(1, 20),
         'width': 220,
-        'height': 120,
+        'height': widget.height.round().clamp(40, 1024),
         'scale': 2,
         'chat_id': 0,
       });
@@ -3165,7 +3326,7 @@ class _MapThumbnailState extends State<_MapThumbnail> {
   Widget build(BuildContext context) {
     final c = context.colors;
     return SizedBox(
-      height: 120,
+      height: widget.height,
       width: double.infinity,
       child: Stack(
         fit: StackFit.expand,

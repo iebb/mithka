@@ -296,6 +296,13 @@ class DisplaySettingsView extends StatelessWidget {
                   ),
                   _toggleRow(
                     context,
+                    HeroAppIcons.play.data,
+                    AppStrings.t(AppStringKeys.appearanceAnimateAvatars),
+                    theme.animateAvatars,
+                    (v) => theme.animateAvatars = v,
+                  ),
+                  _toggleRow(
+                    context,
                     HeroAppIcons.eyeSlash.data,
                     AppStrings.t(AppStringKeys.appearanceHidePhoneInSidebar),
                     theme.hideSidebarPhone,

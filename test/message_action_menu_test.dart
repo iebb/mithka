@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/message_action_menu.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/settings/translation_controller.dart';
 import 'package:mithka/tdlib/td_models.dart';
 import 'package:mithka/theme/theme_controller.dart';
@@ -23,6 +24,33 @@ void main() {
   test('action menu matches the compact reaction bar width', () {
     expect(MessageActionMenu.widthForAvailable(400), 332);
     expect(MessageActionMenu.widthForAvailable(300), 300);
+  });
+
+  testWidgets('ten or fewer reaction controls fit without overflow', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(400, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Align(
+          alignment: Alignment.topLeft,
+          child: QuickReactionBar(
+            reactions: const ['👍', '❤️', '🔥', '🎉', '😁', '😢', '😡'],
+            onReaction: (_) {},
+            onExpand: () {},
+          ),
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(
+      tester.getSize(find.byKey(const ValueKey('quick-reaction-bar'))).width,
+      MessageActionMenu.preferredWidth,
+    );
+    expect(find.byKey(const ValueKey('quick-reaction-expand')), findsOneWidget);
   });
 
   test('+1 preserves sender by default and persists the override', () async {
@@ -73,5 +101,36 @@ void main() {
           .width,
       MessageActionMenu.preferredWidth,
     );
+  });
+
+  testWidgets('captionless outgoing media still exposes edit', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final translation = TranslationController(prefs);
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: translation,
+        child: MaterialApp(
+          localizationsDelegates: const [AppLocalizations.delegate],
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: MessageActionMenu(
+              message: ChatMessage(
+                id: 2,
+                isOutgoing: true,
+                text: '',
+                date: 1,
+                contentType: 'messagePhoto',
+              ),
+              isPinned: false,
+              onSelect: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Edit'), findsOneWidget);
   });
 }

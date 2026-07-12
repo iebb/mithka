@@ -1,6 +1,7 @@
 import AVFoundation
 import AVKit
 import Flutter
+import ImageIO
 import LiveCommunicationKit
 import Security
 import Sentry
@@ -120,6 +121,45 @@ import UIKit
         return
       }
       result(nil)
+    }
+    let animatedAvatarChannel = FlutterMethodChannel(
+      name: "mithka/animated_avatar",
+      binaryMessenger: engineBridge.applicationRegistrar.messenger()
+    )
+    animatedAvatarChannel.setMethodCallHandler { call, result in
+      guard call.method == "prepare" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      guard
+        let arguments = call.arguments as? [String: Any],
+        let inputPath = arguments["path"] as? String,
+        !inputPath.isEmpty
+      else {
+        result(
+          FlutterError(
+            code: "invalid_arguments",
+            message: "An animated image path is required",
+            details: nil
+          )
+        )
+        return
+      }
+      let callback = AnimatedAvatarFlutterCallback(result)
+      let crop = AnimatedAvatarCropRegion(
+        left: arguments["cropLeft"] as? Double ?? 0,
+        top: arguments["cropTop"] as? Double ?? 0,
+        width: arguments["cropWidth"] as? Double ?? 1,
+        height: arguments["cropHeight"] as? Double ?? 1
+      )
+      AnimatedAvatarTranscoder.transcode(inputPath: inputPath, crop: crop) { conversion in
+        switch conversion {
+        case .success(let outputPath):
+          callback.success(outputPath)
+        case .failure(let error):
+          callback.failure(error)
+        }
+      }
     }
     mediaDropBridge = MediaDropBridge(
       messenger: engineBridge.applicationRegistrar.messenger()
@@ -323,6 +363,439 @@ import UIKit
   ) {
     pushChannel?.invokeMethod("registrationError", arguments: error.localizedDescription)
     super.application(application, didFailToRegisterForRemoteNotificationsWithError: error)
+  }
+}
+
+private final class AnimatedAvatarFlutterCallback: @unchecked Sendable {
+  private let result: FlutterResult
+
+  init(_ result: @escaping FlutterResult) {
+    self.result = result
+  }
+
+  func success(_ outputPath: String) {
+    DispatchQueue.main.async { [self] in result(outputPath) }
+  }
+
+  func failure(_ error: Error) {
+    DispatchQueue.main.async { [self] in
+      result(
+        FlutterError(
+          code: "animated_avatar_conversion_failed",
+          message: error.localizedDescription,
+          details: nil
+        )
+      )
+    }
+  }
+}
+
+private enum AnimatedAvatarTranscodeError: LocalizedError {
+  case unreadableImage
+  case missingFrames
+  case cannotCreateWriter
+  case cannotStartWriter
+  case cannotCreatePixelBuffer
+  case cannotAppendFrame
+  case exportFailed(String)
+
+  var errorDescription: String? {
+    switch self {
+    case .unreadableImage: return "The selected animated image could not be decoded"
+    case .missingFrames: return "The selected image does not contain animation frames"
+    case .cannotCreateWriter: return "The profile video encoder could not be created"
+    case .cannotStartWriter: return "The profile video encoder could not start"
+    case .cannotCreatePixelBuffer: return "An animation frame could not be prepared"
+    case .cannotAppendFrame: return "An animation frame could not be encoded"
+    case .exportFailed(let reason): return "Profile video export failed: \(reason)"
+    }
+  }
+}
+
+private struct AnimatedAvatarCropRegion: Sendable {
+  let left: Double
+  let top: Double
+  let width: Double
+  let height: Double
+
+  var clamped: AnimatedAvatarCropRegion {
+    let safeWidth = min(max(width, 0.001), 1)
+    let safeHeight = min(max(height, 0.001), 1)
+    return AnimatedAvatarCropRegion(
+      left: min(max(left, 0), 1 - safeWidth),
+      top: min(max(top, 0), 1 - safeHeight),
+      width: safeWidth,
+      height: safeHeight
+    )
+  }
+}
+
+private enum AnimatedAvatarTranscoder {
+  private static let queue = DispatchQueue(
+    label: "ad.neko.mithka.animated-avatar",
+    qos: .userInitiated
+  )
+  private static let maximumDuration = 10.0
+  private static let defaultFrameDuration = 0.1
+  private static let minimumFrameDuration = 0.02
+  private static let maximumDimension = 640
+
+  static func transcode(
+    inputPath: String,
+    crop: AnimatedAvatarCropRegion,
+    completion: @escaping @Sendable (Result<String, Error>) -> Void
+  ) {
+    queue.async {
+      do {
+        let outputPath = try transcodeSynchronously(
+          inputPath: inputPath,
+          crop: crop.clamped
+        )
+        completion(.success(outputPath))
+      } catch {
+        completion(.failure(error))
+      }
+    }
+  }
+
+  private static func transcodeSynchronously(
+    inputPath: String,
+    crop: AnimatedAvatarCropRegion
+  ) throws -> String {
+    let inputURL = URL(fileURLWithPath: inputPath)
+    if let source = CGImageSourceCreateWithURL(inputURL as CFURL, nil),
+       CGImageSourceGetCount(source) > 1
+    {
+      return try transcodeAnimatedImage(source: source, crop: crop)
+    }
+    return try transcodeVideo(inputURL: inputURL, crop: crop)
+  }
+
+  private static func transcodeAnimatedImage(
+    source: CGImageSource,
+    crop: AnimatedAvatarCropRegion
+  ) throws -> String {
+    let frameCount = CGImageSourceGetCount(source)
+    guard frameCount > 1, let firstFrame = CGImageSourceCreateImageAtIndex(source, 0, nil)
+    else {
+      throw AnimatedAvatarTranscodeError.missingFrames
+    }
+
+    let cropPixelSide = max(
+      Double(firstFrame.width) * crop.width,
+      Double(firstFrame.height) * crop.height
+    )
+    var side = min(max(Int(cropPixelSide.rounded()), 2), maximumDimension)
+    if side % 2 != 0 { side -= 1 }
+    side = max(side, 2)
+
+    let outputURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("mithka-avatar-\(UUID().uuidString).mp4")
+    try? FileManager.default.removeItem(at: outputURL)
+
+    let writer: AVAssetWriter
+    do {
+      writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
+    } catch {
+      throw AnimatedAvatarTranscodeError.cannotCreateWriter
+    }
+    let outputSettings: [String: Any] = [
+      AVVideoCodecKey: AVVideoCodecType.h264,
+      AVVideoWidthKey: side,
+      AVVideoHeightKey: side,
+      AVVideoCompressionPropertiesKey: [
+        AVVideoAverageBitRateKey: max(300_000, side * side * 4),
+        AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
+      ],
+    ]
+    let input = AVAssetWriterInput(mediaType: .video, outputSettings: outputSettings)
+    input.expectsMediaDataInRealTime = false
+    let adaptor = AVAssetWriterInputPixelBufferAdaptor(
+      assetWriterInput: input,
+      sourcePixelBufferAttributes: [
+        kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+        kCVPixelBufferWidthKey as String: side,
+        kCVPixelBufferHeightKey as String: side,
+        kCVPixelBufferIOSurfacePropertiesKey as String: [:],
+      ]
+    )
+    guard writer.canAdd(input) else {
+      throw AnimatedAvatarTranscodeError.cannotCreateWriter
+    }
+    writer.add(input)
+    guard writer.startWriting() else {
+      throw AnimatedAvatarTranscodeError.cannotStartWriter
+    }
+    writer.startSession(atSourceTime: .zero)
+
+    var timestamp = 0.0
+    for index in 0..<frameCount {
+      guard timestamp < maximumDuration else { break }
+      guard let image = CGImageSourceCreateImageAtIndex(source, index, nil) else { continue }
+      while !input.isReadyForMoreMediaData {
+        if writer.status == .failed || writer.status == .cancelled {
+          throw AnimatedAvatarTranscodeError.exportFailed(
+            writer.error?.localizedDescription ?? "encoder stopped"
+          )
+        }
+        Thread.sleep(forTimeInterval: 0.002)
+      }
+      guard
+        let pool = adaptor.pixelBufferPool,
+        let pixelBuffer = makePixelBuffer(
+          image: image,
+          side: side,
+          crop: crop,
+          pool: pool
+        )
+      else {
+        throw AnimatedAvatarTranscodeError.cannotCreatePixelBuffer
+      }
+      let presentationTime = CMTime(seconds: timestamp, preferredTimescale: 600)
+      guard adaptor.append(pixelBuffer, withPresentationTime: presentationTime) else {
+        throw AnimatedAvatarTranscodeError.cannotAppendFrame
+      }
+      timestamp += min(frameDuration(source: source, index: index), maximumDuration - timestamp)
+    }
+    guard timestamp > 0 else {
+      throw AnimatedAvatarTranscodeError.missingFrames
+    }
+
+    input.markAsFinished()
+    let semaphore = DispatchSemaphore(value: 0)
+    writer.finishWriting { semaphore.signal() }
+    semaphore.wait()
+    guard writer.status == .completed else {
+      throw AnimatedAvatarTranscodeError.exportFailed(
+        writer.error?.localizedDescription ?? "unknown encoder error"
+      )
+    }
+    return outputURL.path
+  }
+
+  private static func transcodeVideo(
+    inputURL: URL,
+    crop: AnimatedAvatarCropRegion
+  ) throws -> String {
+    let asset = AVURLAsset(url: inputURL)
+    guard let track = asset.tracks(withMediaType: .video).first else {
+      throw AnimatedAvatarTranscodeError.unreadableImage
+    }
+    let transformedBounds = CGRect(origin: .zero, size: track.naturalSize)
+      .applying(track.preferredTransform)
+      .standardized
+    guard transformedBounds.width > 0, transformedBounds.height > 0 else {
+      throw AnimatedAvatarTranscodeError.unreadableImage
+    }
+    let cropPixelSide = max(
+      transformedBounds.width * CGFloat(crop.width),
+      transformedBounds.height * CGFloat(crop.height)
+    )
+    var side = min(max(Int(cropPixelSide.rounded()), 2), maximumDimension)
+    if side % 2 != 0 { side -= 1 }
+    side = max(side, 2)
+
+    let reader = try AVAssetReader(asset: asset)
+    let readerOutput = AVAssetReaderTrackOutput(
+      track: track,
+      outputSettings: [
+        kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+      ]
+    )
+    readerOutput.alwaysCopiesSampleData = false
+    guard reader.canAdd(readerOutput) else {
+      throw AnimatedAvatarTranscodeError.cannotCreateWriter
+    }
+    reader.add(readerOutput)
+
+    let outputURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("mithka-avatar-\(UUID().uuidString).mp4")
+    try? FileManager.default.removeItem(at: outputURL)
+    let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
+    let writerInput = AVAssetWriterInput(
+      mediaType: .video,
+      outputSettings: [
+        AVVideoCodecKey: AVVideoCodecType.h264,
+        AVVideoWidthKey: side,
+        AVVideoHeightKey: side,
+        AVVideoCompressionPropertiesKey: [
+          AVVideoAverageBitRateKey: max(300_000, side * side * 4),
+          AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
+        ],
+      ]
+    )
+    writerInput.expectsMediaDataInRealTime = false
+    let adaptor = AVAssetWriterInputPixelBufferAdaptor(
+      assetWriterInput: writerInput,
+      sourcePixelBufferAttributes: [
+        kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+        kCVPixelBufferWidthKey as String: side,
+        kCVPixelBufferHeightKey as String: side,
+        kCVPixelBufferIOSurfacePropertiesKey as String: [:],
+      ]
+    )
+    guard writer.canAdd(writerInput) else {
+      throw AnimatedAvatarTranscodeError.cannotCreateWriter
+    }
+    writer.add(writerInput)
+    guard reader.startReading(), writer.startWriting() else {
+      throw AnimatedAvatarTranscodeError.cannotStartWriter
+    }
+    writer.startSession(atSourceTime: .zero)
+
+    let ciContext = CIContext(options: [.cacheIntermediates: false])
+    let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+    var firstTimestamp: CMTime?
+    var wroteFrame = false
+    while let sample = readerOutput.copyNextSampleBuffer() {
+      guard let sourceBuffer = CMSampleBufferGetImageBuffer(sample) else { continue }
+      let sourceTimestamp = CMSampleBufferGetPresentationTimeStamp(sample)
+      let start = firstTimestamp ?? sourceTimestamp
+      firstTimestamp = start
+      let timestamp = CMTimeSubtract(sourceTimestamp, start)
+      if timestamp.seconds > maximumDuration { break }
+      while !writerInput.isReadyForMoreMediaData {
+        if writer.status == .failed || writer.status == .cancelled {
+          throw AnimatedAvatarTranscodeError.exportFailed(
+            writer.error?.localizedDescription ?? "encoder stopped"
+          )
+        }
+        Thread.sleep(forTimeInterval: 0.002)
+      }
+      guard
+        let pool = adaptor.pixelBufferPool,
+        let outputBuffer = allocatePixelBuffer(pool: pool)
+      else {
+        throw AnimatedAvatarTranscodeError.cannotCreatePixelBuffer
+      }
+
+      var image = CIImage(cvPixelBuffer: sourceBuffer)
+        .transformed(by: track.preferredTransform)
+      let extent = image.extent.standardized
+      image = image.transformed(
+        by: CGAffineTransform(translationX: -extent.minX, y: -extent.minY)
+      )
+      let orientedWidth = extent.width
+      let orientedHeight = extent.height
+      let cropRect = CGRect(
+        x: orientedWidth * CGFloat(crop.left),
+        y: orientedHeight * CGFloat(1 - crop.top - crop.height),
+        width: orientedWidth * CGFloat(crop.width),
+        height: orientedHeight * CGFloat(crop.height)
+      )
+      let cropped = image
+        .cropped(to: cropRect)
+        .transformed(
+          by: CGAffineTransform(
+            translationX: -cropRect.minX,
+            y: -cropRect.minY
+          )
+        )
+        .transformed(
+          by: CGAffineTransform(
+            scaleX: CGFloat(side) / cropRect.width,
+            y: CGFloat(side) / cropRect.height
+          )
+        )
+      ciContext.render(
+        cropped,
+        to: outputBuffer,
+        bounds: CGRect(x: 0, y: 0, width: side, height: side),
+        colorSpace: colorSpace
+      )
+      guard adaptor.append(outputBuffer, withPresentationTime: timestamp) else {
+        throw AnimatedAvatarTranscodeError.cannotAppendFrame
+      }
+      wroteFrame = true
+    }
+    guard wroteFrame else {
+      throw AnimatedAvatarTranscodeError.missingFrames
+    }
+    writerInput.markAsFinished()
+    reader.cancelReading()
+    let semaphore = DispatchSemaphore(value: 0)
+    writer.finishWriting { semaphore.signal() }
+    semaphore.wait()
+    guard writer.status == .completed else {
+      throw AnimatedAvatarTranscodeError.exportFailed(
+        writer.error?.localizedDescription ?? "unknown encoder error"
+      )
+    }
+    return outputURL.path
+  }
+
+  private static func frameDuration(source: CGImageSource, index: Int) -> Double {
+    guard
+      let raw = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any]
+    else {
+      return defaultFrameDuration
+    }
+    let gif = raw[kCGImagePropertyGIFDictionary] as? [CFString: Any]
+    let png = raw[kCGImagePropertyPNGDictionary] as? [CFString: Any]
+    let value =
+      gif?[kCGImagePropertyGIFUnclampedDelayTime] as? Double ??
+      gif?[kCGImagePropertyGIFDelayTime] as? Double ??
+      png?[kCGImagePropertyAPNGUnclampedDelayTime] as? Double ??
+      png?[kCGImagePropertyAPNGDelayTime] as? Double ??
+      defaultFrameDuration
+    return max(value, minimumFrameDuration)
+  }
+
+  private static func makePixelBuffer(
+    image: CGImage,
+    side: Int,
+    crop: AnimatedAvatarCropRegion,
+    pool: CVPixelBufferPool
+  ) -> CVPixelBuffer? {
+    var optionalBuffer: CVPixelBuffer?
+    guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &optionalBuffer) == kCVReturnSuccess,
+          let pixelBuffer = optionalBuffer
+    else {
+      return nil
+    }
+    CVPixelBufferLockBaseAddress(pixelBuffer, [])
+    defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, []) }
+    guard
+      let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer),
+      let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
+      let context = CGContext(
+        data: baseAddress,
+        width: side,
+        height: side,
+        bitsPerComponent: 8,
+        bytesPerRow: CVPixelBufferGetBytesPerRow(pixelBuffer),
+        space: colorSpace,
+        bitmapInfo: CGBitmapInfo.byteOrder32Little.rawValue |
+          CGImageAlphaInfo.premultipliedFirst.rawValue
+      )
+    else {
+      return nil
+    }
+    context.setFillColor(UIColor.black.cgColor)
+    context.fill(CGRect(x: 0, y: 0, width: side, height: side))
+    let cropWidth = CGFloat(image.width) * CGFloat(crop.width)
+    let cropHeight = CGFloat(image.height) * CGFloat(crop.height)
+    let scaleX = CGFloat(side) / cropWidth
+    let scaleY = CGFloat(side) / cropHeight
+    context.interpolationQuality = .high
+    context.draw(
+      image,
+      in: CGRect(
+        x: -CGFloat(image.width) * CGFloat(crop.left) * scaleX,
+        y: -CGFloat(image.height) * CGFloat(crop.top) * scaleY,
+        width: CGFloat(image.width) * scaleX,
+        height: CGFloat(image.height) * scaleY
+      )
+    )
+    return pixelBuffer
+  }
+
+  private static func allocatePixelBuffer(pool: CVPixelBufferPool) -> CVPixelBuffer? {
+    var buffer: CVPixelBuffer?
+    guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer) == kCVReturnSuccess else {
+      return nil
+    }
+    return buffer
   }
 }
 

@@ -1,5 +1,23 @@
 import 'outgoing_attachment.dart';
 
+const telegramTextMessageMaxCharacters = 4096;
+const telegramRichMessageMaxCharacters = 32768;
+
+enum TelegramMessageLengthTier { standard, rich, exceeded }
+
+int telegramUtf8CharacterCount(String text) => text.runes.length;
+
+TelegramMessageLengthTier telegramMessageLengthTier(String text) {
+  final length = telegramUtf8CharacterCount(text);
+  if (length <= telegramTextMessageMaxCharacters) {
+    return TelegramMessageLengthTier.standard;
+  }
+  if (length <= telegramRichMessageMaxCharacters) {
+    return TelegramMessageLengthTier.rich;
+  }
+  return TelegramMessageLengthTier.exceeded;
+}
+
 class RichMessageSendSegment {
   const RichMessageSendSegment.html(this.html, {this.richFiles = const []})
     : attachments = const [];
@@ -19,6 +37,72 @@ class RichMessageSendFile {
 
   final String id;
   final OutgoingAttachment attachment;
+}
+
+Map<String, dynamic> richMessageFilePayload(RichMessageSendFile file) {
+  final attachment = file.attachment;
+  final inputFile = {'@type': 'inputFileLocal', 'path': attachment.path};
+  final segments = Uri.file(attachment.path).pathSegments;
+  final fileName = segments.isEmpty ? attachment.path : segments.last;
+  return switch (attachment.kind) {
+    OutgoingAttachmentKind.photo => {
+      '@type': 'inputRichMessageFilePhoto',
+      'id': file.id,
+      'photo': {
+        '@type': 'inputPhoto',
+        'photo': inputFile,
+        'added_sticker_file_ids': <int>[],
+        'width': attachment.width ?? 0,
+        'height': attachment.height ?? 0,
+      },
+    },
+    OutgoingAttachmentKind.video => {
+      '@type': 'inputRichMessageFileVideo',
+      'id': file.id,
+      'video': {
+        '@type': 'inputVideo',
+        'video': inputFile,
+        'start_timestamp': 0,
+        'added_sticker_file_ids': <int>[],
+        'duration': 0,
+        'width': attachment.width ?? 0,
+        'height': attachment.height ?? 0,
+        'supports_streaming': true,
+      },
+    },
+    OutgoingAttachmentKind.animation => {
+      '@type': 'inputRichMessageFileAnimation',
+      'id': file.id,
+      'animation': {
+        '@type': 'inputAnimation',
+        'animation': inputFile,
+        'added_sticker_file_ids': <int>[],
+        'duration': 0,
+        'width': attachment.width ?? 0,
+        'height': attachment.height ?? 0,
+      },
+    },
+    OutgoingAttachmentKind.audio => {
+      '@type': 'inputRichMessageFileAudio',
+      'id': file.id,
+      'audio': {
+        '@type': 'inputAudio',
+        'audio': inputFile,
+        'duration': 0,
+        'title': fileName,
+        'performer': '',
+      },
+    },
+    OutgoingAttachmentKind.document => {
+      '@type': 'inputRichMessageFileDocument',
+      'id': file.id,
+      'document': {
+        '@type': 'inputDocument',
+        'document': inputFile,
+        'disable_content_type_detection': false,
+      },
+    },
+  };
 }
 
 String formattedTextToRichHtml(

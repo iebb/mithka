@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 
+import '../components/toast.dart';
+import '../l10n/app_localizations.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import 'custom_emoji.dart';
@@ -315,6 +317,7 @@ class _TelegramRichTextState extends State<TelegramRichText> {
       alignment: PlaceholderAlignment.baseline,
       baseline: TextBaseline.alphabetic,
       child: GestureDetector(
+        key: const ValueKey('telegram-rich-inline-code'),
         behavior: HitTestBehavior.opaque,
         onTap: () => _copyMonospaceText(segment),
         child: Container(
@@ -346,7 +349,11 @@ class _TelegramRichTextState extends State<TelegramRichText> {
 
   void _copyMonospaceText(String text) {
     if (text.isEmpty) return;
-    Clipboard.setData(ClipboardData(text: text));
+    Clipboard.setData(ClipboardData(text: text)).then((_) {
+      if (mounted) {
+        showToast(context, AppStringKeys.topicPostContentCopied);
+      }
+    });
   }
 
   TextStyle _entityStyle(
