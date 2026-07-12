@@ -81,6 +81,16 @@ class _ChatMembersViewState extends State<ChatMembersView> {
       } else if (type?.type == 'chatTypeSupergroup') {
         final sgid = type?.int64('supergroup_id');
         if (sgid != null) {
+          // getSupergroupFullInfo has the accurate member_count;
+          // getSupergroupMembers only returns an approximate count.
+          int? fullCount;
+          try {
+            final fullInfo = await TdClient.shared.query({
+              '@type': 'getSupergroupFullInfo',
+              'supergroup_id': sgid,
+            });
+            fullCount = fullInfo.integer('member_count');
+          } catch (_) {}
           final res = await TdClient.shared.query({
             '@type': 'getSupergroupMembers',
             'supergroup_id': sgid,
@@ -89,7 +99,7 @@ class _ChatMembersViewState extends State<ChatMembersView> {
             'limit': 200,
           });
           raw = res.objects('members') ?? const <Map<String, dynamic>>[];
-          _total = res.integer('member_count') ?? raw.length;
+          _total = fullCount ?? res.integer('member_count') ?? raw.length;
         }
       }
       await _resolve(raw);
