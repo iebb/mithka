@@ -121,7 +121,6 @@ class _ChatListViewState extends State<ChatListView> {
   int _lastHandledMarkAllReadRequest = 0;
   int _pendingScrollAttempts = 0;
   bool _toggleUnreadTargetNext = true;
-  bool _didApplyTopAssistantInitialOffset = false;
 
   ScrollController _newScrollController({double initialScrollOffset = 0}) {
     return ScrollController(initialScrollOffset: initialScrollOffset)
@@ -774,7 +773,13 @@ class _ChatListViewState extends State<ChatListView> {
       child: LayoutBuilder(
         builder: (context, geo) {
           final rowH = context.watch<ThemeController>().rowHeight + 0.5;
-          final visibleRows = math.max(1, (geo.maxHeight / rowH).ceil());
+          final searchHeight = showSearch
+              ? AppSpacing.md + AppMetric.searchHeight + AppSpacing.sm
+              : 0.0;
+          final visibleRows = math.max(
+            1,
+            ((geo.maxHeight - searchHeight) / rowH).ceil(),
+          );
           _lastVisibleRows = visibleRows;
           final chats = _model.chats;
           if (chats.isEmpty && _model.isInitialLoading) {
@@ -805,30 +810,11 @@ class _ChatListViewState extends State<ChatListView> {
           final hasArchive = _model.isAllFilter && _model.archived.isNotEmpty;
           final topAssistant =
               hasArchive && assistantPlacement == GroupAssistantPlacement.top;
-          if (!topAssistant) _didApplyTopAssistantInitialOffset = false;
           final assistantIndex = _assistantInsertionIndex(
             chats,
             visibleRows,
             assistantPlacement,
           );
-
-          if (topAssistant &&
-              !_didApplyTopAssistantInitialOffset &&
-              !_scrollController.hasClients) {
-            _didApplyTopAssistantInitialOffset = true;
-            _scrollController.removeListener(_onScroll);
-            _scrollController.dispose();
-            _scrollController = _newScrollController(initialScrollOffset: rowH);
-          } else if (topAssistant && !_didApplyTopAssistantInitialOffset) {
-            _didApplyTopAssistantInitialOffset = true;
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (!mounted || !_scrollController.hasClients) return;
-              final max = _scrollController.position.maxScrollExtent;
-              if (_scrollController.position.pixels < rowH * 0.5) {
-                _scrollController.jumpTo(math.min(rowH, max));
-              }
-            });
-          }
 
           final showInlineAssistant = !topAssistant && hasArchive;
           final itemCount =
@@ -874,12 +860,12 @@ class _ChatListViewState extends State<ChatListView> {
     required int assistantIndex,
   }) {
     var chatIndex = index;
-    if (topAssistant) {
-      if (chatIndex == 0) return _assistantRow();
-      chatIndex -= 1;
-    }
     if (showSearch) {
       if (chatIndex == 0) return _searchPill();
+      chatIndex -= 1;
+    }
+    if (topAssistant) {
+      if (chatIndex == 0) return _assistantRow();
       chatIndex -= 1;
     }
     if (showInlineAssistant) {
@@ -916,7 +902,7 @@ class _ChatListViewState extends State<ChatListView> {
     return switch (placement) {
       GroupAssistantPlacement.top => 0,
       GroupAssistantPlacement.secondScreen => math.min(
-        visibleRows + 1,
+        visibleRows,
         chats.length,
       ),
       GroupAssistantPlacement.chronological => _chronologicalAssistantIndex(
