@@ -902,6 +902,7 @@ const enMessages = <String, String>{
   'proxyPort': "Port",
   'proxySecret': "Secret",
   'proxyServer': "Server",
+  'proxyShowShortcut': "Show shortcut in chat list",
   'proxyTitle': "Proxy",
   'qrCodeGroupTitle': "Group QR code",
   'qrCodeMineTitle': "My QR code",

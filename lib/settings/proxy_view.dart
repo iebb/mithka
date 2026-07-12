@@ -14,6 +14,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mithka/l10n/app_localizations.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../components/app_icons.dart';
 import '../components/confirm_dialog.dart';
@@ -35,11 +36,20 @@ class _ProxyViewState extends State<ProxyView> {
   final TdClient _client = TdClient.shared;
   List<Map<String, dynamic>> _proxies = [];
   bool _loading = true;
+  bool _showShortcut = false;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _loadShortcutPref();
+  }
+
+  Future<void> _loadShortcutPref() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() => _showShortcut = prefs.getBool('proxy_show_shortcut') ?? false);
+    }
   }
 
   Future<void> _load() async {
@@ -55,6 +65,39 @@ class _ProxyViewState extends State<ProxyView> {
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<void> _toggleShortcut(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('proxy_show_shortcut', value);
+    if (mounted) setState(() => _showShortcut = value);
+  }
+
+  Widget _showShortcutToggle() {
+    final c = context.colors;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        height: 52,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  AppStrings.t(AppStringKeys.proxyShowShortcut),
+                  style: TextStyle(fontSize: 16, color: c.textPrimary),
+                ),
+              ),
+              CupertinoSwitch(
+                value: _showShortcut,
+                onChanged: _toggleShortcut,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   bool get _anyEnabled => _proxies.any((p) => p.boolean('is_enabled') ?? false);
@@ -141,6 +184,8 @@ class _ProxyViewState extends State<ProxyView> {
                 : ListView(
                     padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
                     children: [
+                      _card([_showShortcutToggle()]),
+                      const SizedBox(height: 14),
                       _card([_noneRow()]),
                       if (_proxies.isNotEmpty) ...[
                         const SizedBox(height: 14),

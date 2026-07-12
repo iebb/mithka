@@ -1272,6 +1272,7 @@ abstract final class AppStringKeys {
   static const proxyPort = 'proxyPort';
   static const proxySecret = 'proxySecret';
   static const proxyServer = 'proxyServer';
+  static const proxyShowShortcut = 'proxyShowShortcut';
   static const proxyTitle = 'proxyTitle';
   static const qrCodeGroupTitle = 'qrCodeGroupTitle';
   static const qrCodeMineTitle = 'qrCodeMineTitle';
