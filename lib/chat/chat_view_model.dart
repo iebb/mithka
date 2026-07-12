@@ -3172,12 +3172,30 @@ class ChatViewModel extends ChangeNotifier {
       }
       return;
     }
+    ChatMessage? pendingMessage;
+    for (final message in _allMessages) {
+      if (message.id == pendingMessageId) {
+        pendingMessage = message;
+        break;
+      }
+    }
+    if (pendingMessage == null) {
+      for (final message in messages) {
+        if (message.id == pendingMessageId) {
+          pendingMessage = message;
+          break;
+        }
+      }
+    }
     _allMessages.removeWhere((message) => message.id == pendingMessageId);
     messages.removeWhere((message) => message.id == pendingMessageId);
     final sentMessage = TDParse.message(rawMessage);
     if (sentMessage == null) {
       _applyKeywordFilter();
       return;
+    }
+    if (pendingMessage != null) {
+      sentMessage.inheritLocalMediaFrom(pendingMessage);
     }
     _merge([sentMessage]);
     _resolveRichMessagesIfNeeded([sentMessage]);

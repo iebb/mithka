@@ -104,7 +104,7 @@ class _PhotoAvatarState extends State<PhotoAvatar> {
     if (_file != null) {
       setState(() => _file = null); // reset to placeholder
     }
-    TdFileCenter.shared.path(ref.id).then((path) {
+    TdFileCenter.shared.pathFor(ref).then((path) {
       if (!mounted || _loadedId != ref.id || _loadedSlot != slot) return;
       if (path != null) setState(() => _file = File(path));
     });
@@ -323,7 +323,7 @@ class _TDImageState extends State<TDImage> {
     }
     final thumbnail = ref.thumbnail;
     if (thumbnail != null && thumbnail.id != ref.id) {
-      TdFileCenter.shared.path(thumbnail.id).then((path) {
+      TdFileCenter.shared.pathFor(thumbnail).then((path) {
         if (!mounted ||
             _loadedId != ref.id ||
             _loadedThumbnailId != thumbnail.id ||
@@ -333,7 +333,7 @@ class _TDImageState extends State<TDImage> {
         if (path != null) setState(() => _thumbnailFile = File(path));
       });
     }
-    TdFileCenter.shared.path(ref.id).then((path) {
+    TdFileCenter.shared.pathFor(ref).then((path) {
       if (!mounted || _loadedId != ref.id || _loadedSlot != slot) return;
       if (path != null) setState(() => _file = File(path));
     });

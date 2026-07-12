@@ -92,7 +92,7 @@ class _AnimatedStickerViewState extends State<AnimatedStickerView> {
     _loadedId = ref.id;
     _loadedSlot = slot;
 
-    final path = await TdFileCenter.shared.path(ref.id);
+    final path = await TdFileCenter.shared.pathFor(ref);
     if (!mounted || path == null || _loadedId != ref.id) return;
     // .tgs = gzipped Lottie JSON. Inflate away from the UI isolate and reuse
     // decoded bytes across recycled chat rows / emoji-grid cells.

@@ -392,6 +392,28 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   }
 
   Future<void> _load() async {
+    final sourcePath = widget.video.localPath;
+    if (sourcePath != null && sourcePath.isNotEmpty) {
+      final source = File(sourcePath);
+      if (await source.exists()) {
+        final length = await source.length();
+        if (length > 0) {
+          _localPath = sourcePath;
+          _openedCompletedLocalFile = true;
+          _progress = TdFileProgress(
+            fileId: widget.video.id,
+            downloaded: length,
+            prefixDownloaded: length,
+            total: length,
+            isActive: false,
+            isCompleted: true,
+          );
+          final initialized = await _initializeFromFile(sourcePath);
+          if (initialized || !mounted) return;
+          _openedCompletedLocalFile = false;
+        }
+      }
+    }
     _progressSub = TdFileCenter.shared.progress(widget.video.id).listen((
       progress,
     ) {

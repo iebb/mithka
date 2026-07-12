@@ -11,11 +11,13 @@ enum MediaLibrarySaveResult { saved, permissionDenied, unsupported, failed }
 class MediaLibrarySaveTarget {
   const MediaLibrarySaveTarget({
     required this.fileId,
+    required this.file,
     required this.isVideo,
     required this.creationDate,
   });
 
   final int fileId;
+  final TdFileRef file;
   final bool isVideo;
   final DateTime creationDate;
 
@@ -24,6 +26,7 @@ class MediaLibrarySaveTarget {
     if (video != null) {
       return MediaLibrarySaveTarget(
         fileId: video.id,
+        file: video,
         isVideo: true,
         creationDate: _messageDate(message),
       );
@@ -32,6 +35,7 @@ class MediaLibrarySaveTarget {
     if (message.isPhoto && image != null) {
       return MediaLibrarySaveTarget(
         fileId: image.id,
+        file: image,
         isVideo: false,
         creationDate: _messageDate(message),
       );
@@ -57,7 +61,7 @@ class MediaLibrarySaver {
         return MediaLibrarySaveResult.permissionDenied;
       }
 
-      final path = await TdFileCenter.shared.path(target.fileId);
+      final path = await TdFileCenter.shared.pathFor(target.file);
       if (path == null || path.isEmpty) return MediaLibrarySaveResult.failed;
       final file = File(path);
       if (!await file.exists()) return MediaLibrarySaveResult.failed;

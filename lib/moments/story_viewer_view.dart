@@ -169,7 +169,7 @@ class _StoryViewerViewState extends State<StoryViewerView> {
     if (_videoStarting) return;
     _videoStarting = true;
 
-    final path = await TdFileCenter.shared.path(m.videoFile!.id);
+    final path = await TdFileCenter.shared.pathFor(m.videoFile!);
     if (!mounted || _current != m || path == null) {
       _videoStarting = false;
       return;

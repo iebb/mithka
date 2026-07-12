@@ -11,16 +11,33 @@ import 'package:dlibphonenumber/dlibphonenumber.dart';
 import 'package:flutter/foundation.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/l10n/telegram_language_controller.dart';
+import 'package:mithka/notifications/scope_notification_settings.dart';
 
 import 'json_helpers.dart';
-import 'package:mithka/notifications/scope_notification_settings.dart';
 
 /// Reference to a downloadable TDLib file (profile photo, thumbnail, …).
 class TdFileRef {
-  TdFileRef({required this.id, this.miniThumb, this.thumbnail});
+  TdFileRef({required this.id, this.localPath, this.miniThumb, this.thumbnail});
   final int id;
+  final String? localPath;
   Uint8List? miniThumb; // decoded JPEG for instant placeholder
   TdFileRef? thumbnail; // downloadable thumbnail with the real aspect ratio
+
+  TdFileRef inheritLocalPathFrom(TdFileRef? previous) {
+    return TdFileRef(
+      id: id,
+      localPath: _usablePath(localPath) ?? _usablePath(previous?.localPath),
+      miniThumb: miniThumb ?? previous?.miniThumb,
+      thumbnail:
+          thumbnail?.inheritLocalPathFrom(previous?.thumbnail) ??
+          previous?.thumbnail,
+    );
+  }
+
+  static String? _usablePath(String? path) {
+    final value = path?.trim();
+    return value == null || value.isEmpty ? null : value;
+  }
 }
 
 /// Categories surfaced by the search hub and the media browser.
@@ -479,6 +496,59 @@ class ChatMessage {
   /// plain text and photos. Audio, voice, location, stickers, polls, files,
   /// videos, contacts and call logs are excluded.
   bool get canRepeat => isPlainText || isPhoto;
+
+  /// Keeps the source files used by an outgoing pending message after TDLib
+  /// replaces it with the server-confirmed message and new file identifiers.
+  void inheritLocalMediaFrom(ChatMessage previous) {
+    image = image?.inheritLocalPathFrom(previous.image) ?? previous.image;
+    video = video?.inheritLocalPathFrom(previous.video) ?? previous.video;
+    animatedSticker =
+        animatedSticker?.inheritLocalPathFrom(previous.animatedSticker) ??
+        previous.animatedSticker;
+    videoSticker =
+        videoSticker?.inheritLocalPathFrom(previous.videoSticker) ??
+        previous.videoSticker;
+
+    final currentDocument = document;
+    final previousDocument = previous.document;
+    if (currentDocument != null && previousDocument != null) {
+      document = MessageDocument(
+        fileName: currentDocument.fileName,
+        size: currentDocument.size,
+        ext: currentDocument.ext,
+        file:
+            currentDocument.file?.inheritLocalPathFrom(previousDocument.file) ??
+            previousDocument.file,
+      );
+    }
+
+    final currentMusic = music;
+    final previousMusic = previous.music;
+    if (currentMusic != null && previousMusic != null) {
+      music = MessageMusic(
+        title: currentMusic.title,
+        performer: currentMusic.performer,
+        cover:
+            currentMusic.cover?.inheritLocalPathFrom(previousMusic.cover) ??
+            previousMusic.cover,
+        file:
+            currentMusic.file?.inheritLocalPathFrom(previousMusic.file) ??
+            previousMusic.file,
+        duration: currentMusic.duration,
+      );
+    }
+
+    final currentVoice = voice;
+    final previousVoice = previous.voice;
+    if (currentVoice != null && previousVoice != null) {
+      voice = MessageVoice(
+        file:
+            currentVoice.file?.inheritLocalPathFrom(previousVoice.file) ??
+            previousVoice.file,
+        duration: currentVoice.duration,
+      );
+    }
+  }
 }
 
 class MessageButton {
@@ -2370,7 +2440,7 @@ abstract final class TDParse {
     final small = photoInfo.obj('small');
     final id = small?.integer('id');
     if (small == null || id == null) return null;
-    return TdFileRef(id: id, miniThumb: thumb);
+    return fileRef(small, miniThumb: thumb);
   }
 
   static TdFileRef? fileRef(
@@ -2383,6 +2453,7 @@ abstract final class TDParse {
     final normalizedThumbnail = thumbnail?.id == id ? null : thumbnail;
     return TdFileRef(
       id: id,
+      localPath: file.obj('local')?.str('path'),
       miniThumb: miniThumb,
       thumbnail: normalizedThumbnail,
     );

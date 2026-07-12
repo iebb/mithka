@@ -7,10 +7,12 @@
 //
 
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'json_helpers.dart';
 import 'td_client.dart';
+import 'td_models.dart';
 
 class TdFileProgress {
   const TdFileProgress({
@@ -60,6 +62,20 @@ class TdFileCenter {
   static const _priorityParallelism = 4;
 
   String _key(int slot, int fileId) => '$slot:$fileId';
+
+  /// Resolves a file reference without downloading it again when the source
+  /// file used for an outgoing message is still available locally.
+  Future<String?> pathFor(TdFileRef ref) async {
+    final localPath = ref.localPath;
+    if (localPath != null && localPath.isNotEmpty) {
+      final source = File(localPath);
+      if (await source.exists()) {
+        _cache[_key(_client.activeSlot, ref.id)] = localPath;
+        return localPath;
+      }
+    }
+    return path(ref.id);
+  }
 
   void _startIfNeeded() {
     if (_started) return;

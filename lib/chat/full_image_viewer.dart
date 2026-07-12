@@ -152,7 +152,7 @@ class _ViewerPageState extends State<_ViewerPage> {
   void initState() {
     super.initState();
     _controller.addListener(_onTransform);
-    TdFileCenter.shared.path(widget.ref.id).then((path) {
+    TdFileCenter.shared.pathFor(widget.ref).then((path) {
       if (mounted && path != null) setState(() => _file = File(path));
     });
   }

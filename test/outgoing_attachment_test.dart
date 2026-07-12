@@ -1,5 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/outgoing_attachment.dart';
+import 'package:mithka/tdlib/td_image_loader.dart';
+import 'package:mithka/tdlib/td_models.dart';
 
 OutgoingAttachment attachment(
   String path,
@@ -116,4 +120,97 @@ void main() {
     expect((album[1] as Map)['caption'], isNull);
     expect((album[2] as Map)['caption'], isNull);
   });
+
+  test('parses the local source path from an outgoing TDLib file', () {
+    final message = TDParse.message({
+      '@type': 'message',
+      'id': -10,
+      'chat_id': 42,
+      'is_outgoing': true,
+      'date': 1,
+      'content': {
+        '@type': 'messagePhoto',
+        'caption': {'@type': 'formattedText', 'text': '', 'entities': []},
+        'photo': {
+          '@type': 'photo',
+          'sizes': [
+            {
+              '@type': 'photoSize',
+              'width': 1200,
+              'height': 900,
+              'photo': {
+                '@type': 'file',
+                'id': 7,
+                'local': {
+                  '@type': 'localFile',
+                  'path': '/tmp/outgoing-photo.jpg',
+                  'is_downloading_completed': true,
+                },
+              },
+            },
+          ],
+        },
+      },
+    });
+
+    expect(message?.image?.localPath, '/tmp/outgoing-photo.jpg');
+  });
+
+  test('server-confirmed media inherits the pending local source path', () {
+    final pending = ChatMessage(
+      id: -10,
+      isOutgoing: true,
+      text: '',
+      date: 1,
+      contentType: 'messageVideo',
+      image: TdFileRef(id: 1, localPath: '/tmp/thumb.jpg'),
+      video: TdFileRef(id: 2, localPath: '/tmp/video.mp4'),
+      document: MessageDocument(
+        fileName: 'file.pdf',
+        size: 10,
+        ext: 'PDF',
+        file: TdFileRef(id: 3, localPath: '/tmp/file.pdf'),
+      ),
+    );
+    final sent = ChatMessage(
+      id: 100,
+      isOutgoing: true,
+      text: '',
+      date: 2,
+      contentType: 'messageVideo',
+      image: TdFileRef(id: 11),
+      video: TdFileRef(id: 12),
+      document: MessageDocument(
+        fileName: 'file.pdf',
+        size: 10,
+        ext: 'PDF',
+        file: TdFileRef(id: 13),
+      ),
+    );
+
+    sent.inheritLocalMediaFrom(pending);
+
+    expect(sent.image?.id, 11);
+    expect(sent.image?.localPath, '/tmp/thumb.jpg');
+    expect(sent.video?.id, 12);
+    expect(sent.video?.localPath, '/tmp/video.mp4');
+    expect(sent.document?.file?.id, 13);
+    expect(sent.document?.file?.localPath, '/tmp/file.pdf');
+  });
+
+  test(
+    'resolves an outgoing source file without asking TDLib to download',
+    () async {
+      final directory = await Directory.systemTemp.createTemp('mithka-media-');
+      addTearDown(() => directory.delete(recursive: true));
+      final file = File('${directory.path}/photo.jpg');
+      await file.writeAsBytes([1, 2, 3]);
+
+      final path = await TdFileCenter.shared.pathFor(
+        TdFileRef(id: 999, localPath: file.path),
+      );
+
+      expect(path, file.path);
+    },
+  );
 }

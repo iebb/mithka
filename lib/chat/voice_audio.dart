@@ -110,7 +110,7 @@ class VoicePlayer extends ChangeNotifier {
     isPlaying = false;
     isLoading = true;
     notifyListeners();
-    final path = await TdFileCenter.shared.path(file.id);
+    final path = await TdFileCenter.shared.pathFor(file);
     isLoading = false;
     if (path == null || _disposed) {
       if (_fileId == file.id) _fileId = null;

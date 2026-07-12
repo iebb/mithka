@@ -1307,10 +1307,6 @@ class ThemeController extends ChangeNotifier {
     if (_chatFolderDisplayMode == value) return;
     _chatFolderDisplayMode = value;
     _prefs.setString(_chatFolderDisplayModeKey, value.name);
-    if (value != ChatFolderDisplayMode.tabs && _chatListFolderSwipeSwitching) {
-      _chatListFolderSwipeSwitching = false;
-      _prefs.setBool(_chatListFolderSwipeSwitchingKey, false);
-    }
     notifyListeners();
   }
 

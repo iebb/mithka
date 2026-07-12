@@ -72,7 +72,7 @@ class _VideoStickerViewState extends State<VideoStickerView> {
       return;
     }
 
-    final path = await TdFileCenter.shared.path(ref.id);
+    final path = await TdFileCenter.shared.pathFor(ref);
     if (!mounted || path == null || _loadedId != ref.id) return;
 
     final c = VideoPlayerController.file(File(path));
