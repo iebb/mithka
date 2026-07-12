@@ -128,6 +128,7 @@ const zhHantMessages = <String, String>{
   'appearanceShowChatListSearch': "顯示聊天列表搜尋",
   'appearanceShowEditAndReadMarks': "顯示編輯與已讀標記",
   'appearanceShowGroupMemberTitles': "顯示群組成員頭銜",
+    'appearanceShowMessageTimestamp': "顯示消息時間戳",
   'appearanceShowPremiumNameColor': "顯示 Premium 名稱顏色",
   'appearanceShowPremiumStatusEmoji': "顯示 Premium 狀態 emoji",
   'appearanceShowUnreadChatCount': "顯示未讀聊天數",

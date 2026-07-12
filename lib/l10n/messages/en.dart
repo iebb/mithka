@@ -133,6 +133,7 @@ const enMessages = <String, String>{
   'appearanceShowChatListSearch': "Show Chat List Search",
   'appearanceShowEditAndReadMarks': "Show Edit and Read Marks",
   'appearanceShowGroupMemberTitles': "Show Group Member Titles",
+    'appearanceShowMessageTimestamp': "Show Message Timestamp",
   'appearanceShowPremiumNameColor': "Show Premium Name Color",
   'appearanceShowPremiumStatusEmoji': "Show Premium Status Emoji",
   'appearanceShowUnreadChatCount': "Show Unread Chat Count",

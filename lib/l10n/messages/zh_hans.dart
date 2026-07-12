@@ -127,6 +127,7 @@ const zhHansMessages = <String, String>{
   'appearanceShowChatListSearch': "显示聊天列表搜索",
   'appearanceShowEditAndReadMarks': "显示编辑和已读标记",
   'appearanceShowGroupMemberTitles': "群成员显示头衔",
+    'appearanceShowMessageTimestamp': "消息显示时间戳",
   'appearanceShowPremiumNameColor': "显示 Premium 名字颜色",
   'appearanceShowPremiumStatusEmoji': "显示 Premium 状态表情",
   'appearanceShowUnreadChatCount': "显示未读会话数",

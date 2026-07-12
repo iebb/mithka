@@ -349,6 +349,15 @@ class DisplaySettingsView extends StatelessWidget {
                       if (v) BlockedUserService.shared.loadBlockedUsers();
                     },
                   ),
+                  _toggleRow(
+                    context,
+                    HeroAppIcons.clock.data,
+                    AppStrings.t(
+                      AppStringKeys.appearanceShowMessageTimestamp,
+                    ),
+                    theme.showMessageTimestamp,
+                    (v) => theme.showMessageTimestamp = v,
+                  ),
                 ]),
                 const SizedBox(height: AppSpacing.xl),
                 _label(context, AppStrings.t(AppStringKeys.appearanceChatList)),

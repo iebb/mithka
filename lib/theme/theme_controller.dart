@@ -867,6 +867,7 @@ class ThemeController extends ChangeNotifier {
         _prefs.getBool(_chatPremiumEmojiStatusKey) ?? true;
     _showMessageMetaIndicators =
         _prefs.getBool(_messageMetaIndicatorsKey) ?? false;
+    _showMessageTimestamp = _prefs.getBool(_showMessageTimestampKey) ?? true;
     _openChatsAtLatest = _prefs.getBool(_openChatsAtLatestKey) ?? false;
     _preserveSenderWhenRepeating =
         _prefs.getBool(_preserveSenderWhenRepeatingKey) ?? true;
@@ -927,6 +928,7 @@ class ThemeController extends ChangeNotifier {
   static const _chatPremiumNameColorsKey = 'showChatPremiumNameColors';
   static const _chatPremiumEmojiStatusKey = 'showChatPremiumEmojiStatus';
   static const _messageMetaIndicatorsKey = 'showMessageMetaIndicators';
+  static const _showMessageTimestampKey = 'showMessageTimestamp';
   static const _openChatsAtLatestKey = 'openChatsAtLatest';
   static const _preserveSenderWhenRepeatingKey = 'preserveSenderWhenRepeating';
   static const _groupImageMessagesKey = 'groupImageMessages';
@@ -968,6 +970,7 @@ class ThemeController extends ChangeNotifier {
   bool _showChatPremiumNameColors = true;
   bool _showChatPremiumEmojiStatus = true;
   bool _showMessageMetaIndicators = false;
+  bool _showMessageTimestamp = true;
   bool _openChatsAtLatest = false;
   bool _preserveSenderWhenRepeating = true;
   bool _groupImageMessages = true;
@@ -1034,6 +1037,7 @@ class ThemeController extends ChangeNotifier {
   bool get showChatPremiumNameColors => _showChatPremiumNameColors;
   bool get showChatPremiumEmojiStatus => _showChatPremiumEmojiStatus;
   bool get showMessageMetaIndicators => _showMessageMetaIndicators;
+  bool get showMessageTimestamp => _showMessageTimestamp;
   bool get openChatsAtLatest => _openChatsAtLatest;
   bool get preserveSenderWhenRepeating => _preserveSenderWhenRepeating;
   bool get groupImageMessages => _groupImageMessages;
@@ -1418,6 +1422,12 @@ class ThemeController extends ChangeNotifier {
   set showMessageMetaIndicators(bool value) {
     _showMessageMetaIndicators = value;
     _prefs.setBool(_messageMetaIndicatorsKey, value);
+    notifyListeners();
+  }
+
+  set showMessageTimestamp(bool value) {
+    _showMessageTimestamp = value;
+    _prefs.setBool(_showMessageTimestampKey, value);
     notifyListeners();
   }
 

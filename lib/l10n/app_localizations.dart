@@ -283,6 +283,7 @@ abstract final class AppStringKeys {
   static const appearanceShowPremiumStatusEmoji =
       'appearanceShowPremiumStatusEmoji';
   static const appearanceShowUnreadChatCount = 'appearanceShowUnreadChatCount';
+  static const appearanceShowMessageTimestamp = 'appearanceShowMessageTimestamp';
   static const appearanceSize = 'appearanceSize';
   static const appearanceSystem = 'appearanceSystem';
   static const appearanceSystemEmojiFont = 'appearanceSystemEmojiFont';

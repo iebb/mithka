@@ -576,11 +576,27 @@ class _MessageBubbleState extends State<MessageBubble>
               if (message.isEdited && outgoing) const SizedBox(width: 3),
               if (outgoing)
                 _deliveryDots(diameter: 4, color: AppTheme.bubbleOutgoingText),
+              if (context.read<ThemeController>().showMessageTimestamp)
+                Padding(
+                  padding: const EdgeInsets.only(left: 6),
+                  child: Text(
+                    _timestampLabel(message.date),
+                    style: TextStyle(fontSize: 10, color: faint),
+                  ),
+                ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  String _timestampLabel(int sec) {
+    final date = DateTime.fromMillisecondsSinceEpoch(sec * 1000);
+    final h = date.hour.toString().padLeft(2, '0');
+    final m = date.minute.toString().padLeft(2, '0');
+    final s = date.second.toString().padLeft(2, '0');
+    return '$h:$m:$s';
   }
 
   Widget _stickerTap(Widget child) => GestureDetector(
