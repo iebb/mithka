@@ -14,6 +14,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../channels/forum_topic_browser_view.dart';
 import '../chat/chat_view.dart';
@@ -28,6 +29,7 @@ import '../contacts/add_people_view.dart';
 import '../contacts/create_group_view.dart';
 import '../profile/emoji_status_picker.dart';
 import '../settings/edit_field_view.dart';
+import '../settings/proxy_view.dart';
 import '../settings/topic_group_display_mode.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -124,6 +126,8 @@ class _ChatListViewState extends State<ChatListView> {
   bool _toggleUnreadTargetNext = true;
   bool _archiveRevealed = false;
   double _archivePullDistance = 0;
+  bool _showProxyIcon = false;
+  int _proxyStatusRequest = 0;
   int _lastVisibleRows = 1;
 
   ScrollController _newScrollController({double initialScrollOffset = 0}) {
@@ -141,6 +145,7 @@ class _ChatListViewState extends State<ChatListView> {
       if (mounted) _onControllerRequest();
     });
     _loadMe();
+    _loadProxyStatus();
     // Keep the header's name/status/photo live — TDLib emits updateUser for us
     // when the status or profile changes.
     _userSub = TdClient.shared.subscribe().listen((u) {
@@ -206,6 +211,33 @@ class _ChatListViewState extends State<ChatListView> {
         });
       }
     } catch (_) {}
+  }
+
+  Future<void> _loadProxyStatus() async {
+    final request = ++_proxyStatusRequest;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final shortcutEnabled = prefs.getBool('proxy_show_shortcut') ?? false;
+      if (!shortcutEnabled) {
+        if (mounted) setState(() => _showProxyIcon = false);
+        return;
+      }
+      final res = await TdClient.shared.query({'@type': 'getProxies'});
+      final list = res.objects('proxies') ?? const <Map<String, dynamic>>[];
+      if (!mounted || request != _proxyStatusRequest) return;
+      // Show the proxy shortcut only when at least one proxy exists.
+      setState(() => _showProxyIcon = list.isNotEmpty);
+    } catch (_) {
+      // A failed refresh must not overwrite the last known proxy state.
+    }
+  }
+
+  Future<void> _navigateToProxyView() async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const ProxyView()));
+    // Refresh in case the user added or removed a proxy.
+    if (mounted) unawaited(_loadProxyStatus());
   }
 
   Future<void> _openChat(ChatSummary chat) async {
@@ -633,6 +665,20 @@ class _ChatListViewState extends State<ChatListView> {
                   child: AppIcon(
                     HeroAppIcons.folder,
                     size: AppIconSize.toolbar,
+                    color: c.textPrimary,
+                  ),
+                ),
+              ),
+            if (_showProxyIcon)
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _navigateToProxyView,
+                child: SizedBox(
+                  width: AppMetric.hitTarget,
+                  height: AppMetric.hitTarget,
+                  child: AppIcon(
+                    HeroAppIcons.globe,
+                    size: AppIconSize.add,
                     color: c.textPrimary,
                   ),
                 ),
