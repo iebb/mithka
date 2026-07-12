@@ -1373,6 +1373,7 @@ class ChatInfoViewModel extends ChangeNotifier {
           });
           final desc = info.str('description') ?? '';
           _setDescription(desc);
+          memberCount = info.integer('member_count') ?? memberCount;
         } catch (_) {}
       }
     } catch (_) {}
@@ -1476,10 +1477,15 @@ class ChatInfoViewModel extends ChangeNotifier {
           'limit': 30,
         });
         final raw = result.objects('members') ?? const <Map<String, dynamic>>[];
-        memberCount =
-            result.integer('member_count') ??
-            result.integer('total_count') ??
-            raw.length;
+        // _loadGroupMeta already set memberCount from the accurate
+        // getSupergroupFullInfo response; only fall back here when that
+        // was unavailable.
+        if (memberCount == 0) {
+          memberCount =
+              result.integer('member_count') ??
+              result.integer('total_count') ??
+              raw.length;
+        }
         await _resolveMembers(raw);
       }
     } catch (_) {}
