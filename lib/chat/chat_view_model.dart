@@ -2517,7 +2517,7 @@ class ChatViewModel extends ChangeNotifier {
           _resolveRichMessagesIfNeeded(target);
         }
 
-case 'updateMessageSendSucceeded':
+      case 'updateMessageSendSucceeded':
         if (update.int64('chat_id') != chatId) return;
         final oldMessageId = update.int64('old_message_id');
         final rawSentMessage = update.obj('message');
@@ -2555,6 +2555,7 @@ case 'updateMessageSendSucceeded':
         _pendingScrollToId = null;
         _messageVersion++;
         notifyListeners();
+
       case 'updateChat':
         final chat = update.obj('chat');
         if (chat == null || chat.int64('id') != chatId) return;
