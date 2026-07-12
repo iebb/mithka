@@ -26,6 +26,9 @@ class HeroAppIcons {
   static const angleDown = AppIconData(HeroiconsOutline.chevronDown);
   static const arrowDown = AppIconData(HeroiconsOutline.arrowDown);
   static const arrowUp = AppIconData(HeroiconsOutline.arrowUp);
+  static const arrowTopRight = AppIconData(
+    HeroiconsOutline.arrowTopRightOnSquare,
+  );
   static const arrowsRotate = AppIconData(HeroiconsOutline.arrowPath);
   static const arrowsUpDown = AppIconData(HeroiconsOutline.arrowsUpDown);
   static const at = AppIconData(HeroiconsOutline.atSymbol);
@@ -49,6 +52,7 @@ class HeroAppIcons {
   static const circlePlus = AppIconData(HeroiconsOutline.plusCircle);
   static const circleUser = AppIconData(HeroiconsOutline.userCircle);
   static const circleXmark = AppIconData(HeroiconsOutline.xCircle);
+  static const clipboard = AppIconData(HeroiconsOutline.clipboard);
   static const clock = AppIconData(HeroiconsOutline.clock);
   static const code = AppIconData(HeroiconsOutline.codeBracket);
   static const cloudArrowDown = AppIconData(HeroiconsOutline.cloudArrowDown);

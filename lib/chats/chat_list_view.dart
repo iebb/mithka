@@ -18,6 +18,7 @@ import 'package:provider/provider.dart';
 import '../channels/forum_topic_browser_view.dart';
 import '../chat/chat_view.dart';
 import '../chat/custom_emoji.dart';
+import '../chat/link_handler.dart';
 import '../components/app_icons.dart';
 import '../components/confirm_dialog.dart';
 import '../components/drawer_controller.dart' as dc;
@@ -36,6 +37,7 @@ import '../theme/theme_controller.dart';
 import 'archived_chats_view.dart';
 import 'chat_list_view_model.dart';
 import 'chat_row_view.dart';
+import 'qr_scanner_view.dart';
 import 'search_view.dart';
 
 class ChatListController extends ChangeNotifier {
@@ -122,6 +124,7 @@ class _ChatListViewState extends State<ChatListView> {
   bool _toggleUnreadTargetNext = true;
   bool _archiveRevealed = false;
   double _archivePullDistance = 0;
+  int _lastVisibleRows = 1;
 
   ScrollController _newScrollController({double initialScrollOffset = 0}) {
     return ScrollController(initialScrollOffset: initialScrollOffset)
@@ -309,6 +312,8 @@ class _ChatListViewState extends State<ChatListView> {
   void _selectPlusMenuItem(String label) {
     setState(() => _showPlusMenu = false);
     switch (label) {
+      case AppStringKeys.chatListScanQrCode:
+        _openQrScanner();
       case AppStringKeys.chatListCreateGroup:
         _createGroup();
       case AppStringKeys.chatListCreateChannel:
@@ -316,6 +321,14 @@ class _ChatListViewState extends State<ChatListView> {
       case AppStringKeys.chatListAddFriendOrGroup:
         _showAddMenu();
     }
+  }
+
+  Future<void> _openQrScanner() async {
+    final value = await Navigator.of(
+      context,
+    ).push<String>(MaterialPageRoute(builder: (_) => const QrScannerView()));
+    if (!mounted || value == null || value.trim().isEmpty) return;
+    await openLink(context, value);
   }
 
   void _selectFilter(ChatFilterOption filter) {
@@ -426,9 +439,22 @@ class _ChatListViewState extends State<ChatListView> {
     final chatIndex = chats.indexWhere((chat) => chat.showsRedUnreadIndicator);
     if (chatIndex < 0) return null;
 
+    var itemIndex = chatIndex;
+    final archiveMode = context
+        .read<ThemeController>()
+        .archivedChatsDisplayMode;
+    if (_model.isAllFilter &&
+        _model.archived.isNotEmpty &&
+        archiveMode.isInline) {
+      final archiveIndex = archiveMode.insertionIndex(
+        chatCount: chats.length,
+        visibleRows: _lastVisibleRows,
+      );
+      if (archiveIndex <= chatIndex) itemIndex++;
+    }
     final rowH = context.read<ThemeController>().rowHeight + 0.5;
     return math.min(
-      chatIndex * rowH,
+      itemIndex * rowH,
       _scrollController.position.maxScrollExtent,
     );
   }
@@ -767,16 +793,21 @@ class _ChatListViewState extends State<ChatListView> {
             1,
             ((geo.maxHeight - searchHeight) / rowH).ceil(),
           );
+          _lastVisibleRows = visibleRows;
           final chats = _model.chats;
           final hasArchive = _model.isAllFilter && _model.archived.isNotEmpty;
-          final showArchive =
+          final showPulledDownArchive =
               hasArchive &&
-              (archiveMode == ArchivedChatsDisplayMode.always ||
-                  (archiveMode == ArchivedChatsDisplayMode.pullDown &&
-                      _archiveRevealed));
+              archiveMode == ArchivedChatsDisplayMode.pullDown &&
+              _archiveRevealed;
+          final archiveIndex = archiveMode.insertionIndex(
+            chatCount: chats.length,
+            visibleRows: visibleRows,
+          );
+          final showInlineArchive = hasArchive && archiveMode.isInline;
 
           Widget list;
-          if (chats.isEmpty && _model.isInitialLoading) {
+          if (chats.isEmpty && _model.isInitialLoading && !showInlineArchive) {
             list = ListView.builder(
               controller: _scrollController,
               physics: const AlwaysScrollableScrollPhysics(
@@ -786,7 +817,7 @@ class _ChatListViewState extends State<ChatListView> {
               itemCount: visibleRows,
               itemBuilder: (context, i) => const _ChatRowPlaceholder(),
             );
-          } else if (chats.isEmpty) {
+          } else if (chats.isEmpty && !showInlineArchive) {
             list = ListView(
               controller: _scrollController,
               physics: const AlwaysScrollableScrollPhysics(
@@ -807,8 +838,16 @@ class _ChatListViewState extends State<ChatListView> {
                 parent: BouncingScrollPhysics(),
               ),
               padding: EdgeInsets.zero,
-              itemCount: chats.length,
-              itemBuilder: (context, index) => _swipeRow(chats[index]),
+              itemCount: chats.length + (showInlineArchive ? 1 : 0),
+              itemBuilder: (context, index) {
+                if (showInlineArchive && index == archiveIndex) {
+                  return _assistantRow();
+                }
+                final chatIndex = showInlineArchive && index > archiveIndex
+                    ? index - 1
+                    : index;
+                return _swipeRow(chats[chatIndex]);
+              },
             );
           }
 
@@ -837,12 +876,13 @@ class _ChatListViewState extends State<ChatListView> {
           return Column(
             children: [
               if (showSearch) _searchPill(),
-              if (hasArchive && archiveMode != ArchivedChatsDisplayMode.hidden)
+              if (hasArchive &&
+                  archiveMode == ArchivedChatsDisplayMode.pullDown)
                 AnimatedSize(
                   duration: const Duration(milliseconds: 180),
                   curve: Curves.easeOutCubic,
                   alignment: Alignment.topCenter,
-                  child: showArchive
+                  child: showPulledDownArchive
                       ? SizedBox(height: rowH, child: _assistantRow())
                       : const SizedBox(width: double.infinity),
                 ),
@@ -1185,6 +1225,7 @@ class PlusMenu extends StatelessWidget {
   final ValueChanged<String> onSelect;
 
   static const _items = [
+    (HeroAppIcons.qrcode, AppStringKeys.chatListScanQrCode),
     (HeroAppIcons.circlePlus, AppStringKeys.chatListCreateGroup),
     (HeroAppIcons.grip, AppStringKeys.chatListCreateChannel),
     (HeroAppIcons.userPlus, AppStringKeys.chatListAddFriendOrGroup),
@@ -1225,18 +1266,22 @@ class PlusMenu extends StatelessWidget {
                       children: [
                         SizedBox(
                           width: AppMetric.menuIconSlot,
-                          child: Icon(
-                            item.$1.data,
+                          child: AppIcon(
+                            item.$1,
                             size: AppIconSize.lg + 1,
                             color: c.textPrimary,
                           ),
                         ),
                         const SizedBox(width: AppSpacing.xl),
-                        Text(
-                          item.$2.l10n(context),
-                          style: TextStyle(
-                            fontSize: AppTextSize.bodyLarge,
-                            color: c.textPrimary,
+                        Expanded(
+                          child: Text(
+                            item.$2.l10n(context),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: AppTextSize.bodyLarge,
+                              color: c.textPrimary,
+                            ),
                           ),
                         ),
                       ],
@@ -1300,10 +1345,10 @@ class ChatFilterMenu extends StatelessWidget {
                   ),
                   child: Row(
                     children: [
-                      Icon(
+                      AppIcon(
                         filter.isAll
-                            ? HeroAppIcons.inbox.data
-                            : HeroAppIcons.folder.data,
+                            ? HeroAppIcons.inbox
+                            : HeroAppIcons.folder,
                         size: AppIconSize.lg + 1,
                         color: c.textPrimary,
                       ),

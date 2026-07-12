@@ -216,7 +216,6 @@ abstract final class AppStringKeys {
   static const appearanceCacheRefreshed = 'appearanceCacheRefreshed';
   static const appearanceCapUnreadCountAt99 = 'appearanceCapUnreadCountAt99';
   static const appearanceArchivedChats = 'appearanceArchivedChats';
-  static const appearanceArchivedChatsAlways = 'appearanceArchivedChatsAlways';
   static const appearanceArchivedChatsHidden = 'appearanceArchivedChatsHidden';
   static const appearanceArchivedChatsPullDown =
       'appearanceArchivedChatsPullDown';
@@ -451,6 +450,7 @@ abstract final class AppStringKeys {
   static const chatListAddFriendOrGroup = 'chatListAddFriendOrGroup';
   static const chatListBlockedPlaceholder = 'chatListBlockedPlaceholder';
   static const chatListChannelName = 'chatListChannelName';
+  static const chatListScanQrCode = 'chatListScanQrCode';
   static const chatListCreateChannel = 'chatListCreateChannel';
   static const chatListCreateChannelFailed = 'chatListCreateChannelFailed';
   static const chatListCreateGroup = 'chatListCreateGroup';
@@ -1278,6 +1278,17 @@ abstract final class AppStringKeys {
   static const qrCodeNoGroupQrCode = 'qrCodeNoGroupQrCode';
   static const qrCodeScanToAddFriend = 'qrCodeScanToAddFriend';
   static const qrCodeScanToJoinGroup = 'qrCodeScanToJoinGroup';
+  static const qrScannerCameraUnavailable = 'qrScannerCameraUnavailable';
+  static const qrScannerCopied = 'qrScannerCopied';
+  static const qrScannerCopy = 'qrScannerCopy';
+  static const qrScannerDetailsTitle = 'qrScannerDetailsTitle';
+  static const qrScannerHint = 'qrScannerHint';
+  static const qrScannerLink = 'qrScannerLink';
+  static const qrScannerMultipleHint = 'qrScannerMultipleHint';
+  static const qrScannerMultipleTitle = 'qrScannerMultipleTitle';
+  static const qrScannerOpen = 'qrScannerOpen';
+  static const qrScannerText = 'qrScannerText';
+  static const qrScannerTitle = 'qrScannerTitle';
   static const richTextComposerAddColumn = 'richTextComposerAddColumn';
   static const richTextComposerAddRow = 'richTextComposerAddRow';
   static const richTextComposerAnchorName = 'richTextComposerAnchorName';

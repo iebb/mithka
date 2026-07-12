@@ -27,4 +27,23 @@ void main() {
       '42 members',
     );
   });
+
+  test('familiar glossary always calls archived chats group assistant', () {
+    final controller = TelegramLanguageController.test(
+      activePackId: 'zhhanscn-qq',
+      strings: const {'ArchivedChats': '归档的聊天'},
+    );
+
+    expect(controller.text(AppStringKeys.archivedChatsGroupAssistant), '群助手');
+    expect(controller.text(AppStringKeys.appearanceArchivedChats), '群助手');
+  });
+
+  test('standard glossary keeps the Telegram archived chats wording', () {
+    final controller = TelegramLanguageController.test(
+      activePackId: 'zh-hans',
+      strings: const {'ArchivedChats': '归档的聊天'},
+    );
+
+    expect(controller.text(AppStringKeys.archivedChatsGroupAssistant), '归档的聊天');
+  });
 }

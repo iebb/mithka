@@ -7,6 +7,7 @@ import '../l10n/app_locale_controller.dart';
 import '../l10n/app_localizations.dart';
 import '../l10n/telegram_language_controller.dart';
 import '../theme/app_theme.dart';
+import 'translation_settings_view.dart';
 
 class LanguageSettingsView extends StatelessWidget {
   const LanguageSettingsView({super.key});
@@ -54,6 +55,19 @@ class LanguageSettingsView extends StatelessWidget {
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => const TelegramLanguageSettingsView(),
+                        ),
+                      ),
+                    ),
+                    const InsetDivider(leadingInset: 56),
+                    _NavLanguageRow(
+                      icon: HeroAppIcons.language,
+                      title: telegramText(AppStringKeys.messageActionTranslate),
+                      subtitle: AppStrings.t(
+                        AppStringKeys.translationSettingsTitle,
+                      ),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const TranslationSettingsView(),
                         ),
                       ),
                     ),

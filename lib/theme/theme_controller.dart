@@ -70,7 +70,14 @@ enum ArchivedChatsDisplayMode {
     AppStringKeys.appearanceArchivedChatsPullDown,
     HeroAppIcons.arrowDown,
   ),
-  always(AppStringKeys.appearanceArchivedChatsAlways, HeroAppIcons.inbox),
+  firstPosition(
+    AppStringKeys.themeGroupAssistantTopCollapsed,
+    HeroAppIcons.arrowUp,
+  ),
+  nextPage(
+    AppStringKeys.themeGroupAssistantSecondPageFirst,
+    HeroAppIcons.arrowDown,
+  ),
   hidden(AppStringKeys.appearanceArchivedChatsHidden, HeroAppIcons.eyeSlash);
 
   const ArchivedChatsDisplayMode(this.label, this._icon);
@@ -78,6 +85,19 @@ enum ArchivedChatsDisplayMode {
   final AppIconData _icon;
 
   IconData get icon => _icon.data;
+
+  bool get isInline =>
+      this == ArchivedChatsDisplayMode.firstPosition ||
+      this == ArchivedChatsDisplayMode.nextPage;
+
+  int insertionIndex({required int chatCount, required int visibleRows}) {
+    return switch (this) {
+      ArchivedChatsDisplayMode.firstPosition => 0,
+      ArchivedChatsDisplayMode.nextPage =>
+        chatCount < visibleRows ? chatCount : visibleRows,
+      _ => -1,
+    };
+  }
 }
 
 enum ChatFolderDisplayMode {
@@ -853,10 +873,17 @@ class ThemeController extends ChangeNotifier {
         _prefs.getBool(_hideBlockedUserMessagesKey) ?? false;
     _showChannelsTab = _prefs.getBool(_showChannelsTabKey) ?? false;
     _showMomentsTab = _prefs.getBool(_showMomentsTabKey) ?? true;
-    _archivedChatsDisplayMode = ArchivedChatsDisplayMode.values.firstWhere(
-      (mode) => mode.name == _prefs.getString(_archivedChatsDisplayModeKey),
-      orElse: () => ArchivedChatsDisplayMode.pullDown,
+    final storedArchivedChatsMode = _prefs.getString(
+      _archivedChatsDisplayModeKey,
     );
+    _archivedChatsDisplayMode = switch (storedArchivedChatsMode) {
+      'always' || 'top' => ArchivedChatsDisplayMode.firstPosition,
+      'secondScreen' => ArchivedChatsDisplayMode.nextPage,
+      _ => ArchivedChatsDisplayMode.values.firstWhere(
+        (mode) => mode.name == storedArchivedChatsMode,
+        orElse: () => ArchivedChatsDisplayMode.pullDown,
+      ),
+    };
     _unreadBadgeMode = UnreadBadgeMode.values.firstWhere(
       (m) => m.name == _prefs.getString(_unreadBadgeModeKey),
       orElse: () => UnreadBadgeMode.messages,
@@ -961,11 +988,11 @@ class ThemeController extends ChangeNotifier {
   bool get usesCustomFontFallbackChain => _fontFallbackChain.isNotEmpty;
   String get effectivePrimaryFontLabel =>
       _fontChoice.isCustom && _customPrimaryFontFamily.isNotEmpty
-      ? _customPrimaryFontFamily
+      ? displayStoredFontFamily(_customPrimaryFontFamily)
       : AppStrings.t(_fontChoice.label);
   String get effectiveCjkFontLabel =>
       _cjkFontChoice.isCustom && _customCjkFontFamily.isNotEmpty
-      ? _customCjkFontFamily
+      ? displayStoredFontFamily(_customCjkFontFamily)
       : AppStrings.t(_cjkFontChoice.label);
   String get effectiveMonospaceFontLabel =>
       _monospaceFontChoice.isCustom && _customMonospaceFontFamily.isNotEmpty
@@ -975,8 +1002,11 @@ class ThemeController extends ChangeNotifier {
     if (_fontFallbackChain.isEmpty) {
       return AppStrings.t(AppStringKeys.groupManagementNotSet);
     }
-    if (_fontFallbackChain.length == 1) return _fontFallbackChain.first;
-    final head = _fontFallbackChain.take(2).join(' / ');
+    final displayChain = _fontFallbackChain
+        .map(displayStoredFontFamily)
+        .toList();
+    if (displayChain.length == 1) return displayChain.first;
+    final head = displayChain.take(2).join(' / ');
     return _fontFallbackChain.length > 2
         ? '$head / +${_fontFallbackChain.length - 2}'
         : head;
@@ -1334,7 +1364,8 @@ class ThemeController extends ChangeNotifier {
   }
 
   set chatListFolderSwipeSwitching(bool value) {
-    final next = value &&
+    final next =
+        value &&
         _disableChatListSwipeActions &&
         _chatFolderDisplayMode == ChatFolderDisplayMode.tabs;
     if (_chatListFolderSwipeSwitching == next) return;

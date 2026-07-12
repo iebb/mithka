@@ -94,8 +94,14 @@ class TelegramLanguageController extends ChangeNotifier {
   TelegramLanguageController._();
 
   @visibleForTesting
-  TelegramLanguageController.test({Map<String, String> strings = const {}}) {
-    _strings.addAll(strings);
+  factory TelegramLanguageController.test({
+    Map<String, String> strings = const {},
+    String? activePackId,
+  }) {
+    final controller = TelegramLanguageController._();
+    controller._activePackId = activePackId;
+    controller._strings.addAll(strings);
+    return controller;
   }
 
   static final shared = TelegramLanguageController._();
@@ -222,7 +228,12 @@ class TelegramLanguageController extends ChangeNotifier {
     Map<String, Object?> placeholders,
   ) {
     final telegramKey = _telegramKeyForAppKey[appFallbackKey];
-    final template = telegramKey == null ? null : _strings[telegramKey];
+    final familiarOverride = _activePackId == 'zhhanscn-qq'
+        ? _familiarGlossaryOverrides[appFallbackKey]
+        : null;
+    final template =
+        familiarOverride ??
+        (telegramKey == null ? null : _strings[telegramKey]);
     if (template == null || template.trim().isEmpty) return null;
     final result = _interpolate(template, placeholders);
     return _hasUnresolvedPlaceholder(result) ? null : result;
@@ -513,6 +524,11 @@ const _knownRemotePacks = <TelegramLanguagePackOption>[
 const _legacyPackMigrations = <String?, String?>{
   'mithka-zh-hans-glossary': 'zhhanscn-qq',
   'mithka-zh-hant-glossary': null,
+};
+
+const _familiarGlossaryOverrides = <String, String>{
+  AppStringKeys.archivedChatsGroupAssistant: '群助手',
+  AppStringKeys.appearanceArchivedChats: '群助手',
 };
 
 const _telegramKeyForAppKey = <String, String>{

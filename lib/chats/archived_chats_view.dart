@@ -1,8 +1,7 @@
 //
 //  archived_chats_view.dart
 //
-//  Telegram archived chats folded behind a dedicated entry. The row is
-//  revealed below search by pulling down, then opens ArchivedChatsView.
+//  Telegram archived chats folded behind the group assistant entry.
 //
 
 import 'package:flutter/material.dart';
@@ -12,6 +11,7 @@ import 'package:provider/provider.dart';
 import '../chat/chat_view.dart';
 import '../components/app_icons.dart';
 import '../components/ui_components.dart';
+import '../l10n/telegram_language_controller.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
@@ -41,18 +41,37 @@ class ArchivedChatsRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
       child: Row(
         children: [
-          Container(
+          SizedBox(
             width: avatarSize,
             height: avatarSize,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: c.listHeaderTint,
-              shape: BoxShape.circle,
-            ),
-            child: AppIcon(
-              HeroAppIcons.inbox,
-              size: theme.scaled(23),
-              color: c.linkBlue,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  width: avatarSize,
+                  height: avatarSize,
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFFF9D2E),
+                    shape: BoxShape.circle,
+                  ),
+                  child: AppIcon(
+                    HeroAppIcons.solidMessage,
+                    size: theme.scaled(22),
+                    color: Colors.white,
+                  ),
+                ),
+                if (_totalUnread > 0)
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    child: UnreadBadge(
+                      count: _totalUnread,
+                      muted: true,
+                      onClear: onClearUnread,
+                    ),
+                  ),
+              ],
             ),
           ),
           const SizedBox(width: AppSpacing.lg),
@@ -62,7 +81,7 @@ class ArchivedChatsRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  AppStrings.t(AppStringKeys.archivedChatsGroupAssistant),
+                  telegramText(AppStringKeys.archivedChatsGroupAssistant),
                   style: TextStyle(
                     fontSize: AppTextSize.bodyLarge,
                     fontWeight: FontWeight.w500,
@@ -78,20 +97,32 @@ class ArchivedChatsRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: AppSpacing.md),
-          if (_totalUnread > 0)
-            UnreadBadge(
-              count: _totalUnread,
-              muted: true,
-              onClear: onClearUnread,
-            )
-          else
-            Text(
-              DateText.listLabel(_latest?.date ?? 0),
-              style: TextStyle(
-                fontSize: AppTextSize.caption,
-                color: c.textTertiary,
+          SizedBox(
+            height: rowHeight,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                vertical: AppSpacing.lg + AppSpacing.xxs,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    DateText.listLabel(_latest?.date ?? 0),
+                    style: TextStyle(
+                      fontSize: AppTextSize.caption,
+                      color: c.textTertiary,
+                    ),
+                  ),
+                  const Spacer(),
+                  AppIcon(
+                    HeroAppIcons.bellSlash,
+                    size: AppIconSize.sm,
+                    color: c.textTertiary,
+                  ),
+                ],
               ),
             ),
+          ),
         ],
       ),
     );
@@ -111,7 +142,7 @@ class ArchivedChatsView extends StatelessWidget {
       body: Column(
         children: [
           NavHeader(
-            title: AppStrings.t(AppStringKeys.archivedChatsGroupAssistant),
+            title: telegramText(AppStringKeys.archivedChatsGroupAssistant),
             onBack: () => Navigator.of(context).pop(),
           ),
           Expanded(

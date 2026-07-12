@@ -17,7 +17,6 @@ import '../auth/auth_manager.dart';
 import '../components/app_icons.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
-import '../l10n/telegram_language_controller.dart';
 import '../theme/app_theme.dart';
 import 'about_view.dart';
 import 'appearance_view.dart';
@@ -30,7 +29,6 @@ import 'language_settings_view.dart';
 import 'notification_settings_view.dart';
 import 'privacy_security_view.dart';
 import 'proxy_view.dart';
-import 'translation_settings_view.dart';
 
 class SettingsView extends StatefulWidget {
   const SettingsView({super.key});
@@ -125,14 +123,6 @@ class _SettingsViewState extends State<SettingsView> {
                     AppStrings.t(AppStringKeys.appearanceDisplay),
                     const Color(0xFF34A2DF),
                     () => const DisplaySettingsView(),
-                  ),
-                  const InsetDivider(leadingInset: 56),
-                  _navRow(
-                    context,
-                    HeroAppIcons.language.data,
-                    telegramText(AppStringKeys.messageActionTranslate),
-                    const Color(0xFF34A2DF),
-                    () => const TranslationSettingsView(),
                   ),
                   const InsetDivider(leadingInset: 56),
                   _navRow(

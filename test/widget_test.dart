@@ -552,6 +552,66 @@ void main() {
     });
   });
 
+  group('ThemeController archived chats', () {
+    test('defaults to pull-down and migrates former positions', () async {
+      SharedPreferences.setMockInitialValues({});
+      var prefs = await SharedPreferences.getInstance();
+      expect(
+        ThemeController(prefs).archivedChatsDisplayMode,
+        ArchivedChatsDisplayMode.pullDown,
+      );
+
+      SharedPreferences.setMockInitialValues({
+        'archivedChatsDisplayMode': 'always',
+      });
+      prefs = await SharedPreferences.getInstance();
+      expect(
+        ThemeController(prefs).archivedChatsDisplayMode,
+        ArchivedChatsDisplayMode.firstPosition,
+      );
+
+      SharedPreferences.setMockInitialValues({
+        'archivedChatsDisplayMode': 'secondScreen',
+      });
+      prefs = await SharedPreferences.getInstance();
+      expect(
+        ThemeController(prefs).archivedChatsDisplayMode,
+        ArchivedChatsDisplayMode.nextPage,
+      );
+    });
+
+    test('places inline archive rows at the requested list position', () {
+      expect(
+        ArchivedChatsDisplayMode.firstPosition.insertionIndex(
+          chatCount: 20,
+          visibleRows: 6,
+        ),
+        0,
+      );
+      expect(
+        ArchivedChatsDisplayMode.nextPage.insertionIndex(
+          chatCount: 20,
+          visibleRows: 6,
+        ),
+        6,
+      );
+      expect(
+        ArchivedChatsDisplayMode.nextPage.insertionIndex(
+          chatCount: 3,
+          visibleRows: 6,
+        ),
+        3,
+      );
+      expect(
+        ArchivedChatsDisplayMode.pullDown.insertionIndex(
+          chatCount: 20,
+          visibleRows: 6,
+        ),
+        -1,
+      );
+    });
+  });
+
   group('ThemeController chat folders', () {
     test('defaults to tabbed folders when no preference exists', () async {
       SharedPreferences.setMockInitialValues({});
@@ -615,6 +675,27 @@ void main() {
   });
 
   group('ThemeController fonts', () {
+    test('hides Google storage prefixes from every font label', () async {
+      SharedPreferences.setMockInitialValues({
+        'fontChoice': 'custom',
+        'customPrimaryFontFamily': 'google:Roboto',
+        'cjkFontChoice': 'customCjk',
+        'customCjkFontFamily': 'google:Noto Sans SC',
+        'fontFallbackChain': [
+          'google:Roboto',
+          'google:Noto Sans SC',
+          'PingFang SC',
+        ],
+      });
+      final prefs = await SharedPreferences.getInstance();
+      final theme = ThemeController(prefs);
+
+      expect(theme.effectivePrimaryFontLabel, 'Roboto');
+      expect(theme.effectiveCjkFontLabel, 'Noto Sans SC');
+      expect(theme.effectiveFontChainLabel, 'Roboto / Noto Sans SC / +1');
+      expect(theme.effectiveFontChainLabel, isNot(contains('google:')));
+    });
+
     test('applies explicit fallback chain in order', () async {
       SharedPreferences.setMockInitialValues({
         'fontFallbackChain': ['Futura', 'PingFang SC', 'Futura'],

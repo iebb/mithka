@@ -3,8 +3,8 @@
 //
 //  The "我" side menu (slides in from the left, ~88% width). Redesigned to match
 //  the reference app's drawer: an azure avatar banner → an edit-profile card → a vertical list
-//  of rows (相册 / 收藏 / 文件 / 外观) → account switcher → a bottom bar
-//  (设置 · 夜间模式). Backed by real TDLib via ProfileViewModel + AccountStore.
+//  of rows (相册 / 收藏 / 文件 / 外观) → account switcher → an icon-only bottom
+//  bar. Backed by real TDLib via ProfileViewModel + AccountStore.
 //
 
 import 'dart:async';
@@ -663,7 +663,7 @@ class _ProfileViewState extends State<ProfileView> {
     );
   }
 
-  // MARK: - Bottom bar (设置 · 夜间模式)
+  // MARK: - Bottom bar
 
   Widget _bottomBar() {
     final c = context.colors;
@@ -684,7 +684,7 @@ class _ProfileViewState extends State<ProfileView> {
       child: SafeArea(
         top: false,
         child: SizedBox(
-          height: 74,
+          height: 58,
           child: Row(
             children: [
               const SizedBox(width: 16),
@@ -694,7 +694,7 @@ class _ProfileViewState extends State<ProfileView> {
                   MaterialPageRoute(builder: (_) => const SettingsView()),
                 ),
                 child: _barItem(
-                  HeroAppIcons.gear.data,
+                  HeroAppIcons.gear,
                   AppStrings.t(AppStringKeys.profileSettings),
                 ),
               ),
@@ -707,7 +707,7 @@ class _ProfileViewState extends State<ProfileView> {
                     ? AppearanceMode.light
                     : AppearanceMode.dark,
                 child: _barItem(
-                  isDark ? HeroAppIcons.sun.data : HeroAppIcons.moon.data,
+                  isDark ? HeroAppIcons.sun : HeroAppIcons.moon,
                   isDark
                       ? AppStrings.t(AppStringKeys.profileDayMode)
                       : AppStrings.t(AppStringKeys.profileNightMode),
@@ -721,25 +721,14 @@ class _ProfileViewState extends State<ProfileView> {
     );
   }
 
-  Widget _barItem(IconData icon, String label) {
+  Widget _barItem(AppIconData icon, String tooltip) {
     final c = context.colors;
-    return SizedBox(
-      width: 58,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, size: 22, color: c.textPrimary),
-          const SizedBox(height: 5),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 13, color: c.textPrimary),
-            ),
-          ),
-        ],
+    return Tooltip(
+      message: tooltip,
+      child: SizedBox(
+        width: 48,
+        height: 48,
+        child: Center(child: AppIcon(icon, size: 24, color: c.textPrimary)),
       ),
     );
   }
