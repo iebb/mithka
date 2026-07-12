@@ -3500,16 +3500,17 @@ class _ChatViewState extends State<ChatView> {
         child: Row(
           children: [
             Container(
-              width: 16,
-              height: 16,
+              width: 18,
+              height: 18,
               decoration: BoxDecoration(
-                border: Border.all(color: const Color(0xFFFFB300), width: 2),
-                borderRadius: BorderRadius.circular(6),
+                color: const Color(0xFFFFB300),
+                borderRadius: BorderRadius.circular(5),
               ),
+              alignment: Alignment.center,
               child: const AppIcon(
                 HeroAppIcons.check,
-                size: 15,
-                color: Color(0xFFFFB300),
+                size: 12,
+                color: Colors.white,
               ),
             ),
             const SizedBox(width: 14),
