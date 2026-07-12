@@ -418,7 +418,12 @@ class TelegramLanguageController extends ChangeNotifier {
     String template,
     Map<String, Object?> placeholders,
   ) {
-    var result = template;
+    // Some CJK Telegram language packs use fullwidth ％ (U+FF05) and
+    // ＄ (U+FF04) in printf-style format specifiers. Normalise them to
+    // ASCII so the replacement patterns below can match.
+    var result = template
+        .replaceAll('％', '%')
+        .replaceAll('＄', '\$');
     placeholders.forEach((key, value) {
       final replacement = '$value';
       result = result
