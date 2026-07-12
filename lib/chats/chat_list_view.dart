@@ -125,6 +125,7 @@ class _ChatListViewState extends State<ChatListView> {
   bool _toggleUnreadTargetNext = true;
   bool _didApplyTopAssistantInitialOffset = false;
   bool _showProxyIcon = false;
+  int _proxyStatusRequest = 0;
   int _lastVisibleRows = 1;
 
   ScrollController _newScrollController({double initialScrollOffset = 0}) {
@@ -211,22 +212,22 @@ class _ChatListViewState extends State<ChatListView> {
   }
 
   Future<void> _loadProxyStatus() async {
+    final request = ++_proxyStatusRequest;
     try {
       final res = await TdClient.shared.query({'@type': 'getProxies'});
-      final list =
-          res.objects('proxies') ?? const <Map<String, dynamic>>[];
-      if (!mounted) return;
+      final list = res.objects('proxies') ?? const <Map<String, dynamic>>[];
+      if (!mounted || request != _proxyStatusRequest) return;
       // Show the proxy shortcut only when at least one proxy exists.
       setState(() => _showProxyIcon = list.isNotEmpty);
     } catch (_) {
-      // On any failure, keep the icon hidden.
+      // A failed refresh must not overwrite the last known proxy state.
     }
   }
 
   Future<void> _navigateToProxyView() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const ProxyView()),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const ProxyView()));
     // Refresh in case the user added or removed a proxy.
     if (mounted) unawaited(_loadProxyStatus());
   }
