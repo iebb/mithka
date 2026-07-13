@@ -865,7 +865,7 @@ class _MiniAppToolbar extends StatelessWidget {
                 style: TextStyle(
                   color: c.textPrimary,
                   fontSize: AppTextSize.bodyLarge,
-                  fontWeight: FontWeight.w500,
+                  fontWeight: context.appFontWeight(FontWeight.w500),
                 ),
               ),
             ),
@@ -982,7 +982,10 @@ class _MiniAppBottomButton extends StatelessWidget {
           disabledBackgroundColor: background.withValues(alpha: 0.45),
           disabledForegroundColor: foreground.withValues(alpha: 0.72),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          textStyle: TextStyle(
+            fontSize: 16,
+            fontWeight: context.appFontWeight(FontWeight.w600),
+          ),
         ),
         onPressed: onPressed,
         child: state.isProgressVisible

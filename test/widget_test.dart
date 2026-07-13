@@ -24,6 +24,7 @@ import 'package:mithka/settings/keyword_blocker.dart';
 import 'package:mithka/settings/translation_controller.dart';
 import 'package:mithka/tdlib/json_helpers.dart';
 import 'package:mithka/tdlib/td_models.dart';
+import 'package:mithka/theme/app_theme.dart';
 import 'package:mithka/theme/date_text.dart';
 import 'package:mithka/theme/emoji_font_catalog.dart';
 import 'package:mithka/theme/theme_controller.dart';
@@ -1054,6 +1055,20 @@ void main() {
       expect(regular.fontWeight, FontWeight.w600);
       expect(medium.fontWeight, FontWeight.w700);
     });
+
+    test(
+      'keeps explicit text weights unchanged when system bold text is off',
+      () {
+        expect(
+          AppTextWeight.forSystemBoldText(FontWeight.w400, boldText: false),
+          FontWeight.w400,
+        );
+        expect(
+          AppTextWeight.forSystemBoldText(FontWeight.w600, boldText: true),
+          FontWeight.w800,
+        );
+      },
+    );
   });
 
   group('TDParse.messageText', () {

@@ -191,7 +191,7 @@ class _MiniAppsHeader extends StatelessWidget {
                 style: TextStyle(
                   color: c.textPrimary,
                   fontSize: AppTextSize.title,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: context.appFontWeight(FontWeight.w600),
                 ),
               ),
             ),
@@ -230,7 +230,11 @@ class _SearchPill extends StatelessWidget {
           enabled: enabled,
           textAlign: TextAlign.center,
           textAlignVertical: TextAlignVertical.center,
-          style: TextStyle(color: c.textPrimary, fontSize: AppTextSize.body),
+          style: TextStyle(
+            color: c.textPrimary,
+            fontSize: AppTextSize.body,
+            fontWeight: context.appFontWeight(FontWeight.w400),
+          ),
           decoration: InputDecoration(
             isCollapsed: true,
             border: InputBorder.none,
@@ -238,6 +242,7 @@ class _SearchPill extends StatelessWidget {
             hintStyle: TextStyle(
               color: c.textTertiary,
               fontSize: AppTextSize.bodyLarge,
+              fontWeight: context.appFontWeight(FontWeight.w400),
             ),
             prefixIcon: Icon(
               HeroAppIcons.magnifyingGlass.data,
@@ -302,7 +307,7 @@ Widget _sectionHeader(BuildContext context) {
     style: TextStyle(
       color: c.textSecondary,
       fontSize: AppTextSize.bodyLarge,
-      fontWeight: FontWeight.w400,
+      fontWeight: context.appFontWeight(FontWeight.w400),
     ),
   );
 }
@@ -318,7 +323,11 @@ Widget _emptyState(BuildContext context, {required bool searching}) {
   return Center(
     child: Text(
       searching ? '没有匹配的小程序' : '暂无最近使用的小程序',
-      style: TextStyle(color: c.textTertiary, fontSize: AppTextSize.body),
+      style: TextStyle(
+        color: c.textTertiary,
+        fontSize: AppTextSize.body,
+        fontWeight: context.appFontWeight(FontWeight.w400),
+      ),
     ),
   );
 }
@@ -362,7 +371,7 @@ class _RecentMiniAppTile extends StatelessWidget {
             style: TextStyle(
               color: c.textPrimary,
               fontSize: AppTextSize.footnote,
-              fontWeight: FontWeight.w400,
+              fontWeight: context.appFontWeight(FontWeight.w400),
             ),
           ),
         ],

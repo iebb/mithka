@@ -1085,7 +1085,12 @@ class ThemeController extends ChangeNotifier {
 
   TextStyle applyAppTextStyle(TextStyle base, {bool boldText = false}) {
     final families = effectiveFontFamilyChain(base);
-    final weightedBase = boldText ? _applyBoldTextWeight(base) : base;
+    final weightedBase = base.copyWith(
+      fontWeight: AppTextWeight.forSystemBoldText(
+        base.fontWeight ?? FontWeight.w400,
+        boldText: boldText,
+      ),
+    );
     if (families.isEmpty) return weightedBase;
     final first = families.first;
     final googleFamily = _googleFamilyFor(first);
@@ -1121,20 +1126,6 @@ class ThemeController extends ChangeNotifier {
       labelMedium: apply(textTheme.labelMedium),
       labelSmall: apply(textTheme.labelSmall),
     );
-  }
-
-  TextStyle _applyBoldTextWeight(TextStyle style) {
-    final current = style.fontWeight ?? FontWeight.w400;
-    final next = switch (current) {
-      FontWeight.w100 => FontWeight.w400,
-      FontWeight.w200 => FontWeight.w500,
-      FontWeight.w300 => FontWeight.w500,
-      FontWeight.w400 => FontWeight.w600,
-      FontWeight.w500 => FontWeight.w700,
-      FontWeight.w600 => FontWeight.w800,
-      _ => FontWeight.w900,
-    };
-    return style.copyWith(fontWeight: next);
   }
 
   TextStyle codeTextStyle(TextStyle base) => _monospaceFontChoice

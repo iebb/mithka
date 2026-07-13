@@ -30,6 +30,32 @@ abstract final class AppTextWeight {
   static const FontWeight medium = FontWeight.w500;
   static const FontWeight semibold = FontWeight.w600;
   static const FontWeight bold = FontWeight.w700;
+
+  /// Mirrors the platform Bold Text accessibility setting without making
+  /// explicitly regular labels bold in the normal system configuration.
+  static FontWeight forSystemBoldText(
+    FontWeight weight, {
+    required bool boldText,
+  }) {
+    if (!boldText) return weight;
+    return switch (weight) {
+      FontWeight.w100 => FontWeight.w400,
+      FontWeight.w200 => FontWeight.w500,
+      FontWeight.w300 => FontWeight.w500,
+      FontWeight.w400 => FontWeight.w600,
+      FontWeight.w500 => FontWeight.w700,
+      FontWeight.w600 => FontWeight.w800,
+      _ => FontWeight.w900,
+    };
+  }
+}
+
+extension AppTextWeightContext on BuildContext {
+  FontWeight appFontWeight(FontWeight weight) =>
+      AppTextWeight.forSystemBoldText(
+        weight,
+        boldText: MediaQuery.of(this).boldText,
+      );
 }
 
 abstract final class AppTextStyle {

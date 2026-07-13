@@ -366,7 +366,10 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
                 fontScale: theme.fontScale,
                 interfaceScale: theme.interfaceScale,
                 child: DefaultTextStyle(
-                  style: AppTextStyle.body(context.colors.textPrimary),
+                  style: theme.applyAppTextStyle(
+                    AppTextStyle.body(context.colors.textPrimary),
+                    boldText: media.boldText,
+                  ),
                   child: appChild,
                 ),
               );
