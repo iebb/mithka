@@ -453,6 +453,7 @@ class ChatMessage {
     this.richBlocks = const [],
     this.richMessageIsFull = true,
     this.isEdited = false,
+    this.isSending = false,
     this.hasCommentThread = false,
     this.commentCount = 0,
     this.lastCommentMessageId,
@@ -532,6 +533,7 @@ class ChatMessage {
   bool richMessageIsFull;
 
   bool isEdited; // shows a "已编辑" tag
+  bool isSending;
   bool hasCommentThread;
   int
   commentCount; // channel discussion replies/comments, when TDLib exposes it
@@ -1027,6 +1029,7 @@ abstract final class TDParse {
             content?.type != 'messageRichMessage' ||
             (content?.obj('message')?.boolean('is_full') ?? false),
         isEdited: (message.integer('edit_date') ?? 0) > 0,
+        isSending: message.obj('sending_state') != null,
         hasCommentThread: !isContentRestricted && replyInfo != null,
         commentCount: isContentRestricted
             ? 0

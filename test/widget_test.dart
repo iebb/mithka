@@ -11,6 +11,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/intl.dart';
 import 'package:mithka/chat/chat_input_bar.dart';
+import 'package:mithka/chat/chat_message_merge.dart';
 import 'package:mithka/chat/chat_view_model.dart';
 import 'package:mithka/chat/emoji_catalog.dart';
 import 'package:mithka/chat/emoji_text_controller.dart';
@@ -958,6 +959,23 @@ void main() {
   });
 
   group('ChatMessage album visual media', () {
+    test('parses a TDLib pending outgoing message', () {
+      final message = TDParse.message({
+        '@type': 'message',
+        'id': -7,
+        'date': 1,
+        'is_outgoing': true,
+        'sending_state': {'@type': 'messageSendingStatePending'},
+        'content': {
+          '@type': 'messageText',
+          'text': {'@type': 'formattedText', 'text': 'Sending'},
+        },
+      });
+
+      expect(message, isNotNull);
+      expect(message!.isSending, isTrue);
+    });
+
     test('keeps messageSenderChat identity through parsing', () {
       final message = TDParse.message({
         '@type': 'message',
@@ -1030,6 +1048,33 @@ void main() {
       expect(message.image?.thumbnail?.id, 10);
       expect(message.imageWidth, 1920);
       expect(message.imageHeight, 1080);
+    });
+  });
+
+  group('Chat message merge', () {
+    test('does not reinsert a settled temporary outgoing message', () {
+      final confirmed = ChatMessage(
+        id: 42,
+        isOutgoing: true,
+        text: 'Hello',
+        date: 1,
+      );
+      final delayedTemporary = ChatMessage(
+        id: -7,
+        isOutgoing: true,
+        text: 'Hello',
+        date: 1,
+        isSending: true,
+      );
+
+      final merged = mergeChatMessages(
+        [confirmed],
+        [delayedTemporary],
+        ignoredMessageIds: const {-7},
+      );
+
+      expect(merged, hasLength(1));
+      expect(merged.single.id, 42);
     });
   });
 

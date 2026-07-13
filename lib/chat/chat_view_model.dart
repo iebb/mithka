@@ -22,6 +22,7 @@ import '../settings/keyword_blocker.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
+import 'chat_message_merge.dart';
 import 'forward_options.dart';
 import 'gif_item.dart';
 import 'outgoing_attachment.dart';
@@ -264,6 +265,7 @@ class ChatViewModel extends ChangeNotifier {
   final Set<int> _blockedReadIds = {};
   final Set<int> _blockedSenderIds = {};
   final Set<int> _discardedPendingMessageIds = {};
+  final Set<int> _settledPendingMessageIds = {};
   final Map<int, Completer<void>> _messageSendWaiters = {};
   final Map<int, _MessageSendResult> _recentMessageSendResults = {};
 
@@ -358,6 +360,7 @@ class ChatViewModel extends ChangeNotifier {
       unawaited(_loadMe());
       await _loadChatHeader();
       if (_restoredFromSession) {
+        unawaited(_discardStaleRestoredPendingMessages());
         _resolveRichMessagesIfNeeded(messages);
         _resolveSendersIfNeeded(messages);
         _resolveRepliesIfNeeded(messages);
@@ -3262,21 +3265,57 @@ class ChatViewModel extends ChangeNotifier {
 
   void _merge(List<ChatMessage> incoming) {
     if (incoming.isEmpty) return;
-    final byId = {for (final m in _allMessages) m.id: m};
-    for (final message in incoming) {
-      if (_discardedPendingMessageIds.contains(message.id)) continue;
-      final existing = byId[message.id];
-      if (existing != null) {
-        message.senderName ??= existing.senderName;
-        message.senderIsChat = message.senderIsChat || existing.senderIsChat;
-        message.senderPhoto ??= existing.senderPhoto;
-        message.senderRole ??= existing.senderRole;
-        message.senderTitle ??= existing.senderTitle;
-      }
-      byId[message.id] = message;
-    }
-    _allMessages = byId.values.toList()..sort((a, b) => a.id.compareTo(b.id));
+    _allMessages = mergeChatMessages(
+      _allMessages,
+      incoming,
+      ignoredMessageIds: {
+        ..._discardedPendingMessageIds,
+        ..._settledPendingMessageIds,
+      },
+    );
     _applyKeywordFilter();
+  }
+
+  void _rememberSettledPendingMessageId(int messageId) {
+    _settledPendingMessageIds.add(messageId);
+    while (_settledPendingMessageIds.length > 256) {
+      _settledPendingMessageIds.remove(_settledPendingMessageIds.first);
+    }
+  }
+
+  Future<void> _discardStaleRestoredPendingMessages() async {
+    final pendingIds = _allMessages
+        .where((message) => message.isOutgoing && message.isSending)
+        .map((message) => message.id)
+        .toList(growable: false);
+    if (pendingIds.isEmpty) return;
+
+    final staleIds = <int>[];
+    final replacements = <ChatMessage>[];
+    for (final pendingId in pendingIds) {
+      try {
+        final raw = await _client.query({
+          '@type': 'getMessage',
+          'chat_id': chatId,
+          'message_id': pendingId,
+        });
+        final current = TDParse.message(raw);
+        if (current == null || current.id != pendingId || !current.isSending) {
+          staleIds.add(pendingId);
+          if (current != null) replacements.add(current);
+        }
+      } on TdError catch (error) {
+        if (error.code == 400 || error.code == 404) staleIds.add(pendingId);
+      } catch (_) {
+        // Keep a pending bubble if TDLib cannot confirm its current state.
+      }
+    }
+    if (_isDisposed || staleIds.isEmpty) return;
+    for (final pendingId in staleIds) {
+      _rememberSettledPendingMessageId(pendingId);
+    }
+    _removeMessages(staleIds);
+    if (replacements.isNotEmpty) _merge(replacements);
   }
 
   void _replaceText(
@@ -3304,6 +3343,7 @@ class ChatViewModel extends ChangeNotifier {
     int pendingMessageId,
     Map<String, dynamic> rawMessage,
   ) {
+    _rememberSettledPendingMessageId(pendingMessageId);
     if (_discardedPendingMessageIds.remove(pendingMessageId)) {
       final sentMessageId = rawMessage.int64('id');
       if (sentMessageId != null) {
