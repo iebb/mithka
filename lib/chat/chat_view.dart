@@ -3545,6 +3545,14 @@ class _ChatViewState extends State<ChatView> {
           'value1': error,
         }),
       );
+      // Debug: closeRestrictedChatModal WhileFail or Offline
+      final onBack = widget.onBack;
+      if (onBack != null) {
+        onBack();
+      } else {
+        final navigator = Navigator.of(context);
+        if (navigator.canPop()) navigator.pop();
+      }
     }
   }
 
