@@ -250,6 +250,26 @@ import UIKit
       }
     }
 
+    let playerBrightnessChannel = FlutterMethodChannel(
+      name: "mithka/player_brightness",
+      binaryMessenger: engineBridge.applicationRegistrar.messenger()
+    )
+    playerBrightnessChannel.setMethodCallHandler { call, result in
+      switch call.method {
+      case "get":
+        result(Double(UIScreen.main.brightness))
+      case "set":
+        guard let value = call.arguments as? NSNumber else {
+          result(FlutterError(code: "invalid_brightness", message: "Expected a numeric value", details: nil))
+          return
+        }
+        UIScreen.main.brightness = CGFloat(max(0.01, min(1, value.doubleValue)))
+        result(nil)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+
     let accountBackupChannel = FlutterMethodChannel(
       name: "mithka/account_backup",
       binaryMessenger: engineBridge.applicationRegistrar.messenger()

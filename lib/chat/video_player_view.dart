@@ -19,6 +19,7 @@ import 'package:video_player/video_player.dart';
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
+import '../platform/player_brightness.dart';
 import '../platform/screen_wakelock.dart';
 import '../platform/system_picture_in_picture.dart';
 import '../tdlib/json_helpers.dart';
@@ -300,6 +301,8 @@ enum VideoPlayerPresentation { fullscreen, embedded, pictureInPicture }
 
 enum VideoDisplayMode { fullscreen, pictureInPicture, split }
 
+enum _PlayerGesture { brightness, volume, seek }
+
 class _VideoControlsLayout {
   const _VideoControlsLayout({
     required this.left,
@@ -387,6 +390,13 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   String? _systemPiPId;
   int _lastSystemPiPSyncMs = -1;
   bool _wakelockActive = false;
+  _PlayerGesture? _activeGesture;
+  Offset? _gestureOrigin;
+  double _gestureStartValue = 0;
+  double _gestureValue = 0;
+  bool _gestureBrightnessReady = false;
+  Duration _gestureStartPosition = Duration.zero;
+  Duration _gestureSeekPosition = Duration.zero;
 
   static const _speeds = <double>[0.5, 0.75, 1, 1.25, 1.5, 2];
   static const _resumePrefix = 'mithka.video.resume.';
@@ -888,6 +898,21 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     final body = GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: ready ? _toggleControls : null,
+      onPanDown: ready && _supportsPlaybackGestures
+          ? (details) => _gestureOrigin = details.localPosition
+          : null,
+      onPanStart: ready && _supportsPlaybackGestures
+          ? (details) => _startPlaybackGesture(details, c)
+          : null,
+      onPanUpdate: ready && _supportsPlaybackGestures
+          ? (details) => _updatePlaybackGesture(details, c)
+          : null,
+      onPanEnd: ready && _supportsPlaybackGestures
+          ? (_) => _finishPlaybackGesture(c)
+          : null,
+      onPanCancel: ready && _supportsPlaybackGestures
+          ? _cancelPlaybackGesture
+          : null,
       child: Stack(
         fit: StackFit.expand,
         children: [
@@ -898,6 +923,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
               widget.presentation != VideoPlayerPresentation.pictureInPicture)
             _topTechnicalInfo(_debugText(c)),
           if (ready && _controlsVisible) ..._controls(c),
+          if (ready && _activeGesture != null) _gestureIndicator(c),
           if (!ready || _controlsVisible)
             widget.presentation == VideoPlayerPresentation.pictureInPicture &&
                     ready
@@ -913,6 +939,144 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
       return Material(type: MaterialType.transparency, child: body);
     }
     return Scaffold(backgroundColor: Colors.black, body: body);
+  }
+
+  bool get _supportsPlaybackGestures =>
+      widget.presentation == VideoPlayerPresentation.fullscreen;
+
+  void _startPlaybackGesture(
+    DragStartDetails details,
+    VideoPlayerController controller,
+  ) {
+    _hideTimer?.cancel();
+    _gestureOrigin ??= details.localPosition;
+    _gestureStartValue = _volume;
+    _gestureValue = _volume;
+    _gestureBrightnessReady = false;
+    _gestureStartPosition = controller.value.position;
+    _gestureSeekPosition = _gestureStartPosition;
+  }
+
+  void _updatePlaybackGesture(
+    DragUpdateDetails details,
+    VideoPlayerController controller,
+  ) {
+    final origin = _gestureOrigin;
+    if (origin == null) return;
+    final delta = details.localPosition - origin;
+    final size = MediaQuery.sizeOf(context);
+    var gesture = _activeGesture;
+    if (gesture == null) {
+      if (math.max(delta.dx.abs(), delta.dy.abs()) < 12) return;
+      gesture = delta.dx.abs() > delta.dy.abs()
+          ? _PlayerGesture.seek
+          : origin.dx < size.width / 2
+          ? _PlayerGesture.brightness
+          : _PlayerGesture.volume;
+      if (gesture == _PlayerGesture.brightness) {
+        unawaited(_beginBrightnessGesture());
+      }
+    }
+
+    switch (gesture) {
+      case _PlayerGesture.seek:
+        final duration = controller.value.duration;
+        final change = duration.inMilliseconds * delta.dx / size.width;
+        _gestureSeekPosition = Duration(
+          milliseconds: (_gestureStartPosition.inMilliseconds + change)
+              .round()
+              .clamp(0, duration.inMilliseconds),
+        );
+      case _PlayerGesture.volume:
+        _gestureValue = (_gestureStartValue - delta.dy / size.height).clamp(
+          0.0,
+          1.0,
+        );
+        controller.setVolume(_gestureValue);
+      case _PlayerGesture.brightness:
+        if (!_gestureBrightnessReady) break;
+        _gestureValue = (_gestureStartValue - delta.dy / size.height).clamp(
+          0.01,
+          1.0,
+        );
+        unawaited(PlayerBrightness.set(_gestureValue));
+    }
+    setState(() => _activeGesture = gesture);
+  }
+
+  Future<void> _beginBrightnessGesture() async {
+    final current = await PlayerBrightness.current();
+    if (!mounted ||
+        _activeGesture != _PlayerGesture.brightness ||
+        current == null) {
+      return;
+    }
+    setState(() {
+      _gestureStartValue = current;
+      _gestureValue = current;
+      _gestureBrightnessReady = true;
+    });
+  }
+
+  void _finishPlaybackGesture(VideoPlayerController controller) {
+    final gesture = _activeGesture;
+    if (gesture == _PlayerGesture.seek) {
+      unawaited(controller.seekTo(_gestureSeekPosition));
+    } else if (gesture == _PlayerGesture.volume) {
+      _volume = _gestureValue;
+    }
+    _cancelPlaybackGesture();
+    _scheduleHide();
+  }
+
+  void _cancelPlaybackGesture() {
+    if (!mounted) return;
+    setState(() {
+      _activeGesture = null;
+      _gestureOrigin = null;
+    });
+  }
+
+  Widget _gestureIndicator(VideoPlayerController controller) {
+    final gesture = _activeGesture!;
+    final seek = gesture == _PlayerGesture.seek;
+    final icon = switch (gesture) {
+      _PlayerGesture.brightness => HeroAppIcons.sun,
+      _PlayerGesture.volume =>
+        _gestureValue <= 0.01
+            ? HeroAppIcons.volumeXmark
+            : HeroAppIcons.volumeHigh,
+      _PlayerGesture.seek => HeroAppIcons.arrowsRotate,
+    };
+    final label = seek
+        ? '${_fmt(_gestureSeekPosition)} / ${_fmt(controller.value.duration)}'
+        : '${(_gestureValue * 100).round()}%';
+    return Center(
+      child: IgnorePointer(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.72),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppIcon(icon, color: Colors.white, size: 26),
+              const SizedBox(width: 12),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   bool _usesCompactChrome(BuildContext context) {

@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.ClipDescription
 import android.content.pm.PackageManager
 import android.os.Build
+import android.provider.Settings
 import android.util.Log
 import android.view.DragEvent
 import android.view.WindowManager
@@ -121,6 +122,37 @@ class MainActivity : FlutterActivity() {
                             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                         }
                         result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mithka/player_brightness")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "get" -> {
+                        val windowValue = window.attributes.screenBrightness
+                        val value = if (windowValue >= 0f) windowValue else {
+                            Settings.System.getInt(
+                                contentResolver,
+                                Settings.System.SCREEN_BRIGHTNESS,
+                                128,
+                            ) / 255f
+                        }
+                        result.success(value.toDouble())
+                    }
+                    "set" -> {
+                        val value = (call.arguments as? Number)?.toFloat()
+                        if (value == null) {
+                            result.error("invalid_brightness", "Expected a numeric value", null)
+                        } else {
+                            runOnUiThread {
+                                val attributes = window.attributes
+                                attributes.screenBrightness = value.coerceIn(0.01f, 1f)
+                                window.attributes = attributes
+                            }
+                            result.success(null)
+                        }
                     }
                     else -> result.notImplemented()
                 }
