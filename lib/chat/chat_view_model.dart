@@ -271,6 +271,8 @@ class ChatViewModel extends ChangeNotifier {
   int? _lastForcedReadMessageId;
   bool _markReadInFlight = false;
   bool _restoredFromSession = false;
+  bool _historyReachesLatest = false;
+  int _knownLatestMessageId = 0;
   final Set<int> _blockedReadIds = {};
   final Set<int> _locallyViewedMentionIds = {};
   final Set<int> _blockedSenderIds = {};
@@ -380,7 +382,7 @@ class ChatViewModel extends ChangeNotifier {
         _resolveServiceUsersIfNeeded(messages);
         notifyListeners();
         if (!anchoredHistory) {
-          unawaited(_fetchHistory(0, 0, 40, onlyLocal: true));
+          unawaited(_hydrateRestoredLatestHistory());
         }
         unawaited(_loadAvailableMessageSenders());
         return;
@@ -1976,6 +1978,21 @@ class ChatViewModel extends ChangeNotifier {
     final lastRaw = chat.obj('last_message');
     final lastMessage = lastRaw == null ? null : TDParse.message(lastRaw);
     if (lastMessage == null) return;
+    _knownLatestMessageId = lastMessage.id;
+    if (_restoredFromSession) {
+      // A restored transcript may predate this item. Appending it here would
+      // create a visible hole until history hydration completes.
+      _historyReachesLatest = false;
+      return;
+    }
+    final canPrimeWindow =
+        _allMessages.isEmpty ||
+        _allMessages.any((message) => message.id == lastMessage.id);
+    if (!canPrimeWindow) {
+      _historyReachesLatest = false;
+      return;
+    }
+    _historyReachesLatest = true;
     _merge([lastMessage]);
     _resolveRichMessagesIfNeeded([lastMessage]);
     _resolveRepliesIfNeeded([lastMessage]);
@@ -2375,7 +2392,13 @@ class ChatViewModel extends ChangeNotifier {
       onlyLocal: true,
     );
     if (loadedLocal) {
-      unawaited(loadAroundMessage(lastReadInboxId, scrollToTarget: false));
+      unawaited(
+        loadAroundMessage(
+          lastReadInboxId,
+          scrollToTarget: false,
+          replaceCurrentWindow: false,
+        ),
+      );
       return true;
     }
     return loadAroundMessage(lastReadInboxId);
@@ -2405,11 +2428,20 @@ class ChatViewModel extends ChangeNotifier {
     }
   }
 
+  Future<void> _hydrateRestoredLatestHistory() async {
+    await _fetchHistory(0, 0, 40, onlyLocal: true, restorePosition: false);
+    if (_isDisposed) return;
+    await _fetchHistory(0, 0, 40, restorePosition: false);
+  }
+
   Future<bool> loadAroundMessage(
     int messageId, {
     bool onlyLocal = false,
     bool scrollToTarget = true,
+    bool replaceCurrentWindow = true,
   }) async {
+    final messagesAtRequestStart = List<ChatMessage>.of(_allMessages);
+    final latestMessageIdAtRequestStart = _knownLatestMessageId;
     final batch = <ChatMessage>[];
     try {
       final targetRaw = await _client.query({
@@ -2443,12 +2475,23 @@ class ChatViewModel extends ChangeNotifier {
     }
 
     if (batch.isEmpty) return false;
-    _allMessages = [];
-    messages = [];
     _hasOlderHistory = true;
     anchoredHistory = true;
     if (scrollToTarget) _pendingScrollToId = messageId;
-    _merge(batch);
+    _mergeHistoryWindow(
+      batch,
+      messagesAtRequestStart: messagesAtRequestStart,
+      replaceCurrentWindow: replaceCurrentWindow,
+      preserveLiveArrivals:
+          latestMessageIdAtRequestStart <= 0 ||
+          batch.any((message) => message.id == latestMessageIdAtRequestStart),
+    );
+    final reachesKnownLatest =
+        _knownLatestMessageId <= 0 ||
+        _allMessages.any((message) => message.id == _knownLatestMessageId);
+    _historyReachesLatest = replaceCurrentWindow
+        ? reachesKnownLatest
+        : _historyReachesLatest || reachesKnownLatest;
     _resolveRichMessagesIfNeeded(batch);
     _resolveSendersIfNeeded(batch);
     _resolveRepliesIfNeeded(batch);
@@ -2612,6 +2655,11 @@ class ChatViewModel extends ChangeNotifier {
     }
 
     _merge(parsed);
+    if (fromMessageId == 0) {
+      _historyReachesLatest =
+          _knownLatestMessageId <= 0 ||
+          parsed.any((message) => message.id == _knownLatestMessageId);
+    }
     _resolveRichMessagesIfNeeded(parsed);
     if (isOlder &&
         restorePosition &&
@@ -2754,8 +2802,16 @@ class ChatViewModel extends ChangeNotifier {
         if (raw == null || raw.int64('chat_id') != chatId) return;
         final message = TDParse.message(raw);
         if (message == null) return;
+        final canAppendToTranscript = shouldMergeLiveMessageIntoChatWindow(
+          historyReachesLatest: _historyReachesLatest,
+        );
         if (!message.isOutgoing && !message.isService) {
           _liveIncomingMessages.add(message.id);
+        }
+        _knownLatestMessageId = math.max(_knownLatestMessageId, message.id);
+        if (!canAppendToTranscript) {
+          notifyListeners();
+          return;
         }
         _merge([message]);
         _resolveRichMessagesIfNeeded([message]);
@@ -3421,6 +3477,32 @@ class ChatViewModel extends ChangeNotifier {
     _allMessages = mergeChatMessages(
       _allMessages,
       incoming,
+      ignoredMessageIds: {
+        ..._discardedPendingMessageIds,
+        ..._settledPendingMessageIds,
+      },
+    );
+    _applyKeywordFilter();
+  }
+
+  void _mergeHistoryWindow(
+    List<ChatMessage> incoming, {
+    required List<ChatMessage> messagesAtRequestStart,
+    required bool replaceCurrentWindow,
+    required bool preserveLiveArrivals,
+  }) {
+    if (incoming.isEmpty) return;
+    for (final message in incoming) {
+      if (_locallyViewedMentionIds.contains(message.id)) {
+        message.containsUnreadMention = false;
+      }
+    }
+    _allMessages = mergeChatHistoryWindow(
+      currentAtRequestStart: messagesAtRequestStart,
+      currentAtCompletion: _allMessages,
+      fetched: incoming,
+      replaceCurrentWindow: replaceCurrentWindow,
+      preserveLiveArrivals: preserveLiveArrivals,
       ignoredMessageIds: {
         ..._discardedPendingMessageIds,
         ..._settledPendingMessageIds,
