@@ -401,6 +401,8 @@ abstract final class AppStringKeys {
   static const secretChatStartFailed = 'secretChatStartFailed';
   static const secretChatStartMessage = 'secretChatStartMessage';
   static const secretChatStartTitle = 'secretChatStartTitle';
+  static const secretChatWaiting = 'secretChatWaiting';
+  static const secretChatClosed = 'secretChatClosed';
   static const chatForwardedToName = 'chatForwardedToName';
   static const chatForwardFailed = 'chatForwardFailed';
   static const chatForwardProtected = 'chatForwardProtected';
@@ -1234,6 +1236,7 @@ abstract final class AppStringKeys {
   static const musicPlayerAlreadyInPlaylist = 'musicPlayerAlreadyInPlaylist';
   static const musicPlayerClear = 'musicPlayerClear';
   static const musicPlayerClose = 'musicPlayerClose';
+  static const musicPlayerCreatePlaylist = 'musicPlayerCreatePlaylist';
   static const musicPlayerDownload = 'musicPlayerDownload';
   static const musicPlayerEmptyPlaylist = 'musicPlayerEmptyPlaylist';
   static const musicPlayerModeRepeatOne = 'musicPlayerModeRepeatOne';
@@ -1242,12 +1245,21 @@ abstract final class AppStringKeys {
   static const musicPlayerNextTrack = 'musicPlayerNextTrack';
   static const musicPlayerPause = 'musicPlayerPause';
   static const musicPlayerPlay = 'musicPlayerPlay';
+  static const musicPlayerPlaylistAddFailed = 'musicPlayerPlaylistAddFailed';
+  static const musicPlayerPlaylistCreated = 'musicPlayerPlaylistCreated';
+  static const musicPlayerPlaylistCreateFailed =
+      'musicPlayerPlaylistCreateFailed';
+  static const musicPlayerPlaylistLoadFailed = 'musicPlayerPlaylistLoadFailed';
+  static const musicPlayerPlaylistName = 'musicPlayerPlaylistName';
+  static const musicPlayerPlaylists = 'musicPlayerPlaylists';
+  static const musicPlayerNoPlaylists = 'musicPlayerNoPlaylists';
   static const musicPlayerQueueTitleWithCount =
       'musicPlayerQueueTitleWithCount';
   static const musicPlayerRemovedFromPlaylist =
       'musicPlayerRemovedFromPlaylist';
   static const musicPlayerRemoveFromPlaylist = 'musicPlayerRemoveFromPlaylist';
   static const musicPlayerShowPlaylist = 'musicPlayerShowPlaylist';
+  static const musicPlayerTrackCount = 'musicPlayerTrackCount';
   static const myAlbumNoPhotos = 'myAlbumNoPhotos';
   static const netemoMusicLabel = 'netemoMusicLabel';
   static const notificationGroupMessages = 'notificationGroupMessages';

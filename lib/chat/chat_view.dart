@@ -1219,6 +1219,16 @@ class _ChatViewState extends State<ChatView> {
     _scheduleScrollToBottom(keyboardSettle: true, force: true);
   }
 
+  void _playMusicMessage(ChatMessage message) {
+    unawaited(
+      MusicPlayerController.shared.playChat(
+        message,
+        widget.chatId,
+        title: widget.title,
+      ),
+    );
+  }
+
   void _sendCommand(String command) {
     if (!_vm.sendCommand(command)) return;
     _onComposerMessageSent();
@@ -1260,6 +1270,7 @@ class _ChatViewState extends State<ChatView> {
 
   void _onModel() {
     if (!mounted) return;
+    final liveIncomingMessageIds = _vm.consumeLiveIncomingMessageIds();
     if (_vm.messages.length != _lastCount) {
       final wasNearBottom = _isNearBottom(72);
       final previousNewestId = _lastNewestMessageId;
@@ -1272,14 +1283,12 @@ class _ChatViewState extends State<ChatView> {
               newest.id > previousNewestId);
       final appendedIncomingIds = previousNewestId == null
           ? const <int>[]
-          : _vm.messages
+          : liveIncomingMessageIds
                 .where(
-                  (message) =>
-                      message.id > previousNewestId &&
-                      !message.isOutgoing &&
-                      !message.isService,
+                  (id) =>
+                      id > previousNewestId &&
+                      _vm.messages.any((message) => message.id == id),
                 )
-                .map((message) => message.id)
                 .toList(growable: false);
       final restore = _vm.consumeRestoreTop();
       _lastCount = _vm.messages.length;
@@ -1810,7 +1819,13 @@ class _ChatViewState extends State<ChatView> {
       widget.showBackButton && !_isSelecting && _actionTarget == null;
 
   void _onBackSwipePointerDown(PointerDownEvent event) {
-    if (!_canBackSwipe) return;
+    // Back navigation is an edge gesture. Keeping it out of the rest of the
+    // chat lets horizontal controls such as the fixed music player consume
+    // their own swipes without unexpectedly closing the conversation.
+    if (!_canBackSwipe || event.localPosition.dx > 28) {
+      _backSwipeVelocity = null;
+      return;
+    }
     _backSwipeDx = 0;
     _backSwipeDy = 0;
     _backSwipeVelocity = VelocityTracker.withKind(event.kind)
@@ -2588,13 +2603,7 @@ class _ChatViewState extends State<ChatView> {
       case MessageAction.playMuted:
         _playVideo(message, muted: true);
       case MessageAction.addToPlaylist:
-        final added = MusicPlayerController.shared.addToPlaylist(message);
-        showToast(
-          context,
-          added
-              ? AppStringKeys.musicPlayerAddedToPlaylist
-              : AppStringKeys.musicPlayerAlreadyInPlaylist,
-        );
+        unawaited(showMusicPlaylists(context, addMessage: message));
       case MessageAction.saveToPhotos:
         DateTime? progressShownAt;
         final progressTimer = Timer(const Duration(milliseconds: 500), () {
@@ -3264,12 +3273,22 @@ class _ChatViewState extends State<ChatView> {
     if (uid == null || uid <= 0) {
       return; // channels post as the chat, not a user
     }
+    _openUserProfile(
+      uid,
+      m.isOutgoing ? _vm.meName : (m.senderName ?? _vm.peerTitle),
+    );
+  }
+
+  void _openPeerProfile() {
+    final uid = _vm.peerUserId;
+    if (uid == null || uid <= 0) return;
+    _openUserProfile(uid, _vm.peerTitle);
+  }
+
+  void _openUserProfile(int userId, String name) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => ProfileDetailView(
-          userId: uid,
-          name: m.isOutgoing ? _vm.meName : (m.senderName ?? _vm.peerTitle),
-        ),
+        builder: (_) => ProfileDetailView(userId: userId, name: name),
       ),
     );
   }
@@ -3370,6 +3389,7 @@ class _ChatViewState extends State<ChatView> {
                       children: [
                         _isSelecting ? _selectionHeader() : _header(),
                         Expanded(child: _transcriptLayer()),
+                        _chatMusicPlayer(),
                         _isSelecting ? _selectionActionBar() : _composerArea(),
                       ],
                     ),
@@ -3553,6 +3573,10 @@ class _ChatViewState extends State<ChatView> {
 
   Widget _transcriptLayer() {
     final transcriptReady = _initialTranscriptReady;
+    final bottomIndicator = chatBottomIndicator(
+      isScrolledUp: _showJumpDown,
+      hasNewMessages: _shouldShowNewMessagesBanner,
+    );
     final showPinnedTodo =
         transcriptReady &&
         !_isSelecting &&
@@ -3578,31 +3602,21 @@ class _ChatViewState extends State<ChatView> {
             child: _pinnedBar(_vm.pinnedMessage!),
           ),
         if (transcriptReady && _isSelecting) _selectToHereButton(),
-        if (transcriptReady && _shouldShowNewMessagesBanner)
-          _showEntryUnreadBanner
-              ? Positioned(
-                  top: showPinnedTodo ? 72 : 8,
-                  right: 12,
-                  child: _newMessagesBanner(pointsDown: false),
-                )
-              : Positioned(
-                  right: 16,
-                  bottom: 12,
-                  child: _newMessagesBanner(pointsDown: true),
-                ),
+        if (transcriptReady &&
+            bottomIndicator == ChatBottomIndicator.newMessages)
+          Positioned(
+            right: 16,
+            bottom: 12,
+            child: _newMessagesBanner(pointsDown: true),
+          ),
         if (transcriptReady && _vm.unreadMentionCount > 0)
           Positioned(
-            top:
-                (showPinnedTodo ? 72.0 : 8.0) +
-                (_shouldShowNewMessagesBanner && _showEntryUnreadBanner
-                    ? 42.0
-                    : 0.0),
+            top: showPinnedTodo ? 72.0 : 8.0,
             right: 12,
             child: _unreadMentionIndicator(),
           ),
         if (transcriptReady &&
-            _showJumpDown &&
-            !(!_openAtLatest && _shouldShowNewMessagesBanner))
+            bottomIndicator == ChatBottomIndicator.jumpToBottom)
           Positioned(right: 16, bottom: 12, child: _jumpToBottomButton()),
       ],
     );
@@ -3813,6 +3827,22 @@ class _ChatViewState extends State<ChatView> {
   }
 
   // MARK: - Composer area (input bar / join bar / disabled bar)
+
+  Widget _chatMusicPlayer() {
+    return AnimatedBuilder(
+      animation: MusicPlayerController.shared,
+      builder: (context, _) {
+        final player = MusicPlayerController.shared;
+        return AnimatedSize(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          child: player.isVisible && !player.collapsed
+              ? const GlobalMusicPlayerBar()
+              : const SizedBox.shrink(),
+        );
+      },
+    );
+  }
 
   Widget _composerArea() {
     if (_vm.peerIsBot &&
@@ -4185,12 +4215,21 @@ class _ChatViewState extends State<ChatView> {
           ),
       ],
     );
-    if (!_vm.isForum) return content;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: _showTopicSelector,
-      child: content,
-    );
+    if (_vm.isForum) {
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _showTopicSelector,
+        child: content,
+      );
+    }
+    if ((_vm.peerUserId ?? 0) > 0) {
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _openPeerProfile,
+        child: content,
+      );
+    }
+    return content;
   }
 
   ChatSummary _topicChatSummary() => ChatSummary(
@@ -4752,6 +4791,7 @@ class _ChatViewState extends State<ChatView> {
                       onOpenImage: _openImage,
                       onOpenSticker: _openSticker,
                       onPlayVideo: _playVideo,
+                      onPlayMusic: _playMusicMessage,
                       onButtonTap: _pressMessageButton,
                       onBotCommandTap: _sendCommand,
                       onHashtagTap: _openHashtagSearch,

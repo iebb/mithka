@@ -125,6 +125,7 @@ class _ChatListViewState extends State<ChatListView> {
   bool _toggleUnreadTargetNext = true;
   bool _archiveRevealed = false;
   double _archivePullDistance = 0;
+  double _archiveDragOffset = 0;
   double _refreshPullDistance = 0;
   bool _isRefreshing = false;
   int _lastVisibleRows = 1;
@@ -900,8 +901,12 @@ class _ChatListViewState extends State<ChatListView> {
                   duration: const Duration(milliseconds: 180),
                   curve: Curves.easeOutCubic,
                   alignment: Alignment.topCenter,
+                  clipBehavior: Clip.none,
                   child: showPulledDownArchive
-                      ? SizedBox(height: rowH, child: _assistantRow())
+                      ? Transform.translate(
+                          offset: Offset(0, _archiveDragOffset),
+                          child: SizedBox(height: rowH, child: _assistantRow()),
+                        )
                       : const SizedBox(width: double.infinity),
                 ),
               Expanded(child: list),
@@ -963,27 +968,64 @@ class _ChatListViewState extends State<ChatListView> {
     if (!enabled) return false;
     if (notification is ScrollStartNotification) {
       _archivePullDistance = 0;
+      if (_archiveDragOffset != 0) {
+        setState(() => _archiveDragOffset = 0);
+      }
     } else if (notification is OverscrollNotification &&
         notification.overscroll < 0) {
-      _archivePullDistance += -notification.overscroll;
-      if (!_archiveRevealed && _archivePullDistance >= rowHeight * 0.45) {
-        setState(() => _archiveRevealed = true);
-      }
+      _archivePullDistance = math.max(
+        _archivePullDistance + -notification.overscroll,
+        math.max(0, -notification.metrics.pixels),
+      );
+      final positionPull = math
+          .max(0.0, -notification.metrics.pixels)
+          .toDouble();
+      _updateArchivePullVisual(
+        rowHeight,
+        visualPull: positionPull > 0
+            ? positionPull
+            : math.min(_archivePullDistance, rowHeight * 2),
+      );
     } else if (notification is ScrollUpdateNotification) {
       if (notification.metrics.pixels < 0) {
-        _archivePullDistance = math.max(
-          _archivePullDistance,
-          -notification.metrics.pixels,
+        _archivePullDistance = -notification.metrics.pixels;
+        _updateArchivePullVisual(
+          rowHeight,
+          visualPull: -notification.metrics.pixels,
         );
-        if (!_archiveRevealed && _archivePullDistance >= rowHeight * 0.45) {
-          setState(() => _archiveRevealed = true);
-        }
       } else if (_archiveRevealed &&
           notification.metrics.pixels > rowHeight * 0.5) {
-        setState(() => _archiveRevealed = false);
+        setState(() {
+          _archiveRevealed = false;
+          _archiveDragOffset = 0;
+        });
+      } else if (_archiveDragOffset != 0) {
+        setState(() => _archiveDragOffset = 0);
+      }
+    } else if (notification is ScrollEndNotification) {
+      _archivePullDistance = 0;
+      if (_archiveDragOffset != 0) {
+        setState(() => _archiveDragOffset = 0);
       }
     }
     return false;
+  }
+
+  void _updateArchivePullVisual(
+    double rowHeight, {
+    required double visualPull,
+  }) {
+    final shouldReveal =
+        _archiveRevealed || _archivePullDistance >= rowHeight * 0.45;
+    final nextOffset = shouldReveal ? visualPull : 0.0;
+    if (_archiveRevealed == shouldReveal &&
+        (_archiveDragOffset - nextOffset).abs() < 0.5) {
+      return;
+    }
+    setState(() {
+      _archiveRevealed = shouldReveal;
+      _archiveDragOffset = nextOffset;
+    });
   }
 
   void _switchFolderBySwipe(double? velocity) {

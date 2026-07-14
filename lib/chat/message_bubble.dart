@@ -36,6 +36,7 @@ import 'file_detail_view.dart';
 import 'link_handler.dart';
 import 'location_detail_view.dart';
 import 'message_action_menu.dart';
+import 'music_player_controller.dart';
 import 'video_sticker_view.dart';
 import 'voice_audio.dart';
 
@@ -69,6 +70,7 @@ class MessageBubble extends StatefulWidget {
     this.onOpenImage,
     this.onOpenSticker,
     this.onPlayVideo,
+    this.onPlayMusic,
     this.onButtonTap,
     this.onBotCommandTap,
     this.onHashtagTap,
@@ -102,6 +104,7 @@ class MessageBubble extends StatefulWidget {
   final ValueChanged<ChatMessage>? onOpenImage;
   final ValueChanged<ChatMessage>? onOpenSticker;
   final ValueChanged<ChatMessage>? onPlayVideo;
+  final ValueChanged<ChatMessage>? onPlayMusic;
   final void Function(ChatMessage message, MessageButton button)? onButtonTap;
   final ValueChanged<String>? onBotCommandTap;
   final ValueChanged<String>? onHashtagTap;
@@ -1440,18 +1443,19 @@ class _MessageBubbleState extends State<MessageBubble>
     final maxWidth = math.min(MediaQuery.sizeOf(context).width * 0.70, 300.0);
     final caption = _caption();
     final performer = (music.performer ?? '').trim();
-    final canPlay = music.file != null;
-    final toggle = canPlay ? () => _voice.toggleAudio(music.file) : null;
+    final player = MusicPlayerController.shared;
+    final canPlay = music.file != null && widget.onPlayMusic != null;
+    final toggle = canPlay ? () => widget.onPlayMusic!(message) : null;
     final card = AnimatedBuilder(
-      animation: _voice,
+      animation: player,
       builder: (context, _) {
-        final active = _voice.isActive(music.file);
-        final playing = active && _voice.isPlaying;
-        final loading = active && _voice.isLoading;
-        final total = active && _voice.total.inMilliseconds > 0
-            ? _voice.total
+        final active = player.isActive(music.file);
+        final playing = active && player.isPlaying;
+        final loading = active && player.isLoading;
+        final total = active && player.total.inMilliseconds > 0
+            ? player.total
             : Duration(seconds: music.duration);
-        final position = active ? _voice.position : Duration.zero;
+        final position = active ? player.position : Duration.zero;
         final totalMs = math.max(1, total.inMilliseconds);
         final value = (position.inMilliseconds / totalMs).clamp(0.0, 1.0);
 
@@ -1526,9 +1530,8 @@ class _MessageBubbleState extends State<MessageBubble>
                       position: position,
                       total: total,
                       canPlay: canPlay,
-                      onChanged: (v) => _voice.seekFraction(v, music.duration),
-                      onChangeEnd: (v) =>
-                          _voice.seekFraction(v, music.duration),
+                      onChanged: player.seekFraction,
+                      onChangeEnd: player.seekFraction,
                     )
                   : _musicProviderBar(),
             ],

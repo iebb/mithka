@@ -1,16 +1,16 @@
 //
 //  music_player_controller.dart
 //
-//  App-wide music playback and the floating QQ Music-style mini player. The
-//  controller owns music state so playback survives navigation out of the
-//  shared-media screen.
+//  App-wide music playback, Telegram-backed playlists, a fixed now-playing
+//  row, and its swipe-minimized compact player. State survives navigation out
+//  of the source chat or shared-media screen.
 //
 
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:heroicons_flutter/heroicons_flutter.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -20,13 +20,16 @@ import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../tdlib/td_client.dart';
+import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
-import 'audio_search_view.dart';
 import 'chat_view.dart';
+import 'music_playlist_service.dart';
 import 'voice_audio.dart';
 
 const Color musicPlayerAccent = Color(0xFF22C7A9);
+const Color _musicBlack = Color(0xFF000000);
+const Color _musicWhite = Color(0xFFFFFFFF);
 
 enum MusicPlaybackMode { sequence, repeatOne, shuffle }
 
@@ -39,12 +42,16 @@ class MusicPlayerController extends ChangeNotifier {
   static final MusicPlayerController shared = MusicPlayerController._();
 
   final VoicePlayer _player = VoicePlayer();
-  SharedPreferences? _prefs;
+  final MusicPlaylistService _playlistService = MusicPlaylistService();
   int? _loadedSlot;
 
   ChatMessage? current;
   List<ChatMessage> queue = const [];
-  List<ChatMessage> playlist = const [];
+  List<MusicPlaylist> playlists = const [];
+  int? _playbackSourceChatId;
+  String _playbackSourceTitle = '';
+  bool _playbackSourceIsPlaylist = false;
+  bool playlistsLoading = false;
   MusicPlaybackMode mode = MusicPlaybackMode.sequence;
   bool hidden = true;
   bool collapsed = false;
@@ -55,83 +62,141 @@ class MusicPlayerController extends ChangeNotifier {
   bool get isLoading => _player.isLoading;
   Duration get position => _player.position;
   Duration get total => _player.total;
-
-  void initialize(SharedPreferences prefs) {
-    _prefs = prefs;
-    _loadPlaylistIfNeeded(force: true);
+  String get playbackSourceTitle {
+    final title = _playbackSourceTitle.trim();
+    if (title.isNotEmpty) return title;
+    final fallback = current?.senderName?.trim() ?? '';
+    return fallback.isNotEmpty
+        ? fallback
+        : AppStrings.t(AppStringKeys.profileDetailMusic);
   }
+
+  int? get playbackSourceChatId => _playbackSourceChatId;
+  bool get playbackSourceIsPlaylist => _playbackSourceIsPlaylist;
+
+  // Playlist chats are loaded lazily after authorization, when the library is
+  // opened. main() calls this before TDLib reaches authorizationStateReady.
+  void initialize(SharedPreferences prefs) {}
 
   bool isActive(TdFileRef? file) => _player.isActive(file);
 
   bool isInPlaylist(ChatMessage message) {
     final fileId = message.music?.file?.id;
     return fileId != null &&
-        playlist.any((item) => item.music?.file?.id == fileId);
+        playlists.any(
+          (playlist) =>
+              playlist.tracks.any((item) => item.music?.file?.id == fileId),
+        );
   }
 
-  bool addToPlaylist(ChatMessage message) {
-    _loadPlaylistIfNeeded();
+  Future<void> refreshPlaylists({bool force = false}) async {
+    final slot = TdClient.shared.activeSlot;
+    if (!force && _loadedSlot == slot && playlists.isNotEmpty) return;
+    _loadedSlot = slot;
+    playlistsLoading = true;
+    notifyListeners();
+    try {
+      playlists = await _playlistService.loadPlaylists();
+    } finally {
+      playlistsLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<MusicPlaylist> createPlaylist(String title) async {
+    final playlist = await _playlistService.createPlaylist(title);
+    playlists = [...playlists, playlist];
+    notifyListeners();
+    return playlist;
+  }
+
+  Future<bool> addToPlaylist(
+    ChatMessage message,
+    MusicPlaylist playlist,
+  ) async {
     final fileId = message.music?.file?.id;
     if (fileId == null) return false;
-    if (playlist.any((item) => item.music?.file?.id == fileId)) {
-      playlist = _dedupeMusic(playlist);
-      _savePlaylist();
-      notifyListeners();
+    final index = playlists.indexWhere(
+      (item) => item.chatId == playlist.chatId,
+    );
+    final active = index < 0 ? playlist : playlists[index];
+    if (active.tracks.any((item) => item.music?.file?.id == fileId)) {
       return false;
     }
-    playlist = _dedupeMusic([...playlist, _playlistCopyOf(message)]);
-    _savePlaylist();
+    final sent = await _playlistService.addTrack(active, message);
+    final updated = active.copyWith(tracks: [...active.tracks, sent]);
+    playlists = index < 0
+        ? [...playlists, updated]
+        : [...playlists.take(index), updated, ...playlists.skip(index + 1)];
+    if (_playbackSourceIsPlaylist && _playbackSourceChatId == updated.chatId) {
+      queue = _dedupeMusic(updated.tracks);
+    }
     notifyListeners();
     return true;
   }
 
-  bool togglePlaylist(ChatMessage message) {
-    _loadPlaylistIfNeeded();
-    if (isInPlaylist(message)) {
-      removeFromPlaylist(message);
-      return false;
-    }
-    return addToPlaylist(message);
-  }
-
-  void removeFromPlaylist(ChatMessage message) {
+  Future<void> removeFromPlaylist(
+    MusicPlaylist playlist,
+    ChatMessage message,
+  ) async {
     final fileId = message.music?.file?.id;
     if (fileId == null) return;
-    final wasCurrent = current?.music?.file?.id == fileId;
-    playlist = _dedupeMusic(
-      playlist.where((item) => item.music?.file?.id != fileId).toList(),
+    final playlistIndex = playlists.indexWhere(
+      (item) => item.chatId == playlist.chatId,
     );
-    queue = queue.where((item) => item.music?.file?.id != fileId).toList();
-    if (wasCurrent) _stopPlayback(clearCurrent: true);
-    _savePlaylist();
+    final active = playlistIndex < 0 ? playlist : playlists[playlistIndex];
+    final savedTrack = active.tracks.cast<ChatMessage?>().firstWhere(
+      (item) => item?.music?.file?.id == fileId,
+      orElse: () => null,
+    );
+    if (savedTrack == null) return;
+    await _playlistService.removeTrack(active, savedTrack);
+    final updated = active.copyWith(
+      tracks: active.tracks.where((item) => item.id != savedTrack.id).toList(),
+    );
+    if (playlistIndex >= 0) {
+      playlists = [
+        ...playlists.take(playlistIndex),
+        updated,
+        ...playlists.skip(playlistIndex + 1),
+      ];
+    }
+    if (_playbackSourceIsPlaylist && _playbackSourceChatId == updated.chatId) {
+      queue = _dedupeMusic(updated.tracks);
+    }
     notifyListeners();
   }
 
-  void clearPlaylist() {
-    final currentFileId = current?.music?.file?.id;
-    final removedCurrent =
-        currentFileId != null &&
-        playlist.any((item) => item.music?.file?.id == currentFileId);
-    playlist = const [];
-    queue = queue
-        .where((item) => item.music?.file?.id == current?.music?.file?.id)
-        .toList();
-    if (removedCurrent) _stopPlayback(clearCurrent: true);
-    _savePlaylist();
-    notifyListeners();
+  Future<void> playChat(
+    ChatMessage message,
+    int chatId, {
+    String? title,
+  }) async {
+    _setPlaybackSource(
+      chatId: chatId,
+      title: title ?? message.senderName,
+      isPlaylist: false,
+    );
+    play(message);
+    try {
+      final tracks = await _playlistService.loadTracks(chatId);
+      if (current?.music?.file?.id != message.music?.file?.id) return;
+      final withCurrent =
+          tracks.any((item) => item.music?.file?.id == message.music?.file?.id)
+          ? tracks
+          : [...tracks, message];
+      queue = _dedupeMusic(withCurrent);
+      notifyListeners();
+    } catch (_) {}
   }
 
-  void reorderPlaylist(int oldIndex, int newIndex) {
-    _loadPlaylistIfNeeded();
-    final items = _dedupeMusic(playlist);
-    if (oldIndex < 0 || oldIndex >= items.length) return;
-    final moved = items.removeAt(oldIndex);
-    final target = newIndex.clamp(0, items.length);
-    items.insert(target, moved);
-    playlist = items;
-    if (_usesPlaylistQueue) queue = items;
-    _savePlaylist();
-    notifyListeners();
+  void playPlaylist(MusicPlaylist playlist, ChatMessage message) {
+    _setPlaybackSource(
+      chatId: playlist.chatId,
+      title: playlist.title,
+      isPlaylist: true,
+    );
+    play(message, visibleQueue: playlist.tracks);
   }
 
   void play(
@@ -140,12 +205,10 @@ class MusicPlayerController extends ChangeNotifier {
     bool reveal = true,
   }) {
     final music = message.music;
-    if (music?.file == null) return;
-    _loadPlaylistIfNeeded();
+    final file = music?.file;
+    if (file == null) return;
     final nextQueue = _dedupeMusic(
-      isInPlaylist(message) && playlist.isNotEmpty
-          ? playlist.where((item) => item.music?.file != null).toList()
-          : visibleQueue.where((item) => item.music?.file != null).toList(),
+      visibleQueue.where((item) => item.music?.file != null).toList(),
     );
     current = _playlistCopyOf(message);
     queue = nextQueue.isEmpty ? [current!] : nextQueue;
@@ -154,7 +217,11 @@ class MusicPlayerController extends ChangeNotifier {
       collapsed = false;
     }
     notifyListeners();
-    unawaited(_player.toggleAudio(music!.file));
+    // Keep every played track in TDLib's persistent local file cache. The
+    // player waits on the same coalesced download, so this does not duplicate
+    // network work.
+    unawaited(TdFileCenter.shared.pathFor(file));
+    unawaited(_player.toggleAudio(file));
   }
 
   void toggleCurrent() {
@@ -166,6 +233,11 @@ class MusicPlayerController extends ChangeNotifier {
   }
 
   void next() => _playAdjacent(1, manual: true);
+
+  void seekFraction(double fraction) {
+    final fallback = current?.music?.duration ?? 0;
+    unawaited(_player.seekFraction(fraction, fallback));
+  }
 
   void cycleMode() {
     mode = switch (mode) {
@@ -236,34 +308,6 @@ class MusicPlayerController extends ChangeNotifier {
     play(playable[nextIndex], visibleQueue: playable, reveal: manual);
   }
 
-  String get _playlistPrefsKey =>
-      'mithka.musicPlaylist.v1.${TdClient.shared.activeSlot}';
-
-  void _loadPlaylistIfNeeded({bool force = false}) {
-    final prefs = _prefs;
-    final slot = TdClient.shared.activeSlot;
-    if (prefs == null || (!force && _loadedSlot == slot)) return;
-    _loadedSlot = slot;
-    final rawItems = prefs.getStringList(_playlistPrefsKey) ?? const <String>[];
-    playlist = _dedupeMusic(
-      rawItems.map(_messageFromPlaylistJson).whereType<ChatMessage>().toList(),
-    );
-    if (rawItems.length != playlist.length) _savePlaylist();
-    notifyListeners();
-  }
-
-  void _savePlaylist() {
-    final prefs = _prefs;
-    if (prefs == null) return;
-    playlist = _dedupeMusic(playlist);
-    unawaited(
-      prefs.setStringList(
-        _playlistPrefsKey,
-        playlist.map((message) => jsonEncode(_messageToJson(message))).toList(),
-      ),
-    );
-  }
-
   void _stopPlayback({required bool clearCurrent}) {
     unawaited(_player.stop());
     hidden = true;
@@ -271,15 +315,20 @@ class MusicPlayerController extends ChangeNotifier {
     if (clearCurrent) {
       current = null;
       queue = const [];
+      _playbackSourceChatId = null;
+      _playbackSourceTitle = '';
+      _playbackSourceIsPlaylist = false;
     }
   }
 
-  bool get _usesPlaylistQueue {
-    if (queue.length != playlist.length) return false;
-    final queueIds = queue.map((item) => item.music?.file?.id).toSet();
-    final playlistIds = playlist.map((item) => item.music?.file?.id).toSet();
-    return queueIds.length == playlistIds.length &&
-        queueIds.containsAll(playlistIds);
+  void _setPlaybackSource({
+    required int chatId,
+    required String? title,
+    required bool isPlaylist,
+  }) {
+    _playbackSourceChatId = chatId;
+    _playbackSourceTitle = title?.trim() ?? '';
+    _playbackSourceIsPlaylist = isPlaylist;
   }
 
   List<ChatMessage> _dedupeMusic(List<ChatMessage> items) {
@@ -303,60 +352,6 @@ class MusicPlayerController extends ChangeNotifier {
       music: message.music,
     );
   }
-
-  Map<String, dynamic> _messageToJson(ChatMessage message) {
-    final music = message.music!;
-    return {
-      'message_id': message.id,
-      'chat_id': message.chatId,
-      'date': message.date,
-      'source_title': message.senderName,
-      'file_id': music.file!.id,
-      'cover_id': music.cover?.id,
-      'title': music.title,
-      'performer': music.performer,
-      'duration': music.duration,
-    };
-  }
-
-  ChatMessage? _messageFromPlaylistJson(String raw) {
-    try {
-      final json = jsonDecode(raw);
-      if (json is! Map<String, dynamic>) return null;
-      final fileId = _jsonInt(json['file_id']);
-      if (fileId == null || fileId <= 0) return null;
-      final coverId = _jsonInt(json['cover_id']);
-      final title = (json['title'] as String?)?.trim();
-      final performer = (json['performer'] as String?)?.trim();
-      return ChatMessage(
-        id: _jsonInt(json['message_id']) ?? 0,
-        isOutgoing: false,
-        text: '',
-        date: _jsonInt(json['date']) ?? 0,
-        chatId: _jsonInt(json['chat_id']),
-        senderName: (json['source_title'] as String?)?.trim(),
-        music: MessageMusic(
-          title: title == null || title.isEmpty
-              ? AppStrings.t(AppStringKeys.profileDetailMusic)
-              : title,
-          performer: performer == null || performer.isEmpty ? null : performer,
-          cover: coverId == null || coverId <= 0
-              ? null
-              : TdFileRef(id: coverId),
-          file: TdFileRef(id: fileId),
-          duration: _jsonInt(json['duration']) ?? 0,
-        ),
-      );
-    } catch (_) {
-      return null;
-    }
-  }
-
-  int? _jsonInt(Object? value) {
-    if (value is int) return value;
-    if (value is String) return int.tryParse(value);
-    return null;
-  }
 }
 
 class GlobalMusicPlayerOverlay extends StatefulWidget {
@@ -371,7 +366,6 @@ class _GlobalMusicPlayerOverlayState extends State<GlobalMusicPlayerOverlay> {
   double _dragX = 0;
   double _bottomOffset = 0;
   bool _dragging = false;
-  bool _closing = false;
 
   void _onPanUpdate(
     DragUpdateDetails details,
@@ -393,142 +387,99 @@ class _GlobalMusicPlayerOverlayState extends State<GlobalMusicPlayerOverlay> {
   }
 
   void _onPanEnd(DragEndDetails details, MusicPlayerController controller) {
-    final width = MediaQuery.sizeOf(context).width;
     final velocity = details.velocity.pixelsPerSecond.dx;
-    if (controller.collapsed) {
-      if (_dragX < -28 || velocity < -260) {
-        setState(() {
-          _dragging = false;
-          _dragX = 0;
-        });
-        controller.expand();
-        return;
-      }
-      setState(() {
-        _dragging = false;
-        _dragX = 0;
-      });
-      return;
-    }
-
-    final threshold = width * 0.5;
-    if (_dragX <= -threshold || velocity < -900) {
-      setState(() {
-        _dragging = false;
-        _closing = true;
-        _dragX = -width;
-      });
-      Future<void>.delayed(const Duration(milliseconds: 190), () {
-        if (!mounted) return;
-        controller.closeWidget();
-        setState(() {
-          _closing = false;
-          _dragX = 0;
-        });
-      });
-      return;
-    }
-    if (_dragX >= threshold || velocity > 900) {
-      setState(() {
-        _dragging = false;
-        _dragX = width - 60;
-      });
-      Future<void>.delayed(const Duration(milliseconds: 190), () {
-        if (!mounted) return;
-        controller.collapse();
-        setState(() => _dragX = 0);
-      });
-      return;
-    }
+    final shouldExpand = _dragX < -28 || velocity < -260;
     setState(() {
       _dragging = false;
       _dragX = 0;
     });
+    if (shouldExpand) controller.expand();
   }
 
   @override
   Widget build(BuildContext context) {
     final controller = MusicPlayerController.shared;
     return Positioned.fill(
-      child: Material(
-        type: MaterialType.transparency,
-        child: AnimatedBuilder(
-          animation: controller,
-          builder: (context, _) {
-            if (!controller.isVisible) return const SizedBox.shrink();
-            final width = MediaQuery.sizeOf(context).width;
-            final deleteOpacity = controller.collapsed
-                ? 0.0
-                : (-_dragX / (width * 0.5)).clamp(0.0, 1.0);
-            final duration = _dragging
-                ? Duration.zero
-                : const Duration(milliseconds: 220);
-            return Stack(
-              children: [
-                if (deleteOpacity > 0)
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: _bottomOffset,
-                    child: SafeArea(
-                      top: false,
-                      child: Opacity(
-                        opacity: deleteOpacity,
-                        child: Container(
-                          height: 70,
-                          alignment: Alignment.centerRight,
-                          padding: const EdgeInsets.only(right: 22),
-                          color: const Color(0xFFFF3B30),
-                          child: AppIcon(
-                            HeroAppIcons.trash,
-                            size: 24,
-                            color: Colors.white.withValues(alpha: 0.95),
-                          ),
+      child: AnimatedBuilder(
+        animation: controller,
+        builder: (context, _) {
+          if (!controller.isVisible || !controller.collapsed) {
+            return const SizedBox.shrink();
+          }
+          final width = MediaQuery.sizeOf(context).width;
+          final deleteOpacity = controller.collapsed
+              ? 0.0
+              : (-_dragX / (width * 0.5)).clamp(0.0, 1.0);
+          final duration = _dragging
+              ? Duration.zero
+              : const Duration(milliseconds: 220);
+          return Stack(
+            children: [
+              if (deleteOpacity > 0)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: _bottomOffset,
+                  child: SafeArea(
+                    top: false,
+                    child: Opacity(
+                      opacity: deleteOpacity,
+                      child: Container(
+                        height: 70,
+                        alignment: Alignment.centerRight,
+                        padding: const EdgeInsets.only(right: 22),
+                        color: const Color(0xFFFF3B30),
+                        child: AppIcon(
+                          HeroAppIcons.trash,
+                          size: 24,
+                          color: _musicWhite.withValues(alpha: 0.95),
                         ),
                       ),
                     ),
                   ),
-                AnimatedPositioned(
+                ),
+              AnimatedPositioned(
+                duration: duration,
+                curve: Curves.easeOutCubic,
+                left: controller.collapsed ? null : 0,
+                right: controller.collapsed ? 0 : 0,
+                bottom: _bottomOffset,
+                child: AnimatedSlide(
                   duration: duration,
                   curve: Curves.easeOutCubic,
-                  left: controller.collapsed ? null : 0,
-                  right: controller.collapsed ? 0 : 0,
-                  bottom: _bottomOffset,
-                  child: AnimatedSlide(
-                    duration: duration,
-                    curve: Curves.easeOutCubic,
-                    offset: Offset(
-                      controller.collapsed ? _dragX / 52 : _dragX / width,
-                      0,
-                    ),
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onPanUpdate: (details) =>
-                          _onPanUpdate(details, controller),
-                      onPanEnd: (details) => _onPanEnd(details, controller),
-                      child: controller.collapsed
-                          ? _CollapsedMusicPlayer(controller: controller)
-                          : _ExpandedMusicPlayer(
-                              controller: controller,
-                              closing: _closing,
-                            ),
-                    ),
+                  offset: Offset(
+                    controller.collapsed ? _dragX / 52 : _dragX / width,
+                    0,
+                  ),
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onPanUpdate: (details) => _onPanUpdate(details, controller),
+                    onPanEnd: (details) => _onPanEnd(details, controller),
+                    child: _CollapsedMusicPlayer(controller: controller),
                   ),
                 ),
-              ],
-            );
-          },
-        ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
 }
 
-class _ExpandedMusicPlayer extends StatelessWidget {
-  const _ExpandedMusicPlayer({required this.controller, this.closing = false});
+class GlobalMusicPlayerBar extends StatefulWidget {
+  const GlobalMusicPlayerBar({super.key, this.bottomPadding = 0});
 
-  final MusicPlayerController controller;
-  final bool closing;
+  final double bottomPadding;
+
+  @override
+  State<GlobalMusicPlayerBar> createState() => _GlobalMusicPlayerBarState();
+}
+
+class _GlobalMusicPlayerBarState extends State<GlobalMusicPlayerBar> {
+  double _dragX = 0;
+
+  MusicPlayerController get controller => MusicPlayerController.shared;
 
   @override
   Widget build(BuildContext context) {
@@ -550,21 +501,29 @@ class _ExpandedMusicPlayer extends StatelessWidget {
       if (total.inSeconds > 0)
         '${_duration(controller.position.inSeconds)} / ${_duration(total.inSeconds)}',
     ].join(' · ');
-    return SafeArea(
-      top: false,
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onHorizontalDragStart: (_) => _dragX = 0,
+      onHorizontalDragUpdate: (details) => _dragX += details.delta.dx,
+      onHorizontalDragEnd: (details) {
+        final velocity = details.primaryVelocity ?? 0;
+        if (_dragX > 42 || velocity > 260) {
+          controller.collapse();
+        }
+        _dragX = 0;
+      },
+      onHorizontalDragCancel: () => _dragX = 0,
       child: SizedBox(
-        width: MediaQuery.sizeOf(context).width,
+        width: double.infinity,
         child: Container(
-          height: 70,
-          padding: const EdgeInsets.fromLTRB(14, 8, 10, 8),
+          height: 70 + widget.bottomPadding,
+          padding: EdgeInsets.fromLTRB(14, 8, 10, 8 + widget.bottomPadding),
           decoration: BoxDecoration(
-            color: closing
-                ? const Color(0xFFFF3B30)
-                : c.background.withValues(alpha: 0.95),
+            color: c.background,
             border: Border(top: BorderSide(color: c.divider, width: 0.5)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.08),
+                color: _musicBlack.withValues(alpha: 0.08),
                 blurRadius: 18,
                 offset: const Offset(0, -4),
               ),
@@ -595,13 +554,9 @@ class _ExpandedMusicPlayer extends StatelessWidget {
                       const SizedBox(height: 5),
                       ClipRRect(
                         borderRadius: BorderRadius.circular(2),
-                        child: LinearProgressIndicator(
-                          value: fraction,
-                          minHeight: 3,
+                        child: _MusicProgress(
+                          fraction: fraction,
                           backgroundColor: c.searchFill,
-                          valueColor: const AlwaysStoppedAnimation<Color>(
-                            musicPlayerAccent,
-                          ),
                         ),
                       ),
                       if (subtitle.isNotEmpty) ...[
@@ -635,13 +590,7 @@ class _ExpandedMusicPlayer extends StatelessWidget {
                     : AppStrings.t(AppStringKeys.musicPlayerPlay),
                 onTap: controller.toggleCurrent,
                 child: controller.isLoading
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator.adaptive(
-                          strokeWidth: 2,
-                        ),
-                      )
+                    ? _QqSpinner(size: 18, color: c.textSecondary)
                     : AppIcon(
                         controller.isPlaying
                             ? HeroAppIcons.pause
@@ -701,13 +650,13 @@ class _CollapsedMusicPlayer extends StatelessWidget {
                 height: 52,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.22),
+                  color: _musicBlack.withValues(alpha: 0.22),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: AppIcon(
                   controller.isPlaying ? HeroAppIcons.pause : HeroAppIcons.play,
                   size: 20,
-                  color: Colors.white,
+                  color: _musicWhite,
                 ),
               ),
             ),
@@ -747,6 +696,102 @@ class _MusicCover extends StatelessWidget {
   }
 }
 
+class _MusicProgress extends StatelessWidget {
+  const _MusicProgress({required this.fraction, required this.backgroundColor});
+
+  final double fraction;
+  final Color backgroundColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 3,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          ColoredBox(color: backgroundColor),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FractionallySizedBox(
+              widthFactor: fraction.clamp(0.0, 1.0),
+              heightFactor: 1,
+              child: const ColoredBox(color: musicPlayerAccent),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QqSpinner extends StatefulWidget {
+  const _QqSpinner({required this.size, required this.color});
+
+  final double size;
+  final Color color;
+
+  @override
+  State<_QqSpinner> createState() => _QqSpinnerState();
+}
+
+class _QqSpinnerState extends State<_QqSpinner>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 820),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RotationTransition(
+      turns: _controller,
+      child: CustomPaint(
+        size: Size.square(widget.size),
+        painter: _QqSpinnerPainter(color: widget.color),
+      ),
+    );
+  }
+}
+
+class _QqSpinnerPainter extends CustomPainter {
+  const _QqSpinnerPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final strokeWidth = max(1.8, size.shortestSide * 0.12);
+    final inset = strokeWidth / 2;
+    final bounds = Rect.fromLTWH(
+      inset,
+      inset,
+      size.width - strokeWidth,
+      size.height - strokeWidth,
+    );
+    canvas.drawArc(
+      bounds,
+      -pi / 2,
+      pi * 1.42,
+      false,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth
+        ..strokeCap = StrokeCap.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_QqSpinnerPainter oldDelegate) =>
+      oldDelegate.color != color;
+}
+
 class _MiniButton extends StatelessWidget {
   const _MiniButton({
     required this.tooltip,
@@ -760,40 +805,101 @@ class _MiniButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 38,
-      height: 38,
-      child: IconButton(
-        tooltip: tooltip,
-        padding: EdgeInsets.zero,
-        onPressed: onTap,
-        icon: child,
+    return Semantics(
+      button: true,
+      enabled: onTap != null,
+      label: tooltip,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Opacity(
+          opacity: onTap == null ? 0.42 : 1,
+          child: SizedBox(width: 38, height: 38, child: Center(child: child)),
+        ),
       ),
     );
   }
 }
 
+Future<T?> _showQqMusicSheet<T>(
+  BuildContext context, {
+  required WidgetBuilder builder,
+}) {
+  return showGeneralDialog<T>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: AppStrings.t(AppStringKeys.countryPickerCancel),
+    barrierColor: const Color(0x70000000),
+    transitionDuration: const Duration(milliseconds: 220),
+    pageBuilder: (sheetContext, _, _) => Align(
+      alignment: Alignment.bottomCenter,
+      child: SizedBox(
+        width: MediaQuery.sizeOf(sheetContext).width,
+        child: builder(sheetContext),
+      ),
+    ),
+    transitionBuilder: (sheetContext, animation, _, child) {
+      final curved = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInCubic,
+      );
+      return FadeTransition(
+        opacity: curved,
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0, 0.08),
+            end: Offset.zero,
+          ).animate(curved),
+          child: child,
+        ),
+      );
+    },
+  );
+}
+
+Route<T> _qqPageRoute<T>({required WidgetBuilder builder}) {
+  return PageRouteBuilder<T>(
+    transitionDuration: const Duration(milliseconds: 220),
+    reverseTransitionDuration: const Duration(milliseconds: 180),
+    pageBuilder: (context, _, _) => builder(context),
+    transitionsBuilder: (context, animation, _, child) {
+      final curved = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInCubic,
+      );
+      return FadeTransition(
+        opacity: curved,
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0.04, 0),
+            end: Offset.zero,
+          ).animate(curved),
+          child: child,
+        ),
+      );
+    },
+  );
+}
+
 void _showMusicQueue(BuildContext context, MusicPlayerController controller) {
   final navigatorContext = appNavigatorKey.currentContext;
   if (navigatorContext == null) return;
-  showModalBottomSheet<void>(
-    context: navigatorContext,
-    useRootNavigator: true,
-    backgroundColor: Colors.transparent,
+  _showQqMusicSheet<void>(
+    navigatorContext,
     builder: (sheetContext) => StatefulBuilder(
       builder: (sheetContext, setSheetState) {
         final c = sheetContext.colors;
-        final queue = controller.playlist;
-        return SafeArea(
-          top: false,
-          child: Container(
-            height: MediaQuery.sizeOf(sheetContext).height * 0.58,
-            decoration: BoxDecoration(
-              color: c.background,
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(14),
-              ),
-            ),
+        final queue = controller.queue;
+        return Container(
+          height: MediaQuery.sizeOf(sheetContext).height * 0.58,
+          decoration: BoxDecoration(
+            color: c.background,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+          ),
+          child: SafeArea(
+            top: false,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -803,15 +909,21 @@ void _showMusicQueue(BuildContext context, MusicPlayerController controller) {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        AppStrings.t(
-                          AppStringKeys.musicPlayerQueueTitleWithCount,
-                          {'value1': queue.length},
-                        ),
+                        controller.playbackSourceTitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w700,
                           color: c.textPrimary,
                         ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        AppStrings.t(AppStringKeys.musicPlayerTrackCount, {
+                          'value1': queue.length,
+                        }),
+                        style: TextStyle(fontSize: 12, color: c.textTertiary),
                       ),
                       const SizedBox(height: 12),
                       Row(
@@ -848,29 +960,14 @@ void _showMusicQueue(BuildContext context, MusicPlayerController controller) {
                             ),
                           ),
                           _SheetIcon(
-                            icon: HeroAppIcons.download,
+                            icon: HeroAppIcons.music,
                             tooltip: AppStrings.t(
-                              AppStringKeys.musicPlayerDownload,
+                              AppStringKeys.musicPlayerPlaylists,
                             ),
-                          ),
-                          _SheetIcon(
-                            icon: HeroAppIcons.plus,
-                            tooltip: AppStrings.t(AppStringKeys.musicPlayerAdd),
-                            onTap: () =>
-                                _openMusicSearch(sheetContext, controller),
-                          ),
-                          _SheetIcon(
-                            icon: HeroAppIcons.trash,
-                            tooltip: AppStrings.t(
-                              AppStringKeys.musicPlayerClear,
-                            ),
-                            dimWhenDisabled: true,
-                            onTap: queue.isEmpty
-                                ? null
-                                : () {
-                                    controller.clearPlaylist();
-                                    setSheetState(() {});
-                                  },
+                            onTap: () {
+                              Navigator.of(sheetContext).pop();
+                              unawaited(showMusicPlaylists(navigatorContext));
+                            },
                           ),
                         ],
                       ),
@@ -891,59 +988,19 @@ void _showMusicQueue(BuildContext context, MusicPlayerController controller) {
                             ),
                           ),
                         )
-                      : ReorderableListView.builder(
-                          buildDefaultDragHandles: false,
+                      : ListView.builder(
                           shrinkWrap: true,
-                          padding: EdgeInsets.only(
-                            bottom:
-                                4 + MediaQuery.of(sheetContext).padding.bottom,
-                          ),
+                          padding: const EdgeInsets.only(bottom: 78),
                           itemCount: queue.length,
-                          onReorderItem: (oldIndex, newIndex) {
-                            controller.reorderPlaylist(oldIndex, newIndex);
-                            setSheetState(() {});
-                          },
                           itemBuilder: (context, index) => _QueueRow(
                             key: ValueKey(
                               'music-queue-${queue[index].music?.file?.id ?? queue[index].id}',
                             ),
-                            index: index,
                             message: queue[index],
+                            playQueue: queue,
                             controller: controller,
-                            onRemove: () {
-                              controller.removeFromPlaylist(queue[index]);
-                              setSheetState(() {});
-                            },
                           ),
                         ),
-                ),
-                const Padding(
-                  padding: EdgeInsets.only(top: 4, bottom: 6),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _PlaylistDot(active: true),
-                      _PlaylistDot(active: false),
-                      _PlaylistDot(active: false),
-                    ],
-                  ),
-                ),
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => Navigator.of(sheetContext).pop(),
-                  child: Container(
-                    height: 48,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      border: Border(
-                        top: BorderSide(color: c.divider, width: 0.5),
-                      ),
-                    ),
-                    child: Text(
-                      AppStrings.t(AppStringKeys.musicPlayerClose),
-                      style: TextStyle(fontSize: 15, color: c.textPrimary),
-                    ),
-                  ),
                 ),
               ],
             ),
@@ -954,36 +1011,628 @@ void _showMusicQueue(BuildContext context, MusicPlayerController controller) {
   );
 }
 
-Future<void> _openMusicSearch(
-  BuildContext sheetContext,
-  MusicPlayerController controller,
-) async {
+Future<void> showMusicPlaylists(
+  BuildContext context, {
+  ChatMessage? addMessage,
+}) async {
   final rootContext = appNavigatorKey.currentContext;
   if (rootContext == null) return;
-  Navigator.of(sheetContext).pop();
-  final picked = await Navigator.of(rootContext).push<(int, ChatMessage)>(
-    MaterialPageRoute(builder: (_) => const AudioSearchView(selectOnly: true)),
+  final toastOverlay =
+      Overlay.maybeOf(context) ?? appNavigatorKey.currentState?.overlay;
+  final controller = MusicPlayerController.shared;
+  try {
+    await controller.refreshPlaylists(force: true);
+  } catch (error, stackTrace) {
+    debugPrint('Failed to load music playlists: $error');
+    debugPrintStack(stackTrace: stackTrace);
+    if (toastOverlay != null) {
+      showToastOverlay(
+        toastOverlay,
+        AppStrings.t(AppStringKeys.musicPlayerPlaylistLoadFailed),
+      );
+    }
+    return;
+  }
+  if (!rootContext.mounted) return;
+  await _showQqMusicSheet<void>(
+    rootContext,
+    builder: (sheetContext) =>
+        _MusicPlaylistsSheet(controller: controller, addMessage: addMessage),
   );
-  if (picked == null) return;
-  final sourceChatId = picked.$1;
-  final message = picked.$2;
-  final added = controller.addToPlaylist(
-    ChatMessage(
-      id: message.id,
-      isOutgoing: message.isOutgoing,
-      text: '',
-      date: message.date,
-      chatId: sourceChatId,
-      senderName: message.senderName,
-      music: message.music,
+}
+
+class _MusicPlaylistsSheet extends StatelessWidget {
+  const _MusicPlaylistsSheet({
+    required this.controller,
+    required this.addMessage,
+  });
+
+  final MusicPlayerController controller;
+  final ChatMessage? addMessage;
+
+  Future<void> _create(BuildContext context) async {
+    final overlay = Overlay.of(context);
+    final name = await _promptForPlaylistName(context);
+    if (name == null || !context.mounted) return;
+    late final MusicPlaylist playlist;
+    try {
+      playlist = await controller.createPlaylist(name);
+    } catch (error, stackTrace) {
+      debugPrint('Failed to create music playlist: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (context.mounted) {
+        showToast(context, AppStringKeys.musicPlayerPlaylistCreateFailed);
+      }
+      return;
+    }
+    final message = addMessage;
+    if (message != null) {
+      try {
+        await controller.addToPlaylist(message, playlist);
+      } catch (error, stackTrace) {
+        debugPrint('Failed to add the first playlist track: $error');
+        debugPrintStack(stackTrace: stackTrace);
+        if (context.mounted) {
+          showToast(context, AppStringKeys.musicPlayerPlaylistAddFailed);
+        }
+        return;
+      }
+    }
+    if (!context.mounted) return;
+    Navigator.of(context).pop();
+    showToastOverlay(
+      overlay,
+      AppStrings.t(
+        message == null
+            ? AppStringKeys.musicPlayerPlaylistCreated
+            : AppStringKeys.musicPlayerAddedToPlaylist,
+      ),
+    );
+  }
+
+  Future<void> _select(BuildContext context, MusicPlaylist playlist) async {
+    final overlay = Overlay.of(context);
+    final message = addMessage;
+    if (message == null) {
+      await _showPlaylistTracks(context, playlist, controller);
+      return;
+    }
+    try {
+      final added = await controller.addToPlaylist(message, playlist);
+      if (!context.mounted) return;
+      Navigator.of(context).pop();
+      showToastOverlay(
+        overlay,
+        AppStrings.t(
+          added
+              ? AppStringKeys.musicPlayerAddedToPlaylist
+              : AppStringKeys.musicPlayerAlreadyInPlaylist,
+        ),
+      );
+    } catch (_) {
+      if (context.mounted) {
+        showToast(context, AppStringKeys.musicPlayerPlaylistAddFailed);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.68,
+      ),
+      decoration: BoxDecoration(
+        color: c.background,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: AnimatedBuilder(
+          animation: controller,
+          builder: (context, _) => Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const _SheetGrabber(),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 8, 10, 10),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        AppStrings.t(AppStringKeys.musicPlayerPlaylists),
+                        style: TextStyle(
+                          fontSize: 19,
+                          fontWeight: FontWeight.w700,
+                          color: c.textPrimary,
+                        ),
+                      ),
+                    ),
+                    _SheetIcon(
+                      icon: HeroAppIcons.plus,
+                      tooltip: AppStrings.t(
+                        AppStringKeys.musicPlayerCreatePlaylist,
+                      ),
+                      onTap: () => unawaited(_create(context)),
+                    ),
+                  ],
+                ),
+              ),
+              if (controller.playlists.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 34, 24, 40),
+                  child: Column(
+                    children: [
+                      AppIcon(
+                        HeroAppIcons.music,
+                        size: 34,
+                        color: c.textTertiary,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        AppStrings.t(AppStringKeys.musicPlayerNoPlaylists),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 14, color: c.textSecondary),
+                      ),
+                      const SizedBox(height: 18),
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => unawaited(_create(context)),
+                        child: Container(
+                          height: 42,
+                          padding: const EdgeInsets.symmetric(horizontal: 22),
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: musicPlayerAccent,
+                            borderRadius: BorderRadius.circular(21),
+                          ),
+                          child: Text(
+                            AppStrings.t(
+                              AppStringKeys.musicPlayerCreatePlaylist,
+                            ),
+                            style: const TextStyle(
+                              color: _musicWhite,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.only(bottom: 12),
+                    itemCount: controller.playlists.length,
+                    separatorBuilder: (_, _) => Padding(
+                      padding: const EdgeInsets.only(left: 68),
+                      child: SizedBox(
+                        height: 1,
+                        child: ColoredBox(color: c.divider),
+                      ),
+                    ),
+                    itemBuilder: (context, index) {
+                      final playlist = controller.playlists[index];
+                      return GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => unawaited(_select(context, playlist)),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(18, 12, 14, 12),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 40,
+                                height: 40,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: musicPlayerAccent.withValues(
+                                    alpha: 0.12,
+                                  ),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const AppIcon(
+                                  HeroAppIcons.music,
+                                  size: 20,
+                                  color: musicPlayerAccent,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      playlist.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w600,
+                                        color: c.textPrimary,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      AppStrings.t(
+                                        AppStringKeys.musicPlayerTrackCount,
+                                        {'value1': playlist.tracks.length},
+                                      ),
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: c.textTertiary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              AppIcon(
+                                addMessage == null
+                                    ? HeroAppIcons.chevronRight
+                                    : HeroAppIcons.plus,
+                                size: 18,
+                                color: c.textTertiary,
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CreatePlaylistDialog extends StatefulWidget {
+  const _CreatePlaylistDialog();
+
+  @override
+  State<_CreatePlaylistDialog> createState() => _CreatePlaylistDialogState();
+}
+
+class _CreatePlaylistDialogState extends State<_CreatePlaylistDialog> {
+  late final TextEditingController _controller = TextEditingController()
+    ..addListener(_handleTextChanged);
+  final FocusNode _focusNode = FocusNode();
+
+  bool get _canCreate => _controller.text.trim().isNotEmpty;
+
+  void _handleTextChanged() => setState(() {});
+
+  void _submit() {
+    final value = _controller.text.trim();
+    if (value.isNotEmpty) Navigator.of(context).pop(value);
+  }
+
+  @override
+  void dispose() {
+    _controller
+      ..removeListener(_handleTextChanged)
+      ..dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 160),
+      curve: Curves.easeOut,
+      padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + keyboardInset),
+      child: Center(
+        child: Container(
+          width: min(MediaQuery.sizeOf(context).width - 40, 360),
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+          decoration: BoxDecoration(
+            color: c.card,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [
+              BoxShadow(
+                color: _musicBlack.withValues(alpha: 0.18),
+                blurRadius: 28,
+                offset: const Offset(0, 12),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                AppStrings.t(AppStringKeys.musicPlayerCreatePlaylist),
+                style: TextStyle(
+                  color: c.textPrimary,
+                  fontSize: 19,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                height: 46,
+                alignment: Alignment.centerLeft,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                decoration: BoxDecoration(
+                  color: c.searchFill,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Stack(
+                  alignment: Alignment.centerLeft,
+                  children: [
+                    if (_controller.text.isEmpty)
+                      IgnorePointer(
+                        child: Text(
+                          AppStrings.t(AppStringKeys.musicPlayerPlaylistName),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: c.textTertiary, fontSize: 15),
+                        ),
+                      ),
+                    EditableText(
+                      controller: _controller,
+                      focusNode: _focusNode,
+                      autofocus: true,
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) => _submit(),
+                      style: TextStyle(color: c.textPrimary, fontSize: 15),
+                      cursorColor: musicPlayerAccent,
+                      backgroundCursorColor: c.textTertiary,
+                      selectionColor: musicPlayerAccent.withValues(alpha: 0.2),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  _QqDialogAction(
+                    label: AppStrings.t(AppStringKeys.countryPickerCancel),
+                    color: c.textSecondary,
+                    onTap: () => Navigator.of(context).pop(),
+                  ),
+                  const SizedBox(width: 8),
+                  _QqDialogAction(
+                    label: AppStrings.t(
+                      AppStringKeys.musicPlayerCreatePlaylist,
+                    ),
+                    color: _musicWhite,
+                    fillColor: musicPlayerAccent,
+                    enabled: _canCreate,
+                    onTap: _submit,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _QqDialogAction extends StatelessWidget {
+  const _QqDialogAction({
+    required this.label,
+    required this.color,
+    required this.onTap,
+    this.fillColor,
+    this.enabled = true,
+  });
+
+  final String label;
+  final Color color;
+  final Color? fillColor;
+  final VoidCallback onTap;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: label,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: enabled ? onTap : null,
+        child: Opacity(
+          opacity: enabled ? 1 : 0.38,
+          child: Container(
+            height: 38,
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 17),
+            decoration: BoxDecoration(
+              color: fillColor,
+              borderRadius: BorderRadius.circular(19),
+            ),
+            child: Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+Future<String?> _promptForPlaylistName(BuildContext context) async {
+  final value = await showGeneralDialog<String>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: AppStrings.t(AppStringKeys.countryPickerCancel),
+    barrierColor: const Color(0x78000000),
+    transitionDuration: const Duration(milliseconds: 180),
+    pageBuilder: (dialogContext, _, _) => const _CreatePlaylistDialog(),
+    transitionBuilder: (dialogContext, animation, _, child) => FadeTransition(
+      opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
+      child: ScaleTransition(
+        scale: Tween<double>(begin: 0.96, end: 1).animate(
+          CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+        ),
+        child: child,
+      ),
     ),
   );
-  if (rootContext.mounted) {
-    showToast(
-      rootContext,
-      added
-          ? AppStrings.t(AppStringKeys.musicPlayerAddedToPlaylist)
-          : AppStrings.t(AppStringKeys.musicPlayerAlreadyInPlaylist),
+  final normalized = value?.trim();
+  return normalized == null || normalized.isEmpty ? null : normalized;
+}
+
+Future<void> _showPlaylistTracks(
+  BuildContext context,
+  MusicPlaylist playlist,
+  MusicPlayerController controller,
+) async {
+  await _showQqMusicSheet<void>(
+    context,
+    builder: (trackContext) => _PlaylistTracksSheet(
+      playlistChatId: playlist.chatId,
+      controller: controller,
+    ),
+  );
+}
+
+class _PlaylistTracksSheet extends StatelessWidget {
+  const _PlaylistTracksSheet({
+    required this.playlistChatId,
+    required this.controller,
+  });
+
+  final int playlistChatId;
+  final MusicPlayerController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        final playlist = controller.playlists.firstWhere(
+          (item) => item.chatId == playlistChatId,
+          orElse: () => const MusicPlaylist(chatId: 0, title: ''),
+        );
+        return Container(
+          height: MediaQuery.sizeOf(context).height * 0.68,
+          decoration: BoxDecoration(
+            color: c.background,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              children: [
+                const _SheetGrabber(),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 8, 12, 10),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              playlist.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 19,
+                                fontWeight: FontWeight.w700,
+                                color: c.textPrimary,
+                              ),
+                            ),
+                            Text(
+                              AppStrings.t(
+                                AppStringKeys.musicPlayerTrackCount,
+                                {'value1': playlist.tracks.length},
+                              ),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: c.textTertiary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      _SheetIcon(
+                        icon: HeroAppIcons.play,
+                        tooltip: AppStrings.t(AppStringKeys.musicPlayerPlay),
+                        onTap: playlist.tracks.isEmpty
+                            ? null
+                            : () {
+                                Navigator.of(context).pop();
+                                controller.playPlaylist(
+                                  playlist,
+                                  playlist.tracks.first,
+                                );
+                              },
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: playlist.tracks.isEmpty
+                      ? Center(
+                          child: Text(
+                            AppStrings.t(
+                              AppStringKeys.musicPlayerEmptyPlaylist,
+                            ),
+                            style: TextStyle(color: c.textTertiary),
+                          ),
+                        )
+                      : ListView.builder(
+                          itemCount: playlist.tracks.length,
+                          itemBuilder: (context, index) {
+                            final track = playlist.tracks[index];
+                            return _QueueRow(
+                              message: track,
+                              playQueue: playlist.tracks,
+                              controller: controller,
+                              allowRemovingActive: true,
+                              onPlay: (message) =>
+                                  controller.playPlaylist(playlist, message),
+                              onRemove: () => unawaited(
+                                controller.removeFromPlaylist(playlist, track),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _SheetGrabber extends StatelessWidget {
+  const _SheetGrabber();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, bottom: 4),
+      child: Container(
+        width: 38,
+        height: 4,
+        decoration: BoxDecoration(
+          color: context.colors.divider,
+          borderRadius: BorderRadius.circular(2),
+        ),
+      ),
     );
   }
 }
@@ -991,16 +1640,20 @@ Future<void> _openMusicSearch(
 class _QueueRow extends StatelessWidget {
   const _QueueRow({
     super.key,
-    required this.index,
     required this.message,
+    required this.playQueue,
     required this.controller,
-    required this.onRemove,
+    this.onPlay,
+    this.onRemove,
+    this.allowRemovingActive = false,
   });
 
-  final int index;
   final ChatMessage message;
+  final List<ChatMessage> playQueue;
   final MusicPlayerController controller;
-  final VoidCallback onRemove;
+  final ValueChanged<ChatMessage>? onPlay;
+  final VoidCallback? onRemove;
+  final bool allowRemovingActive;
 
   @override
   Widget build(BuildContext context) {
@@ -1012,7 +1665,12 @@ class _QueueRow extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: () {
         Navigator.of(context).pop();
-        controller.play(message, visibleQueue: controller.playlist);
+        final play = onPlay;
+        if (play != null) {
+          play(message);
+        } else {
+          controller.play(message, visibleQueue: playQueue);
+        }
       },
       child: Container(
         padding: const EdgeInsets.fromLTRB(18, 8, 12, 8),
@@ -1052,34 +1710,28 @@ class _QueueRow extends StatelessWidget {
                 size: 16,
                 color: musicPlayerAccent,
               ),
-            ReorderableDelayedDragStartListener(
-              index: index,
-              child: SizedBox(
-                width: 30,
-                height: 30,
-                child: AppIcon(
-                  HeroAppIcons.bars,
-                  size: 15,
-                  color: c.textTertiary,
-                ),
-              ),
-            ),
-            SizedBox(
-              width: 30,
-              height: 30,
-              child: IconButton(
-                tooltip: AppStrings.t(
+            if (onRemove != null && (!active || allowRemovingActive))
+              Semantics(
+                button: true,
+                label: AppStrings.t(
                   AppStringKeys.musicPlayerRemoveFromPlaylist,
                 ),
-                padding: EdgeInsets.zero,
-                onPressed: onRemove,
-                icon: AppIcon(
-                  HeroAppIcons.xmark,
-                  size: 14,
-                  color: c.textTertiary,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: onRemove,
+                  child: SizedBox(
+                    width: 30,
+                    height: 30,
+                    child: Center(
+                      child: AppIcon(
+                        HeroAppIcons.xmark,
+                        size: 14,
+                        color: c.textTertiary,
+                      ),
+                    ),
+                  ),
                 ),
               ),
-            ),
           ],
         ),
       ),
@@ -1088,56 +1740,35 @@ class _QueueRow extends StatelessWidget {
 }
 
 class _SheetIcon extends StatelessWidget {
-  const _SheetIcon({
-    required this.icon,
-    required this.tooltip,
-    this.onTap,
-    this.dimWhenDisabled = false,
-  });
+  const _SheetIcon({required this.icon, required this.tooltip, this.onTap});
 
   final AppIconData icon;
   final String tooltip;
   final VoidCallback? onTap;
-  final bool dimWhenDisabled;
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return SizedBox(
-      width: 34,
-      height: 30,
-      child: IconButton(
-        tooltip: tooltip,
-        padding: EdgeInsets.zero,
-        onPressed: onTap,
-        icon: AppIcon(
-          icon,
-          size: 17,
-          color: onTap == null && dimWhenDisabled
-              ? c.textTertiary.withValues(alpha: 0.42)
-              : c.textTertiary,
+    return Semantics(
+      button: true,
+      enabled: onTap != null,
+      label: tooltip,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: SizedBox(
+          width: 34,
+          height: 30,
+          child: Center(
+            child: AppIcon(
+              icon,
+              size: 17,
+              color: onTap == null
+                  ? c.textTertiary.withValues(alpha: 0.42)
+                  : c.textTertiary,
+            ),
+          ),
         ),
-      ),
-    );
-  }
-}
-
-class _PlaylistDot extends StatelessWidget {
-  const _PlaylistDot({required this.active});
-
-  final bool active;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: active ? 5 : 4,
-      height: active ? 5 : 4,
-      margin: const EdgeInsets.symmetric(horizontal: 3),
-      decoration: BoxDecoration(
-        color: active
-            ? musicPlayerAccent
-            : context.colors.textTertiary.withValues(alpha: 0.35),
-        shape: BoxShape.circle,
       ),
     );
   }
@@ -1147,7 +1778,7 @@ void _openOriginal(ChatMessage message) {
   final chatId = message.chatId;
   if (chatId == null || chatId == 0 || message.id == 0) return;
   appNavigatorKey.currentState?.push(
-    MaterialPageRoute(
+    _qqPageRoute(
       builder: (_) => ChatView(
         chatId: chatId,
         title: message.senderName ?? '',

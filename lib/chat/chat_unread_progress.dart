@@ -1,3 +1,31 @@
+enum ChatBottomIndicator { none, newMessages, jumpToBottom }
+
+ChatBottomIndicator chatBottomIndicator({
+  required bool isScrolledUp,
+  required bool hasNewMessages,
+}) {
+  if (!isScrolledUp) return ChatBottomIndicator.none;
+  return hasNewMessages
+      ? ChatBottomIndicator.newMessages
+      : ChatBottomIndicator.jumpToBottom;
+}
+
+/// Buffers only message IDs received through TDLib's `updateNewMessage` path.
+/// History pages loaded while restoring a saved scroll position must never be
+/// mistaken for live arrivals.
+class ChatLiveMessageBuffer {
+  final Set<int> _messageIds = <int>{};
+
+  bool add(int messageId) => _messageIds.add(messageId);
+
+  List<int> takeAll() {
+    if (_messageIds.isEmpty) return const <int>[];
+    final result = _messageIds.toList(growable: false);
+    _messageIds.clear();
+    return result;
+  }
+}
+
 class ChatUnreadProgress {
   final Set<int> _seenInitialMessageIds = <int>{};
   final Set<int> _liveMessageIds = <int>{};

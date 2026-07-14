@@ -5,6 +5,8 @@ import '../tdlib/td_models.dart';
 typedef SecretChatQuery =
     Future<Map<String, dynamic>> Function(Map<String, dynamic> request);
 
+enum SecretChatReadiness { unknown, pending, ready, closed }
+
 class SecretChatDestination {
   const SecretChatDestination({required this.id, required this.title});
 
@@ -16,6 +18,32 @@ class SecretChatDestination {
 /// TDLib creates and stores the encryption keys; this layer only routes UI to
 /// the returned chat.
 abstract final class SecretChatService {
+  static SecretChatReadiness readiness(Map<String, dynamic>? secretChat) {
+    return switch (secretChat?.obj('state')?.type) {
+      'secretChatStatePending' => SecretChatReadiness.pending,
+      'secretChatStateReady' => SecretChatReadiness.ready,
+      'secretChatStateClosed' => SecretChatReadiness.closed,
+      _ => SecretChatReadiness.unknown,
+    };
+  }
+
+  static Future<Map<String, dynamic>> get(
+    int secretChatId, {
+    SecretChatQuery? query,
+  }) {
+    if (secretChatId <= 0) {
+      throw ArgumentError.value(
+        secretChatId,
+        'secretChatId',
+        'must be positive',
+      );
+    }
+    return (query ?? TdClient.shared.query)({
+      '@type': 'getSecretChat',
+      'secret_chat_id': secretChatId,
+    });
+  }
+
   static Future<SecretChatDestination> create(
     int userId, {
     SecretChatQuery? query,

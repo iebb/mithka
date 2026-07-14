@@ -353,17 +353,9 @@ class _SharedMediaViewState extends State<SharedMediaView> {
     }
   }
 
-  void _toggleMusicPlaylist(ChatMessage message) {
-    final added = MusicPlayerController.shared.togglePlaylist(
-      _musicPlayerMessage(message),
-    );
-    showToast(
-      context,
-      added
-          ? AppStrings.t(AppStringKeys.musicPlayerAddedToPlaylist)
-          : AppStrings.t(AppStringKeys.musicPlayerRemovedFromPlaylist),
-    );
-  }
+  void _toggleMusicPlaylist(ChatMessage message) => unawaited(
+    showMusicPlaylists(context, addMessage: _musicPlayerMessage(message)),
+  );
 
   bool _isMusicInPlaylist(ChatMessage message) {
     return MusicPlayerController.shared.isInPlaylist(
@@ -377,21 +369,19 @@ class _SharedMediaViewState extends State<SharedMediaView> {
       _openSourceMessage(message);
       return;
     }
-    MusicPlayerController.shared.play(
-      _musicPlayerMessage(message),
-      visibleQueue: _visibleMusicMessages(),
-    );
-  }
-
-  List<ChatMessage> _visibleMusicMessages() {
-    final cached = _cache[_tab] ?? const <ChatMessage>[];
-    if (!_tabs[_tab].musicOnly || cached.isEmpty) {
-      return const <ChatMessage>[];
+    final playable = _musicPlayerMessage(message);
+    final sourceChatId = widget.chatId != 0 ? widget.chatId : playable.chatId;
+    if (sourceChatId == null || sourceChatId == 0) {
+      _openSourceMessage(message);
+      return;
     }
-    return _filteredItems(cached)
-        .where((message) => message.music?.file != null)
-        .map(_musicPlayerMessage)
-        .toList();
+    unawaited(
+      MusicPlayerController.shared.playChat(
+        playable,
+        sourceChatId,
+        title: widget.chatId != 0 ? widget.title : playable.senderName,
+      ),
+    );
   }
 
   ChatMessage _musicPlayerMessage(ChatMessage message) {
@@ -1108,21 +1098,27 @@ class _SharedMediaViewState extends State<SharedMediaView> {
   Widget _musicPlaylistButton(ChatMessage message) {
     final c = context.colors;
     final inPlaylist = _isMusicInPlaylist(message);
-    return SizedBox(
-      width: 32,
-      height: 32,
-      child: IconButton(
-        tooltip: inPlaylist
-            ? AppStrings.t(AppStringKeys.musicPlayerRemoveFromPlaylist)
-            : AppStrings.t(AppStringKeys.musicPlayerAddToPlaylist),
-        padding: EdgeInsets.zero,
-        onPressed: message.music?.file == null
-            ? null
-            : () => _toggleMusicPlaylist(message),
-        icon: AppIcon(
-          inPlaylist ? HeroAppIcons.circleCheck : HeroAppIcons.plus,
-          size: 18,
-          color: inPlaylist ? musicPlayerAccent : c.textTertiary,
+    final enabled = message.music?.file != null;
+    final label = inPlaylist
+        ? AppStrings.t(AppStringKeys.musicPlayerRemoveFromPlaylist)
+        : AppStrings.t(AppStringKeys.musicPlayerAddToPlaylist);
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: label,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: enabled ? () => _toggleMusicPlaylist(message) : null,
+        child: SizedBox(
+          width: 32,
+          height: 32,
+          child: Center(
+            child: AppIcon(
+              inPlaylist ? HeroAppIcons.circleCheck : HeroAppIcons.plus,
+              size: 18,
+              color: inPlaylist ? musicPlayerAccent : c.textTertiary,
+            ),
+          ),
         ),
       ),
     );

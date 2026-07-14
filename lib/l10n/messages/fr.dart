@@ -257,6 +257,9 @@ const frMessages = <String, String>{
   'secretChatStartMessage':
       "Les messages des discussions secrètes sont chiffrés de bout en bout et ne peuvent être lus que sur les appareils qui les ont créées.",
   'secretChatStartTitle': "Démarrer une discussion secrète ?",
+  'secretChatWaiting':
+      "En attente de la disponibilité de la discussion secrète…",
+  'secretChatClosed': "Cette discussion secrète est fermée.",
   'chatForwardedToName': "Transféré à {value1}",
   'chatForwardFailed': "Échec du transfert : {value1}",
   'chatForwardProtected':
@@ -839,6 +842,7 @@ const frMessages = <String, String>{
   'musicPlayerAlreadyInPlaylist': "Déjà dans la liste de lecture",
   'musicPlayerClear': "Vider",
   'musicPlayerClose': "Fermer",
+  'musicPlayerCreatePlaylist': "Créer une playlist",
   'musicPlayerDownload': "Télécharger",
   'musicPlayerEmptyPlaylist': "Aucune musique dans la liste de lecture",
   'musicPlayerModeRepeatOne': "Répéter le titre",
@@ -847,10 +851,20 @@ const frMessages = <String, String>{
   'musicPlayerNextTrack': "Suivant",
   'musicPlayerPause': "Pause",
   'musicPlayerPlay': "Lecture",
+  'musicPlayerPlaylistAddFailed':
+      "Impossible d’ajouter ce morceau à la playlist",
+  'musicPlayerPlaylistCreated': "Playlist créée",
+  'musicPlayerPlaylistCreateFailed': "Impossible de créer la playlist",
+  'musicPlayerPlaylistLoadFailed': "Impossible de charger les playlists",
+  'musicPlayerPlaylistName': "Nom de la playlist",
+  'musicPlayerPlaylists': "Playlists",
+  'musicPlayerNoPlaylists':
+      "Créez une playlist pour enregistrer de la musique dans Telegram.",
   'musicPlayerQueueTitleWithCount': "Liste de lecture ({value1})",
   'musicPlayerRemovedFromPlaylist': "Retiré de la liste de lecture",
   'musicPlayerRemoveFromPlaylist': "Retirer de la liste de lecture",
   'musicPlayerShowPlaylist': "Liste de lecture",
+  'musicPlayerTrackCount': "{value1} morceaux",
   'myAlbumNoPhotos': "Aucune photo",
   'netemoMusicLabel': "Netemo music",
   'notificationGroupMessages': "Messages de groupe",

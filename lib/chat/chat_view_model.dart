@@ -23,10 +23,12 @@ import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import 'chat_message_merge.dart';
+import 'chat_unread_progress.dart';
 import 'forward_options.dart';
 import 'gif_item.dart';
 import 'outgoing_attachment.dart';
 import 'rich_message_source.dart';
+import 'secret_chat_service.dart';
 import 'sponsored_messages_cache.dart';
 import 'sticker_item.dart';
 
@@ -240,6 +242,7 @@ class ChatViewModel extends ChangeNotifier {
   bool _chatCanSend = true; // chat-wide default can_send_basic_messages
   bool peerIsBot = false;
   bool isSecretChat = false;
+  int? _secretChatId;
   bool botStartSent = false;
   BotMenuInfo? botMenu;
   List<BotCommandOption> botCommands = const [];
@@ -256,6 +259,7 @@ class ChatViewModel extends ChangeNotifier {
   static final SponsoredMessagesCache _sponsoredMessagesCache =
       SponsoredMessagesCache();
   StreamSubscription? _sub;
+  final ChatLiveMessageBuffer _liveIncomingMessages = ChatLiveMessageBuffer();
   bool _isLoadingOlder = false;
   bool _hasOlderHistory = true;
   int? _restoreTopId;
@@ -330,6 +334,8 @@ class ChatViewModel extends ChangeNotifier {
     _pendingScrollToId = null;
     return id;
   }
+
+  List<int> consumeLiveIncomingMessageIds() => _liveIncomingMessages.takeAll();
 
   Map<String, dynamic> _withPaidMessageOptions(Map<String, dynamic> request) {
     final count = paidMessageStarCount;
@@ -744,6 +750,7 @@ class ChatViewModel extends ChangeNotifier {
   }
 
   void send() {
+    if (!canSendMessages) return;
     final trimmed = draft.trim();
     if (trimmed.isEmpty) return;
     _clearDraft();
@@ -777,6 +784,7 @@ class ChatViewModel extends ChangeNotifier {
   }
 
   void _sendText(String text) {
+    if (!canSendMessages) return;
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
     _client.send(
@@ -795,6 +803,7 @@ class ChatViewModel extends ChangeNotifier {
   /// TDLib textEntity objects (e.g. textEntityTypeCustomEmoji) over [text]
   /// (offsets in UTF-16 of [text], which already has the fallback chars).
   void sendFormatted(String text, List<Map<String, dynamic>> entities) {
+    if (!canSendMessages) return;
     if (text.trim().isEmpty) return;
     if (entities.isEmpty && _sendDiceIfNeeded(text)) return;
     final allEntities = [...entities, ..._mentionEntitiesFor(text, entities)];
@@ -1810,6 +1819,13 @@ class ChatViewModel extends ChangeNotifier {
     sendDisabledReason = '';
 
     final type = chat.obj('type');
+    if (type?.type == 'chatTypeSecret') {
+      _secretChatId = type?.integer('secret_chat_id');
+      _applySecretChatReadiness(SecretChatReadiness.unknown, notify: false);
+      await _loadSecretChatState();
+    } else {
+      _secretChatId = null;
+    }
     switch (type?.type) {
       case 'chatTypePrivate':
       case 'chatTypeSecret':
@@ -1894,6 +1910,43 @@ class ChatViewModel extends ChangeNotifier {
     }
     notifyListeners();
     unawaited(_loadPinnedMessage());
+  }
+
+  Future<void> _loadSecretChatState() async {
+    final secretChatId = _secretChatId;
+    if (secretChatId == null) return;
+    try {
+      final secretChat = await SecretChatService.get(secretChatId);
+      if (_secretChatId != secretChatId) return;
+      _applySecretChatReadiness(
+        SecretChatService.readiness(secretChat),
+        notify: false,
+      );
+    } catch (error) {
+      debugPrint('Could not load secret chat $secretChatId: $error');
+      _applySecretChatReadiness(SecretChatReadiness.unknown, notify: false);
+    }
+  }
+
+  void _applySecretChatReadiness(
+    SecretChatReadiness readiness, {
+    bool notify = true,
+  }) {
+    switch (readiness) {
+      case SecretChatReadiness.ready:
+        canSendMessages = _chatCanSend && !isTelegramTosRestricted;
+        sendDisabledReason = canSendMessages
+            ? ''
+            : AppStrings.t(AppStringKeys.chatRestrictedTelegramTosMessage);
+      case SecretChatReadiness.closed:
+        canSendMessages = false;
+        sendDisabledReason = AppStrings.t(AppStringKeys.secretChatClosed);
+      case SecretChatReadiness.pending:
+      case SecretChatReadiness.unknown:
+        canSendMessages = false;
+        sendDisabledReason = AppStrings.t(AppStringKeys.secretChatWaiting);
+    }
+    if (notify) notifyListeners();
   }
 
   Future<void> _retrieveSponsoredMessages() async {
@@ -2616,6 +2669,9 @@ class ChatViewModel extends ChangeNotifier {
         if (raw == null || raw.int64('chat_id') != chatId) return;
         final message = TDParse.message(raw);
         if (message == null) return;
+        if (!message.isOutgoing && !message.isService) {
+          _liveIncomingMessages.add(message.id);
+        }
         _merge([message]);
         _resolveRichMessagesIfNeeded([message]);
         _resolveSendersIfNeeded([message]);
@@ -2678,6 +2734,13 @@ class ChatViewModel extends ChangeNotifier {
           oldMessageId,
           _MessageSendResult.failure(error),
         );
+
+      case 'updateSecretChat':
+        final secretChat = update.obj('secret_chat');
+        if (secretChat == null || secretChat.integer('id') != _secretChatId) {
+          return;
+        }
+        _applySecretChatReadiness(SecretChatService.readiness(secretChat));
 
       case 'updateChat':
         final chat = update.obj('chat');

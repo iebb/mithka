@@ -1080,6 +1080,48 @@ void main() {
   });
 
   group('SecretChatService', () {
+    test('parses TDLib secret chat readiness', () {
+      Map<String, dynamic> secretChat(String state) => {
+        '@type': 'secretChat',
+        'state': {'@type': state},
+      };
+
+      expect(
+        SecretChatService.readiness(secretChat('secretChatStatePending')),
+        SecretChatReadiness.pending,
+      );
+      expect(
+        SecretChatService.readiness(secretChat('secretChatStateReady')),
+        SecretChatReadiness.ready,
+      );
+      expect(
+        SecretChatService.readiness(secretChat('secretChatStateClosed')),
+        SecretChatReadiness.closed,
+      );
+      expect(
+        SecretChatService.readiness(secretChat('futureSecretChatState')),
+        SecretChatReadiness.unknown,
+      );
+    });
+
+    test('loads a known TDLib secret chat', () async {
+      Map<String, dynamic>? request;
+      final result = await SecretChatService.get(
+        17,
+        query: (value) async {
+          request = value;
+          return {
+            '@type': 'secretChat',
+            'id': 17,
+            'state': {'@type': 'secretChatStateReady'},
+          };
+        },
+      );
+
+      expect(request, {'@type': 'getSecretChat', 'secret_chat_id': 17});
+      expect(SecretChatService.readiness(result), SecretChatReadiness.ready);
+    });
+
     test('creates and validates a TDLib secret chat', () async {
       Map<String, dynamic>? request;
       final result = await SecretChatService.create(

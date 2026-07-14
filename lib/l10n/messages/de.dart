@@ -254,6 +254,8 @@ const deMessages = <String, String>{
   'secretChatStartMessage':
       "Nachrichten in geheimen Chats sind Ende-zu-Ende-verschlüsselt und können nur auf den Geräten gelesen werden, auf denen sie erstellt wurden.",
   'secretChatStartTitle': "Geheimen Chat starten?",
+  'secretChatWaiting': "Warten, bis der geheime Chat bereit ist…",
+  'secretChatClosed': "Dieser geheime Chat wurde geschlossen.",
   'chatForwardedToName': "Weitergeleitet an {value1}",
   'chatForwardFailed': "Weiterleiten fehlgeschlagen: {value1}",
   'chatForwardProtected':
@@ -839,6 +841,7 @@ const deMessages = <String, String>{
   'musicPlayerAlreadyInPlaylist': "Bereits in der Wiedergabeliste",
   'musicPlayerClear': "Leeren",
   'musicPlayerClose': "Schließen",
+  'musicPlayerCreatePlaylist': "Wiedergabeliste erstellen",
   'musicPlayerDownload': "Herunterladen",
   'musicPlayerEmptyPlaylist': "Noch keine Musik in der Wiedergabeliste",
   'musicPlayerModeRepeatOne': "Titel wiederholen",
@@ -847,10 +850,21 @@ const deMessages = <String, String>{
   'musicPlayerNextTrack': "Weiter",
   'musicPlayerPause': "Pause",
   'musicPlayerPlay': "Wiedergabe",
+  'musicPlayerPlaylistAddFailed': "Titel konnte nicht hinzugefügt werden",
+  'musicPlayerPlaylistCreated': "Wiedergabeliste erstellt",
+  'musicPlayerPlaylistCreateFailed':
+      "Wiedergabeliste konnte nicht erstellt werden",
+  'musicPlayerPlaylistLoadFailed':
+      "Wiedergabelisten konnten nicht geladen werden",
+  'musicPlayerPlaylistName': "Name der Wiedergabeliste",
+  'musicPlayerPlaylists': "Wiedergabelisten",
+  'musicPlayerNoPlaylists':
+      "Erstelle eine Wiedergabeliste, um Musik in Telegram zu speichern.",
   'musicPlayerQueueTitleWithCount': "Warteschlange ({value1})",
   'musicPlayerRemovedFromPlaylist': "Aus der Wiedergabeliste entfernt",
   'musicPlayerRemoveFromPlaylist': "Aus der Wiedergabeliste entfernen",
   'musicPlayerShowPlaylist': "Wiedergabeliste",
+  'musicPlayerTrackCount': "{value1} Titel",
   'myAlbumNoPhotos': "Noch keine Fotos",
   'netemoMusicLabel': "Netemo music",
   'notificationGroupMessages': "Gruppennachrichten",

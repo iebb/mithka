@@ -19,6 +19,7 @@ import '../call/group_call_screen.dart';
 import '../channels/topic_channels_view.dart';
 import '../channels/topic_chat_view.dart';
 import '../chat/chat_view.dart';
+import '../chat/music_player_controller.dart';
 import '../chat/video_player_view.dart';
 import '../chats/chat_list_view.dart';
 import '../components/app_icons.dart';
@@ -810,12 +811,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
     return _TabNavigator(
       navigatorKey: _navKeys[i],
       observer: dc.TabDepthObserver(i, _tabBar),
-      root: _PhoneRootTabShell(
-        tabIndex: i,
-        onSelect: _select,
-        onClearUnread: _chatListController.markAllRead,
-        root: _root(i),
-      ),
+      root: _root(i),
     );
   }
 
@@ -845,30 +841,22 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
     if (_usesTabletSplit(context)) {
       return _tabletSplitTabs(tabs, selection, activeTabIndex);
     }
-    return _stack(tabs);
-  }
-
-  Widget _tabletSplitTabs(
-    List<_MainTabItem> tabs,
-    int selection,
-    int activeTabIndex,
-  ) {
-    final theme = context.watch<ThemeController>();
-    final size = MediaQuery.of(context).size;
-    final sidebarWidth = (size.width * 0.32).clamp(320.0, 420.0).toDouble();
-    return Row(
-      children: [
-        SizedBox(
-          width: sidebarWidth,
-          child: Column(
-            children: [
-              Expanded(
-                child: _LazyTabStack(
-                  selection: selection,
-                  items: tabs,
-                  builder: (tab) => _tabletSidebarRoot(tab.index),
-                ),
+    return AnimatedBuilder(
+      animation: _tabBar,
+      builder: (context, _) {
+        final showTabBar =
+            _tabBar.depth(activeTabIndex) == 0 && !_tabBar.isChatSuppressed;
+        return Column(
+          children: [
+            Expanded(
+              child: _musicAwareContent(
+                _stack(tabs),
+                reserveForShellPlayer: !_tabBar.isChatSuppressed,
               ),
+            ),
+            if (!_tabBar.isChatSuppressed)
+              _fixedMusicPlayer(safeBottom: !showTabBar),
+            if (showTabBar)
               AnimatedBuilder(
                 animation: _unread,
                 builder: (context, _) => _ClassicTabBar(
@@ -879,11 +867,101 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
                   unread: _unread.countFor(theme.unreadBadgeMode),
                 ),
               ),
-            ],
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _fixedMusicPlayer({required bool safeBottom}) {
+    return AnimatedBuilder(
+      animation: MusicPlayerController.shared,
+      builder: (context, _) {
+        final player = MusicPlayerController.shared;
+        return AnimatedSize(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          child: player.isVisible && !player.collapsed
+              ? GlobalMusicPlayerBar(
+                  bottomPadding: safeBottom
+                      ? MediaQuery.paddingOf(context).bottom.clamp(0, 12)
+                      : 0,
+                )
+              : const SizedBox.shrink(),
+        );
+      },
+    );
+  }
+
+  Widget _musicAwareContent(Widget child, {bool reserveForShellPlayer = true}) {
+    return AnimatedBuilder(
+      animation: MusicPlayerController.shared,
+      child: child,
+      builder: (context, child) {
+        final player = MusicPlayerController.shared;
+        if (!reserveForShellPlayer || !player.isVisible || player.collapsed) {
+          return child!;
+        }
+        return MediaQuery.removePadding(
+          context: context,
+          removeBottom: true,
+          child: child!,
+        );
+      },
+    );
+  }
+
+  Widget _tabletSplitTabs(
+    List<_MainTabItem> tabs,
+    int selection,
+    int activeTabIndex,
+  ) {
+    final theme = context.watch<ThemeController>();
+    final size = MediaQuery.of(context).size;
+    final sidebarWidth = (size.width * 0.32).clamp(320.0, 420.0).toDouble();
+    return AnimatedBuilder(
+      animation: _tabBar,
+      builder: (context, _) => Column(
+        children: [
+          Expanded(
+            child: Row(
+              children: [
+                SizedBox(
+                  width: sidebarWidth,
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: _LazyTabStack(
+                          selection: selection,
+                          items: tabs,
+                          builder: (tab) => _tabletSidebarRoot(tab.index),
+                        ),
+                      ),
+                      AnimatedBuilder(
+                        animation: _unread,
+                        builder: (context, _) => _ClassicTabBar(
+                          selection: selection,
+                          onSelect: _select,
+                          items: tabs,
+                          onClearUnread: _chatListController.markAllRead,
+                          unread: _unread.countFor(theme.unreadBadgeMode),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: _musicAwareContent(
+                    _tabletDetailPane(activeTabIndex),
+                    reserveForShellPlayer: !_tabBar.isChatSuppressed,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-        Expanded(child: _tabletDetailPane(activeTabIndex)),
-      ],
+          if (!_tabBar.isChatSuppressed) _fixedMusicPlayer(safeBottom: true),
+        ],
+      ),
     );
   }
 
@@ -1307,55 +1385,6 @@ class _TabNavigator extends StatelessWidget {
       observers: [observer],
       onGenerateRoute: (settings) =>
           MaterialPageRoute(builder: (_) => root, settings: settings),
-    );
-  }
-}
-
-class _PhoneRootTabShell extends StatelessWidget {
-  const _PhoneRootTabShell({
-    required this.tabIndex,
-    required this.onSelect,
-    required this.onClearUnread,
-    required this.root,
-  });
-
-  final int tabIndex;
-  final ValueChanged<int> onSelect;
-  final VoidCallback onClearUnread;
-  final Widget root;
-
-  List<_MainTabItem> _visibleTabs(ThemeController theme) => [
-    _MainRootViewState._allTabs[0],
-    if (theme.showChannelsTab) _MainRootViewState._allTabs[1],
-    _MainRootViewState._allTabs[2],
-    if (theme.showMomentsTab) _MainRootViewState._allTabs[3],
-  ];
-
-  bool _usesTabletSplit(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-    return size.width > size.height && math.min(size.width, size.height) >= 600;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_usesTabletSplit(context)) return root;
-    final theme = context.watch<ThemeController>();
-    final tabs = _visibleTabs(theme);
-    final selection = tabs.indexWhere((tab) => tab.index == tabIndex);
-    if (selection < 0) return root;
-    return Column(
-      children: [
-        Expanded(child: root),
-        _ClassicTabBar(
-          selection: selection,
-          onSelect: onSelect,
-          items: tabs,
-          onClearUnread: onClearUnread,
-          unread: context.watch<UnreadBadgeModel>().countFor(
-            theme.unreadBadgeMode,
-          ),
-        ),
-      ],
     );
   }
 }

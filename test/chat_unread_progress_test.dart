@@ -2,6 +2,31 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/chat_unread_progress.dart';
 
 void main() {
+  test('new messages replace the jump-to-bottom button while scrolled up', () {
+    expect(
+      chatBottomIndicator(isScrolledUp: true, hasNewMessages: true),
+      ChatBottomIndicator.newMessages,
+    );
+    expect(
+      chatBottomIndicator(isScrolledUp: true, hasNewMessages: false),
+      ChatBottomIndicator.jumpToBottom,
+    );
+    expect(
+      chatBottomIndicator(isScrolledUp: false, hasNewMessages: true),
+      ChatBottomIndicator.none,
+    );
+  });
+
+  test('live message buffer reports each TDLib arrival only once', () {
+    final buffer = ChatLiveMessageBuffer();
+
+    expect(buffer.add(20), isTrue);
+    expect(buffer.add(20), isFalse);
+    expect(buffer.add(21), isTrue);
+    expect(buffer.takeAll(), [20, 21]);
+    expect(buffer.takeAll(), isEmpty);
+  });
+
   test('initial unread count decreases as messages become visible', () {
     final progress = ChatUnreadProgress();
 
