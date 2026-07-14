@@ -280,7 +280,41 @@ void main() {
       'chat_id': 42,
       'theme': {'@type': 'inputChatThemeEmoji', 'name': '🐣'},
     });
+    expect(controller.selectionFor(42)?.themeName, '🐣');
   });
+
+  test(
+    'a confirmed theme save does not depend on a follow-up refresh',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      var getChatCount = 0;
+      final controller = ChatWallpaperController(
+        activeSlot: () => 0,
+        hasActiveClient: () => true,
+        listenForUpdates: false,
+        query: (request) async {
+          if (request['@type'] == 'getChat') {
+            getChatCount++;
+            if (getChatCount > 1) throw StateError('temporarily unavailable');
+            return {
+              '@type': 'chat',
+              'id': 42,
+              'type': {'@type': 'chatTypePrivate', 'user_id': 7},
+              'background': null,
+              'theme': null,
+            };
+          }
+          return {'@type': 'ok'};
+        },
+      );
+
+      await controller.load(42);
+      await controller.applyTheme(42, '❄️');
+
+      expect(getChatCount, 1);
+      expect(controller.selectionFor(42)?.themeName, '❄️');
+    },
+  );
 
   test('uses Telegram emoji theme background and outgoing palette', () async {
     SharedPreferences.setMockInitialValues({});
@@ -339,6 +373,76 @@ void main() {
     expect(lightStyle.outgoingColor?.toARGB32(), 0xFF44AA66);
     expect(controller.wallpaperFor(99, dark: true)?.colors, [0x102030]);
   });
+
+  test(
+    'theme cards omit pattern documents and resolved SVGs stay settled',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final root = await Directory.systemTemp.createTemp(
+        'mithka_theme_card_pattern',
+      );
+      addTearDown(() async {
+        if (await root.exists()) await root.delete(recursive: true);
+      });
+      final pattern = File('${root.path}/pattern.svg');
+      await pattern.writeAsString('<svg/>');
+      final themesUpdate = {
+        '@type': 'updateEmojiChatThemes',
+        'chat_themes': [
+          {
+            '@type': 'emojiChatTheme',
+            'name': '❄️',
+            'light_settings': {
+              '@type': 'themeSettings',
+              'background': {
+                '@type': 'background',
+                'id': '18',
+                'document': {
+                  '@type': 'document',
+                  'mime_type': 'image/svg+xml',
+                  'document': {
+                    '@type': 'file',
+                    'id': 44,
+                    'local': {'@type': 'localFile', 'path': pattern.path},
+                  },
+                },
+                'type': {
+                  '@type': 'backgroundTypePattern',
+                  'fill': {'@type': 'backgroundFillSolid', 'color': 0x224466},
+                  'intensity': 50,
+                  'is_inverted': false,
+                },
+              },
+              'outgoing_message_fill': null,
+            },
+            'dark_settings': null,
+          },
+        ],
+      };
+      final controller = ChatWallpaperController(
+        activeSlot: () => 0,
+        hasActiveClient: () => false,
+        latestEmojiChatThemes: () => themesUpdate,
+        listenForUpdates: false,
+      );
+      await controller.load(42);
+
+      final card = controller
+          .availableThemes(dark: false, resolvePatterns: false)
+          .single;
+      expect(card.wallpaper?.remoteType, 'pattern');
+      expect(card.wallpaper?.colors, [0x224466]);
+      expect(card.wallpaper?.fileId, 0);
+      expect(card.wallpaper?.imagePath, isNull);
+
+      var notifications = 0;
+      controller.addListener(() => notifications++);
+      final full = controller.availableThemes(dark: false).single;
+      expect(full.wallpaper?.imagePath, pattern.path);
+      await Future<void>.delayed(Duration.zero);
+      expect(notifications, 0);
+    },
+  );
 
   test('loads and applies collectible gift chat themes', () async {
     SharedPreferences.setMockInitialValues({});

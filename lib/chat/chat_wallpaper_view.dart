@@ -153,6 +153,7 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
                                 .availableThemes(
                                   dark: _isDarkTheme,
                                   chatId: widget.chatId,
+                                  resolvePatterns: false,
                                 )
                                 .isNotEmpty) ...[
                           const SizedBox(height: 20),
@@ -408,6 +409,7 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
     final themes = _controller.availableThemes(
       dark: dark,
       chatId: widget.chatId,
+      resolvePatterns: false,
     );
     return SizedBox(
       height: 112,
@@ -521,7 +523,7 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
                     ? AppStringKeys.chatWallpaperApplyForBoth
                     : AppStringKeys.chatWallpaperApply,
                 onlyForSelf: false,
-                primary: true,
+                primary: !isTheme,
               ),
             ),
           ],
@@ -536,7 +538,7 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
     required bool primary,
   }) {
     final c = context.colors;
-    final background = primary ? c.linkBlue : c.panelBackground;
+    final background = primary ? c.linkBlue : const Color(0x00000000);
     final foreground = primary ? const Color(0xFFFFFFFF) : c.linkBlue;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -547,6 +549,7 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: _saving ? background.withValues(alpha: 0.55) : background,
+          border: primary ? null : Border.all(color: c.linkBlue),
           borderRadius: BorderRadius.circular(14),
         ),
         child: Text(

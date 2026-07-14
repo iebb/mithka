@@ -125,6 +125,22 @@ class ChatWallpaper {
     darkThemeDimming: darkThemeDimming,
   );
 
+  /// A fill-only representation for compact theme cards. Pattern documents
+  /// are intentionally omitted so simply opening the picker doesn't download,
+  /// decompress, or rasterize every Telegram pattern.
+  ChatWallpaper withoutPatternDocument() => ChatWallpaper.telegram(
+    backgroundId: backgroundId,
+    remoteType: remoteType ?? 'pattern',
+    themeName: themeName,
+    colors: colors,
+    rotationAngle: rotationAngle,
+    intensity: intensity,
+    isInverted: isInverted,
+    isBlurred: isBlurred,
+    isTiled: isTiled,
+    darkThemeDimming: darkThemeDimming,
+  );
+
   Map<String, Object?> toJson() => {
     'kind': kind.name,
     if (presetId != null) 'preset_id': presetId,
@@ -246,15 +262,10 @@ int _jsonInt(Object? value) => switch (value) {
 
 @immutable
 class ChatWallpaperPreset {
-  const ChatWallpaperPreset({
-    required this.id,
-    required this.colors,
-    this.patternColor = const Color(0x18FFFFFF),
-  });
+  const ChatWallpaperPreset({required this.id, required this.colors});
 
   final String id;
   final List<Color> colors;
-  final Color patternColor;
 }
 
 const chatWallpaperPresets = <ChatWallpaperPreset>[
@@ -269,7 +280,6 @@ const chatWallpaperPresets = <ChatWallpaperPreset>[
   ChatWallpaperPreset(
     id: 'mint',
     colors: [Color(0xFF80C9B8), Color(0xFFC7DFB7), Color(0xFFF5E8B7)],
-    patternColor: Color(0x220F6657),
   ),
   ChatWallpaperPreset(
     id: 'sunset',
@@ -278,7 +288,6 @@ const chatWallpaperPresets = <ChatWallpaperPreset>[
   ChatWallpaperPreset(
     id: 'ocean',
     colors: [Color(0xFF176B87), Color(0xFF64CCC5), Color(0xFFDAFFFB)],
-    patternColor: Color(0x24204655),
   ),
   ChatWallpaperPreset(
     id: 'night',
@@ -400,6 +409,7 @@ class ChatWallpaperController extends ChangeNotifier {
   final Set<int> _loadingGiftThemes = {};
   final Set<int> _loadedGiftThemes = {};
   final Map<String, String> _resolvedFilePaths = {};
+  final Set<String> _wallpaperFileKeys = {};
   final Set<String> _loadedLocal = {};
   final Set<String> _loading = {};
   final Set<String> _resolvingFiles = {};
@@ -459,14 +469,28 @@ class ChatWallpaperController extends ChangeNotifier {
   bool canApplyGiftTheme(int chatId) =>
       _chatTypes[_id(chatId)] == 'chatTypePrivate';
 
-  List<ChatThemeOption> availableThemes({required bool dark, int? chatId}) {
+  List<ChatThemeOption> availableThemes({
+    required bool dark,
+    int? chatId,
+    bool resolvePatterns = true,
+  }) {
     final includeGifts = chatId == null || canApplyGiftTheme(chatId);
     return [
       for (final theme in _emojiThemes[_activeSlot()] ?? const [])
-        ?_themeOption(theme, kind: ChatThemeKind.emoji, dark: dark),
+        ?_themeOption(
+          theme,
+          kind: ChatThemeKind.emoji,
+          dark: dark,
+          resolvePattern: resolvePatterns,
+        ),
       if (includeGifts)
         for (final theme in _giftThemes[_activeSlot()] ?? const [])
-          ?_themeOption(theme, kind: ChatThemeKind.gift, dark: dark),
+          ?_themeOption(
+            theme,
+            kind: ChatThemeKind.gift,
+            dark: dark,
+            resolvePattern: resolvePatterns,
+          ),
     ];
   }
 
@@ -631,8 +655,19 @@ class ChatWallpaperController extends ChangeNotifier {
               'name': themeName,
             },
     });
-    await _discardLocal(chatId);
-    await refresh(chatId);
+    // setChatTheme returning successfully is the authoritative save result.
+    // Do not turn a successful save into an error because getChat is briefly
+    // stale/unavailable or local preference cleanup fails afterwards.
+    final id = _id(chatId);
+    _serverBackgrounds[id] = null;
+    _themeNames[id] = themeName == null || themeName.isEmpty ? null : themeName;
+    if (themeName == null || themeName.isEmpty) {
+      _themeKinds.remove(id);
+    } else {
+      _themeKinds[id] = kind;
+    }
+    unawaited(_discardLocalSilently(chatId, notify: false));
+    notifyListeners();
   }
 
   Future<void> clearAppearance(int chatId) async {
@@ -738,7 +773,14 @@ class ChatWallpaperController extends ChangeNotifier {
         final fileId = file?.integer('id');
         final path = file?.obj('local')?.str('path');
         if (fileId == null || path == null || path.isEmpty) return;
-        _resolvedFilePaths[_fileKey(fileId)] = path;
+        final key = _fileKey(fileId);
+        if (!_wallpaperFileKeys.contains(key)) return;
+        final previous = _resolvedFilePaths[key];
+        if (previous == path ||
+            previous?.toLowerCase().endsWith('.svg') == true) {
+          return;
+        }
+        _resolvedFilePaths[key] = path;
         notifyListeners();
     }
   }
@@ -800,21 +842,31 @@ class ChatWallpaperController extends ChangeNotifier {
     Map<String, dynamic> theme, {
     required ChatThemeKind kind,
     required bool dark,
+    bool resolvePattern = true,
   }) {
     final gift = kind == ChatThemeKind.gift ? theme.obj('gift') : null;
     final name = _themeName(theme, kind);
     if (name == null || name.isEmpty) return null;
     final settings = theme.obj(dark ? 'dark_settings' : 'light_settings');
     if (settings == null) return null;
-    final wallpaper = _parseBackground(settings.obj('background'), dimming: 0);
+    final wallpaper = _parseBackground(
+      settings.obj('background'),
+      dimming: 0,
+      resolvePattern: resolvePattern,
+    );
     final outgoing = _fillColors(settings.obj('outgoing_message_fill'));
+    final displayWallpaper = wallpaper == null
+        ? null
+        : wallpaper.remoteType == 'pattern' && !resolvePattern
+        ? wallpaper.withoutPatternDocument()
+        : _withResolvedFile(wallpaper);
     return ChatThemeOption(
       name: name,
       kind: kind,
       label: kind == ChatThemeKind.gift
           ? gift?.str('title') ?? gift?.str('name') ?? name
           : name,
-      wallpaper: wallpaper == null ? null : _withResolvedFile(wallpaper),
+      wallpaper: displayWallpaper,
       style: ChatThemeStyle(
         outgoingColors: outgoing,
         accentColor:
@@ -840,6 +892,7 @@ class ChatWallpaperController extends ChangeNotifier {
   ChatWallpaper? _parseBackground(
     Map<String, dynamic>? background, {
     required int dimming,
+    bool resolvePattern = true,
   }) {
     if (background == null) return null;
     final type = background.obj('type');
@@ -854,6 +907,9 @@ class ChatWallpaperController extends ChangeNotifier {
     final document = background.obj('document');
     final file = document?.obj('document');
     final fileId = file?.integer('id') ?? 0;
+    final shouldResolveFile =
+        fileId != 0 && (remoteType != 'pattern' || resolvePattern);
+    if (shouldResolveFile) _wallpaperFileKeys.add(_fileKey(fileId));
     final embeddedPath = file?.obj('local')?.str('path');
     final resolvedPath = fileId == 0
         ? embeddedPath
@@ -873,9 +929,11 @@ class ChatWallpaperController extends ChangeNotifier {
       isBlurred: type?.boolean('is_blurred') ?? false,
       darkThemeDimming: dimming,
     );
-    if (fileId != 0 && (resolvedPath == null || resolvedPath.isEmpty)) {
+    if (shouldResolveFile && (resolvedPath == null || resolvedPath.isEmpty)) {
       _scheduleFileResolution(wallpaper);
-    } else if (wallpaper.remoteType == 'pattern' && resolvedPath != null) {
+    } else if (resolvePattern &&
+        wallpaper.remoteType == 'pattern' &&
+        resolvedPath != null) {
       _scheduleFileResolution(wallpaper);
     }
     return wallpaper;
@@ -896,9 +954,19 @@ class ChatWallpaperController extends ChangeNotifier {
 
   ChatWallpaper _withResolvedFile(ChatWallpaper wallpaper) {
     if (!wallpaper.isRemoteFile || wallpaper.fileId == 0) return wallpaper;
-    final path = _resolvedFilePaths[_fileKey(wallpaper.fileId)];
-    if (path != null && path.isNotEmpty && path != wallpaper.imagePath) {
-      return wallpaper.withImagePath(path);
+    final key = _fileKey(wallpaper.fileId);
+    _wallpaperFileKeys.add(key);
+    final path = _resolvedFilePaths[key];
+    if (path != null && path.isNotEmpty) {
+      final resolved = path == wallpaper.imagePath
+          ? wallpaper
+          : wallpaper.withImagePath(path);
+      if (wallpaper.remoteType != 'pattern' ||
+          path.toLowerCase().endsWith('.svg')) {
+        return resolved;
+      }
+      _scheduleFileResolution(resolved);
+      return resolved;
     }
     _scheduleFileResolution(wallpaper);
     return wallpaper;
@@ -907,6 +975,18 @@ class ChatWallpaperController extends ChangeNotifier {
   void _scheduleFileResolution(ChatWallpaper wallpaper) {
     if (wallpaper.fileId == 0) return;
     final key = _fileKey(wallpaper.fileId);
+    _wallpaperFileKeys.add(key);
+    final current = _resolvedFilePaths[key];
+    if (wallpaper.remoteType == 'pattern') {
+      if (current?.toLowerCase().endsWith('.svg') == true) return;
+      final embedded = wallpaper.imagePath;
+      if (embedded?.toLowerCase().endsWith('.svg') == true) {
+        _resolvedFilePaths.putIfAbsent(key, () => embedded!);
+        return;
+      }
+    } else if (current != null && current.isNotEmpty) {
+      return;
+    }
     if (!_resolvingFiles.add(key)) return;
     unawaited(() async {
       try {
@@ -918,8 +998,10 @@ class ChatWallpaperController extends ChangeNotifier {
         if (wallpaper.remoteType == 'pattern') {
           path = await _preparePatternSvg(wallpaper.fileId, path);
         }
-        _resolvedFilePaths[key] = path;
-        notifyListeners();
+        if (_resolvedFilePaths[key] != path) {
+          _resolvedFilePaths[key] = path;
+          notifyListeners();
+        }
       } finally {
         _resolvingFiles.remove(key);
       }
@@ -1093,7 +1175,7 @@ class ChatWallpaperController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _discardLocal(int chatId) async {
+  Future<void> _discardLocal(int chatId, {bool notify = true}) async {
     final id = _id(chatId);
     final old = _localValues[id];
     if (old?.kind == ChatWallpaperKind.image) {
@@ -1102,7 +1184,16 @@ class ChatWallpaperController extends ChangeNotifier {
     _loadedLocal.add(id);
     _localValues[id] = null;
     await (await _preferences()).remove(_preferenceKey(chatId));
-    notifyListeners();
+    if (notify) notifyListeners();
+  }
+
+  Future<void> _discardLocalSilently(int chatId, {bool notify = true}) async {
+    try {
+      await _discardLocal(chatId, notify: notify);
+    } catch (_) {
+      // The remote appearance is already saved. A stale local preference can
+      // be cleaned up on a later load and must not report that save as failed.
+    }
   }
 
   Future<void> _deleteImage(String? path) async {
@@ -1170,10 +1261,7 @@ class ChatWallpaperBackground extends StatelessWidget {
           colors: preset.colors,
         ),
       ),
-      child: CustomPaint(
-        painter: _WallpaperPatternPainter(preset.patternColor),
-        child: child,
-      ),
+      child: child,
     );
   }
 
@@ -1280,41 +1368,4 @@ Color _representativeFillColor(List<int> colors) {
     color = Color.lerp(color, _rgbColor(colors[index]), 1 / (index + 1))!;
   }
   return color;
-}
-
-class _WallpaperPatternPainter extends CustomPainter {
-  const _WallpaperPatternPainter(this.color);
-
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.4;
-    const tile = 86.0;
-    for (var row = -1; row <= (size.height / tile).ceil(); row++) {
-      for (var column = -1; column <= (size.width / tile).ceil(); column++) {
-        final x = column * tile + (row.isOdd ? tile / 2 : 0);
-        final y = row * tile;
-        final center = Offset(x + 25, y + 26);
-        canvas.drawCircle(center, 8, paint);
-        canvas.drawLine(
-          center + const Offset(-13, 18),
-          center + const Offset(13, 18),
-          paint,
-        );
-        final path = Path()
-          ..moveTo(x + 53, y + 52)
-          ..quadraticBezierTo(x + 66, y + 39, x + 75, y + 56)
-          ..quadraticBezierTo(x + 65, y + 68, x + 53, y + 52);
-        canvas.drawPath(path, paint);
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _WallpaperPatternPainter oldDelegate) =>
-      oldDelegate.color != color;
 }
