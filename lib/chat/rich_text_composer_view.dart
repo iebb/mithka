@@ -152,9 +152,7 @@ class _RichTableDraft {
         rows,
         (row) => List.generate(
           columns,
-          (column) => TextEditingController(
-            text: row == 0 ? 'Column ${column + 1}' : '',
-          ),
+          (column) => _cellController(row == 0 ? 'Column ${column + 1}' : ''),
         ),
       ),
       styles = List.generate(
@@ -168,7 +166,7 @@ class _RichTableDraft {
   static const maxColumns = 20;
 
   final TextEditingController title;
-  final List<List<TextEditingController>> cells;
+  final List<List<EmojiTextEditingController>> cells;
   final List<List<_RichTableCellStyle>> styles;
   bool bordered = true;
   bool striped = true;
@@ -193,7 +191,7 @@ class _RichTableDraft {
     final safeIndex = index.clamp(0, rowCount);
     cells.insert(
       safeIndex,
-      List.generate(columnCount, (_) => TextEditingController()),
+      List.generate(columnCount, (_) => _cellController()),
     );
     styles.insert(
       safeIndex,
@@ -221,9 +219,7 @@ class _RichTableDraft {
     for (var row = 0; row < cells.length; row++) {
       cells[row].insert(
         safeIndex,
-        TextEditingController(
-          text: row == 0 ? 'Column ${oldColumnCount + 1}' : '',
-        ),
+        _cellController(row == 0 ? 'Column ${oldColumnCount + 1}' : ''),
       );
       styles[row].insert(safeIndex, _RichTableCellStyle(isHeader: row == 0));
     }
@@ -289,12 +285,13 @@ class _RichTableDraft {
         final cell = cells[rowIndex][columnIndex];
         final style = styles[rowIndex][columnIndex];
         final tag = style.isHeader ? 'th' : 'td';
+        final formatted = cell.toFormatted();
         buffer
           ..write(
             '<$tag align="${style.horizontal.name}" '
             'valign="${style.vertical.name}">',
           )
-          ..write(escapeRichHtml(cell.text.trim()))
+          ..write(formattedTextToRichInlineHtml(formatted.$1, formatted.$2))
           ..write('</$tag>');
       }
       buffer.write('</tr>');
@@ -310,6 +307,9 @@ class _RichTableDraft {
         .replaceAll('|', r'\|')
         .trim();
   }
+
+  static EmojiTextEditingController _cellController([String text = '']) =>
+      EmojiTextEditingController()..text = text;
 
   static String _markdownRow(List<String> row, List<int> widths) {
     final cells = <String>[];
@@ -1993,25 +1993,45 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
           _RichCellVerticalAlignment.bottom => TextAlignVertical.bottom,
         },
         contextMenuBuilder: (context, editableTextState) {
-          return _RichTableCellContextMenu(
-            anchor: editableTextState.contextMenuAnchors.primaryAnchor,
-            systemItems: editableTextState.contextMenuButtonItems,
-            isHeader: cellStyle.isHeader,
-            horizontal: cellStyle.horizontal,
-            vertical: cellStyle.vertical,
-            isBorderless: !table.bordered,
-            isStriped: table.striped,
-            canAddColumn: table.columnCount < _RichTableDraft.maxColumns,
-            canRemoveRow: table.rowCount > 1,
-            canRemoveColumn: table.columnCount > 1,
-            onTableAction: (action) => _applyTableMenuAction(
-              action,
-              editableTextState,
-              table,
-              cellStyle,
-              row,
-              column,
+          final controller = table.cells[row][column];
+          final items = <ContextMenuButtonItem>[
+            ...editableTextState.contextMenuButtonItems,
+          ];
+          final selection = controller.selection;
+          var customActionIndex = items.length;
+          final pasteIndex = items.lastIndexWhere(
+            (item) => item.type == ContextMenuButtonType.paste,
+          );
+          if (pasteIndex >= 0) customActionIndex = pasteIndex + 1;
+          if (selection.isValid && !selection.isCollapsed) {
+            items.insert(
+              customActionIndex++,
+              ContextMenuButtonItem(
+                label: AppStringKeys.composerFormat.l10n(context),
+                onPressed: () => unawaited(
+                  _showTableCellFormatMenu(editableTextState, controller),
+                ),
+              ),
+            );
+          }
+          items.insert(
+            customActionIndex,
+            ContextMenuButtonItem(
+              label: AppStringKeys.richTextTableChange.l10n(context),
+              onPressed: () => unawaited(
+                _showTableActionsMenu(
+                  editableTextState,
+                  table,
+                  cellStyle,
+                  row,
+                  column,
+                ),
+              ),
             ),
+          );
+          return AdaptiveTextSelectionToolbar.buttonItems(
+            anchors: editableTextState.contextMenuAnchors,
+            buttonItems: items,
           );
         },
         style: AppTextStyle.callout(
@@ -2024,6 +2044,85 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
           contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         ),
       ),
+    );
+  }
+
+  Future<void> _showTableCellFormatMenu(
+    EditableTextState editableTextState,
+    EmojiTextEditingController controller,
+  ) async {
+    final selection = controller.selection;
+    if (!selection.isValid || selection.isCollapsed) return;
+    final start = math.min(selection.start, selection.end);
+    final end = math.max(selection.start, selection.end);
+    final anchor = editableTextState.contextMenuAnchors.primaryAnchor;
+    final focusNode = editableTextState.widget.focusNode;
+    editableTextState.hideToolbar();
+    final action = await showGeneralDialog<_RichInlineFormatAction>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: AppStringKeys.countryPickerCancel.l10n(context),
+      barrierColor: Colors.transparent,
+      transitionDuration: const Duration(milliseconds: 150),
+      pageBuilder: (dialogContext, _, _) =>
+          _RichInlineFormatMenu(anchor: anchor),
+    );
+    if (!mounted || action == null) return;
+    controller.selection = TextSelection(baseOffset: start, extentOffset: end);
+    if (action == _RichInlineFormatAction.link) {
+      final url = await _showRichValueDialog(
+        AppStringKeys.composerFormatLink,
+        AppStringKeys.composerFormatLinkPlaceholder,
+      );
+      if (!mounted || url == null || url.trim().isEmpty) return;
+      final parsed = Uri.tryParse(url.trim());
+      controller.applyEntityFormat(start, end, {
+        '@type': 'textEntityTypeTextUrl',
+        'url': parsed?.hasScheme == true ? url.trim() : 'https://${url.trim()}',
+      });
+    } else {
+      controller.toggleFormat(action.entityType);
+    }
+    controller.selection = TextSelection(baseOffset: start, extentOffset: end);
+    focusNode.requestFocus();
+  }
+
+  Future<void> _showTableActionsMenu(
+    EditableTextState editableTextState,
+    _RichTableDraft table,
+    _RichTableCellStyle cellStyle,
+    int row,
+    int column,
+  ) async {
+    final anchor = editableTextState.contextMenuAnchors.primaryAnchor;
+    editableTextState.hideToolbar();
+    final action = await showGeneralDialog<_RichTableMenuAction>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: AppStringKeys.countryPickerCancel.l10n(context),
+      barrierColor: Colors.transparent,
+      transitionDuration: const Duration(milliseconds: 150),
+      pageBuilder: (dialogContext, _, _) => _RichTableActionsMenu(
+        anchor: anchor,
+        isHeader: cellStyle.isHeader,
+        horizontal: cellStyle.horizontal,
+        vertical: cellStyle.vertical,
+        isBorderless: !table.bordered,
+        isStriped: table.striped,
+        canAddColumn: table.columnCount < _RichTableDraft.maxColumns,
+        canRemoveRow: table.rowCount > 1,
+        canRemoveColumn: table.columnCount > 1,
+        onTableAction: (action) => Navigator.of(dialogContext).pop(action),
+      ),
+    );
+    if (!mounted || action == null) return;
+    _applyTableMenuAction(
+      action,
+      editableTextState,
+      table,
+      cellStyle,
+      row,
+      column,
     );
   }
 
@@ -2758,10 +2857,9 @@ extension on _RichBlockKind {
   };
 }
 
-class _RichTableCellContextMenu extends StatefulWidget {
-  const _RichTableCellContextMenu({
+class _RichTableActionsMenu extends StatefulWidget {
+  const _RichTableActionsMenu({
     required this.anchor,
-    required this.systemItems,
     required this.isHeader,
     required this.horizontal,
     required this.vertical,
@@ -2774,7 +2872,6 @@ class _RichTableCellContextMenu extends StatefulWidget {
   });
 
   final Offset anchor;
-  final List<ContextMenuButtonItem> systemItems;
   final bool isHeader;
   final _RichCellHorizontalAlignment horizontal;
   final _RichCellVerticalAlignment vertical;
@@ -2786,32 +2883,21 @@ class _RichTableCellContextMenu extends StatefulWidget {
   final ValueChanged<_RichTableMenuAction> onTableAction;
 
   @override
-  State<_RichTableCellContextMenu> createState() =>
-      _RichTableCellContextMenuState();
+  State<_RichTableActionsMenu> createState() => _RichTableActionsMenuState();
 }
 
-class _RichTableCellContextMenuState extends State<_RichTableCellContextMenu> {
-  bool _showTableActions = false;
-
+class _RichTableActionsMenuState extends State<_RichTableActionsMenu> {
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
     final screen = media.size;
-    final leftWidth = math.min(300.0, screen.width - 24);
-    final twoPaneRightWidth = screen.width - 24 - leftWidth - 8;
-    final wide = twoPaneRightWidth >= 280;
-    final rightWidth = wide
-        ? math.min(390.0, twoPaneRightWidth)
-        : math.min(390.0, screen.width - 24);
-    final totalWidth = _showTableActions && wide
-        ? leftWidth + 8 + rightWidth
-        : (_showTableActions ? rightWidth : leftWidth);
+    final menuWidth = math.min(390.0, screen.width - 24);
     final maxHeight = math.min(
       590.0,
       screen.height - media.padding.top - media.padding.bottom - 20,
     );
-    final left = (widget.anchor.dx - totalWidth / 2)
-        .clamp(12.0, math.max(12.0, screen.width - totalWidth - 12))
+    final left = (widget.anchor.dx - menuWidth / 2)
+        .clamp(12.0, math.max(12.0, screen.width - menuWidth - 12))
         .toDouble();
     final safeTop = media.padding.top + 8;
     final top = (widget.anchor.dy - 42)
@@ -2824,86 +2910,20 @@ class _RichTableCellContextMenuState extends State<_RichTableCellContextMenu> {
           Positioned(
             left: left,
             top: top,
-            width: totalWidth,
+            width: menuWidth,
             height: maxHeight,
-            child: TextFieldTapRegion(
-              child: _showTableActions && !wide
-                  ? _tableActionsPanel(showBack: true)
-                  : Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SizedBox(width: leftWidth, child: _systemPanel()),
-                        if (_showTableActions) ...[
-                          const SizedBox(width: 8),
-                          SizedBox(
-                            width: rightWidth,
-                            child: _tableActionsPanel(),
-                          ),
-                        ],
-                      ],
-                    ),
-            ),
+            child: TextFieldTapRegion(child: _tableActionsPanel()),
           ),
         ],
       ),
     );
   }
 
-  Widget _systemPanel() {
+  Widget _tableActionsPanel() {
     return _RichContextMenuSurface(
       child: ListView(
         padding: EdgeInsets.zero,
         children: [
-          _RichContextMenuRow(
-            label: AppStringKeys.richTextTableChange.l10n(context),
-            leading: AppIcon(
-              HeroAppIcons.tableCells,
-              size: 20,
-              color: context.colors.textPrimary,
-            ),
-            trailing: AppIcon(
-              HeroAppIcons.chevronRight,
-              size: 18,
-              color: context.colors.textSecondary,
-            ),
-            selected: _showTableActions,
-            onTap: () => setState(() => _showTableActions = true),
-          ),
-          const _RichContextMenuDivider(),
-          for (final item in widget.systemItems)
-            if (AdaptiveTextSelectionToolbar.getButtonLabel(
-              context,
-              item,
-            ).isNotEmpty)
-              _RichContextMenuRow(
-                label: AdaptiveTextSelectionToolbar.getButtonLabel(
-                  context,
-                  item,
-                ),
-                onTap: item.onPressed,
-              ),
-        ],
-      ),
-    );
-  }
-
-  Widget _tableActionsPanel({bool showBack = false}) {
-    return _RichContextMenuSurface(
-      child: ListView(
-        padding: EdgeInsets.zero,
-        children: [
-          if (showBack) ...[
-            _RichContextMenuRow(
-              label: AppStringKeys.richTextTableChange.l10n(context),
-              leading: AppIcon(
-                HeroAppIcons.chevronLeft,
-                size: 18,
-                color: context.colors.textPrimary,
-              ),
-              onTap: () => setState(() => _showTableActions = false),
-            ),
-            const _RichContextMenuDivider(),
-          ],
           _tableActionRow(
             _RichTableMenuAction.addRowAbove,
             AppStringKeys.richTextTableAddRowAbove,
@@ -3072,7 +3092,6 @@ class _RichContextMenuRow extends StatelessWidget {
     this.trailing,
     this.onTap,
     this.enabled = true,
-    this.selected = false,
     this.destructive = false,
   });
 
@@ -3081,7 +3100,6 @@ class _RichContextMenuRow extends StatelessWidget {
   final Widget? trailing;
   final VoidCallback? onTap;
   final bool enabled;
-  final bool selected;
   final bool destructive;
 
   @override
@@ -3098,7 +3116,7 @@ class _RichContextMenuRow extends StatelessWidget {
       onTap: active ? onTap : null,
       child: Container(
         height: 48,
-        color: selected ? c.searchFill : Colors.transparent,
+        color: Colors.transparent,
         padding: const EdgeInsets.symmetric(horizontal: 14),
         child: Row(
           children: [

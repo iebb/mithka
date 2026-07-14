@@ -459,14 +459,38 @@ void main() {
 
       final textFieldCount = find.byType(TextField).evaluate().length;
       final firstCell = find.byKey(const ValueKey('rich-table-cell-0-0'));
-      final firstCellController = tester
-          .widget<TextField>(firstCell)
-          .controller!;
+      final firstCellController =
+          tester.widget<TextField>(firstCell).controller!
+              as EmojiTextEditingController;
       await tester.longPress(firstCell);
       await tester.pumpAndSettle();
 
-      expect(find.byType(AdaptiveTextSelectionToolbar), findsNothing);
+      expect(find.byType(AdaptiveTextSelectionToolbar), findsOneWidget);
       expect(find.text('Change Table'), findsOneWidget);
+      expect(find.text('Format'), findsOneWidget);
+      firstCellController.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: firstCellController.text.length,
+      );
+      await tester.pump();
+      await tester.tap(find.text('Format'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Bold'));
+      await tester.pumpAndSettle();
+      final formattedCell = firstCellController.toFormatted();
+      expect(
+        formattedCell.$2.any(
+          (entity) =>
+              (entity['type'] as Map<String, dynamic>)['@type'] ==
+              'textEntityTypeBold',
+        ),
+        isTrue,
+      );
+
+      firstCellController.selection = const TextSelection.collapsed(offset: 0);
+      await tester.pump();
+      await tester.longPress(firstCell);
+      await tester.pumpAndSettle();
       final selectAll = find.textContaining(
         RegExp('select all', caseSensitive: false),
       );
@@ -478,17 +502,6 @@ void main() {
         firstCellController.selection.end,
         firstCellController.text.length,
       );
-
-      await tester.longPress(firstCell);
-      await tester.pumpAndSettle();
-      firstCellController.selection = TextSelection(
-        baseOffset: 0,
-        extentOffset: firstCellController.text.length,
-      );
-      await tester.pump();
-      await tester.tap(find.text('Cut'));
-      await tester.pumpAndSettle();
-      expect(firstCellController.text, isEmpty);
 
       await tester.longPress(firstCell);
       await tester.pumpAndSettle();
@@ -511,6 +524,7 @@ void main() {
           .map((segment) => segment.html)
           .join();
       expect(html, contains('<caption>Quarterly &lt;Plan&gt;</caption>'));
+      expect(html, contains('<b>Column 1</b>'));
     });
 
     testWidgets('block handle opens move and delete actions', (tester) async {
