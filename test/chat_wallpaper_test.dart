@@ -10,7 +10,11 @@ void main() {
 
   test('wallpaper JSON preserves preset and image values', () {
     const preset = ChatWallpaper.preset('sky');
-    const image = ChatWallpaper.image('/tmp/wallpaper.png');
+    const image = ChatWallpaper.image(
+      '/tmp/wallpaper.png',
+      isBlurred: true,
+      isMoving: true,
+    );
     const tiled = ChatWallpaper.telegram(
       backgroundId: 0,
       remoteType: 'wallpaper',
@@ -281,6 +285,183 @@ void main() {
       'theme': {'@type': 'inputChatThemeEmoji', 'name': '🐣'},
     });
     expect(controller.selectionFor(42)?.themeName, '🐣');
+    expect(
+      requests.where((request) => request['@type'] == 'deleteChatBackground'),
+      isEmpty,
+    );
+  });
+
+  test('sets a global Telegram wallpaper with motion and intensity', () async {
+    SharedPreferences.setMockInitialValues({});
+    final requests = <Map<String, dynamic>>[];
+    final controller = ChatWallpaperController(
+      activeSlot: () => 0,
+      hasActiveClient: () => true,
+      listenForUpdates: false,
+      query: (request) async {
+        requests.add(request);
+        if (request['@type'] == 'setDefaultBackground') {
+          return {'@type': 'background', 'id': '123', 'type': request['type']};
+        }
+        return {'@type': 'ok'};
+      },
+    );
+
+    await controller.applyDefaultWallpaper(
+      const ChatWallpaper.telegram(
+        backgroundId: 123,
+        remoteType: 'pattern',
+        colors: [0x112233],
+        intensity: 64,
+        isMoving: true,
+      ),
+      dark: false,
+    );
+
+    final request = requests.singleWhere(
+      (request) => request['@type'] == 'setDefaultBackground',
+    );
+    expect(request['for_dark_theme'], isFalse);
+    expect(request['background'], {
+      '@type': 'inputBackgroundRemote',
+      'background_id': 123,
+    });
+    expect(request['type'], {
+      '@type': 'backgroundTypePattern',
+      'fill': {'@type': 'backgroundFillSolid', 'color': 0x112233},
+      'intensity': 64,
+      'is_inverted': false,
+      'is_moving': true,
+    });
+    expect(controller.defaultWallpaper(dark: false)?.isMoving, isTrue);
+  });
+
+  test('searches wallpaper photos through the configured inline bot', () async {
+    SharedPreferences.setMockInitialValues({});
+    final requests = <Map<String, dynamic>>[];
+    final controller = ChatWallpaperController(
+      activeSlot: () => 0,
+      hasActiveClient: () => true,
+      listenForUpdates: false,
+      query: (request) async {
+        requests.add(request);
+        return switch (request['@type']) {
+          'getOption' => {'@type': 'optionValueString', 'value': 'pic'},
+          'searchPublicChat' => {
+            '@type': 'chat',
+            'id': 77,
+            'type': {'@type': 'chatTypePrivate', 'user_id': 88},
+          },
+          'getInlineQueryResults' => {
+            '@type': 'inlineQueryResults',
+            'next_offset': 'next',
+            'results': [
+              {
+                '@type': 'inlineQueryResultPhoto',
+                'id': 'photo-1',
+                'title': 'Blue mountain',
+                'photo': {
+                  '@type': 'photo',
+                  'sizes': [
+                    {
+                      '@type': 'photoSize',
+                      'type': 'x',
+                      'width': 1200,
+                      'height': 1800,
+                      'photo': {
+                        '@type': 'file',
+                        'id': 901,
+                        'size': 100,
+                        'expected_size': 100,
+                        'local': {
+                          '@type': 'localFile',
+                          'path': '',
+                          'can_be_downloaded': true,
+                        },
+                        'remote': {'@type': 'remoteFile', 'id': 'remote-901'},
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+          _ => {'@type': 'ok'},
+        };
+      },
+    );
+
+    final page = await controller.searchBackgroundImages('blue mountain');
+
+    expect(page.providerUsername, 'pic');
+    expect(page.nextOffset, 'next');
+    expect(page.results, hasLength(1));
+    expect(page.results.single.fileId, 901);
+    final request = requests.singleWhere(
+      (request) => request['@type'] == 'getInlineQueryResults',
+    );
+    expect(request['bot_user_id'], 88);
+    expect(request['chat_id'], 77);
+    expect(request['query'], 'blue mountain');
+  });
+
+  test('uses live group boost features to gate custom wallpaper', () async {
+    SharedPreferences.setMockInitialValues({});
+    final controller = ChatWallpaperController(
+      activeSlot: () => 0,
+      hasActiveClient: () => true,
+      listenForUpdates: false,
+      query: (request) async {
+        return switch (request['@type']) {
+          'getChat' => {
+            '@type': 'chat',
+            'id': 55,
+            'type': {
+              '@type': 'chatTypeSupergroup',
+              'supergroup_id': 9,
+              'is_channel': false,
+            },
+            'background': null,
+            'theme': null,
+          },
+          'getSupergroup' => {
+            '@type': 'supergroup',
+            'id': 9,
+            'is_channel': false,
+            'boost_level': 1,
+          },
+          'getChatBoostStatus' => {'@type': 'chatBoostStatus', 'level': 1},
+          'getChatBoostFeatures' => {
+            '@type': 'chatBoostFeatures',
+            'min_custom_background_boost_level': 2,
+            'features': [
+              {
+                '@type': 'chatBoostLevelFeatures',
+                'level': 1,
+                'can_set_custom_background': false,
+                'chat_theme_background_count': 1,
+              },
+              {
+                '@type': 'chatBoostLevelFeatures',
+                'level': 2,
+                'can_set_custom_background': true,
+                'chat_theme_background_count': 2,
+              },
+            ],
+          },
+          _ => {'@type': 'ok'},
+        };
+      },
+    );
+
+    await controller.load(55);
+    final access = controller.accessFor(
+      55,
+      const ChatWallpaper.telegram(backgroundId: 12, remoteType: 'wallpaper'),
+    );
+    expect(access.allowed, isFalse);
+    expect(access.currentLevel, 1);
+    expect(access.requiredLevel, 2);
   });
 
   test(

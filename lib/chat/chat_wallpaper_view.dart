@@ -9,16 +9,28 @@ import '../l10n/app_localizations.dart';
 import '../media/app_asset_picker.dart';
 import '../theme/app_theme.dart';
 import 'chat_wallpaper.dart';
+import 'chat_wallpaper_color_view.dart';
+import 'chat_wallpaper_search_view.dart';
 
 class ChatWallpaperView extends StatefulWidget {
   const ChatWallpaperView({
     super.key,
     required this.chatId,
     required this.chatTitle,
+    this.forDarkTheme = false,
   });
 
-  final int chatId;
+  const ChatWallpaperView.global({
+    super.key,
+    required this.chatTitle,
+    required this.forDarkTheme,
+  }) : chatId = null;
+
+  final int? chatId;
   final String chatTitle;
+  final bool forDarkTheme;
+
+  bool get isGlobal => chatId == null;
 
   @override
   State<ChatWallpaperView> createState() => _ChatWallpaperViewState();
@@ -27,7 +39,9 @@ class ChatWallpaperView extends StatefulWidget {
 class _ChatWallpaperViewState extends State<ChatWallpaperView> {
   final _controller = ChatWallpaperController.shared;
   ChatWallpaper? _selection;
+  ChatWallpaper? _themeSelection;
   ChatWallpaper? _initialRemote;
+  List<ChatWallpaper> _catalogBackgrounds = const [];
   bool _loaded = false;
   bool _saving = false;
 
@@ -37,7 +51,9 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
   void initState() {
     super.initState();
     _controller.addListener(_onControllerChanged);
-    _load();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _load();
+    });
   }
 
   @override
@@ -48,7 +64,13 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
 
   void _onControllerChanged() {
     if (!mounted) return;
-    final current = _controller.selectionFor(widget.chatId);
+    if (widget.isGlobal) {
+      setState(() {
+        _selection = _controller.defaultWallpaper(dark: widget.forDarkTheme);
+      });
+      return;
+    }
+    final current = _controller.selectionFor(widget.chatId!);
     if (_selection?.kind == ChatWallpaperKind.telegram &&
         current?.kind == ChatWallpaperKind.telegram &&
         _selection?.backgroundId == current?.backgroundId) {
@@ -62,13 +84,37 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
   }
 
   Future<void> _load() async {
-    await _controller.load(widget.chatId);
-    if (_controller.canApplyGiftTheme(widget.chatId)) {
-      await _controller.loadGiftThemes();
+    final dark = widget.isGlobal ? widget.forDarkTheme : _isDarkTheme;
+    if (widget.isGlobal) {
+      await _controller.loadDefaultWallpaper(dark: widget.forDarkTheme);
+      try {
+        _catalogBackgrounds = await _controller.installedBackgrounds(
+          dark: widget.forDarkTheme,
+        );
+      } catch (_) {}
+    } else {
+      await _controller.load(widget.chatId!);
+      if (_controller.canApplyGiftTheme(widget.chatId!)) {
+        await _controller.loadGiftThemes();
+      }
+      try {
+        _catalogBackgrounds = await _controller.installedBackgrounds(
+          dark: dark,
+        );
+      } catch (_) {}
     }
     if (!mounted) return;
     setState(() {
-      _selection = _controller.selectionFor(widget.chatId);
+      final boostedChat =
+          !widget.isGlobal && _controller.isBoostedChat(widget.chatId!);
+      _selection = widget.isGlobal
+          ? _controller.defaultWallpaper(dark: widget.forDarkTheme)
+          : boostedChat
+          ? _controller.selectionFor(widget.chatId!)
+          : _controller.wallpaperSelectionFor(widget.chatId!);
+      _themeSelection = widget.isGlobal || boostedChat
+          ? null
+          : _controller.themeSelectionFor(widget.chatId!);
       if (_selection?.kind == ChatWallpaperKind.telegram) {
         _initialRemote = _selection;
       }
@@ -77,6 +123,7 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
   }
 
   Future<void> _pickPhoto() async {
+    if (!_allowCustomWallpaper()) return;
     try {
       final picked = await AppAssetPicker.pick(
         context,
@@ -90,22 +137,79 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
     }
   }
 
+  Future<void> _searchBackgrounds() async {
+    if (!_allowCustomWallpaper()) return;
+    final selected = await Navigator.of(context).push<ChatWallpaper>(
+      PageRouteBuilder<ChatWallpaper>(
+        pageBuilder: (_, _, _) =>
+            ChatWallpaperSearchView(controller: _controller),
+        transitionsBuilder: (_, animation, _, child) =>
+            FadeTransition(opacity: animation, child: child),
+      ),
+    );
+    if (!mounted || selected == null) return;
+    setState(() => _selection = selected);
+  }
+
+  Future<void> _pickColor() async {
+    if (!_allowCustomWallpaper()) return;
+    final selected = await Navigator.of(context).push<ChatWallpaper>(
+      PageRouteBuilder<ChatWallpaper>(
+        pageBuilder: (_, _, _) => ChatWallpaperColorView(
+          controller: _controller,
+          dark: widget.isGlobal ? widget.forDarkTheme : _isDarkTheme,
+          initial: _selection,
+        ),
+        transitionsBuilder: (_, animation, _, child) =>
+            FadeTransition(opacity: animation, child: child),
+      ),
+    );
+    if (!mounted || selected == null) return;
+    setState(() => _selection = selected);
+  }
+
+  bool _allowCustomWallpaper() {
+    if (widget.isGlobal || !_controller.isBoostedChat(widget.chatId!)) {
+      return true;
+    }
+    final access = _controller.accessFor(
+      widget.chatId!,
+      const ChatWallpaper.telegram(backgroundId: 0, remoteType: 'wallpaper'),
+    );
+    if (access.allowed) return true;
+    showToast(
+      context,
+      context.l10n.t(AppStringKeys.chatWallpaperBoostRequired, {
+        'value1': access.requiredLevel,
+      }),
+    );
+    return false;
+  }
+
   Future<void> _apply({required bool onlyForSelf}) async {
     if (_saving) return;
     setState(() => _saving = true);
     try {
       final value = _selection;
-      if (value == null) {
-        await _controller.clearAppearance(widget.chatId);
-      } else if (value.kind == ChatWallpaperKind.theme) {
-        await _controller.applyTheme(
-          widget.chatId,
-          value.themeName,
-          kind: value.themeKind,
+      if (widget.isGlobal) {
+        await _controller.applyDefaultWallpaper(
+          value,
+          dark: widget.forDarkTheme,
+        );
+      } else if (_controller.isBoostedChat(widget.chatId!)) {
+        await _controller.applyWallpaper(
+          widget.chatId!,
+          value,
+          onlyForSelf: false,
         );
       } else {
+        await _controller.applyTheme(
+          widget.chatId!,
+          _themeSelection?.themeName,
+          kind: _themeSelection?.themeKind ?? ChatThemeKind.emoji,
+        );
         await _controller.applyWallpaper(
-          widget.chatId,
+          widget.chatId!,
           value,
           onlyForSelf: onlyForSelf,
         );
@@ -126,7 +230,9 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
       child: Column(
         children: [
           NavHeader(
-            title: AppStringKeys.chatWallpaperTitle,
+            title: widget.isGlobal
+                ? AppStringKeys.chatWallpaperGlobalTitle
+                : AppStringKeys.chatWallpaperTitle,
             onBack: () => Navigator.of(context).pop(),
           ),
           Expanded(
@@ -137,6 +243,12 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         _preview(),
+                        if (_selection?.supportsBlur == true ||
+                            _selection?.supportsMotion == true ||
+                            _selection?.supportsIntensity == true) ...[
+                          const SizedBox(height: 12),
+                          _effects(),
+                        ],
                         const SizedBox(height: 18),
                         Text(
                           AppStringKeys.chatWallpaperChoose.l10n(context),
@@ -148,11 +260,12 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
                         ),
                         const SizedBox(height: 10),
                         _choices(),
-                        if (_controller.canApplyTheme(widget.chatId) &&
+                        if (!widget.isGlobal &&
+                            _controller.canApplyTheme(widget.chatId!) &&
                             _controller
                                 .availableThemes(
                                   dark: _isDarkTheme,
-                                  chatId: widget.chatId,
+                                  chatId: widget.chatId!,
                                   resolvePatterns: false,
                                 )
                                 .isNotEmpty) ...[
@@ -169,9 +282,11 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            AppStringKeys.chatWallpaperThemesShared.l10n(
-                              context,
-                            ),
+                            (_controller.isBoostedChat(widget.chatId!)
+                                    ? AppStringKeys
+                                          .chatWallpaperThemesSharedWithChat
+                                    : AppStringKeys.chatWallpaperThemesShared)
+                                .l10n(context),
                             style: TextStyle(
                               fontSize: 12,
                               color: c.textTertiary,
@@ -194,10 +309,15 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
   Widget _preview() {
     final c = context.colors;
     final dark = _isDarkTheme;
-    final previewWallpaper = _selection?.kind == ChatWallpaperKind.theme
+    final activeTheme = _controller.isBoostedChat(widget.chatId ?? 0)
+        ? (_selection?.kind == ChatWallpaperKind.theme ? _selection : null)
+        : _themeSelection;
+    final previewWallpaper =
+        _selection?.kind == ChatWallpaperKind.theme ||
+            (_selection == null && activeTheme != null)
         ? _controller.themeWallpaper(
-            _selection?.themeName ?? '',
-            kind: _selection?.themeKind ?? ChatThemeKind.emoji,
+            activeTheme?.themeName ?? '',
+            kind: activeTheme?.themeKind ?? ChatThemeKind.emoji,
             dark: dark,
           )
         : _selection;
@@ -245,15 +365,18 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
   Widget _previewBubble(String text, {required bool outgoing}) {
     final c = context.colors;
     final dark = _isDarkTheme;
-    final themeStyle = switch (_selection?.kind) {
-      ChatWallpaperKind.theme => _controller.styleForTheme(
-        _selection?.themeName ?? '',
-        kind: _selection?.themeKind ?? ChatThemeKind.emoji,
-        dark: dark,
-      ),
-      null => null,
-      _ => _controller.themeStyleFor(widget.chatId, dark: dark),
-    };
+    final activeTheme = _selection?.kind == ChatWallpaperKind.theme
+        ? _selection
+        : _themeSelection;
+    final themeStyle = activeTheme == null
+        ? widget.isGlobal
+              ? null
+              : _controller.themeStyleFor(widget.chatId!, dark: dark)
+        : _controller.styleForTheme(
+            activeTheme.themeName ?? '',
+            kind: activeTheme.themeKind,
+            dark: dark,
+          );
     final background = outgoing
         ? themeStyle?.outgoingColor ?? const Color(0xFF4B8DEE)
         : themeStyle?.incomingColor ?? c.bubbleIncoming;
@@ -292,9 +415,15 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
           children: [
             _defaultChoice(width),
             _photoChoice(width),
+            _searchChoice(width),
+            _colorChoice(width),
             if (_initialRemote != null) _remoteChoice(width, _initialRemote!),
             for (final preset in chatWallpaperPresets)
               _presetChoice(width, preset),
+            for (final wallpaper in _catalogBackgrounds.take(12))
+              if (wallpaper.remoteType == 'wallpaper' ||
+                  wallpaper.remoteType == 'pattern')
+                _remoteCatalogChoice(width, wallpaper),
           ],
         );
       },
@@ -339,6 +468,7 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
       width: width,
       selected: selected,
       onTap: _pickPhoto,
+      access: _customWallpaperAccess(),
       child: path != null && File(path).existsSync()
           ? Stack(
               fit: StackFit.expand,
@@ -373,6 +503,75 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
     );
   }
 
+  Widget _searchChoice(double width) {
+    final c = context.colors;
+    return _choiceFrame(
+      width: width,
+      selected: false,
+      onTap: _searchBackgrounds,
+      access: _customWallpaperAccess(),
+      child: ColoredBox(
+        color: c.panelBackground,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppIcon(
+                HeroAppIcons.magnifyingGlass,
+                size: 25,
+                color: c.linkBlue,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                AppStringKeys.chatWallpaperSearch.l10n(context),
+                style: TextStyle(fontSize: 12, color: c.textSecondary),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _colorChoice(double width) {
+    return _choiceFrame(
+      width: width,
+      selected:
+          _selection?.kind == ChatWallpaperKind.telegram &&
+          (_selection?.remoteType == 'fill' ||
+              _selection?.remoteType == 'pattern') &&
+          _selection?.backgroundId == 0,
+      onTap: _pickColor,
+      access: _customWallpaperAccess(),
+      child: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFFF2828F), Color(0xFF8B75E8), Color(0xFF5BC5D8)],
+          ),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const AppIcon(
+                HeroAppIcons.palette,
+                size: 25,
+                color: Color(0xFFFFFFFF),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                AppStringKeys.chatWallpaperColor.l10n(context),
+                style: const TextStyle(fontSize: 12, color: Color(0xFFFFFFFF)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _remoteChoice(double width, ChatWallpaper wallpaper) {
     final selected = _selection == wallpaper;
     return _choiceFrame(
@@ -404,6 +603,35 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
     );
   }
 
+  Widget _remoteCatalogChoice(double width, ChatWallpaper wallpaper) {
+    final resolved = _selection?.backgroundId == wallpaper.backgroundId
+        ? _selection ?? wallpaper
+        : wallpaper.withoutPatternDocument();
+    return _choiceFrame(
+      width: width,
+      selected:
+          _selection?.kind == ChatWallpaperKind.telegram &&
+          _selection?.backgroundId == wallpaper.backgroundId,
+      onTap: () =>
+          setState(() => _selection = _controller.resolvedWallpaper(wallpaper)),
+      access: _customWallpaperAccess(),
+      child: ChatWallpaperBackground(
+        wallpaper: resolved,
+        fallbackColor: context.colors.chatBackground,
+        brightness: _isDarkTheme ? Brightness.dark : Brightness.light,
+        child: wallpaper.remoteType == 'pattern'
+            ? const Center(
+                child: AppIcon(
+                  HeroAppIcons.wandMagicSparkles,
+                  size: 23,
+                  color: Color(0xCCFFFFFF),
+                ),
+              )
+            : null,
+      ),
+    );
+  }
+
   Widget _themeChoices() {
     final dark = _isDarkTheme;
     final themes = _controller.availableThemes(
@@ -411,26 +639,73 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
       chatId: widget.chatId,
       resolvePatterns: false,
     );
+    final isGroup = _controller.isBoostedChat(widget.chatId!);
     return SizedBox(
       height: 112,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        itemCount: themes.length,
+        itemCount: themes.length + 1,
         separatorBuilder: (_, _) => const SizedBox(width: 10),
         itemBuilder: (context, index) {
-          final theme = themes[index];
+          if (index == 0) {
+            final selected = isGroup
+                ? _selection == null
+                : _themeSelection == null;
+            return _choiceFrame(
+              width: 104,
+              selected: selected,
+              onTap: () => setState(() {
+                if (isGroup) {
+                  _selection = null;
+                } else {
+                  _themeSelection = null;
+                }
+              }),
+              child: ColoredBox(
+                color: context.colors.chatBackground,
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      AppIcon(
+                        HeroAppIcons.circleXmark,
+                        size: 28,
+                        color: context.colors.textSecondary,
+                      ),
+                      const SizedBox(height: 7),
+                      Text(
+                        AppStringKeys.chatWallpaperNoTheme.l10n(context),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: context.colors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }
+          final theme = themes[index - 1];
+          final value = ChatWallpaper.theme(theme.name, themeKind: theme.kind);
+          final access = isGroup
+              ? _controller.accessFor(widget.chatId!, value)
+              : null;
           return _choiceFrame(
             width: 104,
             selected:
-                _selection?.kind == ChatWallpaperKind.theme &&
-                _selection?.themeName == theme.name &&
-                _selection?.themeKind == theme.kind,
-            onTap: () => setState(
-              () => _selection = ChatWallpaper.theme(
-                theme.name,
-                themeKind: theme.kind,
-              ),
-            ),
+                (isGroup ? _selection : _themeSelection)?.themeName ==
+                    theme.name &&
+                (isGroup ? _selection : _themeSelection)?.themeKind ==
+                    theme.kind,
+            onTap: () => setState(() {
+              if (isGroup) {
+                _selection = value;
+              } else {
+                _themeSelection = value;
+              }
+            }),
+            access: access,
             child: ChatWallpaperBackground(
               wallpaper: theme.wallpaper,
               fallbackColor: context.colors.chatBackground,
@@ -459,6 +734,7 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
       width: width,
       selected: selected,
       onTap: () => setState(() => _selection = ChatWallpaper.preset(preset.id)),
+      access: _customWallpaperAccess(),
       child: ChatWallpaperBackground(
         wallpaper: ChatWallpaper.preset(preset.id),
         fallbackColor: preset.colors.first,
@@ -472,11 +748,20 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
     required bool selected,
     required VoidCallback onTap,
     required Widget child,
+    ChatWallpaperBoostAccess? access,
   }) {
     final c = context.colors;
+    final locked = access != null && !access.allowed;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: onTap,
+      onTap: locked
+          ? () => showToast(
+              context,
+              context.l10n.t(AppStringKeys.chatWallpaperBoostRequired, {
+                'value1': access.requiredLevel,
+              }),
+            )
+          : onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 140),
         width: width,
@@ -486,8 +771,234 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
           color: selected ? c.linkBlue : c.divider,
           borderRadius: BorderRadius.circular(14),
         ),
-        child: ClipRRect(borderRadius: BorderRadius.circular(11), child: child),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(11),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              child,
+              if (locked)
+                ColoredBox(
+                  color: const Color(0x73000000),
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xC57D4DE8),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const AppIcon(
+                            HeroAppIcons.lock,
+                            size: 12,
+                            color: Color(0xFFFFFFFF),
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            context.l10n.t(
+                              AppStringKeys.chatWallpaperBoostLevel,
+                              {'value1': access.requiredLevel},
+                            ),
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFFFFFFFF),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
+    );
+  }
+
+  ChatWallpaperBoostAccess? _customWallpaperAccess() {
+    if (widget.isGlobal || !_controller.isBoostedChat(widget.chatId!)) {
+      return null;
+    }
+    return _controller.accessFor(
+      widget.chatId!,
+      const ChatWallpaper.telegram(backgroundId: 0, remoteType: 'wallpaper'),
+    );
+  }
+
+  Widget _effects() {
+    final value = _selection;
+    if (value == null) return const SizedBox.shrink();
+    final c = context.colors;
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: c.card,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              if (value.supportsBlur)
+                Expanded(
+                  child: _effectButton(
+                    AppStringKeys.chatWallpaperBlur,
+                    HeroAppIcons.droplet,
+                    value.isBlurred,
+                    () => setState(
+                      () => _selection = value.withBlurred(!value.isBlurred),
+                    ),
+                  ),
+                ),
+              if (value.supportsBlur && value.supportsMotion)
+                const SizedBox(width: 8),
+              if (value.supportsMotion)
+                Expanded(
+                  child: _effectButton(
+                    AppStringKeys.chatWallpaperMotion,
+                    HeroAppIcons.rotate,
+                    value.isMoving,
+                    () => setState(
+                      () => _selection = value.withMoving(!value.isMoving),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          if (value.supportsIntensity) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Text(
+                  AppStringKeys.chatWallpaperIntensity.l10n(context),
+                  style: TextStyle(fontSize: 13, color: c.textSecondary),
+                ),
+                const SizedBox(width: 12),
+                Expanded(child: _intensitySlider(value)),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 34,
+                  child: Text(
+                    '${value.intensity}%',
+                    textAlign: TextAlign.right,
+                    style: TextStyle(fontSize: 12, color: c.textTertiary),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _effectButton(
+    String key,
+    AppIconData icon,
+    bool active,
+    VoidCallback onTap,
+  ) {
+    final c = context.colors;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        height: 40,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: active ? c.linkBlue.withValues(alpha: 0.14) : c.searchFill,
+          border: Border.all(color: active ? c.linkBlue : c.divider),
+          borderRadius: BorderRadius.circular(11),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            AppIcon(
+              icon,
+              size: 17,
+              color: active ? c.linkBlue : c.textSecondary,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              key.l10n(context),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: active ? c.linkBlue : c.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _intensitySlider(ChatWallpaper value) {
+    final c = context.colors;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        void update(Offset position) {
+          final next = (position.dx / constraints.maxWidth).clamp(0.0, 1.0);
+          setState(
+            () => _selection = value.withIntensity((next * 100).round()),
+          );
+        }
+
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapDown: (details) => update(details.localPosition),
+          onHorizontalDragUpdate: (details) => update(details.localPosition),
+          child: SizedBox(
+            height: 28,
+            child: Stack(
+              alignment: Alignment.centerLeft,
+              children: [
+                Container(
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: c.divider,
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                ),
+                FractionallySizedBox(
+                  widthFactor: value.intensity.clamp(0, 100) / 100,
+                  child: Container(
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: c.linkBlue,
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left:
+                      (value.intensity.clamp(0, 100) / 100) *
+                      (constraints.maxWidth - 20),
+                  child: Container(
+                    width: 20,
+                    height: 20,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFFFFFFF),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(color: Color(0x33000000), blurRadius: 4),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -495,9 +1006,14 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
     final c = context.colors;
     final isTheme = _selection?.kind == ChatWallpaperKind.theme;
     final canUsePersonal =
+        !widget.isGlobal &&
         !isTheme &&
         _selection != null &&
-        _controller.canApplyOnlyForSelf(widget.chatId);
+        _controller.canApplyOnlyForSelf(widget.chatId!);
+    final access = widget.isGlobal
+        ? null
+        : _controller.accessFor(widget.chatId!, _selection);
+    final enabled = !_saving && (access?.allowed ?? true);
     return ColoredBox(
       color: c.card,
       child: SafeArea(
@@ -511,6 +1027,7 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
                   AppStringKeys.chatWallpaperApplyForMe,
                   onlyForSelf: true,
                   primary: false,
+                  enabled: enabled,
                 ),
               ),
               const SizedBox(width: 10),
@@ -521,9 +1038,14 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
                     ? AppStringKeys.chatWallpaperApplyForBoth
                     : canUsePersonal
                     ? AppStringKeys.chatWallpaperApplyForBoth
+                    : access != null && !access.allowed
+                    ? context.l10n.t(AppStringKeys.chatWallpaperBoostRequired, {
+                        'value1': access.requiredLevel,
+                      })
                     : AppStringKeys.chatWallpaperApply,
                 onlyForSelf: false,
                 primary: !isTheme,
+                enabled: enabled,
               ),
             ),
           ],
@@ -536,24 +1058,25 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
     String label, {
     required bool onlyForSelf,
     required bool primary,
+    required bool enabled,
   }) {
     final c = context.colors;
     final background = primary ? c.linkBlue : const Color(0x00000000);
     final foreground = primary ? const Color(0xFFFFFFFF) : c.linkBlue;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: _saving ? null : () => _apply(onlyForSelf: onlyForSelf),
+      onTap: enabled ? () => _apply(onlyForSelf: onlyForSelf) : null,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 120),
         height: 48,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: _saving ? background.withValues(alpha: 0.55) : background,
+          color: enabled ? background : background.withValues(alpha: 0.45),
           border: primary ? null : Border.all(color: c.linkBlue),
           borderRadius: BorderRadius.circular(14),
         ),
         child: Text(
-          label.l10n(context),
+          AppStrings.t(label),
           style: TextStyle(
             color: foreground,
             fontSize: 16,

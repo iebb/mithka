@@ -462,14 +462,33 @@ abstract final class AppStringKeys {
   static const chatWallpaperChanged = 'chatWallpaperChanged';
   static const chatWallpaperChoose = 'chatWallpaperChoose';
   static const chatWallpaperDefault = 'chatWallpaperDefault';
+  static const chatWallpaperBlur = 'chatWallpaperBlur';
+  static const chatWallpaperBoostLevel = 'chatWallpaperBoostLevel';
+  static const chatWallpaperBoostRequired = 'chatWallpaperBoostRequired';
+  static const chatWallpaperColor = 'chatWallpaperColor';
+  static const chatWallpaperColorTitle = 'chatWallpaperColorTitle';
+  static const chatWallpaperGlobalPreview = 'chatWallpaperGlobalPreview';
+  static const chatWallpaperGlobalTitle = 'chatWallpaperGlobalTitle';
+  static const chatWallpaperIntensity = 'chatWallpaperIntensity';
+  static const chatWallpaperMotion = 'chatWallpaperMotion';
+  static const chatWallpaperNoTheme = 'chatWallpaperNoTheme';
+  static const chatWallpaperPattern = 'chatWallpaperPattern';
   static const chatWallpaperPhoto = 'chatWallpaperPhoto';
   static const chatWallpaperPickFailed = 'chatWallpaperPickFailed';
   static const chatWallpaperPreviewIncoming = 'chatWallpaperPreviewIncoming';
   static const chatWallpaperPreviewOutgoing = 'chatWallpaperPreviewOutgoing';
   static const chatWallpaperSaveFailed = 'chatWallpaperSaveFailed';
+  static const chatWallpaperSearch = 'chatWallpaperSearch';
+  static const chatWallpaperSearchEmpty = 'chatWallpaperSearchEmpty';
+  static const chatWallpaperSearchFailed = 'chatWallpaperSearchFailed';
+  static const chatWallpaperSearchHint = 'chatWallpaperSearchHint';
+  static const chatWallpaperSearchPowered = 'chatWallpaperSearchPowered';
+  static const chatWallpaperSearchTitle = 'chatWallpaperSearchTitle';
   static const chatWallpaperTelegramCurrent = 'chatWallpaperTelegramCurrent';
   static const chatWallpaperTelegramThemes = 'chatWallpaperTelegramThemes';
   static const chatWallpaperThemesShared = 'chatWallpaperThemesShared';
+  static const chatWallpaperThemesSharedWithChat =
+      'chatWallpaperThemesSharedWithChat';
   static const chatWallpaperTitle = 'chatWallpaperTitle';
   static const chatThemeChanged = 'chatThemeChanged';
   static const cloudThemeApply = 'cloudThemeApply';
@@ -910,6 +929,8 @@ abstract final class AppStringKeys {
   static const editProfileProfileColor = 'editProfileProfileColor';
   static const editProfileProfileColorDescription =
       'editProfileProfileColorDescription';
+  static const editProfileProfileIcon = 'editProfileProfileIcon';
+  static const editProfileProfileIconEmpty = 'editProfileProfileIconEmpty';
   static const editProfileSaveFailed = 'editProfileSaveFailed';
   static const editProfileSetUsername = 'editProfileSetUsername';
   static const editProfileStaticAvatar = 'editProfileStaticAvatar';
@@ -974,6 +995,15 @@ abstract final class AppStringKeys {
   static const generalTitle = 'generalTitle';
   static const groupManagementAdminApprovalRequired =
       'groupManagementAdminApprovalRequired';
+  static const groupAppearanceBoostLevel = 'groupAppearanceBoostLevel';
+  static const groupAppearanceDescription = 'groupAppearanceDescription';
+  static const groupAppearanceEmojiPack = 'groupAppearanceEmojiPack';
+  static const groupAppearanceEmojiStatus = 'groupAppearanceEmojiStatus';
+  static const groupAppearanceNone = 'groupAppearanceNone';
+  static const groupAppearanceProfileIcon = 'groupAppearanceProfileIcon';
+  static const groupAppearanceStickers = 'groupAppearanceStickers';
+  static const groupAppearanceTitle = 'groupAppearanceTitle';
+  static const groupAppearanceWallpaper = 'groupAppearanceWallpaper';
   static const groupManagementBasicSection = 'groupManagementBasicSection';
   static const groupManagementEditable = 'groupManagementEditable';
   static const groupManagementEditFailed = 'groupManagementEditFailed';

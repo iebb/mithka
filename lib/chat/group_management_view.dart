@@ -6,8 +6,7 @@
 //  that Telegram groups cannot perform natively.
 //
 
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
@@ -19,6 +18,7 @@ import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
 import 'chat_members_view.dart';
+import 'group_appearance_view.dart';
 import 'group_management_log_view.dart';
 
 class GroupManagementView extends StatefulWidget {
@@ -170,9 +170,9 @@ class _GroupManagementViewState extends State<GroupManagementView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
+    return ColoredBox(
+      color: c.groupedBackground,
+      child: Column(
         children: [
           NavHeader(
             title: AppStringKeys.chatInfoManageGroup,
@@ -180,7 +180,7 @@ class _GroupManagementViewState extends State<GroupManagementView> {
           ),
           Expanded(
             child: _loading
-                ? const Center(child: CupertinoActivityIndicator())
+                ? const Center(child: _GroupManagementSpinner())
                 : ListView(
                     padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
                     children: [
@@ -211,8 +211,8 @@ class _GroupManagementViewState extends State<GroupManagementView> {
                               AppStringKeys.groupManagementInviteLinkQr,
                             ),
                             onTap: () => Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => QRCodeView(
+                              _pageRoute(
+                                QRCodeView(
                                   name: _title,
                                   chatId: widget.chatId,
                                   isGroup: true,
@@ -222,6 +222,21 @@ class _GroupManagementViewState extends State<GroupManagementView> {
                           ),
                         ],
                       ),
+                      if (_supergroupId != null) ...[
+                        _gap(),
+                        _section(
+                          AppStrings.t(AppStringKeys.groupAppearanceTitle),
+                          [
+                            _navRow(
+                              AppStrings.t(AppStringKeys.groupAppearanceTitle),
+                              value: AppStrings.t(
+                                AppStringKeys.groupAppearanceDescription,
+                              ),
+                              onTap: _openAppearance,
+                            ),
+                          ],
+                        ),
+                      ],
                       if (_supergroupId != null) ...[
                         _gap(),
                         _section(
@@ -276,8 +291,8 @@ class _GroupManagementViewState extends State<GroupManagementView> {
                           _navRow(
                             AppStrings.t(AppStringKeys.groupManagementLogTitle),
                             onTap: () => Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => GroupManagementLogView(
+                              _pageRoute(
+                                GroupManagementLogView(
                                   chatId: widget.chatId,
                                   title: _title,
                                 ),
@@ -406,9 +421,9 @@ class _GroupManagementViewState extends State<GroupManagementView> {
                 ),
               ),
             ),
-            CupertinoSwitch(
+            _GroupManagementSwitch(
               value: value,
-              activeTrackColor: AppTheme.brand,
+              activeColor: AppTheme.brand,
               onChanged: enabled ? onChanged : null,
             ),
           ],
@@ -423,8 +438,8 @@ class _GroupManagementViewState extends State<GroupManagementView> {
       return;
     }
     final value = await Navigator.of(context).push<String>(
-      MaterialPageRoute(
-        builder: (_) => EditFieldView(
+      _pageRoute(
+        EditFieldView(
           title: AppStringKeys.groupManagementGroupName,
           initial: _title,
           maxLength: 128,
@@ -449,8 +464,8 @@ class _GroupManagementViewState extends State<GroupManagementView> {
   Future<void> _editUsername() async {
     if (_supergroupId == null) return;
     final value = await Navigator.of(context).push<String>(
-      MaterialPageRoute(
-        builder: (_) => EditFieldView(
+      _pageRoute(
+        EditFieldView(
           title: AppStringKeys.groupManagementPublicUsername,
           initial: _username,
           prefix: '@',
@@ -533,17 +548,15 @@ class _GroupManagementViewState extends State<GroupManagementView> {
   }
 
   void _openMembers() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ChatMembersView(chatId: widget.chatId, title: _title),
-      ),
-    );
+    Navigator.of(
+      context,
+    ).push(_pageRoute(ChatMembersView(chatId: widget.chatId, title: _title)));
   }
 
   void _openAdministrators() {
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ChatMembersView(
+      _pageRoute(
+        ChatMembersView(
           chatId: widget.chatId,
           title: _title,
           mode: ChatMembersMode.administrators,
@@ -551,4 +564,103 @@ class _GroupManagementViewState extends State<GroupManagementView> {
       ),
     );
   }
+
+  void _openAppearance() {
+    final supergroupId = _supergroupId;
+    if (supergroupId == null) return;
+    Navigator.of(context).push(
+      _pageRoute(
+        GroupAppearanceView(
+          chatId: widget.chatId,
+          supergroupId: supergroupId,
+          title: _title,
+          isChannel: _isChannel,
+          canChangeInfo: _canChangeInfo,
+        ),
+      ),
+    );
+  }
+
+  PageRoute<T> _pageRoute<T>(Widget child) => PageRouteBuilder<T>(
+    pageBuilder: (_, _, _) => child,
+    transitionsBuilder: (_, animation, _, routeChild) =>
+        FadeTransition(opacity: animation, child: routeChild),
+  );
+}
+
+class _GroupManagementSwitch extends StatelessWidget {
+  const _GroupManagementSwitch({
+    required this.value,
+    required this.activeColor,
+    this.onChanged,
+  });
+
+  final bool value;
+  final Color activeColor;
+  final ValueChanged<bool>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onChanged == null ? null : () => onChanged!(!value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        width: 46,
+        height: 28,
+        padding: const EdgeInsets.all(2),
+        decoration: BoxDecoration(
+          color: value ? activeColor : c.divider,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: AnimatedAlign(
+          duration: const Duration(milliseconds: 150),
+          alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+          child: Container(
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              color: onChanged == null
+                  ? c.textTertiary
+                  : const Color(0xFFFFFFFF),
+              shape: BoxShape.circle,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GroupManagementSpinner extends StatefulWidget {
+  const _GroupManagementSpinner();
+
+  @override
+  State<_GroupManagementSpinner> createState() =>
+      _GroupManagementSpinnerState();
+}
+
+class _GroupManagementSpinnerState extends State<_GroupManagementSpinner>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 850),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => RotationTransition(
+    turns: _controller,
+    child: AppIcon(
+      HeroAppIcons.rotate,
+      size: 24,
+      color: context.colors.textTertiary,
+    ),
+  );
 }

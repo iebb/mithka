@@ -780,6 +780,8 @@ class _ChatViewState extends State<ChatView> {
     super.initState();
     _wallpaperController.addListener(_onWallpaperChanged);
     unawaited(_wallpaperController.load(widget.chatId));
+    unawaited(_wallpaperController.loadDefaultWallpaper(dark: false));
+    unawaited(_wallpaperController.loadDefaultWallpaper(dark: true));
     _openAtLatest = context.read<ThemeController>().openChatsAtLatest;
     _sessionRenderState = widget.initialMessageId == null
         ? _sessionRenderStates[widget.chatId]
@@ -3426,6 +3428,10 @@ class _ChatViewState extends State<ChatView> {
       dark: dark,
     );
     if (chatWallpaper != null) return chatWallpaper;
+    final defaultWallpaper = _wallpaperController.defaultWallpaper(dark: dark);
+    if (defaultWallpaper != null) {
+      return _wallpaperController.resolvedWallpaper(defaultWallpaper);
+    }
     final cloudWallpaper = _resolvedCloudTheme?.wallpaper;
     return cloudWallpaper == null
         ? null
