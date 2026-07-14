@@ -477,27 +477,6 @@ void main() {
         moreOrLessEquals(tester.getCenter(title).dy),
       );
 
-      final tableStyleButton = find.byKey(
-        const ValueKey('rich-table-style-button'),
-      );
-      expect(tableStyleButton, findsOneWidget);
-      await tester.tap(tableStyleButton);
-      await tester.pumpAndSettle();
-      expect(find.text('Borderless'), findsOneWidget);
-      expect(find.text('Striped table'), findsNothing);
-      final borderlessToggle = find.byKey(
-        const ValueKey('rich-table-borderless-toggle'),
-      );
-      expect(
-        find.descendant(
-          of: borderlessToggle,
-          matching: find.byIcon(HeroAppIcons.check.data),
-        ),
-        findsNothing,
-      );
-      await tester.tap(borderlessToggle);
-      await tester.pumpAndSettle();
-
       final originalTextFieldCount = find.byType(TextField).evaluate().length;
       final tableControlKeys = [
         'rich-table-add-row',
@@ -505,6 +484,7 @@ void main() {
         'rich-table-toggle-header',
         'rich-table-align-horizontal',
         'rich-table-align-vertical',
+        'rich-table-toggle-borderless',
       ];
       for (final key in tableControlKeys) {
         expect(find.byKey(ValueKey(key)), findsOneWidget);
@@ -515,6 +495,31 @@ void main() {
       for (final center in controlCenters.skip(1)) {
         expect(center.dy, moreOrLessEquals(controlCenters.first.dy));
       }
+      final headerControl = find.byKey(
+        const ValueKey('rich-table-toggle-header'),
+      );
+      expect(
+        find.descendant(
+          of: headerControl,
+          matching: find.byIcon(HeroAppIcons.hashtag.data),
+        ),
+        findsOneWidget,
+      );
+      final borderlessControl = find.byKey(
+        const ValueKey('rich-table-toggle-borderless'),
+      );
+      expect(
+        tester.getCenter(borderlessControl).dx,
+        greaterThan(
+          tester
+              .getCenter(
+                find.byKey(const ValueKey('rich-table-align-vertical')),
+              )
+              .dx,
+        ),
+      );
+      await tester.tap(borderlessControl);
+      await tester.pump();
       await tester.tap(find.byKey(const ValueKey('rich-table-add-row')));
       await tester.pump();
       expect(find.byType(TextField), findsNWidgets(originalTextFieldCount + 3));
@@ -683,7 +688,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Change Table'));
       await tester.pump();
-      expect(find.text('Borderless'), findsOneWidget);
+      expect(find.text('Borderless'), findsNothing);
       expect(find.text('Striped table'), findsNothing);
       expect(find.text('Header cell'), findsNothing);
       for (final removedAction in [

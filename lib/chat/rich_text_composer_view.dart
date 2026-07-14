@@ -123,7 +123,6 @@ enum _RichTableMenuAction {
   addRowBelow,
   addColumnLeft,
   addColumnRight,
-  toggleBorderless,
   removeRow,
   removeColumn,
   removeTable,
@@ -1949,12 +1948,12 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
                   textDirection: Directionality.of(context),
                   textScaler: MediaQuery.textScalerOf(context),
                 )..layout();
-                const fixedHeaderWidth = 26.0 + 4 + 8 + 176;
+                const fixedHeaderWidth = 26.0 + 4 + 8 + 212;
                 final fitsOneRow =
                     fixedHeaderWidth + titlePainter.width + 4 <=
                     constraints.maxWidth;
                 final titleRow = <Widget>[
-                  _tableStyleButton(c, table),
+                  _tableLeadingIcon(c),
                   const SizedBox(width: 4),
                   Expanded(child: _tableTitleField(table, titleStyle)),
                 ];
@@ -2007,34 +2006,12 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
     );
   }
 
-  Widget _tableStyleButton(AppColors c, _RichTableDraft table) {
-    return Builder(
-      builder: (buttonContext) => Semantics(
-        button: true,
-        label: AppStringKeys.richTextTableBorderless.l10n(context),
-        child: GestureDetector(
-          key: const ValueKey('rich-table-style-button'),
-          behavior: HitTestBehavior.opaque,
-          onTap: () {
-            final renderObject = buttonContext.findRenderObject();
-            if (renderObject is! RenderBox) return;
-            final anchor = renderObject.localToGlobal(
-              Offset(renderObject.size.width / 2, renderObject.size.height),
-            );
-            unawaited(_showTableStyleMenu(table, anchor));
-          },
-          child: SizedBox(
-            width: 26,
-            height: 30,
-            child: Center(
-              child: AppIcon(
-                HeroAppIcons.tableCells,
-                size: 18,
-                color: c.textPrimary,
-              ),
-            ),
-          ),
-        ),
+  Widget _tableLeadingIcon(AppColors c) {
+    return SizedBox(
+      width: 26,
+      height: 30,
+      child: Center(
+        child: AppIcon(HeroAppIcons.tableCells, size: 18, color: c.textPrimary),
       ),
     );
   }
@@ -2083,7 +2060,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
         _tableControlButton(
           c,
           key: const ValueKey('rich-table-toggle-header'),
-          icon: HeroAppIcons.tableCells,
+          icon: HeroAppIcons.hashtag,
           label: AppStringKeys.richTextTableHeader.l10n(context),
           selected: activeStyle?.isHeader == true,
           onTap: activeStyle == null
@@ -2131,6 +2108,19 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
           onTap: activeStyle == null
               ? null
               : () => _cycleActiveTableVerticalAlignment(table),
+        ),
+        const SizedBox(width: 4),
+        _tableControlButton(
+          c,
+          key: const ValueKey('rich-table-toggle-borderless'),
+          icon: HeroAppIcons.tableCells,
+          label:
+              (table.bordered
+                      ? AppStringKeys.richTextTableBordered
+                      : AppStringKeys.richTextTableBorderless)
+                  .l10n(context),
+          selected: !table.bordered,
+          onTap: () => _toggleTableBorderless(table),
         ),
       ],
     );
@@ -2390,7 +2380,6 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
       transitionDuration: const Duration(milliseconds: 150),
       pageBuilder: (dialogContext, _, _) => _RichTableActionsMenu(
         anchor: anchor,
-        isBorderless: !table.bordered,
         canAddColumn: table.columnCount < _RichTableDraft.maxColumns,
         canRemoveRow: table.rowCount > 1,
         canRemoveColumn: table.columnCount > 1,
@@ -2418,8 +2407,6 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
         setState(() => table.insertColumn(column));
       case _RichTableMenuAction.addColumnRight:
         setState(() => table.insertColumn(column + 1));
-      case _RichTableMenuAction.toggleBorderless:
-        _toggleTableBorderless(table);
       case _RichTableMenuAction.removeRow:
         setState(() => table.removeRowAt(row));
       case _RichTableMenuAction.removeColumn:
@@ -2427,23 +2414,6 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
       case _RichTableMenuAction.removeTable:
         _removeTable(table);
     }
-  }
-
-  Future<void> _showTableStyleMenu(_RichTableDraft table, Offset anchor) async {
-    final shouldToggle = await showGeneralDialog<bool>(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: AppStringKeys.countryPickerCancel.l10n(context),
-      barrierColor: Colors.transparent,
-      transitionDuration: const Duration(milliseconds: 150),
-      pageBuilder: (dialogContext, _, _) => _RichTableStyleMenu(
-        anchor: anchor,
-        isBorderless: !table.bordered,
-        onToggle: () => Navigator.of(dialogContext).pop(true),
-      ),
-    );
-    if (!mounted || shouldToggle != true) return;
-    _toggleTableBorderless(table);
   }
 
   void _toggleTableBorderless(_RichTableDraft table) {
@@ -3133,68 +3103,9 @@ extension on _RichBlockKind {
   };
 }
 
-class _RichTableStyleMenu extends StatelessWidget {
-  const _RichTableStyleMenu({
-    required this.anchor,
-    required this.isBorderless,
-    required this.onToggle,
-  });
-
-  final Offset anchor;
-  final bool isBorderless;
-  final VoidCallback onToggle;
-
-  @override
-  Widget build(BuildContext context) {
-    final media = MediaQuery.of(context);
-    final screen = media.size;
-    final menuWidth = math.min(240.0, screen.width - 24);
-    final left = (anchor.dx - 24)
-        .clamp(12.0, math.max(12.0, screen.width - menuWidth - 12))
-        .toDouble();
-    final safeTop = media.padding.top + 8;
-    final maxTop = math.max(safeTop, screen.height - media.padding.bottom - 68);
-    final top = (anchor.dy + 6).clamp(safeTop, maxTop).toDouble();
-
-    return SizedBox.expand(
-      child: Stack(
-        children: [
-          Positioned(
-            left: left,
-            top: top,
-            width: menuWidth,
-            child: TextFieldTapRegion(
-              child: _RichContextMenuSurface(
-                child: _RichContextMenuRow(
-                  key: const ValueKey('rich-table-borderless-toggle'),
-                  label: AppStringKeys.richTextTableBorderless.l10n(context),
-                  leading: AppIcon(
-                    HeroAppIcons.tableCells,
-                    size: 21,
-                    color: context.colors.textPrimary,
-                  ),
-                  trailing: isBorderless
-                      ? AppIcon(
-                          HeroAppIcons.check,
-                          size: 20,
-                          color: AppTheme.brand,
-                        )
-                      : null,
-                  onTap: onToggle,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _RichTableActionsMenu extends StatefulWidget {
   const _RichTableActionsMenu({
     required this.anchor,
-    required this.isBorderless,
     required this.canAddColumn,
     required this.canRemoveRow,
     required this.canRemoveColumn,
@@ -3202,7 +3113,6 @@ class _RichTableActionsMenu extends StatefulWidget {
   });
 
   final Offset anchor;
-  final bool isBorderless;
   final bool canAddColumn;
   final bool canRemoveRow;
   final bool canRemoveColumn;
@@ -3219,7 +3129,7 @@ class _RichTableActionsMenuState extends State<_RichTableActionsMenu> {
     final screen = media.size;
     final menuWidth = math.min(390.0, screen.width - 24);
     final maxHeight = math.min(
-      410.0,
+      360.0,
       screen.height - media.padding.top - media.padding.bottom - 20,
     );
     final left = (widget.anchor.dx - menuWidth / 2)
@@ -3271,13 +3181,6 @@ class _RichTableActionsMenuState extends State<_RichTableActionsMenu> {
             AppStringKeys.richTextTableAddColumnRight,
             const _RichTableInsertIcon(HeroAppIcons.arrowRight),
             enabled: widget.canAddColumn,
-          ),
-          const _RichContextMenuDivider(),
-          _tableActionRow(
-            _RichTableMenuAction.toggleBorderless,
-            AppStringKeys.richTextTableBorderless,
-            _menuIcon(HeroAppIcons.tableCells),
-            checked: widget.isBorderless,
           ),
           const _RichContextMenuDivider(),
           _tableActionRow(
@@ -3358,7 +3261,6 @@ class _RichContextMenuSurface extends StatelessWidget {
 
 class _RichContextMenuRow extends StatelessWidget {
   const _RichContextMenuRow({
-    super.key,
     required this.label,
     this.leading,
     this.trailing,
