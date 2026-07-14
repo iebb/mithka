@@ -7,11 +7,13 @@ import android.content.ClipDescription
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
 import android.view.DragEvent
 import android.view.WindowManager
 import android.webkit.MimeTypeMap
+import androidx.core.view.WindowCompat
 import com.google.mlkit.common.model.DownloadConditions
 import com.google.mlkit.nl.translate.TranslateLanguage
 import com.google.mlkit.nl.translate.Translation
@@ -32,6 +34,12 @@ class MainActivity : FlutterActivity() {
     private var mediaDropChannel: MethodChannel? = null
     private var acceptingImageDrop = false
     private val translators = mutableMapOf<String, Translator>()
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        // Let Flutter paint under the status bar and gesture/nav bar.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        super.onCreate(savedInstanceState)
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         registerPlugins(flutterEngine)
