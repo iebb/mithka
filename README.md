@@ -102,9 +102,11 @@ debug signature is used. Neither the keystore nor `key.properties` is committed.
 
 ## CI
 
-GitHub Actions runs format + analyze + tests on the `release` branch (see
-`.github/workflows/`). `secrets.dart` is generated on the runner from the
-`TELEGRAM_API_ID` / `TELEGRAM_API_HASH` repository secrets.
+`master` does not build Android packages. At 12:00 UTC each day, GitHub Actions
+fast-forwards `nightly` when `master` has new commits; `nightly` publishes dated
+GitHub prereleases. Pushes to `release` publish dated stable GitHub releases and
+submit the production AAB to Google Play. `secrets.dart` is generated on the
+runner from the `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` repository secrets.
 
 ## License & credits
 

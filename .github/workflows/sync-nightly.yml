@@ -1,0 +1,59 @@
+name: 🌙 Sync Nightly
+
+# Mirror master to nightly once per day. A generated GITHUB_TOKEN push doesn't
+# trigger other workflows, so a changed sync explicitly dispatches release.yml.
+
+on:
+  schedule:
+    - cron: '0 12 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: sync-nightly
+  cancel-in-progress: false
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  sync:
+    name: Sync master to nightly
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.sync.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - name: Fast-forward nightly when master changed
+        id: sync
+        run: |
+          git fetch origin master
+          master_sha="$(git rev-parse origin/master)"
+
+          if git ls-remote --exit-code --heads origin nightly >/dev/null 2>&1; then
+            git fetch origin nightly
+            nightly_sha="$(git rev-parse origin/nightly)"
+            if [ "$master_sha" = "$nightly_sha" ]; then
+              echo "changed=false" >> "$GITHUB_OUTPUT"
+              echo "nightly is already at $master_sha"
+              exit 0
+            fi
+            if ! git merge-base --is-ancestor origin/nightly origin/master; then
+              echo "nightly has diverged from master; refusing to overwrite it" >&2
+              exit 1
+            fi
+          fi
+
+          git push origin "$master_sha:refs/heads/nightly"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "nightly now points to $master_sha"
+
+      - name: Dispatch nightly prerelease
+        if: steps.sync.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run release.yml --ref nightly

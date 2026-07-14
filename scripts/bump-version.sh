@@ -5,7 +5,8 @@
 # pubspec version is "X.Y.Z+B": X.Y.Z is the user-facing semver (also the release
 # tag the update-checker compares), B is the Android versionCode (must always
 # increase). This bumps the chosen semver part AND increments B, then creates the
-# git tag "vX.Y.Z". Pushing that tag triggers .github/workflows/release.yml.
+# git tag "vX.Y.Z". Push the commit to the release branch to trigger the stable
+# workflow; pushing master does not build an APK.
 #
 # Usage:
 #   ./scripts/bump-version.sh [major|minor|patch]   # default: patch
@@ -53,9 +54,9 @@ if git rev-parse --git-dir >/dev/null 2>&1; then
   # stale local tags and trigger spurious release builds.
   if $push; then
     git push origin HEAD "v$new_semver"
-    echo "Pushed — the release workflow will build v$new_semver."
+    echo "Pushed — a release-branch push triggers the stable build."
   else
-    echo "Push to trigger the release build:"
+    echo "Push this commit from the release branch to trigger the stable build:"
     echo "  git push origin HEAD v$new_semver"
   fi
 fi

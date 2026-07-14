@@ -1,13 +1,13 @@
-name: 🚀 Release APK
+name: 🚀 Android Releases
 
-# Builds per-ABI **release** APKs from master/release. Each ABI
+# Builds per-ABI **release** APKs from nightly/release. Each ABI
 # (arm64-v8a, armeabi-v7a) builds in its OWN parallel matrix job and downloads
 # the latest prebuilt native TDLib (tdjson) asset from iebb/mithka-tdjson. A
 # final job creates the version tag from pubspec.yaml and publishes all the APKs:
-# master creates a pre-release, release creates a normal release.
+# nightly creates a dated pre-release, release creates a dated stable release.
 #
-# Pre-release by pushing to master. Release by pushing the desired pubspec.yaml
-# version to the release branch.
+# master never builds APKs. The daily sync workflow fast-forwards nightly from
+# master at noon UTC and dispatches this workflow only when the branch changed.
 #
 # Required repository secrets:
 #   TELEGRAM_API_ID, TELEGRAM_API_HASH   — baked into lib/config/secrets.dart
@@ -21,12 +21,12 @@ name: 🚀 Release APK
 
 on:
   push:
-    branches: [master, release]
+    branches: [nightly, release]
   workflow_dispatch:
 
 concurrency:
   group: release-apk-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref == 'refs/heads/master' }}
+  cancel-in-progress: ${{ github.ref == 'refs/heads/nightly' }}
 
 permissions:
   contents: write
@@ -40,6 +40,8 @@ jobs:
       version_code: ${{ steps.version.outputs.version_code }}
       play_version_code: ${{ steps.version.outputs.play_version_code }}
       build_stamp: ${{ steps.version.outputs.build_stamp }}
+      release_date: ${{ steps.version.outputs.release_date }}
+      artifact_label: ${{ steps.version.outputs.artifact_label }}
       release_tag: ${{ steps.version.outputs.release_tag }}
       release_name: ${{ steps.version.outputs.release_name }}
       release_channel: ${{ steps.version.outputs.release_channel }}
@@ -61,6 +63,7 @@ jobs:
             ''|*[!0-9]*) echo "Invalid Android version code: $version_code" >&2; exit 1 ;;
           esac
           build_stamp="$(date -u '+%y%m%d%H')"
+          release_date="$(date -u '+%Y-%m-%d')"
           play_version_code="$(date -u '+%s')"
           if [ "$play_version_code" -gt 2100000000 ]; then
             echo "Generated Google Play version code exceeds Android's limit" >&2
@@ -69,17 +72,19 @@ jobs:
           short_sha="${GITHUB_SHA::7}"
           branch_name="${GITHUB_REF_NAME:-${GITHUB_REF#refs/heads/}}"
           case "$branch_name" in
-            master)
-              release_tag="v${app_version}-master.${build_stamp}.${short_sha}"
-              release_name="Mithka ${app_version} master ${short_sha}"
-              release_channel="pre-release"
+            nightly)
+              release_tag="v${app_version}-nightly.${release_date}.${short_sha}"
+              release_name="Mithka Nightly ${release_date} (${short_sha})"
+              release_channel="nightly pre-release"
+              artifact_label="${app_version}-nightly-${release_date}-${short_sha}"
               prerelease="true"
               make_latest="false"
               ;;
             release)
               release_tag="v$app_version"
-              release_name="Mithka $app_version"
+              release_name="Mithka $app_version · $release_date"
               release_channel="release"
+              artifact_label="${app_version}-${release_date}"
               prerelease="false"
               make_latest="true"
               ;;
@@ -92,6 +97,8 @@ jobs:
           echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
           echo "play_version_code=$play_version_code" >> "$GITHUB_OUTPUT"
           echo "build_stamp=$build_stamp" >> "$GITHUB_OUTPUT"
+          echo "release_date=$release_date" >> "$GITHUB_OUTPUT"
+          echo "artifact_label=$artifact_label" >> "$GITHUB_OUTPUT"
           echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
           echo "release_name=$release_name" >> "$GITHUB_OUTPUT"
           echo "release_channel=$release_channel" >> "$GITHUB_OUTPUT"
@@ -103,6 +110,7 @@ jobs:
           echo "Android version code: $version_code"
           echo "Google Play version code: $play_version_code"
           echo "GMT build stamp: $build_stamp"
+          echo "Release date: $release_date"
 
   build:
     name: Build ${{ matrix.abi }} APK
@@ -260,13 +268,13 @@ jobs:
         run: |
           mkdir -p dist
           cp "build/app/outputs/flutter-apk/app-${{ matrix.abi }}-release.apk" \
-            "dist/mithka-${{ needs.prepare.outputs.app_version }}+${{ needs.prepare.outputs.build_stamp }}-${{ matrix.abi }}-release.apk"
+            "dist/mithka-${{ needs.prepare.outputs.artifact_label }}-${{ matrix.abi }}-release.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: apk-${{ matrix.abi }}-${{ needs.prepare.outputs.build_stamp }}
-          path: dist/mithka-${{ needs.prepare.outputs.app_version }}+${{ needs.prepare.outputs.build_stamp }}-${{ matrix.abi }}-release.apk
+          name: apk-${{ matrix.abi }}-${{ needs.prepare.outputs.release_date }}-${{ needs.prepare.outputs.build_stamp }}
+          path: dist/mithka-${{ needs.prepare.outputs.artifact_label }}-${{ matrix.abi }}-release.apk
           if-no-files-found: error
 
   google-play:
@@ -442,7 +450,7 @@ jobs:
           releaseFiles: build/app/outputs/bundle/release/app-release.aab
           tracks: production
           status: completed
-          releaseName: Mithka ${{ needs.prepare.outputs.app_version }}
+          releaseName: Mithka ${{ needs.prepare.outputs.app_version }} · ${{ needs.prepare.outputs.release_date }}
           whatsNewDirectory: distribution/google-play/whatsnew
           changesNotSentForReview: false
 
@@ -505,13 +513,14 @@ jobs:
           TELEGRAM_CI_CHANNEL: ${{ secrets.TELEGRAM_CI_CHANNEL }}
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
           RELEASE_CHANNEL: ${{ needs.prepare.outputs.release_channel }}
+          RELEASE_DATE: ${{ needs.prepare.outputs.release_date }}
           RELEASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.prepare.outputs.release_tag }}
         run: |
           test -n "$TELEGRAM_BOT_TOKEN"
           test -n "$TELEGRAM_CI_CHANNEL"
           response="$(curl -fsS \
             -F "chat_id=$TELEGRAM_CI_CHANNEL" \
-            -F "text=🚀 Mithka $RELEASE_CHANNEL $RELEASE_TAG
+            -F "text=🚀 Mithka $RELEASE_CHANNEL $RELEASE_TAG · $RELEASE_DATE
 
           APKs: $RELEASE_URL" \
             "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage")"
