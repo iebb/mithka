@@ -1998,11 +1998,17 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
             ...editableTextState.contextMenuButtonItems,
           ];
           final selection = controller.selection;
-          var customActionIndex = items.length;
-          final pasteIndex = items.lastIndexWhere(
-            (item) => item.type == ContextMenuButtonType.paste,
+          var customActionIndex = items.indexWhere(
+            (item) =>
+                item.type == ContextMenuButtonType.lookUp ||
+                item.type == ContextMenuButtonType.searchWeb,
           );
-          if (pasteIndex >= 0) customActionIndex = pasteIndex + 1;
+          if (customActionIndex < 0) {
+            final pasteIndex = items.lastIndexWhere(
+              (item) => item.type == ContextMenuButtonType.paste,
+            );
+            customActionIndex = pasteIndex >= 0 ? pasteIndex + 1 : items.length;
+          }
           if (selection.isValid && !selection.isCollapsed) {
             items.insert(
               customActionIndex++,
