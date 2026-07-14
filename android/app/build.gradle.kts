@@ -120,6 +120,8 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+    // Edge-to-edge: WindowCompat.setDecorFitsSystemWindows.
+    implementation("androidx.core:core-ktx:1.16.0")
     // ntgcalls — a from-scratch C++ Telegram-calls engine (WebRTC + opus + libvpx
     // statically bundled inside a self-contained libntgcalls.so per ABI). This is
     // the real media transport behind the CallMediaEngine seam; CallMediaPlugin

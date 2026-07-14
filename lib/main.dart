@@ -39,6 +39,7 @@ import 'notifications/in_app_notification_banner.dart';
 import 'notifications/notification_controller.dart';
 import 'notifications/push_device_registrar.dart';
 import 'platform/firebase_configuration.dart';
+import 'platform/system_ui.dart';
 import 'settings/app_icon_controller.dart';
 import 'settings/auto_download_media_controller.dart';
 import 'settings/blocked_user_service.dart';
@@ -96,6 +97,8 @@ Future<void> _bootstrapAndRunApp() async {
     DeviceOrientation.landscapeLeft,
     DeviceOrientation.landscapeRight,
   ]);
+  // Draw under transparent status / navigation bars (edge-to-edge).
+  configureImmersiveSystemUI();
   final prefs = await SharedPreferences.getInstance();
   KeywordBlocker.shared.initialize(prefs);
   CountryMessageFilter.shared.initialize(prefs);
@@ -382,15 +385,18 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
                   ),
                 ],
               );
-              return _ScaledAppView(
-                fontScale: theme.fontScale,
-                interfaceScale: theme.interfaceScale,
-                child: DefaultTextStyle(
-                  style: theme.applyAppTextStyle(
-                    AppTextStyle.body(context.colors.textPrimary),
-                    boldText: media.boldText,
+              return AnnotatedRegion<SystemUiOverlayStyle>(
+                value: systemUiOverlayStyleFor(currentTheme.brightness),
+                child: _ScaledAppView(
+                  fontScale: theme.fontScale,
+                  interfaceScale: theme.interfaceScale,
+                  child: DefaultTextStyle(
+                    style: theme.applyAppTextStyle(
+                      AppTextStyle.body(context.colors.textPrimary),
+                      boldText: media.boldText,
+                    ),
+                    child: appChild,
                   ),
-                  child: appChild,
                 ),
               );
             },
