@@ -170,9 +170,32 @@ class _RichTableDraft {
   final List<List<_RichTableCellStyle>> styles;
   bool bordered = true;
   bool striped = true;
+  int? activeRow;
+  int? activeColumn;
 
   int get rowCount => cells.length;
   int get columnCount => cells.isEmpty ? 0 : cells.first.length;
+  _RichTableCellStyle? get activeCellStyle {
+    final row = activeRow;
+    final column = activeColumn;
+    if (row == null ||
+        column == null ||
+        row < 0 ||
+        row >= rowCount ||
+        column < 0 ||
+        column >= columnCount) {
+      return null;
+    }
+    return styles[row][column];
+  }
+
+  void activateCell(int row, int column) {
+    if (row < 0 || row >= rowCount || column < 0 || column >= columnCount) {
+      return;
+    }
+    activeRow = row;
+    activeColumn = column;
+  }
 
   void dispose() {
     title.dispose();
@@ -189,6 +212,10 @@ class _RichTableDraft {
 
   void insertRow(int index) {
     final safeIndex = index.clamp(0, rowCount);
+    final currentActiveRow = activeRow;
+    if (currentActiveRow != null && safeIndex <= currentActiveRow) {
+      activeRow = currentActiveRow + 1;
+    }
     cells.insert(
       safeIndex,
       List.generate(columnCount, (_) => _cellController()),
@@ -201,6 +228,15 @@ class _RichTableDraft {
 
   void removeRowAt(int index) {
     if (rowCount <= 1 || index < 0 || index >= rowCount) return;
+    if (activeRow == index) {
+      activeRow = null;
+      activeColumn = null;
+    } else {
+      final currentActiveRow = activeRow;
+      if (currentActiveRow != null && index < currentActiveRow) {
+        activeRow = currentActiveRow - 1;
+      }
+    }
     final removed = cells.removeAt(index);
     styles.removeAt(index);
     for (final cell in removed) {
@@ -216,6 +252,10 @@ class _RichTableDraft {
     if (columnCount >= maxColumns) return;
     final oldColumnCount = columnCount;
     final safeIndex = index.clamp(0, oldColumnCount);
+    final currentActiveColumn = activeColumn;
+    if (currentActiveColumn != null && safeIndex <= currentActiveColumn) {
+      activeColumn = currentActiveColumn + 1;
+    }
     for (var row = 0; row < cells.length; row++) {
       cells[row].insert(
         safeIndex,
@@ -227,6 +267,15 @@ class _RichTableDraft {
 
   void removeColumnAt(int index) {
     if (columnCount <= 1 || index < 0 || index >= columnCount) return;
+    if (activeColumn == index) {
+      activeRow = null;
+      activeColumn = null;
+    } else {
+      final currentActiveColumn = activeColumn;
+      if (currentActiveColumn != null && index < currentActiveColumn) {
+        activeColumn = currentActiveColumn - 1;
+      }
+    }
     for (var row = 0; row < cells.length; row++) {
       cells[row].removeAt(index).dispose();
       styles[row].removeAt(index);
@@ -1875,6 +1924,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
 
   Widget _tableEditor(AppColors c, _RichTableDraft table) {
     final tableHeight = (table.rowCount * 54.0 + 18).clamp(102.0, 300.0);
+    final activeStyle = table.activeCellStyle;
     return Container(
       decoration: BoxDecoration(
         color: c.card,
@@ -1922,6 +1972,137 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
                       : () => setState(table.addColumn),
                 ),
               ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 8, 8),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: TextFieldTapRegion(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _tableAlignmentButton(
+                          c,
+                          key: const ValueKey('rich-table-align-left'),
+                          icon: HeroAppIcons.alignLeft,
+                          label: AppStringKeys.richTextTableAlignLeft.l10n(
+                            context,
+                          ),
+                          selected:
+                              activeStyle?.horizontal ==
+                              _RichCellHorizontalAlignment.left,
+                          onTap: activeStyle == null
+                              ? null
+                              : () => _setActiveTableHorizontalAlignment(
+                                  table,
+                                  _RichCellHorizontalAlignment.left,
+                                ),
+                        ),
+                        const SizedBox(width: 4),
+                        _tableAlignmentButton(
+                          c,
+                          key: const ValueKey('rich-table-align-center'),
+                          icon: HeroAppIcons.alignCenter,
+                          label: AppStringKeys.richTextTableAlignCenter.l10n(
+                            context,
+                          ),
+                          selected:
+                              activeStyle?.horizontal ==
+                              _RichCellHorizontalAlignment.center,
+                          onTap: activeStyle == null
+                              ? null
+                              : () => _setActiveTableHorizontalAlignment(
+                                  table,
+                                  _RichCellHorizontalAlignment.center,
+                                ),
+                        ),
+                        const SizedBox(width: 4),
+                        _tableAlignmentButton(
+                          c,
+                          key: const ValueKey('rich-table-align-right'),
+                          icon: HeroAppIcons.alignRight,
+                          label: AppStringKeys.richTextTableAlignRight.l10n(
+                            context,
+                          ),
+                          selected:
+                              activeStyle?.horizontal ==
+                              _RichCellHorizontalAlignment.right,
+                          onTap: activeStyle == null
+                              ? null
+                              : () => _setActiveTableHorizontalAlignment(
+                                  table,
+                                  _RichCellHorizontalAlignment.right,
+                                ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _tableAlignmentButton(
+                          c,
+                          key: const ValueKey('rich-table-align-top'),
+                          icon: HeroAppIcons.alignTop,
+                          label: AppStringKeys.richTextTableAlignTop.l10n(
+                            context,
+                          ),
+                          selected:
+                              activeStyle?.vertical ==
+                              _RichCellVerticalAlignment.top,
+                          onTap: activeStyle == null
+                              ? null
+                              : () => _setActiveTableVerticalAlignment(
+                                  table,
+                                  _RichCellVerticalAlignment.top,
+                                ),
+                        ),
+                        const SizedBox(width: 4),
+                        _tableAlignmentButton(
+                          c,
+                          key: const ValueKey('rich-table-align-middle'),
+                          icon: HeroAppIcons.arrowsUpDown,
+                          label: AppStringKeys.richTextTableAlignMiddle.l10n(
+                            context,
+                          ),
+                          selected:
+                              activeStyle?.vertical ==
+                              _RichCellVerticalAlignment.middle,
+                          onTap: activeStyle == null
+                              ? null
+                              : () => _setActiveTableVerticalAlignment(
+                                  table,
+                                  _RichCellVerticalAlignment.middle,
+                                ),
+                        ),
+                        const SizedBox(width: 4),
+                        _tableAlignmentButton(
+                          c,
+                          key: const ValueKey('rich-table-align-bottom'),
+                          icon: HeroAppIcons.alignBottom,
+                          label: AppStringKeys.richTextTableAlignBottom.l10n(
+                            context,
+                          ),
+                          selected:
+                              activeStyle?.vertical ==
+                              _RichCellVerticalAlignment.bottom,
+                          onTap: activeStyle == null
+                              ? null
+                              : () => _setActiveTableVerticalAlignment(
+                                  table,
+                                  _RichCellVerticalAlignment.bottom,
+                                ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
           ConstrainedBox(
@@ -1978,76 +2159,151 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
           top: row == 0 ? borderSide : BorderSide.none,
         ),
       ),
-      child: TextField(
-        key: ValueKey('rich-table-cell-$row-$column'),
-        controller: table.cells[row][column],
-        textInputAction: TextInputAction.next,
-        textAlign: switch (cellStyle.horizontal) {
-          _RichCellHorizontalAlignment.left => TextAlign.left,
-          _RichCellHorizontalAlignment.center => TextAlign.center,
-          _RichCellHorizontalAlignment.right => TextAlign.right,
+      child: Focus(
+        onFocusChange: (hasFocus) {
+          if (hasFocus) _activateTableCell(table, row, column);
         },
-        textAlignVertical: switch (cellStyle.vertical) {
-          _RichCellVerticalAlignment.top => TextAlignVertical.top,
-          _RichCellVerticalAlignment.middle => TextAlignVertical.center,
-          _RichCellVerticalAlignment.bottom => TextAlignVertical.bottom,
-        },
-        contextMenuBuilder: (context, editableTextState) {
-          final controller = table.cells[row][column];
-          final items = <ContextMenuButtonItem>[
-            ...editableTextState.contextMenuButtonItems,
-          ];
-          final selection = controller.selection;
-          var customActionIndex = items.indexWhere(
-            (item) =>
-                item.type == ContextMenuButtonType.lookUp ||
-                item.type == ContextMenuButtonType.searchWeb,
-          );
-          if (customActionIndex < 0) {
-            final pasteIndex = items.lastIndexWhere(
-              (item) => item.type == ContextMenuButtonType.paste,
+        child: TextField(
+          key: ValueKey('rich-table-cell-$row-$column'),
+          controller: table.cells[row][column],
+          textInputAction: TextInputAction.next,
+          onTap: () => _activateTableCell(table, row, column),
+          textAlign: switch (cellStyle.horizontal) {
+            _RichCellHorizontalAlignment.left => TextAlign.left,
+            _RichCellHorizontalAlignment.center => TextAlign.center,
+            _RichCellHorizontalAlignment.right => TextAlign.right,
+          },
+          textAlignVertical: switch (cellStyle.vertical) {
+            _RichCellVerticalAlignment.top => TextAlignVertical.top,
+            _RichCellVerticalAlignment.middle => TextAlignVertical.center,
+            _RichCellVerticalAlignment.bottom => TextAlignVertical.bottom,
+          },
+          contextMenuBuilder: (context, editableTextState) {
+            final controller = table.cells[row][column];
+            final items = <ContextMenuButtonItem>[
+              ...editableTextState.contextMenuButtonItems,
+            ];
+            final selection = controller.selection;
+            var customActionIndex = items.indexWhere(
+              (item) =>
+                  item.type == ContextMenuButtonType.lookUp ||
+                  item.type == ContextMenuButtonType.searchWeb,
             );
-            customActionIndex = pasteIndex >= 0 ? pasteIndex + 1 : items.length;
-          }
-          if (selection.isValid && !selection.isCollapsed) {
+            if (customActionIndex < 0) {
+              final pasteIndex = items.lastIndexWhere(
+                (item) => item.type == ContextMenuButtonType.paste,
+              );
+              customActionIndex = pasteIndex >= 0
+                  ? pasteIndex + 1
+                  : items.length;
+            }
+            if (selection.isValid && !selection.isCollapsed) {
+              items.insert(
+                customActionIndex++,
+                ContextMenuButtonItem(
+                  label: AppStringKeys.composerFormat.l10n(context),
+                  onPressed: () => unawaited(
+                    _showTableCellFormatMenu(editableTextState, controller),
+                  ),
+                ),
+              );
+            }
             items.insert(
-              customActionIndex++,
+              customActionIndex,
               ContextMenuButtonItem(
-                label: AppStringKeys.composerFormat.l10n(context),
+                label: AppStringKeys.richTextTableChange.l10n(context),
                 onPressed: () => unawaited(
-                  _showTableCellFormatMenu(editableTextState, controller),
+                  _showTableActionsMenu(
+                    editableTextState,
+                    table,
+                    cellStyle,
+                    row,
+                    column,
+                  ),
                 ),
               ),
             );
-          }
-          items.insert(
-            customActionIndex,
-            ContextMenuButtonItem(
-              label: AppStringKeys.richTextTableChange.l10n(context),
-              onPressed: () => unawaited(
-                _showTableActionsMenu(
-                  editableTextState,
-                  table,
-                  cellStyle,
-                  row,
-                  column,
-                ),
-              ),
-            ),
-          );
-          return AdaptiveTextSelectionToolbar.buttonItems(
-            anchors: editableTextState.contextMenuAnchors,
-            buttonItems: items,
-          );
-        },
-        style: AppTextStyle.callout(
-          c.textPrimary,
-          weight: isHeader ? AppTextWeight.semibold : AppTextWeight.regular,
+            return AdaptiveTextSelectionToolbar.buttonItems(
+              anchors: editableTextState.contextMenuAnchors,
+              buttonItems: items,
+            );
+          },
+          style: AppTextStyle.callout(
+            c.textPrimary,
+            weight: isHeader ? AppTextWeight.semibold : AppTextWeight.regular,
+          ),
+          decoration: const InputDecoration(
+            isCollapsed: true,
+            border: InputBorder.none,
+            contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          ),
         ),
-        decoration: const InputDecoration(
-          isCollapsed: true,
-          border: InputBorder.none,
-          contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      ),
+    );
+  }
+
+  void _activateTableCell(_RichTableDraft table, int row, int column) {
+    if (table.activeRow == row && table.activeColumn == column) return;
+    setState(() => table.activateCell(row, column));
+  }
+
+  void _setActiveTableHorizontalAlignment(
+    _RichTableDraft table,
+    _RichCellHorizontalAlignment alignment,
+  ) {
+    final style = table.activeCellStyle;
+    if (style == null || style.horizontal == alignment) return;
+    setState(() => style.horizontal = alignment);
+  }
+
+  void _setActiveTableVerticalAlignment(
+    _RichTableDraft table,
+    _RichCellVerticalAlignment alignment,
+  ) {
+    final style = table.activeCellStyle;
+    if (style == null || style.vertical == alignment) return;
+    setState(() => style.vertical = alignment);
+  }
+
+  Widget _tableAlignmentButton(
+    AppColors c, {
+    required Key key,
+    required AppIconData icon,
+    required String label,
+    required bool selected,
+    required VoidCallback? onTap,
+  }) {
+    final enabled = onTap != null;
+    final foreground = !enabled
+        ? c.textTertiary.withValues(alpha: 0.48)
+        : selected
+        ? AppTheme.brand
+        : c.textSecondary;
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      selected: selected,
+      label: label,
+      child: GestureDetector(
+        key: key,
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          width: 32,
+          height: 28,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: selected
+                ? AppTheme.brand.withValues(alpha: 0.14)
+                : c.searchFill,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color: selected
+                  ? AppTheme.brand.withValues(alpha: 0.54)
+                  : c.divider,
+            ),
+          ),
+          child: AppIcon(icon, size: 16, color: foreground),
         ),
       ),
     );

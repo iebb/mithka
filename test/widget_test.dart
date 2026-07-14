@@ -462,6 +462,53 @@ void main() {
       final firstCellController =
           tester.widget<TextField>(firstCell).controller!
               as EmojiTextEditingController;
+      for (final key in [
+        'rich-table-align-left',
+        'rich-table-align-center',
+        'rich-table-align-right',
+        'rich-table-align-top',
+        'rich-table-align-middle',
+        'rich-table-align-bottom',
+      ]) {
+        expect(find.byKey(ValueKey(key)), findsOneWidget);
+      }
+
+      await tester.tap(firstCell);
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('rich-table-align-center')));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('rich-table-align-bottom')));
+      await tester.pump();
+      expect(tester.widget<TextField>(firstCell).textAlign, TextAlign.center);
+      expect(
+        tester.widget<TextField>(firstCell).textAlignVertical,
+        TextAlignVertical.bottom,
+      );
+      final firstCellEditable = tester.widget<EditableText>(
+        find.descendant(of: firstCell, matching: find.byType(EditableText)),
+      );
+      expect(firstCellEditable.focusNode.hasFocus, isTrue);
+
+      final secondCell = find.byKey(const ValueKey('rich-table-cell-0-1'));
+      await tester.tap(secondCell);
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('rich-table-align-right')));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('rich-table-align-middle')));
+      await tester.pump();
+      expect(tester.widget<TextField>(secondCell).textAlign, TextAlign.right);
+      expect(
+        tester.widget<TextField>(secondCell).textAlignVertical,
+        TextAlignVertical.center,
+      );
+      expect(tester.widget<TextField>(firstCell).textAlign, TextAlign.center);
+      expect(
+        tester.widget<TextField>(firstCell).textAlignVertical,
+        TextAlignVertical.bottom,
+      );
+
+      await tester.tap(firstCell);
+      await tester.pump();
       await tester.longPress(firstCell);
       await tester.pumpAndSettle();
 
@@ -524,7 +571,11 @@ void main() {
           .map((segment) => segment.html)
           .join();
       expect(html, contains('<caption>Quarterly &lt;Plan&gt;</caption>'));
-      expect(html, contains('<b>Column 1</b>'));
+      expect(
+        html,
+        contains('<th align="center" valign="bottom"><b>Column 1</b></th>'),
+      );
+      expect(html, contains('<th align="right" valign="middle">Column 2</th>'));
     });
 
     testWidgets('block handle opens move and delete actions', (tester) async {
