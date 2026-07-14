@@ -1979,6 +1979,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
         ),
       ),
       child: TextField(
+        key: ValueKey('rich-table-cell-$row-$column'),
         controller: table.cells[row][column],
         textInputAction: TextInputAction.next,
         textAlign: switch (cellStyle.horizontal) {

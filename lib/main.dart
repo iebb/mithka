@@ -31,6 +31,7 @@ import 'auth/auth_manager.dart';
 import 'auth/terms_sheet.dart';
 import 'chat/music_player_controller.dart';
 import 'components/drawer_controller.dart' as dc;
+import 'components/keyboard_dismiss_on_tap.dart';
 import 'l10n/app_locale_controller.dart';
 import 'l10n/app_localizations.dart';
 import 'l10n/telegram_language_controller.dart';
@@ -536,7 +537,7 @@ class _ScaledAppView extends StatelessWidget {
       textScaler: TextScaler.linear(fontScale / scale),
     );
 
-    return _KeyboardDismissOnTap(
+    return AppKeyboardDismissOnTap(
       child: ClipRect(
         child: OverflowBox(
           alignment: Alignment.topLeft,
@@ -564,33 +565,6 @@ class _ScaledAppView extends StatelessWidget {
       insets.top / scale,
       insets.right / scale,
       insets.bottom / scale,
-    );
-  }
-}
-
-class _KeyboardDismissOnTap extends StatelessWidget {
-  const _KeyboardDismissOnTap({required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Listener(
-      behavior: HitTestBehavior.translucent,
-      onPointerDown: (event) {
-        final focus = FocusManager.instance.primaryFocus;
-        if (focus == null || !focus.hasFocus) return;
-
-        final renderObject = focus.context?.findRenderObject();
-        if (renderObject is RenderBox && renderObject.attached) {
-          final topLeft = renderObject.localToGlobal(Offset.zero);
-          final rect = topLeft & renderObject.size;
-          if (rect.contains(event.position)) return;
-        }
-
-        focus.unfocus();
-      },
-      child: child,
     );
   }
 }

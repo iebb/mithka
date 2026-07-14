@@ -23,6 +23,7 @@ import 'package:mithka/chat/rich_text_composer_view.dart';
 import 'package:mithka/chat/secret_chat_service.dart';
 import 'package:mithka/chat/sponsored_messages_cache.dart';
 import 'package:mithka/components/app_icons.dart';
+import 'package:mithka/components/keyboard_dismiss_on_tap.dart';
 import 'package:mithka/components/ui_components.dart';
 import 'package:mithka/l10n/app_locale_controller.dart';
 import 'package:mithka/l10n/app_localizations.dart';
@@ -88,6 +89,60 @@ Future<MusicPlayerController> _pumpMusicPlayerBar(WidgetTester tester) async {
 }
 
 void main() {
+  group('AppKeyboardDismissOnTap', () {
+    testWidgets('lets system text actions run before dismissing focus', (
+      tester,
+    ) async {
+      final controller = TextEditingController(text: 'Selected text');
+      final focusNode = FocusNode();
+      addTearDown(controller.dispose);
+      addTearDown(focusNode.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          builder: (context, child) =>
+              AppKeyboardDismissOnTap(child: child ?? const SizedBox.shrink()),
+          home: Scaffold(
+            body: Stack(
+              children: [
+                const Positioned.fill(
+                  child: ColoredBox(
+                    key: ValueKey('keyboard-dismiss-background'),
+                    color: Colors.transparent,
+                  ),
+                ),
+                Center(
+                  child: TextField(
+                    controller: controller,
+                    focusNode: focusNode,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      final field = find.byType(TextField);
+      final fieldTopLeft = tester.getTopLeft(field);
+      await tester.longPressAt(fieldTopLeft + const Offset(45, 24));
+      await tester.pumpAndSettle();
+      expect(find.text('Cut'), findsOneWidget);
+      expect(focusNode.hasFocus, isTrue);
+
+      await tester.tap(find.text('Cut'));
+      await tester.pumpAndSettle();
+      expect(controller.text, isNot('Selected text'));
+
+      await tester.tap(field);
+      await tester.pump();
+      expect(focusNode.hasFocus, isTrue);
+      await tester.tapAt(const Offset(12, 12));
+      await tester.pump();
+      expect(focusNode.hasFocus, isFalse);
+    });
+  });
+
   group('GlobalMusicPlayerBar', () {
     testWidgets('preserves the swipe animation before minimizing', (
       tester,
@@ -403,11 +458,11 @@ void main() {
       await tester.enterText(title, 'Quarterly <Plan>');
 
       final textFieldCount = find.byType(TextField).evaluate().length;
-      final firstCell = find.widgetWithText(TextField, 'Column 1');
+      final firstCell = find.byKey(const ValueKey('rich-table-cell-0-0'));
       final firstCellController = tester
           .widget<TextField>(firstCell)
           .controller!;
-      await tester.longPress(find.text('Column 1'));
+      await tester.longPress(firstCell);
       await tester.pumpAndSettle();
 
       expect(find.byType(AdaptiveTextSelectionToolbar), findsNothing);
@@ -424,7 +479,18 @@ void main() {
         firstCellController.text.length,
       );
 
-      await tester.longPress(find.text('Column 1'));
+      await tester.longPress(firstCell);
+      await tester.pumpAndSettle();
+      firstCellController.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: firstCellController.text.length,
+      );
+      await tester.pump();
+      await tester.tap(find.text('Cut'));
+      await tester.pumpAndSettle();
+      expect(firstCellController.text, isEmpty);
+
+      await tester.longPress(firstCell);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Change Table'));
       await tester.pump();
