@@ -765,7 +765,7 @@ class _BackupRow extends StatelessWidget {
               ),
             ),
             _BackupIconButton(
-              icon: HeroAppIcons.arrowUp,
+              icon: HeroAppIcons.restore,
               color: AppTheme.brand,
               onTap: onRestore,
             ),
