@@ -1731,6 +1731,7 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
                           alignment: Alignment.center,
                           child: Text(
                             item.title.l10n(context),
+                            textAlign: TextAlign.center,
                             style: const TextStyle(
                               fontSize: AppTextSize.body,
                               color: Colors.white,

@@ -454,6 +454,7 @@ class _AddPeopleViewState extends State<AddPeopleView> {
                     const SizedBox(height: 6),
                     Text(
                       o.$2,
+                      textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 12, color: c.textPrimary),
                     ),
                   ],
