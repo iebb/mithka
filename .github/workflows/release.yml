@@ -31,6 +31,10 @@ concurrency:
 permissions:
   contents: write
 
+env:
+  # Keep each Mithka release reproducible by pinning an immutable TDLib build.
+  TDJSON_RELEASE_TAG: tdlib-1.8.66-07d3a0973f51
+
 jobs:
   prepare:
     name: Read pubspec version
