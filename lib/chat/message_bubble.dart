@@ -964,8 +964,7 @@ class _MessageBubbleState extends State<MessageBubble>
               const SizedBox(height: 7),
             _linkPreviewCard(message.linkPreview!, outgoing),
           ],
-          if (message.isTranslating ||
-              (message.translationText?.isNotEmpty ?? false)) ...[
+          if (_showsTranslation) ...[
             const SizedBox(height: 7),
             _translationBlock(outgoing),
           ],
@@ -1270,7 +1269,11 @@ class _MessageBubbleState extends State<MessageBubble>
     );
   }
 
-  Widget _translationBlock(bool outgoing) {
+  bool get _showsTranslation =>
+      message.isTranslating ||
+      (message.translationText?.trim().isNotEmpty ?? false);
+
+  Widget _translationBlock(bool outgoing, {double? width}) {
     final c = context.colors;
     final base = outgoing ? _outgoingTextColor : c.textPrimary;
     final secondary = outgoing
@@ -1278,7 +1281,8 @@ class _MessageBubbleState extends State<MessageBubble>
         : c.textSecondary;
     final link = outgoing ? _outgoingTextColor : c.linkBlue;
     return Container(
-      width: _bubbleMaxWidth(),
+      key: const ValueKey('messageTranslationBlock'),
+      width: width ?? _bubbleMaxWidth(),
       decoration: BoxDecoration(
         color: outgoing
             ? _outgoingTextColor.withValues(alpha: 0.10)
@@ -2782,13 +2786,19 @@ class _MessageBubbleState extends State<MessageBubble>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
-              children: _richTextWidgets(
-                caption!,
-                baseColor,
-                linkColor,
-                outgoing,
-                false,
-              ),
+              children: [
+                ..._richTextWidgets(
+                  caption!,
+                  baseColor,
+                  linkColor,
+                  outgoing,
+                  false,
+                ),
+                if (_showsTranslation) ...[
+                  const SizedBox(height: 7),
+                  _translationBlock(outgoing, width: double.infinity),
+                ],
+              ],
             ),
           ),
         ],
@@ -3229,6 +3239,16 @@ class _MessageBubbleState extends State<MessageBubble>
                       false,
                     ),
                   ],
+                ),
+              ),
+            ],
+            if (_showsTranslation) ...[
+              const SizedBox(height: 8),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: isGif ? 8 : 0),
+                child: _translationBlock(
+                  outgoing,
+                  width: double.infinity,
                 ),
               ),
             ],
