@@ -10,6 +10,7 @@ import '../components/ui_components.dart';
 import '../profile/emoji_status_picker.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
+import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 
 /// Telegram Business settings which belong to the current account. The data is
@@ -51,10 +52,9 @@ class _BusinessSettingsViewState extends State<BusinessSettingsView> {
         _location = business?.obj('location');
         _openingHours = business?.obj('opening_hours');
         _startPage = business?.obj('start_page');
-        _emojiStatusId =
-            me.obj('emoji_status')?.obj('type')?.int64('custom_emoji_id') ??
-            me.obj('emoji_status')?.int64('custom_emoji_id') ??
-            0;
+        _emojiStatusId = TDParse.emojiStatusCustomEmojiId(
+          me.obj('emoji_status'),
+        );
       });
     } catch (_) {
       // Requests below will surface a useful TDLib error through a toast.

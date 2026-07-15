@@ -1,4 +1,6 @@
 const esMessages = <String, String>{
+  'advancedInput': "Entrada",
+  'advancedTitle': "Avanzado",
   'aboutTelegramChannel': "Canal de Telegram",
   'aboutTitle': "Acerca de",
   'aboutVersion': "Versión {value1}",
@@ -1110,6 +1112,13 @@ const esMessages = <String, String>{
   'richTextComposerLimitExceeded':
       "Este mensaje enriquecido supera los límites de Telegram",
   'richTextRelayBotTitle': "Bot de retransmisión de mensajes enriquecidos",
+  'richTextRelayBotCreateDescription':
+      "Crea un bot con @BotFather, pega arriba su token y después abre el bot en Telegram y pulsa Iniciar.",
+  'richTextRelayBotOpenBotFather': "Crear un bot con @BotFather",
+  'richTextRelayBotSetupTitle': "¿Configurar un bot de retransmisión?",
+  'richTextRelayBotSetupDescription':
+      "Se necesita Telegram Premium o un bot de retransmisión configurado para enviar mensajes enriquecidos. Configúralo en Ajustes › Avanzado › Entrada.",
+  'richTextRelayBotConfigure': "Configurar",
   'richTextRelayBotDescription':
       "Las cuentas sin Premium pueden usar un bot propio para retransmitir mensajes enriquecidos de solo texto. Inicia primero el bot. El token se almacena de forma segura en este dispositivo.",
   'richTextRelayBotSave': "Validar y guardar",

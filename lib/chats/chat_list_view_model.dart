@@ -791,10 +791,7 @@ class ChatListViewModel extends ChangeNotifier {
     final isContact = user.boolean('is_contact') ?? false;
     final phoneNumber = user.str('phone_number');
     final accent = user.integer('accent_color_id') ?? -1;
-    final status =
-        user.obj('emoji_status')?.obj('type')?.int64('custom_emoji_id') ??
-        user.obj('emoji_status')?.int64('custom_emoji_id') ??
-        0;
+    final status = TDParse.emojiStatusCustomEmojiId(user.obj('emoji_status'));
     for (final chat in _map.values) {
       if (chat.peerUserId != userId) continue;
       if (chat.peerIsPremium == isPremium &&

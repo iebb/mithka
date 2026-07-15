@@ -144,10 +144,9 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
           _isContact = _isMe || (user.boolean('is_contact') ?? false);
           _isBot = user.obj('type')?.type == 'userTypeBot';
           _hasLoadedUser = true;
-          _emojiStatusId =
-              user.obj('emoji_status')?.obj('type')?.int64('custom_emoji_id') ??
-              user.obj('emoji_status')?.int64('custom_emoji_id') ??
-              0;
+          _emojiStatusId = TDParse.emojiStatusCustomEmojiId(
+            user.obj('emoji_status'),
+          );
           _statusText = TDParse.userStatus(user);
         });
       }

@@ -1,4 +1,6 @@
 const zhHantMessages = <String, String>{
+  'advancedInput': "輸入",
+  'advancedTitle': "進階",
   'aboutTelegramChannel': "Telegram 頻道",
   'aboutTitle': "關於",
   'aboutVersion': "版本 {value1}",
@@ -1027,6 +1029,13 @@ const zhHantMessages = <String, String>{
   'richTextComposerInsert': "插入",
   'richTextComposerLimitExceeded': "此富文字訊息超出 Telegram 限制",
   'richTextRelayBotTitle': "富文字中轉機器人",
+  'richTextRelayBotCreateDescription':
+      "透過 @BotFather 建立機器人，將權杖貼到上方，然後在 Telegram 中開啟機器人並點選開始。",
+  'richTextRelayBotOpenBotFather': "透過 @BotFather 建立機器人",
+  'richTextRelayBotSetupTitle': "設定中轉機器人？",
+  'richTextRelayBotSetupDescription':
+      "傳送富文字訊息需要 Telegram 會員或已設定的中轉機器人。請前往設定 › 進階 › 輸入進行設定。",
+  'richTextRelayBotConfigure': "設定",
   'richTextRelayBotDescription':
       "非會員帳號可使用自己擁有的機器人中轉僅含文字的富文字訊息。請先啟動機器人。權杖會安全地儲存在此裝置上。",
   'richTextRelayBotSave': "驗證並儲存",

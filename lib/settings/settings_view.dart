@@ -19,6 +19,7 @@ import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 import 'about_view.dart';
+import 'advanced_settings_view.dart';
 import 'appearance_view.dart';
 import 'developer_mode_controller.dart';
 import 'developer_settings_view.dart';
@@ -131,6 +132,14 @@ class _SettingsViewState extends State<SettingsView> {
                     AppStrings.t(AppStringKeys.proxyTitle),
                     const Color(0xFF34A2DF),
                     () => const ProxyView(),
+                  ),
+                  const InsetDivider(leadingInset: 56),
+                  _navRow(
+                    context,
+                    HeroAppIcons.objectGroup.data,
+                    AppStrings.t(AppStringKeys.advancedTitle),
+                    const Color(0xFF16B0A0),
+                    () => const AdvancedSettingsView(),
                   ),
                   if (developer.unlocked) ...[
                     const InsetDivider(leadingInset: 56),

@@ -2725,6 +2725,19 @@ abstract final class TDParse {
     });
   }
 
+  /// The custom emoji that represents a TDLib `emojiStatus` in compact UI.
+  ///
+  /// Regular statuses expose `custom_emoji_id`, while upgraded gifts expose
+  /// their display model through `model_custom_emoji_id`.
+  static int emojiStatusCustomEmojiId(Map<String, dynamic>? emojiStatus) {
+    final type = emojiStatus?.obj('type');
+    return type?.int64('custom_emoji_id') ??
+        type?.int64('model_custom_emoji_id') ??
+        emojiStatus?.int64('custom_emoji_id') ??
+        emojiStatus?.int64('model_custom_emoji_id') ??
+        0;
+  }
+
   static final _nonDigitsRegExp = RegExp(r'\D');
 
   /// Formats a raw TDLib phone number (digits, no +) to international form via

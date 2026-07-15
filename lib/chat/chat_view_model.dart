@@ -3952,10 +3952,9 @@ class ChatViewModel extends ChangeNotifier {
         photo = TDParse.smallPhoto(user.obj('profile_photo'));
         isPremium = user.boolean('is_premium') ?? false;
         accentColorId = user.integer('accent_color_id') ?? -1;
-        emojiStatusId =
-            user.obj('emoji_status')?.obj('type')?.int64('custom_emoji_id') ??
-            user.obj('emoji_status')?.int64('custom_emoji_id') ??
-            0;
+        emojiStatusId = TDParse.emojiStatusCustomEmojiId(
+          user.obj('emoji_status'),
+        );
       } catch (_) {
         name = AppStrings.t(AppStringKeys.chatUserFallbackName, {
           'value1': senderId,

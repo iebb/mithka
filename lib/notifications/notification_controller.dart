@@ -20,6 +20,7 @@ import '../app/chat_deep_link_controller.dart';
 import '../l10n/telegram_language_controller.dart';
 import '../settings/country_message_filter.dart';
 import '../settings/keyword_blocker.dart';
+import '../tdlib/chat_membership.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -92,6 +93,7 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
   InAppNotificationBannerData? _inAppBanner;
   Timer? _inAppBannerTimer;
   final Map<Object, _VisibleChatRegistration> _visibleChats = {};
+  final Map<int, Map<String, dynamic>> _chatNotificationSettings = {};
 
   bool get inAppBannersEnabled => _inAppBannersEnabled;
   InAppNotificationBannerData? get inAppBanner => _inAppBanner;
@@ -198,6 +200,16 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
       }
       return;
     }
+    if (update.type == 'updateBasicGroup' ||
+        update.type == 'updateSupergroup') {
+      final group = update.obj(
+        update.type == 'updateBasicGroup' ? 'basic_group' : 'supergroup',
+      );
+      if (!isJoinedMemberStatus(group?.obj('status'))) {
+        unawaited(_dismissBannerIfNoLongerJoined());
+      }
+      return;
+    }
     if (update.type != 'updateNewMessage') return;
 
     final raw = update.obj('message');
@@ -209,7 +221,10 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
     if (chatId == null || messageId == null || content == null) return;
 
     final chat = await _chat(chatId);
-    if (chat == null || _isMuted(chat) || await _isCountryFiltered(chat)) {
+    if (chat == null ||
+        _isMuted(chat) ||
+        !await isJoinedGroupOrChannelChat(chatId, chat: chat) ||
+        await _isCountryFiltered(chat)) {
       return;
     }
 
@@ -312,6 +327,7 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
     final chatId = update.int64('chat_id');
     final settings = update.obj('notification_settings');
     if (chatId == null || settings == null) return;
+    _chatNotificationSettings[chatId] = Map<String, dynamic>.from(settings);
     final useDefault = settings.boolean('use_default_mute_for') ?? false;
     if (!useDefault) {
       if ((settings.integer('mute_for') ?? 0) > 0 &&
@@ -332,6 +348,15 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
     if (chat != null && _isMuted(chat)) dismissInAppBanner();
   }
 
+  Future<void> _dismissBannerIfNoLongerJoined() async {
+    final chatId = _inAppBanner?.target.chatId;
+    if (chatId == null) return;
+    final chat = await _chat(chatId);
+    if (chat != null && !await isJoinedGroupOrChannelChat(chatId, chat: chat)) {
+      dismissInAppBanner();
+    }
+  }
+
   @visibleForTesting
   void applyChatNotificationSettingsUpdateForTesting(
     Map<String, dynamic> update,
@@ -348,8 +373,21 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
   }
 
   bool _isMuted(Map<String, dynamic> chat) {
-    return ScopeNotificationSettings.shared.isMuted(chat);
+    final chatId = chat.int64('id');
+    final latestSettings = chatId == null
+        ? null
+        : _chatNotificationSettings[chatId];
+    if (latestSettings == null) {
+      return ScopeNotificationSettings.shared.isMuted(chat);
+    }
+    return ScopeNotificationSettings.shared.isMuted({
+      ...chat,
+      'notification_settings': latestSettings,
+    });
   }
+
+  @visibleForTesting
+  bool isChatMutedForTesting(Map<String, dynamic> chat) => _isMuted(chat);
 
   Future<bool> _isCountryFiltered(Map<String, dynamic> chat) async {
     final type = chat.obj('type');

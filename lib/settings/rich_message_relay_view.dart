@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../chat/link_handler.dart';
 import '../chat/rich_message_bot_relay.dart';
 import '../components/app_icons.dart';
 import '../components/toast.dart';
@@ -87,117 +88,154 @@ class _RichMessageRelayViewState extends State<RichMessageRelayView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return ColoredBox(
-      color: c.groupedBackground,
-      child: SafeArea(
-        child: Column(
-          children: [
-            NavHeader(
-              title: AppStringKeys.richTextRelayBotTitle,
-              onBack: () => Navigator.of(context).pop(),
-            ),
-            Expanded(
-              child: _loading
-                  ? Center(
-                      child: Text(
-                        AppStringKeys.contactsLoading.l10n(context),
-                        style: AppTextStyle.body(c.textSecondary),
-                      ),
-                    )
-                  : ListView(
-                      padding: const EdgeInsets.fromLTRB(
-                        AppSpacing.lg,
-                        AppSpacing.xl,
-                        AppSpacing.lg,
-                        AppSpacing.section,
-                      ),
-                      children: [
-                        Text(
-                          AppStringKeys.richTextRelayBotDescription.l10n(
-                            context,
-                          ),
-                          style: AppTextStyle.footnote(c.textSecondary),
-                        ),
-                        const SizedBox(height: AppSpacing.md),
-                        Container(
-                          height: 54,
-                          padding: const EdgeInsets.symmetric(horizontal: 14),
-                          decoration: BoxDecoration(
-                            color: c.card,
-                            borderRadius: BorderRadius.circular(AppRadius.card),
-                            border: Border.all(color: c.divider),
-                          ),
-                          child: Row(
-                            children: [
-                              AppIcon(
-                                HeroAppIcons.key,
-                                size: 20,
-                                color: c.textSecondary,
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: EditableText(
-                                  controller: _token,
-                                  focusNode: _focusNode,
-                                  style: AppTextStyle.body(c.textPrimary),
-                                  cursorColor: AppTheme.brand,
-                                  backgroundCursorColor: c.textTertiary,
-                                  obscureText: _obscure,
-                                  autocorrect: false,
-                                  enableSuggestions: false,
-                                  keyboardType: TextInputType.visiblePassword,
-                                  textInputAction: TextInputAction.done,
-                                  onSubmitted: (_) => _save(),
-                                ),
-                              ),
-                              GestureDetector(
-                                behavior: HitTestBehavior.opaque,
-                                onTap: () =>
-                                    setState(() => _obscure = !_obscure),
-                                child: Padding(
-                                  padding: const EdgeInsets.all(8),
-                                  child: AppIcon(
-                                    _obscure
-                                        ? HeroAppIcons.eye
-                                        : HeroAppIcons.eyeSlash,
-                                    size: 20,
-                                    color: c.textSecondary,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (_botLabel.isNotEmpty) ...[
-                          const SizedBox(height: AppSpacing.sm),
-                          Text(
-                            AppStrings.t(
-                              AppStringKeys.richTextRelayBotConnected,
-                              {'value1': _botLabel},
-                            ),
-                            style: AppTextStyle.footnote(
-                              const Color(0xFF34C759),
-                            ),
-                          ),
-                        ],
-                        const SizedBox(height: AppSpacing.lg),
-                        _actionButton(
-                          AppStringKeys.richTextRelayBotSave.l10n(context),
-                          enabled: !_saving && _token.text.trim().isNotEmpty,
-                          onTap: _save,
-                        ),
-                        if (_token.text.trim().isNotEmpty) ...[
-                          const SizedBox(height: AppSpacing.sm),
-                          _actionButton(
-                            AppStringKeys.richTextRelayBotRemove.l10n(context),
-                            destructive: true,
-                            onTap: _remove,
-                          ),
-                        ],
-                      ],
+    return Scaffold(
+      backgroundColor: c.groupedBackground,
+      body: Column(
+        children: [
+          NavHeader(
+            title: AppStringKeys.richTextRelayBotTitle,
+            onBack: () => Navigator.of(context).pop(),
+          ),
+          Expanded(
+            child: _loading
+                ? Center(
+                    child: Text(
+                      AppStringKeys.contactsLoading.l10n(context),
+                      style: AppTextStyle.body(c.textSecondary),
                     ),
-            ),
-          ],
+                  )
+                : ListView(
+                    padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.lg,
+                      AppSpacing.xl,
+                      AppSpacing.lg,
+                      AppSpacing.section,
+                    ),
+                    children: [
+                      Text(
+                        AppStringKeys.richTextRelayBotDescription.l10n(context),
+                        style: AppTextStyle.footnote(c.textSecondary),
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      Container(
+                        height: 54,
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        decoration: BoxDecoration(
+                          color: c.card,
+                          borderRadius: BorderRadius.circular(AppRadius.card),
+                          border: Border.all(color: c.divider),
+                        ),
+                        child: Row(
+                          children: [
+                            AppIcon(
+                              HeroAppIcons.key,
+                              size: 20,
+                              color: c.textSecondary,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: EditableText(
+                                controller: _token,
+                                focusNode: _focusNode,
+                                style: AppTextStyle.body(c.textPrimary),
+                                cursorColor: AppTheme.brand,
+                                backgroundCursorColor: c.textTertiary,
+                                obscureText: _obscure,
+                                autocorrect: false,
+                                enableSuggestions: false,
+                                keyboardType: TextInputType.visiblePassword,
+                                textInputAction: TextInputAction.done,
+                                onSubmitted: (_) => _save(),
+                              ),
+                            ),
+                            GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () => setState(() => _obscure = !_obscure),
+                              child: Padding(
+                                padding: const EdgeInsets.all(8),
+                                child: AppIcon(
+                                  _obscure
+                                      ? HeroAppIcons.eye
+                                      : HeroAppIcons.eyeSlash,
+                                  size: 20,
+                                  color: c.textSecondary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      Text(
+                        AppStringKeys.richTextRelayBotCreateDescription.l10n(
+                          context,
+                        ),
+                        style: AppTextStyle.footnote(c.textSecondary),
+                      ),
+                      const SizedBox(height: AppSpacing.xs),
+                      _botFatherLink(),
+                      if (_botLabel.isNotEmpty) ...[
+                        const SizedBox(height: AppSpacing.sm),
+                        Text(
+                          AppStrings.t(
+                            AppStringKeys.richTextRelayBotConnected,
+                            {'value1': _botLabel},
+                          ),
+                          style: AppTextStyle.footnote(const Color(0xFF34C759)),
+                        ),
+                      ],
+                      const SizedBox(height: AppSpacing.lg),
+                      _actionButton(
+                        AppStringKeys.richTextRelayBotSave.l10n(context),
+                        enabled: !_saving && _token.text.trim().isNotEmpty,
+                        onTap: _save,
+                      ),
+                      if (_token.text.trim().isNotEmpty) ...[
+                        const SizedBox(height: AppSpacing.sm),
+                        _actionButton(
+                          AppStringKeys.richTextRelayBotRemove.l10n(context),
+                          destructive: true,
+                          onTap: _remove,
+                        ),
+                      ],
+                    ],
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _botFatherLink() {
+    final c = context.colors;
+    return Semantics(
+      link: true,
+      button: true,
+      child: GestureDetector(
+        key: const ValueKey('rich-message-open-botfather'),
+        behavior: HitTestBehavior.opaque,
+        onTap: () => openLink(context, 'https://t.me/BotFather'),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppIcon(
+                HeroAppIcons.solidPaperPlane,
+                size: 17,
+                color: c.linkBlue,
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Flexible(
+                child: Text(
+                  AppStringKeys.richTextRelayBotOpenBotFather.l10n(context),
+                  style: AppTextStyle.footnote(c.linkBlue),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.xs),
+              AppIcon(HeroAppIcons.arrowTopRight, size: 14, color: c.linkBlue),
+            ],
+          ),
         ),
       ),
     );

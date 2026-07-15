@@ -220,10 +220,9 @@ class _ChatListViewState extends State<ChatListView>
         setState(() {
           if (name.isNotEmpty) _meName = name;
           _mePhoto = TDParse.smallPhoto(me.obj('profile_photo'));
-          _meStatusId =
-              me.obj('emoji_status')?.obj('type')?.int64('custom_emoji_id') ??
-              me.obj('emoji_status')?.int64('custom_emoji_id') ??
-              0;
+          _meStatusId = TDParse.emojiStatusCustomEmojiId(
+            me.obj('emoji_status'),
+          );
           _meIsPremium = me.boolean('is_premium') ?? false;
           _meId = me.int64('id');
           _model.meId = _meId;

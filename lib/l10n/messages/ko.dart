@@ -1,4 +1,6 @@
 const koMessages = <String, String>{
+  'advancedInput': "입력",
+  'advancedTitle': "고급",
   'aboutTelegramChannel': "Telegram 채널",
   'aboutTitle': "정보",
   'aboutVersion': "버전 {value1}",
@@ -1040,6 +1042,13 @@ const koMessages = <String, String>{
   'richTextComposerInsert': "삽입",
   'richTextComposerLimitExceeded': "이 서식 있는 메시지가 Telegram 제한을 초과했습니다",
   'richTextRelayBotTitle': "서식 메시지 릴레이 봇",
+  'richTextRelayBotCreateDescription':
+      "@BotFather로 봇을 만들고 위에 토큰을 붙여넣은 다음 Telegram에서 봇을 열어 시작을 누르세요.",
+  'richTextRelayBotOpenBotFather': "@BotFather로 봇 만들기",
+  'richTextRelayBotSetupTitle': "릴레이 봇을 설정할까요?",
+  'richTextRelayBotSetupDescription':
+      "서식 메시지를 보내려면 Telegram Premium 또는 설정된 릴레이 봇이 필요합니다. 설정 › 고급 › 입력에서 설정하세요.",
+  'richTextRelayBotConfigure': "설정",
   'richTextRelayBotDescription':
       "Premium이 아닌 계정은 자신이 소유한 봇으로 텍스트 전용 서식 메시지를 릴레이할 수 있습니다. 먼저 봇을 시작하세요. 토큰은 이 기기에 안전하게 저장됩니다.",
   'richTextRelayBotSave': "확인 후 저장",

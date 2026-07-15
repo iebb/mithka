@@ -65,10 +65,7 @@ class ProfileViewModel extends ChangeNotifier {
       phoneNumber: TDParse.formatPhone(me.str('phone_number')),
       username: me.obj('usernames')?.str('editable_username'),
       photo: TDParse.smallPhoto(me.obj('profile_photo')),
-      emojiStatusId:
-          me.obj('emoji_status')?.obj('type')?.int64('custom_emoji_id') ??
-          me.obj('emoji_status')?.int64('custom_emoji_id') ??
-          0,
+      emojiStatusId: TDParse.emojiStatusCustomEmojiId(me.obj('emoji_status')),
       isPremium: me.boolean('is_premium') ?? false,
     );
     notifyListeners();

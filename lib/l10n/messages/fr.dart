@@ -1,4 +1,6 @@
 const frMessages = <String, String>{
+  'advancedInput': "Saisie",
+  'advancedTitle': "Avancé",
   'aboutTelegramChannel': "Chaîne Telegram",
   'aboutTitle': "À propos",
   'aboutVersion': "Version {value1}",
@@ -1120,6 +1122,13 @@ const frMessages = <String, String>{
   'richTextComposerLimitExceeded':
       "Ce message enrichi dépasse les limites de Telegram",
   'richTextRelayBotTitle': "Bot relais de messages enrichis",
+  'richTextRelayBotCreateDescription':
+      "Créez un bot avec @BotFather, collez son jeton ci-dessus, puis ouvrez le bot dans Telegram et appuyez sur Démarrer.",
+  'richTextRelayBotOpenBotFather': "Créer un bot avec @BotFather",
+  'richTextRelayBotSetupTitle': "Configurer un bot relais ?",
+  'richTextRelayBotSetupDescription':
+      "Telegram Premium ou un bot relais configuré est requis pour envoyer des messages enrichis. Configurez-le dans Réglages › Avancé › Saisie.",
+  'richTextRelayBotConfigure': "Configurer",
   'richTextRelayBotDescription':
       "Les comptes sans Premium peuvent utiliser leur propre bot pour relayer les messages enrichis contenant uniquement du texte. Démarrez d’abord le bot. Le jeton est stocké de manière sécurisée sur cet appareil.",
   'richTextRelayBotSave': "Valider et enregistrer",

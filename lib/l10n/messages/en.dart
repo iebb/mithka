@@ -1,4 +1,6 @@
 const enMessages = <String, String>{
+  'advancedInput': "Input",
+  'advancedTitle': "Advanced",
   'businessSettingsAlwaysOpen': "Always open",
   'businessSettingsChatLink': "Chat Link",
   'businessSettingsChatLinks': "Chat Links",
@@ -1126,6 +1128,13 @@ const enMessages = <String, String>{
   'richTextComposerInsert': "Insert",
   'richTextComposerLimitExceeded': "This rich message exceeds Telegram limits",
   'richTextRelayBotTitle': "Rich message relay bot",
+  'richTextRelayBotCreateDescription':
+      "Create a bot with @BotFather, paste its token above, then open the bot in Telegram and tap Start.",
+  'richTextRelayBotOpenBotFather': "Create a bot with @BotFather",
+  'richTextRelayBotSetupTitle': "Configure a relay bot?",
+  'richTextRelayBotSetupDescription':
+      "Telegram Premium or a configured relay bot is required to send rich messages. Configure one in Settings › Advanced › Input.",
+  'richTextRelayBotConfigure': "Configure",
   'richTextRelayBotDescription':
       "Non-Premium accounts can use a bot they own to relay text-only rich messages. Start the bot first. The token is stored securely on this device.",
   'richTextRelayBotSave': "Validate and save",

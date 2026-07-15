@@ -8,6 +8,7 @@ import '../l10n/app_localizations.dart';
 import '../profile/profile_icon_picker_view.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
+import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import 'chat_sticker_set_picker_view.dart';
 import 'chat_theme_view.dart';
@@ -89,10 +90,9 @@ class _GroupAppearanceViewState extends State<GroupAppearanceView> {
       if (!mounted) return;
       _profileColorId = chat.integer('profile_accent_color_id') ?? -1;
       _profileIconId = chat.int64('profile_background_custom_emoji_id') ?? 0;
-      _emojiStatusId =
-          chat.obj('emoji_status')?.int64('custom_emoji_id') ??
-          chat.obj('emoji_status')?.obj('type')?.int64('custom_emoji_id') ??
-          0;
+      _emojiStatusId = TDParse.emojiStatusCustomEmojiId(
+        chat.obj('emoji_status'),
+      );
       _customEmojiSetId = full.int64('custom_emoji_sticker_set_id') ?? 0;
       _stickerSetId = full.int64('sticker_set_id') ?? 0;
       _boostLevel = status.integer('level') ?? 0;

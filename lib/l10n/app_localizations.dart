@@ -974,6 +974,8 @@ abstract final class AppStringKeys {
       'developerModePiPBoundsOverlayDescription';
   static const developerModeTitle = 'developerModeTitle';
   static const developerModeUnlocked = 'developerModeUnlocked';
+  static const advancedInput = 'advancedInput';
+  static const advancedTitle = 'advancedTitle';
   static const featureBottomTabs = 'featureBottomTabs';
   static const featureDisableSafetyNotice = 'featureDisableSafetyNotice';
   static const featureSafety = 'featureSafety';
@@ -1519,6 +1521,13 @@ abstract final class AppStringKeys {
   static const richTextComposerLimitExceeded = 'richTextComposerLimitExceeded';
   static const richTextRelayBotTitle = 'richTextRelayBotTitle';
   static const richTextRelayBotDescription = 'richTextRelayBotDescription';
+  static const richTextRelayBotCreateDescription =
+      'richTextRelayBotCreateDescription';
+  static const richTextRelayBotOpenBotFather = 'richTextRelayBotOpenBotFather';
+  static const richTextRelayBotSetupTitle = 'richTextRelayBotSetupTitle';
+  static const richTextRelayBotSetupDescription =
+      'richTextRelayBotSetupDescription';
+  static const richTextRelayBotConfigure = 'richTextRelayBotConfigure';
   static const richTextRelayBotSave = 'richTextRelayBotSave';
   static const richTextRelayBotRemove = 'richTextRelayBotRemove';
   static const richTextRelayBotConnected = 'richTextRelayBotConnected';

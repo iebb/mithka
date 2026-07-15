@@ -1,4 +1,6 @@
 const zhHansMessages = <String, String>{
+  'advancedInput': "输入",
+  'advancedTitle': "高级",
   'aboutTelegramChannel': "Telegram 频道",
   'aboutTitle': "关于",
   'aboutVersion': "版本 {value1}",
@@ -1027,6 +1029,13 @@ const zhHansMessages = <String, String>{
   'richTextComposerInsert': "插入",
   'richTextComposerLimitExceeded': "此富文本消息超出 Telegram 限制",
   'richTextRelayBotTitle': "富文本中转机器人",
+  'richTextRelayBotCreateDescription':
+      "通过 @BotFather 创建机器人，将令牌粘贴到上方，然后在 Telegram 中打开机器人并点击开始。",
+  'richTextRelayBotOpenBotFather': "通过 @BotFather 创建机器人",
+  'richTextRelayBotSetupTitle': "配置中转机器人？",
+  'richTextRelayBotSetupDescription':
+      "发送富文本消息需要 Telegram 会员或已配置的中转机器人。请前往设置 › 高级 › 输入进行配置。",
+  'richTextRelayBotConfigure': "配置",
   'richTextRelayBotDescription':
       "非会员账号可使用自己拥有的机器人中转仅含文字的富文本消息。请先启动机器人。令牌会安全地保存在本设备上。",
   'richTextRelayBotSave': "验证并保存",

@@ -30,6 +30,7 @@ import '../components/ui_components.dart';
 import '../l10n/telegram_language_controller.dart';
 import '../media/app_asset_picker.dart';
 import '../settings/rich_message_relay_config.dart';
+import '../settings/rich_message_relay_view.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
@@ -2024,9 +2025,6 @@ class _ChatInputBarState extends State<ChatInputBar> {
     if (entry?.mounted ?? false) entry!.remove();
   }
 
-  String get _richTextPremiumRequiredMessage =>
-      AppStringKeys.richTextRelayPremiumOrBotRequired.l10n(context);
-
   Future<_RichTextSendMode?> _richTextSendMode() async {
     try {
       if (await widget.vm.currentUserIsPremium()) {
@@ -2035,7 +2033,9 @@ class _ChatInputBarState extends State<ChatInputBar> {
       if (await RichMessageRelayConfig.isConfigured()) {
         return _RichTextSendMode.botRelay;
       }
-      if (mounted) showToast(context, _richTextPremiumRequiredMessage);
+      if (mounted && await _configureRichMessageRelay()) {
+        return _RichTextSendMode.botRelay;
+      }
     } catch (error) {
       if (mounted) {
         final message = switch (error) {
@@ -2046,6 +2046,20 @@ class _ChatInputBarState extends State<ChatInputBar> {
       }
     }
     return null;
+  }
+
+  Future<bool> _configureRichMessageRelay() async {
+    final configure = await confirmDialog(
+      context,
+      title: AppStringKeys.richTextRelayBotSetupTitle.l10n(context),
+      message: AppStringKeys.richTextRelayBotSetupDescription.l10n(context),
+      confirmText: AppStringKeys.richTextRelayBotConfigure.l10n(context),
+    );
+    if (!mounted || !configure) return false;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(builder: (_) => const RichMessageRelayView()),
+    );
+    return mounted && await RichMessageRelayConfig.isConfigured();
   }
 
   String _extensionForMime(String mimeType) {

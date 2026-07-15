@@ -1,4 +1,6 @@
 const deMessages = <String, String>{
+  'advancedInput': "Eingabe",
+  'advancedTitle': "Erweitert",
   'aboutTelegramChannel': "Telegram-Kanal",
   'aboutTitle': "Info",
   'aboutVersion': "Version {value1}",
@@ -1120,6 +1122,13 @@ const deMessages = <String, String>{
   'richTextComposerLimitExceeded':
       "Diese formatierte Nachricht überschreitet die Telegram-Limits",
   'richTextRelayBotTitle': "Relay-Bot für formatierte Nachrichten",
+  'richTextRelayBotCreateDescription':
+      "Erstelle mit @BotFather einen Bot, füge oben sein Token ein und öffne den Bot anschließend in Telegram, um auf Start zu tippen.",
+  'richTextRelayBotOpenBotFather': "Bot mit @BotFather erstellen",
+  'richTextRelayBotSetupTitle': "Relay-Bot konfigurieren?",
+  'richTextRelayBotSetupDescription':
+      "Zum Senden formatierter Nachrichten ist Telegram Premium oder ein konfigurierter Relay-Bot erforderlich. Konfiguriere ihn unter Einstellungen › Erweitert › Eingabe.",
+  'richTextRelayBotConfigure': "Konfigurieren",
   'richTextRelayBotDescription':
       "Konten ohne Premium können einen eigenen Bot verwenden, um reine Textnachrichten mit Formatierung weiterzuleiten. Starte den Bot zuerst. Das Token wird sicher auf diesem Gerät gespeichert.",
   'richTextRelayBotSave': "Prüfen und speichern",

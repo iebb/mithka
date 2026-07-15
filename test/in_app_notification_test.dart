@@ -5,6 +5,7 @@ import 'package:mithka/notifications/in_app_notification_banner.dart';
 import 'package:mithka/notifications/notification_controller.dart';
 import 'package:mithka/notifications/notification_target.dart';
 import 'package:mithka/notifications/scope_notification_settings.dart';
+import 'package:mithka/tdlib/chat_membership.dart';
 import 'package:mithka/theme/app_theme.dart';
 
 void main() {
@@ -113,6 +114,58 @@ void main() {
 
     expect(settings.isMuted(inherited), isTrue);
     expect(settings.isMuted(chatMuted), isTrue);
+  });
+
+  test('left, banned, and non-member restricted chats are not joined', () {
+    expect(isJoinedMemberStatus({'@type': 'chatMemberStatusLeft'}), isFalse);
+    expect(isJoinedMemberStatus({'@type': 'chatMemberStatusBanned'}), isFalse);
+    expect(
+      isJoinedMemberStatus({
+        '@type': 'chatMemberStatusRestricted',
+        'is_member': false,
+      }),
+      isFalse,
+    );
+  });
+
+  test('fresh mute updates override a stale chat snapshot', () {
+    final controller = NotificationController.shared;
+    final staleChat = <String, dynamic>{
+      '@type': 'chat',
+      'id': 73,
+      'type': {
+        '@type': 'chatTypeSupergroup',
+        'supergroup_id': 730,
+        'is_channel': true,
+      },
+      'notification_settings': {
+        '@type': 'chatNotificationSettings',
+        'use_default_mute_for': false,
+        'mute_for': 0,
+      },
+    };
+
+    controller.applyChatNotificationSettingsUpdateForTesting({
+      '@type': 'updateChatNotificationSettings',
+      'chat_id': 73,
+      'notification_settings': {
+        '@type': 'chatNotificationSettings',
+        'use_default_mute_for': false,
+        'mute_for': 2147483647,
+      },
+    });
+    expect(controller.isChatMutedForTesting(staleChat), isTrue);
+
+    controller.applyChatNotificationSettingsUpdateForTesting({
+      '@type': 'updateChatNotificationSettings',
+      'chat_id': 73,
+      'notification_settings': {
+        '@type': 'chatNotificationSettings',
+        'use_default_mute_for': false,
+        'mute_for': 0,
+      },
+    });
+    expect(controller.isChatMutedForTesting(staleChat), isFalse);
   });
 
   test('muting a chat dismisses its visible in-app banner', () {

@@ -1,4 +1,6 @@
 const jaMessages = <String, String>{
+  'advancedInput': "入力",
+  'advancedTitle': "詳細設定",
   'aboutTelegramChannel': "Telegram チャンネル",
   'aboutTitle': "概要",
   'aboutVersion': "バージョン {value1}",
@@ -1041,6 +1043,13 @@ const jaMessages = <String, String>{
   'richTextComposerInsert': "挿入",
   'richTextComposerLimitExceeded': "このリッチメッセージは Telegram の制限を超えています",
   'richTextRelayBotTitle': "リッチメッセージ中継ボット",
+  'richTextRelayBotCreateDescription':
+      "@BotFather でボットを作成し、上にトークンを貼り付けてから、Telegram でボットを開いて「開始」をタップしてください。",
+  'richTextRelayBotOpenBotFather': "@BotFather でボットを作成",
+  'richTextRelayBotSetupTitle': "中継ボットを設定しますか？",
+  'richTextRelayBotSetupDescription':
+      "リッチメッセージの送信には Telegram Premium または設定済みの中継ボットが必要です。「設定 › 詳細設定 › 入力」で設定してください。",
+  'richTextRelayBotConfigure': "設定する",
   'richTextRelayBotDescription':
       "Premium でないアカウントは、所有するボットでテキストのみのリッチメッセージを中継できます。先にボットを開始してください。トークンはこの端末に安全に保存されます。",
   'richTextRelayBotSave': "確認して保存",
