@@ -449,6 +449,11 @@ abstract final class AppStringKeys {
   static const chatButtonUnsupported = 'chatButtonUnsupported';
   static const chatCannotSendMessages = 'chatCannotSendMessages';
   static const chatContactCallsOnly = 'chatContactCallsOnly';
+  static const chatFirstContactNotContact = 'chatFirstContactNotContact';
+  static const chatFirstContactNotOfficial = 'chatFirstContactNotOfficial';
+  static const chatFirstContactOfficial = 'chatFirstContactOfficial';
+  static const chatFirstContactPhoneCountry = 'chatFirstContactPhoneCountry';
+  static const chatFirstContactRegistration = 'chatFirstContactRegistration';
   static const chatDelete = 'chatDelete';
   static const chatDeleteActionsDone = 'chatDeleteActionsDone';
   static const chatDeleteActionsFailed = 'chatDeleteActionsFailed';

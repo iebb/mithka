@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
 import '../auth/country_picker.dart';
+import '../auth/telegram_country_names.dart';
 import '../components/app_icons.dart';
 import '../components/ui_components.dart';
 import '../theme/app_theme.dart';
@@ -18,6 +21,7 @@ class CountryMessageFilterView extends StatefulWidget {
 class _CountryMessageFilterViewState extends State<CountryMessageFilterView> {
   final CountryMessageFilter _filter = CountryMessageFilter.shared;
   final TextEditingController _search = TextEditingController();
+  Map<String, String> _telegramNames = TelegramCountryNames.shared.cached;
   String _query = '';
 
   @override
@@ -25,6 +29,7 @@ class _CountryMessageFilterViewState extends State<CountryMessageFilterView> {
     super.initState();
     _filter.addListener(_onFilterChanged);
     _search.addListener(_onSearchChanged);
+    unawaited(_loadTelegramCountryNames());
   }
 
   @override
@@ -43,11 +48,26 @@ class _CountryMessageFilterViewState extends State<CountryMessageFilterView> {
     setState(() => _query = _search.text.trim().toLowerCase());
   }
 
+  Future<void> _loadTelegramCountryNames() async {
+    try {
+      final names = await TelegramCountryNames.shared.load(refresh: true);
+      if (mounted && names.isNotEmpty) {
+        setState(() => _telegramNames = names);
+      }
+    } catch (_) {
+      // Keep the offline fallback when Telegram's list isn't available.
+    }
+  }
+
+  String _displayName(Country country) => country.displayName(_telegramNames);
+
   List<Country> get _countries {
-    if (_query.isEmpty) return Country.sorted;
-    return Country.sorted
+    final sorted = [...Country.all]
+      ..sort((a, b) => _displayName(a).compareTo(_displayName(b)));
+    if (_query.isEmpty) return sorted;
+    return sorted
         .where((country) {
-          final name = country.name.toLowerCase();
+          final name = _displayName(country).toLowerCase();
           return name.contains(_query) ||
               country.iso.toLowerCase().contains(_query) ||
               country.dial.contains(_query);
@@ -133,7 +153,7 @@ class _CountryMessageFilterViewState extends State<CountryMessageFilterView> {
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(
-                              country.name.l10n(context),
+                              _displayName(country),
                               style: TextStyle(
                                 fontSize: 16,
                                 color: c.textPrimary,

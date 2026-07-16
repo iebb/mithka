@@ -304,6 +304,11 @@ const frMessages = <String, String>{
   'chatCannotSendMessages':
       "Vous ne pouvez pas envoyer de messages dans cette discussion",
   'chatContactCallsOnly': "Appels disponibles uniquement avec les contacts",
+  'chatFirstContactNotContact': "Pas dans vos contacts",
+  'chatFirstContactNotOfficial': "Compte non officiel",
+  'chatFirstContactOfficial': "Compte officiel",
+  'chatFirstContactPhoneCountry': "Numéro de téléphone",
+  'chatFirstContactRegistration': "Inscription",
   'chatDelete': "Supprimer",
   'chatDeleteActionsDone': "Terminé",
   'chatDeleteActionsFailed': "Impossible d’appliquer l’action : {value1}",

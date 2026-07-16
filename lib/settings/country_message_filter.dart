@@ -90,10 +90,18 @@ class CountryMessageFilter extends ChangeNotifier {
     notifyListeners();
   }
 
-  bool matchesUser({bool isContact = false, String? phoneNumber}) {
+  bool matchesUser({
+    bool isContact = false,
+    String? phoneNumber,
+    String? countryCode,
+  }) {
     if (!isEnabled) return false;
+    final normalizedCountryCode = countryCode?.trim().toUpperCase();
+    final accountCountry = Country.all
+        .where((country) => country.iso == normalizedCountryCode)
+        .firstOrNull;
     final digits = (phoneNumber ?? '').replaceAll(RegExp(r'\D'), '');
-    final country = Country.match(digits);
+    final country = accountCountry ?? Country.match(digits);
     return country != null && _selectedCountries.contains(country.iso);
   }
 

@@ -2,11 +2,12 @@
 //  country_picker.dart
 //
 //  Country/region model + picker sheet for the Telegram-style phone login.
-//  The Swift app sources its list from libphonenumber; to stay dependency-light
-//  cross-platform we embed a comprehensive dialable-region table (Chinese names,
-//  ISO codes, dial codes) and compute flags from the ISO code — the same
-//  presentation, match, and flag logic as the Swift `Country`.
+//  Dial-code matching uses a bundled offline table. Display names are replaced
+//  at runtime by Telegram's localized `getCountries` response, matching the
+//  official clients while keeping phone login available offline.
 //
+
+import 'dart:async';
 
 import 'package:dlibphonenumber/dlibphonenumber.dart';
 import 'package:flutter/material.dart';
@@ -14,12 +15,16 @@ import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
 import '../theme/app_theme.dart';
+import 'telegram_country_names.dart';
 
 class Country {
   const Country(this.name, this.iso, this.dial);
   final String name; // Chinese display name
   final String iso; // ISO 3166-1 alpha-2
   final String dial; // dial code, digits only
+
+  String displayName(Map<String, String> telegramNames) =>
+      telegramNames[iso] ?? AppStrings.t(name);
 
   /// Flag emoji derived from the ISO code (regional-indicator scalars).
   String get flag {
@@ -290,16 +295,40 @@ class CountryPickerView extends StatefulWidget {
 
 class _CountryPickerViewState extends State<CountryPickerView> {
   final _controller = TextEditingController();
+  Map<String, String> _telegramNames = TelegramCountryNames.shared.cached;
   String _query = '';
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadTelegramCountryNames());
+  }
+
+  Future<void> _loadTelegramCountryNames() async {
+    try {
+      final names = await TelegramCountryNames.shared.load(refresh: true);
+      if (mounted && names.isNotEmpty) {
+        setState(() => _telegramNames = names);
+      }
+    } catch (_) {
+      // The bundled names remain available before authorization or offline.
+    }
+  }
+
+  String _displayName(Country country) => country.displayName(_telegramNames);
+
+  List<Country> get _sortedCountries =>
+      [...Country.all]
+        ..sort((a, b) => _displayName(a).compareTo(_displayName(b)));
 
   List<Country> get _results {
     final q = _query.trim();
-    if (q.isEmpty) return Country.sorted;
+    if (q.isEmpty) return _sortedCountries;
     final lower = q.toLowerCase();
     final digits = q.replaceAll(RegExp(r'[^0-9]'), '');
-    return Country.sorted.where((c) {
-      final name = AppStrings.t(c.name);
-      return name.contains(q) ||
+    return _sortedCountries.where((c) {
+      final name = _displayName(c).toLowerCase();
+      return name.contains(lower) ||
           c.iso.toLowerCase().contains(lower) ||
           (digits.isNotEmpty && c.dial.contains(digits));
     }).toList();
@@ -404,7 +433,7 @@ class _CountryPickerViewState extends State<CountryPickerView> {
                           ),
                           const SizedBox(width: 12),
                           Text(
-                            country.name.l10n(context),
+                            _displayName(country),
                             style: TextStyle(
                               fontSize: 17,
                               color: c.textPrimary,

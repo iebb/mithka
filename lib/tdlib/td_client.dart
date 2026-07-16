@@ -73,6 +73,19 @@ class _TdSessionStringInfo {
   final bool isBot;
 }
 
+@visibleForTesting
+List<int> closeStaleDebugTdlibClients(
+  Iterable<int> clientIds,
+  void Function(int clientId, String request) send,
+) {
+  final staleClientIds = clientIds.where((id) => id > 0).toSet().toList();
+  final closeRequest = jsonEncode({'@type': 'close'});
+  for (final clientId in staleClientIds) {
+    send(clientId, closeRequest);
+  }
+  return staleClientIds;
+}
+
 class TdClient {
   TdClient._();
   static final TdClient shared = TdClient._();
@@ -128,6 +141,8 @@ class TdClient {
   int? slotForClient(int clientId) => _slotForClient[clientId];
   Map<String, dynamic>? get latestChatFoldersUpdate =>
       _latestChatFoldersByClient[_activeClientId];
+  Map<String, dynamic>? latestChatFoldersUpdateForClient(int clientId) =>
+      _latestChatFoldersByClient[clientId];
   Map<String, dynamic>? get latestEmojiChatThemesUpdate =>
       _latestEmojiChatThemesByClient[_activeClientId];
 
@@ -951,6 +966,17 @@ class TdClient {
         .whereType<int>()
         .toList();
     if (ids == null || ids.isEmpty) return;
+    final closedIds = closeStaleDebugTdlibClients(ids, _bindings.send);
+    if (closedIds.isNotEmpty) {
+      debugPrint(
+        '🔑 [Mithka] closing stale TDLib clients after hot restart: '
+        '${closedIds.join(', ')}',
+      );
+      // `close` is asynchronous inside TDLib. Give the native clients time to
+      // release their database handles before creating replacements that use
+      // the same account directories.
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    }
     await _prefs.remove(_liveClientIdsKey);
   }
 

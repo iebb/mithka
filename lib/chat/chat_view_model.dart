@@ -22,6 +22,7 @@ import '../settings/keyword_blocker.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
+import 'chat_first_contact_info.dart';
 import 'chat_message_merge.dart';
 import 'chat_unread_progress.dart';
 import 'forward_options.dart';
@@ -197,6 +198,7 @@ class ChatViewModel extends ChangeNotifier {
   List<ChatMessage> _allMessages = [];
   String peerTitle;
   TdFileRef? peerPhoto;
+  ChatFirstContactInfo? firstContactInfo;
   bool isGroup = false;
   int memberCount = 0;
   int? peerUserId; // private chat → call target
@@ -1873,6 +1875,9 @@ class ChatViewModel extends ChangeNotifier {
     }
     peerTitle = chat.str('title') ?? peerTitle;
     peerPhoto = TDParse.smallPhoto(chat.obj('photo'));
+    firstContactInfo = ChatFirstContactInfo.fromActionBar(
+      chat.obj('action_bar'),
+    );
     lastReadOutboxId = chat.int64('last_read_outbox_message_id') ?? 0;
     lastReadInboxId = chat.int64('last_read_inbox_message_id') ?? 0;
     unreadCount = chat.integer('unread_count') ?? 0;
@@ -1931,6 +1936,7 @@ class ChatViewModel extends ChangeNotifier {
             peerIsBot = _isBotUser(user);
             peerOnline = TDParse.isUserOnline(user);
             peerStatusText = TDParse.userStatus(user);
+            firstContactInfo = firstContactInfo?.withUser(user);
           } catch (error) {
             if (_markTelegramTosRestricted(error)) {
               notifyListeners();
@@ -3008,6 +3014,18 @@ class ChatViewModel extends ChangeNotifier {
         if (chat.containsKey('draft_message')) {
           _applyRemoteDraft(chat.obj('draft_message'), notify: false);
         }
+        if (chat.containsKey('action_bar')) {
+          firstContactInfo = ChatFirstContactInfo.fromActionBar(
+            chat.obj('action_bar'),
+          );
+        }
+        notifyListeners();
+
+      case 'updateChatActionBar':
+        if (update.int64('chat_id') != chatId) return;
+        firstContactInfo = ChatFirstContactInfo.fromActionBar(
+          update.obj('action_bar'),
+        );
         notifyListeners();
 
       case 'updateChatHasProtectedContent':

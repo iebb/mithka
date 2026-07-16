@@ -19,6 +19,7 @@ import 'package:provider/provider.dart';
 
 import '../app/pip_bounds_debug_overlay.dart';
 import '../app/video_split_controller.dart';
+import '../auth/telegram_country_names.dart';
 import '../call/call_manager.dart';
 import '../channels/topic_chat_view.dart';
 import '../components/app_icons.dart';
@@ -49,6 +50,7 @@ import '../theme/telegram_cloud_theme.dart';
 import '../theme/theme_controller.dart';
 import 'blocked_message_runs.dart';
 import 'chat_auto_scroll_policy.dart';
+import 'chat_first_contact_card.dart';
 import 'chat_info_view.dart';
 import 'chat_input_bar.dart';
 import 'chat_media_drop_region.dart';
@@ -818,6 +820,14 @@ class _ChatViewState extends State<ChatView> {
       sessionMessages: _sessionRenderState?.messages,
       sessionAnchoredHistory: _sessionRenderState?.anchoredHistory ?? false,
       seedMessage: widget.seedMessage,
+    );
+    unawaited(
+      TelegramCountryNames.shared
+          .load()
+          .then((_) {
+            if (mounted && _vm.firstContactInfo != null) setState(() {});
+          })
+          .catchError((Object _) {}),
     );
     if (_sessionRenderState != null && _vm.messages.isNotEmpty) {
       _didInitialScroll = true;
@@ -4963,6 +4973,8 @@ class _ChatViewState extends State<ChatView> {
     final groupImages = context.watch<ThemeController>().groupImageMessages;
     final entries = _transcriptEntries(groupImages);
     final messages = _transcriptCacheMessages ?? _vm.messages;
+    final firstContactInfo = _vm.firstContactInfo;
+    final leadingItemCount = firstContactInfo == null ? 0 : 1;
     _scheduleUnreadProgressUpdate();
     return Container(
       color: _effectiveWallpaper() == null
@@ -4980,12 +4992,31 @@ class _ChatViewState extends State<ChatView> {
             defaultTargetPlatform == TargetPlatform.android ? 260 : 420,
           ),
           padding: const EdgeInsets.symmetric(vertical: 8),
-          itemCount: entries.length,
+          itemCount: entries.length + leadingItemCount,
           // Lets keyed children be reused when history pages shift indices
           // instead of being torn down and rebuilt.
-          findChildIndexCallback: (key) => _transcriptIndexByKey[key],
+          findChildIndexCallback: (key) {
+            if (key == const ValueKey('chat-first-contact-card')) {
+              return firstContactInfo == null ? null : 0;
+            }
+            final index = _transcriptIndexByKey[key];
+            return index == null ? null : index + leadingItemCount;
+          },
           itemBuilder: (context, index) {
-            final entry = entries[index];
+            if (firstContactInfo != null && index == 0) {
+              return KeyedSubtree(
+                key: const ValueKey('chat-first-contact-card'),
+                child: RepaintBoundary(
+                  child: ChatFirstContactCard(
+                    info: firstContactInfo,
+                    title: _vm.peerTitle,
+                    photo: _vm.peerPhoto,
+                    onOpenProfile: _openPeerProfile,
+                  ),
+                ),
+              );
+            }
+            final entry = entries[index - leadingItemCount];
             final message = entry.first;
             final messageIndex = entry.startIndex;
             final isTarget = entry.messages.any((m) => m.id == _scrollTargetId);
