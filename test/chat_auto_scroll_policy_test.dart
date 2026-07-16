@@ -31,4 +31,13 @@ void main() {
     policy.returnToBottom();
     expect(policy.shouldFollowAppendedMessage(wasNearBottom: true), isTrue);
   });
+
+  test('sending a message releases a preserved viewport', () {
+    final policy = ChatAutoScrollPolicy(preserveViewport: true);
+
+    policy.noteMessageSent();
+
+    expect(policy.preservesViewport, isFalse);
+    expect(policy.shouldFollowAppendedMessage(wasNearBottom: true), isTrue);
+  });
 }

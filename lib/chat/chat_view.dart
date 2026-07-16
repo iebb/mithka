@@ -1280,7 +1280,9 @@ class _ChatViewState extends State<ChatView> {
   }
 
   void _onComposerMessageSent() {
-    _autoScrollPolicy.returnToBottom();
+    _maintainSessionScrollAnchor = false;
+    _maintainRestoredBottom = false;
+    _autoScrollPolicy.noteMessageSent();
     _setScrollTarget(null);
     _unreadProgress.clearLiveMessages();
     _bannerDismissed = true;
@@ -3389,6 +3391,7 @@ class _ChatViewState extends State<ChatView> {
       final extras = result.attachments.skip(mediaStart).toList();
       if (extras.isNotEmpty) {
         await _vm.sendAttachments(extras);
+        if (mounted) _onComposerMessageSent();
       }
     } catch (e) {
       if (mounted) showToast(context, '$e');

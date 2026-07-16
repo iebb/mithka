@@ -21,6 +21,8 @@ class ChatAutoScrollPolicy {
 
   void returnToBottom() => _preserveViewport = false;
 
+  void noteMessageSent() => returnToBottom();
+
   bool shouldFollowAppendedMessage({required bool wasNearBottom}) =>
       !_preserveViewport && wasNearBottom;
 }
