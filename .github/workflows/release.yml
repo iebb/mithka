@@ -65,7 +65,7 @@ jobs:
             ''|*[!0-9]*) echo "Invalid Android version code: $version_code" >&2; exit 1 ;;
           esac
           build_stamp="$(date -u '+%y%m%d%H')"
-          release_date="$(date -u '+%Y-%m-%d')"
+          release_date="$(date -u '+%Y%m%d')"
           short_sha="${GITHUB_SHA::7}"
           branch_name="${GITHUB_REF_NAME:-${GITHUB_REF#refs/heads/}}"
           case "$branch_name" in
@@ -137,6 +137,28 @@ jobs:
           flutter-version: '3.44.2'
           channel: stable
           cache: true
+
+      - name: Disable Flutter split-ABI versionCode offsets
+        run: |
+          constants="$FLUTTER_ROOT/packages/flutter_tools/gradle/src/main/kotlin/FlutterPluginConstants.kt"
+          python3 - "$constants" <<'PY'
+          import pathlib
+          import sys
+
+          path = pathlib.Path(sys.argv[1])
+          text = path.read_text()
+          replacements = {
+              "ARCH_ARM32 to 1": "ARCH_ARM32 to 0",
+              "ARCH_ARM64 to 2": "ARCH_ARM64 to 0",
+              "ARCH_X86_64 to 4": "ARCH_X86_64 to 0",
+          }
+          for old, new in replacements.items():
+              if old not in text:
+                  raise SystemExit(f"Could not find {old!r} in {path}")
+              text = text.replace(old, new, 1)
+          path.write_text(text)
+          PY
+          grep -A8 'ABI_VERSION =' "$constants"
 
       - name: Install Android NDK 28.2.13676358
         run: |
@@ -251,9 +273,7 @@ jobs:
         env:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: |
-          # Each matrix job already targets one ABI. Flutter's split mode adds
-          # ABI * 1000 to versionCode (arm64 adds 2000), so keep it disabled.
-          flutter build apk --release \
+          flutter build apk --release --split-per-abi \
             --target-platform ${{ matrix.target }} \
             --build-name="${{ needs.prepare.outputs.app_version }}" \
             --build-number="${{ needs.prepare.outputs.build_stamp }}" \
@@ -263,7 +283,7 @@ jobs:
 
       - name: Verify APK version code
         run: |
-          apk="build/app/outputs/flutter-apk/app-release.apk"
+          apk="build/app/outputs/flutter-apk/app-${{ matrix.abi }}-release.apk"
           analyzer="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
           if [ ! -x "$analyzer" ]; then
             analyzer="$(command -v apkanalyzer)"
@@ -276,10 +296,26 @@ jobs:
           fi
           echo "APK version code: $actual_version_code"
 
+      - name: Verify APK native ABI contents
+        run: |
+          apk="build/app/outputs/flutter-apk/app-${{ matrix.abi }}-release.apk"
+          bad_entries="$(
+            zipinfo -1 "$apk" \
+              | grep '^lib/' \
+              | grep -v "^lib/${{ matrix.abi }}/" \
+              || true
+          )"
+          if [ -n "$bad_entries" ]; then
+            echo "APK contains native libraries outside ${{ matrix.abi }}:" >&2
+            echo "$bad_entries" >&2
+            exit 1
+          fi
+          echo "APK native libraries are limited to ${{ matrix.abi }}"
+
       - name: Rename APK
         run: |
           mkdir -p dist
-          cp "build/app/outputs/flutter-apk/app-release.apk" \
+          cp "build/app/outputs/flutter-apk/app-${{ matrix.abi }}-release.apk" \
             "dist/mithka-${{ needs.prepare.outputs.artifact_label }}-${{ matrix.abi }}-release.apk"
 
       - name: Upload APK artifact

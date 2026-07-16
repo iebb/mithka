@@ -5,6 +5,14 @@ import 'package:mithka/tdlib/td_models.dart';
 ChatMessage _message(int id, String text) =>
     ChatMessage(id: id, isOutgoing: false, text: text, date: id);
 
+ChatMessage _pending(int id, int date) => ChatMessage(
+  id: id,
+  isOutgoing: true,
+  text: 'pending $id',
+  date: date,
+  isSending: true,
+);
+
 void main() {
   test(
     'background history hydration fills the middle without clearing tail',
@@ -75,5 +83,77 @@ void main() {
       shouldMergeLiveMessageIntoChatWindow(historyReachesLatest: false),
       isFalse,
     );
+  });
+
+  test('TDLib sending-state messages remain at the latest edge', () {
+    final merged = mergeChatMessages(
+      [_message(100, 'old'), _message(200, 'latest')],
+      [_pending(1001, 300), _pending(1002, 301)],
+    );
+
+    expect(merged.map((message) => message.id), [100, 200, 1001, 1002]);
+  });
+
+  test('same-second pending messages keep send order', () {
+    final merged = mergeChatMessages(const <ChatMessage>[], [
+      _pending(1001, 300),
+      _pending(1002, 300),
+    ]);
+
+    expect(merged.map((message) => message.id), [1001, 1002]);
+  });
+
+  test('latest server ID ignores pending messages at the tail', () {
+    expect(
+      latestServerMessageId([
+        _message(100, 'old'),
+        _message(200, 'latest'),
+        _pending(1001, 300),
+      ]),
+      200,
+    );
+    expect(latestServerMessageId([_pending(1001, 300)]), 0);
+  });
+
+  test('read boundary falls back when filtering leaves only pending', () {
+    expect(
+      latestServerMessageReadBoundary(
+        visibleMessages: [_pending(1001, 300)],
+        allMessages: [
+          _message(100, 'filtered'),
+          _message(200, 'filtered latest'),
+          _pending(1001, 300),
+        ],
+      ),
+      200,
+    );
+  });
+
+  test('pending outgoing messages are never reported as peer-read', () {
+    expect(
+      isOutgoingServerMessageRead(
+        message: _pending(1001, 300),
+        lastReadOutboxId: 200,
+      ),
+      isFalse,
+    );
+    expect(
+      isOutgoingServerMessageRead(
+        message: ChatMessage(
+          id: 150,
+          isOutgoing: true,
+          text: 'sent',
+          date: 300,
+        ),
+        lastReadOutboxId: 200,
+      ),
+      isTrue,
+    );
+  });
+
+  test('an empty local page does not exhaust remote older history', () {
+    expect(confirmsOlderHistoryExhausted(onlyLocal: true), isFalse);
+    expect(confirmsOlderHistoryExhausted(onlyLocal: false), isTrue);
+    expect(confirmsOlderHistoryExhausted(onlyLocal: false), isTrue);
   });
 }

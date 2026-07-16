@@ -51,10 +51,13 @@ import '../theme/theme_controller.dart';
 import 'blocked_message_runs.dart';
 import 'chat_auto_scroll_policy.dart';
 import 'chat_first_contact_card.dart';
+import 'chat_first_contact_info.dart';
 import 'chat_info_view.dart';
 import 'chat_input_bar.dart';
 import 'chat_media_drop_region.dart';
+import 'chat_message_merge.dart';
 import 'chat_picker_view.dart';
+import 'chat_scroll_metrics.dart';
 import 'chat_search_view.dart';
 import 'chat_session_cache.dart';
 import 'chat_unread_progress.dart';
@@ -80,6 +83,7 @@ import 'rich_text_composer_view.dart';
 import 'sticker_set_detail_view.dart';
 import 'sticker_viewer.dart';
 import 'telegram_mini_app_view.dart';
+import 'transcript_pivot_partition.dart';
 import 'video_playback_queue.dart';
 import 'video_player_view.dart';
 
@@ -669,6 +673,7 @@ class _TranscriptEntry {
   final int startIndex;
 
   ChatMessage get first => messages.first;
+  ChatMessage get last => messages.last;
   bool get isBlockedRun =>
       messages.isNotEmpty && messages.every((message) => message.blockedByUser);
   bool get isImageGroup => messages.length > 1 && !isBlockedRun;
@@ -677,9 +682,9 @@ class _TranscriptEntry {
   /// prepend and shift every index).
   late final Key key = ValueKey(
     isBlockedRun
-        ? 'blocked-${messages.first.id}-${messages.last.id}'
-        : isImageGroup
-        ? 'album-${messages.map((m) => m.id).join('-')}'
+        ? 'blocked-${last.id}'
+        : first.mediaAlbumId != 0
+        ? 'album-${first.mediaAlbumId}-${last.id}'
         : 'message-${first.id}',
   );
 }
@@ -688,12 +693,14 @@ class _ChatScrollSnapshot {
   const _ChatScrollSnapshot({
     required this.pixels,
     required this.wasAtLoadedBottom,
+    this.pivotMessageId,
     this.anchorMessageId,
     this.anchorViewportOffset,
   });
 
   final double pixels;
   final bool wasAtLoadedBottom;
+  final int? pivotMessageId;
   final int? anchorMessageId;
   final double? anchorViewportOffset;
 }
@@ -702,14 +709,22 @@ class _ChatViewState extends State<ChatView> {
   late final bool _openAtLatest;
   late final _ChatScrollSnapshot? _sessionScrollSnapshot;
   late final ChatSessionRenderState? _sessionRenderState;
+  late bool _olderHistoryExhaustedHint;
   late final ChatViewModel _vm;
   late final ScrollController _scroll;
   final _pinnedKey = GlobalKey(); // the pinned message's row, for scroll-to
   final _targetKey = GlobalKey(); // arbitrary linked/anchored message row
   final _unreadKey = GlobalKey(); // the "以下为新消息" divider, for entry scroll
   final _transcriptViewportKey = GlobalKey();
+  final _newerTranscriptSliverKey = GlobalKey();
+  final _firstContactLayoutKey = GlobalKey();
   final Map<int, GlobalKey> _entryVisibilityKeys = <int, GlobalKey>{};
   Map<int, _TranscriptEntry> _trackedTranscriptEntries = const {};
+  TranscriptPivot? _transcriptPivot;
+  bool _transcriptPivotFrozen = false;
+  bool _transcriptPivotFreezeScheduled = false;
+  late int _historyWindowRevision;
+  late int _historyWindowInvalidationRevision;
   final Set<int> _reportedVisibleMessageIds = <int>{};
   final Set<int> _expandedBlockedRunIds = <int>{};
   bool _unreadProgressUpdateScheduled = false;
@@ -738,9 +753,17 @@ class _ChatViewState extends State<ChatView> {
   double _keyboardInset = 0;
   bool _shortTranscriptFillScheduled = false;
   bool _isFillingShortTranscript = false;
+  int _shortTranscriptFillGeneration = 0;
+  bool _shortFirstContactRevealScheduled = false;
+  bool _showingFullyVisibleFirstContactHistory = false;
+  bool _transcriptViewportClaimedByUser = false;
   bool _loadingLatestFromAnchor = false;
   bool _initialTranscriptReady = false;
-  int _bottomSettleGeneration = 0;
+  final Set<int> _transcriptPointersDown = <int>{};
+  bool _bottomScrollScheduled = false;
+  bool _scheduledBottomAnimated = true;
+  int _scheduledBottomGeneration = 0;
+  final _bottomFollow = ChatBottomFollowCoordinator();
   final Set<int> _selectedMessageIds = {};
   int? _selectionAnchorId;
   bool _selectionScrollingUp = false;
@@ -763,6 +786,7 @@ class _ChatViewState extends State<ChatView> {
   static const _separatorGap = 300;
   static const _initialTargetAlignment = 0.30;
   static const _initialUnreadAlignment = 0.12;
+  static const _pendingTranscriptOrderId = 0x7FFFFFFFFFFFFFFF;
   static OverlayEntry? _globalPictureInPictureVideo;
   static final Map<int, _ChatScrollSnapshot> _sessionScrollSnapshots = {};
   static final ChatSessionCache _sessionCache = ChatSessionCache();
@@ -773,6 +797,16 @@ class _ChatViewState extends State<ChatView> {
   double _messageMediaMaxWidth([double? chatWidth]) {
     final width = chatWidth ?? MediaQuery.sizeOf(context).width;
     return math.max(1.0, width * 0.75);
+  }
+
+  int _transcriptOrderId(ChatMessage message) =>
+      isPendingChatMessage(message) ? _pendingTranscriptOrderId : message.id;
+
+  ChatMessage? _latestServerMessage(List<ChatMessage> messages) {
+    for (final message in messages.reversed) {
+      if (!isPendingChatMessage(message) && message.id > 0) return message;
+    }
+    return null;
   }
 
   @override
@@ -787,9 +821,16 @@ class _ChatViewState extends State<ChatView> {
     _sessionRenderState = widget.initialMessageId == null
         ? _sessionCache.read(widget.chatId)
         : null;
+    _olderHistoryExhaustedHint =
+        _sessionRenderState?.olderHistoryExhausted ?? false;
     _sessionScrollSnapshot = widget.initialMessageId == null
         ? _sessionScrollSnapshots[widget.chatId]
         : null;
+    final savedPivotMessageId = _sessionScrollSnapshot?.pivotMessageId;
+    if (savedPivotMessageId != null) {
+      _transcriptPivot = TranscriptPivot(savedPivotMessageId);
+      _transcriptPivotFrozen = savedPivotMessageId != _pendingTranscriptOrderId;
+    }
     final initialScrollPlan = chatInitialScrollPlan(
       hasCachedTranscript: _sessionRenderState?.messages.isNotEmpty ?? false,
       savedPixels: _sessionScrollSnapshot?.pixels,
@@ -818,8 +859,11 @@ class _ChatViewState extends State<ChatView> {
           : null,
       sessionMessages: _sessionRenderState?.messages,
       sessionAnchoredHistory: _sessionRenderState?.anchoredHistory ?? false,
+      sessionFirstContactInfo: _sessionRenderState?.firstContactInfo,
       seedMessage: widget.seedMessage,
     );
+    _historyWindowRevision = _vm.historyWindowRevision;
+    _historyWindowInvalidationRevision = _vm.historyWindowInvalidationRevision;
     unawaited(
       TelegramCountryNames.shared
           .load()
@@ -832,7 +876,7 @@ class _ChatViewState extends State<ChatView> {
       _didInitialScroll = true;
       _initialTranscriptReady = true;
       _lastCount = _vm.messages.length;
-      _lastNewestMessageId = _vm.messages.last.id;
+      _lastNewestMessageId = _latestServerMessage(_vm.messages)?.id;
       if (initialScrollPlan.correctToBottomAfterLayout) {
         _scheduleRestoredBottomCorrection();
       }
@@ -915,26 +959,22 @@ class _ChatViewState extends State<ChatView> {
     final pos = _scroll.position;
     final scrollingUp = pos.pixels < _lastScrollPixels;
     _lastScrollPixels = pos.pixels;
-    final wasPreservingViewport = _autoScrollPolicy.preservesViewport;
     _autoScrollPolicy.noteUserScroll(
       towardOlderMessages: pos.userScrollDirection == ScrollDirection.forward,
       isAtBottom: _isAtLoadedBottom(1),
     );
-    if (!wasPreservingViewport && _autoScrollPolicy.preservesViewport) {
-      _bottomSettleGeneration++;
-    }
     _saveSessionScrollSnapshot();
     _scheduleUnreadProgressUpdate();
     if (_selectionAnchorId != null && scrollingUp != _selectionScrollingUp) {
       setState(() => _selectionScrollingUp = scrollingUp);
     }
     if (pos.userScrollDirection == ScrollDirection.forward &&
-        pos.pixels < 500) {
-      unawaited(_loadOlderPreservingOffset());
+        isNearOldest(pos, threshold: 500)) {
+      unawaited(_loadOlderFromScroll());
     }
     if (_vm.anchoredHistory &&
         pos.userScrollDirection == ScrollDirection.reverse &&
-        pos.maxScrollExtent - pos.pixels < 36) {
+        isNearLatest(pos, threshold: 36)) {
       unawaited(_returnToLatest());
     }
     final nearBottom = _isNearBottom(80);
@@ -951,17 +991,51 @@ class _ChatViewState extends State<ChatView> {
     // Show the jump-to-bottom button once scrolled up from the newest message.
     final show =
         !_isAtLoadedBottom() &&
-        (_vm.anchoredHistory || pos.maxScrollExtent - pos.pixels > 120);
+        (_vm.anchoredHistory || distanceToLatest(pos) > 120);
     if (show != _showJumpDown) setState(() => _showJumpDown = show);
   }
 
   bool _onTranscriptUserScroll(UserScrollNotification notification) {
     if (_initialTranscriptReady &&
         notification.direction != ScrollDirection.idle) {
-      _maintainSessionScrollAnchor = false;
-      _maintainRestoredBottom = false;
+      _claimTranscriptViewport();
     }
     return false;
+  }
+
+  bool get _hasTranscriptPointerDown => _transcriptPointersDown.isNotEmpty;
+
+  void _onTranscriptPointerDown(PointerDownEvent event) {
+    _transcriptPointersDown.add(event.pointer);
+    // A hold cancels an in-flight driven scroll immediately. It does not claim
+    // the viewport permanently unless it becomes an actual drag.
+    _cancelBottomFollow();
+    _stopActiveTranscriptScroll();
+    ++_shortTranscriptFillGeneration;
+  }
+
+  void _onTranscriptPointerEnd(PointerEvent event) {
+    _transcriptPointersDown.remove(event.pointer);
+    _scheduleShortFirstContactReveal();
+    _scheduleSessionScrollAnchorMaintenance();
+    _scheduleRestoredBottomCorrection();
+  }
+
+  void _claimTranscriptViewport() {
+    _cancelBottomFollow();
+    ++_shortTranscriptFillGeneration;
+    _transcriptViewportClaimedByUser = true;
+    _showingFullyVisibleFirstContactHistory = false;
+    _maintainSessionScrollAnchor = false;
+    _maintainRestoredBottom = false;
+    _transcriptPivotFrozen = true;
+  }
+
+  void _stopActiveTranscriptScroll() {
+    if (!_scroll.hasClients || !_scroll.position.isScrollingNotifier.value) {
+      return;
+    }
+    _scroll.jumpTo(_scroll.position.pixels);
   }
 
   void _saveSessionScrollSnapshot() {
@@ -977,8 +1051,9 @@ class _ChatViewState extends State<ChatView> {
     final wasAtLoadedBottom = _isAtLoadedBottom(80);
     final anchor = wasAtLoadedBottom ? null : _captureSessionScrollAnchor();
     _sessionScrollSnapshots[widget.chatId] = _ChatScrollSnapshot(
-      pixels: pos.pixels.clamp(pos.minScrollExtent, pos.maxScrollExtent),
+      pixels: clampScrollOffset(pos, pos.pixels),
       wasAtLoadedBottom: wasAtLoadedBottom,
+      pivotMessageId: _transcriptPivot?.cutoffMessageId,
       anchorMessageId: anchor?.messageId,
       anchorViewportOffset: anchor?.viewportOffset,
     );
@@ -1000,6 +1075,8 @@ class _ChatViewState extends State<ChatView> {
       chatId: widget.chatId,
       messages: _vm.messages,
       anchoredHistory: _vm.anchoredHistory,
+      olderHistoryExhausted: !_vm.hasOlderHistory || _olderHistoryExhaustedHint,
+      firstContactInfo: _vm.firstContactInfo,
     );
   }
 
@@ -1127,8 +1204,19 @@ class _ChatViewState extends State<ChatView> {
 
   bool _isNearBottom([double threshold = 160]) {
     if (!_scroll.hasClients) return true;
-    final pos = _scroll.position;
-    return pos.maxScrollExtent - pos.pixels <= threshold;
+    final position = _scroll.position;
+    if (_showingFullyVisibleFirstContactHistory &&
+        (position.pixels - position.minScrollExtent).abs() <= 1) {
+      return true;
+    }
+    return isNearLatest(position, threshold: threshold);
+  }
+
+  double get _loadedBottomOffset {
+    final position = _scroll.position;
+    return _showingFullyVisibleFirstContactHistory
+        ? position.minScrollExtent
+        : position.maxScrollExtent;
   }
 
   bool _isAtLoadedBottom([double threshold = 24]) {
@@ -1158,7 +1246,7 @@ class _ChatViewState extends State<ChatView> {
   bool get _isUserScrolling =>
       _scroll.hasClients && _scroll.position.isScrollingNotifier.value;
 
-  Future<void> _loadOlderPreservingOffset() async {
+  Future<void> _loadOlderFromScroll() async {
     if (_loadingOlderFromScroll ||
         _isFillingShortTranscript ||
         !_scroll.hasClients ||
@@ -1166,24 +1254,15 @@ class _ChatViewState extends State<ChatView> {
       return;
     }
     _loadingOlderFromScroll = true;
-    final oldPixels = _scroll.position.pixels;
-    final oldMax = _scroll.position.maxScrollExtent;
     try {
       final loaded = await _vm.loadOlder();
-      if (!loaded) return;
-      await WidgetsBinding.instance.endOfFrame;
-      if (!mounted || !_scroll.hasClients || _scrollTargetId != null) return;
-      final delta = _scroll.position.maxScrollExtent - oldMax;
-      if (delta > 1) {
-        final target = (oldPixels + delta).clamp(
-          _scroll.position.minScrollExtent,
-          _scroll.position.maxScrollExtent,
-        );
-        _scroll.jumpTo(target);
+      if (loaded) {
+        _olderHistoryExhaustedHint = false;
+      } else if (!_vm.hasOlderHistory) {
+        _olderHistoryExhaustedHint = true;
       }
     } finally {
       _loadingOlderFromScroll = false;
-      if (mounted) setState(() {});
     }
   }
 
@@ -1195,53 +1274,95 @@ class _ChatViewState extends State<ChatView> {
     if ((wasNearBottom || opening) &&
         !_autoScrollPolicy.preservesViewport &&
         _scrollTargetId == null) {
-      _scheduleScrollToBottom(keyboardSettle: true, force: opening);
+      _scheduleScrollToBottom(animated: false);
     }
   }
 
-  void _scheduleScrollToBottom({
-    bool animated = true,
-    bool keyboardSettle = false,
-    bool force = false,
-  }) {
+  void _scheduleScrollToBottom({bool animated = true}) {
+    final generation = _bottomFollow.begin();
+    _scheduledBottomGeneration = generation;
+    if (_bottomScrollScheduled) {
+      _scheduledBottomAnimated = _scheduledBottomAnimated && animated;
+      return;
+    }
+    _bottomScrollScheduled = true;
+    _scheduledBottomAnimated = animated;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _animateToBottom(
-        animated: animated,
-        keyboardSettle: keyboardSettle,
-        force: force,
+      final shouldAnimate = _scheduledBottomAnimated;
+      final scheduledGeneration = _scheduledBottomGeneration;
+      _bottomScrollScheduled = false;
+      _scheduledBottomAnimated = true;
+      if (!_bottomFollow.isCurrent(scheduledGeneration) ||
+          !_canFollowLoadedBottom()) {
+        return;
+      }
+      // Re-measure after this frame's layout before choosing min (fully
+      // visible first-contact history) versus max (the normal latest edge).
+      // This prevents a stale min correction followed by a max correction.
+      _positionShortFirstContactHistoryIfItFits(requireAtLatest: false);
+      unawaited(
+        _moveToLoadedBottom(animated: shouldAnimate).whenComplete(() {
+          _scheduleBottomGeometryFollow(scheduledGeneration);
+        }),
       );
     });
   }
 
-  void _animateToBottom({
-    bool animated = true,
-    bool keyboardSettle = false,
-    bool force = false,
-  }) {
-    if (!_scroll.hasClients) return;
+  Future<void> _moveToLoadedBottom({required bool animated}) async {
+    if (!_canFollowLoadedBottom()) return;
     _autoScrollPolicy.returnToBottom();
-    final target = _scroll.position.maxScrollExtent;
-    if (!animated || (target - _scroll.position.pixels).abs() < 48) {
+    final target = _loadedBottomOffset;
+    final delta = (target - _scroll.position.pixels).abs();
+    if (delta <= 0.5) return;
+    if (!animated || delta < 48) {
       _scroll.jumpTo(target);
-      _settleAtBottom(keyboardSettle: keyboardSettle, force: force);
       return;
     }
-    _scroll
-        .animateTo(
-          target,
-          duration: const Duration(milliseconds: 160),
-          curve: Curves.easeOutCubic,
-        )
-        .whenComplete(() {
-          if (mounted) {
-            _settleAtBottom(keyboardSettle: keyboardSettle, force: force);
-          }
-        });
+    await _scroll.animateTo(
+      target,
+      duration: const Duration(milliseconds: 160),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  bool _canFollowLoadedBottom() =>
+      mounted &&
+      _scroll.hasClients &&
+      !_hasTranscriptPointerDown &&
+      !_vm.anchoredHistory &&
+      !_autoScrollPolicy.preservesViewport &&
+      _scrollTargetId == null;
+
+  void _scheduleBottomGeometryFollow(
+    int generation, {
+    int remainingFrames = 12,
+  }) {
+    _bottomFollow.follow(
+      generation: generation,
+      remainingFrames: remainingFrames,
+      schedulePostFrame: (callback) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => callback());
+      },
+      canFollow: _canFollowLoadedBottom,
+      distanceToLatest: () =>
+          (_loadedBottomOffset - _scroll.position.pixels).abs(),
+      latestExtent: () => _loadedBottomOffset,
+      correct: () => _scroll.jumpTo(_loadedBottomOffset),
+      settled: () {
+        _markReadAtBottomIfNeeded();
+        _clearBottomIndicatorsIfNeeded();
+        _saveSessionScrollSnapshot();
+      },
+    );
+  }
+
+  void _cancelBottomFollow() {
+    _bottomFollow.cancel();
   }
 
   Future<void> _returnToLatest() async {
     if (_loadingLatestFromAnchor) return;
+    _cancelSessionScrollAnchorMaintenance();
     _autoScrollPolicy.returnToBottom();
     if (!_vm.anchoredHistory) {
       _setScrollTarget(null);
@@ -1251,7 +1372,7 @@ class _ChatViewState extends State<ChatView> {
           _bannerDismissed = _vm.unreadCount <= 0;
         });
       }
-      _animateToBottom(force: true);
+      _scheduleScrollToBottom();
       unawaited(_vm.markLoadedMessagesRead());
       return;
     }
@@ -1259,12 +1380,13 @@ class _ChatViewState extends State<ChatView> {
     _setScrollTarget(null);
     try {
       final ok = await _vm.loadLatestHistory();
-      if (!mounted || !ok) return;
+      if (!ok) return;
+      if (!mounted) return;
       setState(() {
         _unreadProgress.clearLiveMessages();
         _bannerDismissed = _vm.unreadCount <= 0;
       });
-      _scheduleScrollToBottom(force: true);
+      _scheduleScrollToBottom();
       unawaited(_vm.markLoadedMessagesRead());
     } finally {
       _loadingLatestFromAnchor = false;
@@ -1279,7 +1401,7 @@ class _ChatViewState extends State<ChatView> {
   }
 
   void _onComposerMessageSent() {
-    _maintainSessionScrollAnchor = false;
+    _cancelSessionScrollAnchorMaintenance();
     _maintainRestoredBottom = false;
     _autoScrollPolicy.noteMessageSent();
     _setScrollTarget(null);
@@ -1289,7 +1411,7 @@ class _ChatViewState extends State<ChatView> {
       unawaited(_returnToLatest());
       return;
     }
-    _scheduleScrollToBottom(keyboardSettle: true, force: true);
+    _scheduleScrollToBottom();
   }
 
   void _playMusicMessage(ChatMessage message) {
@@ -1320,6 +1442,9 @@ class _ChatViewState extends State<ChatView> {
   /// Jump to the first unread incoming message (where the "以下为新消息" divider
   /// sits); fall back to the bottom if none is loaded.
   void _jumpToFirstUnread() {
+    _cancelSessionScrollAnchorMaintenance();
+    _cancelBottomFollow();
+    _autoScrollPolicy.returnToBottom();
     setState(() {
       _unreadProgress.clearLiveMessages();
       _showEntryUnreadBanner = false;
@@ -1329,65 +1454,122 @@ class _ChatViewState extends State<ChatView> {
       (m) => !m.isOutgoing && !m.isService && m.id > _vm.lastReadInboxId,
     );
     if (i < 0 || !_scroll.hasClients) {
-      _animateToBottom(force: true);
+      _scheduleScrollToBottom();
       return;
     }
-    final max = _scroll.position.maxScrollExtent;
-    final target = (max * (i / _vm.messages.length)).clamp(0.0, max);
-    _scroll.animateTo(
-      target,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOut,
+    final target = _estimateMessageOffset(
+      _vm.messages[i].id,
+      _initialUnreadAlignment,
+      beforeUnreadDivider: true,
+    );
+    if (target == null) return;
+    unawaited(
+      _scroll
+          .animateTo(
+            target,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          )
+          .whenComplete(() {
+            if (!mounted) return;
+            unawaited(
+              _ensureKeyVisible(_unreadKey, alignment: _initialUnreadAlignment),
+            );
+          }),
     );
   }
 
   void _onModel() {
     if (!mounted) return;
+    final wasPinnedToLoadedBottom =
+        _didInitialScroll &&
+        !_hasTranscriptPointerDown &&
+        !_isUserScrolling &&
+        !_autoScrollPolicy.preservesViewport &&
+        _scrollTargetId == null &&
+        _isAtLoadedBottom(2);
+    final historyWindowInvalidated =
+        _historyWindowInvalidationRevision !=
+        _vm.historyWindowInvalidationRevision;
+    _historyWindowInvalidationRevision = _vm.historyWindowInvalidationRevision;
+    if (_historyWindowRevision != _vm.historyWindowRevision) {
+      _historyWindowRevision = _vm.historyWindowRevision;
+      final preservesSavedCoordinate =
+          shouldPreserveChatSessionAnchorAcrossWindowChange(
+            anchorMaintenanceActive: _maintainSessionScrollAnchor,
+            hasSavedPivot: _sessionScrollSnapshot?.pivotMessageId != null,
+            historyWindowInvalidated: historyWindowInvalidated,
+          );
+      if (!preservesSavedCoordinate) {
+        _cancelSessionScrollAnchorMaintenance();
+        _cancelBottomFollow();
+        _stopActiveTranscriptScroll();
+        _resetTranscriptPivot();
+      }
+      if (historyWindowInvalidated) {
+        _maintainRestoredBottom = false;
+        _olderHistoryExhaustedHint = true;
+        _transcriptViewportClaimedByUser = false;
+        _showingFullyVisibleFirstContactHistory = false;
+        _autoScrollPolicy.returnToBottom();
+        _sessionScrollSnapshots.remove(widget.chatId);
+      } else if (!preservesSavedCoordinate) {
+        _olderHistoryExhaustedHint = false;
+      }
+    }
+    if (shouldRebasePendingTranscriptPivot(
+      pivot: _transcriptPivot,
+      pendingOrderId: _pendingTranscriptOrderId,
+      hasServerMessage: _vm.messages.any(
+        (message) => !isPendingChatMessage(message) && message.id > 0,
+      ),
+    )) {
+      _resetTranscriptPivot();
+    }
+    if (!_transcriptPivotFrozen &&
+        _vm.initialLoaded &&
+        !identical(_transcriptCacheMessages, _vm.messages)) {
+      // Cold local pages may be followed by a larger remote hydration. Until
+      // the latest arm fills a viewport (or the user scrolls), let that fuller
+      // initial window establish the fixed cutoff.
+      _resetTranscriptPivot();
+    }
     final liveIncomingMessageIds = _vm.consumeLiveIncomingMessageIds();
     if (_vm.messages.length != _lastCount) {
       final wasNearBottom = _isNearBottom(72);
       final previousNewestId = _lastNewestMessageId;
-      final newest = _vm.messages.isEmpty ? null : _vm.messages.last;
+      final newest = _latestServerMessage(_vm.messages);
       final appendedNewest =
           newest != null &&
           newest.id != previousNewestId &&
           (newest.isOutgoing ||
               previousNewestId == null ||
               newest.id > previousNewestId);
-      final appendedIncomingIds = previousNewestId == null
-          ? const <int>[]
-          : liveIncomingMessageIds
-                .where(
-                  (id) =>
-                      id > previousNewestId &&
-                      _vm.messages.any((message) => message.id == id),
-                )
-                .toList(growable: false);
-      final restore = _vm.consumeRestoreTop();
+      final appendedIncomingIds = appendedLiveIncomingMessageIds(
+        previousNewestMessageId: previousNewestId,
+        liveIncomingMessageIds: liveIncomingMessageIds,
+        currentMessageIds: _vm.messages.map((message) => message.id),
+      );
       _lastCount = _vm.messages.length;
       _lastNewestMessageId = newest?.id ?? _lastNewestMessageId;
       final shouldAutoScroll =
           _didInitialScroll &&
-          restore == null &&
           _scrollTargetId == null &&
           !_vm.anchoredHistory &&
           appendedNewest &&
+          !_hasTranscriptPointerDown &&
           !_isUserScrolling &&
           _autoScrollPolicy.shouldFollowAppendedMessage(
             wasNearBottom: wasNearBottom,
           );
       if (shouldAutoScroll) {
         _unreadProgress.clearLiveMessages();
-        _scheduleScrollToBottom(
-          animated: newest.isOutgoing,
-          keyboardSettle: newest.isOutgoing,
-          force: newest.isOutgoing,
-        );
+        _scheduleScrollToBottom(animated: newest.isOutgoing);
       } else if (_didInitialScroll &&
-          restore == null &&
           appendedNewest &&
           appendedIncomingIds.isNotEmpty &&
-          (_isUserScrolling ||
+          (_hasTranscriptPointerDown ||
+              _isUserScrolling ||
               _autoScrollPolicy.preservesViewport ||
               !wasNearBottom ||
               !_isAtLoadedBottom(1))) {
@@ -1431,17 +1613,27 @@ class _ChatViewState extends State<ChatView> {
         if (mounted) setState(() => _bannerDismissed = true);
       });
     }
-    if (!_loadingOlderFromScroll) {
-      setState(() {});
+    if (wasPinnedToLoadedBottom && !_bottomScrollScheduled) {
+      _scheduleScrollToBottom(animated: false);
     }
+    setState(() {});
     _cacheCurrentTranscript();
     _scheduleSessionScrollAnchorMaintenance();
     _scheduleRestoredBottomCorrection();
   }
 
   void _setScrollTarget(int? messageId) {
-    if (messageId != null) _maintainRestoredBottom = false;
+    if (messageId != null) {
+      _maintainRestoredBottom = false;
+      _cancelSessionScrollAnchorMaintenance();
+      _cancelBottomFollow();
+      _stopActiveTranscriptScroll();
+    }
     _scrollTargetId = messageId;
+  }
+
+  void _cancelSessionScrollAnchorMaintenance() {
+    _maintainSessionScrollAnchor = false;
   }
 
   void _scheduleRestoredBottomCorrection() {
@@ -1458,10 +1650,11 @@ class _ChatViewState extends State<ChatView> {
       canCorrect: () =>
           mounted &&
           _maintainRestoredBottom &&
+          !_hasTranscriptPointerDown &&
           !_vm.anchoredHistory &&
           _scrollTargetId == null &&
           _scroll.hasClients,
-      correct: () => _scrollToBottom(settle: true, forceSettle: true),
+      correct: _scrollToBottom,
     );
   }
 
@@ -1479,6 +1672,7 @@ class _ChatViewState extends State<ChatView> {
       if (!mounted || !_maintainSessionScrollAnchor || !_scroll.hasClients) {
         return;
       }
+      if (_hasTranscriptPointerDown) return;
       _restoreSessionScrollAnchor(snapshot);
     });
   }
@@ -1527,9 +1721,9 @@ class _ChatViewState extends State<ChatView> {
     while (mounted &&
         _scroll.hasClients &&
         _vm.canLoadOlder &&
-        _scroll.position.maxScrollExtent + 24 < snapshot.pixels &&
+        snapshot.pixels + 24 < _scroll.position.minScrollExtent &&
         guard < 6) {
-      final loaded = await _vm.loadOlderLocal(restorePosition: false);
+      final loaded = await _vm.loadOlderLocal();
       if (!loaded) break;
       await WidgetsBinding.instance.endOfFrame;
       guard++;
@@ -1576,10 +1770,7 @@ class _ChatViewState extends State<ChatView> {
   void _jumpToSessionScrollSnapshot(_ChatScrollSnapshot snapshot) {
     if (!_scroll.hasClients) return;
     final pos = _scroll.position;
-    final target = snapshot.pixels.clamp(
-      pos.minScrollExtent,
-      pos.maxScrollExtent,
-    );
+    final target = clampScrollOffset(pos, snapshot.pixels);
     _scroll.jumpTo(target);
   }
 
@@ -1589,7 +1780,7 @@ class _ChatViewState extends State<ChatView> {
     for (var i = 0; i < 3; i++) {
       await WidgetsBinding.instance.endOfFrame;
       if (!mounted || !_scroll.hasClients) return;
-      await _correctInitialPosition(settleBottom: false);
+      await _correctInitialPosition();
     }
   }
 
@@ -1633,7 +1824,7 @@ class _ChatViewState extends State<ChatView> {
     );
   }
 
-  Future<bool> _correctInitialPosition({bool settleBottom = true}) async {
+  Future<bool> _correctInitialPosition() async {
     if (!_scroll.hasClients) return false;
     final target = widget.initialMessageId ?? _scrollTargetId;
     if (target != null) {
@@ -1649,7 +1840,7 @@ class _ChatViewState extends State<ChatView> {
     }
     if (_vm.anchoredHistory) return true;
     if (_shouldOpenAtBottom) {
-      _scrollToBottom(settle: settleBottom, forceSettle: settleBottom);
+      _scrollToBottom();
       unawaited(_vm.markLoadedMessagesRead());
       return true;
     }
@@ -1694,39 +1885,43 @@ class _ChatViewState extends State<ChatView> {
       context.read<ThemeController>().groupImageMessages,
     );
     if (entries.isEmpty || !_scroll.hasClients) return null;
-    final entryIndex = entries.indexWhere(
-      (entry) => entry.messages.any((message) => message.id == messageId),
-    );
-    if (entryIndex < 0) return null;
-    final estimatedContentExtent = _estimatedTranscriptExtent(entries);
-    if (estimatedContentExtent <= 0) return null;
-    var before = 8.0; // ListView vertical padding top
-    for (var i = 0; i < entryIndex; i++) {
-      before += _estimatedEntryExtent(entries[i]);
-    }
-    final entry = entries[entryIndex];
-    final messages = _transcriptCacheMessages ?? _vm.messages;
-    if (!beforeUnreadDivider &&
-        _needsUnreadDivider(entry.startIndex, messages: messages)) {
-      before += _estimatedUnreadDividerExtent;
-    }
-    final viewport = _scroll.position.viewportDimension;
-    final estimatedScrollable = math.max(
-      1.0,
-      estimatedContentExtent - viewport,
-    );
-    final actualScrollable = math.max(1.0, _scroll.position.maxScrollExtent);
-    final scale = actualScrollable / estimatedScrollable;
-    final raw = (before - viewport * alignment) * scale;
-    return raw.clamp(0.0, _scroll.position.maxScrollExtent);
-  }
-
-  double _estimatedTranscriptExtent(List<_TranscriptEntry> entries) {
-    var extent = 16.0; // ListView vertical padding
+    _TranscriptEntry? targetEntry;
     for (final entry in entries) {
-      extent += _estimatedEntryExtent(entry);
+      if (entry.messages.any((message) => message.id == messageId)) {
+        targetEntry = entry;
+        break;
+      }
     }
-    return extent;
+    if (targetEntry == null) return null;
+    final partition = _partitionTranscript(entries);
+    final messages = _transcriptCacheMessages ?? _vm.messages;
+    final position = _scroll.position;
+    final viewport = _scroll.position.viewportDimension;
+    final targetIsBeforePivot = partition.beforePivot.contains(targetEntry);
+
+    if (targetIsBeforePivot) {
+      final targetIndex = partition.beforePivot.indexOf(targetEntry);
+      var targetTop = 0.0;
+      for (var i = targetIndex; i < partition.beforePivot.length; i++) {
+        targetTop -= _estimatedEntryExtent(partition.beforePivot[i]);
+      }
+      if (!beforeUnreadDivider &&
+          _needsUnreadDivider(targetEntry.startIndex, messages: messages)) {
+        targetTop += _estimatedUnreadDividerExtent;
+      }
+      return clampScrollOffset(position, targetTop - viewport * alignment);
+    }
+
+    final targetIndex = partition.pivotAndAfter.indexOf(targetEntry);
+    var targetTop = 0.0;
+    for (var i = 0; i < targetIndex; i++) {
+      targetTop += _estimatedEntryExtent(partition.pivotAndAfter[i]);
+    }
+    if (!beforeUnreadDivider &&
+        _needsUnreadDivider(targetEntry.startIndex, messages: messages)) {
+      targetTop += _estimatedUnreadDividerExtent;
+    }
+    return clampScrollOffset(position, targetTop - viewport * alignment);
   }
 
   static const _estimatedUnreadDividerExtent = 33.0;
@@ -1744,7 +1939,7 @@ class _ChatViewState extends State<ChatView> {
     final first = entry.first;
     if (first.isService) return extent + 38;
     if (entry.isBlockedRun) {
-      if (!_expandedBlockedRunIds.contains(first.id)) return extent + 40;
+      if (!_expandedBlockedRunIds.contains(entry.last.id)) return extent + 40;
       return extent +
           entry.messages.fold<double>(
             0,
@@ -1812,49 +2007,24 @@ class _ChatViewState extends State<ChatView> {
     return 30 + sender + reply + lines * 22.0 + buttons;
   }
 
-  void _scrollToBottom({bool settle = false, bool forceSettle = false}) {
+  void _scrollToBottom() {
     if (!_scroll.hasClients) return;
+    _cancelSessionScrollAnchorMaintenance();
     _autoScrollPolicy.returnToBottom();
-    _scroll.jumpTo(_scroll.position.maxScrollExtent);
+    if (_positionShortFirstContactHistoryIfItFits(requireAtLatest: false)) {
+      _markReadAtBottomIfNeeded();
+      _clearBottomIndicatorsIfNeeded();
+      return;
+    }
+    _showingFullyVisibleFirstContactHistory = false;
+    final generation = _bottomFollow.begin();
+    final position = _scroll.position;
+    if ((_loadedBottomOffset - position.pixels).abs() > 0.5) {
+      _scroll.jumpTo(_loadedBottomOffset);
+    }
     _markReadAtBottomIfNeeded();
     _clearBottomIndicatorsIfNeeded();
-    if (settle) {
-      _settleAtBottom(keyboardSettle: true, force: forceSettle);
-    }
-  }
-
-  void _settleAtBottom({bool keyboardSettle = false, bool force = false}) {
-    final generation = ++_bottomSettleGeneration;
-    () async {
-      final delays = keyboardSettle
-          ? const <Duration>[
-              Duration.zero,
-              Duration(milliseconds: 16),
-              Duration(milliseconds: 48),
-              Duration(milliseconds: 120),
-              Duration(milliseconds: 240),
-              Duration(milliseconds: 360),
-            ]
-          : const <Duration>[
-              Duration.zero,
-              Duration(milliseconds: 16),
-              Duration(milliseconds: 48),
-              Duration(milliseconds: 120),
-            ];
-      for (final delay in delays) {
-        if (delay > Duration.zero) {
-          await Future<void>.delayed(delay);
-        }
-        await WidgetsBinding.instance.endOfFrame;
-        if (!mounted || generation != _bottomSettleGeneration) return;
-        if (_scroll.hasClients && (force || _isNearBottom(420))) {
-          _scroll.jumpTo(_scroll.position.maxScrollExtent);
-          _markReadAtBottomIfNeeded();
-          _clearBottomIndicatorsIfNeeded();
-          _saveSessionScrollSnapshot();
-        }
-      }
-    }();
+    _scheduleBottomGeometryFollow(generation);
   }
 
   void _scheduleShortTranscriptFill() {
@@ -1871,35 +2041,68 @@ class _ChatViewState extends State<ChatView> {
         !_scroll.hasClients ||
         !_vm.initialLoaded ||
         _vm.anchoredHistory ||
+        _maintainSessionScrollAnchor ||
+        _transcriptPivotFrozen ||
+        _autoScrollPolicy.preservesViewport ||
         _scrollTargetId != null ||
         !_vm.canLoadOlder) {
       return;
     }
-    if (_scroll.position.maxScrollExtent > 24) return;
+    if (!_isTranscriptShort()) return;
 
+    final generation = ++_shortTranscriptFillGeneration;
     _isFillingShortTranscript = true;
+    var loadedAny = false;
     try {
       var guard = 0;
-      while (mounted &&
-          _scroll.hasClients &&
+      while (_canContinueShortTranscriptFill(generation) &&
           _vm.canLoadOlder &&
-          _scroll.position.maxScrollExtent <= 24 &&
+          _isTranscriptShort() &&
           guard < 8) {
         final loaded = await _vm.loadOlder();
         if (!loaded) break;
+        _olderHistoryExhaustedHint = false;
+        loadedAny = true;
+        if (!_canContinueShortTranscriptFill(generation)) break;
         await WidgetsBinding.instance.endOfFrame;
-        if (!mounted || !_scroll.hasClients) break;
-        _positionAfterShortFill();
+        if (!_canContinueShortTranscriptFill(generation)) break;
         guard++;
       }
     } finally {
       _isFillingShortTranscript = false;
     }
+    if (!_vm.hasOlderHistory) _olderHistoryExhaustedHint = true;
+    if (_canContinueShortTranscriptFill(generation)) {
+      if (loadedAny) _positionAfterShortFill();
+      // An empty older page flips canLoadOlder without a model notification.
+      // Re-evaluate the first-contact card now that history is known complete.
+      _scheduleShortFirstContactReveal();
+    }
+  }
+
+  bool _canContinueShortTranscriptFill(int generation) {
+    return mounted &&
+        generation == _shortTranscriptFillGeneration &&
+        _scroll.hasClients &&
+        !_hasTranscriptPointerDown &&
+        !_vm.anchoredHistory &&
+        !_maintainSessionScrollAnchor &&
+        !_transcriptPivotFrozen &&
+        !_autoScrollPolicy.preservesViewport &&
+        _scrollTargetId == null;
+  }
+
+  bool _isTranscriptShort() {
+    if (!_scroll.hasClients) return true;
+    // With a center sliver, only the after-center arm defines the latest edge.
+    // A large negative min extent says nothing about whether that arm fills
+    // the viewport.
+    return _scroll.position.maxScrollExtent <= 24;
   }
 
   void _positionAfterShortFill() {
-    if (_openAtLatest) {
-      _scrollToBottom(settle: true, forceSettle: true);
+    if (_shouldOpenAtBottom) {
+      _scrollToBottom();
       return;
     }
     final i = _firstUnreadIndex();
@@ -1984,12 +2187,43 @@ class _ChatViewState extends State<ChatView> {
   int _approxVisibleMessageIndex({required bool topEdge}) {
     if (!_scroll.hasClients || _vm.messages.isEmpty) return 0;
     final pos = _scroll.position;
-    final max = math.max(pos.maxScrollExtent, 1.0);
+    final viewportContext = _transcriptViewportKey.currentContext;
+    final viewportRenderObject = viewportContext?.findRenderObject();
+    if (viewportRenderObject is RenderBox && viewportRenderObject.attached) {
+      final viewportTop = viewportRenderObject.localToGlobal(Offset.zero).dy;
+      final viewportBottom = viewportTop + viewportRenderObject.size.height;
+      var bestDistance = double.infinity;
+      int? bestIndex;
+      for (final trackedEntry in _trackedTranscriptEntries.entries) {
+        final itemContext =
+            _entryVisibilityKeys[trackedEntry.key]?.currentContext;
+        final itemRenderObject = itemContext?.findRenderObject();
+        if (itemRenderObject is! RenderBox || !itemRenderObject.attached) {
+          continue;
+        }
+        final itemTop = itemRenderObject.localToGlobal(Offset.zero).dy;
+        final itemBottom = itemTop + itemRenderObject.size.height;
+        if (itemBottom <= viewportTop || itemTop >= viewportBottom) continue;
+        final distance = topEdge
+            ? (itemTop <= viewportTop ? 0.0 : itemTop - viewportTop)
+            : (itemBottom >= viewportBottom
+                  ? 0.0
+                  : viewportBottom - itemBottom);
+        if (distance >= bestDistance) continue;
+        bestDistance = distance;
+        final entry = trackedEntry.value;
+        bestIndex = topEdge
+            ? entry.startIndex
+            : entry.startIndex + entry.messages.length - 1;
+      }
+      if (bestIndex != null) {
+        return bestIndex.clamp(0, _vm.messages.length - 1);
+      }
+    }
+
     final viewport = math.max(pos.viewportDimension, 1.0);
-    final pixels = topEdge
-        ? pos.pixels
-        : math.min(pos.maxScrollExtent, pos.pixels + viewport);
-    final frac = (pixels / max).clamp(0.0, 1.0);
+    final edgeOffset = topEdge ? pos.pixels : pos.pixels + viewport;
+    final frac = scrollFraction(pos, offset: edgeOffset);
     return (frac * (_vm.messages.length - 1)).round().clamp(
       0,
       _vm.messages.length - 1,
@@ -2154,7 +2388,7 @@ class _ChatViewState extends State<ChatView> {
     _TranscriptEntry entry,
   ) {
     final c = context.colors;
-    final runId = entry.first.id;
+    final runId = entry.last.id;
     if (_expandedBlockedRunIds.contains(runId)) {
       return _selectionEntry(
         entry,
@@ -2709,7 +2943,7 @@ class _ChatViewState extends State<ChatView> {
             options: ForwardOptions(removeSender: !preserveSender),
           );
           if (!mounted) return;
-          _scrollToBottom(settle: true, forceSettle: true);
+          _scrollToBottom();
         } catch (e) {
           if (!mounted) return;
           _showForwardFailure(e);
@@ -4827,6 +5061,8 @@ class _ChatViewState extends State<ChatView> {
       scrollToTarget: false,
     );
     if (!loaded || !mounted) return;
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
     await _ensureMessageVisible(messageId, pinnedJump: pinnedJump);
   }
 
@@ -4883,14 +5119,11 @@ class _ChatViewState extends State<ChatView> {
         return;
       }
       if (!_scroll.hasClients) return;
-      final index = _vm.messages.indexWhere((m) => m.id == messageId);
-      if (index >= 0) {
-        final max = _scroll.position.maxScrollExtent;
-        final frac = _vm.messages.length <= 1
-            ? 0.0
-            : index / _vm.messages.length;
-        _scroll.jumpTo((max * frac).clamp(0.0, max));
-      }
+      final estimate = _estimateMessageOffset(
+        messageId,
+        pinnedJump ? 0.08 : 0.3,
+      );
+      if (estimate != null) _scroll.jumpTo(estimate);
       await Future<void>.delayed(const Duration(milliseconds: 120));
       if (!mounted) return;
     }
@@ -4920,100 +5153,328 @@ class _ChatViewState extends State<ChatView> {
   Widget _transcript() {
     final groupImages = context.watch<ThemeController>().groupImageMessages;
     final entries = _transcriptEntries(groupImages);
+    final partition = _partitionTranscript(entries);
+    _scheduleTranscriptPivotFreeze();
+    // Slivers before `center` grow away from it. Delegate index zero is the
+    // child nearest the center, so the chronological older half is reversed.
+    final olderEntries = partition.beforePivot.reversed.toList(growable: false);
+    final newerEntries = partition.pivotAndAfter;
     final messages = _transcriptCacheMessages ?? _vm.messages;
     final firstContactInfo = _vm.firstContactInfo;
-    final leadingItemCount = firstContactInfo == null ? 0 : 1;
+    final firstContactAtCenter =
+        firstContactInfo != null &&
+        shouldPlaceFirstContactCardAtCenter(
+          hasTranscriptEntries: entries.isNotEmpty,
+        );
+    final firstContactBeforeCenter =
+        firstContactInfo != null && !firstContactAtCenter;
+    final olderChildCount =
+        olderEntries.length + (firstContactBeforeCenter ? 1 : 0);
+    final newerLeadingItemCount = firstContactAtCenter ? 1 : 0;
+    final olderIndexByKey = <Key, int>{
+      for (var i = 0; i < olderEntries.length; i++) olderEntries[i].key: i,
+    };
+    final newerIndexByKey = <Key, int>{
+      for (var i = 0; i < newerEntries.length; i++)
+        newerEntries[i].key: i + newerLeadingItemCount,
+    };
     _scheduleUnreadProgressUpdate();
+    _scheduleShortFirstContactReveal();
     return Container(
       color: _effectiveWallpaper() == null
           ? context.colors.chatBackground
           : const Color(0x00000000),
       child: NotificationListener<UserScrollNotification>(
         onNotification: _onTranscriptUserScroll,
-        child: ListView.builder(
-          key: _transcriptViewportKey,
-          controller: _scroll,
-          physics: const ClampingScrollPhysics(
-            parent: AlwaysScrollableScrollPhysics(),
-          ),
-          scrollCacheExtent: ScrollCacheExtent.pixels(
-            defaultTargetPlatform == TargetPlatform.android ? 260 : 420,
-          ),
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          itemCount: entries.length + leadingItemCount,
-          // Lets keyed children be reused when history pages shift indices
-          // instead of being torn down and rebuilt.
-          findChildIndexCallback: (key) {
-            if (key == const ValueKey('chat-first-contact-card')) {
-              return firstContactInfo == null ? null : 0;
-            }
-            final index = _transcriptIndexByKey[key];
-            return index == null ? null : index + leadingItemCount;
-          },
-          itemBuilder: (context, index) {
-            if (firstContactInfo != null && index == 0) {
-              return KeyedSubtree(
-                key: const ValueKey('chat-first-contact-card'),
-                child: RepaintBoundary(
-                  child: ChatFirstContactCard(
-                    info: firstContactInfo,
-                    title: _vm.peerTitle,
-                    photo: _vm.peerPhoto,
-                    onOpenProfile: _openPeerProfile,
-                  ),
+        child: Listener(
+          behavior: HitTestBehavior.translucent,
+          onPointerDown: _onTranscriptPointerDown,
+          onPointerUp: _onTranscriptPointerEnd,
+          onPointerCancel: _onTranscriptPointerEnd,
+          child: CustomScrollView(
+            key: _transcriptViewportKey,
+            controller: _scroll,
+            center: _newerTranscriptSliverKey,
+            physics: const ClampingScrollPhysics(
+              parent: AlwaysScrollableScrollPhysics(),
+            ),
+            scrollCacheExtent: ScrollCacheExtent.pixels(
+              defaultTargetPlatform == TargetPlatform.android ? 260 : 420,
+            ),
+            semanticChildCount:
+                entries.length + (firstContactInfo == null ? 0 : 1),
+            slivers: [
+              const SliverToBoxAdapter(child: SizedBox(height: 8)),
+              SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                    if (index < olderEntries.length) {
+                      return _buildTranscriptEntry(
+                        olderEntries[index],
+                        messages,
+                      );
+                    }
+                    return _buildFirstContactCard(firstContactInfo!);
+                  },
+                  childCount: olderChildCount,
+                  findChildIndexCallback: (key) {
+                    if (key == const ValueKey('chat-first-contact-card')) {
+                      return firstContactBeforeCenter
+                          ? olderEntries.length
+                          : null;
+                    }
+                    return olderIndexByKey[key];
+                  },
+                  semanticIndexCallback: (_, localIndex) =>
+                      olderChildCount - localIndex - 1,
                 ),
-              );
-            }
-            final entry = entries[index - leadingItemCount];
-            final message = entry.first;
-            final messageIndex = entry.startIndex;
-            final isTarget = entry.messages.any((m) => m.id == _scrollTargetId);
-            final isPinned = entry.messages.any(
-              (m) => m.id == _vm.pinnedMessage?.id,
-            );
-            final content = Column(
-              key: isTarget
-                  ? _targetKey
-                  : isPinned
-                  ? _pinnedKey
-                  : null,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (_needsUnreadDivider(messageIndex, messages: messages))
-                  KeyedSubtree(key: _unreadKey, child: _unreadDivider()),
-                if (_needsSeparator(messageIndex, messages: messages))
-                  TimeSeparator(unix: message.date),
-                if (message.isService)
-                  SystemBanner(text: message.text)
-                else if (entry.isBlockedRun)
-                  _blockedMessagePlaceholder(context, entry)
-                else if (entry.isImageGroup)
-                  _selectionEntry(entry, _imageGroupBubble(entry.messages))
-                else
-                  _selectionEntry(entry, _messageBubble(message, messageIndex)),
-              ],
-            );
-            return KeyedSubtree(
-              key: entry.key,
-              child: KeyedSubtree(
-                key: _entryVisibilityKeys.putIfAbsent(
-                  entry.first.id,
-                  GlobalKey.new,
-                ),
-                child: RepaintBoundary(child: content),
               ),
-            );
-          },
+              SliverList(
+                key: _newerTranscriptSliverKey,
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                    if (firstContactAtCenter && index == 0) {
+                      return _buildFirstContactCard(firstContactInfo);
+                    }
+                    return _buildTranscriptEntry(
+                      newerEntries[index - newerLeadingItemCount],
+                      messages,
+                    );
+                  },
+                  childCount: newerEntries.length + newerLeadingItemCount,
+                  findChildIndexCallback: (key) {
+                    if (key == const ValueKey('chat-first-contact-card')) {
+                      return firstContactAtCenter ? 0 : null;
+                    }
+                    return newerIndexByKey[key];
+                  },
+                  semanticIndexOffset: olderChildCount,
+                ),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 8)),
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  Widget _buildFirstContactCard(ChatFirstContactInfo info) {
+    return KeyedSubtree(
+      key: const ValueKey('chat-first-contact-card'),
+      child: RepaintBoundary(
+        key: _firstContactLayoutKey,
+        child: ChatFirstContactCard(
+          info: info,
+          title: _vm.peerTitle,
+          photo: _vm.peerPhoto,
+          onOpenProfile: _openPeerProfile,
+        ),
+      ),
+    );
+  }
+
+  bool? _shortFirstContactHistoryFitsViewport() {
+    if (_vm.firstContactInfo == null || _vm.messages.isEmpty) return false;
+    if (!_scroll.hasClients || !_scroll.position.hasContentDimensions) {
+      return null;
+    }
+    if (_transcriptViewportClaimedByUser ||
+        _hasTranscriptPointerDown ||
+        _autoScrollPolicy.preservesViewport ||
+        _maintainSessionScrollAnchor ||
+        _scrollTargetId != null) {
+      return null;
+    }
+    if (_vm.anchoredHistory ||
+        (_vm.hasOlderHistory && !_olderHistoryExhaustedHint)) {
+      return false;
+    }
+    if (_scroll.position.maxScrollExtent > 24) return false;
+
+    final entries = _transcriptCache;
+    final viewportObject = _transcriptViewportKey.currentContext
+        ?.findRenderObject();
+    final cardObject = _firstContactLayoutKey.currentContext
+        ?.findRenderObject();
+    final latestObject = entries == null || entries.isEmpty
+        ? null
+        : _entryVisibilityKeys[entries.last.last.id]?.currentContext
+              ?.findRenderObject();
+    if (viewportObject is! RenderBox ||
+        !viewportObject.attached ||
+        cardObject is! RenderBox ||
+        !cardObject.attached ||
+        latestObject is! RenderBox ||
+        !latestObject.attached) {
+      return null;
+    }
+
+    final cardTop = cardObject.localToGlobal(Offset.zero).dy;
+    final latestBottom = latestObject
+        .localToGlobal(Offset(0, latestObject.size.height))
+        .dy;
+    if (latestBottom < cardTop) return null;
+    return firstContactHistoryFitsViewport(
+      cardTop: cardTop,
+      latestBottom: latestBottom,
+      viewportExtent: viewportObject.size.height,
+    );
+  }
+
+  bool _positionShortFirstContactHistoryIfItFits({
+    required bool requireAtLatest,
+  }) {
+    final fits = _shortFirstContactHistoryFitsViewport();
+    if (fits != true) {
+      if (fits == false) {
+        _showingFullyVisibleFirstContactHistory = false;
+      }
+      return false;
+    }
+    if (requireAtLatest &&
+        !_showingFullyVisibleFirstContactHistory &&
+        !isNearLatest(_scroll.position, threshold: 1)) {
+      return false;
+    }
+    _showingFullyVisibleFirstContactHistory = true;
+    final target = _scroll.position.minScrollExtent;
+    if ((_scroll.position.pixels - target).abs() > 0.5) {
+      _scroll.jumpTo(target);
+    }
+    return true;
+  }
+
+  void _scheduleShortFirstContactReveal() {
+    if (_shortFirstContactRevealScheduled) return;
+    _shortFirstContactRevealScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _shortFirstContactRevealScheduled = false;
+      if (!mounted) return;
+      final wasShowing = _showingFullyVisibleFirstContactHistory;
+      final positioned = _positionShortFirstContactHistoryIfItFits(
+        requireAtLatest: !wasShowing,
+      );
+      if (wasShowing &&
+          !positioned &&
+          !_showingFullyVisibleFirstContactHistory &&
+          !_hasTranscriptPointerDown &&
+          !_autoScrollPolicy.preservesViewport) {
+        _scheduleScrollToBottom(animated: false);
+      }
+    });
+  }
+
+  Widget _buildTranscriptEntry(
+    _TranscriptEntry entry,
+    List<ChatMessage> messages,
+  ) {
+    final message = entry.first;
+    final messageIndex = entry.startIndex;
+    final isTarget = entry.messages.any((m) => m.id == _scrollTargetId);
+    final isPinned = entry.messages.any((m) => m.id == _vm.pinnedMessage?.id);
+    final content = Column(
+      key: isTarget
+          ? _targetKey
+          : isPinned
+          ? _pinnedKey
+          : null,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (_needsUnreadDivider(messageIndex, messages: messages))
+          KeyedSubtree(key: _unreadKey, child: _unreadDivider()),
+        if (_needsSeparator(messageIndex, messages: messages))
+          TimeSeparator(unix: message.date),
+        if (message.isService)
+          SystemBanner(text: message.text)
+        else if (entry.isBlockedRun)
+          _blockedMessagePlaceholder(context, entry)
+        else if (entry.isImageGroup)
+          _selectionEntry(entry, _imageGroupBubble(entry.messages))
+        else
+          _selectionEntry(entry, _messageBubble(message, messageIndex)),
+      ],
+    );
+    final visibilityKey = _entryVisibilityKeys.putIfAbsent(
+      entry.last.id,
+      GlobalKey.new,
+    );
+    return KeyedSubtree(
+      key: entry.key,
+      child: KeyedSubtree(
+        key: visibilityKey,
+        child: RepaintBoundary(child: content),
+      ),
+    );
+  }
+
+  TranscriptPivotPartition<_TranscriptEntry> _partitionTranscript(
+    List<_TranscriptEntry> entries,
+  ) {
+    if (entries.isEmpty) {
+      return const TranscriptPivotPartition<_TranscriptEntry>(
+        beforePivot: [],
+        pivotAndAfter: [],
+      );
+    }
+    final pivot = resolveTranscriptPivot(
+      currentPivot: _transcriptPivot,
+      initialWindowLoaded: _vm.initialLoaded,
+      firstMessageId: _transcriptOrderId(entries.first.first),
+    );
+    if (pivot == null) {
+      return TranscriptPivotPartition<_TranscriptEntry>(
+        beforePivot: const [],
+        pivotAndAfter: List<_TranscriptEntry>.unmodifiable(entries),
+      );
+    }
+    final result = partitionTranscriptAtPivot<_TranscriptEntry>(
+      entries: entries,
+      pivot: pivot,
+      messageIdsOf: (entry) => entry.messages.map(_transcriptOrderId),
+    );
+    _transcriptPivot = pivot;
+    return result;
+  }
+
+  void _resetTranscriptPivot() {
+    _transcriptPivot = null;
+    _transcriptPivotFrozen = false;
+  }
+
+  void _scheduleTranscriptPivotFreeze() {
+    if (_transcriptPivotFreezeScheduled ||
+        _transcriptPivotFrozen ||
+        !_initialTranscriptReady ||
+        _maintainSessionScrollAnchor ||
+        _transcriptPivot == null ||
+        _transcriptPivot?.cutoffMessageId == _pendingTranscriptOrderId) {
+      return;
+    }
+    _transcriptPivotFreezeScheduled = true;
+    final scheduledPivot = _transcriptPivot;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _transcriptPivotFreezeScheduled = false;
+      if (!mounted ||
+          _transcriptPivotFrozen ||
+          _maintainSessionScrollAnchor ||
+          !_scroll.hasClients) {
+        return;
+      }
+      if (!identical(scheduledPivot, _transcriptPivot)) {
+        _scheduleTranscriptPivotFreeze();
+        return;
+      }
+      if (!_isTranscriptShort() || !_vm.canLoadOlder) {
+        _transcriptPivotFrozen = true;
+      }
+    });
   }
 
   // The transcript is rebuilt on every view-model notification (send/read/
   // typing/file progress); grouping a few hundred messages each time is
   // avoidable garbage, so entries are memoized on their actual inputs.
   List<_TranscriptEntry>? _transcriptCache;
-  Map<Key, int> _transcriptIndexByKey = const {};
   List<ChatMessage>? _transcriptCacheMessages;
   bool _transcriptCacheGrouped = false;
   int _transcriptCacheUnreadCount = -1;
@@ -5040,13 +5501,29 @@ class _ChatViewState extends State<ChatView> {
     _transcriptCacheGrouped = groupImages;
     _transcriptCacheUnreadCount = _vm.unreadCount;
     _transcriptCacheLastReadInboxId = _vm.lastReadInboxId;
-    _transcriptIndexByKey = {
-      for (var i = 0; i < entries.length; i++) entries[i].key: i,
-    };
-    final entryIds = entries.map((entry) => entry.first.id).toSet();
-    _entryVisibilityKeys.removeWhere((id, _) => !entryIds.contains(id));
+    final previousVisibilityKeys = Map<int, GlobalKey>.of(_entryVisibilityKeys);
+    final nextVisibilityKeys = <int, GlobalKey>{};
+    final usedVisibilityKeys = <GlobalKey>{};
+    for (final entry in entries) {
+      GlobalKey? visibilityKey;
+      for (final message in entry.messages.reversed) {
+        final candidate = previousVisibilityKeys[message.id];
+        if (candidate != null && usedVisibilityKeys.add(candidate)) {
+          visibilityKey = candidate;
+          break;
+        }
+      }
+      visibilityKey ??= GlobalKey();
+      usedVisibilityKeys.add(visibilityKey);
+      for (final message in entry.messages) {
+        nextVisibilityKeys[message.id] = visibilityKey;
+      }
+    }
+    _entryVisibilityKeys
+      ..clear()
+      ..addAll(nextVisibilityKeys);
     _trackedTranscriptEntries = {
-      for (final entry in entries) entry.first.id: entry,
+      for (final entry in entries) entry.last.id: entry,
     };
     return entries;
   }
@@ -5062,7 +5539,7 @@ class _ChatViewState extends State<ChatView> {
     final partiallySelected = selectedCount > 0 && !selected;
     final c = context.colors;
     final rowSelector = GestureDetector(
-      key: ValueKey('message-row-selection-${entry.first.id}'),
+      key: ValueKey('message-row-selection-${entry.last.id}'),
       behavior: HitTestBehavior.opaque,
       onTap: () => _toggleSelection(selectable),
       child: Padding(
@@ -5139,6 +5616,7 @@ class _ChatViewState extends State<ChatView> {
         messages,
         i,
         startsNewSection: (index) =>
+            _startsTranscriptPivotSection(messages, index) ||
             _needsSeparator(index, messages: messages) ||
             _needsUnreadDivider(index, messages: messages),
       );
@@ -5161,6 +5639,7 @@ class _ChatViewState extends State<ChatView> {
           messages,
           i,
           startsNewSection: (index) =>
+              _startsTranscriptPivotSection(messages, index) ||
               _needsSeparator(index, messages: messages) ||
               _needsUnreadDivider(index, messages: messages),
         );
@@ -5179,7 +5658,8 @@ class _ChatViewState extends State<ChatView> {
       var j = i + 1;
       while (j < messages.length) {
         final next = messages[j];
-        if (_needsSeparator(j, messages: messages) ||
+        if (_startsTranscriptPivotSection(messages, j) ||
+            _needsSeparator(j, messages: messages) ||
             _needsUnreadDivider(j, messages: messages)) {
           break;
         }
@@ -5192,6 +5672,15 @@ class _ChatViewState extends State<ChatView> {
       i = j;
     }
     return entries;
+  }
+
+  bool _startsTranscriptPivotSection(List<ChatMessage> messages, int index) {
+    if (index <= 0 || index >= messages.length) return false;
+    return startsTranscriptPivotSection(
+      pivot: _transcriptPivot,
+      previousMessageId: _transcriptOrderId(messages[index - 1]),
+      currentMessageId: _transcriptOrderId(messages[index]),
+    );
   }
 
   bool _canGroupImage(ChatMessage message) {

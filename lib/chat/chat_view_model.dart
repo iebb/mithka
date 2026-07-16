@@ -175,12 +175,14 @@ class ChatViewModel extends ChangeNotifier {
     this.sessionAnchorMessageId,
     List<ChatMessage>? sessionMessages,
     bool sessionAnchoredHistory = false,
+    ChatFirstContactInfo? sessionFirstContactInfo,
     ChatMessage? seedMessage,
   }) : peerTitle = title {
     if (sessionMessages != null && sessionMessages.isNotEmpty) {
       _allMessages = List<ChatMessage>.from(sessionMessages);
       messages = List<ChatMessage>.from(sessionMessages);
       anchoredHistory = sessionAnchoredHistory;
+      firstContactInfo = sessionFirstContactInfo;
       initialLoaded = true;
       _restoredFromSession = true;
     } else if (seedMessage != null) {
@@ -270,7 +272,6 @@ class ChatViewModel extends ChangeNotifier {
   final ChatLiveMessageBuffer _liveIncomingMessages = ChatLiveMessageBuffer();
   bool _isLoadingOlder = false;
   bool _hasOlderHistory = true;
-  int? _restoreTopId;
   int? _pendingScrollToId;
   int? _lastForcedReadMessageId;
   bool _markReadInFlight = false;
@@ -282,6 +283,11 @@ class ChatViewModel extends ChangeNotifier {
   final Set<int> _latestHistoryDeletedMessageIds = {};
   bool _latestHistoryLoadInvalidated = false;
   int _historyWindowGeneration = 0;
+  int _historyWindowRevision = 0;
+  int get historyWindowRevision => _historyWindowRevision;
+  int _historyWindowInvalidationRevision = 0;
+  int get historyWindowInvalidationRevision =>
+      _historyWindowInvalidationRevision;
   final Set<int> _blockedReadIds = {};
   final Set<int> _locallyViewedMentionIds = {};
   final Set<int> _blockedSenderIds = {};
@@ -317,11 +323,22 @@ class ChatViewModel extends ChangeNotifier {
 
   bool get hasActiveChatAction => _chatActions.isNotEmpty;
 
-  bool isRead(ChatMessage m) => m.isOutgoing && m.id <= lastReadOutboxId;
+  bool isRead(ChatMessage m) => isOutgoingServerMessageRead(
+    message: m,
+    lastReadOutboxId: lastReadOutboxId,
+  );
   bool get canChooseMessageSender => availableMessageSenders.length > 1;
   bool get canForwardContent => !hasProtectedContent;
   bool get canLoadOlder =>
       !_isLoadingOlder && _allMessages.isNotEmpty && _hasOlderHistory;
+  bool get hasOlderHistory => _hasOlderHistory;
+  int get _oldestServerMessageId {
+    for (final message in _allMessages) {
+      if (!isPendingChatMessage(message) && message.id > 0) return message.id;
+    }
+    return 0;
+  }
+
   bool get requiresPaidMessage => paidMessageStarCount > 0;
   String get inputPlaceholder => messageAutoDeleteTime > 0
       ? AppStrings.t(AppStringKeys.chatAutoDeleteCountdown, {
@@ -337,13 +354,6 @@ class ChatViewModel extends ChangeNotifier {
   void notifyListeners() {
     if (_isDisposed) return;
     super.notifyListeners();
-  }
-
-  /// After prepending older history, the view scrolls this id back to the top.
-  int? consumeRestoreTop() {
-    final id = _restoreTopId;
-    _restoreTopId = null;
-    return id;
   }
 
   int? consumePendingScrollToId() {
@@ -1773,22 +1783,21 @@ class ChatViewModel extends ChangeNotifier {
     if (!canLoadOlder) return false;
     _isLoadingOlder = true;
     try {
-      return await _fetchHistory(_allMessages.first.id, 0, 30, isOlder: true);
+      return await _fetchHistory(_oldestServerMessageId, 0, 30, isOlder: true);
     } finally {
       _isLoadingOlder = false;
     }
   }
 
-  Future<bool> loadOlderLocal({bool restorePosition = true}) async {
+  Future<bool> loadOlderLocal() async {
     if (!canLoadOlder) return false;
     _isLoadingOlder = true;
     try {
       return await _fetchHistory(
-        _allMessages.first.id,
+        _oldestServerMessageId,
         0,
         30,
         isOlder: true,
-        restorePosition: restorePosition,
         onlyLocal: true,
       );
     } finally {
@@ -1841,14 +1850,12 @@ class ChatViewModel extends ChangeNotifier {
               .toList();
 
       ++_historyWindowGeneration;
+      ++_historyWindowRevision;
       anchoredHistory = false;
       _pendingScrollToId = null;
-      _hasOlderHistory = true;
+      _hasOlderHistory = fetched.isNotEmpty;
       _historyReachesLatest = true;
-      _knownLatestMessageId = fetched.fold(
-        0,
-        (latestId, message) => math.max(latestId, message.id),
-      );
+      _knownLatestMessageId = latestServerMessageId(fetched);
       if (fetched.isEmpty) {
         _allMessages = [];
         _applyKeywordFilter();
@@ -2096,7 +2103,9 @@ class ChatViewModel extends ChangeNotifier {
     final lastRaw = chat.obj('last_message');
     final lastMessage = lastRaw == null ? null : TDParse.message(lastRaw);
     if (lastMessage == null) return;
-    _knownLatestMessageId = lastMessage.id;
+    _knownLatestMessageId = isPendingChatMessage(lastMessage)
+        ? 0
+        : lastMessage.id;
     if (_restoredFromSession) {
       // A restored transcript may predate this item. Appending it here would
       // create a visible hole until history hydration completes.
@@ -2523,33 +2532,25 @@ class ChatViewModel extends ChangeNotifier {
   }
 
   Future<void> _loadInitialLatestHistory() async {
-    final localLoaded = await _fetchHistory(
-      0,
-      0,
-      40,
-      onlyLocal: true,
-      restorePosition: false,
-    );
+    final localLoaded = await _fetchHistory(0, 0, 40, onlyLocal: true);
     if (!localLoaded) {
       await _fetchHistory(0, 0, 40);
     } else {
-      unawaited(_fetchHistory(0, 0, 40, restorePosition: false));
+      unawaited(_fetchHistory(0, 0, 40));
     }
     if (_allMessages.isEmpty) return;
     // Render the first page immediately. Older unread-boundary paging used to
     // happen here and could block a large media channel for seconds on cold
     // cache before any UI appeared.
     if (messages.length < 12) {
-      unawaited(
-        _fetchHistory(_allMessages.first.id, 0, 40, restorePosition: false),
-      );
+      unawaited(_fetchHistory(_allMessages.first.id, 0, 40));
     }
   }
 
   Future<void> _hydrateRestoredLatestHistory() async {
-    await _fetchHistory(0, 0, 40, onlyLocal: true, restorePosition: false);
+    await _fetchHistory(0, 0, 40, onlyLocal: true);
     if (_isDisposed) return;
-    await _fetchHistory(0, 0, 40, restorePosition: false);
+    await _fetchHistory(0, 0, 40);
   }
 
   Future<bool> loadAroundMessage(
@@ -2599,7 +2600,10 @@ class ChatViewModel extends ChangeNotifier {
       return false;
     }
     if (batch.isEmpty) return false;
-    if (replaceCurrentWindow) ++_historyWindowGeneration;
+    if (replaceCurrentWindow) {
+      ++_historyWindowGeneration;
+      ++_historyWindowRevision;
+    }
     _hasOlderHistory = true;
     anchoredHistory = true;
     if (scrollToTarget) _pendingScrollToId = messageId;
@@ -2748,12 +2752,9 @@ class ChatViewModel extends ChangeNotifier {
     int offset,
     int limit, {
     bool isOlder = false,
-    bool restorePosition = true,
     bool onlyLocal = false,
   }) async {
     final requestGeneration = _historyWindowGeneration;
-    final anchor = messages.isNotEmpty ? messages.first.id : null;
-    final allAnchor = _allMessages.isNotEmpty ? _allMessages.first.id : null;
     Map<String, dynamic> response;
     try {
       response = await _client.query({
@@ -2779,7 +2780,11 @@ class ChatViewModel extends ChangeNotifier {
         .whereType<ChatMessage>()
         .toList();
     if (parsed.isEmpty) {
-      if (isOlder || fromMessageId != 0) _hasOlderHistory = false;
+      // A local-cache miss says nothing about whether the server still has
+      // older history. Only an empty remote page confirms exhaustion.
+      if (confirmsOlderHistoryExhausted(onlyLocal: onlyLocal)) {
+        _hasOlderHistory = false;
+      }
       return false;
     }
 
@@ -2790,13 +2795,6 @@ class ChatViewModel extends ChangeNotifier {
           parsed.any((message) => message.id == _knownLatestMessageId);
     }
     _resolveRichMessagesIfNeeded(parsed);
-    if (isOlder &&
-        restorePosition &&
-        anchor != null &&
-        allAnchor != null &&
-        _allMessages.first.id != allAnchor) {
-      _restoreTopId = anchor;
-    }
     _resolveSendersIfNeeded(parsed);
     _resolveRepliesIfNeeded(parsed);
     _resolveForwardsIfNeeded(parsed);
@@ -2838,7 +2836,7 @@ class ChatViewModel extends ChangeNotifier {
     if (_markReadInFlight) return;
     _markReadInFlight = true;
     try {
-      final latestLoadedId = _allMessages.isNotEmpty ? _allMessages.last.id : 0;
+      final latestLoadedId = latestServerMessageId(_allMessages);
       var messageId = latestLoadedId;
       final previousUnreadCount = unreadCount;
       final previousMarkedUnread = isMarkedUnread;
@@ -2850,7 +2848,10 @@ class ChatViewModel extends ChangeNotifier {
           });
           final latestRaw = raw.obj('last_message');
           final latest = latestRaw == null ? null : TDParse.message(latestRaw);
-          messageId = math.max(messageId, latest?.id ?? 0);
+          messageId = math.max(
+            messageId,
+            latest == null ? 0 : latestServerMessageId([latest]),
+          );
         } catch (_) {}
       }
 
@@ -2941,7 +2942,9 @@ class ChatViewModel extends ChangeNotifier {
         if (!message.isOutgoing && !message.isService) {
           _liveIncomingMessages.add(message.id);
         }
-        _knownLatestMessageId = math.max(_knownLatestMessageId, message.id);
+        if (!isPendingChatMessage(message)) {
+          _knownLatestMessageId = math.max(_knownLatestMessageId, message.id);
+        }
         if (!canAppendToTranscript) {
           notifyListeners();
           return;
@@ -3100,6 +3103,8 @@ class ChatViewModel extends ChangeNotifier {
       case 'mithkaChatHistoryCleared':
         if (update.int64('chat_id') != chatId) return;
         ++_historyWindowGeneration;
+        ++_historyWindowRevision;
+        ++_historyWindowInvalidationRevision;
         if (_latestHistoryLoadInFlight) {
           _latestHistoryLoadInvalidated = true;
           _latestHistoryLiveArrivals.clear();
@@ -3606,7 +3611,7 @@ class ChatViewModel extends ChangeNotifier {
   void _applyKeywordFilter() {
     messages =
         _allMessages.where((message) => !_isBlockedMessage(message)).toList()
-          ..sort((a, b) => a.id.compareTo(b.id));
+          ..sort(compareChatMessagesChronologically);
     _markBlockedUserMessages();
     _markBlockedMessagesReadThroughVisibleBoundary();
     notifyListeners();
@@ -3637,9 +3642,11 @@ class ChatViewModel extends ChangeNotifier {
 
   void _markBlockedMessagesReadThroughVisibleBoundary() {
     if (_allMessages.isEmpty) return;
-    final visibleMax = messages.isNotEmpty
-        ? messages.last.id
-        : _allMessages.last.id;
+    final visibleMax = latestServerMessageReadBoundary(
+      visibleMessages: messages,
+      allMessages: _allMessages,
+    );
+    if (visibleMax <= 0) return;
     final ids = _allMessages
         .where(
           (m) =>
