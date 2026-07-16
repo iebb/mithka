@@ -2537,6 +2537,9 @@ abstract final class TDParse {
         return telegramText(AppStringKeys.tdMessageMemberLeftGroup);
       case 'messagePinMessage':
         return telegramText(AppStringKeys.tdMessageMessagePinned);
+      case 'messageCustomServiceAction':
+        return _cleanString(content?.str('text')) ??
+            telegramText(AppStringKeys.tdMessageSystemMessage);
       case 'messagePaidMessagePriceChanged':
       case 'messageDirectMessagePriceChanged':
         final stars =
