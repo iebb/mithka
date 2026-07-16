@@ -24,6 +24,7 @@ import '../chat/chat_view.dart';
 import '../chat/music_player_controller.dart';
 import '../chat/video_player_view.dart';
 import '../chats/chat_list_view.dart';
+import '../communities/community_view.dart';
 import '../components/app_icons.dart';
 import '../components/drawer_controller.dart' as dc;
 import '../components/ui_components.dart';
@@ -116,6 +117,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
   late final ChatListController _chatListController = ChatListController();
   final VideoSplitController _videoSplit = VideoSplitController.instance;
   ChatListSelection? _selectedMessageChat;
+  CommunityListSelection? _selectedMessageCommunity;
   Widget? _selectedChannelDetail;
   Widget? _selectedContactDetail;
   Widget? _selectedMomentDetail;
@@ -204,6 +206,10 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
             setState(() => _selectedMessageChat = null);
             return false;
           }
+          if (_selectedMessageCommunity != null) {
+            setState(() => _selectedMessageCommunity = null);
+            return false;
+          }
         case 1:
           if (_selectedChannelDetail != null) {
             setState(() => _selectedChannelDetail = null);
@@ -282,6 +288,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
     if (_usesTabletSplit(context)) {
       setState(() {
         _selection = 0;
+        _selectedMessageCommunity = null;
         _selectedMessageChat = ChatListSelection(
           chatId: request.chatId,
           title: request.title,
@@ -319,8 +326,11 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
   void _clearTabletDetail(int tabIndex) {
     switch (tabIndex) {
       case 0:
-        if (_selectedMessageChat != null) {
-          setState(() => _selectedMessageChat = null);
+        if (_selectedMessageChat != null || _selectedMessageCommunity != null) {
+          setState(() {
+            _selectedMessageChat = null;
+            _selectedMessageCommunity = null;
+          });
         }
       case 1:
         if (_selectedChannelDetail != null) {
@@ -1014,8 +1024,18 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
     0 => ChatListView(
       controller: _chatListController,
       selectedChatId: _selectedMessageChat?.chatId,
+      selectedCommunityId: _selectedMessageCommunity?.community.id,
       onChatSelected: (chat) {
-        setState(() => _selectedMessageChat = chat);
+        setState(() {
+          _selectedMessageCommunity = null;
+          _selectedMessageChat = chat;
+        });
+      },
+      onCommunitySelected: (community) {
+        setState(() {
+          _selectedMessageChat = null;
+          _selectedMessageCommunity = community;
+        });
       },
     ),
     1 => TopicChannelsView(
@@ -1061,6 +1081,24 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
   };
 
   Widget _messageDetailPane() {
+    final selectedCommunity = _selectedMessageCommunity;
+    if (selectedCommunity != null) {
+      return KeyedSubtree(
+        key: ValueKey('message-community-${selectedCommunity.community.id}'),
+        child: CommunityView(
+          community: selectedCommunity.community,
+          chats: selectedCommunity.chats,
+          onCollapsedChanged: selectedCommunity.onCollapsedChanged,
+          showBackButton: false,
+          onChatSelected: (chat) {
+            setState(() {
+              _selectedMessageCommunity = null;
+              _selectedMessageChat = ChatListSelection.fromChat(chat);
+            });
+          },
+        ),
+      );
+    }
     final selected = _selectedMessageChat;
     if (selected == null) return const _MessageEmptyPane();
     final chat = selected.chat;

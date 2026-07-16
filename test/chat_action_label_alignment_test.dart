@@ -48,7 +48,11 @@ void main() {
                 onTap: () {},
               ),
             ],
-            child: const ColoredBox(color: Colors.white),
+            child: const SizedBox(
+              width: 390,
+              height: 64,
+              child: ColoredBox(color: Colors.white),
+            ),
           ),
         ),
       ),
@@ -61,5 +65,81 @@ void main() {
       final label = tester.widget<Text>(find.text(AppStrings.t(key)));
       expect(label.textAlign, TextAlign.center);
     }
+  });
+
+  testWidgets('hold-and-swipe mode ignores ordinary swipes', (tester) async {
+    int? openRow;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SizedBox(
+          height: 64,
+          child: ChatSwipeRow(
+            rowId: 7,
+            openRowId: openRow,
+            onOpenChanged: (value) => openRow = value,
+            onTap: () {},
+            requiresLongPressDrag: true,
+            actions: [
+              SwipeActionItem(
+                title: AppStringKeys.chatInfoPin,
+                color: Colors.blue,
+                onTap: () {},
+              ),
+            ],
+            child: const SizedBox(
+              width: 390,
+              height: 64,
+              child: ColoredBox(color: Colors.white),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.dragFrom(const Offset(195, 32), const Offset(-120, 0));
+    await tester.pumpAndSettle();
+
+    expect(openRow, isNull);
+  });
+
+  testWidgets('hold-and-swipe mode reveals actions after holding', (
+    tester,
+  ) async {
+    int? openRow;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SizedBox(
+          height: 64,
+          child: ChatSwipeRow(
+            rowId: 9,
+            openRowId: openRow,
+            onOpenChanged: (value) => openRow = value,
+            onTap: () {},
+            requiresLongPressDrag: true,
+            actions: [
+              SwipeActionItem(
+                title: AppStringKeys.chatInfoPin,
+                color: Colors.blue,
+                onTap: () {},
+              ),
+            ],
+            child: const SizedBox(
+              width: 390,
+              height: 64,
+              child: ColoredBox(color: Colors.white),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final gesture = await tester.startGesture(const Offset(195, 32));
+    await tester.pump(const Duration(milliseconds: 600));
+    await gesture.moveBy(const Offset(-70, 0));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(openRow, 9);
   });
 }

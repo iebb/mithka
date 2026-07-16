@@ -27,6 +27,17 @@ void main() {
     expect(buffer.takeAll(), isEmpty);
   });
 
+  test('first live server message is surfaced after pending-only history', () {
+    expect(
+      appendedLiveIncomingMessageIds(
+        previousNewestMessageId: null,
+        liveIncomingMessageIds: const [10],
+        currentMessageIds: const [-1, 10],
+      ),
+      [10],
+    );
+  });
+
   test('initial unread count decreases as messages become visible', () {
     final progress = ChatUnreadProgress();
 

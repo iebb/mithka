@@ -95,6 +95,14 @@ const deMessages = <String, String>{
   'appearanceDisableChatListSwipeActions': "Wischaktionen deaktivieren",
   'appearanceDisplay': "Anzeige",
   'appearanceDisplayOwnChatAsFavorites': "Gespeichert-Verknüpfung",
+  'appearanceGestures': "Gesten",
+  'gesturesChatActions': "Chat-Aktionen",
+  'gesturesChatListSwipe': "Wischen in der Chatliste",
+  'gesturesDoNothing': "Nichts tun",
+  'gesturesHoldSwipeActions': "Halten und wischen für Chat-Aktionen",
+  'gesturesSwitchAccounts': "Konten wechseln",
+  'gesturesSwitchFolders': "Ordner wechseln",
+  'gesturesThreeFingerSwipe': "Mit drei Fingern wischen",
   'appearanceDownloadFailed': "Download fehlgeschlagen",
   'appearanceEmojiFont': "Emoji-Schrift",
   'appearanceEmojiFontCatalogDescription':
@@ -545,6 +553,16 @@ const deMessages = <String, String>{
   'cloudThemeLoadFailed': "Dieses Telegram-Design konnte nicht geladen werden",
   'cloudThemeOfficialDescription': "Offizielles Telegram-Cloud-Design",
   'cloudThemePreviewTitle': "Designvorschau",
+  'communityChatAddedService': "Dieser Chat wurde einer Community hinzugefügt",
+  'communityChatCount': "{value1} Chats",
+  'communityChatRemovedService':
+      "Dieser Chat wurde aus seiner Community entfernt",
+  'communityChatsYouAreIn': "CHATS, IN DENEN DU BIST",
+  'communityNoChats': "Keine passenden Community-Chats gefunden",
+  'communityShowAsOneChat': "Als einen Chat anzeigen",
+  'communityShowAsOneChatDescription':
+      "Diese Community als einen aufklappbaren Eintrag in der Chatliste anzeigen.",
+  'communityTitle': "Community",
   'commonUiDraftBadge': "[Entwurf]",
   'commonUiGroupOwner': "Inhaber",
   'commonUiMentionedBySomeoneBadge': "[Jemand hat mich erwähnt]",
@@ -628,6 +646,8 @@ const deMessages = <String, String>{
   'editProfileAnimatedAvatar': "Animierter Avatar",
   'editProfileAnimatedAvatarDescription':
       "Kurzes Video, GIF, APNG oder Live Photo verwenden",
+  'editProfileAnimatedAvatarPremiumRequired':
+      "Animierte Avatare erfordern Telegram Premium",
   'editProfileAvatarUpdated': "Profilbild aktualisiert",
   'editProfileAvatarUpdateFailed':
       "Profilbild konnte nicht geändert werden: {value1}",

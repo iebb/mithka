@@ -234,6 +234,7 @@ abstract final class AppStringKeys {
   static const appearanceDisplay = 'appearanceDisplay';
   static const appearanceDisplayOwnChatAsFavorites =
       'appearanceDisplayOwnChatAsFavorites';
+  static const appearanceGestures = 'appearanceGestures';
   static const appearanceDownloadFailed = 'appearanceDownloadFailed';
   static const appearanceEmojiFont = 'appearanceEmojiFont';
   static const appearanceEmojiFontCatalogDescription =
@@ -253,6 +254,13 @@ abstract final class AppStringKeys {
   static const appearanceFontSize = 'appearanceFontSize';
   static const appearanceFontUnused = 'appearanceFontUnused';
   static const appearanceGoogleDownloaded = 'appearanceGoogleDownloaded';
+  static const gesturesChatActions = 'gesturesChatActions';
+  static const gesturesChatListSwipe = 'gesturesChatListSwipe';
+  static const gesturesDoNothing = 'gesturesDoNothing';
+  static const gesturesHoldSwipeActions = 'gesturesHoldSwipeActions';
+  static const gesturesSwitchAccounts = 'gesturesSwitchAccounts';
+  static const gesturesSwitchFolders = 'gesturesSwitchFolders';
+  static const gesturesThreeFingerSwipe = 'gesturesThreeFingerSwipe';
   static const appearanceGroupAssistantPosition =
       'appearanceGroupAssistantPosition';
   static const appearanceHideBlockedUserMessages =
@@ -693,6 +701,15 @@ abstract final class AppStringKeys {
   static const cloudThemeLoadFailed = 'cloudThemeLoadFailed';
   static const cloudThemeOfficialDescription = 'cloudThemeOfficialDescription';
   static const cloudThemePreviewTitle = 'cloudThemePreviewTitle';
+  static const communityChatAddedService = 'communityChatAddedService';
+  static const communityChatCount = 'communityChatCount';
+  static const communityChatRemovedService = 'communityChatRemovedService';
+  static const communityChatsYouAreIn = 'communityChatsYouAreIn';
+  static const communityNoChats = 'communityNoChats';
+  static const communityShowAsOneChat = 'communityShowAsOneChat';
+  static const communityShowAsOneChatDescription =
+      'communityShowAsOneChatDescription';
+  static const communityTitle = 'communityTitle';
   static const commonUiDraftBadge = 'commonUiDraftBadge';
   static const commonUiGroupOwner = 'commonUiGroupOwner';
   static const commonUiMentionedBySomeoneBadge =
@@ -943,6 +960,8 @@ abstract final class AppStringKeys {
   static const editProfileAnimatedAvatar = 'editProfileAnimatedAvatar';
   static const editProfileAnimatedAvatarDescription =
       'editProfileAnimatedAvatarDescription';
+  static const editProfileAnimatedAvatarPremiumRequired =
+      'editProfileAnimatedAvatarPremiumRequired';
   static const editProfileAvatarUpdated = 'editProfileAvatarUpdated';
   static const editProfileAvatarUpdateFailed = 'editProfileAvatarUpdateFailed';
   static const editProfileBio = 'editProfileBio';

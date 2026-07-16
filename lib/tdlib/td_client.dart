@@ -118,6 +118,8 @@ class TdClient {
   );
   final Map<int, Map<String, dynamic>> _latestChatFoldersByClient = {};
   final Map<int, Map<String, dynamic>> _latestEmojiChatThemesByClient = {};
+  final Map<int, Map<int, Map<String, dynamic>>> _latestCommunitiesByClient =
+      {};
 
   // Accounts
   final Map<int, int> _clientForSlot = {};
@@ -146,6 +148,8 @@ class TdClient {
       _latestChatFoldersByClient[clientId];
   Map<String, dynamic>? get latestEmojiChatThemesUpdate =>
       _latestEmojiChatThemesByClient[_activeClientId];
+  Iterable<Map<String, dynamic>> get latestCommunityUpdates =>
+      _latestCommunitiesByClient[_activeClientId]?.values ?? const [];
 
   // MARK: - Lifecycle
 
@@ -321,6 +325,7 @@ class TdClient {
     _slotForClient.remove(oldClientId);
     _latestChatFoldersByClient.remove(oldClientId);
     _latestEmojiChatThemesByClient.remove(oldClientId);
+    _latestCommunitiesByClient.remove(oldClientId);
     _proxyAppliedClients.remove(oldClientId);
     await deleteSlotData(slot);
 
@@ -884,6 +889,7 @@ class TdClient {
       _slotForClient.remove(cid);
       _latestChatFoldersByClient.remove(cid);
       _latestEmojiChatThemesByClient.remove(cid);
+      _latestCommunitiesByClient.remove(cid);
       _proxyAppliedClients.remove(cid);
     }
   }
@@ -942,6 +948,16 @@ class TdClient {
     }
     if (object.type == 'updateEmojiChatThemes') {
       _latestEmojiChatThemesByClient[clientId] = object;
+    }
+    if (object.type == 'updateCommunity') {
+      final community = object.obj('community');
+      final communityId = community?.int64('id');
+      if (community != null && communityId != null) {
+        _latestCommunitiesByClient.putIfAbsent(
+          clientId,
+          () => {},
+        )[communityId] = object;
+      }
     }
 
     _allUpdates.add(object);

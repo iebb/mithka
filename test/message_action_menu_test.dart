@@ -73,6 +73,27 @@ void main() {
     },
   );
 
+  test('custom quick reactions are available only to Premium accounts', () {
+    const custom = QuickReactionChoice.custom(987654321);
+    const standard = QuickReactionChoice.emoji('👍');
+
+    expect(
+      effectiveQuickReactions(const [custom, standard], allowCustomEmoji: true),
+      const [custom, standard],
+    );
+    expect(
+      effectiveQuickReactions(const [
+        custom,
+        standard,
+      ], allowCustomEmoji: false),
+      const [standard],
+    );
+    expect(
+      effectiveQuickReactions(const [custom], allowCustomEmoji: false),
+      defaultQuickReactions,
+    );
+  });
+
   test('+1 preserves sender by default and persists the override', () async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();

@@ -24,6 +24,7 @@ import '../components/ui_components.dart';
 import '../media/app_asset_picker.dart';
 import '../platform/animated_avatar_preparer.dart';
 import '../profile/profile_icon_picker_view.dart';
+import '../profile/profile_photo_policy.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -59,6 +60,7 @@ class _EditProfileViewState extends State<EditProfileView> {
   int _profileBackgroundCustomEmojiId = 0;
   int? _bDay, _bMonth, _bYear;
   TdFileRef? _photo;
+  bool _isPremium = false;
   bool _loading = true;
   bool _openedAvatarPicker = false;
 
@@ -81,6 +83,7 @@ class _EditProfileViewState extends State<EditProfileView> {
       _backgroundCustomEmojiId = me.int64('background_custom_emoji_id') ?? 0;
       _profileBackgroundCustomEmojiId =
           me.int64('profile_background_custom_emoji_id') ?? 0;
+      _isPremium = me.boolean('is_premium') ?? false;
       _photo = TDParse.smallPhoto(me.obj('profile_photo'));
       if (uid != null) {
         final full = await _client.query({
@@ -339,6 +342,10 @@ class _EditProfileViewState extends State<EditProfileView> {
   }
 
   Future<void> _changeAvatar() async {
+    if (!_isPremium) {
+      await _changeStaticAvatar();
+      return;
+    }
     final kind = await _chooseAvatarKind();
     if (kind == null) return;
     switch (kind) {
@@ -501,6 +508,7 @@ class _EditProfileViewState extends State<EditProfileView> {
   }
 
   Future<void> _changeAnimatedAvatar() async {
+    if (!_canSetAnimatedAvatar()) return;
     try {
       final selection = await AppAssetPicker.pickDetailed(
         context,
@@ -521,6 +529,7 @@ class _EditProfileViewState extends State<EditProfileView> {
   }
 
   Future<void> _setAnimatedAvatar(XFile animation) async {
+    if (!_canSetAnimatedAvatar()) return;
     try {
       if (!mounted) return;
       final crop = await Navigator.of(context).push<AnimatedAvatarCrop>(
@@ -539,15 +548,17 @@ class _EditProfileViewState extends State<EditProfileView> {
         _toast(AppStrings.t(AppStringKeys.editProfileInvalidAvatarFile));
         return;
       }
-      await _client.query({
-        '@type': 'setProfilePhoto',
-        'photo': {
-          '@type': 'inputChatPhotoAnimation',
-          'animation': {'@type': 'inputFileLocal', 'path': prepared.path},
-          'main_frame_timestamp': 0.0,
-        },
-        'is_public': false,
-      });
+      final request = animatedProfilePhotoRequest(
+        isPremium: _isPremium,
+        path: prepared.path,
+      );
+      if (request == null) {
+        _toast(
+          AppStrings.t(AppStringKeys.editProfileAnimatedAvatarPremiumRequired),
+        );
+        return;
+      }
+      await _client.query(request);
       await _finishAvatarUpdate();
     } catch (e) {
       _toast(
@@ -556,6 +567,14 @@ class _EditProfileViewState extends State<EditProfileView> {
         }),
       );
     }
+  }
+
+  bool _canSetAnimatedAvatar() {
+    if (_isPremium) return true;
+    _toast(
+      AppStrings.t(AppStringKeys.editProfileAnimatedAvatarPremiumRequired),
+    );
+    return false;
   }
 
   Future<void> _finishAvatarUpdate() async {

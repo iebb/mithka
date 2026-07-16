@@ -47,6 +47,16 @@ const defaultQuickReactions = <QuickReactionChoice>[
   QuickReactionChoice.emoji('😡'),
 ];
 
+List<QuickReactionChoice> effectiveQuickReactions(
+  Iterable<QuickReactionChoice> configured, {
+  required bool allowCustomEmoji,
+}) {
+  final available = configured
+      .where((reaction) => allowCustomEmoji || !reaction.isCustom)
+      .toList(growable: false);
+  return available.isEmpty ? defaultQuickReactions : available;
+}
+
 const availableStandardReactions = <String>[
   '👍',
   '👎',

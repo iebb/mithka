@@ -43,8 +43,8 @@ penguin on the scale.
 Mithka connects to **real Telegram** (your account, your chats) through TDLib and
 presents it with a custom interface: chat list, conversations with live state,
 reactions and stickers (including animated `.tgs`/`.webm`), voice notes, polls
-and checklists, location sharing, contacts, profiles, moments-style stories,
-settings, and a 1:1 call UI.
+and checklists, Telegram Communities, location sharing, contacts, profiles,
+moments-style stories, settings, and a 1:1 call UI.
 
 ## Architecture
 

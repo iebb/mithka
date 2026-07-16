@@ -1,5 +1,62 @@
 import '../tdlib/td_models.dart';
 
+/// TDLib exposes yet-unsent messages with a normal positive ID plus
+/// `sending_state`; the state, not the ID sign, is authoritative.
+bool isPendingChatMessage(ChatMessage message) => message.isSending;
+
+/// Orders server messages chronologically while keeping local pending
+/// messages at the latest edge.
+int compareChatMessagesChronologically(ChatMessage a, ChatMessage b) {
+  final aIsPending = isPendingChatMessage(a);
+  final bIsPending = isPendingChatMessage(b);
+  if (aIsPending != bIsPending) return aIsPending ? 1 : -1;
+  if (aIsPending) {
+    final byDate = a.date.compareTo(b.date);
+    if (byDate != 0) return byDate;
+    return a.id.compareTo(b.id);
+  }
+  return a.id.compareTo(b.id);
+}
+
+/// Highest server-assigned ID, ignoring local pending messages.
+int latestServerMessageId(Iterable<ChatMessage> messages) {
+  var latest = 0;
+  for (final message in messages) {
+    if (!isPendingChatMessage(message) &&
+        message.id > 0 &&
+        message.id > latest) {
+      latest = message.id;
+    }
+  }
+  return latest;
+}
+
+/// Latest server ID visible to the transcript, falling back to the complete
+/// loaded window when filtering leaves only local pending messages.
+int latestServerMessageReadBoundary({
+  required Iterable<ChatMessage> visibleMessages,
+  required Iterable<ChatMessage> allMessages,
+}) {
+  final visible = latestServerMessageId(visibleMessages);
+  return visible > 0 ? visible : latestServerMessageId(allMessages);
+}
+
+/// Pending local sends cannot have been acknowledged by the peer yet.
+bool isOutgoingServerMessageRead({
+  required ChatMessage message,
+  required int lastReadOutboxId,
+}) {
+  return message.isOutgoing &&
+      !message.isSending &&
+      message.id > 0 &&
+      message.id <= lastReadOutboxId;
+}
+
+/// Only an empty remote history page proves that no older page exists.
+bool confirmsOlderHistoryExhausted({required bool onlyLocal}) {
+  return !onlyLocal;
+}
+
 List<ChatMessage> mergeChatMessages(
   Iterable<ChatMessage> current,
   Iterable<ChatMessage> incoming, {
@@ -18,7 +75,7 @@ List<ChatMessage> mergeChatMessages(
     }
     byId[message.id] = message;
   }
-  return byId.values.toList()..sort((a, b) => a.id.compareTo(b.id));
+  return byId.values.toList()..sort(compareChatMessagesChronologically);
 }
 
 /// Applies the result of a history request that was started while live message

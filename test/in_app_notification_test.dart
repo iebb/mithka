@@ -62,6 +62,45 @@ void main() {
     expect(banner.target.messageId, 9001);
   });
 
+  test('notifications identify a different target account in the title', () {
+    expect(
+      notificationTitleForAccount(
+        title: 'Project chat',
+        isActiveAccount: false,
+        targetAccountName: 'Work account',
+      ),
+      'Project chat → Work account',
+    );
+    expect(
+      notificationTitleForAccount(
+        title: 'Project chat',
+        isActiveAccount: true,
+        targetAccountName: 'Work account',
+      ),
+      'Project chat',
+    );
+  });
+
+  test('notification avatar parses the nested TDLib chat photo file', () {
+    final photo = notificationChatPhotoFromChat({
+      '@type': 'chat',
+      'photo': {
+        '@type': 'chatPhotoInfo',
+        'id': 987,
+        'has_animation': false,
+        'small': {
+          '@type': 'file',
+          'id': 123,
+          'local': {'@type': 'localFile', 'path': '/tmp/chat-photo.jpg'},
+        },
+      },
+    });
+
+    expect(photo?.id, 123);
+    expect(photo?.photoId, 987);
+    expect(photo?.localPath, '/tmp/chat-photo.jpg');
+  });
+
   test('scope preview setting hides text unless a chat overrides it', () {
     final settings = ScopeNotificationSettings.shared;
     const privateScope = 'notificationSettingsScopePrivateChats';

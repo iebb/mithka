@@ -1,15 +1,20 @@
 import 'dart:collection';
 
 import '../tdlib/td_models.dart';
+import 'chat_first_contact_info.dart';
 
 class ChatSessionRenderState {
   const ChatSessionRenderState({
     required this.messages,
     required this.anchoredHistory,
+    required this.olderHistoryExhausted,
+    this.firstContactInfo,
   });
 
   final List<ChatMessage> messages;
   final bool anchoredHistory;
+  final bool olderHistoryExhausted;
+  final ChatFirstContactInfo? firstContactInfo;
 }
 
 /// Small in-memory LRU used to paint previously opened chats immediately.
@@ -30,12 +35,16 @@ class ChatSessionCache {
     required int chatId,
     required List<ChatMessage> messages,
     required bool anchoredHistory,
+    bool olderHistoryExhausted = false,
+    ChatFirstContactInfo? firstContactInfo,
   }) {
     _states.remove(chatId);
     if (messages.isEmpty) return;
     _states[chatId] = ChatSessionRenderState(
       messages: List<ChatMessage>.unmodifiable(messages),
       anchoredHistory: anchoredHistory,
+      olderHistoryExhausted: olderHistoryExhausted,
+      firstContactInfo: firstContactInfo,
     );
     while (_states.length > capacity) {
       _states.remove(_states.keys.first);

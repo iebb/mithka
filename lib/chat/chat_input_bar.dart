@@ -2612,10 +2612,18 @@ class _ChatInputBarState extends State<ChatInputBar> {
         final item = stickers[i];
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTap: () {
-            widget.vm.sendSticker(item);
-            widget.onMessageSent();
-            setState(() => _panel = _Panel.none);
+          onTap: () async {
+            final sent = await widget.vm.sendSticker(item);
+            if (!mounted) return;
+            if (sent) {
+              widget.onMessageSent();
+              setState(() => _panel = _Panel.none);
+            } else {
+              showToast(
+                this.context,
+                AppStrings.t(AppStringKeys.stickerSetDetailActionFailed),
+              );
+            }
           },
           child: StickerPreview(item: item),
         );

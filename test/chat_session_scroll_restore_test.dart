@@ -48,8 +48,18 @@ void main() {
       expect(plan.correctToBottomAfterLayout, isFalse);
     });
 
-    test('invalid cached offsets are clamped to zero', () {
-      for (final pixels in <double>[-10, double.nan, double.infinity]) {
+    test('finite negative offsets are preserved for centered history', () {
+      final plan = chatInitialScrollPlan(
+        hasCachedTranscript: true,
+        savedPixels: -480,
+        savedAtBottom: false,
+      );
+
+      expect(plan.initialOffset, -480);
+    });
+
+    test('non-finite cached offsets fall back to zero', () {
+      for (final pixels in <double>[double.nan, double.infinity]) {
         final plan = chatInitialScrollPlan(
           hasCachedTranscript: true,
           savedPixels: pixels,
@@ -178,6 +188,25 @@ void main() {
           snapshotWasAtBottom: true,
         ),
         isFalse,
+      );
+    });
+
+    test('history invalidation discards a cold session anchor', () {
+      expect(
+        shouldPreserveChatSessionAnchorAcrossWindowChange(
+          anchorMaintenanceActive: true,
+          hasSavedPivot: true,
+          historyWindowInvalidated: true,
+        ),
+        isFalse,
+      );
+      expect(
+        shouldPreserveChatSessionAnchorAcrossWindowChange(
+          anchorMaintenanceActive: true,
+          hasSavedPivot: true,
+          historyWindowInvalidated: false,
+        ),
+        isTrue,
       );
     });
 

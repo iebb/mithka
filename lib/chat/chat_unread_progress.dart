@@ -26,6 +26,25 @@ class ChatLiveMessageBuffer {
   }
 }
 
+/// Live incoming IDs that were appended to the currently loaded transcript.
+///
+/// A null previous newest ID means the chat previously had no server message;
+/// the first live arrival must still be surfaced if auto-follow is suppressed.
+List<int> appendedLiveIncomingMessageIds({
+  required int? previousNewestMessageId,
+  required Iterable<int> liveIncomingMessageIds,
+  required Iterable<int> currentMessageIds,
+}) {
+  final currentIds = currentMessageIds.toSet();
+  return liveIncomingMessageIds
+      .where(
+        (id) =>
+            (previousNewestMessageId == null || id > previousNewestMessageId) &&
+            currentIds.contains(id),
+      )
+      .toList(growable: false);
+}
+
 class ChatUnreadProgress {
   final Set<int> _seenInitialMessageIds = <int>{};
   final Set<int> _liveMessageIds = <int>{};

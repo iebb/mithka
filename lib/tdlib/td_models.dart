@@ -2510,6 +2510,8 @@ abstract final class TDParse {
     'messageVideoChatEnded',
     'messageForumTopicCreated',
     'messageChatBoost',
+    'messageChatAddedToCommunity',
+    'messageChatRemovedFromCommunity',
   };
 
   static bool isServiceContent(String? type) =>
@@ -2575,6 +2577,10 @@ abstract final class TDParse {
         return AppStrings.t(AppStringKeys.groupManagementLogCreatedTopic);
       case 'messageChatBoost':
         return telegramText(AppStringKeys.tdMessageBoostedGroup);
+      case 'messageChatAddedToCommunity':
+        return AppStrings.t(AppStringKeys.communityChatAddedService);
+      case 'messageChatRemovedFromCommunity':
+        return AppStrings.t(AppStringKeys.communityChatRemovedService);
       case 'messageChatSetBackground':
         return AppStrings.t(AppStringKeys.chatWallpaperChanged);
       case 'messageChatSetTheme':

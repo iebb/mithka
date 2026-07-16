@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mithka/chat/chat_first_contact_info.dart';
 import 'package:mithka/chat/chat_session_cache.dart';
 import 'package:mithka/tdlib/td_models.dart';
 
@@ -10,12 +11,24 @@ void main() {
     final cache = ChatSessionCache();
     final messages = [_message(1), _message(2)];
 
-    cache.store(chatId: 42, messages: messages, anchoredHistory: false);
+    cache.store(
+      chatId: 42,
+      messages: messages,
+      anchoredHistory: false,
+      olderHistoryExhausted: true,
+      firstContactInfo: const ChatFirstContactInfo(
+        countryCode: 'SG',
+        registrationMonth: 7,
+        registrationYear: 2026,
+      ),
+    );
     messages.add(_message(3));
 
     final restored = cache.read(42);
     expect(restored?.messages.map((message) => message.id), [1, 2]);
     expect(restored?.anchoredHistory, isFalse);
+    expect(restored?.olderHistoryExhausted, isTrue);
+    expect(restored?.firstContactInfo?.countryCode, 'SG');
   });
 
   test('evicts the least recently used transcript', () {

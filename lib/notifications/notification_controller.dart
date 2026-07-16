@@ -48,6 +48,23 @@ NotificationSurface notificationSurfaceFor({
       : NotificationSurface.none;
 }
 
+@visibleForTesting
+String notificationTitleForAccount({
+  required String title,
+  required bool isActiveAccount,
+  String? targetAccountName,
+}) {
+  final accountName = targetAccountName?.trim();
+  if (isActiveAccount || accountName == null || accountName.isEmpty) {
+    return title;
+  }
+  return '$title → $accountName';
+}
+
+@visibleForTesting
+TdFileRef? notificationChatPhotoFromChat(Map<String, dynamic> chat) =>
+    TDParse.smallPhoto(chat.obj('photo'));
+
 class InAppNotificationBannerData {
   const InAppNotificationBannerData({
     required this.target,
@@ -279,7 +296,19 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
       }
       final showPreview =
           latestEffective.showPreview && _notificationPreferences.inAppPreview;
-      final title = latestChat.str('title') ?? 'Mithka';
+      final chatTitle = latestChat.str('title') ?? 'Mithka';
+      final isTargetAccountActive = clientId == _client.activeClientId;
+      final accountName = isTargetAccountActive
+          ? null
+          : await _notificationAccountName(clientId);
+      final title = notificationTitleForAccount(
+        title: chatTitle,
+        isActiveAccount: isTargetAccountActive,
+        targetAccountName: accountName,
+      );
+      final photo = isTargetAccountActive
+          ? notificationChatPhotoFromChat(latestChat)
+          : await _notificationChatPhoto(latestChat, clientId);
       final body = showPreview
           ? messageText
           : AppStrings.t(AppStringKeys.notificationNewMessage);
@@ -288,14 +317,14 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
           target: NotificationTarget(
             chatId: chatId,
             messageId: messageId,
-            title: title,
+            title: chatTitle,
             accountSlot: _client.slotForClient(clientId),
           ),
           title: title,
           body: !showPreview || sender == null || sender.isEmpty
               ? body
               : '$sender: $body',
-          photo: TDParse.smallPhoto(latestChat.obj('photo')),
+          photo: photo,
           squarePhoto: switch (TDParse.chatKind(latestChat)) {
             ChatKind.group || ChatKind.channel => true,
             _ => false,
@@ -321,9 +350,18 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
       return;
     }
     final chatTitle = latestChat.str('title') ?? 'Mithka';
-    final title = _notificationPreferences.namesOnLockScreen
+    final isTargetAccountActive = clientId == _client.activeClientId;
+    final accountName = isTargetAccountActive
+        ? null
+        : await _notificationAccountName(clientId);
+    final visibleTitle = _notificationPreferences.namesOnLockScreen
         ? chatTitle
         : 'Mithka';
+    final title = notificationTitleForAccount(
+      title: visibleTitle,
+      isActiveAccount: isTargetAccountActive,
+      targetAccountName: accountName,
+    );
     final showPreview = latestEffective.showPreview;
     final body = showPreview
         ? messageText
@@ -361,10 +399,19 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
     Map<String, dynamic> chat,
     int clientId,
   ) async {
-    final photo = TDParse.smallPhoto(chat.obj('photo'));
+    final photo = await _notificationChatPhoto(chat, clientId);
+    if (photo == null) return null;
+    return _readableNotificationIconPath(photo.localPath);
+  }
+
+  Future<TdFileRef?> _notificationChatPhoto(
+    Map<String, dynamic> chat,
+    int clientId,
+  ) async {
+    final photo = notificationChatPhotoFromChat(chat);
     if (photo == null) return null;
     final existing = await _readableNotificationIconPath(photo.localPath);
-    if (existing != null) return existing;
+    if (existing != null) return photo;
     try {
       final downloaded = await _query({
         '@type': 'downloadFile',
@@ -374,9 +421,36 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
         'limit': 0,
         'synchronous': true,
       }, clientId).timeout(const Duration(seconds: 2));
-      return _readableNotificationIconPath(
+      final path = await _readableNotificationIconPath(
         downloaded.obj('local')?.str('path'),
       );
+      if (path == null) return _notificationPhotoPlaceholder(photo);
+      return TdFileRef(
+        id: photo.id,
+        localPath: path,
+        miniThumb: photo.miniThumb,
+        thumbnail: photo.thumbnail,
+        hasAnimation: photo.hasAnimation,
+        photoId: photo.photoId,
+      );
+    } catch (_) {
+      return _notificationPhotoPlaceholder(photo);
+    }
+  }
+
+  TdFileRef _notificationPhotoPlaceholder(TdFileRef photo) => TdFileRef(
+    // TDLib file ids are account-local. Avoid resolving this id through a
+    // newly active account if the originating account download failed.
+    id: 0,
+    miniThumb: photo.miniThumb,
+    photoId: photo.photoId,
+  );
+
+  Future<String?> _notificationAccountName(int clientId) async {
+    try {
+      final user = await _query({'@type': 'getMe'}, clientId);
+      final name = TDParse.userName(user).trim();
+      return name.isEmpty ? null : name;
     } catch (_) {
       return null;
     }

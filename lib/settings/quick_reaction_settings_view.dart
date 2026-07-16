@@ -31,7 +31,12 @@ class _QuickReactionSettingsViewState extends State<QuickReactionSettingsView> {
 
   void _toggle(QuickReactionChoice reaction) {
     final controller = context.read<ThemeController>();
-    final selected = [...controller.quickReactions];
+    final selected = [
+      ...effectiveQuickReactions(
+        controller.quickReactions,
+        allowCustomEmoji: EmojiStore.shared.isPremium,
+      ),
+    ];
     final index = selected.indexOf(reaction);
     if (index >= 0) {
       if (selected.length == 1) {
@@ -51,7 +56,12 @@ class _QuickReactionSettingsViewState extends State<QuickReactionSettingsView> {
 
   void _move(QuickReactionChoice reaction, int targetIndex) {
     final controller = context.read<ThemeController>();
-    final selected = [...controller.quickReactions];
+    final selected = [
+      ...effectiveQuickReactions(
+        controller.quickReactions,
+        allowCustomEmoji: EmojiStore.shared.isPremium,
+      ),
+    ];
     final oldIndex = selected.indexOf(reaction);
     if (oldIndex < 0 || oldIndex == targetIndex) return;
     selected.removeAt(oldIndex);
@@ -62,7 +72,7 @@ class _QuickReactionSettingsViewState extends State<QuickReactionSettingsView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final selected = context.watch<ThemeController>().quickReactions;
+    final controller = context.watch<ThemeController>();
     return Scaffold(
       backgroundColor: c.groupedBackground,
       body: Column(
@@ -72,34 +82,40 @@ class _QuickReactionSettingsViewState extends State<QuickReactionSettingsView> {
             onBack: () => Navigator.of(context).pop(),
           ),
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.lg,
-                AppSpacing.xl,
-                AppSpacing.lg,
-                AppSpacing.section,
-              ),
-              children: [
-                _sectionLabel(AppStringKeys.quickReactionsSelected),
-                _selectedStrip(selected),
-                Padding(
+            child: AnimatedBuilder(
+              animation: EmojiStore.shared,
+              builder: (context, _) {
+                final selected = effectiveQuickReactions(
+                  controller.quickReactions,
+                  allowCustomEmoji: EmojiStore.shared.isPremium,
+                );
+                return ListView(
                   padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.xxl,
-                    AppSpacing.sm,
-                    AppSpacing.xxl,
+                    AppSpacing.lg,
                     AppSpacing.xl,
+                    AppSpacing.lg,
+                    AppSpacing.section,
                   ),
-                  child: Text(
-                    AppStrings.t(AppStringKeys.quickReactionsHint),
-                    style: AppTextStyle.footnote(c.textTertiary),
-                  ),
-                ),
-                _sectionLabel(AppStringKeys.quickReactionsAvailable),
-                AnimatedBuilder(
-                  animation: EmojiStore.shared,
-                  builder: (context, _) => _picker(selected),
-                ),
-              ],
+                  children: [
+                    _sectionLabel(AppStringKeys.quickReactionsSelected),
+                    _selectedStrip(selected),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.xxl,
+                        AppSpacing.sm,
+                        AppSpacing.xxl,
+                        AppSpacing.xl,
+                      ),
+                      child: Text(
+                        AppStrings.t(AppStringKeys.quickReactionsHint),
+                        style: AppTextStyle.footnote(c.textTertiary),
+                      ),
+                    ),
+                    _sectionLabel(AppStringKeys.quickReactionsAvailable),
+                    _picker(selected),
+                  ],
+                );
+              },
             ),
           ),
         ],
