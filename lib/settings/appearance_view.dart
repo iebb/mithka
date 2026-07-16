@@ -105,6 +105,13 @@ class AppearanceView extends StatelessWidget {
                           ? (value) => theme.useTelegramThemeForUi = value
                           : null,
                     ),
+                    _toggleRow(
+                      context,
+                      HeroAppIcons.users.data,
+                      AppStrings.t(AppStringKeys.appearancePerAccountTheming),
+                      theme.usePerAccountTheming,
+                      (value) => theme.usePerAccountTheming = value,
+                    ),
                   ],
                 ]),
                 const SizedBox(height: AppSpacing.xl),

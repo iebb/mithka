@@ -101,6 +101,7 @@ const zhHansMessages = <String, String>{
   'appearanceEmojiFontCatalogDescription':
       "字体列表来自 iebb/emojifonts manifest；选择时从 GitHub Releases 下载。预览图来自 Emojipedia。",
   'appearanceEnableTheming': "启用主题",
+  'appearancePerAccountTheming': "每个账号单独使用主题",
   'appearanceFileCount': "{value1} 个",
   'appearanceFont': "字体",
   'appearanceFontCache': "字体缓存",
@@ -686,6 +687,9 @@ const zhHansMessages = <String, String>{
   'globalThemeSwitchModeAction': "切换",
   'globalThemeSwitchToDark': "是否切换到深色模式？",
   'globalThemeSwitchToLight': "是否切换到浅色模式？",
+  'globalThemeWallpaperApply': "使用壁纸",
+  'globalThemeWallpaperKeep': "保留当前壁纸",
+  'globalThemeWallpaperPrompt': "同时使用此主题的壁纸吗？",
   'globalThemeTitle': "主题",
   'globalThemeUseForUi': "使用 Telegram 主题美化界面",
   'globalThemeUseForUiDescription': "将主题颜色应用到聊天列表、文字、背景、导航和强调色。",

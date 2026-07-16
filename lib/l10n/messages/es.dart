@@ -108,6 +108,7 @@ const esMessages = <String, String>{
   'appearanceEmojiFontCatalogDescription':
       "La lista de fuentes proviene del manifiesto iebb/emojifonts; se descargan desde GitHub Releases al seleccionarlas. Las vistas previas provienen de Emojipedia.",
   'appearanceEnableTheming': "Activar temas",
+  'appearancePerAccountTheming': "Usar temas por cuenta",
   'appearanceFileCount': "{value1}",
   'appearanceFont': "Fuente",
   'appearanceFontCache': "Caché de fuentes",
@@ -736,6 +737,9 @@ const esMessages = <String, String>{
   'globalThemeSwitchModeAction': "Cambiar",
   'globalThemeSwitchToDark': "¿Cambiar al modo oscuro?",
   'globalThemeSwitchToLight': "¿Cambiar al modo claro?",
+  'globalThemeWallpaperApply': "Usar fondo",
+  'globalThemeWallpaperKeep': "Mantener actual",
+  'globalThemeWallpaperPrompt': "¿Usar también el fondo de este tema?",
   'globalThemeTitle': "Tema",
   'globalThemeUseForUi': "Usar el tema de Telegram en la interfaz",
   'globalThemeUseForUiDescription':

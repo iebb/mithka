@@ -102,6 +102,7 @@ const zhHantMessages = <String, String>{
   'appearanceEmojiFontCatalogDescription':
       "字型列表來自 iebb/emojifonts manifest；選取後會從 GitHub Releases 下載。預覽圖來自 Emojipedia。",
   'appearanceEnableTheming': "啟用主題",
+  'appearancePerAccountTheming': "每個帳號分別使用主題",
   'appearanceFileCount': "{value1} 個",
   'appearanceFont': "字型",
   'appearanceFontCache': "字型快取",
@@ -686,6 +687,9 @@ const zhHantMessages = <String, String>{
   'globalThemeSwitchModeAction': "切換",
   'globalThemeSwitchToDark': "是否切換至深色模式？",
   'globalThemeSwitchToLight': "是否切換至淺色模式？",
+  'globalThemeWallpaperApply': "使用桌布",
+  'globalThemeWallpaperKeep': "保留目前桌布",
+  'globalThemeWallpaperPrompt': "也要使用此主題的桌布嗎？",
   'globalThemeTitle': "主題",
   'globalThemeUseForUi': "使用 Telegram 主題美化介面",
   'globalThemeUseForUiDescription': "將主題顏色套用到聊天列表、文字、背景、導覽和強調色。",

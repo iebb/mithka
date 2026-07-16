@@ -45,6 +45,7 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
   ChatWallpaper? _initialRemote;
   List<ChatWallpaper> _catalogBackgrounds = const [];
   List<ChatWallpaper> _savedBackgrounds = const [];
+  late bool _forDarkTheme = widget.forDarkTheme;
   bool _loaded = false;
   bool _saving = false;
 
@@ -60,6 +61,7 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
   ];
 
   bool get _isDarkTheme => context.colors.background.computeLuminance() < 0.45;
+  bool get _targetDark => widget.isGlobal ? _forDarkTheme : _isDarkTheme;
 
   @override
   void initState() {
@@ -112,13 +114,13 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
   }
 
   Future<void> _load() async {
-    final dark = widget.isGlobal ? widget.forDarkTheme : _isDarkTheme;
+    final dark = _targetDark;
     if (widget.isGlobal) {
       await _controller.loadGlobalChatThemes();
-      await _controller.loadDefaultWallpaper(dark: widget.forDarkTheme);
+      await _controller.loadDefaultWallpaper(dark: dark);
       try {
         _catalogBackgrounds = await _controller.installedBackgrounds(
-          dark: widget.forDarkTheme,
+          dark: dark,
         );
       } catch (_) {}
     } else {
@@ -133,7 +135,7 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
     if (!mounted) return;
     setState(() {
       _selection = widget.isGlobal
-          ? _controller.defaultWallpaper(dark: widget.forDarkTheme)
+          ? _controller.defaultWallpaper(dark: dark)
           : _controller.wallpaperSelectionFor(widget.chatId!);
       if (_selection?.kind == ChatWallpaperKind.telegram) {
         _initialRemote = _selection;
@@ -164,7 +166,7 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
       PageRouteBuilder<ChatWallpaper>(
         pageBuilder: (_, _, _) => ChatWallpaperColorView(
           controller: _controller,
-          dark: widget.isGlobal ? widget.forDarkTheme : _isDarkTheme,
+          dark: _targetDark,
           initial: previous,
           colorOnly: true,
         ),
@@ -206,10 +208,7 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
     try {
       final value = _selection;
       if (widget.isGlobal) {
-        await _controller.applyDefaultWallpaper(
-          value,
-          dark: widget.forDarkTheme,
-        );
+        await _controller.applyDefaultWallpaper(value, dark: _targetDark);
       } else {
         await _controller.applyWallpaper(
           widget.chatId!,
@@ -223,6 +222,96 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
       setState(() => _saving = false);
       showToast(context, AppStringKeys.chatWallpaperSaveFailed);
     }
+  }
+
+  Future<void> _switchBrightness(bool dark) async {
+    if (!widget.isGlobal || _forDarkTheme == dark || _saving) return;
+    setState(() {
+      _forDarkTheme = dark;
+      _selection = null;
+      _initialRemote = null;
+      _catalogBackgrounds = const [];
+      _loaded = false;
+    });
+    await _load();
+  }
+
+  Widget _brightnessPicker() {
+    final c = context.colors;
+    return Container(
+      key: const ValueKey('global-wallpaper-brightness-picker'),
+      height: 40,
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: c.panelBackground,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: _brightnessButton(
+              dark: false,
+              icon: HeroAppIcons.sun,
+              label: AppStringKeys.globalThemeDay,
+            ),
+          ),
+          Expanded(
+            child: _brightnessButton(
+              dark: true,
+              icon: HeroAppIcons.moon,
+              label: AppStringKeys.globalThemeNight,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _brightnessButton({
+    required bool dark,
+    required AppIconData icon,
+    required String label,
+  }) {
+    final c = context.colors;
+    final selected = dark == _forDarkTheme;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _switchBrightness(dark),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        decoration: BoxDecoration(
+          color: selected
+              ? c.linkBlue.withValues(alpha: 0.15)
+              : const Color(0x00000000),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            AppIcon(
+              icon,
+              size: 17,
+              color: selected ? c.linkBlue : c.textTertiary,
+            ),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label.l10n(context),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: selected ? c.linkBlue : c.textSecondary,
+                  fontSize: 14,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -243,6 +332,10 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        if (widget.isGlobal) ...[
+                          _brightnessPicker(),
+                          const SizedBox(height: 12),
+                        ],
                         _preview(),
                         const SizedBox(height: 12),
                         _senderNameReadabilityOption(),
@@ -271,17 +364,21 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
   }
 
   Widget _preview() {
-    final c = context.colors;
-    final dark = _isDarkTheme;
+    final dark = _targetDark;
     final colors = _previewColors;
     final appearance = context.watch<ThemeController>();
+    final targetColors =
+        appearance
+            .cloudThemeFor(dark ? Brightness.dark : Brightness.light)
+            ?.uiColors ??
+        (dark ? AppColors.dark : AppColors.light);
     return ClipRRect(
       borderRadius: BorderRadius.circular(18),
       child: SizedBox(
         height: 270,
         child: ChatWallpaperBackground(
           wallpaper: _effectiveWallpaper,
-          fallbackColor: c.chatBackground,
+          fallbackColor: targetColors.chatBackground,
           brightness: dark ? Brightness.dark : Brightness.light,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(14, 24, 14, 18),
@@ -330,11 +427,12 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
     Color outgoingName,
   })
   get _previewColors {
-    final c = context.colors;
-    final dark = _isDarkTheme;
+    final dark = _targetDark;
     final globalTheme = context.watch<ThemeController>().cloudThemeFor(
       dark ? Brightness.dark : Brightness.light,
     );
+    final c =
+        globalTheme?.uiColors ?? (dark ? AppColors.dark : AppColors.light);
     final activeTheme = widget.isGlobal
         ? null
         : _controller.themeSelectionFor(widget.chatId!);
@@ -548,7 +646,7 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
     if (selection?.colors.isNotEmpty == true) return selection!.colors;
     final effective = _effectiveWallpaper;
     if (effective?.colors.isNotEmpty == true) return effective!.colors;
-    return [_isDarkTheme ? 0x243348 : 0xDCE9F4];
+    return [_targetDark ? 0x243348 : 0xDCE9F4];
   }
 
   int get _activeRotationAngle => _selection?.rotationAngle ?? 0;
@@ -621,7 +719,7 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
           colors: colors,
         ),
         fallbackColor: preset.colors.first,
-        brightness: _isDarkTheme ? Brightness.dark : Brightness.light,
+        brightness: _targetDark ? Brightness.dark : Brightness.light,
       ),
     );
   }
@@ -641,7 +739,7 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
           rotationAngle: _activeRotationAngle,
         ),
         fallbackColor: context.colors.chatBackground,
-        brightness: _isDarkTheme ? Brightness.dark : Brightness.light,
+        brightness: _targetDark ? Brightness.dark : Brightness.light,
         child: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -681,7 +779,7 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
       child: ChatWallpaperBackground(
         wallpaper: resolved,
         fallbackColor: context.colors.chatBackground,
-        brightness: _isDarkTheme ? Brightness.dark : Brightness.light,
+        brightness: _targetDark ? Brightness.dark : Brightness.light,
       ),
     );
   }
@@ -795,7 +893,7 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
       child: ChatWallpaperBackground(
         wallpaper: compactWallpaper,
         fallbackColor: c.chatBackground,
-        brightness: widget.forDarkTheme ? Brightness.dark : Brightness.light,
+        brightness: _targetDark ? Brightness.dark : Brightness.light,
         child: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -818,7 +916,7 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
   }
 
   ChatWallpaper? get _themeDefaultWallpaper {
-    final dark = widget.isGlobal ? widget.forDarkTheme : _isDarkTheme;
+    final dark = _targetDark;
     final customThemeWallpaper = context
         .watch<ThemeController>()
         .cloudThemeFor(dark ? Brightness.dark : Brightness.light)
@@ -838,7 +936,7 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
     final candidates = <_WallpaperCandidate>[];
     final seen = <String>{};
     for (final option in _controller.globalThemeOptions(
-      dark: widget.forDarkTheme,
+      dark: _targetDark,
       resolvePatterns: true,
     )) {
       final wallpaper = option.wallpaper;
@@ -895,7 +993,7 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
         // preparation is cached by the controller, so rebuilds reuse it.
         wallpaper: compactWallpaper,
         fallbackColor: context.colors.chatBackground,
-        brightness: widget.forDarkTheme ? Brightness.dark : Brightness.light,
+        brightness: _targetDark ? Brightness.dark : Brightness.light,
         child: Stack(
           fit: StackFit.expand,
           children: [
@@ -991,7 +1089,7 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
           rotationAngle: _activeRotationAngle,
         ),
         fallbackColor: context.colors.chatBackground,
-        brightness: _isDarkTheme ? Brightness.dark : Brightness.light,
+        brightness: _targetDark ? Brightness.dark : Brightness.light,
         child: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1025,7 +1123,7 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
       child: ChatWallpaperBackground(
         wallpaper: compactWallpaper,
         fallbackColor: context.colors.chatBackground,
-        brightness: _isDarkTheme ? Brightness.dark : Brightness.light,
+        brightness: _targetDark ? Brightness.dark : Brightness.light,
         child: Stack(
           fit: StackFit.expand,
           children: [
@@ -1070,7 +1168,7 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
       child: ChatWallpaperBackground(
         wallpaper: compactWallpaper,
         fallbackColor: context.colors.chatBackground,
-        brightness: _isDarkTheme ? Brightness.dark : Brightness.light,
+        brightness: _targetDark ? Brightness.dark : Brightness.light,
       ),
     );
   }
@@ -1093,7 +1191,7 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
       child: ChatWallpaperBackground(
         wallpaper: wallpaper,
         fallbackColor: context.colors.chatBackground,
-        brightness: _isDarkTheme ? Brightness.dark : Brightness.light,
+        brightness: _targetDark ? Brightness.dark : Brightness.light,
       ),
     );
   }
@@ -1110,7 +1208,7 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
       child: ChatWallpaperBackground(
         wallpaper: ChatWallpaper.preset(preset.id),
         fallbackColor: preset.colors.first,
-        brightness: _isDarkTheme ? Brightness.dark : Brightness.light,
+        brightness: _targetDark ? Brightness.dark : Brightness.light,
       ),
     );
   }

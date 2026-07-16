@@ -107,6 +107,7 @@ const enMessages = <String, String>{
   'appearanceEmojiFontCatalogDescription':
       "The font list comes from the iebb/emojifonts manifest. Selected fonts are downloaded from GitHub Releases. Previews come from Emojipedia.",
   'appearanceEnableTheming': "Enable Theming",
+  'appearancePerAccountTheming': "Use themes per account",
   'appearanceFileCount': "{value1}",
   'appearanceFont': "Font",
   'appearanceFontCache': "Font Cache",
@@ -726,6 +727,9 @@ const enMessages = <String, String>{
   'globalThemeSwitchModeAction': "Switch",
   'globalThemeSwitchToDark': "Switch to Dark mode?",
   'globalThemeSwitchToLight': "Switch to Light mode?",
+  'globalThemeWallpaperApply': "Use wallpaper",
+  'globalThemeWallpaperKeep': "Keep current",
+  'globalThemeWallpaperPrompt': "Use this theme’s wallpaper too?",
   'globalThemeTitle': "Theme",
   'globalThemeUseForUi': "Use Telegram theming for UI",
   'globalThemeUseForUiDescription':

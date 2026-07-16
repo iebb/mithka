@@ -105,6 +105,7 @@ const koMessages = <String, String>{
   'appearanceEmojiFontCatalogDescription':
       "글꼴 목록은 iebb/emojifonts manifest를 사용하며, 선택 시 GitHub Releases에서 다운로드합니다. 미리보기 이미지는 Emojipedia에서 가져옵니다.",
   'appearanceEnableTheming': "테마 사용",
+  'appearancePerAccountTheming': "계정별 테마 사용",
   'appearanceFileCount': "{value1}개",
   'appearanceFont': "글꼴",
   'appearanceFontCache': "글꼴 캐시",
@@ -697,6 +698,9 @@ const koMessages = <String, String>{
   'globalThemeSwitchModeAction': "전환",
   'globalThemeSwitchToDark': "다크 모드로 전환할까요?",
   'globalThemeSwitchToLight': "라이트 모드로 전환할까요?",
+  'globalThemeWallpaperApply': "배경화면 사용",
+  'globalThemeWallpaperKeep': "현재 항목 유지",
+  'globalThemeWallpaperPrompt': "이 테마의 배경화면도 사용할까요?",
   'globalThemeTitle': "테마",
   'globalThemeUseForUi': "UI에 Telegram 테마 사용",
   'globalThemeUseForUiDescription': "채팅 목록, 텍스트, 배경, 탐색 및 강조 색상에 테마 색상을 적용합니다.",

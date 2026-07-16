@@ -224,14 +224,17 @@ class MithkaApp extends StatefulWidget {
 
 class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
   late final AuthManager _auth = AuthManager();
-  late final ThemeController _theme = ThemeController(widget.prefs);
+  late final AccountStore _accounts = AccountStore(widget.prefs);
+  late final ThemeController _theme = ThemeController(
+    widget.prefs,
+    initialAccountSlot: _accounts.activeSlot,
+  );
   late final TranslationController _translation = TranslationController(
     widget.prefs,
   );
   late final AppLocaleController _locale = AppLocaleController(widget.prefs);
   late final TelegramLanguageController _telegramLanguage =
       TelegramLanguageController.shared;
-  late final AccountStore _accounts = AccountStore(widget.prefs);
   late final dc.DrawerController _drawer = dc.DrawerController();
   late final ChatDeepLinkController _chatDeepLinks =
       ChatDeepLinkController.shared;
@@ -251,6 +254,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _accounts.addListener(_handleActiveAccountChange);
     _theme.loadSelectedEmojiFontIfAvailable();
     _autoDownload.initialize(widget.prefs);
     _auth.start();
@@ -264,7 +268,12 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _accounts.removeListener(_handleActiveAccountChange);
     super.dispose();
+  }
+
+  void _handleActiveAccountChange() {
+    _theme.setActiveAccountSlot(_accounts.activeSlot);
   }
 
   @override

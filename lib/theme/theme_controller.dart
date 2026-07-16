@@ -821,7 +821,8 @@ enum AppMonospaceFontChoice {
 }
 
 class ThemeController extends ChangeNotifier {
-  ThemeController(this._prefs) {
+  ThemeController(this._prefs, {int initialAccountSlot = 0})
+    : _activeAccountSlot = initialAccountSlot {
     // Theming existed unconditionally before this preference was introduced,
     // so both new installs and migrated users retain the established behavior.
     _themingEnabled = _prefs.getBool(_themingEnabledKey) ?? true;
@@ -832,20 +833,10 @@ class ThemeController extends ChangeNotifier {
     _brandColor = Color(
       _prefs.getInt(_brandKey) ?? (0xFF000000 | AppTheme.defaultBrand),
     );
-    TelegramCloudTheme? decodeTheme(String key) {
-      try {
-        final encoded = _prefs.getString(key);
-        return encoded == null
-            ? null
-            : TelegramCloudTheme.fromJson(jsonDecode(encoded));
-      } catch (_) {
-        return null;
-      }
-    }
-
-    final legacyCloudTheme = decodeTheme(_cloudThemeKey);
-    _lightCloudTheme = decodeTheme(_lightCloudThemeKey);
-    _darkCloudTheme = decodeTheme(_darkCloudThemeKey);
+    _usePerAccountTheming = _prefs.getBool(_usePerAccountThemingKey) ?? false;
+    final legacyCloudTheme = _decodeTheme(_scopedThemeKey(_cloudThemeKey));
+    _lightCloudTheme = _decodeTheme(_scopedThemeKey(_lightCloudThemeKey));
+    _darkCloudTheme = _decodeTheme(_scopedThemeKey(_darkCloudThemeKey));
     if (legacyCloudTheme != null) {
       if (legacyCloudTheme.isDark) {
         _darkCloudTheme ??= legacyCloudTheme;
@@ -868,16 +859,17 @@ class ThemeController extends ChangeNotifier {
       if (theme != null) _addInstalledCloudTheme(theme);
     }
     if (legacyCloudTheme != null) {
-      _prefs.remove(_cloudThemeKey);
+      _prefs.remove(_scopedThemeKey(_cloudThemeKey));
       _persistCloudThemes();
     }
     final hadTelegramUiPreference = _prefs.containsKey(
-      _useTelegramThemeForUiKey,
+      _scopedThemeKey(_useTelegramThemeForUiKey),
     );
-    _useTelegramThemeForUi = _prefs.getBool(_useTelegramThemeForUiKey) ?? false;
+    _useTelegramThemeForUi =
+        _prefs.getBool(_scopedThemeKey(_useTelegramThemeForUiKey)) ?? false;
     if (!hasCloudTheme) {
       _useTelegramThemeForUi = false;
-      _prefs.setBool(_useTelegramThemeForUiKey, false);
+      _prefs.setBool(_scopedThemeKey(_useTelegramThemeForUiKey), false);
     } else if (!hadTelegramUiPreference &&
         (_prefs.containsKey(_preCloudThemeModeKey) ||
             _prefs.containsKey(_preCloudThemeBrandKey))) {
@@ -1020,6 +1012,7 @@ class ThemeController extends ChangeNotifier {
   static const _darkCloudThemeKey = 'telegramCloudThemeDark';
   static const _installedCloudThemesKey = 'installedTelegramCloudThemes';
   static const _useTelegramThemeForUiKey = 'useTelegramThemeForUi';
+  static const _usePerAccountThemingKey = 'usePerAccountTheming';
   static const _preCloudThemeModeKey = 'preTelegramCloudThemeMode';
   static const _preCloudThemeBrandKey = 'preTelegramCloudThemeBrand';
   static const _fontChoiceKey = 'fontChoice';
@@ -1075,6 +1068,8 @@ class ThemeController extends ChangeNotifier {
   static const double maxInterfaceScale = 1.50;
 
   final SharedPreferences _prefs;
+  int _activeAccountSlot;
+  late bool _usePerAccountTheming;
   late bool _themingEnabled;
   late AppearanceMode _mode;
   late Color _brandColor;
@@ -1142,6 +1137,65 @@ class ThemeController extends ChangeNotifier {
       WidgetsBinding.instance.platformDispatcher.platformBrightness,
   });
   bool get useTelegramThemeForUi => _themingEnabled && _useTelegramThemeForUi;
+  bool get usePerAccountTheming => _usePerAccountTheming;
+
+  String _scopedThemeKey(String key, [int? accountSlot]) =>
+      _usePerAccountTheming
+      ? '$key.account.${accountSlot ?? _activeAccountSlot}'
+      : key;
+
+  TelegramCloudTheme? _decodeTheme(String key) {
+    try {
+      final encoded = _prefs.getString(key);
+      return encoded == null
+          ? null
+          : TelegramCloudTheme.fromJson(jsonDecode(encoded));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _loadScopedThemeSelection() {
+    _lightCloudTheme = _decodeTheme(_scopedThemeKey(_lightCloudThemeKey));
+    _darkCloudTheme = _decodeTheme(_scopedThemeKey(_darkCloudThemeKey));
+    _useTelegramThemeForUi =
+        _prefs.getBool(_scopedThemeKey(_useTelegramThemeForUiKey)) ?? false;
+    if (!hasCloudTheme) _useTelegramThemeForUi = false;
+  }
+
+  void setActiveAccountSlot(int value) {
+    if (_activeAccountSlot == value) return;
+    _activeAccountSlot = value;
+    if (!_usePerAccountTheming) return;
+    _loadScopedThemeSelection();
+    notifyListeners();
+  }
+
+  set usePerAccountTheming(bool value) {
+    if (_usePerAccountTheming == value) return;
+    final light = _lightCloudTheme;
+    final dark = _darkCloudTheme;
+    final useForUi = _useTelegramThemeForUi;
+    _usePerAccountTheming = value;
+    _prefs.setBool(_usePerAccountThemingKey, value);
+    if (value) {
+      final accountHasSelection =
+          _prefs.containsKey(_scopedThemeKey(_lightCloudThemeKey)) ||
+          _prefs.containsKey(_scopedThemeKey(_darkCloudThemeKey)) ||
+          _prefs.containsKey(_scopedThemeKey(_useTelegramThemeForUiKey));
+      if (!accountHasSelection) {
+        _lightCloudTheme = light;
+        _darkCloudTheme = dark;
+        _useTelegramThemeForUi = useForUi;
+        _persistCloudThemes();
+      } else {
+        _loadScopedThemeSelection();
+      }
+    } else {
+      _loadScopedThemeSelection();
+    }
+    notifyListeners();
+  }
 
   /// The reusable semantic palette for every app surface at [brightness].
   /// Chat wallpaper and bubble theming remain independent of this UI opt-in.
@@ -1374,7 +1428,7 @@ class ThemeController extends ChangeNotifier {
     if (value && !hasCloudTheme) return;
     if (_useTelegramThemeForUi == value) return;
     _useTelegramThemeForUi = value;
-    _prefs.setBool(_useTelegramThemeForUiKey, value);
+    _prefs.setBool(_scopedThemeKey(_useTelegramThemeForUiKey), value);
     if (notify) notifyListeners();
   }
 
@@ -1389,7 +1443,7 @@ class ThemeController extends ChangeNotifier {
     }
     if (!hasCloudTheme) {
       _useTelegramThemeForUi = false;
-      _prefs.setBool(_useTelegramThemeForUiKey, false);
+      _prefs.setBool(_scopedThemeKey(_useTelegramThemeForUiKey), false);
     }
     _persistCloudThemes();
     notifyListeners();
@@ -1432,8 +1486,8 @@ class ThemeController extends ChangeNotifier {
       }
     }
 
-    persist(_lightCloudThemeKey, _lightCloudTheme);
-    persist(_darkCloudThemeKey, _darkCloudTheme);
+    persist(_scopedThemeKey(_lightCloudThemeKey), _lightCloudTheme);
+    persist(_scopedThemeKey(_darkCloudThemeKey), _darkCloudTheme);
     _prefs.setString(
       _installedCloudThemesKey,
       jsonEncode(_installedCloudThemes.map((theme) => theme.toJson()).toList()),

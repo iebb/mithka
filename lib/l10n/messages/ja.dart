@@ -105,6 +105,7 @@ const jaMessages = <String, String>{
   'appearanceEmojiFontCatalogDescription':
       "フォント一覧は iebb/emojifonts manifest から取得します。選択時に GitHub Releases からダウンロードします。プレビュー画像は Emojipedia 提供です。",
   'appearanceEnableTheming': "テーマを有効にする",
+  'appearancePerAccountTheming': "アカウントごとにテーマを使用",
   'appearanceFileCount': "{value1} 個",
   'appearanceFont': "フォント",
   'appearanceFontCache': "フォントキャッシュ",
@@ -696,6 +697,9 @@ const jaMessages = <String, String>{
   'globalThemeSwitchModeAction': "切り替える",
   'globalThemeSwitchToDark': "ダークモードに切り替えますか？",
   'globalThemeSwitchToLight': "ライトモードに切り替えますか？",
+  'globalThemeWallpaperApply': "壁紙を使用",
+  'globalThemeWallpaperKeep': "現在のまま",
+  'globalThemeWallpaperPrompt': "このテーマの壁紙も使用しますか？",
   'globalThemeTitle': "テーマ",
   'globalThemeUseForUi': "UIにTelegramテーマを使用",
   'globalThemeUseForUiDescription':

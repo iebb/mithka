@@ -108,6 +108,7 @@ const deMessages = <String, String>{
   'appearanceEmojiFontCatalogDescription':
       "Die Schriftliste stammt aus dem iebb/emojifonts-Manifest; ausgewählte Schriftarten werden aus GitHub Releases geladen. Vorschaubilder stammen von Emojipedia.",
   'appearanceEnableTheming': "Designs aktivieren",
+  'appearancePerAccountTheming': "Designs pro Konto verwenden",
   'appearanceFileCount': "{value1} Dateien",
   'appearanceFont': "Schriftart",
   'appearanceFontCache': "Schriftcache",
@@ -747,6 +748,10 @@ const deMessages = <String, String>{
   'globalThemeSwitchModeAction': "Wechseln",
   'globalThemeSwitchToDark': "Zum dunklen Modus wechseln?",
   'globalThemeSwitchToLight': "Zum hellen Modus wechseln?",
+  'globalThemeWallpaperApply': "Hintergrund verwenden",
+  'globalThemeWallpaperKeep': "Aktuellen behalten",
+  'globalThemeWallpaperPrompt':
+      "Auch den Hintergrund dieses Designs verwenden?",
   'globalThemeTitle': "Thema",
   'globalThemeUseForUi': "Telegram-Design für die Oberfläche verwenden",
   'globalThemeUseForUiDescription':

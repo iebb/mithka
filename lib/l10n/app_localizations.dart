@@ -240,6 +240,7 @@ abstract final class AppStringKeys {
   static const appearanceEmojiFontCatalogDescription =
       'appearanceEmojiFontCatalogDescription';
   static const appearanceEnableTheming = 'appearanceEnableTheming';
+  static const appearancePerAccountTheming = 'appearancePerAccountTheming';
   static const appearanceFileCount = 'appearanceFileCount';
   static const appearanceFont = 'appearanceFont';
   static const appearanceFontCache = 'appearanceFontCache';
@@ -1064,6 +1065,9 @@ abstract final class AppStringKeys {
   static const globalThemeSwitchModeAction = 'globalThemeSwitchModeAction';
   static const globalThemeSwitchToDark = 'globalThemeSwitchToDark';
   static const globalThemeSwitchToLight = 'globalThemeSwitchToLight';
+  static const globalThemeWallpaperApply = 'globalThemeWallpaperApply';
+  static const globalThemeWallpaperKeep = 'globalThemeWallpaperKeep';
+  static const globalThemeWallpaperPrompt = 'globalThemeWallpaperPrompt';
   static const globalThemeTitle = 'globalThemeTitle';
   static const globalThemeUseForUi = 'globalThemeUseForUi';
   static const globalThemeUseForUiDescription =

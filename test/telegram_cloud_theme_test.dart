@@ -575,6 +575,47 @@ msgOutBg: #f3b4bd;
     expect(restored.useTelegramThemeForUi, isTrue);
   });
 
+  test(
+    'theme selections can follow the active account or stay global',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      const firstTheme = TelegramCloudTheme(
+        slug: 'FirstAccount',
+        rawTitle: 'First Account',
+        baseTheme: 'builtInThemeNight',
+        accentColorValue: 0xFF112233,
+        outgoingColors: [0xFF334455],
+        palette: {'list.plainBg': 0xFF101820},
+      );
+      const secondTheme = TelegramCloudTheme(
+        slug: 'SecondAccount',
+        rawTitle: 'Second Account',
+        baseTheme: 'builtInThemeNight',
+        accentColorValue: 0xFF556677,
+        outgoingColors: [0xFF778899],
+        palette: {'list.plainBg': 0xFF182028},
+      );
+
+      final controller = ThemeController(prefs, initialAccountSlot: 1)
+        ..installCloudTheme(firstTheme, brightness: Brightness.dark);
+      controller.usePerAccountTheming = true;
+      controller.setActiveAccountSlot(2);
+      expect(controller.darkCloudTheme, isNull);
+      controller.installCloudTheme(secondTheme, brightness: Brightness.dark);
+
+      controller.setActiveAccountSlot(1);
+      expect(controller.darkCloudTheme?.slug, 'FirstAccount');
+      controller.setActiveAccountSlot(2);
+      expect(controller.darkCloudTheme?.slug, 'SecondAccount');
+
+      controller.usePerAccountTheming = false;
+      expect(controller.darkCloudTheme?.slug, 'FirstAccount');
+      controller.setActiveAccountSlot(1);
+      expect(controller.darkCloudTheme?.slug, 'FirstAccount');
+    },
+  );
+
   test('theme accent and pinned row always resolve semantic colors', () {
     const theme = TelegramCloudTheme(
       slug: 'ReadableTheme',

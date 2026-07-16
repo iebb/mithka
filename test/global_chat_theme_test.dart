@@ -69,6 +69,7 @@ void main() {
 
     expect(light.length, 10);
     expect(light.first.label, 'Classic');
+    expect(dark.first.label, 'Night');
     expect(light.skip(1).map((theme) => theme.emoji), [
       '🏠',
       '🐣',
@@ -108,7 +109,7 @@ void main() {
     );
     expect(
       first.globalThemeSelectionFor(dark: true).stock,
-      GlobalChatThemeStock.classic,
+      GlobalChatThemeStock.night,
     );
 
     await first.setGlobalChatTheme('🐣', dark: false);
