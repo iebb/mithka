@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
+import '../app/app_navigator.dart';
 import '../auth/account_store.dart';
 import '../auth/auth_manager.dart';
 import '../chat/chat_view.dart';
@@ -180,7 +181,8 @@ class _ProfileViewState extends State<ProfileView> {
 
   void _openSaved(String title) {
     final cid = _vm.savedChatId ?? _vm.user?.id ?? 0;
-    _root.push(
+    pushAppChatRoute(
+      context,
       MaterialPageRoute(
         builder: (_) => ChatView(chatId: cid, title: title),
       ),

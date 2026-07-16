@@ -26,9 +26,12 @@ import 'app/app_navigator.dart';
 import 'app/app_version.dart';
 import 'app/chat_deep_link_controller.dart';
 import 'app/content_view.dart';
+import 'app/global_video_split_host.dart';
 import 'auth/account_store.dart';
 import 'auth/auth_manager.dart';
 import 'auth/terms_sheet.dart';
+import 'call/call_manager.dart';
+import 'call/call_overlay_host.dart';
 import 'chat/music_player_controller.dart';
 import 'components/drawer_controller.dart' as dc;
 import 'components/keyboard_dismiss_on_tap.dart';
@@ -249,6 +252,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
   );
   late final SensitiveContentController _sensitiveContent =
       SensitiveContentController.shared;
+  late final CallManager _calls = CallManager()..start();
 
   @override
   void initState() {
@@ -269,6 +273,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _accounts.removeListener(_handleActiveAccountChange);
+    _calls.dispose();
     super.dispose();
   }
 
@@ -342,6 +347,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
         ChangeNotifierProvider.value(value: _developer),
         ChangeNotifierProvider.value(value: _safetyNotice),
         ChangeNotifierProvider.value(value: _sensitiveContent),
+        ChangeNotifierProvider.value(value: _calls),
         ChangeNotifierProvider<dc.DrawerController>.value(value: _drawer),
       ],
       child: Consumer3<ThemeController, AccountStore, AppLocaleController>(
@@ -389,7 +395,9 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
               );
               final appChild = Stack(
                 children: [
-                  Positioned.fill(child: themedChild),
+                  Positioned.fill(
+                    child: GlobalVideoSplitHost(child: themedChild),
+                  ),
                   Overlay(
                     initialEntries: [
                       OverlayEntry(
@@ -402,6 +410,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
                       controller: NotificationController.shared,
                     ),
                   ),
+                  const Positioned.fill(child: GlobalCallOverlayHost()),
                 ],
               );
               return AnnotatedRegion<SystemUiOverlayStyle>(

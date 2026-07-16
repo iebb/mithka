@@ -11,6 +11,7 @@ import 'dart:async';
 import 'package:flutter/cupertino.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
+import '../app/app_navigator.dart';
 import '../chat/chat_view.dart';
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
@@ -222,7 +223,8 @@ class _SearchViewState extends State<SearchView> {
   Future<void> _open(_SearchHit hit) async {
     if (hit.message != null && hit.chatId != null) {
       final title = hit.sourceTitle;
-      await Navigator.of(context).push(
+      await pushAppChatRoute(
+        context,
         CupertinoPageRoute(
           builder: (_) => ChatView(
             chatId: hit.chatId!,
@@ -235,7 +237,8 @@ class _SearchViewState extends State<SearchView> {
     }
     final chat = hit.chat;
     if (chat != null) {
-      await Navigator.of(context).push(
+      await pushAppChatRoute(
+        context,
         CupertinoPageRoute(
           builder: (_) => ChatView(chatId: chat.id, title: chat.title),
         ),
@@ -252,7 +255,8 @@ class _SearchViewState extends State<SearchView> {
       });
       final summary = TDParse.chat(chat);
       if (!mounted || summary == null) return;
-      await Navigator.of(context).push(
+      await pushAppChatRoute(
+        context,
         CupertinoPageRoute(
           builder: (_) => ChatView(chatId: summary.id, title: summary.title),
         ),

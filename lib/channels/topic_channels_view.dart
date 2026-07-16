@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../app/app_navigator.dart';
 import '../chats/chat_list_view_model.dart';
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
@@ -468,7 +469,7 @@ class _TopicPostRow extends StatelessWidget {
           onOpenDetail!(detail);
           return;
         }
-        Navigator.of(context).push(MaterialPageRoute(builder: (_) => detail));
+        pushAppChatRoute(context, MaterialPageRoute(builder: (_) => detail));
       },
       child: Container(
         color: c.background,

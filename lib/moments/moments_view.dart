@@ -13,6 +13,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../app/app_navigator.dart';
 import '../chat/chat_picker_view.dart';
 import '../chat/chat_view.dart';
 import '../chat/forward_options.dart';
@@ -2080,7 +2081,8 @@ class _ChannelMomentsSearchViewState extends State<ChannelMomentsSearchView> {
 }
 
 void openChannelPostOriginal(BuildContext context, ChannelPost post) {
-  Navigator.of(context).push(
+  pushAppChatRoute(
+    context,
     MaterialPageRoute(
       builder: (_) => ChatView(
         chatId: post.channel.id,
@@ -3670,7 +3672,8 @@ class _InlineComments extends StatelessWidget {
         for (final comment in comments)
           GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: () => Navigator.of(context).push(
+            onTap: () => pushAppChatRoute(
+              context,
               MaterialPageRoute(
                 builder: (_) => ChatView(
                   chatId: comment.chatId,

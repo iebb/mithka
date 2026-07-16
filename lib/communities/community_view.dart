@@ -10,6 +10,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../app/app_navigator.dart';
 import '../channels/forum_topic_browser_view.dart';
 import '../chat/chat_view.dart';
 import '../chats/chat_row_view.dart';
@@ -495,7 +496,8 @@ class _CommunityViewState extends State<CommunityView> {
       if (!mounted) return;
       if (!mode.isChat) {
         unawaited(
-          Navigator.of(context).push(
+          pushAppChatRoute(
+            context,
             MaterialPageRoute(
               builder: (_) =>
                   ForumTopicBrowserView(chats: widget.chats, initialChat: chat),
@@ -507,7 +509,8 @@ class _CommunityViewState extends State<CommunityView> {
     }
     if (!mounted) return;
     unawaited(
-      Navigator.of(context).push(
+      pushAppChatRoute(
+        context,
         MaterialPageRoute(
           builder: (_) => ChatView(
             chatId: chat.id,

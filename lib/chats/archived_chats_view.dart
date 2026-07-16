@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
+import '../app/app_navigator.dart';
 import '../chat/chat_view.dart';
 import '../components/app_icons.dart';
 import '../components/ui_components.dart';
@@ -153,7 +154,8 @@ class ArchivedChatsView extends StatelessWidget {
                 final chat = chats[i];
                 return GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onTap: () => Navigator.of(context).push(
+                  onTap: () => pushAppChatRoute(
+                    context,
                     MaterialPageRoute(
                       builder: (_) =>
                           ChatView(chatId: chat.id, title: chat.title),

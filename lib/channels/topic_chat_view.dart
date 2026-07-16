@@ -11,6 +11,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../app/app_navigator.dart';
 import '../chat/chat_members_view.dart';
 import '../chat/chat_picker_view.dart';
 import '../chat/chat_view.dart';
@@ -21,7 +22,6 @@ import '../chat/rich_text_composer_view.dart';
 import '../chat/rich_text_format.dart';
 import '../components/app_icons.dart';
 import '../components/confirm_dialog.dart';
-import '../components/drawer_controller.dart' as dc;
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
@@ -114,7 +114,6 @@ class _TopicChatViewState extends State<TopicChatView> {
   final _topicMessages = <int, List<ChatMessage>>{};
   final _loadingThreads = <int>{};
   final _senderCache = <int, _SenderInfo>{};
-  dc.TabBarVisibility? _tabBarVisibility;
   bool _loading = true;
   int? _selectedThreadId;
 
@@ -123,28 +122,10 @@ class _TopicChatViewState extends State<TopicChatView> {
     super.initState();
     _selectedThreadId = widget.initialThreadId;
     _loadTopics();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _retainTabBarSuppression();
-    });
-  }
-
-  void _retainTabBarSuppression() {
-    if (!mounted) return;
-    dc.TabBarVisibility? tabBarVisibility;
-    try {
-      tabBarVisibility = context.read<dc.TabBarVisibility>();
-    } on ProviderNotFoundException {
-      tabBarVisibility = null;
-    }
-    if (identical(_tabBarVisibility, tabBarVisibility)) return;
-    _tabBarVisibility?.releaseChatSuppression();
-    _tabBarVisibility = tabBarVisibility;
-    _tabBarVisibility?.retainChatSuppression();
   }
 
   @override
   void dispose() {
-    _tabBarVisibility?.releaseChatSuppression();
     _scroll.dispose();
     _input.dispose();
     super.dispose();
@@ -517,7 +498,8 @@ class _TopicChatViewState extends State<TopicChatView> {
       return;
     }
     unawaited(
-      Navigator.of(context).pushReplacement(
+      replaceWithAppChatRoute(
+        context,
         MaterialPageRoute(
           builder: (_) => ChatView(
             chatId: widget.chat.id,

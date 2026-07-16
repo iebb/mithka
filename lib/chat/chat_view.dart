@@ -24,7 +24,6 @@ import '../call/call_manager.dart';
 import '../channels/topic_chat_view.dart';
 import '../components/app_icons.dart';
 import '../components/confirm_dialog.dart';
-import '../components/drawer_controller.dart' as dc;
 import '../components/full_page_back_swipe.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
@@ -780,7 +779,6 @@ class _ChatViewState extends State<ChatView> {
   bool _openingUnreadMention = false;
   bool _exitStatePrepared = false;
   bool _notificationVisibilityRegistered = false;
-  dc.TabBarVisibility? _tabBarVisibility;
 
   /// Gap (seconds) between messages that triggers a fresh time separator.
   static const _separatorGap = 300;
@@ -892,9 +890,6 @@ class _ChatViewState extends State<ChatView> {
     // Sync blocked-user-hiding toggle from theme.
     final theme = context.read<ThemeController>();
     BlockedUserService.shared.enabled = theme.hideBlockedUserMessages;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _retainTabBarSuppression();
-    });
     // Load premium status early so the message menu can correctly hide the
     // emoji add/表情包 actions for non-premium users (the menu reads it).
     EmojiStore.shared.loadIfNeeded();
@@ -939,20 +934,6 @@ class _ChatViewState extends State<ChatView> {
   bool get _hasSessionScrollAnchor =>
       _sessionScrollSnapshot?.anchorMessageId != null &&
       _sessionScrollSnapshot?.anchorViewportOffset != null;
-
-  void _retainTabBarSuppression() {
-    if (!mounted) return;
-    dc.TabBarVisibility? tabBarVisibility;
-    try {
-      tabBarVisibility = context.read<dc.TabBarVisibility>();
-    } on ProviderNotFoundException {
-      tabBarVisibility = null;
-    }
-    if (identical(_tabBarVisibility, tabBarVisibility)) return;
-    _tabBarVisibility?.releaseChatSuppression();
-    _tabBarVisibility = tabBarVisibility;
-    _tabBarVisibility?.retainChatSuppression();
-  }
 
   void _onScroll() {
     if (!_scroll.hasClients) return;
@@ -2337,7 +2318,6 @@ class _ChatViewState extends State<ChatView> {
     _prepareExitState();
     NotificationController.shared.unregisterVisibleChat(this);
     _wallpaperController.removeListener(_onWallpaperChanged);
-    _tabBarVisibility?.releaseChatSuppression();
     _bannerTimer?.cancel();
     _readSyncTimer?.cancel();
     _vm.removeListener(_onModel);

@@ -15,14 +15,10 @@ import 'package:provider/provider.dart';
 
 import '../auth/account_store.dart';
 import '../auth/auth_manager.dart';
-import '../call/call_manager.dart';
-import '../call/call_screen.dart';
-import '../call/group_call_screen.dart';
 import '../channels/topic_channels_view.dart';
 import '../channels/topic_chat_view.dart';
 import '../chat/chat_view.dart';
 import '../chat/music_player_controller.dart';
-import '../chat/video_player_view.dart';
 import '../chats/chat_list_view.dart';
 import '../communities/community_view.dart';
 import '../components/app_icons.dart';
@@ -32,7 +28,6 @@ import '../contacts/contacts_view.dart';
 import '../l10n/app_localizations.dart';
 import '../moments/moments_view.dart';
 import '../profile/profile_view.dart';
-import '../settings/developer_mode_controller.dart';
 import '../settings/topic_group_display_mode.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -42,8 +37,6 @@ import '../theme/telegram_cloud_theme.dart';
 import '../theme/theme_controller.dart';
 import '../update/update_checker.dart';
 import 'chat_deep_link_controller.dart';
-import 'pip_bounds_debug_overlay.dart';
-import 'video_split_controller.dart';
 
 /// Global unread badge source.
 class UnreadBadgeModel extends ChangeNotifier {
@@ -99,30 +92,22 @@ class MainSplitRootView extends StatefulWidget {
 class _MainTabViewState extends _MainRootViewState<MainTabView> {
   @override
   bool get checkForUpdates => true;
-
-  @override
-  bool get showCallOverlay => true;
 }
 
 class _MainSplitRootViewState extends _MainRootViewState<MainSplitRootView> {}
 
 abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
   bool get checkForUpdates => false;
-  bool get showCallOverlay => false;
 
   int _selection = 0;
   late final dc.TabBarVisibility _tabBar = dc.TabBarVisibility();
   late final UnreadBadgeModel _unread = UnreadBadgeModel()..start();
-  late final CallManager _calls = CallManager()..start();
   late final ChatListController _chatListController = ChatListController();
-  final VideoSplitController _videoSplit = VideoSplitController.instance;
   ChatListSelection? _selectedMessageChat;
   CommunityListSelection? _selectedMessageCommunity;
   Widget? _selectedChannelDetail;
   Widget? _selectedContactDetail;
   Widget? _selectedMomentDetail;
-  double _videoSplitFraction = 0.42;
-  OverlayEntry? _pictureInPictureVideo;
   ChatDeepLinkController? _chatDeepLinks;
 
   @override
@@ -163,11 +148,6 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
   @override
   void dispose() {
     _chatDeepLinks?.removeListener(_handlePendingChatDeepLink);
-    _pictureInPictureVideo?.remove();
-    if (_pictureInPictureVideo != null) {
-      VideoPiPController.instance.close();
-    }
-    _calls.dispose();
     _chatListController.dispose();
     super.dispose();
   }
@@ -301,15 +281,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
     setState(() => _selection = 0);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final navigator = _navKeys[0].currentState;
-      if (navigator == null) {
-        _chatDeepLinks?.openChat(
-          chatId: request.chatId,
-          title: request.title,
-          messageId: request.messageId,
-        );
-        return;
-      }
+      final navigator = Navigator.of(context, rootNavigator: true);
       navigator.popUntil((route) => route.isFirst);
       navigator.push(
         MaterialPageRoute(
@@ -353,8 +325,6 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
       providers: [
         ChangeNotifierProvider.value(value: _tabBar),
         ChangeNotifierProvider.value(value: _unread),
-        ChangeNotifierProvider.value(value: _calls),
-        ChangeNotifierProvider.value(value: _videoSplit),
       ],
       // Material ancestor so the tab content (bare Containers) gets a proper
       // DefaultTextStyle instead of the debug red/yellow-underline fallback.
@@ -365,493 +335,14 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
           onPopInvokedWithResult: (didPop, _) async {
             if (!didPop) await _onWillPop();
           },
-          child: _videoSplitHost(_rootStack()),
+          child: _rootStack(),
         ),
       ),
     );
   }
 
   Widget _rootStack() {
-    return Stack(
-      children: [
-        _classicTabs(),
-        _drawerOverlay(),
-        // Full-screen call HUD over everything when a call is active.
-        if (showCallOverlay)
-          Consumer<CallManager>(
-            builder: (context, calls, _) {
-              if (calls.groups.session != null) {
-                if (calls.groups.isMinimized) {
-                  return Positioned(
-                    top: MediaQuery.paddingOf(context).top + 12,
-                    right: 16,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: calls.groups.restore,
-                      child: Container(
-                        width: 58,
-                        height: 58,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF253442),
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.55),
-                            width: 2,
-                          ),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Color(0x55000000),
-                              blurRadius: 16,
-                              offset: Offset(0, 6),
-                            ),
-                          ],
-                        ),
-                        child: const AppIcon(
-                          HeroAppIcons.users,
-                          size: 26,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  );
-                }
-                return Positioned.fill(
-                  child: GroupCallScreen(controller: calls.groups),
-                );
-              }
-              if (calls.call != null) {
-                return Positioned.fill(child: CallScreen(manager: calls));
-              }
-              return const SizedBox.shrink();
-            },
-          ),
-      ],
-    );
-  }
-
-  Widget _videoSplitHost(Widget root) {
-    return AnimatedBuilder(
-      animation: _videoSplit,
-      builder: (context, _) {
-        final session = _videoSplit.session;
-        if (session == null) return root;
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            final wide =
-                constraints.maxWidth >= 760 &&
-                constraints.maxWidth > constraints.maxHeight;
-            if (wide) {
-              final videoWidth = _clampSplitExtent(
-                totalExtent: constraints.maxWidth,
-                fraction: _videoSplitFraction,
-                preferredMin: 280,
-                reservedExtent: 320,
-                fallbackMin: 180,
-              );
-              return Row(
-                children: [
-                  Expanded(child: root),
-                  _videoSplitDivider(
-                    vertical: true,
-                    onDrag: (delta) => setState(() {
-                      _videoSplitFraction =
-                          (_videoSplitFraction - delta / constraints.maxWidth)
-                              .clamp(0.25, 0.72);
-                    }),
-                  ),
-                  SizedBox(width: videoWidth, child: _videoSibling(session)),
-                ],
-              );
-            }
-
-            final videoHeight = _clampSplitExtent(
-              totalExtent: constraints.maxHeight,
-              fraction: _videoSplitFraction,
-              preferredMin: 220,
-              reservedExtent: 260,
-              fallbackMin: 96,
-            );
-            final topInset = MediaQuery.paddingOf(context).top;
-            return Column(
-              children: [
-                SizedBox(
-                  height: videoHeight + topInset,
-                  child: ColoredBox(
-                    color: Colors.black,
-                    child: Column(
-                      children: [
-                        SizedBox(height: topInset),
-                        Expanded(child: _videoSibling(session)),
-                      ],
-                    ),
-                  ),
-                ),
-                _videoSplitDivider(
-                  vertical: false,
-                  onDrag: (delta) => setState(() {
-                    _videoSplitFraction =
-                        (_videoSplitFraction + delta / constraints.maxHeight)
-                            .clamp(0.25, 0.72);
-                  }),
-                ),
-                Expanded(
-                  child: MediaQuery.removePadding(
-                    context: context,
-                    removeTop: true,
-                    child: root,
-                  ),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  double _clampSplitExtent({
-    required double totalExtent,
-    required double fraction,
-    required double preferredMin,
-    required double reservedExtent,
-    required double fallbackMin,
-  }) {
-    if (!totalExtent.isFinite || totalExtent <= 0) return fallbackMin;
-    final upper = math.max(fallbackMin, totalExtent - reservedExtent);
-    final lower = math.min(preferredMin, upper);
-    return (totalExtent * fraction).clamp(lower, upper).toDouble();
-  }
-
-  Widget _videoSibling(VideoSplitSession session) {
-    return ColoredBox(
-      color: Colors.black,
-      child: VideoPlayerView(
-        key: ValueKey('${session.video.id}:${session.messageId ?? 0}'),
-        video: session.video,
-        thumb: session.thumb,
-        width: session.width,
-        height: session.height,
-        presentation: VideoPlayerPresentation.embedded,
-        onClose: _videoSplit.close,
-        sourceChatId: session.chatId,
-        messageId: session.messageId,
-        previousVideo: session.queue.previous,
-        nextVideo: session.queue.next,
-        onNavigate: (delta) {
-          final nextSession = session.moveBy(delta);
-          if (nextSession != null) _videoSplit.play(nextSession);
-        },
-        currentMode: VideoDisplayMode.split,
-        onSwitchMode: (mode) => _switchSiblingVideoMode(session, mode),
-      ),
-    );
-  }
-
-  Widget _videoSplitDivider({
-    required bool vertical,
-    required ValueChanged<double> onDrag,
-  }) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onPanUpdate: (details) =>
-          onDrag(vertical ? details.delta.dx : details.delta.dy),
-      child: Container(
-        width: vertical ? 14 : double.infinity,
-        height: vertical ? double.infinity : 14,
-        color: const Color(0xFF111113),
-        alignment: Alignment.center,
-        child: Container(
-          width: vertical ? 3 : 52,
-          height: vertical ? 52 : 3,
-          decoration: BoxDecoration(
-            color: const Color(0xFF3A3A3C),
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _switchSiblingVideoMode(
-    VideoSplitSession session,
-    VideoDisplayMode mode,
-  ) {
-    switch (mode) {
-      case VideoDisplayMode.split:
-        break;
-      case VideoDisplayMode.pictureInPicture:
-        _videoSplit.close();
-        _showSplitVideoPictureInPicture(session);
-      case VideoDisplayMode.fullscreen:
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            fullscreenDialog: true,
-            builder: (_) => VideoPlaylistPlayerView(queue: session.queue),
-          ),
-        );
-    }
-  }
-
-  void _showSplitVideoPictureInPicture(VideoSplitSession session) {
-    final pip = VideoPiPController.instance;
-    if (_pictureInPictureVideo != null) {
-      pip.play(session);
-      return;
-    }
-    if (pip.isOpen) {
-      pip.play(session);
-      return;
-    }
-    pip.play(session);
-    final overlay = Overlay.of(context, rootOverlay: true);
-    final screen = MediaQuery.sizeOf(context);
-    const margin = 16.0;
-    var aspect = _videoSessionAspect(session);
-    var boxWidth = (screen.width * 0.46).clamp(220.0, 360.0);
-    var boxHeight = (boxWidth / aspect).clamp(130.0, 260.0);
-    boxWidth = boxHeight * aspect;
-    var displayedVideoId = session.video.id;
-    var offset = Offset(
-      screen.width - boxWidth - margin,
-      screen.height - boxHeight - MediaQuery.paddingOf(context).bottom - 110,
-    );
-
-    late final OverlayEntry entry;
-    void close() {
-      entry.remove();
-      if (_pictureInPictureVideo == entry) {
-        _pictureInPictureVideo = null;
-      }
-      if (pip.session?.video.id == displayedVideoId) {
-        pip.close();
-      }
-    }
-
-    void switchMode(VideoDisplayMode mode, VideoSplitSession modeSession) {
-      if (mode == VideoDisplayMode.pictureInPicture) return;
-      close();
-      switch (mode) {
-        case VideoDisplayMode.pictureInPicture:
-          break;
-        case VideoDisplayMode.split:
-          _videoSplit.play(modeSession);
-        case VideoDisplayMode.fullscreen:
-          Navigator.of(context, rootNavigator: true).push(
-            MaterialPageRoute(
-              fullscreenDialog: true,
-              builder: (routeContext) => VideoPlaylistPlayerView(
-                queue: modeSession.queue,
-                onSwitchMode: (queue, nextMode) {
-                  final currentSession = VideoSplitSession.fromQueue(queue);
-                  switch (nextMode) {
-                    case VideoDisplayMode.fullscreen:
-                      break;
-                    case VideoDisplayMode.pictureInPicture:
-                      Navigator.of(routeContext).maybePop();
-                      _showSplitVideoPictureInPicture(currentSession);
-                    case VideoDisplayMode.split:
-                      Navigator.of(routeContext).maybePop();
-                      _videoSplit.play(currentSession);
-                  }
-                },
-              ),
-            ),
-          );
-      }
-    }
-
-    entry = OverlayEntry(
-      builder: (overlayContext) => StatefulBuilder(
-        builder: (context, setOverlayState) {
-          final media = MediaQuery.sizeOf(context);
-          final padding = MediaQuery.paddingOf(context);
-          void clampFrame() {
-            final maxWidth = math.max(80.0, media.width - margin * 2);
-            final maxHeight = math.max(
-              80.0,
-              media.height - padding.top - padding.bottom - margin * 2,
-            );
-            if (boxWidth > maxWidth) {
-              boxWidth = maxWidth;
-              boxHeight = boxWidth / aspect;
-            }
-            if (boxHeight > maxHeight) {
-              boxHeight = maxHeight;
-              boxWidth = boxHeight * aspect;
-            }
-            final minX = math.min(margin, media.width - boxWidth);
-            final maxX = math.max(minX, media.width - boxWidth - margin);
-            final minY = math.min(
-              padding.top + margin,
-              media.height - boxHeight,
-            );
-            final maxY = math.max(
-              minY,
-              media.height - boxHeight - padding.bottom - margin,
-            );
-            offset = Offset(
-              offset.dx.clamp(minX, maxX),
-              offset.dy.clamp(minY, maxY),
-            );
-          }
-
-          void syncSession(VideoSplitSession nextSession) {
-            if (nextSession.video.id == displayedVideoId) return;
-            displayedVideoId = nextSession.video.id;
-            aspect = _videoSessionAspect(nextSession);
-            boxHeight = (boxWidth / aspect).clamp(110.0, media.height * 0.72);
-            boxWidth = boxHeight * aspect;
-            clampFrame();
-          }
-
-          void move(DragUpdateDetails details) {
-            setOverlayState(() {
-              offset += details.delta;
-              clampFrame();
-            });
-          }
-
-          void resizeFromCorner(
-            DragUpdateDetails details, {
-            required int horizontalSign,
-            required int verticalSign,
-          }) {
-            setOverlayState(() {
-              final oldWidth = boxWidth;
-              final oldHeight = boxHeight;
-              final minW = math.min(180.0, media.width - margin * 2);
-              final maxW = math.max(minW, media.width - margin * 2);
-              final widthFromX = boxWidth + details.delta.dx * horizontalSign;
-              final widthFromY =
-                  boxWidth + details.delta.dy * verticalSign * aspect;
-              final nextWidth =
-                  (widthFromX - boxWidth).abs() > (widthFromY - boxWidth).abs()
-                  ? widthFromX
-                  : widthFromY;
-              boxWidth = nextWidth.clamp(minW, maxW);
-              boxHeight = boxWidth / aspect;
-              if (boxHeight > media.height * 0.72) {
-                boxHeight = media.height * 0.72;
-                boxWidth = boxHeight * aspect;
-              }
-              if (boxHeight < 110) {
-                boxHeight = 110;
-                boxWidth = boxHeight * aspect;
-              }
-              if (horizontalSign < 0) {
-                offset = offset.translate(oldWidth - boxWidth, 0);
-              }
-              if (verticalSign < 0) {
-                offset = offset.translate(0, oldHeight - boxHeight);
-              }
-              clampFrame();
-            });
-          }
-
-          return AnimatedBuilder(
-            animation: pip,
-            builder: (context, _) {
-              final currentSession = pip.session;
-              if (currentSession == null) return const SizedBox.shrink();
-              syncSession(currentSession);
-              clampFrame();
-              final showDebugBounds = context
-                  .watch<DeveloperModeController>()
-                  .showPiPBounds;
-              return Positioned(
-                left: offset.dx,
-                top: offset.dy,
-                width: boxWidth,
-                height: boxHeight,
-                child: Material(
-                  type: MaterialType.transparency,
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      Positioned.fill(
-                        child: GestureDetector(
-                          onPanUpdate: move,
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(14),
-                            child: VideoPlayerView(
-                              key: ValueKey(
-                                '${currentSession.video.id}:${currentSession.messageId ?? 0}',
-                              ),
-                              video: currentSession.video,
-                              thumb: currentSession.thumb,
-                              width: currentSession.width,
-                              height: currentSession.height,
-                              presentation:
-                                  VideoPlayerPresentation.pictureInPicture,
-                              compactControls: true,
-                              onClose: close,
-                              sourceChatId: currentSession.chatId,
-                              messageId: currentSession.messageId,
-                              previousVideo: currentSession.queue.previous,
-                              nextVideo: currentSession.queue.next,
-                              onNavigate: (delta) {
-                                final nextSession = currentSession.moveBy(
-                                  delta,
-                                );
-                                if (nextSession != null) pip.play(nextSession);
-                              },
-                              currentMode: VideoDisplayMode.pictureInPicture,
-                              onSwitchMode: (mode) =>
-                                  switchMode(mode, currentSession),
-                            ),
-                          ),
-                        ),
-                      ),
-                      _SplitPiPCornerHandle(
-                        alignment: Alignment.topLeft,
-                        onDrag: (details) => resizeFromCorner(
-                          details,
-                          horizontalSign: -1,
-                          verticalSign: -1,
-                        ),
-                      ),
-                      _SplitPiPCornerHandle(
-                        alignment: Alignment.topRight,
-                        onDrag: (details) => resizeFromCorner(
-                          details,
-                          horizontalSign: 1,
-                          verticalSign: -1,
-                        ),
-                      ),
-                      _SplitPiPCornerHandle(
-                        alignment: Alignment.bottomLeft,
-                        onDrag: (details) => resizeFromCorner(
-                          details,
-                          horizontalSign: -1,
-                          verticalSign: 1,
-                        ),
-                      ),
-                      _SplitPiPCornerHandle(
-                        alignment: Alignment.bottomRight,
-                        onDrag: (details) => resizeFromCorner(
-                          details,
-                          horizontalSign: 1,
-                          verticalSign: 1,
-                        ),
-                      ),
-                      if (showDebugBounds)
-                        PiPBoundsDebugOverlay(
-                          offset: offset,
-                          size: Size(boxWidth, boxHeight),
-                          viewport: media,
-                        ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          );
-        },
-      ),
-    );
-    _pictureInPictureVideo = entry;
-    overlay.insert(entry);
+    return Stack(children: [_classicTabs(), _drawerOverlay()]);
   }
 
   // MARK: - Per-tab navigators
@@ -893,18 +384,11 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
     return AnimatedBuilder(
       animation: _tabBar,
       builder: (context, _) {
-        final showTabBar =
-            _tabBar.depth(activeTabIndex) == 0 && !_tabBar.isChatSuppressed;
+        final showTabBar = _tabBar.depth(activeTabIndex) == 0;
         return Column(
           children: [
-            Expanded(
-              child: _musicAwareContent(
-                _stack(tabs),
-                reserveForShellPlayer: !_tabBar.isChatSuppressed,
-              ),
-            ),
-            if (!_tabBar.isChatSuppressed)
-              _fixedMusicPlayer(safeBottom: !showTabBar),
+            Expanded(child: _musicAwareContent(_stack(tabs))),
+            _fixedMusicPlayer(safeBottom: !showTabBar),
             if (showTabBar)
               AnimatedBuilder(
                 animation: _unread,
@@ -1006,15 +490,12 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
                   ),
                 ),
                 Expanded(
-                  child: _musicAwareContent(
-                    _tabletDetailPane(activeTabIndex),
-                    reserveForShellPlayer: !_tabBar.isChatSuppressed,
-                  ),
+                  child: _musicAwareContent(_tabletDetailPane(activeTabIndex)),
                 ),
               ],
             ),
           ),
-          if (!_tabBar.isChatSuppressed) _fixedMusicPlayer(safeBottom: true),
+          _fixedMusicPlayer(safeBottom: true),
         ],
       ),
     );
@@ -1558,37 +1039,6 @@ class _ClassicTabBar extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-double _videoSessionAspect(VideoSplitSession session) {
-  return (session.width != null &&
-          session.height != null &&
-          session.width! > 0 &&
-          session.height! > 0)
-      ? session.width! / session.height!
-      : 16 / 9;
-}
-
-class _SplitPiPCornerHandle extends StatelessWidget {
-  const _SplitPiPCornerHandle({required this.alignment, required this.onDrag});
-
-  final Alignment alignment;
-  final GestureDragUpdateCallback onDrag;
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned(
-      left: alignment.x < 0 ? -8 : null,
-      right: alignment.x > 0 ? -8 : null,
-      top: alignment.y < 0 ? -8 : null,
-      bottom: alignment.y > 0 ? -8 : null,
-      child: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onPanUpdate: onDrag,
-        child: const SizedBox(width: 44, height: 44),
       ),
     );
   }

@@ -13,6 +13,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../app/app_navigator.dart';
 import '../chats/search_view.dart';
 import '../components/app_icons.dart';
 import '../components/confirm_dialog.dart';
@@ -678,8 +679,9 @@ Future<void> _openChat(
     title = chat.str('title') ?? '';
   } catch (_) {}
   if (!nav.mounted) return;
+  final chatNavigator = appNavigatorKey.currentState ?? nav;
   unawaited(
-    nav.push(
+    chatNavigator.push(
       MaterialPageRoute(
         builder: (_) => ChatView(
           chatId: chatId,
