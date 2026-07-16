@@ -209,17 +209,16 @@ class _StickerSetDetailViewState extends State<StickerSetDetailView> {
         alignment: Alignment.center,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         decoration: BoxDecoration(
-          gradient: _installed ? null : AppTheme.brandGradient,
-          color: _installed ? c.searchFill : null,
+          color: _installed ? c.searchFill : AppTheme.brand,
           borderRadius: BorderRadius.circular(17),
         ),
         child: _working
-            ? const SizedBox(
+            ? SizedBox(
                 width: 16,
                 height: 16,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation(Colors.white),
+                  valueColor: AlwaysStoppedAnimation(AppTheme.onBrand),
                 ),
               )
             : Text(
@@ -229,7 +228,7 @@ class _StickerSetDetailViewState extends State<StickerSetDetailView> {
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: _installed ? c.textSecondary : Colors.white,
+                  color: _installed ? c.textSecondary : AppTheme.onBrand,
                 ),
               ),
       ),
