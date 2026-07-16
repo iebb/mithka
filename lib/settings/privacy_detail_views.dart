@@ -7,9 +7,9 @@
 //  (getBlockedMessageSenders / setMessageSenderBlockList).
 //
 
+import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
@@ -46,6 +46,8 @@ class PrivacyRuleView extends StatefulWidget {
 
 class _PrivacyRuleViewState extends State<PrivacyRuleView> {
   final TdClient _client = TdClient.shared;
+  StreamSubscription<Map<String, dynamic>>? _updates;
+  StreamSubscription<int>? _activeSlotChanges;
   PrivacyRuleSelection _selection = const PrivacyRuleSelection(
     visibility: PrivacyVisibilityOption.everyone,
   );
@@ -57,6 +59,17 @@ class _PrivacyRuleViewState extends State<PrivacyRuleView> {
   PrivacyVisibilityOption _peerToPeerCalls = PrivacyVisibilityOption.everyone;
   bool _showReadDate = true;
   bool _loading = true;
+  bool _saving = false;
+  Object? _loadError;
+  Future<void>? _pendingSave;
+  int _accountGeneration = 0;
+  int _loadGeneration = 0;
+  int _saveGeneration = 0;
+  int _ruleRevision = 0;
+  int _phoneDiscoveryRevision = 0;
+  int _peerToPeerCallsRevision = 0;
+  int _readDateRevision = 0;
+  int _publicPhotoRevision = 0;
 
   static const _labels = [
     AppStringKeys.privacyVisibilityEveryone,
@@ -67,37 +80,212 @@ class _PrivacyRuleViewState extends State<PrivacyRuleView> {
   @override
   void initState() {
     super.initState();
-    _load();
+    _updates = _client.subscribe().listen(_handleUpdate);
+    _activeSlotChanges = _client.subscribeActiveSlotChanges().listen(
+      _handleActiveSlotChanged,
+    );
+    unawaited(_load());
+  }
+
+  @override
+  void dispose() {
+    _accountGeneration += 1;
+    _loadGeneration += 1;
+    _saveGeneration += 1;
+    _ruleRevision += 1;
+    _phoneDiscoveryRevision += 1;
+    _peerToPeerCallsRevision += 1;
+    _readDateRevision += 1;
+    _publicPhotoRevision += 1;
+    unawaited(_updates?.cancel());
+    unawaited(_activeSlotChanges?.cancel());
+    super.dispose();
+  }
+
+  bool _isCurrentAccount(int clientId, int accountGeneration) =>
+      mounted &&
+      _client.activeClientId == clientId &&
+      _accountGeneration == accountGeneration;
+
+  bool _isCurrentLoad(
+    int clientId,
+    int accountGeneration,
+    int loadGeneration,
+  ) =>
+      _isCurrentAccount(clientId, accountGeneration) &&
+      _loadGeneration == loadGeneration;
+
+  bool _isCurrentSave(
+    int clientId,
+    int accountGeneration,
+    int saveGeneration,
+  ) =>
+      _isCurrentAccount(clientId, accountGeneration) &&
+      _saveGeneration == saveGeneration;
+
+  void _handleUpdate(Map<String, dynamic> update) {
+    final parsed = privacyRulesUpdateFromTdObject(update);
+    if (parsed == null || !mounted) return;
+    if (parsed.matchesSetting(widget.setting)) {
+      final revision = ++_ruleRevision;
+      final clientId = _client.activeClientId;
+      setState(() {
+        _selection = parsed.selection;
+        _allowExceptions.clear();
+        _restrictExceptions.clear();
+      });
+      unawaited(
+        _resolveAndApplyExceptions(parsed.selection, revision, clientId),
+      );
+      return;
+    }
+    if (_isPhoneNumber &&
+        parsed.setting == 'userPrivacySettingAllowFindingByPhoneNumber') {
+      _phoneDiscoveryRevision += 1;
+      setState(() => _phoneDiscovery = parsed.selection.visibility);
+      return;
+    }
+    if (_isCalls &&
+        parsed.setting == 'userPrivacySettingAllowPeerToPeerCalls') {
+      _peerToPeerCallsRevision += 1;
+      setState(() => _peerToPeerCalls = parsed.selection.visibility);
+    }
+  }
+
+  void _handleActiveSlotChanged(int _) {
+    if (!mounted) return;
+    _accountGeneration += 1;
+    _loadGeneration += 1;
+    _saveGeneration += 1;
+    _ruleRevision += 1;
+    _phoneDiscoveryRevision += 1;
+    _peerToPeerCallsRevision += 1;
+    _readDateRevision += 1;
+    _publicPhotoRevision += 1;
+    _pendingSave = null;
+    setState(() {
+      _loading = true;
+      _saving = false;
+      _loadError = null;
+      _selection = const PrivacyRuleSelection(
+        visibility: PrivacyVisibilityOption.nobody,
+      );
+      _allowExceptions.clear();
+      _restrictExceptions.clear();
+      _publicPhoto = null;
+      _publicPhotoRef = null;
+      _phoneDiscovery = PrivacyVisibilityOption.everyone;
+      _peerToPeerCalls = PrivacyVisibilityOption.everyone;
+      _showReadDate = true;
+    });
+    unawaited(_load());
   }
 
   Future<void> _load() async {
+    final clientId = _client.activeClientId;
+    final accountGeneration = _accountGeneration;
+    final loadGeneration = ++_loadGeneration;
+    final ruleRevision = ++_ruleRevision;
+    final phoneDiscoveryRevision = _isPhoneNumber
+        ? ++_phoneDiscoveryRevision
+        : null;
+    final peerToPeerCallsRevision = _isCalls
+        ? ++_peerToPeerCallsRevision
+        : null;
+    final readDateRevision = _isLastSeen ? ++_readDateRevision : null;
+    final publicPhotoRevision = _isProfilePhoto ? ++_publicPhotoRevision : null;
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _loadError = null;
+      });
+    }
     try {
-      final res = await _client.query({
+      final res = await _client.queryTo({
         '@type': 'getUserPrivacySettingRules',
         'setting': {'@type': widget.setting},
-      });
-      final rules = res.objects('rules') ?? const <Map<String, dynamic>>[];
-      _selection = PrivacyRuleSelection.fromRules(rules);
-      await _loadExceptions();
-      if (_isProfilePhoto) await _loadPublicPhoto();
+      }, clientId);
+      final rules = _privacyRulesFromResponse(res);
+      final selection = PrivacyRuleSelection.fromRules(rules);
+      final allowExceptions = await _resolveExceptions(
+        selection.allowUserIds,
+        selection.allowChatIds,
+        clientId: clientId,
+      );
+      final restrictExceptions = await _resolveExceptions(
+        selection.restrictUserIds,
+        selection.restrictChatIds,
+        clientId: clientId,
+      );
+      var phoneDiscovery = _phoneDiscovery;
+      var peerToPeerCalls = _peerToPeerCalls;
+      var showReadDate = _showReadDate;
       if (_isPhoneNumber) {
-        _phoneDiscovery = await _loadAuxiliaryVisibility(
+        phoneDiscovery = await _loadAuxiliaryVisibility(
           'userPrivacySettingAllowFindingByPhoneNumber',
+          clientId: clientId,
         );
       }
       if (_isCalls) {
-        _peerToPeerCalls = await _loadAuxiliaryVisibility(
+        peerToPeerCalls = await _loadAuxiliaryVisibility(
           'userPrivacySettingAllowPeerToPeerCalls',
+          clientId: clientId,
         );
       }
       if (_isLastSeen) {
-        final settings = await _client.query({
+        final settings = await _client.queryTo({
           '@type': 'getReadDatePrivacySettings',
-        });
-        _showReadDate = settings.boolean('show_read_date') ?? true;
+        }, clientId);
+        final value = settings.boolean('show_read_date');
+        if (settings.type != 'readDatePrivacySettings' || value == null) {
+          throw const FormatException('Invalid read-date privacy response');
+        }
+        showReadDate = value;
       }
-    } catch (_) {}
-    if (mounted) setState(() => _loading = false);
+      ({Map<String, dynamic>? photo, TdFileRef? ref})? publicPhoto;
+      if (_isProfilePhoto) {
+        try {
+          publicPhoto = await _loadPublicPhoto(clientId);
+        } catch (_) {}
+      }
+      if (!_isCurrentLoad(clientId, accountGeneration, loadGeneration)) return;
+      setState(() {
+        if (_ruleRevision == ruleRevision) {
+          _selection = selection;
+          _allowExceptions
+            ..clear()
+            ..addAll(allowExceptions);
+          _restrictExceptions
+            ..clear()
+            ..addAll(restrictExceptions);
+        }
+        if (phoneDiscoveryRevision != null &&
+            _phoneDiscoveryRevision == phoneDiscoveryRevision) {
+          _phoneDiscovery = phoneDiscovery;
+        }
+        if (peerToPeerCallsRevision != null &&
+            _peerToPeerCallsRevision == peerToPeerCallsRevision) {
+          _peerToPeerCalls = peerToPeerCalls;
+        }
+        if (readDateRevision != null && _readDateRevision == readDateRevision) {
+          _showReadDate = showReadDate;
+        }
+        if (publicPhotoRevision != null &&
+            _publicPhotoRevision == publicPhotoRevision &&
+            publicPhoto != null) {
+          _publicPhoto = publicPhoto.photo;
+          _publicPhotoRef = publicPhoto.ref;
+        }
+        _loading = false;
+        _loadError = null;
+      });
+    } catch (error) {
+      if (!_isCurrentLoad(clientId, accountGeneration, loadGeneration)) return;
+      setState(() {
+        _loading = false;
+        _loadError = error;
+      });
+    }
   }
 
   bool get _isProfilePhoto =>
@@ -107,47 +295,85 @@ class _PrivacyRuleViewState extends State<PrivacyRuleView> {
   bool get _isCalls => widget.setting == 'userPrivacySettingAllowCalls';
   bool get _isLastSeen => widget.setting == 'userPrivacySettingShowStatus';
 
+  List<Map<String, dynamic>> _privacyRulesFromResponse(
+    Map<String, dynamic> response,
+  ) {
+    if (response.type != 'userPrivacySettingRules') {
+      throw const FormatException('Invalid privacy rules response');
+    }
+    final values = response['rules'];
+    if (values is! List) {
+      throw const FormatException('Privacy rules are missing');
+    }
+    final rules = <Map<String, dynamic>>[];
+    for (final value in values) {
+      if (value is! Map<String, dynamic> || value.type == null) {
+        throw const FormatException('Privacy rules contain an invalid rule');
+      }
+      rules.add(value);
+    }
+    return rules;
+  }
+
   Future<PrivacyVisibilityOption> _loadAuxiliaryVisibility(
-    String setting,
-  ) async {
-    final result = await _client.query({
+    String setting, {
+    int? clientId,
+  }) async {
+    final targetClientId = clientId ?? _client.activeClientId;
+    final result = await _client.queryTo({
       '@type': 'getUserPrivacySettingRules',
       'setting': {'@type': setting},
-    });
-    return privacyVisibilityFromRules(
-      result.objects('rules') ?? const <Map<String, dynamic>>[],
-    );
+    }, targetClientId);
+    return privacyVisibilityFromRules(_privacyRulesFromResponse(result));
   }
 
   Future<void> _setAuxiliaryVisibility(
     String setting,
     PrivacyVisibilityOption visibility,
+    int clientId,
   ) async {
-    try {
-      await _client.query({
-        '@type': 'setUserPrivacySettingRules',
-        'setting': {'@type': setting},
-        'rules': {
-          '@type': 'userPrivacySettingRules',
-          'rules': [
-            {'@type': visibility.ruleType},
-          ],
-        },
-      });
-    } catch (error) {
-      if (mounted) showToast(context, error.toString());
-    }
+    await _client.queryTo({
+      '@type': 'setUserPrivacySettingRules',
+      'setting': {'@type': setting},
+      'rules': {
+        '@type': 'userPrivacySettingRules',
+        'rules': [
+          {'@type': visibility.ruleType},
+        ],
+      },
+    }, clientId);
   }
 
   Future<void> _setPhoneDiscovery(PrivacyVisibilityOption visibility) async {
+    if (_saving || visibility == _phoneDiscovery) return;
+    final previous = _phoneDiscovery;
+    final revision = ++_phoneDiscoveryRevision;
     setState(() => _phoneDiscovery = visibility);
-    await _setAuxiliaryVisibility(
-      'userPrivacySettingAllowFindingByPhoneNumber',
-      visibility,
+    await _runSave(
+      (clientId, accountGeneration, saveGeneration) async {
+        const setting = 'userPrivacySettingAllowFindingByPhoneNumber';
+        await _setAuxiliaryVisibility(setting, visibility, clientId);
+        try {
+          final canonical = await _loadAuxiliaryVisibility(
+            setting,
+            clientId: clientId,
+          );
+          if (_isCurrentSave(clientId, accountGeneration, saveGeneration) &&
+              _phoneDiscoveryRevision == revision) {
+            setState(() => _phoneDiscovery = canonical);
+          }
+        } catch (_) {}
+      },
+      rollback: () {
+        if (_phoneDiscoveryRevision == revision) {
+          _phoneDiscovery = previous;
+        }
+      },
     );
   }
 
   Future<void> _openPeerToPeerCalls() async {
+    if (_saving) return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => const PrivacyRuleView(
@@ -156,33 +382,63 @@ class _PrivacyRuleViewState extends State<PrivacyRuleView> {
         ),
       ),
     );
+    if (!mounted) return;
+    final clientId = _client.activeClientId;
+    final accountGeneration = _accountGeneration;
+    final revision = ++_peerToPeerCallsRevision;
     try {
       final visibility = await _loadAuxiliaryVisibility(
         'userPrivacySettingAllowPeerToPeerCalls',
+        clientId: clientId,
       );
-      if (mounted) setState(() => _peerToPeerCalls = visibility);
+      if (_isCurrentAccount(clientId, accountGeneration) &&
+          _peerToPeerCallsRevision == revision) {
+        setState(() => _peerToPeerCalls = visibility);
+      }
     } catch (_) {}
   }
 
   Future<void> _setShowReadDate(bool value) async {
+    if (_saving || value == _showReadDate) return;
+    final previous = _showReadDate;
+    final revision = ++_readDateRevision;
     setState(() => _showReadDate = value);
-    try {
-      await _client.query({
-        '@type': 'setReadDatePrivacySettings',
-        'settings': {
-          '@type': 'readDatePrivacySettings',
-          'show_read_date': value,
-        },
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _showReadDate = !value);
-      showToast(context, error.toString());
-    }
+    await _runSave(
+      (clientId, accountGeneration, saveGeneration) async {
+        await _client.queryTo({
+          '@type': 'setReadDatePrivacySettings',
+          'settings': {
+            '@type': 'readDatePrivacySettings',
+            'show_read_date': value,
+          },
+        }, clientId);
+        try {
+          final canonical = await _client.queryTo({
+            '@type': 'getReadDatePrivacySettings',
+          }, clientId);
+          final canonicalValue = canonical.boolean('show_read_date');
+          if (canonical.type == 'readDatePrivacySettings' &&
+              canonicalValue != null &&
+              _isCurrentSave(clientId, accountGeneration, saveGeneration) &&
+              _readDateRevision == revision) {
+            setState(() => _showReadDate = canonicalValue);
+          }
+        } catch (_) {}
+      },
+      rollback: () {
+        if (_readDateRevision == revision) _showReadDate = previous;
+      },
+    );
   }
 
   Future<void> _select(int v) async {
+    if (_saving) return;
     final visibility = PrivacyVisibilityOption.values[v];
+    if (visibility == _selection.visibility) return;
+    final previousSelection = _copySelection(_selection);
+    final previousAllowExceptions = [..._allowExceptions];
+    final previousRestrictExceptions = [..._restrictExceptions];
+    final revision = ++_ruleRevision;
     setState(() {
       _selection = _selection.copyWith(
         visibility: visibility,
@@ -206,51 +462,182 @@ class _PrivacyRuleViewState extends State<PrivacyRuleView> {
         _restrictExceptions.clear();
       }
     });
-    await _saveRules();
+    final selection = _copySelection(_selection);
+    await _runSave(
+      (clientId, accountGeneration, saveGeneration) => _saveRules(
+        selection,
+        clientId: clientId,
+        accountGeneration: accountGeneration,
+        saveGeneration: saveGeneration,
+      ),
+      rollback: () {
+        if (_ruleRevision != revision) return;
+        _restoreRuleState(
+          previousSelection,
+          previousAllowExceptions,
+          previousRestrictExceptions,
+        );
+      },
+    );
   }
 
-  Future<void> _saveRules() async {
+  Future<void> _saveRules(
+    PrivacyRuleSelection selection, {
+    required int clientId,
+    required int accountGeneration,
+    required int saveGeneration,
+  }) async {
+    await _client.queryTo({
+      '@type': 'setUserPrivacySettingRules',
+      'setting': {'@type': widget.setting},
+      'rules': {
+        '@type': 'userPrivacySettingRules',
+        'rules': selection.toRules(),
+      },
+    }, clientId);
     try {
-      await _client.query({
-        '@type': 'setUserPrivacySettingRules',
+      final verificationRevision = _ruleRevision;
+      final response = await _client.queryTo({
+        '@type': 'getUserPrivacySettingRules',
         'setting': {'@type': widget.setting},
-        'rules': {
-          '@type': 'userPrivacySettingRules',
-          'rules': _selection.toRules(),
-        },
+      }, clientId);
+      final canonical = PrivacyRuleSelection.fromRules(
+        _privacyRulesFromResponse(response),
+      );
+      if (!_isCurrentSave(clientId, accountGeneration, saveGeneration) ||
+          _ruleRevision != verificationRevision) {
+        return;
+      }
+      final revision = ++_ruleRevision;
+      setState(() {
+        _selection = canonical;
+        _allowExceptions.clear();
+        _restrictExceptions.clear();
       });
-    } catch (error) {
-      if (mounted) showToast(context, error.toString());
+      unawaited(_resolveAndApplyExceptions(canonical, revision, clientId));
+    } catch (_) {
+      // The write succeeded; keep the optimistic state if verification fails.
     }
   }
 
-  Future<void> _loadExceptions() async {
+  Future<void> _runSave(
+    Future<void> Function(
+      int clientId,
+      int accountGeneration,
+      int saveGeneration,
+    )
+    send, {
+    required VoidCallback rollback,
+  }) {
+    if (_saving) return _pendingSave ?? Future<void>.value();
+    final clientId = _client.activeClientId;
+    final accountGeneration = _accountGeneration;
+    final saveGeneration = ++_saveGeneration;
+    setState(() => _saving = true);
+    final operation = _performSave(
+      send,
+      rollback,
+      clientId: clientId,
+      accountGeneration: accountGeneration,
+      saveGeneration: saveGeneration,
+    );
+    _pendingSave = operation;
+    return operation.whenComplete(() {
+      if (identical(_pendingSave, operation)) _pendingSave = null;
+    });
+  }
+
+  Future<void> _performSave(
+    Future<void> Function(
+      int clientId,
+      int accountGeneration,
+      int saveGeneration,
+    )
+    send,
+    VoidCallback rollback, {
+    required int clientId,
+    required int accountGeneration,
+    required int saveGeneration,
+  }) async {
+    try {
+      await send(clientId, accountGeneration, saveGeneration);
+    } catch (error) {
+      if (mounted &&
+          _isCurrentSave(clientId, accountGeneration, saveGeneration)) {
+        setState(rollback);
+        showToast(context, error.toString());
+      }
+    } finally {
+      if (_isCurrentSave(clientId, accountGeneration, saveGeneration)) {
+        setState(() => _saving = false);
+      }
+    }
+  }
+
+  PrivacyRuleSelection _copySelection(PrivacyRuleSelection selection) =>
+      selection.copyWith(
+        allowUserIds: {...selection.allowUserIds},
+        allowChatIds: {...selection.allowChatIds},
+        restrictUserIds: {...selection.restrictUserIds},
+        restrictChatIds: {...selection.restrictChatIds},
+      );
+
+  void _restoreRuleState(
+    PrivacyRuleSelection selection,
+    List<_PrivacyException> allowExceptions,
+    List<_PrivacyException> restrictExceptions,
+  ) {
+    _selection = selection;
     _allowExceptions
       ..clear()
-      ..addAll(
-        await _resolveExceptions(
-          _selection.allowUserIds,
-          _selection.allowChatIds,
-        ),
-      );
+      ..addAll(allowExceptions);
     _restrictExceptions
       ..clear()
-      ..addAll(
-        await _resolveExceptions(
-          _selection.restrictUserIds,
-          _selection.restrictChatIds,
-        ),
-      );
+      ..addAll(restrictExceptions);
+  }
+
+  Future<void> _resolveAndApplyExceptions(
+    PrivacyRuleSelection selection,
+    int revision,
+    int clientId,
+  ) async {
+    final allowExceptions = await _resolveExceptions(
+      selection.allowUserIds,
+      selection.allowChatIds,
+      clientId: clientId,
+    );
+    final restrictExceptions = await _resolveExceptions(
+      selection.restrictUserIds,
+      selection.restrictChatIds,
+      clientId: clientId,
+    );
+    if (!mounted ||
+        _client.activeClientId != clientId ||
+        _ruleRevision != revision) {
+      return;
+    }
+    setState(() {
+      _allowExceptions
+        ..clear()
+        ..addAll(allowExceptions);
+      _restrictExceptions
+        ..clear()
+        ..addAll(restrictExceptions);
+    });
   }
 
   Future<List<_PrivacyException>> _resolveExceptions(
     Set<int> userIds,
-    Set<int> chatIds,
-  ) async {
+    Set<int> chatIds, {
+    required int clientId,
+  }) async {
     final entries = <_PrivacyException>[];
     for (final id in userIds) {
       try {
-        final user = await _client.query({'@type': 'getUser', 'user_id': id});
+        final user = await _client.queryTo({
+          '@type': 'getUser',
+          'user_id': id,
+        }, clientId);
         entries.add(
           _PrivacyException(
             id: id,
@@ -265,7 +652,10 @@ class _PrivacyRuleViewState extends State<PrivacyRuleView> {
     }
     for (final id in chatIds) {
       try {
-        final chat = await _client.query({'@type': 'getChat', 'chat_id': id});
+        final chat = await _client.queryTo({
+          '@type': 'getChat',
+          'chat_id': id,
+        }, clientId);
         entries.add(
           _PrivacyException(
             id: id,
@@ -285,6 +675,9 @@ class _PrivacyRuleViewState extends State<PrivacyRuleView> {
   }
 
   Future<void> _addException({required bool allow}) async {
+    if (_saving) return;
+    final pickerClientId = _client.activeClientId;
+    final pickerAccountGeneration = _accountGeneration;
     final chat = await Navigator.of(context).push<ChatSummary>(
       MaterialPageRoute(
         builder: (_) => const ChatPickerView(
@@ -293,7 +686,15 @@ class _PrivacyRuleViewState extends State<PrivacyRuleView> {
         ),
       ),
     );
-    if (chat == null || !mounted) return;
+    if (chat == null ||
+        !_isCurrentAccount(pickerClientId, pickerAccountGeneration) ||
+        _saving) {
+      return;
+    }
+    final previousSelection = _copySelection(_selection);
+    final previousAllowExceptions = [..._allowExceptions];
+    final previousRestrictExceptions = [..._restrictExceptions];
+    final revision = ++_ruleRevision;
     final isUser = chat.peerUserId != null;
     if (!isUser && chat.kind != ChatKind.group) return;
     final id = chat.peerUserId ?? chat.id;
@@ -325,13 +726,34 @@ class _PrivacyRuleViewState extends State<PrivacyRuleView> {
       _restrictExceptions.removeWhere((e) => e.sameTarget(entry));
       (allow ? _allowExceptions : _restrictExceptions).add(entry);
     });
-    await _saveRules();
+    final selection = _copySelection(_selection);
+    await _runSave(
+      (clientId, accountGeneration, saveGeneration) => _saveRules(
+        selection,
+        clientId: clientId,
+        accountGeneration: accountGeneration,
+        saveGeneration: saveGeneration,
+      ),
+      rollback: () {
+        if (_ruleRevision != revision) return;
+        _restoreRuleState(
+          previousSelection,
+          previousAllowExceptions,
+          previousRestrictExceptions,
+        );
+      },
+    );
   }
 
   Future<void> _removeException(
     _PrivacyException entry, {
     required bool allow,
   }) async {
+    if (_saving) return;
+    final previousSelection = _copySelection(_selection);
+    final previousAllowExceptions = [..._allowExceptions];
+    final previousRestrictExceptions = [..._restrictExceptions];
+    final revision = ++_ruleRevision;
     final allowUsers = {..._selection.allowUserIds};
     final allowChats = {..._selection.allowChatIds};
     final restrictUsers = {..._selection.restrictUserIds};
@@ -349,45 +771,81 @@ class _PrivacyRuleViewState extends State<PrivacyRuleView> {
       );
       (allow ? _allowExceptions : _restrictExceptions).remove(entry);
     });
-    await _saveRules();
+    final selection = _copySelection(_selection);
+    await _runSave(
+      (clientId, accountGeneration, saveGeneration) => _saveRules(
+        selection,
+        clientId: clientId,
+        accountGeneration: accountGeneration,
+        saveGeneration: saveGeneration,
+      ),
+      rollback: () {
+        if (_ruleRevision != revision) return;
+        _restoreRuleState(
+          previousSelection,
+          previousAllowExceptions,
+          previousRestrictExceptions,
+        );
+      },
+    );
   }
 
-  Future<void> _loadPublicPhoto() async {
-    final me = await _client.query({'@type': 'getMe'});
+  Future<({Map<String, dynamic>? photo, TdFileRef? ref})> _loadPublicPhoto(
+    int clientId,
+  ) async {
+    final me = await _client.queryTo({'@type': 'getMe'}, clientId);
     final userId = me.int64('id');
-    if (userId == null) return;
-    final full = await _client.query({
+    if (userId == null) {
+      throw const FormatException('Current user is missing an id');
+    }
+    final full = await _client.queryTo({
       '@type': 'getUserFullInfo',
       'user_id': userId,
-    });
-    _setPublicPhoto(full.obj('public_photo'));
+    }, clientId);
+    return _publicPhotoState(full.obj('public_photo'));
   }
 
-  void _setPublicPhoto(Map<String, dynamic>? photo) {
-    _publicPhoto = photo;
+  ({Map<String, dynamic>? photo, TdFileRef? ref}) _publicPhotoState(
+    Map<String, dynamic>? photo,
+  ) {
     final sizes = photo?.objects('sizes') ?? const <Map<String, dynamic>>[];
     if (sizes.isEmpty) {
-      _publicPhotoRef = null;
-      return;
+      return (photo: photo, ref: null);
     }
     final sorted = [...sizes]
       ..sort(
         (a, b) => (a.integer('width') ?? 0).compareTo(b.integer('width') ?? 0),
       );
-    _publicPhotoRef = TDParse.fileRef(
-      sorted.first.obj('photo'),
-      miniThumb: TDParse.decodeMiniThumb(photo?.obj('minithumbnail')),
+    return (
+      photo: photo,
+      ref: TDParse.fileRef(
+        sorted.first.obj('photo'),
+        miniThumb: TDParse.decodeMiniThumb(photo?.obj('minithumbnail')),
+      ),
     );
   }
 
+  void _setPublicPhoto(Map<String, dynamic>? photo) {
+    final state = _publicPhotoState(photo);
+    _publicPhoto = state.photo;
+    _publicPhotoRef = state.ref;
+  }
+
   Future<void> _updatePublicPhoto() async {
+    if (_saving) return;
+    final clientId = _client.activeClientId;
+    final accountGeneration = _accountGeneration;
     try {
       final images = await AppAssetPicker.pick(
         context,
         type: AppAssetPickerType.image,
         maxAssets: 1,
       );
-      if (images.isEmpty || !mounted) return;
+      if (images.isEmpty ||
+          !mounted ||
+          !_isCurrentAccount(clientId, accountGeneration)) {
+        return;
+      }
       final image = images.first;
       final edited = await Navigator.of(context).push<String>(
         MaterialPageRoute(
@@ -395,28 +853,38 @@ class _PrivacyRuleViewState extends State<PrivacyRuleView> {
           builder: (_) => ImageEditView(sourcePath: image.path, avatar: true),
         ),
       );
-      if (edited == null) return;
+      if (edited == null || !_isCurrentAccount(clientId, accountGeneration)) {
+        return;
+      }
       final file = File(edited);
       if (!await file.exists() || await file.length() == 0) return;
-      await _client.query({
+      if (!_isCurrentAccount(clientId, accountGeneration)) return;
+      final revision = ++_publicPhotoRevision;
+      await _client.queryTo({
         '@type': 'setProfilePhoto',
         'photo': {
           '@type': 'inputChatPhotoStatic',
           'photo': {'@type': 'inputFileLocal', 'path': edited},
         },
         'is_public': true,
-      });
+      }, clientId);
+      if (!_isCurrentAccount(clientId, accountGeneration)) return;
       await Future<void>.delayed(const Duration(milliseconds: 800));
-      await _loadPublicPhoto();
-      if (mounted) {
-        setState(() {});
+      final state = await _loadPublicPhoto(clientId);
+      if (_isCurrentAccount(clientId, accountGeneration) &&
+          mounted &&
+          _publicPhotoRevision == revision) {
+        setState(() {
+          _publicPhoto = state.photo;
+          _publicPhotoRef = state.ref;
+        });
         showToast(
           context,
           AppStrings.t(AppStringKeys.privacyPublicPhotoUpdated),
         );
       }
     } catch (error) {
-      if (mounted) {
+      if (mounted && _isCurrentAccount(clientId, accountGeneration)) {
         showToast(
           context,
           AppStrings.t(AppStringKeys.privacyPublicPhotoUpdateFailed, {
@@ -428,6 +896,9 @@ class _PrivacyRuleViewState extends State<PrivacyRuleView> {
   }
 
   Future<void> _removePublicPhoto() async {
+    if (_saving) return;
+    final clientId = _client.activeClientId;
+    final accountGeneration = _accountGeneration;
     final id = _publicPhoto?.int64('id');
     if (id == null) return;
     final confirmed = await confirmDialog(
@@ -437,17 +908,28 @@ class _PrivacyRuleViewState extends State<PrivacyRuleView> {
       confirmText: AppStringKeys.privacyRemovePublicPhoto,
       destructive: true,
     );
-    if (!confirmed) return;
+    if (!confirmed || !_isCurrentAccount(clientId, accountGeneration)) return;
+    final revision = ++_publicPhotoRevision;
     try {
-      await _client.query({
+      await _client.queryTo({
         '@type': 'deleteProfilePhoto',
         'profile_photo_id': id,
-      });
-      if (!mounted) return;
+      }, clientId);
+      if (!_isCurrentAccount(clientId, accountGeneration) ||
+          _publicPhotoRevision != revision) {
+        return;
+      }
       setState(() => _setPublicPhoto(null));
-      showToast(context, AppStrings.t(AppStringKeys.privacyPublicPhotoRemoved));
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(AppStringKeys.privacyPublicPhotoRemoved),
+        );
+      }
     } catch (error) {
-      if (mounted) showToast(context, error.toString());
+      if (mounted && _isCurrentAccount(clientId, accountGeneration)) {
+        showToast(context, error.toString());
+      }
     }
   }
 
@@ -458,9 +940,17 @@ class _PrivacyRuleViewState extends State<PrivacyRuleView> {
       backgroundColor: c.groupedBackground,
       body: Column(
         children: [
+          PopScope(canPop: !_saving, child: const SizedBox.shrink()),
           NavHeader(
             title: widget.title,
-            onBack: () => Navigator.of(context).pop(),
+            onBack: _saving ? () {} : () => Navigator.of(context).maybePop(),
+            trailing: _saving
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator.adaptive(strokeWidth: 2),
+                  )
+                : null,
           ),
           if (_loading)
             const Expanded(
@@ -472,6 +962,8 @@ class _PrivacyRuleViewState extends State<PrivacyRuleView> {
                 ),
               ),
             )
+          else if (_loadError != null)
+            Expanded(child: _loadFailureView())
           else
             Expanded(
               child: ListView(
@@ -592,6 +1084,48 @@ class _PrivacyRuleViewState extends State<PrivacyRuleView> {
     );
   }
 
+  Widget _loadFailureView() {
+    final c = context.colors;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              AppStrings.t(AppStringKeys.privacyLoadFailed),
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 15, color: c.textSecondary),
+            ),
+            const SizedBox(height: 14),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => unawaited(_load()),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: AppTheme.brand,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  AppStrings.t(AppStringKeys.privacyRetry),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   bool get _needsPublicPhoto =>
       _selection.visibility != PrivacyVisibilityOption.everyone ||
       _selection.restrictUserIds.isNotEmpty ||
@@ -610,11 +1144,15 @@ class _PrivacyRuleViewState extends State<PrivacyRuleView> {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
             children: [
-              Text(
-                AppStrings.t(_labels[index]),
-                style: TextStyle(fontSize: 16, color: c.textPrimary),
+              Expanded(
+                child: Text(
+                  AppStrings.t(_labels[index]),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 16, color: c.textPrimary),
+                ),
               ),
-              const Spacer(),
+              const SizedBox(width: 12),
               Container(
                 width: 23,
                 height: 23,
@@ -746,11 +1284,15 @@ class _PrivacyRuleViewState extends State<PrivacyRuleView> {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
             children: [
-              Text(
-                AppStrings.t(label),
-                style: TextStyle(fontSize: 16, color: c.textPrimary),
+              Expanded(
+                child: Text(
+                  AppStrings.t(label),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 16, color: c.textPrimary),
+                ),
               ),
-              const Spacer(),
+              const SizedBox(width: 12),
               Container(
                 width: 23,
                 height: 23,
@@ -802,9 +1344,16 @@ class _PrivacyRuleViewState extends State<PrivacyRuleView> {
                   style: TextStyle(fontSize: 16, color: c.textPrimary),
                 ),
               ),
-              Text(
-                AppStrings.t(value),
-                style: TextStyle(fontSize: 14, color: c.textSecondary),
+              const SizedBox(width: 12),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 150),
+                child: Text(
+                  AppStrings.t(value),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: TextStyle(fontSize: 14, color: c.textSecondary),
+                ),
               ),
               const SizedBox(width: 5),
               AppIcon(
@@ -837,11 +1386,7 @@ class _PrivacyRuleViewState extends State<PrivacyRuleView> {
                 style: TextStyle(fontSize: 16, color: c.textPrimary),
               ),
             ),
-            CupertinoSwitch(
-              value: value,
-              activeTrackColor: AppTheme.brand,
-              onChanged: onChanged,
-            ),
+            AppSwitch(value: value, onChanged: onChanged),
           ],
         ),
       ),
@@ -860,9 +1405,13 @@ class _PrivacyRuleViewState extends State<PrivacyRuleView> {
             children: [
               AppIcon(HeroAppIcons.camera, size: 24, color: AppTheme.brand),
               const SizedBox(width: 14),
-              Text(
-                AppStrings.t(AppStringKeys.privacyUpdatePublicPhoto),
-                style: TextStyle(fontSize: 16, color: AppTheme.brand),
+              Expanded(
+                child: Text(
+                  AppStrings.t(AppStringKeys.privacyUpdatePublicPhoto),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 16, color: AppTheme.brand),
+                ),
               ),
             ],
           ),

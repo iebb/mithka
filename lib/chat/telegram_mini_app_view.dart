@@ -13,6 +13,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
@@ -436,7 +437,7 @@ class _TelegramMiniAppViewState extends State<TelegramMiniAppView>
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),
-                child: const Text('OK'),
+                child: Text(AppStrings.t(AppStringKeys.confirmOk)),
               ),
             ],
           ),
@@ -451,11 +452,11 @@ class _TelegramMiniAppViewState extends State<TelegramMiniAppView>
                 actions: [
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(false),
-                    child: const Text('取消'),
+                    child: Text(AppStrings.t(AppStringKeys.confirmCancel)),
                   ),
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(true),
-                    child: const Text('确定'),
+                    child: Text(AppStrings.t(AppStringKeys.confirmOk)),
                   ),
                 ],
               ),
@@ -634,7 +635,7 @@ class _TelegramMiniAppViewState extends State<TelegramMiniAppView>
           if (buttons.isEmpty)
             TextButton(
               onPressed: () => Navigator.of(context).pop(''),
-              child: const Text('OK'),
+              child: Text(AppStrings.t(AppStringKeys.confirmOk)),
             ),
           for (final button in buttons)
             TextButton(
@@ -851,7 +852,7 @@ class _MiniAppToolbar extends StatelessWidget {
         child: Row(
           children: [
             _MiniAppToolbarAction(
-              label: 'Close mini app',
+              label: AppStrings.t(AppStringKeys.miniAppClose),
               icon: leadingIcon,
               size: leadingSize,
               onPressed: onLeadingPressed,
@@ -870,12 +871,12 @@ class _MiniAppToolbar extends StatelessWidget {
               ),
             ),
             _MiniAppToolbarAction(
-              label: 'Reload mini app',
+              label: AppStrings.t(AppStringKeys.miniAppReload),
               icon: HeroAppIcons.arrowsRotate,
               onPressed: onReload,
             ),
             _MiniAppToolbarAction(
-              label: 'Open in browser',
+              label: AppStrings.t(AppStringKeys.miniAppOpenInBrowser),
               icon: HeroAppIcons.arrowTopRight,
               onPressed: onOpenExternal,
             ),
@@ -997,7 +998,11 @@ class _MiniAppBottomButton extends StatelessWidget {
                   valueColor: AlwaysStoppedAnimation<Color>(foreground),
                 ),
               )
-            : Text(state.text.isEmpty ? '继续' : state.text),
+            : Text(
+                state.text.isEmpty
+                    ? AppStrings.t(AppStringKeys.confirmContinue)
+                    : state.text,
+              ),
       ),
     );
   }

@@ -8,11 +8,12 @@
 
 import 'dart:math' as math;
 
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/app_localizations.dart';
+import '../platform/system_ui.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
@@ -42,52 +43,55 @@ class NavHeader extends StatelessWidget {
     final c = context.colors;
     final metrics = context.watch<ThemeController>();
     final headerHeight = metrics.navHeaderHeight;
-    return Container(
-      height: headerHeight + MediaQuery.of(context).padding.top,
-      padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
-      decoration: BoxDecoration(
-        color: c.navBar,
-        border: Border(
-          bottom: BorderSide(color: c.divider, width: AppMetric.divider),
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: systemUiOverlayStyleForSurface(c.navBar),
+      child: Container(
+        height: headerHeight + MediaQuery.of(context).padding.top,
+        padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
+        decoration: BoxDecoration(
+          color: c.navBar,
+          border: Border(
+            bottom: BorderSide(color: c.divider, width: AppMetric.divider),
+          ),
         ),
-      ),
-      child: Padding(
-        padding: AppInsets.navHeader,
-        child: Row(
-          children: [
-            if (onBack != null)
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: onBack,
-                child: Padding(
-                  padding: const EdgeInsets.only(right: AppSpacing.lg),
-                  child: AppIcon(
-                    HeroAppIcons.chevronLeft,
-                    size: metrics.scaled(AppIconSize.nav),
+        child: Padding(
+          padding: AppInsets.navHeader,
+          child: Row(
+            children: [
+              if (onBack != null)
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: onBack,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: AppSpacing.lg),
+                    child: AppIcon(
+                      HeroAppIcons.chevronLeft,
+                      size: metrics.scaled(AppIconSize.nav),
+                      color: c.textPrimary,
+                    ),
+                  ),
+                ),
+              Expanded(
+                child: Text(
+                  title.l10n(context),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyle.title(c.textPrimary),
+                ),
+              ),
+              ?trailing,
+              if (trailing == null && trailingIcon != null)
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: onTrailing,
+                  child: Icon(
+                    trailingIcon!,
+                    size: metrics.scaled(AppIconSize.nav - 1),
                     color: c.textPrimary,
                   ),
                 ),
-              ),
-            Expanded(
-              child: Text(
-                title.l10n(context),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTextStyle.title(c.textPrimary),
-              ),
-            ),
-            ?trailing,
-            if (trailing == null && trailingIcon != null)
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: onTrailing,
-                child: Icon(
-                  trailingIcon!,
-                  size: metrics.scaled(AppIconSize.nav - 1),
-                  color: c.textPrimary,
-                ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -305,9 +309,17 @@ class _UnreadBadgeMorphPainter extends CustomPainter {
 
 /// Group role tag: owner = yellow, admin = teal, member = purple, channel = pink.
 class RoleTag extends StatelessWidget {
-  const RoleTag({super.key, required this.role, this.title});
+  const RoleTag({
+    super.key,
+    required this.role,
+    this.title,
+    this.connectedToTrailing = false,
+    this.fontSize,
+  });
   final MemberRole role;
   final String? title;
+  final bool connectedToTrailing;
+  final double? fontSize;
 
   Color get _color => switch (role) {
     MemberRole.owner => const Color(0xFFFFB300),
@@ -329,17 +341,30 @@ class RoleTag extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.xs + 1,
-        vertical: 1.5,
-      ),
+      key: connectedToTrailing
+          ? const ValueKey('connectedSenderRoleTag')
+          : null,
+      padding: connectedToTrailing
+          ? const EdgeInsets.symmetric(horizontal: 7, vertical: 3)
+          : const EdgeInsets.symmetric(
+              horizontal: AppSpacing.xs + 1,
+              vertical: 1.5,
+            ),
       decoration: BoxDecoration(
         color: _color,
-        borderRadius: BorderRadius.circular(AppRadius.sm),
+        borderRadius: connectedToTrailing
+            ? const BorderRadiusDirectional.only(
+                topStart: Radius.circular(8),
+                bottomStart: Radius.circular(8),
+              )
+            : BorderRadius.circular(AppRadius.sm),
       ),
       child: Text(
         _label.l10n(context),
-        style: AppTextStyle.tiny(Colors.white, weight: AppTextWeight.medium),
+        style: AppTextStyle.tiny(
+          Colors.white,
+          weight: AppTextWeight.medium,
+        ).copyWith(fontSize: fontSize),
       ),
     );
   }
@@ -394,6 +419,38 @@ class SettingsCard extends StatelessWidget {
   }
 }
 
+/// Colored settings glyph tile used by the main settings list and nested
+/// settings menus. QQ/iOS-style colored tiles always use a white glyph,
+/// including on yellow and other light backgrounds.
+class SettingsIconTile extends StatelessWidget {
+  const SettingsIconTile({
+    super.key,
+    required this.icon,
+    required this.backgroundColor,
+    this.size = 28,
+    this.iconSize = 15,
+    this.radius = 7,
+  });
+
+  final AppIconData icon;
+  final Color backgroundColor;
+  final double size;
+  final double iconSize;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: size,
+    height: size,
+    alignment: Alignment.center,
+    decoration: BoxDecoration(
+      color: backgroundColor,
+      borderRadius: BorderRadius.circular(radius),
+    ),
+    child: AppIcon(icon, size: iconSize, color: const Color(0xFFFFFFFF)),
+  );
+}
+
 class SettingsRow extends StatelessWidget {
   const SettingsRow({
     super.key,
@@ -432,25 +489,37 @@ class SettingsRow extends StatelessWidget {
           child: Row(
             children: [
               if (leading != null) ...[leading!, const SizedBox(width: 12)],
-              Text(
-                title.l10n(context),
-                style: AppTextStyle.body(c.textPrimary),
-              ),
-              const SizedBox(width: 12),
               Expanded(
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child:
-                      trailing ??
-                      Text(
-                        value.l10n(context),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.right,
-                        style: AppTextStyle.footnote(c.textTertiary),
-                      ),
+                flex: trailing == null && value.isNotEmpty ? 3 : 1,
+                child: Text(
+                  title.l10n(context),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyle.body(c.textPrimary),
                 ),
               ),
+              if (trailing != null || value.isNotEmpty) ...[
+                const SizedBox(width: 12),
+                if (trailing != null)
+                  trailing!
+                else
+                  Expanded(
+                    flex: 2,
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 190),
+                        child: Text(
+                          value.l10n(context),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.right,
+                          style: AppTextStyle.footnote(c.textTertiary),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
               if (showChevron) ...[
                 const SizedBox(width: 8),
                 AppIcon(
@@ -460,6 +529,69 @@ class SettingsRow extends StatelessWidget {
                 ),
               ],
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Project-native switch used instead of Material/Cupertino controls.
+class AppSwitch extends StatelessWidget {
+  const AppSwitch({
+    super.key,
+    required this.value,
+    required this.onChanged,
+    this.enabled = true,
+  });
+
+  final bool value;
+  final ValueChanged<bool> onChanged;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      toggled: value,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: enabled ? () => onChanged(!value) : null,
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 160),
+          opacity: enabled ? 1 : 0.45,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOut,
+            width: 50,
+            height: 30,
+            padding: const EdgeInsets.all(2),
+            decoration: BoxDecoration(
+              color: value ? c.linkBlue : c.textTertiary,
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: AnimatedAlign(
+              duration: const Duration(milliseconds: 160),
+              curve: Curves.easeOut,
+              alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+              child: Container(
+                width: 26,
+                height: 26,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFFFFFFF),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Color(0x30000000),
+                      blurRadius: 3,
+                      offset: Offset(0, 1),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
         ),
       ),
@@ -501,17 +633,17 @@ class SettingsSwitchRow extends StatelessWidget {
           child: Row(
             children: [
               if (leading != null) ...[leading!, const SizedBox(width: 12)],
-              Text(
-                title.l10n(context),
-                style: AppTextStyle.body(c.textPrimary),
-              ),
-              const Spacer(),
-              IgnorePointer(
-                child: CupertinoSwitch(
-                  value: value,
-                  activeTrackColor: AppTheme.brand,
-                  onChanged: onChanged,
+              Expanded(
+                child: Text(
+                  title.l10n(context),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyle.body(c.textPrimary),
                 ),
+              ),
+              const SizedBox(width: 12),
+              IgnorePointer(
+                child: AppSwitch(value: value, onChanged: onChanged),
               ),
             ],
           ),
@@ -526,15 +658,25 @@ class TimeSeparator extends StatelessWidget {
   const TimeSeparator({super.key, required this.unix});
   final int unix;
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-    child: Center(
-      child: Text(
-        DateText.separatorLabel(unix),
-        style: AppTextStyle.caption(context.colors.textSecondary),
+  Widget build(BuildContext context) {
+    final plate = servicePlateBackground(context.colors);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+          decoration: BoxDecoration(
+            color: plate,
+            borderRadius: BorderRadius.circular(AppRadius.md),
+          ),
+          child: Text(
+            DateText.separatorLabel(unix),
+            style: AppTextStyle.caption(servicePlateForeground(plate)),
+          ),
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 /// Centered system/service banner (joins, pins, friendship notes).
@@ -544,6 +686,7 @@ class SystemBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final plate = servicePlateBackground(c);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
       child: Center(
@@ -551,19 +694,27 @@ class SystemBanner extends StatelessWidget {
           constraints: const BoxConstraints(maxWidth: AppMetric.maxBannerWidth),
           padding: AppInsets.pill,
           decoration: BoxDecoration(
-            color: c.textPrimary.withValues(alpha: 0.08),
+            color: plate,
             borderRadius: BorderRadius.circular(AppRadius.md),
           ),
           child: Text(
             text,
             textAlign: TextAlign.center,
-            style: AppTextStyle.caption(c.textSecondary),
+            style: AppTextStyle.caption(servicePlateForeground(plate)),
           ),
         ),
       ),
     );
   }
 }
+
+/// Opaque semantic plate used for service events and date separators. Keeping
+/// the plate opaque makes contrast deterministic even over bright or detailed
+/// wallpapers.
+Color servicePlateBackground(AppColors colors) =>
+    colors.bubbleIncoming.withValues(alpha: 1);
+
+Color servicePlateForeground(Color plate) => readableForeground(plate);
 
 /// Chat-list preview: optional gray sender prefix + message, with a few "alert"
 /// tags colored red.

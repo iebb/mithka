@@ -31,7 +31,11 @@ ALLOWED_VISIBLE_VALUES = {
     "",
     "A",
     "GitHub",
+    "LaTeX",
+    "Mini App",
     "Mithka",
+    "· · ·",
+    "\\u00B7 \\u00B7 \\u00B7",
     "github.com/iebb/mithka",
     "ieb",
     "mithka.ieb.app",
@@ -186,6 +190,7 @@ def direct_text_key_renders(text: str) -> list[int]:
         if (
             "AppStringKeys." in expression
             and ".l10n(" not in expression
+            and ".l10n.t(" not in expression
             and "AppStrings.t(" not in expression
             and "AppLocalizations.of(" not in expression
             and "telegramText(" not in expression

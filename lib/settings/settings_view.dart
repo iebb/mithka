@@ -21,6 +21,7 @@ import '../theme/app_theme.dart';
 import 'about_view.dart';
 import 'advanced_settings_view.dart';
 import 'appearance_view.dart';
+import 'blocking_settings_view.dart';
 import 'developer_mode_controller.dart';
 import 'developer_settings_view.dart';
 import 'edit_profile_view.dart';
@@ -60,7 +61,7 @@ class _SettingsViewState extends State<SettingsView> {
                 _card([
                   _navRow(
                     context,
-                    HeroAppIcons.solidCircleUser.data,
+                    HeroAppIcons.solidCircleUser,
                     AppStrings.t(AppStringKeys.editProfileTitle),
                     const Color(0xFF3C8CF0),
                     () => const EditProfileView(),
@@ -70,7 +71,7 @@ class _SettingsViewState extends State<SettingsView> {
                 _card([
                   _navRow(
                     context,
-                    HeroAppIcons.solidBell.data,
+                    HeroAppIcons.solidBell,
                     AppStrings.t(AppStringKeys.notificationTitle),
                     const Color(0xFFF5A623),
                     () => const NotificationSettingsView(),
@@ -78,17 +79,25 @@ class _SettingsViewState extends State<SettingsView> {
                   const InsetDivider(leadingInset: 56),
                   _navRow(
                     context,
-                    HeroAppIcons.shieldHalved.data,
+                    HeroAppIcons.shieldHalved,
                     AppStrings.t(AppStringKeys.privacySecurityTitle),
                     const Color(0xFF16B05A),
                     () => const PrivacySecurityView(),
+                  ),
+                  const InsetDivider(leadingInset: 56),
+                  _navRow(
+                    context,
+                    HeroAppIcons.ban,
+                    AppStrings.t(AppStringKeys.blockingTitle),
+                    const Color(0xFFDA405B),
+                    () => const BlockingSettingsView(),
                   ),
                 ]),
                 const SizedBox(height: 14),
                 _card([
                   _navRow(
                     context,
-                    HeroAppIcons.gear.data,
+                    HeroAppIcons.gear,
                     AppStrings.t(AppStringKeys.generalTitle),
                     const Color(0xFF8E8E93),
                     () => const GeneralSettingsView(),
@@ -96,7 +105,7 @@ class _SettingsViewState extends State<SettingsView> {
                   const InsetDivider(leadingInset: 56),
                   _navRow(
                     context,
-                    HeroAppIcons.language.data,
+                    HeroAppIcons.language,
                     AppStrings.t(AppStringKeys.languageTitle),
                     const Color(0xFF34A2DF),
                     () => const LanguageSettingsView(),
@@ -104,7 +113,7 @@ class _SettingsViewState extends State<SettingsView> {
                   const InsetDivider(leadingInset: 56),
                   _navRow(
                     context,
-                    HeroAppIcons.grip.data,
+                    HeroAppIcons.grip,
                     AppStrings.t(AppStringKeys.featureTitle),
                     const Color(0xFF3C8CF0),
                     () => const FeatureSettingsView(),
@@ -112,7 +121,7 @@ class _SettingsViewState extends State<SettingsView> {
                   const InsetDivider(leadingInset: 56),
                   _navRow(
                     context,
-                    HeroAppIcons.wandMagicSparkles.data,
+                    HeroAppIcons.wandMagicSparkles,
                     AppStrings.t(AppStringKeys.appearanceTitle),
                     const Color(0xFF8E7BFF),
                     () => const AppearanceView(),
@@ -120,7 +129,7 @@ class _SettingsViewState extends State<SettingsView> {
                   const InsetDivider(leadingInset: 56),
                   _navRow(
                     context,
-                    HeroAppIcons.eye.data,
+                    HeroAppIcons.eye,
                     AppStrings.t(AppStringKeys.appearanceDisplay),
                     const Color(0xFF34A2DF),
                     () => const DisplaySettingsView(),
@@ -128,7 +137,7 @@ class _SettingsViewState extends State<SettingsView> {
                   const InsetDivider(leadingInset: 56),
                   _navRow(
                     context,
-                    HeroAppIcons.globe.data,
+                    HeroAppIcons.globe,
                     AppStrings.t(AppStringKeys.proxyTitle),
                     const Color(0xFF34A2DF),
                     () => const ProxyView(),
@@ -136,7 +145,7 @@ class _SettingsViewState extends State<SettingsView> {
                   const InsetDivider(leadingInset: 56),
                   _navRow(
                     context,
-                    HeroAppIcons.objectGroup.data,
+                    HeroAppIcons.objectGroup,
                     AppStrings.t(AppStringKeys.advancedTitle),
                     const Color(0xFF16B0A0),
                     () => const AdvancedSettingsView(),
@@ -145,7 +154,7 @@ class _SettingsViewState extends State<SettingsView> {
                     const InsetDivider(leadingInset: 56),
                     _navRow(
                       context,
-                      HeroAppIcons.code.data,
+                      HeroAppIcons.code,
                       AppStrings.t(AppStringKeys.developerModeTitle),
                       const Color(0xFFFF5A5F),
                       () => const DeveloperSettingsView(),
@@ -177,7 +186,7 @@ class _SettingsViewState extends State<SettingsView> {
 
   Widget _rowLabel(
     BuildContext context,
-    IconData icon,
+    AppIconData icon,
     String title,
     Color color, {
     String? trailing,
@@ -189,15 +198,7 @@ class _SettingsViewState extends State<SettingsView> {
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Row(
           children: [
-            Container(
-              width: 28,
-              height: 28,
-              decoration: BoxDecoration(
-                color: color,
-                borderRadius: BorderRadius.circular(7),
-              ),
-              child: Icon(icon, size: 15, color: Colors.white),
-            ),
+            SettingsIconTile(icon: icon, backgroundColor: color),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
@@ -230,7 +231,7 @@ class _SettingsViewState extends State<SettingsView> {
 
   Widget _navRow(
     BuildContext context,
-    IconData icon,
+    AppIconData icon,
     String title,
     Color color,
     Widget Function() destination,
@@ -253,7 +254,7 @@ class _SettingsViewState extends State<SettingsView> {
       future: _versionFuture,
       builder: (context, snapshot) => _rowLabel(
         context,
-        HeroAppIcons.circleInfo.data,
+        HeroAppIcons.circleInfo,
         AppStrings.t(AppStringKeys.settingsAboutMithka),
         const Color(0xFF8E8E93),
         trailing: 'v${snapshot.data?.version ?? '...'}',

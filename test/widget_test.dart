@@ -2755,27 +2755,33 @@ void main() {
   });
 
   group('CountryMessageFilter', () {
-    test('matches only selected-country non-contacts', () async {
-      SharedPreferences.setMockInitialValues({
-        'countryMessageFilter.selectedCountries': ['JP', 'US'],
-      });
-      final prefs = await SharedPreferences.getInstance();
-      final filter = CountryMessageFilter()..initialize(prefs);
+    test(
+      'matches selected countries and applies configured exemptions',
+      () async {
+        SharedPreferences.setMockInitialValues({
+          'countryMessageFilter.selectedCountries': ['JP', 'US'],
+        });
+        final prefs = await SharedPreferences.getInstance();
+        final filter = CountryMessageFilter()..initialize(prefs);
 
-      expect(
-        filter.matchesUser(isContact: false, phoneNumber: '+81 90 1234 5678'),
-        isTrue,
-      );
-      expect(
-        filter.matchesUser(isContact: true, phoneNumber: '+81 90 1234 5678'),
-        isFalse,
-      );
-      expect(
-        filter.matchesUser(isContact: false, phoneNumber: '+44 20 7946 0958'),
-        isFalse,
-      );
-      expect(filter.matchesUser(isContact: false), isFalse);
-    });
+        expect(filter.matchesUser(phoneNumber: '+81 90 1234 5678'), isTrue);
+        expect(
+          filter.matchesUser(isContact: true, phoneNumber: '+81 90 1234 5678'),
+          isTrue,
+        );
+        expect(filter.matchesUser(phoneNumber: '+44 20 7946 0958'), isFalse);
+        expect(filter.matchesUser(), isFalse);
+        expect(
+          filter.shouldExempt(
+            hasCommonPrivateGroup: false,
+            commonGroupCount: 0,
+            isPlainTextWithoutLinks: true,
+            hasNonDefaultAvatar: false,
+          ),
+          isTrue,
+        );
+      },
+    );
   });
 
   group('AppFontChoice', () {

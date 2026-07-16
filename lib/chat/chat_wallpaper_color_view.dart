@@ -12,18 +12,25 @@ class ChatWallpaperColorView extends StatefulWidget {
     required this.controller,
     required this.dark,
     this.initial,
+    this.colorOnly = false,
   });
 
   final ChatWallpaperController controller;
   final bool dark;
   final ChatWallpaper? initial;
 
+  /// Presents only Telegram's HSV color controls. This is reused by the
+  /// built-in theme tint editor, where wallpaper patterns are not applicable.
+  final bool colorOnly;
+
   @override
   State<ChatWallpaperColorView> createState() => _ChatWallpaperColorViewState();
 }
 
 class _ChatWallpaperColorViewState extends State<ChatWallpaperColorView> {
-  late HSVColor _color;
+  late List<HSVColor> _colors;
+  int _selectedColor = 0;
+  int _rotationAngle = 0;
   ChatWallpaper? _pattern;
   List<ChatWallpaper> _patterns = const [];
   int _intensity = 35;
@@ -34,18 +41,18 @@ class _ChatWallpaperColorViewState extends State<ChatWallpaperColorView> {
   void initState() {
     super.initState();
     final initialColors = widget.initial?.colors ?? const <int>[];
-    final initialColor = initialColors.isNotEmpty
-        ? initialColors.first
-        : 0x4B8DEE;
-    _color = HSVColor.fromColor(
-      Color(0xFF000000 | (initialColor & 0x00FFFFFF)),
-    );
+    _colors = [
+      for (final color
+          in initialColors.isEmpty ? const [0x4B8DEE] : initialColors.take(4))
+        HSVColor.fromColor(Color(0xFF000000 | (color & 0x00FFFFFF))),
+    ];
+    _rotationAngle = widget.initial?.rotationAngle ?? 0;
     if (widget.initial?.remoteType == 'pattern') {
       _pattern = widget.initial;
       _intensity = widget.initial!.intensity.clamp(0, 100);
       _moving = widget.initial!.isMoving;
     }
-    _loadPatterns();
+    if (!widget.colorOnly) _loadPatterns();
   }
 
   Future<void> _loadPatterns() async {
@@ -65,7 +72,11 @@ class _ChatWallpaperColorViewState extends State<ChatWallpaperColorView> {
     }
   }
 
-  int get _rgb => _color.toColor().toARGB32() & 0x00FFFFFF;
+  HSVColor get _color => _colors[_selectedColor];
+
+  List<int> get _rgbColors => [
+    for (final color in _colors) color.toColor().toARGB32() & 0x00FFFFFF,
+  ];
 
   ChatWallpaper get _result {
     final pattern = _pattern;
@@ -73,11 +84,13 @@ class _ChatWallpaperColorViewState extends State<ChatWallpaperColorView> {
       return ChatWallpaper.telegram(
         backgroundId: 0,
         remoteType: 'fill',
-        colors: [_rgb],
+        colors: _rgbColors,
+        rotationAngle: _rotationAngle,
       );
     }
     return pattern
-        .withColors([_rgb])
+        .withColors(_rgbColors)
+        .withRotationAngle(_rotationAngle)
         .withIntensity(_intensity)
         .withMoving(_moving);
   }
@@ -90,7 +103,9 @@ class _ChatWallpaperColorViewState extends State<ChatWallpaperColorView> {
       child: Column(
         children: [
           NavHeader(
-            title: AppStringKeys.chatWallpaperColorTitle,
+            title: widget.colorOnly
+                ? AppStringKeys.chatWallpaperColor
+                : AppStringKeys.chatWallpaperColorTitle,
             onBack: () => Navigator.of(context).pop(),
           ),
           Expanded(
@@ -120,60 +135,69 @@ class _ChatWallpaperColorViewState extends State<ChatWallpaperColorView> {
                 const SizedBox(height: 18),
                 _label(AppStringKeys.chatWallpaperColor),
                 const SizedBox(height: 10),
+                _colorStops(),
+                const SizedBox(height: 12),
                 _slider(
                   value: _color.hue / 360,
                   painter: const _HueTrackPainter(),
-                  onChanged: (value) =>
-                      setState(() => _color = _color.withHue(value * 360)),
+                  onChanged: (value) => setState(
+                    () => _colors[_selectedColor] = _color.withHue(value * 360),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 _slider(
                   value: _color.saturation,
                   painter: _SaturationTrackPainter(_color.withSaturation(1)),
-                  onChanged: (value) =>
-                      setState(() => _color = _color.withSaturation(value)),
+                  onChanged: (value) => setState(
+                    () =>
+                        _colors[_selectedColor] = _color.withSaturation(value),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 _slider(
                   value: _color.value,
                   painter: _ValueTrackPainter(_color.withValue(1)),
-                  onChanged: (value) =>
-                      setState(() => _color = _color.withValue(value)),
-                ),
-                const SizedBox(height: 22),
-                _label(AppStringKeys.chatWallpaperPattern),
-                const SizedBox(height: 10),
-                SizedBox(
-                  height: 92,
-                  child: _loadingPatterns
-                      ? const Center(child: _ColorSpinner())
-                      : ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: _patterns.length + 1,
-                          separatorBuilder: (_, _) => const SizedBox(width: 9),
-                          itemBuilder: (context, index) {
-                            if (index == 0) return _noPatternChoice();
-                            return _patternChoice(_patterns[index - 1]);
-                          },
-                        ),
-                ),
-                if (_pattern != null) ...[
-                  const SizedBox(height: 20),
-                  _label(AppStringKeys.chatWallpaperIntensity),
-                  const SizedBox(height: 9),
-                  _slider(
-                    value: _intensity / 100,
-                    painter: _PlainTrackPainter(c.linkBlue),
-                    onChanged: (value) =>
-                        setState(() => _intensity = (value * 100).round()),
+                  onChanged: (value) => setState(
+                    () => _colors[_selectedColor] = _color.withValue(value),
                   ),
-                  const SizedBox(height: 16),
-                  _effectToggle(
-                    AppStringKeys.chatWallpaperMotion,
-                    HeroAppIcons.rotate,
-                    _moving,
-                    () => setState(() => _moving = !_moving),
+                ),
+                if (!widget.colorOnly) ...[
+                  const SizedBox(height: 22),
+                  _label(AppStringKeys.chatWallpaperPattern),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    height: 92,
+                    child: _loadingPatterns
+                        ? const Center(child: _ColorSpinner())
+                        : ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: _patterns.length + 1,
+                            separatorBuilder: (_, _) =>
+                                const SizedBox(width: 9),
+                            itemBuilder: (context, index) {
+                              if (index == 0) return _noPatternChoice();
+                              return _patternChoice(_patterns[index - 1]);
+                            },
+                          ),
                   ),
+                  if (_pattern != null) ...[
+                    const SizedBox(height: 20),
+                    _label(AppStringKeys.chatWallpaperIntensity),
+                    const SizedBox(height: 9),
+                    _slider(
+                      value: _intensity / 100,
+                      painter: _PlainTrackPainter(c.linkBlue),
+                      onChanged: (value) =>
+                          setState(() => _intensity = (value * 100).round()),
+                    ),
+                    const SizedBox(height: 16),
+                    _effectToggle(
+                      AppStringKeys.chatWallpaperMotion,
+                      HeroAppIcons.rotate,
+                      _moving,
+                      () => setState(() => _moving = !_moving),
+                    ),
+                  ],
                 ],
               ],
             ),
@@ -195,8 +219,8 @@ class _ChatWallpaperColorViewState extends State<ChatWallpaperColorView> {
                   ),
                   child: Text(
                     AppStringKeys.accentColorPickerSave.l10n(context),
-                    style: const TextStyle(
-                      color: Color(0xFFFFFFFF),
+                    style: TextStyle(
+                      color: c.onAccent,
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
                     ),
@@ -252,23 +276,93 @@ class _ChatWallpaperColorViewState extends State<ChatWallpaperColorView> {
 
   Widget _patternChoice(ChatWallpaper wallpaper) {
     final selected = _pattern?.backgroundId == wallpaper.backgroundId;
-    final preview = wallpaper.withColors([_rgb]).withIntensity(_intensity);
+    final preview = wallpaper
+        .withColors(_rgbColors)
+        .withRotationAngle(_rotationAngle)
+        .withIntensity(_intensity);
+    final resolved = widget.controller.resolvedWallpaper(preview);
     return _patternFrame(
       selected: selected,
       onTap: () => setState(() => _pattern = wallpaper),
       child: ChatWallpaperBackground(
-        wallpaper: preview.withoutPatternDocument(),
+        wallpaper: resolved,
         fallbackColor: _color.toColor(),
         brightness: widget.dark ? Brightness.dark : Brightness.light,
-        child: Center(
-          child: AppIcon(
-            HeroAppIcons.wandMagicSparkles,
-            size: 23,
-            color: _color.value > 0.6
-                ? const Color(0xAA000000)
-                : const Color(0xCCFFFFFF),
+      ),
+    );
+  }
+
+  Widget _colorStops() {
+    final c = context.colors;
+    return Row(
+      children: [
+        for (var index = 0; index < _colors.length; index++) ...[
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setState(() => _selectedColor = index),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 140),
+              width: 34,
+              height: 34,
+              padding: EdgeInsets.all(index == _selectedColor ? 3 : 1),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: index == _selectedColor ? c.linkBlue : c.divider,
+              ),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _colors[index].toColor(),
+                ),
+              ),
+            ),
           ),
+          const SizedBox(width: 8),
+        ],
+        if (_colors.length < 4)
+          _colorAction(
+            HeroAppIcons.plus,
+            () => setState(() {
+              final source = _color;
+              _colors.add(source.withHue((source.hue + 38) % 360));
+              _selectedColor = _colors.length - 1;
+            }),
+          ),
+        if (_colors.length > 1) ...[
+          const SizedBox(width: 8),
+          _colorAction(
+            HeroAppIcons.minus,
+            () => setState(() {
+              _colors.removeAt(_selectedColor);
+              _selectedColor = _selectedColor.clamp(0, _colors.length - 1);
+            }),
+          ),
+        ],
+        const Spacer(),
+        if (_colors.length == 2)
+          _colorAction(
+            HeroAppIcons.rotate,
+            () => setState(() => _rotationAngle = (_rotationAngle + 45) % 360),
+          ),
+      ],
+    );
+  }
+
+  Widget _colorAction(AppIconData icon, VoidCallback onTap) {
+    final c = context.colors;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        width: 34,
+        height: 34,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: c.card,
+          border: Border.all(color: c.divider),
+          borderRadius: BorderRadius.circular(11),
         ),
+        child: AppIcon(icon, size: 17, color: c.linkBlue),
       ),
     );
   }

@@ -152,7 +152,11 @@ class _ProxyViewState extends State<ProxyView> {
                         ]),
                       ],
                       const SizedBox(height: 14),
-                      _card([_addRow(), const InsetDivider(leadingInset: 16), _addFromLinkRow()]),
+                      _card([
+                        _addRow(),
+                        const InsetDivider(leadingInset: 16),
+                        _addFromLinkRow(),
+                      ]),
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                         child: Text(
@@ -194,11 +198,15 @@ class _ProxyViewState extends State<ProxyView> {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
             children: [
-              Text(
-                AppStrings.t(AppStringKeys.proxyDisabled),
-                style: TextStyle(fontSize: 16, color: c.textPrimary),
+              Expanded(
+                child: Text(
+                  AppStrings.t(AppStringKeys.proxyDisabled),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 16, color: c.textPrimary),
+                ),
               ),
-              const Spacer(),
+              const SizedBox(width: 12),
               if (!_anyEnabled)
                 AppIcon(HeroAppIcons.check, size: 18, color: AppTheme.brand),
             ],
@@ -297,17 +305,13 @@ class _ProxyViewState extends State<ProxyView> {
         return StatefulBuilder(
           builder: (ctx, setDialogState) {
             return CupertinoAlertDialog(
-              title: Text(AppStrings.t(
-                AppStringKeys.proxyAddFromLinkTitle,
-              )),
+              title: Text(AppStrings.t(AppStringKeys.proxyAddFromLinkTitle)),
               content: Padding(
                 padding: const EdgeInsets.only(top: 12),
                 child: CupertinoTextField(
                   controller: ctrl,
                   autofocus: true,
-                  placeholder: AppStrings.t(
-                    AppStringKeys.proxyAddFromLinkHint,
-                  ),
+                  placeholder: AppStrings.t(AppStringKeys.proxyAddFromLinkHint),
                   onChanged: (_) => setDialogState(() {}),
                   clearButtonMode: OverlayVisibilityMode.editing,
                 ),
@@ -315,9 +319,7 @@ class _ProxyViewState extends State<ProxyView> {
               actions: [
                 CupertinoDialogAction(
                   onPressed: () => Navigator.of(ctx).pop(),
-                  child: Text(AppStrings.t(
-                    AppStringKeys.countryPickerCancel,
-                  )),
+                  child: Text(AppStrings.t(AppStringKeys.countryPickerCancel)),
                 ),
                 CupertinoDialogAction(
                   isDefaultAction: true,
@@ -364,7 +366,7 @@ class _ProxyViewState extends State<ProxyView> {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
             children: [
-              AppIcon(HeroAppIcons.plus, size: 18, color: AppTheme.brand),
+              AppIcon(HeroAppIcons.link, size: 18, color: AppTheme.brand),
               const SizedBox(width: 10),
               Text(
                 AppStrings.t(AppStringKeys.proxyAddFromLink),

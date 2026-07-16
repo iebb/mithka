@@ -51,13 +51,20 @@ class StoryGroup {
     required this.storyIds,
     required this.hasUnread,
     required this.order,
+    required this.date,
   });
   final int chatId;
   final String name;
   final TdFileRef? photo;
   final List<int> storyIds;
   final bool hasUnread;
+
+  /// TDLib sort weight — `last_story.date` plus flag bits (unread/premium/…).
+  /// Sort by this, but never render it as a timestamp.
   final int order;
+
+  /// Unix time of the newest story; what rows display.
+  final int date;
 }
 
 class ChannelPost {
@@ -429,7 +436,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
   ChannelPost? _replyPost;
   int? _meUserId;
   int? _selectedPostChannelId;
-  String _meName = AppStringKeys.chatMeLabel;
+  String _meName = AppStrings.t(AppStringKeys.chatMeLabel);
   TdFileRef? _mePhoto;
   int _meAccentColorId = -1;
   int _meProfileAccentColorId = -1;
@@ -478,6 +485,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
 
   void _onModel() {
     _feedChatIds = null; // channel set may have changed
+    _invalidateChannels();
     if (mounted) setState(() {});
     _loadChannelPosts();
     _loadPostableChannels();
@@ -511,6 +519,22 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
         if (!_touchesMomentsFeed(update)) return;
         _invalidateCachedInteractions(update);
         _scheduleLiveRefresh();
+
+      // Membership changed: the joined/exhausted caches for that chat are
+      // stale — a left channel kept feeding posts, and a newly joined one
+      // could never load until the view was rebuilt.
+      case 'updateChatAddedToList':
+      case 'updateChatRemovedFromList':
+        final chatId = update.int64('chat_id');
+        if (chatId == null) return;
+        if (_joinedChannelCache.remove(chatId) == null) return;
+        _invalidateChannels();
+        _exhaustedChannels.remove(chatId);
+        if (update.type == 'updateChatRemovedFromList') {
+          _postsByChannel.remove(chatId);
+          _invalidateFeed();
+          if (mounted) setState(() {});
+        }
     }
   }
 
@@ -577,7 +601,17 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
     }
   }
 
+  // Memoized: this getter used to rebuild the dedup map on every access, and
+  // it is read from build() and the per-update feed paths. Every site that
+  // changes its inputs (model chats, joined cache, mute filter) already
+  // clears _feedChatIds — _invalidateChannels() piggybacks on those.
+  List<ChatSummary>? _channelsCache;
+
+  void _invalidateChannels() => _channelsCache = null;
+
   List<ChatSummary> get _channels {
+    final cached = _channelsCache;
+    if (cached != null) return cached;
     final byId = <int, ChatSummary>{};
     for (final chat in widget.initialChannels) {
       if (chat.kind == ChatKind.channel &&
@@ -593,7 +627,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
         byId[chat.id] = chat;
       }
     }
-    return byId.values.toList();
+    return _channelsCache = byId.values.toList(growable: false);
   }
 
   // Flattening + sorting + album-grouping the whole feed is O(n log n) with
@@ -752,6 +786,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
     final joined = await isJoinedGroupOrChannelChat(channel.id);
     _joinedChannelCache[channel.id] = joined;
     _feedChatIds = null; // joined-state feeds the _channels filter
+    _invalidateChannels();
     if (!joined) {
       _postsByChannel.remove(channel.id);
       _invalidateFeed();
@@ -805,6 +840,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
   void _toggleNonMutedOnly() {
     setState(() {
       _nonMutedOnly = !_nonMutedOnly;
+      _invalidateChannels();
       _feedLoadGeneration += 1;
       _postsByChannel.clear();
       _invalidateFeed();
@@ -972,7 +1008,8 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
           ChannelPostComment(
             chatId: entry.chatId,
             messageId: message.id,
-            senderName: senderName ?? AppStringKeys.topicChatUsers,
+            senderName:
+                senderName ?? AppStrings.t(AppStringKeys.topicChatUsers),
             text: _commentText(message),
             entities: _commentEntities(message),
           ),
@@ -2159,7 +2196,7 @@ class _ChannelPostDetailViewState extends State<ChannelPostDetailView> {
   ChannelPostThreadTarget? _target;
   List<ChannelPostComment> _comments = const [];
   ChannelPostComment? _replyTo;
-  String _meName = AppStringKeys.chatMeLabel;
+  String _meName = AppStrings.t(AppStringKeys.chatMeLabel);
   TdFileRef? _mePhoto;
   bool _loading = true;
   bool _sending = false;
@@ -2318,7 +2355,9 @@ class _ChannelPostDetailViewState extends State<ChannelPostDetailView> {
         });
         final name = TDParse.userName(user).trim();
         return _CommentSender(
-          name: name.isNotEmpty ? name : title ?? AppStringKeys.topicChatUsers,
+          name: name.isNotEmpty
+              ? name
+              : title ?? AppStrings.t(AppStringKeys.topicChatUsers),
           photo: TDParse.smallPhoto(user.obj('profile_photo')),
         );
       }
@@ -2330,7 +2369,7 @@ class _ChannelPostDetailViewState extends State<ChannelPostDetailView> {
         final name = chat.str('title')?.trim();
         return _CommentSender(
           name: name == null || name.isEmpty
-              ? title ?? AppStringKeys.topicChatUsers
+              ? title ?? AppStrings.t(AppStringKeys.topicChatUsers)
               : name,
           photo: TDParse.smallPhoto(chat.obj('photo')),
         );
@@ -2338,7 +2377,7 @@ class _ChannelPostDetailViewState extends State<ChannelPostDetailView> {
     } catch (_) {}
     return _CommentSender(
       name: title == null || title.isEmpty
-          ? AppStringKeys.topicChatUsers
+          ? AppStrings.t(AppStringKeys.topicChatUsers)
           : title,
     );
   }
@@ -3964,11 +4003,14 @@ class _PostActions extends StatelessWidget {
         'value1': reactionCount,
       });
     }
-    final shown = names.take(3).join(AppStrings.t(AppStringKeys.listSeparator));
+    final shownNames = names.take(3).toList();
+    final shown = shownNames.join(AppStrings.t(AppStringKeys.listSeparator));
     if (reactionCount > names.length || names.length > 3) {
       return AppStrings.t(AppStringKeys.momentsLikedByListWithOthers, {
         'value1': shown,
-        'value2': reactionCount,
+        // Every locale's template reads "and N others" — the remainder
+        // beyond the listed names, not the total like count.
+        'value2': math.max(1, reactionCount - shownNames.length),
       });
     }
     return AppStrings.t(AppStringKeys.momentsUserLiked, {'value1': shown});
@@ -4188,7 +4230,9 @@ class _StoriesViewState extends State<StoriesView> {
               ),
             ),
             Text(
-              DateText.listLabel(group.order),
+              // order is a sort weight with flag bits, not a timestamp —
+              // rendering it produced dates centuries in the future.
+              DateText.listLabel(group.date),
               style: TextStyle(fontSize: 12, color: c.textTertiary),
             ),
           ],
@@ -4203,16 +4247,26 @@ class MomentsViewModel extends ChangeNotifier {
   bool loading = false;
   final Map<int, StoryGroup> _map = {};
   bool _started = false;
+  StreamSubscription? _sub;
 
   void start() {
     if (_started) return;
     _started = true;
     loading = true;
     notifyListeners();
-    TdClient.shared.subscribe().listen((update) {
+    _sub = TdClient.shared.subscribe().listen((update) {
       if (update.type == 'updateChatActiveStories') _handle(update);
     });
     _loadAll();
+  }
+
+  @override
+  void dispose() {
+    // Without this the leaked listener keeps notifying a disposed notifier
+    // (and issuing getChat calls) after every Stories visit.
+    unawaited(_sub?.cancel());
+    _sub = null;
+    super.dispose();
   }
 
   /// TDLib paginates active stories: each loadActiveStories pulls the next batch
@@ -4256,6 +4310,9 @@ class MomentsViewModel extends ChangeNotifier {
         .map((s) => s.int64('story_id'))
         .whereType<int>()
         .toList();
+    final newestDate = infos
+        .map((s) => s.integer('date') ?? 0)
+        .fold(0, math.max);
 
     if (storyIds.isEmpty) {
       _map.remove(chatId);
@@ -4278,7 +4335,7 @@ class MomentsViewModel extends ChangeNotifier {
       photo = TDParse.smallPhoto(chat.obj('photo'));
     } catch (_) {}
     if (name.isEmpty) {
-      name = _map[chatId]?.name ?? AppStringKeys.momentsUnknown;
+      name = _map[chatId]?.name ?? AppStrings.t(AppStringKeys.momentsUnknown);
     }
 
     _map[chatId] = StoryGroup(
@@ -4288,6 +4345,7 @@ class MomentsViewModel extends ChangeNotifier {
       storyIds: storyIds,
       hasUnread: hasUnread,
       order: order,
+      date: newestDate,
     );
     _publish();
     loading = false;

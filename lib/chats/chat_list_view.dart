@@ -20,7 +20,6 @@ import '../chat/chat_view.dart';
 import '../chat/custom_emoji.dart';
 import '../chat/link_handler.dart';
 import '../components/app_icons.dart';
-import '../components/confirm_dialog.dart';
 import '../components/drawer_controller.dart' as dc;
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
@@ -35,6 +34,7 @@ import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import 'archived_chats_view.dart';
+import 'chat_delete_dialog.dart';
 import 'chat_list_view_model.dart';
 import 'chat_row_view.dart';
 import 'filtered_chats_view.dart';
@@ -87,6 +87,17 @@ class ChatListSelection {
   bool get isForum => chat?.isForum ?? false;
 }
 
+/// Returns the exact leading offset for a chat-list item.
+///
+/// Chat rows do not include a separator in their layout, so even a fractional
+/// per-row adjustment accumulates into a visible error for targets farther
+/// down the list.
+double chatListItemScrollOffset({
+  required int itemIndex,
+  required double rowHeight,
+  required double maxScrollExtent,
+}) => math.min(itemIndex * rowHeight, maxScrollExtent);
+
 class ChatListView extends StatefulWidget {
   const ChatListView({
     super.key,
@@ -113,7 +124,7 @@ class _ChatListViewState extends State<ChatListView>
   late final AnimationController _folderTransitionController;
   late final CurvedAnimation _folderTransition;
   double _folderTransitionDirection = 1;
-  String _meName = AppStringKeys.chatMeLabel;
+  String _meName = AppStrings.t(AppStringKeys.chatMeLabel);
   TdFileRef? _mePhoto;
   int _meStatusId = 0; // current emoji status, shown after the name
   bool _meIsPremium = false;
@@ -510,10 +521,10 @@ class _ChatListViewState extends State<ChatListView>
       );
       if (archiveIndex <= chatIndex) itemIndex++;
     }
-    final rowH = context.read<ThemeController>().rowHeight + 0.5;
-    return math.min(
-      itemIndex * rowH,
-      _scrollController.position.maxScrollExtent,
+    return chatListItemScrollOffset(
+      itemIndex: itemIndex,
+      rowHeight: context.read<ThemeController>().rowHeight,
+      maxScrollExtent: _scrollController.position.maxScrollExtent,
     );
   }
 
@@ -1189,31 +1200,29 @@ class _ChatListViewState extends State<ChatListView>
   }
 
   Future<void> _confirmDeleteChat(ChatSummary chat) async {
-    final isChannel = chat.kind == ChatKind.channel;
-    final isGroupOrChannel = chat.kind == ChatKind.group || isChannel;
-    final confirmed = await confirmDialog(
+    final isGroupOrChannel =
+        chat.kind == ChatKind.group || chat.kind == ChatKind.channel;
+    final capabilities = await _model.deleteCapabilities(chat);
+    if (!mounted) return;
+    if (!capabilities.canDelete) {
+      showToast(context, AppStringKeys.chatDeleteUnavailable);
+      return;
+    }
+    final scope = await showChatDeleteScopeDialog(
       context,
-      title: isGroupOrChannel
-          ? _leaveTitle(chat)
-          : AppStringKeys.chatListDeleteChatQuestion,
-      message: isGroupOrChannel
+      title: AppStringKeys.chatListDeleteChatQuestion,
+      selfOnlyDescription: isGroupOrChannel
           ? AppStrings.t(
               AppStringKeys.chatListLeaveAndDeleteGroupConfirmation,
               {'value1': chat.title},
             )
           : AppStrings.t(AppStringKeys.chatInfoClearHistoryDescription),
-      confirmText: isGroupOrChannel
-          ? _leaveTitle(chat)
-          : AppStringKeys.chatDelete,
-      destructive: true,
+      capabilities: capabilities,
+      isGroupOrChannel: isGroupOrChannel,
     );
-    if (!mounted || !confirmed) return;
+    if (!mounted || scope == null) return;
     try {
-      if (isGroupOrChannel) {
-        await _model.leaveAndDeleteChat(chat);
-      } else {
-        await _model.deleteChat(chat);
-      }
+      await _model.deleteChat(chat, scope: scope);
     } catch (error) {
       if (!mounted) return;
       final message = error is TdError ? error.message : error.toString();
@@ -1232,12 +1241,6 @@ class _ChatListViewState extends State<ChatListView>
     return AppStringKeys.chatDelete;
   }
 
-  String _leaveTitle(ChatSummary chat) {
-    return chat.kind == ChatKind.channel
-        ? AppStringKeys.topicChatLeaveChannel
-        : AppStringKeys.chatInfoLeaveGroup;
-  }
-
   PageRoute<T> _chatEntryRoute<T>(Widget child) {
     return MaterialPageRoute<T>(builder: (_) => child);
   }
@@ -1254,7 +1257,7 @@ class _ChatListViewState extends State<ChatListView>
       ),
       child: ArchivedChatsRow(
         archived: _model.archived,
-        onClearUnread: _model.markAllRead,
+        onClearUnread: () => _model.markChatsRead(_model.archived),
       ),
     );
   }
@@ -1271,7 +1274,7 @@ class _ChatListViewState extends State<ChatListView>
       ),
       child: FilteredChatsRow(
         chats: _model.filtered,
-        onClearUnread: _model.markAllRead,
+        onClearUnread: () => _model.markChatsRead(_model.filtered),
       ),
     );
   }

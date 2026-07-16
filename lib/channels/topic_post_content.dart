@@ -9,11 +9,11 @@ import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../l10n/telegram_language_controller.dart';
+import '../profile/profile_detail_view.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
-import '../profile/profile_detail_view.dart';
 
 class TopicPostContent extends StatelessWidget {
   const TopicPostContent({
@@ -50,8 +50,7 @@ class TopicPostContent extends StatelessWidget {
           onMentionTap: (userId, name) {
             Navigator.of(context).push(
               MaterialPageRoute(
-                builder: (_) =>
-                    ProfileDetailView(userId: userId, name: name),
+                builder: (_) => ProfileDetailView(userId: userId, name: name),
               ),
             );
           },

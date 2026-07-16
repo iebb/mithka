@@ -36,4 +36,14 @@ void main() {
     expect(light.statusBarIconBrightness, Brightness.dark);
     expect(dark.statusBarIconBrightness, Brightness.light);
   });
+
+  test('semantic surface helper follows the actual navigation color', () {
+    final paleSurface = systemUiOverlayStyleForSurface(const Color(0xFFFFC0B2));
+    final darkSurface = systemUiOverlayStyleForSurface(const Color(0xFF132038));
+
+    expect(paleSurface.statusBarIconBrightness, Brightness.dark);
+    expect(paleSurface.statusBarBrightness, Brightness.light);
+    expect(darkSurface.statusBarIconBrightness, Brightness.light);
+    expect(darkSurface.statusBarBrightness, Brightness.dark);
+  });
 }

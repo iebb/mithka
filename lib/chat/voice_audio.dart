@@ -111,9 +111,13 @@ class VoicePlayer extends ChangeNotifier {
     isLoading = true;
     notifyListeners();
     final path = await TdFileCenter.shared.pathFor(file);
+    if (_disposed) return;
+    // The user may have tapped another note while this file resolved —
+    // don't clobber the newer load's state or start the stale file.
+    if (_fileId != file.id) return;
     isLoading = false;
-    if (path == null || _disposed) {
-      if (_fileId == file.id) _fileId = null;
+    if (path == null) {
+      _fileId = null;
       notifyListeners();
       return;
     }
@@ -140,6 +144,9 @@ class VoicePlayer extends ChangeNotifier {
         fromURI: _path,
         codec: codec,
         whenFinished: () {
+          // The platform can deliver this after dispose(); notifying a
+          // disposed ChangeNotifier throws.
+          if (_disposed) return;
           final finishedFileId = _fileId;
           isPlaying = false;
           position = Duration.zero;
@@ -151,6 +158,7 @@ class VoicePlayer extends ChangeNotifier {
         await player.seekToPlayer(Duration(milliseconds: fromMs));
       }
     } catch (_) {
+      if (_disposed) return;
       isPlaying = false;
       notifyListeners();
     }

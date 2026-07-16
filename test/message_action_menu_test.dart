@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/message_action_menu.dart';
+import 'package:mithka/chat/quick_reaction_choice.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/settings/translation_controller.dart';
 import 'package:mithka/tdlib/td_models.dart';
@@ -37,7 +38,7 @@ void main() {
         home: Align(
           alignment: Alignment.topLeft,
           child: QuickReactionBar(
-            reactions: const ['👍', '❤️', '🔥', '🎉', '😁', '😢', '😡'],
+            reactions: defaultQuickReactions,
             onReaction: (_) {},
             onExpand: () {},
           ),
@@ -52,6 +53,25 @@ void main() {
     );
     expect(find.byKey(const ValueKey('quick-reaction-expand')), findsOneWidget);
   });
+
+  test(
+    'quick reactions persist order, custom emoji, and the nine-item cap',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final theme = ThemeController(prefs);
+      const custom = QuickReactionChoice.custom(123456789);
+      theme.setQuickReactions([
+        custom,
+        ...availableStandardReactions.map(QuickReactionChoice.emoji),
+      ]);
+
+      final restored = ThemeController(prefs).quickReactions;
+      expect(restored, hasLength(9));
+      expect(restored.first, custom);
+      expect(restored[1], const QuickReactionChoice.emoji('👍'));
+    },
+  );
 
   test('+1 preserves sender by default and persists the override', () async {
     SharedPreferences.setMockInitialValues({});

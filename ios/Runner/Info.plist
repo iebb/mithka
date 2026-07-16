@@ -41,6 +41,8 @@
 	<string>Mithka needs your location to share where you are.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Mithka uses the microphone for voice messages and Telegram voice or video calls.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Mithka uses device motion to animate wallpapers when Motion is enabled.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Mithka needs photo access to send and save images and videos.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

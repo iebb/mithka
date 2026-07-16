@@ -10,6 +10,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:image/image.dart' as image_lib;
 import 'package:path_provider/path_provider.dart';
+import 'package:sensors_plus/sensors_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vector_graphics/vector_graphics_compat.dart'
     show RenderingStrategy;
@@ -23,12 +24,15 @@ enum ChatWallpaperKind { preset, image, telegram, theme }
 
 enum ChatThemeKind { emoji, gift }
 
+enum GlobalChatThemeStock { classic, dark, day, night }
+
 @immutable
 class ChatWallpaper {
   const ChatWallpaper._({
     required this.kind,
     this.presetId,
     this.imagePath,
+    this.backgroundName,
     this.themeName,
     this.themeKind = ChatThemeKind.emoji,
     this.backgroundId = 0,
@@ -73,6 +77,7 @@ class ChatWallpaper {
     required String remoteType,
     int fileId = 0,
     String? imagePath,
+    String? backgroundName,
     String? mimeType,
     String? themeName,
     List<int> colors = const [],
@@ -89,6 +94,7 @@ class ChatWallpaper {
          remoteType: remoteType,
          fileId: fileId,
          imagePath: imagePath,
+         backgroundName: backgroundName,
          mimeType: mimeType,
          themeName: themeName,
          colors: colors,
@@ -104,6 +110,9 @@ class ChatWallpaper {
   final ChatWallpaperKind kind;
   final String? presetId;
   final String? imagePath;
+
+  /// Telegram's stable background name/slug, when supplied by TDLib.
+  final String? backgroundName;
   final String? themeName;
   final ChatThemeKind themeKind;
   final int backgroundId;
@@ -140,6 +149,7 @@ class ChatWallpaper {
     remoteType: remoteType ?? 'wallpaper',
     fileId: fileId,
     imagePath: path,
+    backgroundName: backgroundName,
     mimeType: mimeType,
     themeName: themeName,
     colors: colors,
@@ -158,6 +168,7 @@ class ChatWallpaper {
   ChatWallpaper withoutPatternDocument() => ChatWallpaper.telegram(
     backgroundId: backgroundId,
     remoteType: remoteType ?? 'pattern',
+    backgroundName: backgroundName,
     themeName: themeName,
     colors: colors,
     rotationAngle: rotationAngle,
@@ -197,20 +208,25 @@ class ChatWallpaper {
   ChatWallpaper withColors(List<int> value) =>
       _copyTelegram(colors: List<int>.unmodifiable(value));
 
+  ChatWallpaper withRotationAngle(int value) =>
+      _copyTelegram(rotationAngle: value % 360);
+
   ChatWallpaper _copyTelegram({
     bool? isBlurred,
     bool? isMoving,
     int? intensity,
     List<int>? colors,
+    int? rotationAngle,
   }) => ChatWallpaper.telegram(
     backgroundId: backgroundId,
     remoteType: remoteType ?? 'wallpaper',
     fileId: fileId,
     imagePath: imagePath,
+    backgroundName: backgroundName,
     mimeType: mimeType,
     themeName: themeName,
     colors: colors ?? this.colors,
-    rotationAngle: rotationAngle,
+    rotationAngle: rotationAngle ?? this.rotationAngle,
     intensity: intensity ?? this.intensity,
     isInverted: isInverted,
     isBlurred: isBlurred ?? this.isBlurred,
@@ -223,6 +239,7 @@ class ChatWallpaper {
     'kind': kind.name,
     if (presetId != null) 'preset_id': presetId,
     if (imagePath != null) 'image_path': imagePath,
+    if (backgroundName != null) 'background_name': backgroundName,
     if (kind == ChatWallpaperKind.image) ...{
       'is_blurred': isBlurred,
       'is_moving': isMoving,
@@ -283,6 +300,7 @@ class ChatWallpaper {
         remoteType: remoteType,
         fileId: _jsonInt(value['file_id']),
         imagePath: value['image_path'] as String?,
+        backgroundName: value['background_name'] as String?,
         mimeType: value['mime_type'] as String?,
         themeName: value['theme_name'] as String?,
         colors: colors is List
@@ -306,6 +324,7 @@ class ChatWallpaper {
       other.kind == kind &&
       other.presetId == presetId &&
       other.imagePath == imagePath &&
+      other.backgroundName == backgroundName &&
       other.themeName == themeName &&
       other.themeKind == themeKind &&
       other.backgroundId == backgroundId &&
@@ -326,6 +345,7 @@ class ChatWallpaper {
     kind,
     presetId,
     imagePath,
+    backgroundName,
     themeName,
     themeKind,
     backgroundId,
@@ -431,6 +451,10 @@ class ChatThemeStyle {
         ? const Color(0xFF171717)
         : const Color(0xFFFFFFFF);
   }
+
+  Color get nameColor => accentColor == 0
+      ? (isDark ? const Color(0xFF8FB8F8) : const Color(0xFF377FD1))
+      : _rgbColor(accentColor);
 }
 
 @immutable
@@ -448,6 +472,27 @@ class ChatThemeOption {
   final String label;
   final ChatWallpaper? wallpaper;
   final ChatThemeStyle style;
+}
+
+@immutable
+class GlobalChatThemeOption {
+  const GlobalChatThemeOption({
+    required this.id,
+    required this.label,
+    required this.wallpaper,
+    required this.style,
+    this.emoji,
+    this.stock,
+  });
+
+  final String id;
+  final String label;
+  final String? emoji;
+  final GlobalChatThemeStock? stock;
+  final ChatWallpaper? wallpaper;
+  final ChatThemeStyle style;
+
+  bool get isOfficialEmoji => emoji != null;
 }
 
 @immutable
@@ -562,8 +607,13 @@ class ChatWallpaperController extends ChangeNotifier {
   final Set<String> _loadedLocal = {};
   final Set<String> _loading = {};
   final Set<String> _resolvingFiles = {};
+  Future<void> _patternPreparationTail = Future<void>.value();
   final Map<String, List<ChatWallpaper>> _installedBackgrounds = {};
   final Map<String, ChatWallpaper?> _defaultBackgrounds = {};
+  final Map<int, List<ChatWallpaper>> _savedBackgrounds = {};
+  final Set<int> _loadedSavedBackgrounds = {};
+  final Map<String, String?> _globalChatThemeSelections = {};
+  final Set<String> _loadedGlobalChatThemeSelections = {};
   final Map<int, String> _photoSearchBotUsernames = {};
   final Map<int, int> _photoSearchBotUserIds = {};
   final Map<int, int> _photoSearchBotChatIds = {};
@@ -572,6 +622,15 @@ class ChatWallpaperController extends ChangeNotifier {
   String _fileKey(int fileId) => '${_activeSlot()}:$fileId';
   String _preferenceKey(int chatId) => 'mithka.chatWallpaper.v1.${_id(chatId)}';
   String _globalId(bool dark) => '${_activeSlot()}:${dark ? 'dark' : 'light'}';
+  String _globalChatThemePreferenceKey(bool dark) =>
+      'mithka.globalChatTheme.v1.${_globalId(dark)}';
+  String _savedBackgroundsPreferenceKey() =>
+      'mithka.savedChatWallpapers.v1.${_activeSlot()}';
+
+  static String _stockGlobalThemeId(GlobalChatThemeStock stock) =>
+      'stock:${stock.name}';
+
+  static String _emojiGlobalThemeId(String emoji) => 'emoji:$emoji';
 
   ChatWallpaper? wallpaperFor(int chatId, {bool dark = false}) {
     final id = _id(chatId);
@@ -754,6 +813,183 @@ class ChatWallpaperController extends ChangeNotifier {
     ];
   }
 
+  Future<void> loadGlobalChatThemes() async {
+    _ingestEmojiThemes(_latestEmojiChatThemes());
+    for (final dark in const [false, true]) {
+      final key = _globalId(dark);
+      if (!_loadedGlobalChatThemeSelections.add(key)) continue;
+      try {
+        _globalChatThemeSelections[key] = (await _preferences()).getString(
+          _globalChatThemePreferenceKey(dark),
+        );
+      } catch (_) {
+        _globalChatThemeSelections[key] = null;
+      }
+    }
+    notifyListeners();
+  }
+
+  List<GlobalChatThemeOption> globalThemeOptions({
+    required bool dark,
+    bool resolvePatterns = false,
+  }) => [
+    _stockThemeOption(GlobalChatThemeStock.classic),
+    for (final theme in _emojiThemes[_activeSlot()] ?? const [])
+      ?_globalEmojiThemeOption(
+        theme,
+        dark: dark,
+        resolvePattern: resolvePatterns,
+      ),
+  ];
+
+  /// Telegram's four app-level built-ins are separate from the emoji chat
+  /// theme carousel. During automatic night mode the official client limits
+  /// this list to the dark built-ins.
+  List<GlobalChatThemeOption> stockGlobalThemeOptions({
+    bool autoNightModeTriggered = false,
+  }) => [
+    if (!autoNightModeTriggered)
+      _stockThemeOption(GlobalChatThemeStock.classic),
+    _stockThemeOption(GlobalChatThemeStock.dark),
+    if (!autoNightModeTriggered) _stockThemeOption(GlobalChatThemeStock.day),
+    _stockThemeOption(GlobalChatThemeStock.night),
+  ];
+
+  GlobalChatThemeOption globalThemeSelectionFor({required bool dark}) {
+    final options = globalThemeOptions(dark: dark);
+    final selectedId = _globalChatThemeSelections[_globalId(dark)];
+    if (selectedId != null) {
+      for (final option in options) {
+        if (option.id == selectedId) return option;
+      }
+    }
+    return options.firstWhere(
+      (option) => option.stock == GlobalChatThemeStock.classic,
+    );
+  }
+
+  bool hasExplicitGlobalThemeSelection({required bool dark}) =>
+      _globalChatThemeSelections[_globalId(dark)] != null;
+
+  ChatThemeStyle globalThemeStyleFor({required bool dark}) =>
+      globalThemeSelectionFor(dark: dark).style;
+
+  ChatWallpaper? globalThemeWallpaperFor({required bool dark}) {
+    final selection = globalThemeSelectionFor(dark: dark);
+    if (!selection.isOfficialEmoji) return selection.wallpaper;
+    final theme = (_emojiThemes[_activeSlot()] ?? const []).where(
+      (item) => item.str('name') == selection.emoji,
+    );
+    if (theme.isEmpty) return selection.wallpaper;
+    return _themeOption(
+      theme.first,
+      kind: ChatThemeKind.emoji,
+      dark: dark,
+    )?.wallpaper;
+  }
+
+  Future<void> setGlobalChatTheme(String? name, {required bool dark}) async {
+    final normalized = _normalizeGlobalThemeId(name);
+    if (normalized != null &&
+        !globalThemeOptions(
+          dark: dark,
+        ).any((option) => option.id == normalized)) {
+      throw ArgumentError.value(name, 'name', 'Unknown global chat theme');
+    }
+    final key = _globalId(dark);
+    _loadedGlobalChatThemeSelections.add(key);
+    _globalChatThemeSelections[key] = normalized;
+    final preferences = await _preferences();
+    if (normalized == null) {
+      await preferences.remove(_globalChatThemePreferenceKey(dark));
+    } else {
+      await preferences.setString(
+        _globalChatThemePreferenceKey(dark),
+        normalized,
+      );
+    }
+    notifyListeners();
+  }
+
+  String? _normalizeGlobalThemeId(String? name) {
+    final value = name?.trim();
+    if (value == null || value.isEmpty) return null;
+    if (value.startsWith('stock:') || value.startsWith('emoji:')) return value;
+    for (final stock in GlobalChatThemeStock.values) {
+      if (value == stock.name) return _stockGlobalThemeId(stock);
+    }
+    return _emojiGlobalThemeId(value);
+  }
+
+  GlobalChatThemeOption? _globalEmojiThemeOption(
+    Map<String, dynamic> theme, {
+    required bool dark,
+    required bool resolvePattern,
+  }) {
+    final option = _themeOption(
+      theme,
+      kind: ChatThemeKind.emoji,
+      dark: dark,
+      resolvePattern: resolvePattern,
+    );
+    if (option == null) return null;
+    return GlobalChatThemeOption(
+      id: _emojiGlobalThemeId(option.name),
+      label: option.name,
+      emoji: option.name,
+      wallpaper: option.wallpaper,
+      style: option.style,
+    );
+  }
+
+  GlobalChatThemeOption _stockThemeOption(GlobalChatThemeStock stock) {
+    final (label, background, outgoing, accent, dark) = switch (stock) {
+      GlobalChatThemeStock.classic => (
+        'Classic',
+        0xFFD9E8EA,
+        0xFF4FA3E3,
+        0xFF168ACD,
+        false,
+      ),
+      GlobalChatThemeStock.day => (
+        'Day',
+        0xFFE7F1F8,
+        0xFF3E9FE6,
+        0xFF168ACD,
+        false,
+      ),
+      GlobalChatThemeStock.dark => (
+        'Dark',
+        0xFF17212B,
+        0xFF2B5278,
+        0xFF6AB3F3,
+        true,
+      ),
+      GlobalChatThemeStock.night => (
+        'Night',
+        0xFF0E1621,
+        0xFF2B5278,
+        0xFF5AA7E8,
+        true,
+      ),
+    };
+    return GlobalChatThemeOption(
+      id: _stockGlobalThemeId(stock),
+      label: label,
+      stock: stock,
+      wallpaper: ChatWallpaper.telegram(
+        backgroundId: 0,
+        remoteType: 'fill',
+        colors: [background & 0x00FFFFFF],
+      ),
+      style: ChatThemeStyle(
+        outgoingColors: [outgoing & 0x00FFFFFF],
+        accentColor: accent & 0x00FFFFFF,
+        isDark: dark,
+      ),
+    );
+  }
+
   ChatWallpaper? themeWallpaper(
     String name, {
     ChatThemeKind kind = ChatThemeKind.emoji,
@@ -893,6 +1129,82 @@ class ChatWallpaperController extends ChangeNotifier {
     return _installedBackgrounds[key]!;
   }
 
+  List<ChatWallpaper> get savedBackgrounds =>
+      List.unmodifiable(_savedBackgrounds[_activeSlot()] ?? const []);
+
+  Future<List<ChatWallpaper>> loadSavedBackgrounds() async {
+    final slot = _activeSlot();
+    if (_loadedSavedBackgrounds.add(slot)) {
+      final values = <ChatWallpaper>[];
+      try {
+        final raw = (await _preferences()).getString(
+          _savedBackgroundsPreferenceKey(),
+        );
+        final decoded = raw == null ? null : jsonDecode(raw);
+        if (decoded is List) {
+          for (final item in decoded) {
+            if (item is! Map) continue;
+            final wallpaper = ChatWallpaper.fromJson(
+              item.map((key, value) => MapEntry(key.toString(), value)),
+            );
+            if (wallpaper != null && _canRememberWallpaper(wallpaper)) {
+              values.add(wallpaper);
+            }
+          }
+        }
+      } catch (_) {}
+      _savedBackgrounds[slot] = values;
+    }
+    return savedBackgrounds;
+  }
+
+  Future<void> saveBackground(ChatWallpaper wallpaper) =>
+      _rememberWallpaper(wallpaper, notify: true);
+
+  Future<void> removeSavedBackground(ChatWallpaper wallpaper) async {
+    await loadSavedBackgrounds();
+    final values = _savedBackgrounds[_activeSlot()] ?? <ChatWallpaper>[];
+    values.removeWhere(
+      (candidate) =>
+          _wallpaperMemoryKey(candidate) == _wallpaperMemoryKey(wallpaper),
+    );
+    await _persistSavedBackgrounds(values);
+    notifyListeners();
+  }
+
+  bool _canRememberWallpaper(ChatWallpaper wallpaper) =>
+      wallpaper.kind != ChatWallpaperKind.theme &&
+      wallpaper.remoteType != 'chatTheme';
+
+  String _wallpaperMemoryKey(ChatWallpaper wallpaper) {
+    if (wallpaper.backgroundId != 0) return 'remote:${wallpaper.backgroundId}';
+    return '${wallpaper.kind.name}:${wallpaper.presetId}:${wallpaper.imagePath}:'
+        '${wallpaper.remoteType}:${wallpaper.fileId}:${wallpaper.colors.join(',')}:'
+        '${wallpaper.rotationAngle}:${wallpaper.intensity}:${wallpaper.isInverted}';
+  }
+
+  Future<void> _rememberWallpaper(
+    ChatWallpaper wallpaper, {
+    bool notify = false,
+  }) async {
+    if (!_canRememberWallpaper(wallpaper)) return;
+    await loadSavedBackgrounds();
+    final values = _savedBackgrounds.putIfAbsent(_activeSlot(), () => []);
+    final key = _wallpaperMemoryKey(wallpaper);
+    values.removeWhere((candidate) => _wallpaperMemoryKey(candidate) == key);
+    values.insert(0, wallpaper);
+    if (values.length > 24) values.removeRange(24, values.length);
+    await _persistSavedBackgrounds(values);
+    if (notify) notifyListeners();
+  }
+
+  Future<void> _persistSavedBackgrounds(List<ChatWallpaper> values) async {
+    await (await _preferences()).setString(
+      _savedBackgroundsPreferenceKey(),
+      jsonEncode(values.map((wallpaper) => wallpaper.toJson()).toList()),
+    );
+  }
+
   ChatWallpaper? defaultWallpaper({required bool dark}) =>
       _defaultBackgrounds[_globalId(dark)];
 
@@ -937,6 +1249,9 @@ class ChatWallpaperController extends ChangeNotifier {
       _defaultBackgrounds[_globalId(dark)] =
           _parseBackground(response, dimming: payload.darkThemeDimming) ??
           wallpaper;
+      await _rememberWallpaper(
+        _defaultBackgrounds[_globalId(dark)] ?? wallpaper,
+      );
     }
     _installedBackgrounds.remove(_globalId(dark));
     notifyListeners();
@@ -955,14 +1270,29 @@ class ChatWallpaperController extends ChangeNotifier {
       );
     }
     final bot = await _photoSearchBot();
-    final response = await _query({
-      '@type': 'getInlineQueryResults',
-      'bot_user_id': bot.$2,
-      'chat_id': bot.$3,
-      'user_location': null,
-      'query': trimmed,
-      'offset': offset,
-    });
+    Map<String, dynamic>? response;
+    Object? lastError;
+    // TDLib normally accepts the bot's private chat here. Accounts that have
+    // never opened that dialog can still query the same inline bot with an
+    // unspecified chat, so try both contexts before reporting a failure.
+    for (final chatId in <int>{bot.$3, 0}) {
+      try {
+        response = await _query({
+          '@type': 'getInlineQueryResults',
+          'bot_user_id': bot.$2,
+          'chat_id': chatId,
+          'user_location': null,
+          'query': trimmed,
+          'offset': offset,
+        });
+        break;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    if (response == null) {
+      throw StateError('Wallpaper search failed: $lastError');
+    }
     final results = <ChatWallpaperSearchResult>[];
     for (final raw
         in response.objects('results') ?? const <Map<String, dynamic>>[]) {
@@ -1083,8 +1413,15 @@ class ChatWallpaperController extends ChangeNotifier {
         'only_for_self': onlyForSelf,
       });
     }
-    await _discardLocal(chatId);
-    await refresh(chatId);
+    // A successful mutation is authoritative. TDLib can briefly return the old
+    // chat from getChat immediately afterwards, which used to overwrite the
+    // new wallpaper and leave the open chat unchanged until it was reopened.
+    // Keep an optimistic explicit value; updateChatBackground will replace it
+    // with TDLib's normalized remote representation when available.
+    _serverBackgrounds[_id(chatId)] = wallpaper;
+    await _discardLocalSilently(chatId, notify: false);
+    if (wallpaper != null) await _rememberWallpaper(wallpaper);
+    notifyListeners();
   }
 
   Future<void> applyTheme(
@@ -1275,7 +1612,7 @@ class ChatWallpaperController extends ChangeNotifier {
         if (!_wallpaperFileKeys.contains(key)) return;
         final previous = _resolvedFilePaths[key];
         if (previous == path ||
-            previous?.toLowerCase().endsWith('.svg') == true) {
+            (previous != null && _isPreparedPatternPath(previous))) {
           return;
         }
         _resolvedFilePaths[key] = path;
@@ -1288,7 +1625,9 @@ class ChatWallpaperController extends ChangeNotifier {
     if (chatId == null) return;
     final id = _id(chatId);
     _chatTypes[id] = chat.obj('type')?.type;
-    _serverBackgrounds[id] = _parseChatBackground(chat.obj('background'));
+    final background = _parseChatBackground(chat.obj('background'));
+    _serverBackgrounds[id] = background;
+    if (background != null) unawaited(_rememberWallpaper(background));
     final theme = chat.obj('theme');
     _ingestCurrentGiftTheme(theme);
     _themeNames[id] = _chatThemeName(theme);
@@ -1302,10 +1641,9 @@ class ChatWallpaperController extends ChangeNotifier {
 
   void _ingestDefaultBackground(Map<String, dynamic> update) {
     final dark = update.boolean('for_dark_theme') ?? false;
-    _defaultBackgrounds[_globalId(dark)] = _parseBackground(
-      update.obj('background'),
-      dimming: 0,
-    );
+    final background = _parseBackground(update.obj('background'), dimming: 0);
+    _defaultBackgrounds[_globalId(dark)] = background;
+    if (background != null) unawaited(_rememberWallpaper(background));
   }
 
   void _ingestEmojiThemes(Map<String, dynamic>? update) {
@@ -1426,6 +1764,7 @@ class ChatWallpaperController extends ChangeNotifier {
       remoteType: remoteType,
       fileId: fileId,
       imagePath: resolvedPath,
+      backgroundName: background.str('name'),
       mimeType: document?.str('mime_type'),
       themeName: type?.str('theme_name'),
       colors: _fillColors(fill),
@@ -1468,8 +1807,7 @@ class ChatWallpaperController extends ChangeNotifier {
       final resolved = path == wallpaper.imagePath
           ? wallpaper
           : wallpaper.withImagePath(path);
-      if (wallpaper.remoteType != 'pattern' ||
-          path.toLowerCase().endsWith('.svg')) {
+      if (wallpaper.remoteType != 'pattern' || _isPreparedPatternPath(path)) {
         return resolved;
       }
       _scheduleFileResolution(resolved);
@@ -1485,10 +1823,10 @@ class ChatWallpaperController extends ChangeNotifier {
     _wallpaperFileKeys.add(key);
     final current = _resolvedFilePaths[key];
     if (wallpaper.remoteType == 'pattern') {
-      if (current?.toLowerCase().endsWith('.svg') == true) return;
+      if (current != null && _isPreparedPatternPath(current)) return;
       final embedded = wallpaper.imagePath;
-      if (embedded?.toLowerCase().endsWith('.svg') == true) {
-        _resolvedFilePaths.putIfAbsent(key, () => embedded!);
+      if (embedded != null && _isPreparedPatternPath(embedded)) {
+        _resolvedFilePaths.putIfAbsent(key, () => embedded);
         return;
       }
     } else if (current != null && current.isNotEmpty) {
@@ -1503,32 +1841,86 @@ class ChatWallpaperController extends ChangeNotifier {
         }
         if (path == null || path.isEmpty) return;
         if (wallpaper.remoteType == 'pattern') {
-          path = await _preparePatternSvg(wallpaper.fileId, path);
+          path = await _queuePatternPreparation(
+            () => _preparePatternFile(wallpaper.fileId, path!),
+          );
         }
         if (_resolvedFilePaths[key] != path) {
           _resolvedFilePaths[key] = path;
           notifyListeners();
         }
+      } catch (_) {
+        // File preparation is opportunistic. A raw preview can remain visible
+        // when storage/plugins are unavailable (notably widget tests).
       } finally {
         _resolvingFiles.remove(key);
       }
     }());
   }
 
-  Future<String> _preparePatternSvg(int fileId, String sourcePath) async {
-    if (sourcePath.toLowerCase().endsWith('.svg')) return sourcePath;
-    final source = File(sourcePath);
-    final bytes = await source.readAsBytes();
-    final decoded = bytes.length >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b
-        ? GZipDecoder().decodeBytes(bytes)
-        : bytes;
+  Future<String> _queuePatternPreparation(Future<String> Function() operation) {
+    final result = Completer<String>();
+    _patternPreparationTail = _patternPreparationTail.then((_) async {
+      try {
+        result.complete(await operation());
+      } catch (error, stackTrace) {
+        result.completeError(error, stackTrace);
+      }
+    });
+    return result.future;
+  }
+
+  Future<String> _preparePatternFile(int fileId, String sourcePath) async {
+    if (_isRasterizedPatternPath(sourcePath)) return sourcePath;
     final support = await _supportDirectory();
     final folder = Directory(
       '${support.path}/chat_wallpapers/${_activeSlot()}/telegram',
     );
     await folder.create(recursive: true);
-    final destination = File('${folder.path}/pattern_$fileId.svg');
-    await destination.writeAsBytes(decoded, flush: true);
+    // Cache the rendered transparent mask rather than only the normalized SVG.
+    // Image.file then shares Flutter's in-memory image cache across previews
+    // and chats, while this file avoids parsing/rasterizing again after restart.
+    final destination = File('${folder.path}/pattern_raster_v1_$fileId.png');
+    if (await destination.exists() && await destination.length() > 0) {
+      return destination.path;
+    }
+
+    // Reuse the normalized v4 document left by an earlier build as the source
+    // for this one-time raster migration.
+    var source = File(sourcePath);
+    for (final extension in const ['png', 'svg']) {
+      final prepared = File(
+        '${folder.path}/pattern_document_v4_$fileId.$extension',
+      );
+      if (await prepared.exists() && await prepared.length() > 0) {
+        source = prepared;
+        break;
+      }
+    }
+    final bytes = await source.readAsBytes();
+    final isGzip = bytes.length >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b;
+    final decoded = isGzip ? GZipDecoder().decodeBytes(bytes) : bytes;
+    final isPng =
+        decoded.length >= 8 &&
+        decoded[0] == 0x89 &&
+        decoded[1] == 0x50 &&
+        decoded[2] == 0x4e &&
+        decoded[3] == 0x47;
+    // Telegram's pattern documents are authored as the final alpha mask. In
+    // particular, the official Paris asset already contains fine, rounded
+    // `fill:none` strokes. flutter_svg does not resolve the Illustrator CSS
+    // class blocks used by these files, so preserve the authored declarations
+    // by moving them onto each element instead of inventing new fill/stroke
+    // rules. PNG payloads are already directly renderable.
+    if (isPng) {
+      await destination.writeAsBytes(decoded, flush: true);
+    } else {
+      final sourceSvg = utf8.decode(decoded, allowMalformed: true);
+      await destination.writeAsBytes(
+        await _rasterizePatternSvg(inlineTelegramPatternSvgStyles(sourceSvg)),
+        flush: true,
+      );
+    }
     return destination.path;
   }
 
@@ -1567,14 +1959,28 @@ class ChatWallpaperController extends ChangeNotifier {
           darkThemeDimming: 30,
         );
       case ChatWallpaperKind.telegram:
+        Map<String, dynamic>? background;
+        if (wallpaper.backgroundId != 0 &&
+            wallpaper.remoteType != 'chatTheme') {
+          background = {
+            '@type': 'inputBackgroundRemote',
+            'background_id': wallpaper.backgroundId,
+          };
+        } else if (wallpaper.remoteType == 'wallpaper' &&
+            (wallpaper.imagePath ?? '').isNotEmpty) {
+          // Imported `.attheme` / `.tgios-theme` wallpapers are represented as
+          // Telegram wallpapers so their theme metadata survives. They don't
+          // have a remote background id, though, and must be uploaded from the
+          // extracted local image instead of asking TDLib to invent an empty
+          // wallpaper for a null input background.
+          final path = await _prepareWallpaperJpeg(wallpaper.imagePath!);
+          background = {
+            '@type': 'inputBackgroundLocal',
+            'background': {'@type': 'inputFileLocal', 'path': path},
+          };
+        }
         return _WallpaperRequestPayload(
-          background:
-              wallpaper.backgroundId == 0 || wallpaper.remoteType == 'chatTheme'
-              ? null
-              : {
-                  '@type': 'inputBackgroundRemote',
-                  'background_id': wallpaper.backgroundId,
-                },
+          background: background,
           type: _backgroundTypePayload(wallpaper),
           darkThemeDimming: wallpaper.darkThemeDimming,
         );
@@ -1800,6 +2206,7 @@ class ChatWallpaperBackground extends StatelessWidget {
 
   Widget _telegramBackground(BuildContext context, ChatWallpaper value) {
     final fill = _fillDecoration(value.colors, value.rotationAngle);
+    final hasFreeformGradient = value.colors.length >= 3;
     final path = value.imagePath;
     final hasFile = path != null && path.isNotEmpty;
     final invertedPattern =
@@ -1817,6 +2224,8 @@ class ChatWallpaperBackground extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
+          if (!invertedPattern && hasFreeformGradient)
+            _TelegramFreeformGradient(colors: value.colors),
           if (value.remoteType == 'wallpaper' && hasFile)
             _wallpaperEffects(
               value,
@@ -1839,17 +2248,11 @@ class ChatWallpaperBackground extends StatelessWidget {
                 child: Opacity(
                   opacity: (value.intensity.abs().clamp(0, 100) / 100)
                       .toDouble(),
-                  child: SvgPicture.file(
-                    File(path),
-                    fit: BoxFit.cover,
-                    renderingStrategy: RenderingStrategy.raster,
-                    colorFilter: ColorFilter.mode(
-                      invertedPattern
-                          ? _representativeFillColor(value.colors)
-                          : const Color(0xFF000000),
-                      BlendMode.srcIn,
-                    ),
-                    errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                  child: _patternDocument(
+                    path,
+                    color: invertedPattern
+                        ? _representativeFillColor(value.colors)
+                        : const Color(0xFF000000),
                   ),
                 ),
               ),
@@ -1858,6 +2261,39 @@ class ChatWallpaperBackground extends StatelessWidget {
           if (value.remoteType == 'wallpaper') ColoredBox(color: imageScrim),
           ?child,
         ],
+      ),
+    );
+  }
+
+  Widget _patternDocument(String path, {required Color color}) {
+    final file = File(path);
+    if (path.toLowerCase().endsWith('.png')) {
+      return ClipRect(
+        child: Transform.scale(
+          // Telegram pattern documents sometimes carry a transparent edge.
+          // A tiny overscan prevents a one-pixel seam after aspect-fill.
+          scale: 1.012,
+          child: Image.file(
+            file,
+            fit: BoxFit.cover,
+            gaplessPlayback: true,
+            color: color,
+            colorBlendMode: BlendMode.srcIn,
+            errorBuilder: (_, _, _) => const SizedBox.shrink(),
+          ),
+        ),
+      );
+    }
+    return ClipRect(
+      child: Transform.scale(
+        scale: 1.012,
+        child: SvgPicture.file(
+          file,
+          fit: BoxFit.cover,
+          renderingStrategy: RenderingStrategy.raster,
+          colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+          errorBuilder: (_, _, _) => const SizedBox.shrink(),
+        ),
       ),
     );
   }
@@ -1888,47 +2324,244 @@ class _WallpaperMotion extends StatefulWidget {
 }
 
 class _WallpaperMotionState extends State<_WallpaperMotion>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: const Duration(seconds: 9),
-  )..repeat(reverse: true);
+    with WidgetsBindingObserver {
+  static const _samplePeriod = Duration(milliseconds: 33);
+  static const _filterResponse = 0.16;
+  static const _calibrationSampleCount = 4;
+
+  StreamSubscription<AccelerometerEvent>? _subscription;
+  Offset _offset = Offset.zero;
+  double? _filteredX;
+  double? _filteredY;
+  double _calibrationX = 0;
+  double _calibrationY = 0;
+  double? _baselineX;
+  double? _baselineY;
+  int _calibrationSamples = 0;
+  bool _sensorFailed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _startListening();
+  }
+
+  void _startListening() {
+    if (_subscription != null || _sensorFailed || !_supportsWallpaperTilt) {
+      return;
+    }
+    _resetCalibration();
+    try {
+      _subscription = accelerometerEventStream(samplingPeriod: _samplePeriod)
+          .listen(
+            _handleAccelerometerEvent,
+            onError: _handleSensorError,
+            onDone: () => _subscription = null,
+            cancelOnError: false,
+          );
+    } catch (error) {
+      _handleSensorError(error);
+    }
+  }
+
+  void _handleAccelerometerEvent(AccelerometerEvent event) {
+    final filteredX = _filteredX == null
+        ? event.x
+        : _filteredX! + (event.x - _filteredX!) * _filterResponse;
+    final filteredY = _filteredY == null
+        ? event.y
+        : _filteredY! + (event.y - _filteredY!) * _filterResponse;
+    _filteredX = filteredX;
+    _filteredY = filteredY;
+
+    if (_calibrationSamples < _calibrationSampleCount) {
+      _calibrationX += event.x;
+      _calibrationY += event.y;
+      _calibrationSamples++;
+      if (_calibrationSamples == _calibrationSampleCount) {
+        _baselineX = _calibrationX / _calibrationSampleCount;
+        _baselineY = _calibrationY / _calibrationSampleCount;
+      }
+      return;
+    }
+
+    final next = wallpaperParallaxOffset(
+      gravityX: filteredX,
+      gravityY: filteredY,
+      baselineX: _baselineX ?? filteredX,
+      baselineY: _baselineY ?? filteredY,
+    );
+    if (!mounted || (next - _offset).distance < 0.12) return;
+    setState(() => _offset = next);
+  }
+
+  void _handleSensorError(Object _) {
+    _sensorFailed = true;
+    _subscription?.cancel();
+    _subscription = null;
+    if (mounted && _offset != Offset.zero) {
+      setState(() => _offset = Offset.zero);
+    }
+  }
+
+  void _resetCalibration() {
+    _offset = Offset.zero;
+    _filteredX = null;
+    _filteredY = null;
+    _calibrationX = 0;
+    _calibrationY = 0;
+    _baselineX = null;
+    _baselineY = null;
+    _calibrationSamples = 0;
+  }
+
+  void _stopListening() {
+    final subscription = _subscription;
+    _subscription = null;
+    subscription?.cancel();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.resumed:
+        _sensorFailed = false;
+        _startListening();
+        break;
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.paused:
+      case AppLifecycleState.detached:
+        _stopListening();
+        _resetCalibration();
+        break;
+    }
+  }
 
   @override
   void dispose() {
-    _controller.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    _subscription?.cancel();
+    _subscription = null;
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      child: widget.child,
-      builder: (context, child) {
-        final phase = _controller.value * 2 - 1;
-        return Transform.translate(
-          offset: Offset(phase * 5, phase * -3),
-          child: child,
-        );
-      },
-    );
+    return Transform.translate(offset: _offset, child: widget.child);
   }
+}
+
+bool get _supportsWallpaperTilt =>
+    !kIsWeb &&
+    (defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS);
+
+/// Maps the gravity-vector change since a wallpaper was opened to a bounded
+/// parallax translation. The baseline keeps an upright phone centered just as
+/// a flat phone is, while real changes in device tilt move the wallpaper.
+@visibleForTesting
+Offset wallpaperParallaxOffset({
+  required double gravityX,
+  required double gravityY,
+  required double baselineX,
+  required double baselineY,
+  double maximumOffset = 10,
+  double fullTravelAcceleration = 3.5,
+}) {
+  if (!gravityX.isFinite ||
+      !gravityY.isFinite ||
+      !baselineX.isFinite ||
+      !baselineY.isFinite ||
+      maximumOffset <= 0 ||
+      fullTravelAcceleration <= 0) {
+    return Offset.zero;
+  }
+
+  double component(double gravity, double baseline) {
+    final normalized = ((gravity - baseline) / fullTravelAcceleration).clamp(
+      -1.0,
+      1.0,
+    );
+    return -normalized * maximumOffset;
+  }
+
+  return Offset(component(gravityX, baselineX), component(gravityY, baselineY));
 }
 
 BoxDecoration? _fillDecoration(List<int> colors, int rotationAngle) {
   if (colors.isEmpty) return null;
   final resolved = colors.map(_rgbColor).toList(growable: false);
   if (resolved.length == 1) return BoxDecoration(color: resolved.first);
-  final radians = rotationAngle * math.pi / 180;
-  final direction = Alignment(math.sin(radians), -math.cos(radians));
+  if (resolved.length >= 3) return null;
+  final (begin, end) = telegramLinearGradientAlignments(rotationAngle);
   return BoxDecoration(
-    gradient: LinearGradient(
-      begin: Alignment(-direction.x, -direction.y),
-      end: direction,
-      colors: resolved,
-    ),
+    gradient: LinearGradient(begin: begin, end: end, colors: resolved),
   );
+}
+
+/// TDLib's two-color gradients start at the top at zero degrees and rotate
+/// clockwise, matching Telegram iOS' Core Graphics wallpaper renderer.
+@visibleForTesting
+(Alignment, Alignment) telegramLinearGradientAlignments(int rotationAngle) {
+  final radians = rotationAngle * math.pi / 180;
+  final direction = Alignment(math.sin(radians), math.cos(radians));
+  return (Alignment(-direction.x, -direction.y), direction);
+}
+
+class _TelegramFreeformGradient extends StatelessWidget {
+  const _TelegramFreeformGradient({required this.colors});
+
+  final List<int> colors;
+
+  @override
+  Widget build(BuildContext context) => CustomPaint(
+    painter: _TelegramFreeformGradientPainter(colors),
+    size: Size.infinite,
+  );
+}
+
+class _TelegramFreeformGradientPainter extends CustomPainter {
+  const _TelegramFreeformGradientPainter(this.values);
+
+  final List<int> values;
+
+  static const _anchors = <Alignment>[
+    Alignment(-0.88, -0.82),
+    Alignment(0.92, -0.68),
+    Alignment(-0.58, 0.92),
+    Alignment(0.84, 0.78),
+  ];
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (values.isEmpty) return;
+    final colors = values.map(_rgbColor).toList(growable: false);
+    canvas.drawRect(Offset.zero & size, Paint()..color = colors.first);
+    final radius = math.max(size.width, size.height) * 0.86;
+    for (var index = 1; index < colors.length; index++) {
+      final anchor = _anchors[index % _anchors.length];
+      final center = Offset(
+        (anchor.x + 1) * size.width / 2,
+        (anchor.y + 1) * size.height / 2,
+      );
+      canvas.drawRect(
+        Offset.zero & size,
+        Paint()
+          ..shader = ui.Gradient.radial(
+            center,
+            radius,
+            [colors[index], colors[index].withValues(alpha: 0)],
+            const [0, 1],
+          ),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_TelegramFreeformGradientPainter oldDelegate) =>
+      !listEquals(values, oldDelegate.values);
 }
 
 Color _rgbColor(int value) => Color(0xFF000000 | (value & 0x00FFFFFF));
@@ -1940,4 +2573,121 @@ Color _representativeFillColor(List<int> colors) {
     color = Color.lerp(color, _rgbColor(colors[index]), 1 / (index + 1))!;
   }
   return color;
+}
+
+Future<List<int>> _rasterizePatternSvg(String source) async {
+  final pictureInfo = await vg.loadPicture(SvgStringLoader(source), null);
+  ui.Picture? scaledPicture;
+  ui.Image? raster;
+  try {
+    final sourceWidth =
+        pictureInfo.size.width.isFinite && pictureInfo.size.width > 0
+        ? pictureInfo.size.width
+        : 1024.0;
+    final sourceHeight =
+        pictureInfo.size.height.isFinite && pictureInfo.size.height > 0
+        ? pictureInfo.size.height
+        : 1024.0;
+    const targetLongEdge = 1536.0;
+    final scale = targetLongEdge / math.max(sourceWidth, sourceHeight);
+    final targetWidth = math.max(1, (sourceWidth * scale).round());
+    final targetHeight = math.max(1, (sourceHeight * scale).round());
+
+    final recorder = ui.PictureRecorder();
+    ui.Canvas(recorder)
+      ..scale(targetWidth / sourceWidth, targetHeight / sourceHeight)
+      ..drawPicture(pictureInfo.picture);
+    scaledPicture = recorder.endRecording();
+    raster = await scaledPicture.toImage(targetWidth, targetHeight);
+    final bytes = await raster.toByteData(format: ui.ImageByteFormat.png);
+    if (bytes == null) throw StateError('Could not rasterize pattern SVG');
+    return bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes);
+  } finally {
+    raster?.dispose();
+    scaledPicture?.dispose();
+    pictureInfo.picture.dispose();
+  }
+}
+
+bool _isRasterizedPatternPath(String path) {
+  final lower = path.toLowerCase();
+  return lower.contains('pattern_raster_v1_') && lower.endsWith('.png');
+}
+
+bool _isPreparedPatternPath(String path) {
+  final lower = path.toLowerCase();
+  return _isRasterizedPatternPath(path) ||
+      (lower.contains('pattern_document_v4_') && lower.endsWith('.png'));
+}
+
+/// `flutter_svg` intentionally supports presentation attributes but not the
+/// `<style>.st0{...}</style>` blocks emitted by Telegram's Illustrator assets.
+/// Inline those declarations without changing their authored values. Without
+/// this step classed paths fall back to SVG's black fill, which turns the
+/// official Paris line art into large silhouettes.
+@visibleForTesting
+String inlineTelegramPatternSvgStyles(String source) {
+  final styleBlocks = RegExp(
+    r'<style\b[^>]*>([\s\S]*?)<\/style\s*>',
+    caseSensitive: false,
+  );
+  final rules = <String, Map<String, String>>{};
+  for (final block in styleBlocks.allMatches(source)) {
+    final css = block.group(1) ?? '';
+    for (final rule in RegExp(r'([^{}]+)\{([^{}]*)\}').allMatches(css)) {
+      final declarations = <String, String>{};
+      for (final declaration in (rule.group(2) ?? '').split(';')) {
+        final separator = declaration.indexOf(':');
+        if (separator <= 0) continue;
+        final name = declaration.substring(0, separator).trim();
+        final value = declaration.substring(separator + 1).trim();
+        if (name.isNotEmpty && value.isNotEmpty) declarations[name] = value;
+      }
+      for (final selector in (rule.group(1) ?? '').split(',')) {
+        final match = RegExp(
+          r'^\.([A-Za-z_][\w-]*)$',
+        ).firstMatch(selector.trim());
+        if (match != null && declarations.isNotEmpty) {
+          rules[match.group(1)!] = declarations;
+        }
+      }
+    }
+  }
+  if (rules.isEmpty) return source;
+
+  final withoutStyles = source.replaceAll(styleBlocks, '');
+  final element = RegExp(
+    r'<([A-Za-z][\w:.-]*)(\s[^<>]*?)?\s*(\/?)>',
+    multiLine: true,
+  );
+  final classAttribute = RegExp(
+    r'''\bclass\s*=\s*(["'])(.*?)\1''',
+    caseSensitive: false,
+  );
+  return withoutStyles.replaceAllMapped(element, (match) {
+    final attributes = match.group(2) ?? '';
+    final classMatch = classAttribute.firstMatch(attributes);
+    if (classMatch == null) return match.group(0)!;
+    final declarations = <String, String>{};
+    for (final name in (classMatch.group(2) ?? '').split(RegExp(r'\s+'))) {
+      declarations.addAll(rules[name] ?? const <String, String>{});
+    }
+    if (declarations.isEmpty) return match.group(0)!;
+
+    var resultAttributes = attributes;
+    for (final entry in declarations.entries) {
+      final existing = RegExp(
+        '\\s${RegExp.escape(entry.key)}\\s*=\\s*(["\']).*?\\1',
+        caseSensitive: false,
+      );
+      final escaped = entry.value
+          .replaceAll('&', '&amp;')
+          .replaceAll('"', '&quot;');
+      final replacement = ' ${entry.key}="$escaped"';
+      resultAttributes = existing.hasMatch(resultAttributes)
+          ? resultAttributes.replaceFirst(existing, replacement)
+          : '$resultAttributes$replacement';
+    }
+    return '<${match.group(1)}$resultAttributes${match.group(3) ?? ''}>';
+  });
 }

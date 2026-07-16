@@ -519,14 +519,12 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
           padding: const EdgeInsets.symmetric(horizontal: 14),
           child: Row(
             children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                child: AppIcon(icon, size: 18, color: Colors.white),
+              SettingsIconTile(
+                icon: icon,
+                backgroundColor: color,
+                size: 32,
+                iconSize: 18,
+                radius: 9,
               ),
               const SizedBox(width: 14),
               Expanded(

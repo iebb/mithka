@@ -197,14 +197,16 @@ class _ChatThemeViewState extends State<ChatThemeView> {
     final style = _selection == null
         ? null
         : _controller.styleForTheme(_selection?.themeName ?? '', dark: _dark);
-    final global = context.watch<ThemeController>().cloudTheme;
+    final global = context.watch<ThemeController>().cloudThemeFor(
+      _dark ? Brightness.dark : Brightness.light,
+    );
     final background = outgoing
         ? style?.outgoingColor ?? global?.outgoingColor ?? c.linkBlue
         : style?.incomingColor ?? global?.incomingColor ?? c.bubbleIncoming;
     final foreground = outgoing
         ? style?.outgoingTextColor ??
               global?.outgoingTextColor ??
-              const Color(0xFFFFFFFF)
+              readableForeground(background)
         : style?.incomingTextColor ??
               global?.incomingTextColor ??
               c.bubbleIncomingText;

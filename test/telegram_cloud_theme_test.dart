@@ -6,6 +6,7 @@ import 'package:archive/archive.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/chat_wallpaper.dart';
+import 'package:mithka/theme/app_theme.dart';
 import 'package:mithka/theme/telegram_cloud_theme.dart';
 import 'package:mithka/theme/theme_controller.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -88,6 +89,26 @@ chat_outBubble=#fff3b4bd
     ]);
   });
 
+  test('parses macOS palette metadata, alpha, and outgoing gradient', () {
+    final parsed = parseTelegramThemeFile(
+      TelegramThemePlatform.macos,
+      Uint8List.fromList(
+        utf8.encode('''
+isDark=1
+background=101820
+grayText=8e8e93:0.5
+bubbleBackground_outgoing=d8f3ff,8ad4ef
+'''),
+      ),
+    )!;
+
+    expect(parsed.palette['dark'], 1);
+    expect(parsed.palette['background'], 0x101820);
+    expect(parsed.palette['grayText'], 0x808E8E93);
+    expect(parsed.palette['bubbleBackground_outgoing'], 0xD8F3FF);
+    expect(parsed.palette['bubbleBackgroundGradient_outgoing'], 0x8AD4EF);
+  });
+
   test('parses Desktop archive colors, aliases, alpha, and tiled image', () {
     final archive = Archive()
       ..addFile(
@@ -116,45 +137,89 @@ windowShadowFg: #01020380;
     expect(parsed.wallpaperExtension, '.jpg');
   });
 
-  test('cloud theme loader prefers iOS then Android then Desktop', () async {
-    final root = await Directory.systemTemp.createTemp('mithka_theme_order');
-    addTearDown(() => root.delete(recursive: true));
-    final ios = File('${root.path}/theme.tgios-theme');
-    final android = File('${root.path}/theme.attheme');
-    final desktop = File('${root.path}/theme.tdesktop-theme');
-    await ios.writeAsString(_iosTheme);
-    await android.writeAsString('''
+  test(
+    'cloud theme loader merges Android then iOS, macOS, and Desktop',
+    () async {
+      final root = await Directory.systemTemp.createTemp('mithka_theme_order');
+      addTearDown(() => root.delete(recursive: true));
+      final ios = File('${root.path}/theme.tgios-theme');
+      final android = File('${root.path}/theme.attheme');
+      final macos = File('${root.path}/theme.palette');
+      final desktop = File('${root.path}/theme.tdesktop-theme');
+      await ios.writeAsString(_iosTheme);
+      await android.writeAsString('''
 windowBackgroundWhite=#ff334455
 chat_inBubble=#ff445566
 chat_outBubble=#ff556677
+avatar_nameInMessageRed=#ff112233
 ''');
-    final desktopArchive = Archive()
-      ..addFile(
-        ArchiveFile.string(
-          'colors.tdesktop-theme',
-          'windowBg: #667788; msgInBg: #778899; msgOutBg: #8899aa;',
-        ),
-      );
-    await desktop.writeAsBytes(ZipEncoder().encode(desktopArchive)!);
+      await macos.writeAsString('groupPeerNameOrange=cc7722');
+      final desktopArchive = Archive()
+        ..addFile(
+          ArchiveFile.string(
+            'colors.tdesktop-theme',
+            'windowBg: #667788; msgInBg: #778899; msgOutBg: #8899aa;',
+          ),
+        );
+      await desktop.writeAsBytes(ZipEncoder().encode(desktopArchive)!);
 
+      final service = TelegramCloudThemeService(
+        query: (_) async => _themePreview([
+          _themeDocument(3, 'theme.tdesktop-theme', 'tgtheme-tdesktop'),
+          _themeDocument(4, 'theme.palette', 'tgtheme-macos'),
+          _themeDocument(2, 'theme.attheme', 'tgtheme-android'),
+          _themeDocument(1, 'theme.tgios-theme', 'tgtheme-ios'),
+        ]),
+        filePath: (id) async =>
+            {1: ios.path, 2: android.path, 3: desktop.path, 4: macos.path}[id],
+        supportDirectory: () async => root,
+      );
+
+      final theme = await service.load(
+        'https://t.me/addtheme/MountainSolitude',
+      );
+
+      expect(theme.palette['list.plainBg'], 0x101820);
+      expect(theme.incomingColor?.toARGB32(), 0xFF445566);
+      expect(theme.outgoingColor?.toARGB32(), 0xFF556677);
+      expect(theme.incomingTextColor?.toARGB32(), 0xFFF2F5F7);
+      expect(theme.outgoingTextColor?.toARGB32(), 0xFF101820);
+      expect(
+        theme.uiColors.pinnedRow.toARGB32(),
+        theme.uiColors.background.toARGB32(),
+      );
+      expect(theme.senderNameColors[0].toARGB32(), 0xFF112233);
+      expect(theme.senderNameColors[1].toARGB32(), 0xFFCC7722);
+      expect(theme.semanticUiPreviewColors, hasLength(8));
+    },
+  );
+
+  test('telegram.me theme links resolve exactly like t.me links', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'mithka_telegram_me_theme',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final ios = File('${root.path}/theme.tgios-theme');
+    await ios.writeAsString(_iosTheme);
+    String? resolvedLink;
     final service = TelegramCloudThemeService(
-      query: (_) async => _themePreview([
-        _themeDocument(3, 'theme.tdesktop-theme', 'tgtheme-tdesktop'),
-        _themeDocument(2, 'theme.attheme', 'tgtheme-android'),
-        _themeDocument(1, 'theme.tgios-theme', 'tgtheme-ios'),
-      ]),
-      filePath: (id) async =>
-          {1: ios.path, 2: android.path, 3: desktop.path}[id],
+      query: (request) async {
+        resolvedLink =
+            (request['text'] as Map<String, dynamic>)['text'] as String?;
+        return _themePreview([
+          _themeDocument(1, 'theme.tgios-theme', 'tgtheme-ios'),
+        ]);
+      },
+      filePath: (_) async => ios.path,
       supportDirectory: () async => root,
     );
 
-    final theme = await service.load('https://t.me/addtheme/MountainSolitude');
+    final theme = await service.load(
+      'https://telegram.me/addtheme/MountainSolitude',
+    );
 
-    expect(theme.palette['list.plainBg'], 0x101820);
-    expect(theme.incomingColor?.toARGB32(), 0xFF22313B);
-    expect(theme.outgoingColor?.toARGB32(), 0xFFF3B4BD);
-    expect(theme.incomingTextColor?.toARGB32(), 0xFFF2F5F7);
-    expect(theme.outgoingTextColor?.toARGB32(), 0xFF101820);
+    expect(resolvedLink, 'https://t.me/addtheme/MountainSolitude');
+    expect(theme.slug, 'MountainSolitude');
   });
 
   test(
@@ -297,12 +362,75 @@ msgOutBg: #f3b4bd;
     expect(theme.wallpaper?.imagePath, pattern.path);
   });
 
-  test('installed cloud themes persist and drive both bubble colors', () async {
+  test(
+    'resolves Mountain Solitude background link instead of a fallback',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'mithka_mountain_solitude_wallpaper',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      final ios = File('${root.path}/ios.tgios-theme');
+      await ios.writeAsString(
+        _iosTheme.replaceFirst(
+          'defaultWallpaper: builtin',
+          'defaultWallpaper: '
+              'https://t.me/bg/zzfjlRl4DFMBAAAAxcSJApVpL6g?mode=blur+motion',
+        ),
+      );
+      final photo = File('${root.path}/mountain.jpg')
+        ..writeAsBytesSync([0xFF, 0xD8, 0xFF, 0xD9]);
+      final requests = <Map<String, dynamic>>[];
+      final service = TelegramCloudThemeService(
+        query: (request) async {
+          requests.add(request);
+          if (request['@type'] == 'searchBackground') {
+            expect(request['name'], 'zzfjlRl4DFMBAAAAxcSJApVpL6g');
+            return {
+              '@type': 'background',
+              'id': '5984290053638062081',
+              'name': 'zzfjlRl4DFMBAAAAxcSJApVpL6g',
+              'document': {
+                '@type': 'document',
+                'mime_type': 'image/jpeg',
+                'document': {'@type': 'file', 'id': 12},
+              },
+              'type': {
+                '@type': 'backgroundTypeWallpaper',
+                'is_blurred': false,
+                'is_moving': false,
+              },
+            };
+          }
+          return _themePreview([
+            _themeDocument(1, 'ios.tgios-theme', 'tgtheme-ios'),
+          ]);
+        },
+        filePath: (id) async => id == 1 ? ios.path : photo.path,
+        supportDirectory: () async => root,
+      );
+
+      final theme = await service.load(
+        'https://t.me/addtheme/MountainSolitude',
+      );
+
+      expect(requests.map((request) => request['@type']), [
+        'getLinkPreview',
+        'searchBackground',
+      ]);
+      expect(theme.wallpaper?.backgroundId, 5984290053638062081);
+      expect(theme.wallpaper?.backgroundName, 'zzfjlRl4DFMBAAAAxcSJApVpL6g');
+      expect(theme.wallpaper?.imagePath, photo.path);
+      expect(theme.wallpaper?.isBlurred, isTrue);
+      expect(theme.wallpaper?.isMoving, isTrue);
+    },
+  );
+
+  test('Telegram UI palette is persisted but opt-in by default', () async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
     const theme = TelegramCloudTheme(
       slug: 'MountainSolitude',
-      title: 'Mountain Solitude',
+      rawTitle: 'Mountain Solitude',
       baseTheme: 'builtInThemeNight',
       accentColorValue: 0xFF5F9EA0,
       outgoingColors: [0xFFF3B4BD],
@@ -321,27 +449,188 @@ msgOutBg: #f3b4bd;
     );
 
     final controller = ThemeController(prefs)..installCloudTheme(theme);
-    expect(controller.mode, AppearanceMode.dark);
-    expect(controller.cloudTheme?.slug, 'MountainSolitude');
+    expect(controller.mode, AppearanceMode.system);
+    expect(controller.darkCloudTheme?.slug, 'MountainSolitude');
+    expect(controller.lightCloudTheme, isNull);
+    expect(controller.installedCloudThemes.single.slug, 'MountainSolitude');
+    expect(controller.useTelegramThemeForUi, isFalse);
     expect(
-      controller.appColorsFor(Brightness.dark).bubbleIncoming.toARGB32(),
+      controller.uiColorsFor(Brightness.dark).bubbleIncoming.toARGB32(),
+      AppColors.dark.bubbleIncoming.toARGB32(),
+    );
+    expect(controller.darkCloudTheme?.incomingColor?.toARGB32(), 0xFF22313B);
+
+    controller.useTelegramThemeForUi = true;
+    expect(controller.mode, AppearanceMode.system);
+    expect(controller.useTelegramThemeForUi, isTrue);
+    expect(
+      controller.uiColorsFor(Brightness.dark).bubbleIncoming.toARGB32(),
       0xFF22313B,
     );
     expect(
-      controller.appColorsFor(Brightness.light).background.toARGB32(),
-      0xFF101820,
+      controller.uiColorsFor(Brightness.light).background.toARGB32(),
+      AppColors.light.background.toARGB32(),
+    );
+
+    controller.themingEnabled = false;
+    expect(controller.useTelegramThemeForUi, isFalse);
+    expect(
+      controller.uiColorsFor(Brightness.dark).bubbleIncoming.toARGB32(),
+      AppColors.dark.bubbleIncoming.toARGB32(),
+    );
+    controller.themingEnabled = true;
+    expect(controller.useTelegramThemeForUi, isTrue);
+    expect(
+      controller.uiColorsFor(Brightness.dark).bubbleIncoming.toARGB32(),
+      0xFF22313B,
     );
 
     final restored = ThemeController(prefs);
-    expect(restored.cloudTheme?.slug, 'MountainSolitude');
-    expect(restored.cloudTheme?.outgoingColor?.toARGB32(), 0xFFF3B4BD);
-    expect(restored.cloudTheme?.incomingColor?.toARGB32(), 0xFF22313B);
-    expect(restored.cloudTheme?.wallpaper?.colors, [0x101820]);
+    expect(restored.darkCloudTheme?.slug, 'MountainSolitude');
+    expect(restored.useTelegramThemeForUi, isTrue);
+    expect(restored.darkCloudTheme?.outgoingColor?.toARGB32(), 0xFFF3B4BD);
+    expect(restored.darkCloudTheme?.incomingColor?.toARGB32(), 0xFF22313B);
+    expect(restored.darkCloudTheme?.wallpaper?.colors, [0x101820]);
 
-    restored.clearCloudTheme();
-    expect(restored.cloudTheme, isNull);
+    restored.useTelegramThemeForUi = false;
+    expect(restored.darkCloudTheme?.slug, 'MountainSolitude');
     expect(restored.mode, AppearanceMode.system);
     expect(restored.brandColor.toARGB32(), 0xFF0099FF);
+    expect(
+      restored.uiColorsFor(Brightness.dark).background.toARGB32(),
+      AppColors.dark.background.toARGB32(),
+    );
+
+    restored.clearCloudTheme();
+    expect(restored.hasCloudTheme, isFalse);
+    expect(restored.useTelegramThemeForUi, isFalse);
+    expect(restored.mode, AppearanceMode.system);
+    expect(restored.brandColor.toARGB32(), 0xFF0099FF);
+  });
+
+  test('light and dark cloud theme slots persist independently', () async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    const dayTheme = TelegramCloudTheme(
+      slug: 'DayTheme',
+      rawTitle: 'Day Theme',
+      baseTheme: 'builtInThemeDay',
+      accentColorValue: 0xFF007AFF,
+      outgoingColors: [0xFFDCF8C6],
+      palette: {'list.plainBg': 0xFFF8F5ED, 'list.primaryText': 0xFF171717},
+    );
+    const nightTheme = TelegramCloudTheme(
+      slug: 'NightTheme',
+      rawTitle: 'Night Theme',
+      baseTheme: 'builtInThemeNight',
+      accentColorValue: 0xFFF3B4BD,
+      outgoingColors: [0xFFF3B4BD],
+      palette: {'list.plainBg': 0xFF101820, 'list.primaryText': 0xFFF2F5F7},
+    );
+
+    final controller = ThemeController(prefs)
+      ..installCloudTheme(dayTheme, brightness: Brightness.light)
+      ..installCloudTheme(nightTheme, brightness: Brightness.dark);
+    controller.useTelegramThemeForUi = true;
+
+    expect(controller.lightCloudTheme?.slug, 'DayTheme');
+    expect(controller.darkCloudTheme?.slug, 'NightTheme');
+    expect(controller.installedCloudThemes.map((theme) => theme.slug), [
+      'DayTheme',
+      'NightTheme',
+    ]);
+    expect(
+      controller.uiColorsFor(Brightness.light).background.toARGB32(),
+      0xFFF8F5ED,
+    );
+    expect(
+      controller.uiColorsFor(Brightness.dark).background.toARGB32(),
+      0xFF101820,
+    );
+
+    // Reinstalling updates the library entry instead of duplicating it.
+    controller.installCloudTheme(
+      const TelegramCloudTheme(
+        slug: 'DayTheme',
+        rawTitle: 'Updated Day Theme',
+        baseTheme: 'builtInThemeDay',
+        accentColorValue: 0xFF007AFF,
+        outgoingColors: [0xFFDCF8C6],
+        palette: {'list.plainBg': 0xFFFFFFFF},
+      ),
+      brightness: Brightness.light,
+    );
+    expect(controller.installedCloudThemes.length, 2);
+    expect(controller.installedCloudThemes.last.rawTitle, 'Updated Day Theme');
+
+    final restored = ThemeController(prefs);
+    expect(restored.useTelegramThemeForUi, isTrue);
+    expect(restored.lightCloudTheme?.rawTitle, 'Updated Day Theme');
+    expect(restored.darkCloudTheme?.slug, 'NightTheme');
+    expect(restored.installedCloudThemes.length, 2);
+
+    restored.clearCloudTheme(Brightness.light);
+    expect(restored.lightCloudTheme, isNull);
+    expect(restored.darkCloudTheme?.slug, 'NightTheme');
+    expect(restored.useTelegramThemeForUi, isTrue);
+  });
+
+  test('theme accent and pinned row always resolve semantic colors', () {
+    const theme = TelegramCloudTheme(
+      slug: 'ReadableTheme',
+      rawTitle: 'Readable Theme',
+      baseTheme: 'builtInThemeNight',
+      accentColorValue: 0xFFF3B4BD,
+      outgoingColors: [0xFFF3B4BD],
+      palette: {'list.plainBg': 0xFF101820, 'chats_pinnedOverlay': 0xFF18263B},
+    );
+
+    expect(theme.uiColors.pinnedRow.toARGB32(), 0xFF18263B);
+    expect(theme.uiColors.onAccent.toARGB32(), 0xFF171717);
+    expect(readableForeground(const Color(0xFFF3B4BD)).toARGB32(), 0xFF171717);
+    expect(readableForeground(const Color(0xFF101820)).toARGB32(), 0xFFFFFFFF);
+  });
+
+  test(
+    'built-in tint updates reusable UI accent and survives persistence',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final controller = ThemeController(prefs);
+      final tinted = builtInTelegramCloudThemes.first.withBuiltInAccent(
+        const Color(0xFFFF9500),
+      );
+
+      controller.installCloudTheme(tinted, brightness: Brightness.light);
+      controller.useTelegramThemeForUi = true;
+      final restored = ThemeController(prefs);
+
+      expect(restored.lightCloudTheme?.accentColor.toARGB32(), 0xFFFF9500);
+      expect(
+        restored.uiColorsFor(Brightness.light).linkBlue.toARGB32(),
+        0xFFFF9500,
+      );
+      expect(restored.useTelegramThemeForUi, isTrue);
+    },
+  );
+
+  test('community attheme tint remains immutable', () {
+    const community = TelegramCloudTheme(
+      slug: 'MountainSolitude',
+      rawTitle: 'Mountain Solitude',
+      baseTheme: 'builtInThemeDay',
+      accentColorValue: 0x2481CC,
+      outgoingColors: [0xD8F3FF],
+      palette: {'list.accent': 0x2481CC},
+    );
+
+    expect(
+      identical(
+        community,
+        community.withBuiltInAccent(const Color(0xFFFF9500)),
+      ),
+      isTrue,
+    );
   });
 }
 

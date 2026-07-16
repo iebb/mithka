@@ -10,12 +10,12 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:mithka/l10n/app_localizations.dart';
+import 'package:mithka/notifications/scope_notification_settings.dart';
 
 import '../config/secrets.dart';
 import '../settings/api_credentials_config.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
-import 'package:mithka/notifications/scope_notification_settings.dart';
 import 'account_backup_service.dart';
 import 'review_login_code_service.dart';
 

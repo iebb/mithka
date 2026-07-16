@@ -10,9 +10,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
+import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../chats/search_view.dart';
+import '../components/app_icons.dart';
 import '../components/confirm_dialog.dart';
 import '../components/toast.dart';
 import '../settings/proxy_config.dart';
@@ -20,8 +22,10 @@ import '../settings/proxy_view.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
+import '../theme/app_theme.dart';
 import '../theme/telegram_cloud_theme.dart';
 import '../theme/telegram_cloud_theme_view.dart';
+import '../theme/theme_controller.dart';
 import 'chat_picker_view.dart';
 import 'chat_view.dart';
 import 'sticker_set_detail_view.dart';
@@ -156,6 +160,9 @@ Future<void> _openCloudTheme(
   NavigatorState nav,
   String link,
 ) async {
+  if (!await ensureThemingEnabledForThemeLink(context) || !context.mounted) {
+    return;
+  }
   try {
     final theme = await TelegramCloudThemeService().load(link);
     if (!context.mounted || !nav.mounted) return;
@@ -172,6 +179,154 @@ Future<void> _openCloudTheme(
       showToast(context, AppStringKeys.cloudThemeLoadFailed);
     }
   }
+}
+
+@visibleForTesting
+Future<bool> ensureThemingEnabledForThemeLink(BuildContext context) async {
+  final themeController = context.read<ThemeController>();
+  if (themeController.themingEnabled) return true;
+  final enable = await _promptEnableTheming(context);
+  if (!context.mounted || !enable) return false;
+  themeController.themingEnabled = true;
+  return true;
+}
+
+Future<bool> _promptEnableTheming(BuildContext context) async {
+  final enabled = await showGeneralDialog<bool>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: AppStringKeys.countryPickerCancel.l10n(context),
+    barrierColor: const Color(0x66000000),
+    transitionDuration: const Duration(milliseconds: 160),
+    pageBuilder: (_, _, _) => const _EnableThemingDialog(),
+    transitionBuilder: (_, animation, _, child) => FadeTransition(
+      opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
+      child: ScaleTransition(
+        scale: Tween(begin: 0.96, end: 1.0).animate(animation),
+        child: child,
+      ),
+    ),
+  );
+  return enabled ?? false;
+}
+
+class _EnableThemingDialog extends StatelessWidget {
+  const _EnableThemingDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return SafeArea(
+      child: Center(
+        child: Container(
+          width: 340,
+          margin: const EdgeInsets.all(24),
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+          decoration: BoxDecoration(
+            color: c.card,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x30000000),
+                blurRadius: 28,
+                offset: Offset(0, 12),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: c.linkBlue.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(11),
+                    ),
+                    child: AppIcon(
+                      HeroAppIcons.palette,
+                      size: 20,
+                      color: c.linkBlue,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      AppStringKeys.themeEnablePromptTitle.l10n(context),
+                      style: AppTextStyle.title(
+                        c.textPrimary,
+                        weight: AppTextWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Text(
+                AppStringKeys.themeEnablePromptMessage.l10n(context),
+                style: AppTextStyle.body(c.textSecondary).copyWith(height: 1.4),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  _ThemeDialogAction(
+                    label: AppStringKeys.countryPickerCancel.l10n(context),
+                    foreground: c.textSecondary,
+                    onTap: () => Navigator.of(context).pop(false),
+                  ),
+                  const SizedBox(width: 8),
+                  _ThemeDialogAction(
+                    label: AppStringKeys.themeEnablePromptAction.l10n(context),
+                    foreground: c.onAccent,
+                    fill: c.linkBlue,
+                    onTap: () => Navigator.of(context).pop(true),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ThemeDialogAction extends StatelessWidget {
+  const _ThemeDialogAction({
+    required this.label,
+    required this.foreground,
+    required this.onTap,
+    this.fill,
+  });
+
+  final String label;
+  final Color foreground;
+  final Color? fill;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    behavior: HitTestBehavior.opaque,
+    onTap: onTap,
+    child: Container(
+      height: 38,
+      alignment: Alignment.center,
+      padding: const EdgeInsets.symmetric(horizontal: 17),
+      decoration: BoxDecoration(
+        color: fill,
+        borderRadius: BorderRadius.circular(19),
+      ),
+      child: Text(
+        label,
+        style: AppTextStyle.callout(foreground, weight: AppTextWeight.semibold),
+      ),
+    ),
+  );
 }
 
 Future<bool> _openSettingsLink(

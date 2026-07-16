@@ -1,8 +1,13 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:archive/archive.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as image_lib;
 import 'package:mithka/chat/chat_wallpaper.dart';
+import 'package:mithka/chat/chat_wallpaper_view.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -19,6 +24,7 @@ void main() {
       backgroundId: 0,
       remoteType: 'wallpaper',
       imagePath: '/tmp/tiled.jpg',
+      backgroundName: 'MountainSolitude',
       isTiled: true,
     );
 
@@ -29,6 +35,124 @@ void main() {
       ChatWallpaper.fromJson(const {'kind': 'preset', 'preset_id': 'missing'}),
       isNull,
     );
+  });
+
+  test('image-backed wallpapers do not expose color customization', () {
+    expect(
+      wallpaperSupportsColorCustomization(
+        const ChatWallpaper.telegram(
+          backgroundId: 1,
+          remoteType: 'wallpaper',
+          imagePath: '/tmp/background.jpg',
+          colors: [0x123456, 0x654321],
+        ),
+      ),
+      isFalse,
+    );
+    expect(
+      wallpaperSupportsColorCustomization(
+        const ChatWallpaper.image('/tmp/background.jpg'),
+      ),
+      isFalse,
+    );
+    expect(
+      wallpaperSupportsColorCustomization(
+        const ChatWallpaper.telegram(
+          backgroundId: 2,
+          remoteType: 'pattern',
+          imagePath: '/tmp/pattern.png',
+        ),
+      ),
+      isTrue,
+    );
+  });
+
+  test(
+    'Theme wallpaper uses the active cloud theme when no override exists',
+    () {
+      final controller = ChatWallpaperController(
+        activeSlot: () => 0,
+        hasActiveClient: () => false,
+        listenForUpdates: false,
+      );
+      const mountain = ChatWallpaper.telegram(
+        backgroundId: 42,
+        remoteType: 'wallpaper',
+        imagePath: '/tmp/mountain-solitude.jpg',
+      );
+
+      expect(
+        effectiveThemeWallpaperForPicker(
+          controller: controller,
+          dark: true,
+          cloudThemeWallpaper: mountain,
+        ),
+        mountain,
+      );
+    },
+  );
+
+  test(
+    'cloud theme wallpaper outranks a legacy emoji theme preference',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        'mithka.globalChatTheme.v1.0:dark': 'emoji:👨‍🏫',
+      });
+      final controller = ChatWallpaperController(
+        activeSlot: () => 0,
+        hasActiveClient: () => false,
+        listenForUpdates: false,
+      );
+      await controller.loadGlobalChatThemes();
+      const mountain = ChatWallpaper.telegram(
+        backgroundId: 5984290053638062081,
+        backgroundName: 'zzfjlRl4DFMBAAAAxcSJApVpL6g',
+        remoteType: 'wallpaper',
+        imagePath: '/tmp/mountain-solitude.jpg',
+      );
+
+      expect(controller.hasExplicitGlobalThemeSelection(dark: true), isTrue);
+      expect(
+        effectiveThemeWallpaperForPicker(
+          controller: controller,
+          dark: true,
+          cloudThemeWallpaper: mountain,
+        ),
+        mountain,
+      );
+    },
+  );
+
+  test('custom gradients preserve colors and rotation independently', () {
+    const pattern = ChatWallpaper.telegram(
+      backgroundId: 91,
+      remoteType: 'pattern',
+      colors: [0x112233],
+      rotationAngle: 45,
+      fileId: 7,
+      imagePath: '/tmp/pattern.svg',
+    );
+
+    final customized = pattern
+        .withColors(const [0x445566, 0x778899])
+        .withRotationAngle(315);
+
+    expect(customized.colors, [0x445566, 0x778899]);
+    expect(customized.rotationAngle, 315);
+    expect(customized.fileId, 7);
+    expect(customized.imagePath, '/tmp/pattern.svg');
+  });
+
+  test('Telegram two-color gradients follow iOS rotation semantics', () {
+    final zero = telegramLinearGradientAlignments(0);
+    expect(zero.$1, Alignment.topCenter);
+    expect(zero.$2, Alignment.bottomCenter);
+
+    final clockwise = telegramLinearGradientAlignments(90);
+    expect(clockwise.$1.x, closeTo(-1, 0.0001));
+    expect(clockwise.$1.y, closeTo(0, 0.0001));
+    expect(clockwise.$2.x, closeTo(1, 0.0001));
+    expect(clockwise.$2.y, closeTo(0, 0.0001));
   });
 
   test('wallpapers are persisted per account and chat', () async {
@@ -336,6 +460,91 @@ void main() {
     expect(controller.defaultWallpaper(dark: false)?.isMoving, isTrue);
   });
 
+  test('uploads an extracted theme wallpaper without a remote id', () async {
+    SharedPreferences.setMockInitialValues({});
+    final root = await Directory.systemTemp.createTemp(
+      'mithka_embedded_theme_wallpaper',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final image = File('${root.path}/MountainSolitude.jpg');
+    await image.writeAsBytes(const [0xff, 0xd8, 0xff, 0xd9]);
+    final requests = <Map<String, dynamic>>[];
+    final controller = ChatWallpaperController(
+      activeSlot: () => 0,
+      hasActiveClient: () => true,
+      listenForUpdates: false,
+      query: (request) async {
+        requests.add(request);
+        return {
+          '@type': 'background',
+          'id': 321,
+          'name': 'MountainSolitude',
+          'type': request['type'],
+        };
+      },
+    );
+
+    await controller.applyDefaultWallpaper(
+      ChatWallpaper.telegram(
+        backgroundId: 0,
+        remoteType: 'wallpaper',
+        imagePath: image.path,
+        backgroundName: 'MountainSolitude',
+      ),
+      dark: true,
+    );
+
+    final request = requests.singleWhere(
+      (request) => request['@type'] == 'setDefaultBackground',
+    );
+    expect(request['for_dark_theme'], isTrue);
+    expect(request['background'], {
+      '@type': 'inputBackgroundLocal',
+      'background': {'@type': 'inputFileLocal', 'path': image.path},
+    });
+    expect(
+      controller.defaultWallpaper(dark: true)?.backgroundName,
+      'MountainSolitude',
+    );
+  });
+
+  test(
+    'confirmed chat wallpaper is visible without a stale getChat refresh',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      var getChatCount = 0;
+      final controller = ChatWallpaperController(
+        activeSlot: () => 0,
+        hasActiveClient: () => true,
+        listenForUpdates: false,
+        query: (request) async {
+          if (request['@type'] == 'getChat') {
+            getChatCount++;
+            return {
+              '@type': 'chat',
+              'id': 42,
+              'type': {'@type': 'chatTypePrivate', 'user_id': 7},
+              'background': null,
+              'theme': null,
+            };
+          }
+          return {'@type': 'ok'};
+        },
+      );
+      await controller.load(42);
+      const mountain = ChatWallpaper.telegram(
+        backgroundId: 321,
+        remoteType: 'wallpaper',
+        backgroundName: 'MountainSolitude',
+      );
+
+      await controller.applyWallpaper(42, mountain, onlyForSelf: true);
+
+      expect(getChatCount, 1);
+      expect(controller.wallpaperFor(42), mountain);
+    },
+  );
+
   test('searches wallpaper photos through the configured inline bot', () async {
     SharedPreferences.setMockInitialValues({});
     final requests = <Map<String, dynamic>>[];
@@ -404,6 +613,194 @@ void main() {
     expect(request['chat_id'], 77);
     expect(request['query'], 'blue mountain');
   });
+
+  test('wallpaper search retries without a chat context', () async {
+    SharedPreferences.setMockInitialValues({});
+    final inlineChatIds = <int>[];
+    final controller = ChatWallpaperController(
+      activeSlot: () => 0,
+      hasActiveClient: () => true,
+      listenForUpdates: false,
+      query: (request) async {
+        return switch (request['@type']) {
+          'getOption' => {'@type': 'optionValueString', 'value': '@pic'},
+          'searchPublicChat' => {
+            '@type': 'chat',
+            'id': 77,
+            'type': {'@type': 'chatTypePrivate', 'user_id': 88},
+          },
+          'getInlineQueryResults' => () {
+            final chatId = request['chat_id'] as int;
+            inlineChatIds.add(chatId);
+            if (chatId != 0) throw StateError('chat is not initialized');
+            return {
+              '@type': 'inlineQueryResults',
+              'next_offset': '',
+              'results': <Object>[],
+            };
+          }(),
+          _ => {'@type': 'ok'},
+        };
+      },
+    );
+
+    final page = await controller.searchBackgroundImages('blue');
+
+    expect(page.providerUsername, 'pic');
+    expect(page.results, isEmpty);
+    expect(inlineChatIds, [77, 0]);
+  });
+
+  test('installed PNG pattern documents are prepared and resolved', () async {
+    SharedPreferences.setMockInitialValues({});
+    final root = await Directory.systemTemp.createTemp(
+      'mithka_png_pattern_test',
+    );
+    addTearDown(() async {
+      if (await root.exists()) await root.delete(recursive: true);
+    });
+    final source = File('${root.path}/pattern-document');
+    await source.writeAsBytes(const [
+      0x89,
+      0x50,
+      0x4e,
+      0x47,
+      0x0d,
+      0x0a,
+      0x1a,
+      0x0a,
+    ]);
+    final controller = ChatWallpaperController(
+      activeSlot: () => 0,
+      hasActiveClient: () => true,
+      supportDirectory: () async => Directory('${root.path}/support'),
+      listenForUpdates: false,
+      query: (_) async => {
+        '@type': 'backgrounds',
+        'backgrounds': [
+          {
+            '@type': 'background',
+            'id': '51',
+            'name': 'Paris',
+            'document': {
+              '@type': 'document',
+              'mime_type': 'image/png',
+              'document': {
+                '@type': 'file',
+                'id': 71,
+                'local': {'@type': 'localFile', 'path': source.path},
+              },
+            },
+            'type': {
+              '@type': 'backgroundTypePattern',
+              'fill': {'@type': 'backgroundFillSolid', 'color': 0x224466},
+              'intensity': 45,
+              'is_inverted': false,
+              'is_moving': false,
+            },
+          },
+        ],
+      },
+    );
+
+    final pattern = (await controller.installedBackgrounds(dark: false)).single;
+    expect(pattern.backgroundName, 'Paris');
+    final resolved = Completer<void>();
+    controller.addListener(() {
+      if (!resolved.isCompleted) resolved.complete();
+    });
+    controller.resolvedWallpaper(pattern);
+    await resolved.future.timeout(const Duration(seconds: 2));
+
+    final prepared = controller.resolvedWallpaper(pattern);
+    expect(prepared.imagePath, endsWith('.png'));
+    expect(
+      await File(prepared.imagePath!).readAsBytes(),
+      await source.readAsBytes(),
+    );
+  });
+
+  test(
+    'official TGV line art is preserved and keeps compound interiors clear',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      const svg = '''<?xml version="1.0" encoding="utf-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <style>.line{fill:none;stroke:#000;stroke-width:4;stroke-linecap:round;stroke-linejoin:round}</style>
+  <path class="line" d="M10 10H90V90H10Z M30 30H70V70H30Z"/>
+</svg>''';
+      final root = await Directory.systemTemp.createTemp(
+        'mithka_tgv_pattern_test',
+      );
+      addTearDown(() async {
+        if (await root.exists()) await root.delete(recursive: true);
+      });
+      final source = File('${root.path}/pattern.tgv');
+      await source.writeAsBytes(GZipEncoder().encode(utf8.encode(svg))!);
+      final controller = ChatWallpaperController(
+        activeSlot: () => 0,
+        hasActiveClient: () => true,
+        supportDirectory: () async => Directory('${root.path}/support'),
+        listenForUpdates: false,
+        query: (_) async => {
+          '@type': 'backgrounds',
+          'backgrounds': [
+            {
+              '@type': 'background',
+              'id': '52',
+              'document': {
+                '@type': 'document',
+                'mime_type': 'application/x-tgwallpattern',
+                'document': {
+                  '@type': 'file',
+                  'id': 72,
+                  'local': {'@type': 'localFile', 'path': source.path},
+                },
+              },
+              'type': {
+                '@type': 'backgroundTypePattern',
+                'fill': {'@type': 'backgroundFillSolid', 'color': 0x224466},
+                'intensity': 45,
+                'is_inverted': false,
+                'is_moving': false,
+              },
+            },
+          ],
+        },
+      );
+
+      final pattern = (await controller.installedBackgrounds(
+        dark: false,
+      )).single;
+      final resolved = Completer<void>();
+      controller.addListener(() {
+        if (!resolved.isCompleted) resolved.complete();
+      });
+      controller.resolvedWallpaper(pattern);
+      await resolved.future.timeout(const Duration(seconds: 5));
+      final prepared = controller.resolvedWallpaper(pattern);
+      expect(prepared.imagePath, contains('pattern_raster_v1_'));
+      final rendered = image_lib.decodePng(
+        await File(prepared.imagePath!).readAsBytes(),
+      );
+      expect(rendered, isNotNull);
+      int alphaAt(int x, int y) {
+        final scaledX = (x * rendered!.width / 100).round().clamp(
+          0,
+          rendered.width - 1,
+        );
+        final scaledY = (y * rendered.height / 100).round().clamp(
+          0,
+          rendered.height - 1,
+        );
+        return rendered.getPixel(scaledX, scaledY).a.toInt();
+      }
+
+      expect(alphaAt(50, 10), greaterThan(0));
+      expect(alphaAt(20, 20), 0);
+      expect(alphaAt(50, 50), 0);
+    },
+  );
 
   test('uses live group boost features to gate custom wallpaper', () async {
     SharedPreferences.setMockInitialValues({});
@@ -556,7 +953,7 @@ void main() {
   });
 
   test(
-    'theme cards omit pattern documents and resolved SVGs stay settled',
+    'theme lists can defer patterns while full picker options retain them',
     () async {
       SharedPreferences.setMockInitialValues({});
       final root = await Directory.systemTemp.createTemp(
@@ -620,6 +1017,12 @@ void main() {
       controller.addListener(() => notifications++);
       final full = controller.availableThemes(dark: false).single;
       expect(full.wallpaper?.imagePath, pattern.path);
+      final fullGlobal = controller
+          .globalThemeOptions(dark: false, resolvePatterns: true)
+          .where((option) => option.emoji == '❄️')
+          .single;
+      expect(fullGlobal.wallpaper?.fileId, 44);
+      expect(fullGlobal.wallpaper?.imagePath, pattern.path);
       await Future<void>.delayed(Duration.zero);
       expect(notifications, 0);
     },
@@ -784,5 +1187,112 @@ void main() {
       '@type': 'backgroundTypeChatTheme',
       'theme_name': '🏔️',
     });
+  });
+
+  test('explicit chat wallpaper remains independent of global theme', () async {
+    SharedPreferences.setMockInitialValues({});
+    final controller = ChatWallpaperController(
+      activeSlot: () => 0,
+      hasActiveClient: () => true,
+      latestEmojiChatThemes: () => {
+        '@type': 'updateEmojiChatThemes',
+        'chat_themes': [
+          {
+            '@type': 'emojiChatTheme',
+            'name': '🌷',
+            'light_settings': {
+              '@type': 'themeSettings',
+              'base_theme': {'@type': 'builtInThemeClassic'},
+              'background': {
+                '@type': 'background',
+                'id': 22,
+                'type': {
+                  '@type': 'backgroundTypeFill',
+                  'fill': {'@type': 'backgroundFillSolid', 'color': 0xF2DDEE},
+                },
+              },
+              'outgoing_message_fill': {
+                '@type': 'backgroundFillSolid',
+                'color': 0xDD77AA,
+              },
+            },
+            'dark_settings': null,
+          },
+        ],
+      },
+      listenForUpdates: false,
+      query: (request) async {
+        if (request['@type'] == 'setDefaultBackground') {
+          return {
+            '@type': 'background',
+            'id': 77,
+            'type': {
+              '@type': 'backgroundTypeFill',
+              'fill': {'@type': 'backgroundFillSolid', 'color': 0x123456},
+            },
+          };
+        }
+        return {'@type': 'ok'};
+      },
+    );
+    addTearDown(controller.dispose);
+
+    await controller.loadGlobalChatThemes();
+    await controller.applyDefaultWallpaper(
+      const ChatWallpaper.telegram(
+        backgroundId: 0,
+        remoteType: 'fill',
+        colors: [0x123456],
+      ),
+      dark: false,
+    );
+    await controller.setGlobalChatTheme('🌷', dark: false);
+
+    expect(controller.defaultWallpaper(dark: false)?.colors, [0x123456]);
+    expect(controller.globalThemeWallpaperFor(dark: false)?.colors, [0xF2DDEE]);
+  });
+
+  test('encountered chat wallpapers are saved per account for reuse', () async {
+    SharedPreferences.setMockInitialValues({});
+    final first = ChatWallpaperController(
+      activeSlot: () => 4,
+      hasActiveClient: () => true,
+      listenForUpdates: false,
+      query: (_) async => {
+        '@type': 'chat',
+        'id': 42,
+        'type': {'@type': 'chatTypePrivate', 'user_id': 7},
+        'background': {
+          '@type': 'chatBackground',
+          'dark_theme_dimming': 0,
+          'background': {
+            '@type': 'background',
+            'id': 701,
+            'type': {
+              '@type': 'backgroundTypePattern',
+              'fill': {'@type': 'backgroundFillSolid', 'color': 0x334455},
+              'intensity': 37,
+              'is_inverted': false,
+              'is_moving': true,
+            },
+          },
+        },
+        'theme': null,
+      },
+    );
+    await first.load(42);
+    await pumpEventQueue();
+    expect(first.savedBackgrounds.single.backgroundId, 701);
+    first.dispose();
+
+    final restored = ChatWallpaperController(
+      activeSlot: () => 4,
+      listenForUpdates: false,
+    );
+    addTearDown(restored.dispose);
+    final saved = await restored.loadSavedBackgrounds();
+    expect(saved.single.backgroundId, 701);
+    expect(saved.single.intensity, 37);
+    expect(saved.single.isMoving, isTrue);
   });
 }

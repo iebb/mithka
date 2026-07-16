@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:provider/provider.dart';
 
@@ -10,9 +11,9 @@ import '../l10n/app_localizations.dart';
 import '../media/app_asset_picker.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
+import 'chat_appearance_preview.dart';
 import 'chat_wallpaper.dart';
 import 'chat_wallpaper_color_view.dart';
-import 'chat_wallpaper_search_view.dart';
 
 class ChatWallpaperView extends StatefulWidget {
   const ChatWallpaperView({
@@ -43,8 +44,20 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
   ChatWallpaper? _selection;
   ChatWallpaper? _initialRemote;
   List<ChatWallpaper> _catalogBackgrounds = const [];
+  List<ChatWallpaper> _savedBackgrounds = const [];
   bool _loaded = false;
   bool _saving = false;
+
+  static const _solidPalettes = <int>[
+    0xDCE9F4,
+    0xE8E1D6,
+    0xCDE8DF,
+    0xD8D5ED,
+    0xF1D6DC,
+    0xD7E5C4,
+    0x243348,
+    0x252527,
+  ];
 
   bool get _isDarkTheme => context.colors.background.computeLuminance() < 0.45;
 
@@ -65,9 +78,23 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
 
   void _onControllerChanged() {
     if (!mounted) return;
+    final selected = _selection;
+    if (selected != null) {
+      final resolved = _controller.resolvedWallpaper(selected);
+      if (resolved != selected) {
+        setState(() {
+          _selection = resolved;
+          if (resolved.kind == ChatWallpaperKind.telegram) {
+            _initialRemote = resolved;
+          }
+        });
+        return;
+      }
+    }
     if (widget.isGlobal) {
       setState(() {
-        _selection = _controller.defaultWallpaper(dark: widget.forDarkTheme);
+        // Keep the user's pending choice while the controller resolves a
+        // Telegram document. The saved default is loaded once in [_load].
       });
       return;
     }
@@ -87,6 +114,7 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
   Future<void> _load() async {
     final dark = widget.isGlobal ? widget.forDarkTheme : _isDarkTheme;
     if (widget.isGlobal) {
+      await _controller.loadGlobalChatThemes();
       await _controller.loadDefaultWallpaper(dark: widget.forDarkTheme);
       try {
         _catalogBackgrounds = await _controller.installedBackgrounds(
@@ -101,6 +129,7 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
         );
       } catch (_) {}
     }
+    _savedBackgrounds = await _controller.loadSavedBackgrounds();
     if (!mounted) return;
     setState(() {
       _selection = widget.isGlobal
@@ -128,35 +157,29 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
     }
   }
 
-  Future<void> _searchBackgrounds() async {
-    if (!_allowCustomWallpaper()) return;
-    final selected = await Navigator.of(context).push<ChatWallpaper>(
-      PageRouteBuilder<ChatWallpaper>(
-        pageBuilder: (_, _, _) =>
-            ChatWallpaperSearchView(controller: _controller),
-        transitionsBuilder: (_, animation, _, child) =>
-            FadeTransition(opacity: animation, child: child),
-      ),
-    );
-    if (!mounted || selected == null) return;
-    setState(() => _selection = selected);
-  }
-
   Future<void> _pickColor() async {
     if (!_allowCustomWallpaper()) return;
+    final previous = _selection;
     final selected = await Navigator.of(context).push<ChatWallpaper>(
       PageRouteBuilder<ChatWallpaper>(
         pageBuilder: (_, _, _) => ChatWallpaperColorView(
           controller: _controller,
           dark: widget.isGlobal ? widget.forDarkTheme : _isDarkTheme,
-          initial: _selection,
+          initial: previous,
+          colorOnly: true,
         ),
         transitionsBuilder: (_, animation, _, child) =>
             FadeTransition(opacity: animation, child: child),
       ),
     );
     if (!mounted || selected == null) return;
-    setState(() => _selection = selected);
+    setState(() {
+      _selection = previous?.remoteType == 'pattern'
+          ? previous!
+                .withColors(selected.colors)
+                .withRotationAngle(selected.rotationAngle)
+          : selected;
+    });
   }
 
   bool _allowCustomWallpaper() {
@@ -210,9 +233,7 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
       child: Column(
         children: [
           NavHeader(
-            title: widget.isGlobal
-                ? AppStringKeys.globalWallpaperTitle
-                : AppStringKeys.chatWallpaperTitle,
+            title: AppStringKeys.chatWallpaperTitle,
             onBack: () => Navigator.of(context).pop(),
           ),
           Expanded(
@@ -223,12 +244,10 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         _preview(),
-                        if (_selection?.supportsBlur == true ||
-                            _selection?.supportsMotion == true ||
-                            _selection?.supportsIntensity == true) ...[
-                          const SizedBox(height: 12),
-                          _effects(),
-                        ],
+                        const SizedBox(height: 12),
+                        _senderNameReadabilityOption(),
+                        const SizedBox(height: 18),
+                        _customizeBlock(),
                         const SizedBox(height: 18),
                         Text(
                           AppStringKeys.chatWallpaperChoose.l10n(context),
@@ -254,26 +273,33 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
   Widget _preview() {
     final c = context.colors;
     final dark = _isDarkTheme;
+    final colors = _previewColors;
+    final appearance = context.watch<ThemeController>();
     return ClipRRect(
       borderRadius: BorderRadius.circular(18),
       child: SizedBox(
         height: 270,
         child: ChatWallpaperBackground(
-          wallpaper: _selection,
+          wallpaper: _effectiveWallpaper,
           fallbackColor: c.chatBackground,
           brightness: dark ? Brightness.dark : Brightness.light,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(14, 24, 14, 18),
             child: Column(
               children: [
-                _previewBubble(
-                  AppStringKeys.chatWallpaperPreviewIncoming.l10n(context),
-                  outgoing: false,
-                ),
-                const SizedBox(height: 10),
-                _previewBubble(
-                  AppStringKeys.chatWallpaperPreviewOutgoing.l10n(context),
-                  outgoing: true,
+                ChatAppearancePreview(
+                  incomingBubbleColor: colors.incomingBubble,
+                  incomingTextColor: colors.incomingText,
+                  outgoingBubbleColor: colors.outgoingBubble,
+                  outgoingTextColor: colors.outgoingText,
+                  incomingNameColor: colors.incomingName,
+                  outgoingNameColor: colors.outgoingName,
+                  incomingMessage: AppStringKeys.chatWallpaperPreviewIncoming
+                      .l10n(context),
+                  outgoingMessage: AppStringKeys.chatWallpaperPreviewOutgoing
+                      .l10n(context),
+                  showSenderNamePlate:
+                      appearance.showSenderNameReadabilityPlate,
                 ),
                 const Spacer(),
                 Text(
@@ -295,88 +321,481 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
     );
   }
 
-  Widget _previewBubble(String text, {required bool outgoing}) {
+  ({
+    Color incomingBubble,
+    Color incomingText,
+    Color outgoingBubble,
+    Color outgoingText,
+    Color incomingName,
+    Color outgoingName,
+  })
+  get _previewColors {
     final c = context.colors;
     final dark = _isDarkTheme;
+    final globalTheme = context.watch<ThemeController>().cloudThemeFor(
+      dark ? Brightness.dark : Brightness.light,
+    );
     final activeTheme = widget.isGlobal
         ? null
         : _controller.themeSelectionFor(widget.chatId!);
-    final themeStyle = activeTheme == null
+    final themeStyle = widget.isGlobal
+        ? globalTheme == null &&
+                  _controller.hasExplicitGlobalThemeSelection(dark: dark)
+              ? _controller.globalThemeStyleFor(dark: dark)
+              : null
+        : activeTheme == null
         ? null
         : _controller.styleForTheme(
             activeTheme.themeName ?? '',
             kind: activeTheme.themeKind,
             dark: dark,
           );
-    final globalTheme = context.watch<ThemeController>().cloudTheme;
-    final background = outgoing
-        ? themeStyle?.outgoingColor ?? globalTheme?.outgoingColor ?? c.linkBlue
-        : themeStyle?.incomingColor ??
-              globalTheme?.incomingColor ??
-              c.bubbleIncoming;
-    final foreground = outgoing
-        ? themeStyle?.outgoingTextColor ??
-              globalTheme?.outgoingTextColor ??
-              const Color(0xFFFFFFFF)
-        : themeStyle?.incomingTextColor ??
-              globalTheme?.incomingTextColor ??
-              c.bubbleIncomingText;
-    return Align(
-      alignment: outgoing ? Alignment.centerRight : Alignment.centerLeft,
+    final incomingBubble =
+        themeStyle?.incomingColor ??
+        globalTheme?.incomingColor ??
+        c.bubbleIncoming;
+    final outgoingBubble =
+        themeStyle?.outgoingColor ?? globalTheme?.outgoingColor ?? c.linkBlue;
+    return (
+      incomingBubble: incomingBubble,
+      incomingText:
+          themeStyle?.incomingTextColor ??
+          globalTheme?.incomingTextColor ??
+          c.bubbleIncomingText,
+      outgoingBubble: outgoingBubble,
+      outgoingText:
+          themeStyle?.outgoingTextColor ??
+          globalTheme?.outgoingTextColor ??
+          readableForeground(outgoingBubble),
+      incomingName:
+          themeStyle?.nameColor ?? globalTheme?.accentColor ?? c.linkBlue,
+      outgoingName:
+          themeStyle?.nameColor ?? globalTheme?.accentColor ?? c.linkBlue,
+    );
+  }
+
+  Widget _senderNameReadabilityOption() {
+    final c = context.colors;
+    final appearance = context.watch<ThemeController>();
+    final enabled = appearance.showSenderNameReadabilityPlate;
+    void update(bool value) {
+      appearance.showSenderNameReadabilityPlate = value;
+    }
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => update(!enabled),
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 250),
-        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+        constraints: const BoxConstraints(minHeight: 52),
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
         decoration: BoxDecoration(
-          color: background,
-          borderRadius: BorderRadius.circular(15),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x22000000),
-              blurRadius: 5,
-              offset: Offset(0, 2),
+          color: c.card,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          children: [
+            AppIcon(HeroAppIcons.idBadge, size: 19, color: c.linkBlue),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                AppStringKeys.appearanceSenderNameBackground.l10n(context),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 14, color: c.textPrimary),
+              ),
             ),
+            const SizedBox(width: 10),
+            AppSwitch(value: enabled, onChanged: update),
           ],
         ),
-        child: Text(text, style: TextStyle(fontSize: 14, color: foreground)),
+      ),
+    );
+  }
+
+  Widget _backgroundPaletteChoices() {
+    final patterns = _patternCandidates;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _choiceSection(
+          AppStringKeys.chatWallpaperColor,
+          (width) => [
+            for (final color in _solidPalettes) _solidChoice(width, color),
+            _colorChoice(width),
+          ],
+        ),
+        const SizedBox(height: 18),
+        _choiceSection(
+          AppStringKeys.chatWallpaperGradient,
+          (width) => [
+            for (final preset in chatWallpaperPresets)
+              _gradientChoice(width, preset),
+          ],
+        ),
+        const SizedBox(height: 18),
+        _choiceSection(
+          AppStringKeys.chatWallpaperPattern,
+          (width) => [
+            _noPatternChoice(width),
+            for (final pattern in patterns)
+              _patternSelectorChoice(width, pattern),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _customizeBlock() {
+    final c = context.colors;
+    final value = _effectiveWallpaper;
+    final hasColorCustomization = wallpaperSupportsColorCustomization(value);
+    final hasEffects =
+        value?.supportsBlur == true ||
+        value?.supportsMotion == true ||
+        value?.supportsIntensity == true;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          AppStringKeys.chatWallpaperSectionCustomize.l10n(context),
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: c.textTertiary,
+          ),
+        ),
+        if (hasColorCustomization) ...[
+          const SizedBox(height: 9),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _pickColor,
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 52),
+              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+              decoration: BoxDecoration(
+                color: c.card,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                children: [
+                  AppIcon(HeroAppIcons.palette, size: 19, color: c.linkBlue),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      AppStringKeys.chatWallpaperColor.l10n(context),
+                      style: TextStyle(fontSize: 14, color: c.textPrimary),
+                    ),
+                  ),
+                  for (final color in _activePalette.take(4)) ...[
+                    Container(
+                      width: 18,
+                      height: 18,
+                      margin: const EdgeInsets.only(left: 4),
+                      decoration: BoxDecoration(
+                        color: Color(0xFF000000 | color),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: const Color(0x33000000)),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(width: 7),
+                  AppIcon(
+                    HeroAppIcons.chevronRight,
+                    size: 15,
+                    color: c.textTertiary,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+        if (hasEffects) ...[
+          SizedBox(height: hasColorCustomization ? 8 : 9),
+          _effects(),
+        ],
+      ],
+    );
+  }
+
+  List<ChatWallpaper> get _patternCandidates {
+    final values = <ChatWallpaper>[
+      if (_initialRemote?.remoteType == 'pattern') _initialRemote!,
+      for (final candidate in _officialThemeWallpaperCandidates)
+        if (candidate.wallpaper.remoteType == 'pattern') candidate.wallpaper,
+      for (final wallpaper in _catalogBackgrounds)
+        if (wallpaper.remoteType == 'pattern') wallpaper,
+    ];
+    final seen = <String>{};
+    return [
+      for (final wallpaper in values)
+        if (seen.add(
+          '${wallpaper.backgroundId}:${wallpaper.fileId}:${wallpaper.imagePath}',
+        ))
+          wallpaper,
+    ];
+  }
+
+  List<int> get _activePalette {
+    final selection = _selection;
+    if (selection?.kind == ChatWallpaperKind.preset) {
+      final preset = chatWallpaperPreset(selection?.presetId ?? '');
+      if (preset != null) {
+        return preset.colors
+            .map((color) => color.toARGB32() & 0x00FFFFFF)
+            .toList(growable: false);
+      }
+    }
+    if (selection?.colors.isNotEmpty == true) return selection!.colors;
+    final effective = _effectiveWallpaper;
+    if (effective?.colors.isNotEmpty == true) return effective!.colors;
+    return [_isDarkTheme ? 0x243348 : 0xDCE9F4];
+  }
+
+  int get _activeRotationAngle => _selection?.rotationAngle ?? 0;
+
+  bool _paletteMatches(List<int> colors) => listEquals(_activePalette, colors);
+
+  void _selectPalette(List<int> colors, {int rotationAngle = 0}) {
+    if (!_allowCustomWallpaper()) return;
+    final value = _selection;
+    setState(() {
+      _selection = value?.remoteType == 'pattern'
+          ? value!.withColors(colors).withRotationAngle(rotationAngle)
+          : ChatWallpaper.telegram(
+              backgroundId: 0,
+              remoteType: 'fill',
+              colors: colors,
+              rotationAngle: rotationAngle,
+            );
+    });
+  }
+
+  void _selectPattern(ChatWallpaper? pattern) {
+    if (!_allowCustomWallpaper()) return;
+    final palette = _activePalette;
+    final rotation = _activeRotationAngle;
+    setState(() {
+      _selection = pattern == null
+          ? ChatWallpaper.telegram(
+              backgroundId: 0,
+              remoteType: 'fill',
+              colors: palette,
+              rotationAngle: rotation,
+            )
+          : _controller
+                .resolvedWallpaper(pattern)
+                .withColors(palette)
+                .withRotationAngle(rotation);
+    });
+  }
+
+  Widget _solidChoice(double width, int color) {
+    final foreground = readableForeground(Color(0xFF000000 | color));
+    return _choiceFrame(
+      width: width,
+      selected: _paletteMatches([color]),
+      onTap: () => _selectPalette([color]),
+      access: _customWallpaperAccess(),
+      child: ColoredBox(
+        color: Color(0xFF000000 | color),
+        child: Center(
+          child: AppIcon(HeroAppIcons.circle, size: 18, color: foreground),
+        ),
+      ),
+    );
+  }
+
+  Widget _gradientChoice(double width, ChatWallpaperPreset preset) {
+    final colors = preset.colors
+        .map((color) => color.toARGB32() & 0x00FFFFFF)
+        .toList(growable: false);
+    return _choiceFrame(
+      width: width,
+      selected: _paletteMatches(colors),
+      onTap: () => _selectPalette(colors),
+      access: _customWallpaperAccess(),
+      child: ChatWallpaperBackground(
+        wallpaper: ChatWallpaper.telegram(
+          backgroundId: 0,
+          remoteType: 'fill',
+          colors: colors,
+        ),
+        fallbackColor: preset.colors.first,
+        brightness: _isDarkTheme ? Brightness.dark : Brightness.light,
+      ),
+    );
+  }
+
+  Widget _noPatternChoice(double width) {
+    final colors = _activePalette;
+    return _choiceFrame(
+      width: width,
+      selected: _selection?.remoteType != 'pattern',
+      onTap: () => _selectPattern(null),
+      access: _customWallpaperAccess(),
+      child: ChatWallpaperBackground(
+        wallpaper: ChatWallpaper.telegram(
+          backgroundId: 0,
+          remoteType: 'fill',
+          colors: colors,
+          rotationAngle: _activeRotationAngle,
+        ),
+        fallbackColor: context.colors.chatBackground,
+        brightness: _isDarkTheme ? Brightness.dark : Brightness.light,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppIcon(
+                HeroAppIcons.circleXmark,
+                size: 24,
+                color: context.colors.textSecondary,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                AppStringKeys.groupAppearanceNone.l10n(context),
+                style: TextStyle(
+                  fontSize: 11,
+                  color: context.colors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _patternSelectorChoice(double width, ChatWallpaper pattern) {
+    final resolved = _controller
+        .resolvedWallpaper(pattern)
+        .withColors(_activePalette)
+        .withRotationAngle(_activeRotationAngle);
+    return _choiceFrame(
+      width: width,
+      selected:
+          _selection?.remoteType == 'pattern' &&
+          _selection?.backgroundId == pattern.backgroundId,
+      onTap: () => _selectPattern(pattern),
+      access: _customWallpaperAccess(),
+      child: ChatWallpaperBackground(
+        wallpaper: resolved,
+        fallbackColor: context.colors.chatBackground,
+        brightness: _isDarkTheme ? Brightness.dark : Brightness.light,
       ),
     );
   }
 
   Widget _choices() {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        const spacing = 10.0;
-        final width = (constraints.maxWidth - spacing * 2) / 3;
-        return Wrap(
-          spacing: spacing,
-          runSpacing: spacing,
-          children: [
-            _defaultChoice(width),
+    final community = _communityWallpaperCandidates;
+    final officialThemes = _officialThemeWallpaperCandidates;
+    final officialThemeWallpapers = officialThemes
+        .where((candidate) => candidate.wallpaper.remoteType != 'pattern')
+        .toList(growable: false);
+    // Telegram iOS shows the complete installed catalog rather than an
+    // arbitrary first page. TDLib already provides the account's included
+    // wallpapers and patterns in their server order.
+    final catalog = _catalogBackgrounds;
+    final catalogOfficial = catalog
+        .where((wallpaper) => wallpaper.remoteType == 'wallpaper')
+        .toList(growable: false);
+    final currentOfficial = _initialRemote?.remoteType == 'wallpaper'
+        ? _initialRemote
+        : null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_themeDefaultWallpaper != null) ...[
+          _choiceSection(
+            AppStringKeys.chatWallpaperCurrentTheme,
+            (width) => [_defaultChoice(width)],
+          ),
+          const SizedBox(height: 20),
+        ],
+        if (_savedBackgrounds.isNotEmpty) ...[
+          _choiceSection(
+            AppStringKeys.chatWallpaperSectionSaved,
+            (width) => [
+              for (final wallpaper in _savedBackgrounds)
+                _savedWallpaperChoice(width, wallpaper),
+            ],
+          ),
+          const SizedBox(height: 20),
+        ],
+        _backgroundPaletteChoices(),
+        if (community.isNotEmpty) ...[
+          const SizedBox(height: 20),
+          _choiceSection(
+            AppStringKeys.chatWallpaperSectionCommunity,
+            (width) => [
+              for (final candidate in community)
+                _themeWallpaperChoice(width, candidate),
+            ],
+          ),
+        ],
+        const SizedBox(height: 20),
+        _choiceSection(
+          AppStringKeys.chatWallpaperSectionOfficial,
+          (width) => [
             _photoChoice(width),
-            _searchChoice(width),
-            _colorChoice(width),
-            if (_initialRemote != null) _remoteChoice(width, _initialRemote!),
-            for (final preset in chatWallpaperPresets)
-              _presetChoice(width, preset),
-            for (final wallpaper in _catalogBackgrounds.take(12))
-              if (wallpaper.remoteType == 'wallpaper' ||
-                  wallpaper.remoteType == 'pattern')
-                _remoteCatalogChoice(width, wallpaper),
+            if (currentOfficial != null) _remoteChoice(width, currentOfficial),
+            for (final candidate in officialThemeWallpapers)
+              _themeWallpaperChoice(width, candidate),
+            for (final wallpaper in catalogOfficial)
+              _remoteCatalogChoice(width, wallpaper),
           ],
-        );
-      },
+        ),
+      ],
+    );
+  }
+
+  Widget _choiceSection(
+    String title,
+    List<Widget> Function(double width) choices,
+  ) {
+    final c = context.colors;
+    final items = choices(88);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          title.l10n(context),
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: c.textTertiary,
+          ),
+        ),
+        const SizedBox(height: 9),
+        SizedBox(
+          height: 132,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: items.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 10),
+            itemBuilder: (context, index) => items[index],
+          ),
+        ),
+      ],
     );
   }
 
   Widget _defaultChoice(double width) {
     final c = context.colors;
     final selected = _selection == null;
+    final wallpaper = _themeDefaultWallpaper;
+    final compactWallpaper = wallpaper == null
+        ? null
+        : _controller.resolvedWallpaper(wallpaper);
     return _choiceFrame(
       width: width,
       selected: selected,
       onTap: () => setState(() => _selection = null),
-      child: ColoredBox(
-        color: c.chatBackground,
+      child: ChatWallpaperBackground(
+        wallpaper: compactWallpaper,
+        fallbackColor: c.chatBackground,
+        brightness: widget.forDarkTheme ? Brightness.dark : Brightness.light,
         child: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -393,6 +812,123 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  ChatWallpaper? get _themeDefaultWallpaper {
+    final dark = widget.isGlobal ? widget.forDarkTheme : _isDarkTheme;
+    final customThemeWallpaper = context
+        .watch<ThemeController>()
+        .cloudThemeFor(dark ? Brightness.dark : Brightness.light)
+        ?.wallpaper;
+    return effectiveThemeWallpaperForPicker(
+      controller: _controller,
+      dark: dark,
+      cloudThemeWallpaper: customThemeWallpaper,
+    );
+  }
+
+  ChatWallpaper? get _effectiveWallpaper =>
+      _selection ?? _themeDefaultWallpaper;
+
+  List<_WallpaperCandidate> get _officialThemeWallpaperCandidates {
+    if (!widget.isGlobal) return const [];
+    final candidates = <_WallpaperCandidate>[];
+    final seen = <String>{};
+    for (final option in _controller.globalThemeOptions(
+      dark: widget.forDarkTheme,
+      resolvePatterns: true,
+    )) {
+      final wallpaper = option.wallpaper;
+      if (wallpaper == null) continue;
+      final key = _wallpaperCandidateKey(wallpaper);
+      if (seen.add(key)) {
+        candidates.add(
+          _WallpaperCandidate(
+            title: option.label,
+            wallpaper: wallpaper,
+            emoji: option.emoji,
+          ),
+        );
+      }
+    }
+    return candidates;
+  }
+
+  List<_WallpaperCandidate> get _communityWallpaperCandidates {
+    final candidates = <_WallpaperCandidate>[];
+    final seen = <String>{};
+    for (final theme in context.watch<ThemeController>().installedCloudThemes) {
+      final wallpaper = theme.wallpaper;
+      if (wallpaper == null) continue;
+      final resolved = _controller.resolvedWallpaper(wallpaper);
+      final key = _wallpaperCandidateKey(resolved);
+      if (seen.add(key)) {
+        candidates.add(
+          _WallpaperCandidate(title: theme.displayTitle, wallpaper: resolved),
+        );
+      }
+    }
+    return candidates;
+  }
+
+  String _wallpaperCandidateKey(ChatWallpaper wallpaper) =>
+      '${wallpaper.kind.name}:${wallpaper.backgroundId}:'
+      '${wallpaper.imagePath}:${wallpaper.colors.join(',')}:'
+      '${wallpaper.rotationAngle}:${wallpaper.intensity}';
+
+  Widget _themeWallpaperChoice(double width, _WallpaperCandidate candidate) {
+    final wallpaper = candidate.wallpaper;
+    final selected = _selection == wallpaper;
+    final compactWallpaper = wallpaper.remoteType == 'pattern'
+        ? _controller.resolvedWallpaper(wallpaper)
+        : wallpaper;
+    final emoji = candidate.emoji;
+    return _choiceFrame(
+      width: width,
+      selected: selected,
+      onTap: () => setState(() => _selection = wallpaper),
+      child: ChatWallpaperBackground(
+        // Telegram iOS fills each pattern tile with its actual document. File
+        // preparation is cached by the controller, so rebuilds reuse it.
+        wallpaper: compactWallpaper,
+        fallbackColor: context.colors.chatBackground,
+        brightness: widget.forDarkTheme ? Brightness.dark : Brightness.light,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (emoji != null)
+              Center(
+                child: Text(
+                  emoji,
+                  style: const TextStyle(
+                    fontSize: 27,
+                    shadows: [Shadow(color: Color(0x66000000), blurRadius: 6)],
+                  ),
+                ),
+              ),
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
+                color: const Color(0x66000000),
+                child: Text(
+                  candidate.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFFFFFFFF),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -441,54 +977,21 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
     );
   }
 
-  Widget _searchChoice(double width) {
-    final c = context.colors;
-    return _choiceFrame(
-      width: width,
-      selected: false,
-      onTap: _searchBackgrounds,
-      access: _customWallpaperAccess(),
-      child: ColoredBox(
-        color: c.panelBackground,
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AppIcon(
-                HeroAppIcons.magnifyingGlass,
-                size: 25,
-                color: c.linkBlue,
-              ),
-              const SizedBox(height: 6),
-              Text(
-                AppStringKeys.chatWallpaperSearch.l10n(context),
-                style: TextStyle(fontSize: 12, color: c.textSecondary),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _colorChoice(double width) {
     return _choiceFrame(
       width: width,
-      selected:
-          _selection?.kind == ChatWallpaperKind.telegram &&
-          (_selection?.remoteType == 'fill' ||
-              _selection?.remoteType == 'pattern') &&
-          _selection?.backgroundId == 0,
+      selected: false,
       onTap: _pickColor,
       access: _customWallpaperAccess(),
-      child: DecoratedBox(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFFF2828F), Color(0xFF8B75E8), Color(0xFF5BC5D8)],
-          ),
+      child: ChatWallpaperBackground(
+        wallpaper: ChatWallpaper.telegram(
+          backgroundId: 0,
+          remoteType: 'fill',
+          colors: _activePalette,
+          rotationAngle: _activeRotationAngle,
         ),
+        fallbackColor: context.colors.chatBackground,
+        brightness: _isDarkTheme ? Brightness.dark : Brightness.light,
         child: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -512,30 +1015,38 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
 
   Widget _remoteChoice(double width, ChatWallpaper wallpaper) {
     final selected = _selection == wallpaper;
+    final compactWallpaper = wallpaper.remoteType == 'pattern'
+        ? _controller.resolvedWallpaper(wallpaper)
+        : wallpaper;
     return _choiceFrame(
       width: width,
       selected: selected,
       onTap: () => setState(() => _selection = wallpaper),
       child: ChatWallpaperBackground(
-        wallpaper: wallpaper,
+        wallpaper: compactWallpaper,
         fallbackColor: context.colors.chatBackground,
         brightness: _isDarkTheme ? Brightness.dark : Brightness.light,
-        child: Align(
-          alignment: Alignment.bottomCenter,
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 5),
-            color: const Color(0x66000000),
-            child: Text(
-              AppStringKeys.chatWallpaperTelegramCurrent.l10n(context),
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFFFFFFFF),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 5),
+                color: const Color(0x66000000),
+                child: Text(
+                  AppStringKeys.chatWallpaperTelegramCurrent.l10n(context),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFFFFFFFF),
+                  ),
+                ),
               ),
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -544,7 +1055,10 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
   Widget _remoteCatalogChoice(double width, ChatWallpaper wallpaper) {
     final resolved = _selection?.backgroundId == wallpaper.backgroundId
         ? _selection ?? wallpaper
-        : wallpaper.withoutPatternDocument();
+        : _controller.resolvedWallpaper(wallpaper);
+    final compactWallpaper = wallpaper.remoteType == 'pattern'
+        ? _controller.resolvedWallpaper(wallpaper)
+        : resolved;
     return _choiceFrame(
       width: width,
       selected:
@@ -554,18 +1068,32 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
           setState(() => _selection = _controller.resolvedWallpaper(wallpaper)),
       access: _customWallpaperAccess(),
       child: ChatWallpaperBackground(
-        wallpaper: resolved,
+        wallpaper: compactWallpaper,
         fallbackColor: context.colors.chatBackground,
         brightness: _isDarkTheme ? Brightness.dark : Brightness.light,
-        child: wallpaper.remoteType == 'pattern'
-            ? const Center(
-                child: AppIcon(
-                  HeroAppIcons.wandMagicSparkles,
-                  size: 23,
-                  color: Color(0xCCFFFFFF),
-                ),
-              )
-            : null,
+      ),
+    );
+  }
+
+  Widget _savedWallpaperChoice(double width, ChatWallpaper wallpaper) {
+    if (wallpaper.kind == ChatWallpaperKind.preset) {
+      final preset = chatWallpaperPreset(wallpaper.presetId ?? '');
+      return preset == null
+          ? const SizedBox.shrink()
+          : _presetChoice(width, preset);
+    }
+    if (wallpaper.kind == ChatWallpaperKind.telegram) {
+      return _remoteCatalogChoice(width, wallpaper);
+    }
+    final selected = _selection == wallpaper;
+    return _choiceFrame(
+      width: width,
+      selected: selected,
+      onTap: () => setState(() => _selection = wallpaper),
+      child: ChatWallpaperBackground(
+        wallpaper: wallpaper,
+        fallbackColor: context.colors.chatBackground,
+        brightness: _isDarkTheme ? Brightness.dark : Brightness.light,
       ),
     );
   }
@@ -609,10 +1137,14 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 140),
         width: width,
-        height: 112,
-        padding: EdgeInsets.all(selected ? 3 : 1),
+        height: width * 1.5,
+        padding: const EdgeInsets.all(3),
         decoration: BoxDecoration(
-          color: selected ? c.linkBlue : c.divider,
+          color: c.card,
+          border: Border.all(
+            color: selected ? c.linkBlue : c.divider,
+            width: selected ? 3 : 1,
+          ),
           borderRadius: BorderRadius.circular(14),
         ),
         child: ClipRRect(
@@ -677,7 +1209,7 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
   }
 
   Widget _effects() {
-    final value = _selection;
+    final value = _effectiveWallpaper;
     if (value == null) return const SizedBox.shrink();
     final c = context.colors;
     return Container(
@@ -926,4 +1458,44 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
       ),
     );
   }
+}
+
+@visibleForTesting
+ChatWallpaper? effectiveThemeWallpaperForPicker({
+  required ChatWallpaperController controller,
+  required bool dark,
+  required ChatWallpaper? cloudThemeWallpaper,
+}) {
+  final global = controller.globalThemeWallpaperFor(dark: dark);
+  // A selected Telegram cloud theme is the active app theme. Legacy emoji
+  // preferences may still exist from older builds, but must not conceal a
+  // cloud theme's declared defaultWallpaper / t.me/bg background.
+  final value = cloudThemeWallpaper ?? global;
+  return value == null ? null : controller.resolvedWallpaper(value);
+}
+
+@visibleForTesting
+bool wallpaperSupportsColorCustomization(ChatWallpaper? value) {
+  if (value == null) return true;
+  if (value.kind == ChatWallpaperKind.image ||
+      value.remoteType == 'wallpaper') {
+    return false;
+  }
+  return value.kind == ChatWallpaperKind.preset ||
+      value.remoteType == 'fill' ||
+      value.remoteType == 'pattern' ||
+      value.colors.isNotEmpty;
+}
+
+@immutable
+class _WallpaperCandidate {
+  const _WallpaperCandidate({
+    required this.title,
+    required this.wallpaper,
+    this.emoji,
+  });
+
+  final String title;
+  final ChatWallpaper wallpaper;
+  final String? emoji;
 }

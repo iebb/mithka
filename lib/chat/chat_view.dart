@@ -19,6 +19,7 @@ import 'package:provider/provider.dart';
 
 import '../app/pip_bounds_debug_overlay.dart';
 import '../app/video_split_controller.dart';
+import '../auth/telegram_country_names.dart';
 import '../call/call_manager.dart';
 import '../channels/topic_chat_view.dart';
 import '../components/app_icons.dart';
@@ -35,6 +36,7 @@ import '../profile/profile_detail_view.dart';
 import '../settings/blocked_user_service.dart';
 import '../settings/developer_mode_controller.dart';
 import '../settings/keyword_blocker.dart';
+import '../settings/quick_reaction_settings_view.dart';
 import '../settings/safety_notice_controller.dart';
 import '../settings/topic_group_display_mode.dart';
 import '../settings/translation_api.dart';
@@ -46,7 +48,9 @@ import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
 import '../theme/telegram_cloud_theme.dart';
 import '../theme/theme_controller.dart';
+import 'blocked_message_runs.dart';
 import 'chat_auto_scroll_policy.dart';
+import 'chat_first_contact_card.dart';
 import 'chat_info_view.dart';
 import 'chat_input_bar.dart';
 import 'chat_media_drop_region.dart';
@@ -71,6 +75,7 @@ import 'message_bubble.dart';
 import 'message_replies_sheet.dart';
 import 'music_player_controller.dart';
 import 'outgoing_attachment.dart';
+import 'quick_reaction_choice.dart';
 import 'rich_text_composer_view.dart';
 import 'sticker_set_detail_view.dart';
 import 'sticker_viewer.dart';
@@ -664,12 +669,16 @@ class _TranscriptEntry {
   final int startIndex;
 
   ChatMessage get first => messages.first;
-  bool get isImageGroup => messages.length > 1;
+  bool get isBlockedRun =>
+      messages.isNotEmpty && messages.every((message) => message.blockedByUser);
+  bool get isImageGroup => messages.length > 1 && !isBlockedRun;
 
   /// Stable identity for element reuse across index shifts (history pages
   /// prepend and shift every index).
   late final Key key = ValueKey(
-    isImageGroup
+    isBlockedRun
+        ? 'blocked-${messages.first.id}-${messages.last.id}'
+        : isImageGroup
         ? 'album-${messages.map((m) => m.id).join('-')}'
         : 'message-${first.id}',
   );
@@ -702,6 +711,7 @@ class _ChatViewState extends State<ChatView> {
   final Map<int, GlobalKey> _entryVisibilityKeys = <int, GlobalKey>{};
   Map<int, _TranscriptEntry> _trackedTranscriptEntries = const {};
   final Set<int> _reportedVisibleMessageIds = <int>{};
+  final Set<int> _expandedBlockedRunIds = <int>{};
   bool _unreadProgressUpdateScheduled = false;
   ChatMessage? _actionTarget;
   Rect? _actionRect; // global bounds of the long-pressed bubble
@@ -740,7 +750,10 @@ class _ChatViewState extends State<ChatView> {
   bool _maintainSessionScrollAnchor = false;
   ChatThemeStyle? _resolvedChatThemeStyle;
   TelegramCloudTheme? _resolvedCloudTheme;
+  bool _themingEnabled = true;
   bool _sessionAnchorMaintenanceScheduled = false;
+  bool _maintainRestoredBottom = false;
+  final _restoredBottomCorrection = ChatBottomCorrectionCoordinator();
   bool _openingUnreadMention = false;
   bool _exitStatePrepared = false;
   bool _notificationVisibilityRegistered = false;
@@ -749,7 +762,6 @@ class _ChatViewState extends State<ChatView> {
 
   /// Gap (seconds) between messages that triggers a fresh time separator.
   static const _separatorGap = 300;
-  static const _initialBottomScrollOffset = 1000000000.0;
   static const _initialTargetAlignment = 0.30;
   static const _initialUnreadAlignment = 0.12;
   static OverlayEntry? _globalPictureInPictureVideo;
@@ -771,6 +783,7 @@ class _ChatViewState extends State<ChatView> {
     unawaited(_wallpaperController.load(widget.chatId));
     unawaited(_wallpaperController.loadDefaultWallpaper(dark: false));
     unawaited(_wallpaperController.loadDefaultWallpaper(dark: true));
+    unawaited(_wallpaperController.loadGlobalChatThemes());
     _openAtLatest = context.read<ThemeController>().openChatsAtLatest;
     _sessionRenderState = widget.initialMessageId == null
         ? _sessionCache.read(widget.chatId)
@@ -778,6 +791,12 @@ class _ChatViewState extends State<ChatView> {
     _sessionScrollSnapshot = widget.initialMessageId == null
         ? _sessionScrollSnapshots[widget.chatId]
         : null;
+    final initialScrollPlan = chatInitialScrollPlan(
+      hasCachedTranscript: _sessionRenderState?.messages.isNotEmpty ?? false,
+      savedPixels: _sessionScrollSnapshot?.pixels,
+      savedAtBottom: _sessionScrollSnapshot?.wasAtLoadedBottom ?? false,
+    );
+    _maintainRestoredBottom = initialScrollPlan.correctToBottomAfterLayout;
     final sessionScrollSnapshot = _sessionScrollSnapshot;
     _maintainSessionScrollAnchor =
         sessionScrollSnapshot?.anchorMessageId != null &&
@@ -788,9 +807,7 @@ class _ChatViewState extends State<ChatView> {
           !sessionScrollSnapshot.wasAtLoadedBottom,
     );
     _scroll = ScrollController(
-      initialScrollOffset: _shouldRestoreSessionScroll
-          ? _sessionScrollSnapshot!.pixels
-          : (_shouldOpenAtBottom ? _initialBottomScrollOffset : 0),
+      initialScrollOffset: initialScrollPlan.initialOffset,
     )..addListener(_onScroll);
     _vm = ChatViewModel(
       chatId: widget.chatId,
@@ -804,14 +821,25 @@ class _ChatViewState extends State<ChatView> {
       sessionAnchoredHistory: _sessionRenderState?.anchoredHistory ?? false,
       seedMessage: widget.seedMessage,
     );
+    unawaited(
+      TelegramCountryNames.shared
+          .load()
+          .then((_) {
+            if (mounted && _vm.firstContactInfo != null) setState(() {});
+          })
+          .catchError((Object _) {}),
+    );
     if (_sessionRenderState != null && _vm.messages.isNotEmpty) {
       _didInitialScroll = true;
       _initialTranscriptReady = true;
       _lastCount = _vm.messages.length;
       _lastNewestMessageId = _vm.messages.last.id;
+      if (initialScrollPlan.correctToBottomAfterLayout) {
+        _scheduleRestoredBottomCorrection();
+      }
     }
     _vm.addListener(_onModel);
-    _scrollTargetId = widget.initialMessageId;
+    _setScrollTarget(widget.initialMessageId);
     _vm.onAppear();
     _readSyncTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (mounted && _isAtLoadedBottom(80)) {
@@ -932,6 +960,7 @@ class _ChatViewState extends State<ChatView> {
     if (_initialTranscriptReady &&
         notification.direction != ScrollDirection.idle) {
       _maintainSessionScrollAnchor = false;
+      _maintainRestoredBottom = false;
     }
     return false;
   }
@@ -1216,7 +1245,7 @@ class _ChatViewState extends State<ChatView> {
     if (_loadingLatestFromAnchor) return;
     _autoScrollPolicy.returnToBottom();
     if (!_vm.anchoredHistory) {
-      _scrollTargetId = null;
+      _setScrollTarget(null);
       if (_liveNewMessageCount > 0) {
         setState(() {
           _unreadProgress.clearLiveMessages();
@@ -1228,7 +1257,7 @@ class _ChatViewState extends State<ChatView> {
       return;
     }
     _loadingLatestFromAnchor = true;
-    _scrollTargetId = null;
+    _setScrollTarget(null);
     try {
       final ok = await _vm.loadLatestHistory();
       if (!mounted || !ok) return;
@@ -1252,7 +1281,7 @@ class _ChatViewState extends State<ChatView> {
 
   void _onComposerMessageSent() {
     _autoScrollPolicy.returnToBottom();
-    _scrollTargetId = null;
+    _setScrollTarget(null);
     _unreadProgress.clearLiveMessages();
     _bannerDismissed = true;
     if (_vm.anchoredHistory) {
@@ -1369,7 +1398,7 @@ class _ChatViewState extends State<ChatView> {
     }
     final target = _vm.consumePendingScrollToId();
     if (target != null) {
-      _scrollTargetId = target;
+      _setScrollTarget(target);
       if (_didInitialScroll) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _ensureMessageVisible(target);
@@ -1394,13 +1423,9 @@ class _ChatViewState extends State<ChatView> {
       _scheduleShortTranscriptFill();
     }
     // Keep the entry unread banner visible; only live-new-message banners
-    // should auto-hide after a short delay.
-    final keepEntryUnreadBanner = _liveNewMessageCount == 0;
-    if (_vm.unreadCount > 0 &&
-        _liveNewMessageCount == 0 &&
-        _bannerTimer == null &&
-        !_bannerDismissed &&
-        !keepEntryUnreadBanner) {
+    // auto-hide after a short delay. (Each new live message cancels the
+    // timer, so the countdown restarts from the latest arrival.)
+    if (_liveNewMessageCount > 0 && _bannerTimer == null && !_bannerDismissed) {
       _bannerTimer = Timer(const Duration(seconds: 6), () {
         if (mounted) setState(() => _bannerDismissed = true);
       });
@@ -1410,6 +1435,33 @@ class _ChatViewState extends State<ChatView> {
     }
     _cacheCurrentTranscript();
     _scheduleSessionScrollAnchorMaintenance();
+    _scheduleRestoredBottomCorrection();
+  }
+
+  void _setScrollTarget(int? messageId) {
+    if (messageId != null) _maintainRestoredBottom = false;
+    _scrollTargetId = messageId;
+  }
+
+  void _scheduleRestoredBottomCorrection() {
+    if (!_maintainRestoredBottom) return;
+    if (_vm.anchoredHistory || _scrollTargetId != null) {
+      _maintainRestoredBottom = false;
+      return;
+    }
+    _restoredBottomCorrection.schedule(
+      enabled: _maintainRestoredBottom,
+      schedulePostFrame: (callback) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => callback());
+      },
+      canCorrect: () =>
+          mounted &&
+          _maintainRestoredBottom &&
+          !_vm.anchoredHistory &&
+          _scrollTargetId == null &&
+          _scroll.hasClients,
+      correct: () => _scrollToBottom(settle: true, forceSettle: true),
+    );
   }
 
   void _scheduleSessionScrollAnchorMaintenance() {
@@ -1552,7 +1604,7 @@ class _ChatViewState extends State<ChatView> {
     final max = _scroll.position.maxScrollExtent;
     final target = widget.initialMessageId ?? _scrollTargetId;
     if (target != null) {
-      _scrollTargetId = target;
+      _setScrollTarget(target);
       return _estimateMessageOffset(target, _initialTargetAlignment);
     }
     if (_vm.anchoredHistory) {
@@ -1565,7 +1617,7 @@ class _ChatViewState extends State<ChatView> {
     final boundaryLoaded = _isUnreadBoundaryLoaded();
     if (_vm.unreadCount <= 0 || i < 0 || !boundaryLoaded) {
       if (_vm.unreadCount > 0 && _vm.lastReadInboxId > 0) {
-        _scrollTargetId = _vm.lastReadInboxId;
+        _setScrollTarget(_vm.lastReadInboxId);
         return _estimateMessageOffset(
           _vm.lastReadInboxId,
           _initialTargetAlignment,
@@ -1584,13 +1636,13 @@ class _ChatViewState extends State<ChatView> {
     if (!_scroll.hasClients) return false;
     final target = widget.initialMessageId ?? _scrollTargetId;
     if (target != null) {
-      _scrollTargetId = target;
+      _setScrollTarget(target);
       final corrected = await _ensureKeyVisible(
         _targetKey,
         alignment: _initialTargetAlignment,
       );
       if (corrected && mounted && _scrollTargetId == target) {
-        setState(() => _scrollTargetId = null);
+        setState(() => _setScrollTarget(null));
       }
       return corrected;
     }
@@ -1611,7 +1663,7 @@ class _ChatViewState extends State<ChatView> {
       return false;
     }
     if (_vm.unreadCount > 0 && _vm.lastReadInboxId > 0) {
-      _scrollTargetId = _vm.lastReadInboxId;
+      _setScrollTarget(_vm.lastReadInboxId);
       final corrected = await _ensureKeyVisible(
         _targetKey,
         alignment: _initialTargetAlignment,
@@ -1690,6 +1742,14 @@ class _ChatViewState extends State<ChatView> {
     }
     final first = entry.first;
     if (first.isService) return extent + 38;
+    if (entry.isBlockedRun) {
+      if (!_expandedBlockedRunIds.contains(first.id)) return extent + 40;
+      return extent +
+          entry.messages.fold<double>(
+            0,
+            (sum, message) => sum + _estimatedMessageExtent(message),
+          );
+    }
     if (entry.isImageGroup) {
       return extent + _estimatedImageGroupExtent(entry);
     }
@@ -2088,19 +2148,93 @@ class _ChatViewState extends State<ChatView> {
     );
   }
 
-  Widget _blockedMessagePlaceholder(BuildContext context) {
+  Widget _blockedMessagePlaceholder(
+    BuildContext context,
+    _TranscriptEntry entry,
+  ) {
     final c = context.colors;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Text(
-          '\u00B7 \u00B7 \u00B7',
-          style: TextStyle(
-            fontSize: 16,
-            color: c.textSecondary.withValues(alpha: 0.5),
+    final runId = entry.first.id;
+    if (_expandedBlockedRunIds.contains(runId)) {
+      return _selectionEntry(
+        entry,
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var i = 0; i < entry.messages.length; i++)
+              _messageBubble(entry.messages[i], entry.startIndex + i),
+          ],
+        ),
+      );
+    }
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: GestureDetector(
+        key: ValueKey('blocked-message-run-$runId'),
+        behavior: HitTestBehavior.opaque,
+        onTap: () => setState(() => _expandedBlockedRunIds.add(runId)),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 4, 28, 4),
+          child: Container(
+            constraints: const BoxConstraints(minWidth: 44, minHeight: 32),
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 4),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: c.card.withValues(alpha: 0.72),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: c.divider.withValues(alpha: 0.55),
+                width: 0.5,
+              ),
+            ),
+            child: Text(
+              '\u00B7 \u00B7 \u00B7',
+              style: TextStyle(fontSize: 16, height: 1, color: c.textSecondary),
+            ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _messageBubble(ChatMessage message, int messageIndex) {
+    return MessageBubble(
+      message: message,
+      peerTitle: _vm.peerTitle,
+      peerPhoto: _vm.peerPhoto,
+      isGroup: _vm.isGroup,
+      meName: _vm.meName,
+      mePhoto: _vm.mePhoto,
+      showRepeat: _vm.canForwardContent && _isRepeatTail(messageIndex),
+      onRepeat: () => _vm.repeatMessage(message),
+      onLongPress: _isSelecting ? null : _showActionMenuForMessage,
+      onDoubleTap: _isSelecting
+          ? null
+          : (m) => unawaited(_showTextSelection(m)),
+      onReply: (m) => _vm.setReply(m),
+      onAvatarTap: _openSenderProfile,
+      onAvatarLongPress: (m) {
+        if (_vm.isGroup && (m.senderName?.isNotEmpty ?? false)) {
+          _vm.insertMention(m);
+        }
+      },
+      onOpenReply: _scrollToMessage,
+      onOpenComments: _openMessageComments,
+      showCommentAttachment: _vm.isChannel,
+      onOpenImage: _openImage,
+      onOpenSticker: _openSticker,
+      onPlayVideo: _playVideo,
+      onPlayMusic: _playMusicMessage,
+      onButtonTap: _pressMessageButton,
+      onBotCommandTap: _sendCommand,
+      onHashtagTap: _openHashtagSearch,
+      isRead: _vm.isRead(message),
+      outgoingBubbleColor: _effectiveOutgoingColor(),
+      outgoingBubbleTextColor: _effectiveOutgoingTextColor(),
+      incomingBubbleColor: _effectiveIncomingColor(),
+      incomingBubbleTextColor: _effectiveIncomingTextColor(),
+      onToggleReaction: (r) => _vm.toggleReaction(message, r),
+      onShowReactionUsers: _showReactionUsers,
+      onRedial: _startCall,
     );
   }
 
@@ -2496,7 +2630,7 @@ class _ChatViewState extends State<ChatView> {
           if (opened) return;
         }
         if (!mounted) return;
-        showToast(context, 'Mini App 暂时无法启动');
+        showToast(context, AppStrings.t(AppStringKeys.miniAppCannotStart));
         return;
       }
       await openLink(context, url);
@@ -3386,6 +3520,7 @@ class _ChatViewState extends State<ChatView> {
   }
 
   ChatWallpaper? _effectiveWallpaper() {
+    if (!_themingEnabled) return null;
     final dark = Theme.of(context).brightness == Brightness.dark;
     final chatWallpaper = _wallpaperController.wallpaperFor(
       widget.chatId,
@@ -3396,10 +3531,16 @@ class _ChatViewState extends State<ChatView> {
     if (defaultWallpaper != null) {
       return _wallpaperController.resolvedWallpaper(defaultWallpaper);
     }
+    final globalChatWallpaper = _wallpaperController.globalThemeWallpaperFor(
+      dark: dark,
+    );
     final cloudWallpaper = _resolvedCloudTheme?.wallpaper;
-    return cloudWallpaper == null
+    if (cloudWallpaper != null) {
+      return _wallpaperController.resolvedWallpaper(cloudWallpaper);
+    }
+    return globalChatWallpaper == null
         ? null
-        : _wallpaperController.resolvedWallpaper(cloudWallpaper);
+        : _wallpaperController.resolvedWallpaper(globalChatWallpaper);
   }
 
   Color? _effectiveOutgoingColor() {
@@ -3423,12 +3564,20 @@ class _ChatViewState extends State<ChatView> {
   Widget build(BuildContext context) {
     final c = context.colors;
     final themeController = context.watch<ThemeController>();
+    _themingEnabled = themeController.themingEnabled;
     final dark = Theme.of(context).brightness == Brightness.dark;
-    _resolvedCloudTheme = themeController.cloudTheme;
-    _resolvedChatThemeStyle = _wallpaperController.themeStyleFor(
-      widget.chatId,
-      dark: dark,
+    _resolvedCloudTheme = themeController.cloudThemeFor(
+      dark ? Brightness.dark : Brightness.light,
     );
+    final chatThemeStyle = _themingEnabled
+        ? _wallpaperController.themeStyleFor(widget.chatId, dark: dark)
+        : null;
+    _resolvedChatThemeStyle = !_themingEnabled
+        ? null
+        : chatThemeStyle ??
+              (_resolvedCloudTheme == null
+                  ? _wallpaperController.globalThemeStyleFor(dark: dark)
+                  : null);
     // Keep blocked-user hiding toggle in sync with theme.
     BlockedUserService.shared.enabled = themeController.hideBlockedUserMessages;
     final hideSafetyNotice = context.watch<SafetyNoticeController>().disabled;
@@ -4717,9 +4866,9 @@ class _ChatViewState extends State<ChatView> {
     bool pinnedJump = false,
   }) async {
     if (mounted) {
-      setState(() => _scrollTargetId = messageId);
+      setState(() => _setScrollTarget(messageId));
     } else {
-      _scrollTargetId = messageId;
+      _setScrollTarget(messageId);
     }
     if (_vm.messages.any((m) => m.id == messageId)) {
       await _ensureMessageVisible(messageId, pinnedJump: pinnedJump);
@@ -4758,9 +4907,12 @@ class _ChatViewState extends State<ChatView> {
       final activeKey = _scrollTargetId == messageId ? _targetKey : _pinnedKey;
       final ctx = activeKey.currentContext;
       if (ctx != null && ctx.mounted) {
-        if (pinnedJump && _isKeyMostlyVisible(activeKey)) {
+        // Do not realign a message that is already on screen. Reply, search,
+        // and other linked-message jumps used to always force the row to 30%
+        // of the viewport, which made an already-visible target bounce.
+        if (_isKeyMostlyVisible(activeKey)) {
           if (mounted && _scrollTargetId == messageId) {
-            setState(() => _scrollTargetId = null);
+            setState(() => _setScrollTarget(null));
           }
           return;
         }
@@ -4778,7 +4930,7 @@ class _ChatViewState extends State<ChatView> {
               : ScrollPositionAlignmentPolicy.explicit,
         );
         if (mounted && _scrollTargetId == messageId) {
-          setState(() => _scrollTargetId = null);
+          setState(() => _setScrollTarget(null));
         }
         return;
       }
@@ -4795,7 +4947,7 @@ class _ChatViewState extends State<ChatView> {
       if (!mounted) return;
     }
     if (mounted && _scrollTargetId == messageId) {
-      setState(() => _scrollTargetId = null);
+      setState(() => _setScrollTarget(null));
     }
   }
 
@@ -4821,6 +4973,8 @@ class _ChatViewState extends State<ChatView> {
     final groupImages = context.watch<ThemeController>().groupImageMessages;
     final entries = _transcriptEntries(groupImages);
     final messages = _transcriptCacheMessages ?? _vm.messages;
+    final firstContactInfo = _vm.firstContactInfo;
+    final leadingItemCount = firstContactInfo == null ? 0 : 1;
     _scheduleUnreadProgressUpdate();
     return Container(
       color: _effectiveWallpaper() == null
@@ -4838,12 +4992,31 @@ class _ChatViewState extends State<ChatView> {
             defaultTargetPlatform == TargetPlatform.android ? 260 : 420,
           ),
           padding: const EdgeInsets.symmetric(vertical: 8),
-          itemCount: entries.length,
+          itemCount: entries.length + leadingItemCount,
           // Lets keyed children be reused when history pages shift indices
           // instead of being torn down and rebuilt.
-          findChildIndexCallback: (key) => _transcriptIndexByKey[key],
+          findChildIndexCallback: (key) {
+            if (key == const ValueKey('chat-first-contact-card')) {
+              return firstContactInfo == null ? null : 0;
+            }
+            final index = _transcriptIndexByKey[key];
+            return index == null ? null : index + leadingItemCount;
+          },
           itemBuilder: (context, index) {
-            final entry = entries[index];
+            if (firstContactInfo != null && index == 0) {
+              return KeyedSubtree(
+                key: const ValueKey('chat-first-contact-card'),
+                child: RepaintBoundary(
+                  child: ChatFirstContactCard(
+                    info: firstContactInfo,
+                    title: _vm.peerTitle,
+                    photo: _vm.peerPhoto,
+                    onOpenProfile: _openPeerProfile,
+                  ),
+                ),
+              );
+            }
+            final entry = entries[index - leadingItemCount];
             final message = entry.first;
             final messageIndex = entry.startIndex;
             final isTarget = entry.messages.any((m) => m.id == _scrollTargetId);
@@ -4864,57 +5037,12 @@ class _ChatViewState extends State<ChatView> {
                   TimeSeparator(unix: message.date),
                 if (message.isService)
                   SystemBanner(text: message.text)
-                else if (message.blockedByUser)
-                  _blockedMessagePlaceholder(context)
+                else if (entry.isBlockedRun)
+                  _blockedMessagePlaceholder(context, entry)
                 else if (entry.isImageGroup)
                   _selectionEntry(entry, _imageGroupBubble(entry.messages))
                 else
-                  _selectionEntry(
-                    entry,
-                    MessageBubble(
-                      message: message,
-                      peerTitle: _vm.peerTitle,
-                      peerPhoto: _vm.peerPhoto,
-                      isGroup: _vm.isGroup,
-                      meName: _vm.meName,
-                      mePhoto: _vm.mePhoto,
-                      showRepeat:
-                          _vm.canForwardContent && _isRepeatTail(messageIndex),
-                      onRepeat: () => _vm.repeatMessage(message),
-                      onLongPress: _isSelecting
-                          ? null
-                          : _showActionMenuForMessage,
-                      onDoubleTap: _isSelecting
-                          ? null
-                          : (m) => unawaited(_showTextSelection(m)),
-                      onReply: (m) => _vm.setReply(m),
-                      onAvatarTap: _openSenderProfile,
-                      onAvatarLongPress: (m) {
-                        if (_vm.isGroup &&
-                            (m.senderName?.isNotEmpty ?? false)) {
-                          _vm.insertMention(m);
-                        }
-                      },
-                      onOpenReply: _scrollToMessage,
-                      onOpenComments: _openMessageComments,
-                      showCommentAttachment: _vm.isChannel,
-                      onOpenImage: _openImage,
-                      onOpenSticker: _openSticker,
-                      onPlayVideo: _playVideo,
-                      onPlayMusic: _playMusicMessage,
-                      onButtonTap: _pressMessageButton,
-                      onBotCommandTap: _sendCommand,
-                      onHashtagTap: _openHashtagSearch,
-                      isRead: _vm.isRead(message),
-                      outgoingBubbleColor: _effectiveOutgoingColor(),
-                      outgoingBubbleTextColor: _effectiveOutgoingTextColor(),
-                      incomingBubbleColor: _effectiveIncomingColor(),
-                      incomingBubbleTextColor: _effectiveIncomingTextColor(),
-                      onToggleReaction: (r) => _vm.toggleReaction(message, r),
-                      onShowReactionUsers: _showReactionUsers,
-                      onRedial: _startCall,
-                    ),
-                  ),
+                  _selectionEntry(entry, _messageBubble(message, messageIndex)),
               ],
             );
             return KeyedSubtree(
@@ -4945,6 +5073,11 @@ class _ChatViewState extends State<ChatView> {
 
   List<_TranscriptEntry> _transcriptEntries(bool groupImages) {
     final messages = _vm.messages;
+    // blockedByUser is only written inside _applyKeywordFilter, which always
+    // reassigns `messages` first — so the identity check below already covers
+    // blocked-state changes. (A previous per-build Object.hashAll signature
+    // over every message re-verified this at O(n) per frame; keep the flag
+    // writes behind _applyKeywordFilter or the memo goes stale.)
     final cached = _transcriptCache;
     if (cached != null &&
         identical(_transcriptCacheMessages, messages) &&
@@ -5043,10 +5176,28 @@ class _ChatViewState extends State<ChatView> {
 
   List<_TranscriptEntry> _plainTranscript() {
     final messages = _vm.messages;
-    return [
-      for (var i = 0; i < messages.length; i++)
-        _TranscriptEntry([messages[i]], i),
-    ];
+    final entries = <_TranscriptEntry>[];
+    var i = 0;
+    while (i < messages.length) {
+      final first = messages[i];
+      if (!first.blockedByUser) {
+        entries.add(_TranscriptEntry([first], i));
+        i++;
+        continue;
+      }
+      final run = <ChatMessage>[first];
+      final j = blockedMessageRunEnd(
+        messages,
+        i,
+        startsNewSection: (index) =>
+            _needsSeparator(index, messages: messages) ||
+            _needsUnreadDivider(index, messages: messages),
+      );
+      run.addAll(messages.sublist(i + 1, j));
+      entries.add(_TranscriptEntry(run, i));
+      i = j;
+    }
+    return entries;
   }
 
   List<_TranscriptEntry> _groupedTranscript() {
@@ -5055,6 +5206,20 @@ class _ChatViewState extends State<ChatView> {
     var i = 0;
     while (i < messages.length) {
       final first = messages[i];
+      if (first.blockedByUser) {
+        final run = <ChatMessage>[first];
+        final j = blockedMessageRunEnd(
+          messages,
+          i,
+          startsNewSection: (index) =>
+              _needsSeparator(index, messages: messages) ||
+              _needsUnreadDivider(index, messages: messages),
+        );
+        run.addAll(messages.sublist(i + 1, j));
+        entries.add(_TranscriptEntry(run, i));
+        i = j;
+        continue;
+      }
       if (!_canGroupImage(first)) {
         entries.add(_TranscriptEntry([first], i));
         i++;
@@ -5400,52 +5565,6 @@ class _ChatViewState extends State<ChatView> {
   int _cachePx(double logical) =>
       (logical * MediaQuery.devicePixelRatioOf(context)).ceil();
 
-  static const _quickReactions = ['👍', '❤️', '🔥', '🎉', '😁', '😢', '😡'];
-
-  /// The fuller set shown when the quick bar is expanded.
-  static const _allReactions = [
-    '👍',
-    '👎',
-    '❤️',
-    '🔥',
-    '🥰',
-    '👏',
-    '😁',
-    '🤔',
-    '🤯',
-    '😱',
-    '🤬',
-    '😢',
-    '🎉',
-    '🤩',
-    '🤮',
-    '💩',
-    '🙏',
-    '👌',
-    '🕊️',
-    '🤡',
-    '🥱',
-    '🥴',
-    '😍',
-    '🐳',
-    '🌚',
-    '🌭',
-    '💯',
-    '🤣',
-    '⚡',
-    '🍌',
-    '🏆',
-    '💔',
-    '🤨',
-    '😐',
-    '🍓',
-    '🍾',
-    '💋',
-    '🖕',
-    '😈',
-    '😴',
-  ];
-
   void _react(String emoji) {
     final target = _actionTarget;
     setState(() {
@@ -5454,6 +5573,14 @@ class _ChatViewState extends State<ChatView> {
       _reactionExpanded = false;
     });
     if (target != null) _vm.addReaction(target.id, emoji);
+  }
+
+  void _reactQuick(QuickReactionChoice reaction) {
+    if (reaction.isCustom) {
+      _reactCustom(reaction.customEmojiId);
+    } else {
+      _react(reaction.emoji);
+    }
   }
 
   void _reactCustom(int customEmojiId) {
@@ -5523,8 +5650,10 @@ class _ChatViewState extends State<ChatView> {
                   : Align(
                       alignment: align,
                       child: QuickReactionBar(
-                        reactions: _quickReactions,
-                        onReaction: _react,
+                        reactions: context
+                            .watch<ThemeController>()
+                            .quickReactions,
+                        onReaction: _reactQuick,
                         onExpand: () {
                           EmojiStore.shared.loadIfNeeded();
                           setState(() => _reactionExpanded = true);
@@ -5570,7 +5699,7 @@ class _ChatViewState extends State<ChatView> {
       child: Column(
         children: [
           Expanded(child: _reactionContent(packs)),
-          if (packs.isNotEmpty) _reactionTabStrip(packs),
+          _reactionTabStrip(packs),
         ],
       ),
     );
@@ -5613,7 +5742,7 @@ class _ChatViewState extends State<ChatView> {
       crossAxisCount: 7,
       padding: const EdgeInsets.all(10),
       children: [
-        for (final e in _allReactions)
+        for (final e in availableStandardReactions)
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () => _react(e),
@@ -5661,6 +5790,33 @@ class _ChatViewState extends State<ChatView> {
                       color: Colors.white70,
                     ),
             ),
+          GestureDetector(
+            key: const ValueKey('quick-reaction-settings'),
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              setState(() {
+                _actionTarget = null;
+                _actionRect = null;
+                _reactionExpanded = false;
+              });
+              Navigator.of(context).push(
+                PageRouteBuilder<void>(
+                  pageBuilder: (_, _, _) => const QuickReactionSettingsView(),
+                ),
+              );
+            },
+            child: const SizedBox(
+              width: 40,
+              height: 36,
+              child: Center(
+                child: AppIcon(
+                  HeroAppIcons.gear,
+                  size: 21,
+                  color: Colors.white70,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );

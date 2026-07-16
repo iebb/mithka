@@ -42,6 +42,7 @@ import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
+import '../theme/theme_controller.dart';
 import 'profile_gifts.dart';
 
 class ProfileDetailView extends StatefulWidget {
@@ -487,7 +488,8 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final wallpaper = _chatId == null
+    final themingEnabled = context.watch<ThemeController>().themingEnabled;
+    final wallpaper = !themingEnabled || _chatId == null
         ? null
         : _wallpaperController.wallpaperFor(
             _chatId!,
@@ -930,7 +932,8 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
 
   Widget _cover(double h) {
     final chatId = _chatId;
-    final wallpaper = chatId == null
+    final wallpaper =
+        !context.read<ThemeController>().themingEnabled || chatId == null
         ? null
         : _wallpaperController.wallpaperFor(
             chatId,
@@ -1222,8 +1225,13 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
               ),
               if (trailing != null) ...[
                 const SizedBox(width: 12),
-                SizedBox(
-                  width: MediaQuery.sizeOf(context).width * 0.42,
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: math.min(
+                      MediaQuery.sizeOf(context).width * 0.42,
+                      190,
+                    ),
+                  ),
                   child: Text(
                     trailing,
                     maxLines: 1,
@@ -1325,7 +1333,7 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
-                color: primary ? Colors.white : AppTheme.brand,
+                color: primary ? AppTheme.onBrand : AppTheme.brand,
               ),
             ),
           ],
@@ -1349,15 +1357,19 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
         children: [
           Row(
             children: [
-              Text(
-                AppStrings.t(AppStringKeys.profileDetailFeaturedPhotos),
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
-                  color: c.textPrimary,
+              Expanded(
+                child: Text(
+                  AppStrings.t(AppStringKeys.profileDetailFeaturedPhotos),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: c.textPrimary,
+                  ),
                 ),
               ),
-              const Spacer(),
+              const SizedBox(width: 12),
               Text(
                 '$count',
                 style: TextStyle(fontSize: 13, color: c.textSecondary),
@@ -1418,15 +1430,19 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
         children: [
           Row(
             children: [
-              Text(
-                AppStrings.t(AppStringKeys.profileDetailGifts),
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
-                  color: c.textPrimary,
+              Expanded(
+                child: Text(
+                  AppStrings.t(AppStringKeys.profileDetailGifts),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: c.textPrimary,
+                  ),
                 ),
               ),
-              const Spacer(),
+              const SizedBox(width: 12),
               Text(
                 '$count',
                 style: TextStyle(fontSize: 13, color: c.textSecondary),

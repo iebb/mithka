@@ -6,6 +6,7 @@
 //
 
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 
 import '../chat/telegram_mini_app_recents.dart';
 import '../chat/telegram_mini_app_view.dart';
@@ -49,7 +50,9 @@ class _MiniAppsSearchTabState extends State<MiniAppsSearchTab> {
       allowWriteAccess: app.allowWriteAccess,
       photo: app.photo,
     );
-    if (!opened && mounted) showToast(context, 'Mini App 暂时无法启动');
+    if (!opened && mounted) {
+      showToast(context, AppStrings.t(AppStringKeys.miniAppCannotStart));
+    }
     if (mounted) setState(() => _apps = _load());
   }
 
@@ -72,8 +75,8 @@ class _MiniAppsSearchTabState extends State<MiniAppsSearchTab> {
           return Center(
             child: Text(
               widget.query.trim().isEmpty
-                  ? '暂无最近使用的 Mini App'
-                  : '没有匹配的 Mini App',
+                  ? AppStrings.t(AppStringKeys.miniAppRecentEmpty)
+                  : AppStrings.t(AppStringKeys.miniAppNoMatches),
               style: TextStyle(fontSize: 14, color: c.textTertiary),
             ),
           );
@@ -85,7 +88,9 @@ class _MiniAppsSearchTabState extends State<MiniAppsSearchTab> {
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
                 child: Text(
-                  widget.query.trim().isEmpty ? '最近使用' : 'Mini App',
+                  widget.query.trim().isEmpty
+                      ? AppStrings.t(AppStringKeys.miniAppRecentSection)
+                      : 'Mini App',
                   style: TextStyle(fontSize: 16, color: c.textSecondary),
                 ),
               ),

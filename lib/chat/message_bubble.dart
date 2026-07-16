@@ -21,7 +21,6 @@ import 'package:provider/provider.dart';
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
-import '../components/ui_components.dart';
 import '../l10n/telegram_language_controller.dart';
 import '../profile/profile_detail_view.dart';
 import '../tdlib/json_helpers.dart';
@@ -29,8 +28,10 @@ import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
+import '../theme/message_name_colors.dart';
 import '../theme/theme_controller.dart';
 import 'animated_sticker_view.dart';
+import 'chat_appearance_preview.dart';
 import 'custom_emoji.dart';
 import 'file_detail_view.dart';
 import 'link_handler.dart';
@@ -39,16 +40,6 @@ import 'message_action_menu.dart';
 import 'music_player_controller.dart';
 import 'video_sticker_view.dart';
 import 'voice_audio.dart';
-
-const List<Color> _telegramAccentColors = [
-  Color(0xFFCC5049),
-  Color(0xFFD67722),
-  Color(0xFF955CDB),
-  Color(0xFF40A920),
-  Color(0xFF309EBA),
-  Color(0xFF368AD1),
-  Color(0xFFC7508B),
-];
 
 class MessageBubble extends StatefulWidget {
   const MessageBubble({
@@ -304,10 +295,13 @@ class _MessageBubbleState extends State<MessageBubble>
                 (message.senderTitle?.trim().isNotEmpty ?? false)),
       _ => true,
     };
-    final premiumNameColor =
-        theme.showChatPremiumNameColors && message.senderIsPremium
-        ? _senderAccentColor(message.senderAccentColorId)
-        : c.textSecondary;
+    final premiumNameColor = messageNameColorForSender(
+      theme: theme.cloudThemeFor(Theme.of(context).brightness),
+      accentColorId: message.senderAccentColorId,
+      isPremium: message.senderIsPremium,
+      showPremiumColors: theme.showChatPremiumNameColors,
+      premiumColorsDisabledFallback: c.textSecondary,
+    );
     final showPremiumStatus =
         theme.showChatPremiumEmojiStatus &&
         message.senderIsPremium &&
@@ -435,25 +429,24 @@ class _MessageBubbleState extends State<MessageBubble>
                           padding: const EdgeInsets.only(left: 4, bottom: 3),
                           child: Row(
                             children: [
-                              if (showSenderRole) ...[
-                                RoleTag(
-                                  role: message.senderRole!,
-                                  title: showMemberTags ? senderTitle : null,
-                                ),
-                                const SizedBox(width: 4),
-                              ],
                               Flexible(
-                                child: Text(
-                                  message.senderName!,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
+                                child: SenderIdentityPills(
+                                  enabled: theme.showSenderNameReadabilityPlate,
+                                  bubbleColor: _incomingBubbleColor,
+                                  name: message.senderName!,
+                                  nameStyle: TextStyle(
                                     fontSize: 12,
                                     color: premiumNameColor,
                                     fontWeight: message.senderIsPremium
                                         ? FontWeight.w600
                                         : FontWeight.w400,
                                   ),
+                                  role: showSenderRole
+                                      ? message.senderRole
+                                      : null,
+                                  roleTitle: showSenderRole && showMemberTags
+                                      ? senderTitle
+                                      : null,
                                 ),
                               ),
                               if (showPremiumStatus) ...[
@@ -480,13 +473,6 @@ class _MessageBubbleState extends State<MessageBubble>
               ],
       ),
     );
-  }
-
-  Color _senderAccentColor(int id) {
-    if (id >= 0 && id < _telegramAccentColors.length) {
-      return _telegramAccentColors[id];
-    }
-    return AppTheme.brand;
   }
 
   Widget _reactionChips(bool outgoing) {
@@ -3246,10 +3232,7 @@ class _MessageBubbleState extends State<MessageBubble>
               const SizedBox(height: 8),
               Padding(
                 padding: EdgeInsets.symmetric(horizontal: isGif ? 8 : 0),
-                child: _translationBlock(
-                  outgoing,
-                  width: double.infinity,
-                ),
+                child: _translationBlock(outgoing, width: double.infinity),
               ),
             ],
           ],

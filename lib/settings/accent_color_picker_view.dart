@@ -140,7 +140,9 @@ class _AccentColorPickerViewState extends State<AccentColorPickerView> {
               ? AppIcon(
                   HeroAppIcons.check,
                   size: 20,
-                  color: color == null ? c.textSecondary : Colors.white,
+                  color: color == null
+                      ? c.textSecondary
+                      : readableForeground(color),
                 )
               : (color == null
                     ? AppIcon(HeroAppIcons.ban, size: 18, color: c.textTertiary)

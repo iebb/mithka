@@ -13,12 +13,12 @@ import 'package:flutter/foundation.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
 import '../notifications/scope_notification_settings.dart';
-import '../settings/country_message_filter.dart';
 import '../settings/keyword_blocker.dart';
 import '../tdlib/chat_membership.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
+import 'chat_delete_policy.dart';
 
 class ChatFilterOption {
   const ChatFilterOption({required this.title, this.folderId});
@@ -78,7 +78,6 @@ class ChatListViewModel extends ChangeNotifier {
   void onAppear() {
     if (_listening) return;
     _listening = true;
-    CountryMessageFilter.shared.addListener(_scheduleResort);
     _subscribe();
     _loadFilters();
     _loadChats(_initialPageSize);
@@ -100,7 +99,6 @@ class ChatListViewModel extends ChangeNotifier {
   @override
   void dispose() {
     _listening = false;
-    CountryMessageFilter.shared.removeListener(_scheduleResort);
     _sub?.cancel();
     _resortTimer?.cancel();
     super.dispose();
@@ -324,7 +322,9 @@ class ChatListViewModel extends ChangeNotifier {
     _client
         .query({
           '@type': 'toggleChatIsPinned',
-          'chat_list': {'@type': 'chatListMain'},
+          // Pin in the list the user is looking at — pinning from a folder
+          // filter used to silently mutate the Main list instead.
+          'chat_list': _activeChatList,
           'chat_id': id,
           'is_pinned': newValue,
         })
@@ -381,10 +381,15 @@ class ChatListViewModel extends ChangeNotifier {
   }
 
   void markAllRead() {
-    final targets = [
-      ..._chats,
-      ..._archived,
-    ].where((chat) => chat.unreadCount > 0 || chat.isMarkedUnread).toList();
+    markChatsRead([..._chats, ..._archived]);
+  }
+
+  /// Marks only [chats] read — the archive / filtered assistant badges clear
+  /// their own group, not every chat in the app.
+  void markChatsRead(Iterable<ChatSummary> chats) {
+    final targets = chats
+        .where((chat) => chat.unreadCount > 0 || chat.isMarkedUnread)
+        .toList();
     for (final chat in targets) {
       markRead(chat);
     }
@@ -408,18 +413,25 @@ class ChatListViewModel extends ChangeNotifier {
     });
   }
 
-  Future<void> deleteChat(ChatSummary chat) async {
-    await _client.query({
-      '@type': 'deleteChatHistory',
-      'chat_id': chat.id,
-      'remove_from_chat_list': true,
-      'revoke': false,
-    });
+  Future<ChatDeleteCapabilities> deleteCapabilities(ChatSummary chat) async {
+    try {
+      final raw = await _client.query({'@type': 'getChat', 'chat_id': chat.id});
+      return chatDeleteCapabilities(raw);
+    } catch (_) {
+      return const ChatDeleteCapabilities.selfOnly();
+    }
   }
 
-  Future<void> leaveAndDeleteChat(ChatSummary chat) async {
-    await _client.query({'@type': 'leaveChat', 'chat_id': chat.id});
-    await deleteChat(chat);
+  Future<void> deleteChat(
+    ChatSummary chat, {
+    ChatDeleteScope scope = ChatDeleteScope.self,
+  }) async {
+    if (shouldLeaveBeforeDeletingChat(chat.kind, scope)) {
+      await _client.query({'@type': 'leaveChat', 'chat_id': chat.id});
+    }
+    await _client.query(
+      deleteChatHistoryRequest(chatId: chat.id, scope: scope),
+    );
   }
 
   void clearNotice() {
@@ -708,15 +720,8 @@ class ChatListViewModel extends ChangeNotifier {
     final all = _map.values
         .where((c) => _joinedChatCache[c.id] ?? true)
         .toList();
-    final filteredIds = {
-      for (final chat in all)
-        if (_isCountryFiltered(chat)) chat.id,
-    };
-    _filtered = all.where((chat) => filteredIds.contains(chat.id)).toList()
-      ..sort(_compare);
-    final visible = all
-        .where((chat) => !filteredIds.contains(chat.id))
-        .toList(growable: false);
+    _filtered = const [];
+    final visible = all;
     _archived = visible.where((c) => c.archiveOrder > 0).toList()
       ..sort(
         (a, b) => a.archiveOrder != b.archiveOrder
@@ -756,14 +761,6 @@ class ChatListViewModel extends ChangeNotifier {
     if (a.order != b.order) return b.order.compareTo(a.order);
     if (a.date != b.date) return b.date.compareTo(a.date);
     return b.id.compareTo(a.id);
-  }
-
-  bool _isCountryFiltered(ChatSummary chat) {
-    if (chat.isSavedMessages || chat.peerUserId == null) return false;
-    return CountryMessageFilter.shared.matchesUser(
-      isContact: chat.peerIsContact,
-      phoneNumber: chat.peerPhoneNumber,
-    );
   }
 
   // MARK: - Chat-list Premium display metadata (private chats)

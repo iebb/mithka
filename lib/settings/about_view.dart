@@ -197,14 +197,17 @@ class _AboutLinkRow extends StatelessWidget {
             children: [
               Icon(icon, size: 20, color: AppTheme.brand),
               const SizedBox(width: 12),
-              Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 16, color: c.textPrimary),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 16, color: c.textPrimary),
+                ),
               ),
               const SizedBox(width: 12),
-              Expanded(
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 140),
                 child: Text(
                   value,
                   maxLines: 1,

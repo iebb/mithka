@@ -16,6 +16,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/l10n/preview_texts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../chat/quick_reaction_choice.dart';
 import '../components/app_icons.dart';
 import 'app_theme.dart';
 import 'emoji_font_catalog.dart';
@@ -798,6 +799,9 @@ enum AppMonospaceFontChoice {
 
 class ThemeController extends ChangeNotifier {
   ThemeController(this._prefs) {
+    // Theming existed unconditionally before this preference was introduced,
+    // so both new installs and migrated users retain the established behavior.
+    _themingEnabled = _prefs.getBool(_themingEnabledKey) ?? true;
     _mode = AppearanceMode.values.firstWhere(
       (m) => m.name == _prefs.getString(_modeKey),
       orElse: () => AppearanceMode.system,
@@ -805,13 +809,58 @@ class ThemeController extends ChangeNotifier {
     _brandColor = Color(
       _prefs.getInt(_brandKey) ?? (0xFF000000 | AppTheme.defaultBrand),
     );
+    TelegramCloudTheme? decodeTheme(String key) {
+      try {
+        final encoded = _prefs.getString(key);
+        return encoded == null
+            ? null
+            : TelegramCloudTheme.fromJson(jsonDecode(encoded));
+      } catch (_) {
+        return null;
+      }
+    }
+
+    final legacyCloudTheme = decodeTheme(_cloudThemeKey);
+    _lightCloudTheme = decodeTheme(_lightCloudThemeKey);
+    _darkCloudTheme = decodeTheme(_darkCloudThemeKey);
+    if (legacyCloudTheme != null) {
+      if (legacyCloudTheme.isDark) {
+        _darkCloudTheme ??= legacyCloudTheme;
+      } else {
+        _lightCloudTheme ??= legacyCloudTheme;
+      }
+    }
+    _installedCloudThemes = [];
     try {
-      final encodedTheme = _prefs.getString(_cloudThemeKey);
-      _cloudTheme = encodedTheme == null
-          ? null
-          : TelegramCloudTheme.fromJson(jsonDecode(encodedTheme));
-    } catch (_) {
-      _cloudTheme = null;
+      final encodedThemes = _prefs.getString(_installedCloudThemesKey);
+      final decodedThemes = encodedThemes == null
+          ? const <Object?>[]
+          : jsonDecode(encodedThemes) as List;
+      for (final value in decodedThemes) {
+        final theme = TelegramCloudTheme.fromJson(value);
+        if (theme != null) _addInstalledCloudTheme(theme);
+      }
+    } catch (_) {}
+    for (final theme in [legacyCloudTheme, _lightCloudTheme, _darkCloudTheme]) {
+      if (theme != null) _addInstalledCloudTheme(theme);
+    }
+    if (legacyCloudTheme != null) {
+      _prefs.remove(_cloudThemeKey);
+      _persistCloudThemes();
+    }
+    final hadTelegramUiPreference = _prefs.containsKey(
+      _useTelegramThemeForUiKey,
+    );
+    _useTelegramThemeForUi = _prefs.getBool(_useTelegramThemeForUiKey) ?? false;
+    if (!hasCloudTheme) {
+      _useTelegramThemeForUi = false;
+      _prefs.setBool(_useTelegramThemeForUiKey, false);
+    } else if (!hadTelegramUiPreference &&
+        (_prefs.containsKey(_preCloudThemeModeKey) ||
+            _prefs.containsKey(_preCloudThemeBrandKey))) {
+      // Themes installed by older builds always replaced the app palette.
+      // Migrate those users to the new, explicitly disabled-by-default mode.
+      _restoreUiBeforeCloudTheme();
     }
     _fontChoice = AppFontChoice.values.firstWhere(
       (m) => m.name == _prefs.getString(_fontChoiceKey),
@@ -878,12 +927,23 @@ class ThemeController extends ChangeNotifier {
         _prefs.getBool(_chatPremiumNameColorsKey) ?? true;
     _showChatPremiumEmojiStatus =
         _prefs.getBool(_chatPremiumEmojiStatusKey) ?? true;
+    _showSenderNameReadabilityPlate =
+        _prefs.getBool(_senderNameReadabilityPlateKey) ?? false;
     _showMessageMetaIndicators =
         _prefs.getBool(_messageMetaIndicatorsKey) ?? false;
     _alwaysShowMessageTime = _prefs.getBool(_alwaysShowMessageTimeKey) ?? false;
     _openChatsAtLatest = _prefs.getBool(_openChatsAtLatestKey) ?? false;
     _preserveSenderWhenRepeating =
         _prefs.getBool(_preserveSenderWhenRepeatingKey) ?? true;
+    final storedQuickReactions = _prefs.getStringList(_quickReactionsKey);
+    _quickReactions = storedQuickReactions == null
+        ? [...defaultQuickReactions]
+        : _normalizeQuickReactions(
+            storedQuickReactions
+                .map(QuickReactionChoice.fromStorage)
+                .whereType<QuickReactionChoice>(),
+          );
+    if (_quickReactions.isEmpty) _quickReactions = [...defaultQuickReactions];
     _groupImageMessages = _prefs.getBool(_groupImageMessagesKey) ?? true;
     _hideBlockedUserMessages =
         _prefs.getBool(_hideBlockedUserMessagesKey) ?? false;
@@ -912,8 +972,13 @@ class ThemeController extends ChangeNotifier {
   }
 
   static const _modeKey = 'appearanceMode';
+  static const _themingEnabledKey = 'appearanceThemingEnabled';
   static const _brandKey = 'brandColor';
   static const _cloudThemeKey = 'telegramCloudTheme';
+  static const _lightCloudThemeKey = 'telegramCloudThemeLight';
+  static const _darkCloudThemeKey = 'telegramCloudThemeDark';
+  static const _installedCloudThemesKey = 'installedTelegramCloudThemes';
+  static const _useTelegramThemeForUiKey = 'useTelegramThemeForUi';
   static const _preCloudThemeModeKey = 'preTelegramCloudThemeMode';
   static const _preCloudThemeBrandKey = 'preTelegramCloudThemeBrand';
   static const _fontChoiceKey = 'fontChoice';
@@ -945,10 +1010,13 @@ class ThemeController extends ChangeNotifier {
   static const _premiumEmojiStatusKey = 'showPremiumEmojiStatus';
   static const _chatPremiumNameColorsKey = 'showChatPremiumNameColors';
   static const _chatPremiumEmojiStatusKey = 'showChatPremiumEmojiStatus';
+  static const _senderNameReadabilityPlateKey =
+      'showSenderNameReadabilityPlate';
   static const _messageMetaIndicatorsKey = 'showMessageMetaIndicators';
   static const _alwaysShowMessageTimeKey = 'alwaysShowMessageTime';
   static const _openChatsAtLatestKey = 'openChatsAtLatest';
   static const _preserveSenderWhenRepeatingKey = 'preserveSenderWhenRepeating';
+  static const _quickReactionsKey = 'quickReactions';
   static const _groupImageMessagesKey = 'groupImageMessages';
   static const _hideBlockedUserMessagesKey = 'hideBlockedUserMessages';
   static const _showChannelsTabKey = 'showChannelsTab';
@@ -963,9 +1031,13 @@ class ThemeController extends ChangeNotifier {
   static const double maxInterfaceScale = 1.50;
 
   final SharedPreferences _prefs;
+  late bool _themingEnabled;
   late AppearanceMode _mode;
   late Color _brandColor;
-  TelegramCloudTheme? _cloudTheme;
+  TelegramCloudTheme? _lightCloudTheme;
+  TelegramCloudTheme? _darkCloudTheme;
+  late List<TelegramCloudTheme> _installedCloudThemes;
+  late bool _useTelegramThemeForUi;
   late AppFontChoice _fontChoice;
   late AppFontChoice _cjkFontChoice;
   late String _customPrimaryFontFamily;
@@ -990,10 +1062,12 @@ class ThemeController extends ChangeNotifier {
   bool _showPremiumEmojiStatus = true;
   bool _showChatPremiumNameColors = true;
   bool _showChatPremiumEmojiStatus = true;
+  bool _showSenderNameReadabilityPlate = false;
   bool _showMessageMetaIndicators = false;
   bool _alwaysShowMessageTime = false;
   bool _openChatsAtLatest = false;
   bool _preserveSenderWhenRepeating = true;
+  late List<QuickReactionChoice> _quickReactions;
   bool _groupImageMessages = true;
   bool _hideBlockedUserMessages = false;
   bool _showChannelsTab = false;
@@ -1003,16 +1077,42 @@ class ThemeController extends ChangeNotifier {
   late UnreadBadgeOverflowMode _unreadBadgeOverflowMode;
 
   AppearanceMode get mode => _mode;
+  bool get themingEnabled => _themingEnabled;
   ThemeMode get themeMode => _mode.themeMode;
   Color get brandColor => _brandColor;
-  TelegramCloudTheme? get cloudTheme => _cloudTheme;
-  AppColors appColorsFor(Brightness brightness) {
-    final theme = _cloudTheme;
-    // A selected .attheme is the global UI theme. Its palette remains the
-    // source of truth during the brightness transition as well, avoiding a
-    // frame where the stock palette flashes through after applying a theme.
-    if (theme != null) return theme.appColors;
+  TelegramCloudTheme? get lightCloudTheme => _lightCloudTheme;
+  TelegramCloudTheme? get darkCloudTheme => _darkCloudTheme;
+  bool get hasCloudTheme => _lightCloudTheme != null || _darkCloudTheme != null;
+  List<TelegramCloudTheme> get installedCloudThemes =>
+      List.unmodifiable(_installedCloudThemes);
+  TelegramCloudTheme? cloudThemeFor(Brightness brightness) => !_themingEnabled
+      ? null
+      : brightness == Brightness.dark
+      ? _darkCloudTheme
+      : _lightCloudTheme;
+  TelegramCloudTheme? get cloudTheme => cloudThemeFor(switch (_mode) {
+    AppearanceMode.light => Brightness.light,
+    AppearanceMode.dark => Brightness.dark,
+    AppearanceMode.system =>
+      WidgetsBinding.instance.platformDispatcher.platformBrightness,
+  });
+  bool get useTelegramThemeForUi => _themingEnabled && _useTelegramThemeForUi;
+
+  /// The reusable semantic palette for every app surface at [brightness].
+  /// Chat wallpaper and bubble theming remain independent of this UI opt-in.
+  AppColors uiColorsFor(Brightness brightness) {
+    final theme = cloudThemeFor(brightness);
+    if (useTelegramThemeForUi && theme != null) return theme.uiColors;
     return brightness == Brightness.dark ? AppColors.dark : AppColors.light;
+  }
+
+  AppColors appColorsFor(Brightness brightness) => uiColorsFor(brightness);
+
+  set themingEnabled(bool value) {
+    if (_themingEnabled == value) return;
+    _themingEnabled = value;
+    _prefs.setBool(_themingEnabledKey, value);
+    notifyListeners();
   }
 
   AppFontChoice get fontChoice => _fontChoice;
@@ -1069,10 +1169,13 @@ class ThemeController extends ChangeNotifier {
   bool get showPremiumEmojiStatus => _showPremiumEmojiStatus;
   bool get showChatPremiumNameColors => _showChatPremiumNameColors;
   bool get showChatPremiumEmojiStatus => _showChatPremiumEmojiStatus;
+  bool get showSenderNameReadabilityPlate => _showSenderNameReadabilityPlate;
   bool get showMessageMetaIndicators => _showMessageMetaIndicators;
   bool get alwaysShowMessageTime => _alwaysShowMessageTime;
   bool get openChatsAtLatest => _openChatsAtLatest;
   bool get preserveSenderWhenRepeating => _preserveSenderWhenRepeating;
+  List<QuickReactionChoice> get quickReactions =>
+      List.unmodifiable(_quickReactions);
   bool get groupImageMessages => _groupImageMessages;
   bool get hideBlockedUserMessages => _hideBlockedUserMessages;
   bool get showChannelsTab => _showChannelsTab;
@@ -1191,7 +1294,6 @@ class ThemeController extends ChangeNotifier {
   }
 
   set mode(AppearanceMode value) {
-    _clearCloudTheme();
     _mode = value;
     _prefs.setString(_modeKey, value.name);
     notifyListeners();
@@ -1199,38 +1301,100 @@ class ThemeController extends ChangeNotifier {
 
   /// The app's accent / brand color. Persisted and applied app-wide.
   set brandColor(Color value) {
-    _clearCloudTheme();
     _brandColor = value;
     _prefs.setInt(_brandKey, value.toARGB32());
     AppTheme.applyBrand(value);
     notifyListeners();
   }
 
-  void installCloudTheme(TelegramCloudTheme theme) {
-    if (_cloudTheme == null) {
-      _prefs.setString(_preCloudThemeModeKey, _mode.name);
-      _prefs.setInt(_preCloudThemeBrandKey, _brandColor.toARGB32());
+  void installCloudTheme(TelegramCloudTheme theme, {Brightness? brightness}) {
+    final target =
+        brightness ?? (theme.isDark ? Brightness.dark : Brightness.light);
+    if (target == Brightness.dark) {
+      _darkCloudTheme = theme;
+    } else {
+      _lightCloudTheme = theme;
     }
-    _cloudTheme = theme;
-    _mode = theme.isDark ? AppearanceMode.dark : AppearanceMode.light;
-    _brandColor = theme.accentColor;
-    _prefs.setString(_cloudThemeKey, jsonEncode(theme.toJson()));
-    _prefs.setString(_modeKey, _mode.name);
-    _prefs.setInt(_brandKey, _brandColor.toARGB32());
-    AppTheme.applyBrand(_brandColor);
+    _addInstalledCloudTheme(theme);
+    _persistCloudThemes();
     notifyListeners();
   }
 
-  void clearCloudTheme() {
-    if (_cloudTheme == null) return;
-    _clearCloudTheme();
+  set useTelegramThemeForUi(bool value) {
+    _setUseTelegramThemeForUi(value, notify: true);
+  }
+
+  void _setUseTelegramThemeForUi(bool value, {required bool notify}) {
+    if (value && !hasCloudTheme) return;
+    if (_useTelegramThemeForUi == value) return;
+    _useTelegramThemeForUi = value;
+    _prefs.setBool(_useTelegramThemeForUiKey, value);
+    if (notify) notifyListeners();
+  }
+
+  void clearCloudTheme([Brightness? brightness]) {
+    if (brightness == Brightness.light) {
+      _lightCloudTheme = null;
+    } else if (brightness == Brightness.dark) {
+      _darkCloudTheme = null;
+    } else {
+      _lightCloudTheme = null;
+      _darkCloudTheme = null;
+    }
+    if (!hasCloudTheme) {
+      _useTelegramThemeForUi = false;
+      _prefs.setBool(_useTelegramThemeForUiKey, false);
+    }
+    _persistCloudThemes();
     notifyListeners();
   }
 
-  void _clearCloudTheme() {
-    if (_cloudTheme == null) return;
-    _cloudTheme = null;
-    _prefs.remove(_cloudThemeKey);
+  void _addInstalledCloudTheme(TelegramCloudTheme theme) {
+    _installedCloudThemes.removeWhere((item) => item.slug == theme.slug);
+    _installedCloudThemes.add(theme);
+  }
+
+  /// Replaces cached cloud-theme payloads with freshly hydrated Telegram
+  /// copies. This also refreshes active light/dark selections with the same
+  /// slug, which is important because persisted wallpaper paths point into an
+  /// app container that may no longer exist after reinstalling the app.
+  void synchronizeInstalledCloudThemes(Iterable<TelegramCloudTheme> themes) {
+    final refreshed = <String, TelegramCloudTheme>{};
+    for (final theme in themes) {
+      if (theme.slug.isEmpty || theme.slug.startsWith('builtin:')) continue;
+      refreshed[theme.slug] = theme;
+    }
+    _installedCloudThemes = refreshed.values.toList(growable: true);
+    final light = _lightCloudTheme;
+    if (light != null && refreshed.containsKey(light.slug)) {
+      _lightCloudTheme = refreshed[light.slug];
+    }
+    final dark = _darkCloudTheme;
+    if (dark != null && refreshed.containsKey(dark.slug)) {
+      _darkCloudTheme = refreshed[dark.slug];
+    }
+    _persistCloudThemes();
+    notifyListeners();
+  }
+
+  void _persistCloudThemes() {
+    void persist(String key, TelegramCloudTheme? theme) {
+      if (theme == null) {
+        _prefs.remove(key);
+      } else {
+        _prefs.setString(key, jsonEncode(theme.toJson()));
+      }
+    }
+
+    persist(_lightCloudThemeKey, _lightCloudTheme);
+    persist(_darkCloudThemeKey, _darkCloudTheme);
+    _prefs.setString(
+      _installedCloudThemesKey,
+      jsonEncode(_installedCloudThemes.map((theme) => theme.toJson()).toList()),
+    );
+  }
+
+  void _restoreUiBeforeCloudTheme() {
     _mode = AppearanceMode.values.firstWhere(
       (value) => value.name == _prefs.getString(_preCloudThemeModeKey),
       orElse: () => AppearanceMode.system,
@@ -1517,6 +1681,13 @@ class ThemeController extends ChangeNotifier {
     notifyListeners();
   }
 
+  set showSenderNameReadabilityPlate(bool value) {
+    if (_showSenderNameReadabilityPlate == value) return;
+    _showSenderNameReadabilityPlate = value;
+    _prefs.setBool(_senderNameReadabilityPlateKey, value);
+    notifyListeners();
+  }
+
   set showMessageMetaIndicators(bool value) {
     _showMessageMetaIndicators = value;
     _prefs.setBool(_messageMetaIndicatorsKey, value);
@@ -1541,6 +1712,32 @@ class ThemeController extends ChangeNotifier {
     _preserveSenderWhenRepeating = value;
     _prefs.setBool(_preserveSenderWhenRepeatingKey, value);
     notifyListeners();
+  }
+
+  void setQuickReactions(Iterable<QuickReactionChoice> value) {
+    final normalized = _normalizeQuickReactions(value);
+    if (normalized.isEmpty || listEquals(normalized, _quickReactions)) return;
+    _quickReactions = normalized;
+    _prefs.setStringList(
+      _quickReactionsKey,
+      normalized.map((reaction) => reaction.storageValue).toList(),
+    );
+    notifyListeners();
+  }
+
+  static List<QuickReactionChoice> _normalizeQuickReactions(
+    Iterable<QuickReactionChoice> value,
+  ) {
+    final result = <QuickReactionChoice>[];
+    for (final reaction in value) {
+      if ((!reaction.isCustom && reaction.emoji.isEmpty) ||
+          result.contains(reaction)) {
+        continue;
+      }
+      result.add(reaction);
+      if (result.length == 9) break;
+    }
+    return result;
   }
 
   set groupImageMessages(bool value) {

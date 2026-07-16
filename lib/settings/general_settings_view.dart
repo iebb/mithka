@@ -5,7 +5,6 @@
 //  of the Swift `GeneralSettingsView` / `GeneralSettingsViewModel`.
 //
 
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -139,7 +138,7 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
         _sectionHeader(AppStrings.t(AppStringKeys.generalAutoDownloadMedia)),
         _card([
           _toggleRowWithSubtitle(
-            HeroAppIcons.mobileScreenButton.data,
+            HeroAppIcons.mobileScreenButton,
             const Color(0xFF34C759),
             AppStrings.t(AppStringKeys.generalAutoDownloadMobileData),
             auto.mobileHighResImages
@@ -152,7 +151,7 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
           ),
           const InsetDivider(leadingInset: 56),
           _toggleRowWithSubtitle(
-            HeroAppIcons.image.data,
+            HeroAppIcons.image,
             const Color(0xFF1D9BF0),
             AppStrings.t(AppStringKeys.generalAutoDownloadWifi),
             auto.wifiHighResImages
@@ -180,15 +179,8 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
     }
   }
 
-  Widget _iconBadge(IconData icon, Color color) => Container(
-    width: 28,
-    height: 28,
-    decoration: BoxDecoration(
-      color: color,
-      borderRadius: BorderRadius.circular(7),
-    ),
-    child: Icon(icon, size: 15, color: Colors.white),
-  );
+  Widget _iconBadge(AppIconData icon, Color color) =>
+      SettingsIconTile(icon: icon, backgroundColor: color);
 
   Widget _card(List<Widget> children) {
     return Container(
@@ -214,16 +206,17 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: [
-                  _iconBadge(
-                    HeroAppIcons.solidFolder.data,
-                    const Color(0xFF16B0A0),
+                  _iconBadge(HeroAppIcons.solidFolder, const Color(0xFF16B0A0)),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      AppStrings.t(AppStringKeys.generalCacheSize),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 16, color: c.textPrimary),
+                    ),
                   ),
                   const SizedBox(width: 12),
-                  Text(
-                    AppStrings.t(AppStringKeys.generalCacheSize),
-                    style: TextStyle(fontSize: 16, color: c.textPrimary),
-                  ),
-                  const Spacer(),
                   if (_loadingCache)
                     const SizedBox(
                       width: 16,
@@ -249,13 +242,17 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Row(
                   children: [
-                    Text(
-                      _clearing
-                          ? AppStrings.t(AppStringKeys.generalClearingCache)
-                          : AppStrings.t(AppStringKeys.generalClearCache),
-                      style: TextStyle(fontSize: 16, color: AppTheme.tagRed),
+                    Expanded(
+                      child: Text(
+                        _clearing
+                            ? AppStrings.t(AppStringKeys.generalClearingCache)
+                            : AppStrings.t(AppStringKeys.generalClearCache),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 16, color: AppTheme.tagRed),
+                      ),
                     ),
-                    const Spacer(),
+                    const SizedBox(width: 12),
                     if (_clearing)
                       const SizedBox(
                         width: 16,
@@ -280,7 +277,7 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
         _sectionHeader(AppStrings.t(AppStringKeys.audioSearchChatTab)),
         _card([
           _toggleRow(
-            HeroAppIcons.reply.data,
+            HeroAppIcons.reply,
             const Color(0xFF3C8CF0),
             AppStrings.t(AppStringKeys.generalSendMessageWithEnter),
             _enterToSend,
@@ -291,7 +288,7 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
           ),
           const InsetDivider(leadingInset: 56),
           _toggleRow(
-            HeroAppIcons.download.data,
+            HeroAppIcons.download,
             const Color(0xFF3C8CF0),
             AppStrings.t(AppStringKeys.generalOpenChatAtLatestMessage),
             theme.openChatsAtLatest,
@@ -299,7 +296,7 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
           ),
           const InsetDivider(leadingInset: 56),
           _toggleRow(
-            HeroAppIcons.arrowsRotate.data,
+            HeroAppIcons.arrowsRotate,
             const Color(0xFF16B0A0),
             AppStrings.t(AppStringKeys.generalRepeatPreserveSender),
             theme.preserveSenderWhenRepeating,
@@ -337,14 +334,17 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
             children: [
-              _iconBadge(icon.data, color),
+              _iconBadge(icon, color),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   title.l10n(context),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 16, color: c.textPrimary),
                 ),
               ),
+              const SizedBox(width: 8),
               AppIcon(
                 HeroAppIcons.chevronRight,
                 size: 17,
@@ -358,7 +358,7 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
   }
 
   Widget _toggleRow(
-    IconData icon,
+    AppIconData icon,
     Color color,
     String title,
     bool value,
@@ -373,16 +373,16 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
           children: [
             _iconBadge(icon, color),
             const SizedBox(width: 12),
-            Text(
-              title.l10n(context),
-              style: TextStyle(fontSize: 16, color: c.textPrimary),
+            Expanded(
+              child: Text(
+                title.l10n(context),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 16, color: c.textPrimary),
+              ),
             ),
-            const Spacer(),
-            CupertinoSwitch(
-              value: value,
-              activeTrackColor: AppTheme.brand,
-              onChanged: onChanged,
-            ),
+            const SizedBox(width: 12),
+            AppSwitch(value: value, onChanged: onChanged),
           ],
         ),
       ),
@@ -390,7 +390,7 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
   }
 
   Widget _toggleRowWithSubtitle(
-    IconData icon,
+    AppIconData icon,
     Color color,
     String title,
     String subtitle,
@@ -429,11 +429,7 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
               ),
             ),
             const SizedBox(width: 12),
-            CupertinoSwitch(
-              value: value,
-              activeTrackColor: AppTheme.brand,
-              onChanged: disabled ? null : onChanged,
-            ),
+            AppSwitch(value: value, enabled: !disabled, onChanged: onChanged),
           ],
         ),
       ),

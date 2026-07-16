@@ -3,7 +3,17 @@ import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 
-enum TelegramThemePlatform { ios, android, desktop }
+enum TelegramThemePlatform { android, ios, macos, desktop }
+
+/// Fidelity order used when a cloud theme supplies more than one platform
+/// document. Telegram's Android palette is the broadest; missing semantic
+/// variables then fall back through iOS, macOS, and finally TDesktop.
+const telegramThemePlatformFallbackOrder = <TelegramThemePlatform>[
+  TelegramThemePlatform.android,
+  TelegramThemePlatform.ios,
+  TelegramThemePlatform.macos,
+  TelegramThemePlatform.desktop,
+];
 
 class ParsedTelegramThemeFile {
   const ParsedTelegramThemeFile({
@@ -37,6 +47,9 @@ TelegramThemePlatform? telegramThemePlatformForDocument({
   if (mime.contains('tgtheme-android') || name.endsWith('.attheme')) {
     return TelegramThemePlatform.android;
   }
+  if (mime.contains('tgtheme-macos') || name.endsWith('.palette')) {
+    return TelegramThemePlatform.macos;
+  }
   if (mime.contains('tgtheme-tdesktop') || name.endsWith('.tdesktop-theme')) {
     return TelegramThemePlatform.desktop;
   }
@@ -49,8 +62,9 @@ ParsedTelegramThemeFile? parseTelegramThemeFile(
 ) {
   try {
     return switch (platform) {
-      TelegramThemePlatform.ios => _parseIosFile(bytes),
       TelegramThemePlatform.android => _parseAndroidFile(bytes),
+      TelegramThemePlatform.ios => _parseIosFile(bytes),
+      TelegramThemePlatform.macos => _parseMacosFile(bytes),
       TelegramThemePlatform.desktop => _parseDesktopFile(bytes),
     };
   } catch (_) {
@@ -117,6 +131,43 @@ Map<String, int> parseTelegramAndroidTheme(String contents) {
   return result;
 }
 
+/// Parses Telegram macOS `.palette` files. The format is a flat `key=value`
+/// list, but unlike Android it also contains metadata and may suffix colors
+/// with an alpha component.
+Map<String, int> parseTelegramMacosTheme(String contents) {
+  final result = <String, int>{};
+  for (final rawLine in const LineSplitter().convert(contents)) {
+    final line = rawLine.trim();
+    if (line.isEmpty || line.startsWith('//')) continue;
+    final separator = line.indexOf('=');
+    if (separator <= 0) continue;
+    final key = line.substring(0, separator).trim();
+    final rawValue = line.substring(separator + 1).trim();
+    if (key == 'isDark') {
+      final dark = int.tryParse(rawValue);
+      if (dark != null) result['dark'] = dark == 0 ? 0 : 1;
+      continue;
+    }
+    if (key == 'bubbleBackground_outgoing') {
+      final colors = rawValue
+          .split(',')
+          .map(_parseMacosColor)
+          .whereType<int>()
+          .toList(growable: false);
+      if (colors.isNotEmpty) {
+        result[key] = colors.first;
+        if (colors.length > 1) {
+          result['bubbleBackgroundGradient_outgoing'] = colors.last;
+        }
+      }
+      continue;
+    }
+    final color = _parseMacosColor(rawValue);
+    if (color != null) result[key] = color;
+  }
+  return result;
+}
+
 Map<String, int> parseTelegramDesktopTheme(String contents) {
   final rawValues = <String, String>{};
   for (final rawLine in const LineSplitter().convert(contents)) {
@@ -174,6 +225,14 @@ ParsedTelegramThemeFile _parseAndroidFile(Uint8List bytes) {
     palette: parseTelegramAndroidTheme(header),
     wallpaperBytes: wallpaper?.$1,
     wallpaperExtension: wallpaper?.$2,
+  );
+}
+
+ParsedTelegramThemeFile _parseMacosFile(Uint8List bytes) {
+  final contents = utf8.decode(bytes, allowMalformed: true);
+  return ParsedTelegramThemeFile(
+    platform: TelegramThemePlatform.macos,
+    palette: parseTelegramMacosTheme(contents),
   );
 }
 
@@ -309,6 +368,17 @@ int? _parseAndroidColor(String raw) {
   if (raw.startsWith('#')) return _parseArgbThemeColor(raw);
   final signed = int.tryParse(raw);
   return signed == null ? null : signed & 0xFFFFFFFF;
+}
+
+int? _parseMacosColor(String raw) {
+  final components = raw.trim().split(':');
+  final color = _parseArgbThemeColor(components.first.trim());
+  if (color == null) return null;
+  if (components.length < 2) return color;
+  final alpha = double.tryParse(components[1].trim());
+  if (alpha == null) return color;
+  final rgb = color & 0x00FFFFFF;
+  return ((alpha.clamp(0.0, 1.0) * 255).round() << 24) | rgb;
 }
 
 int? _parseArgbThemeColor(String raw) {

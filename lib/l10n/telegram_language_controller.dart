@@ -469,7 +469,9 @@ class TelegramLanguageController extends ChangeNotifier {
   }
 
   static final _unresolvedPlaceholderPattern = RegExp(
-    r'\{value\d+\}|%\d+\$[@sd]|%[sd@]',
+    // Android packs also use bare un1/un2 (user-name slots); without them in
+    // this pattern, service texts rendered literally as "un1 removed un2".
+    r'\{value\d+\}|%\d+\$[@sd]|%[sd@]|\bun[12]\b',
   );
 
   static bool _hasUnresolvedPlaceholder(String value) =>
@@ -1020,7 +1022,8 @@ const _telegramKeyForAppKey = <String, String>{
   AppStringKeys.tdMessageChecklist: 'AttachChecklist',
   AppStringKeys.tdMessageContactCard: 'AttachContact',
   AppStringKeys.tdMessageDaysDuration: 'Days',
-  AppStringKeys.tdMessageDice: 'DiceInfo2',
+  // No DiceInfo2 mapping: it's a full explainer sentence, unusable as the
+  // compact "[Dice]" preview — the app string is correct.
   AppStringKeys.tdMessageExpiredPhoto: 'AttachDestructingPhotoExpired',
   AppStringKeys.tdMessageExpiredVideo: 'AttachDestructingVideoExpired',
   AppStringKeys.tdMessageFileWithName: 'AttachDocument',
@@ -1037,7 +1040,8 @@ const _telegramKeyForAppKey = <String, String>{
   AppStringKeys.tdMessageHoursDuration: 'Hours',
   AppStringKeys.tdMessageJoinedGroupByLink: 'ActionInviteUser',
   AppStringKeys.tdMessageLastSeenUnknown: 'LastSeen',
-  AppStringKeys.tdMessageMemberLeftGroup: 'ActionKickUser',
+  // 'ActionKickUser' is "un1 removed un2" — the wrong action for a self-leave.
+  AppStringKeys.tdMessageMemberLeftGroup: 'ActionLeftUser',
   AppStringKeys.tdMessageMessagePinned: 'ActionPinnedText',
   AppStringKeys.tdMessageMinutesDuration: 'Minutes',
   AppStringKeys.tdMessageMusic: 'AttachMusic',

@@ -232,6 +232,7 @@ class _ProfileViewState extends State<ProfileView> {
 
   Widget _banner() {
     final user = _vm.user;
+    final foreground = context.colors.onAccent;
     final hidePhone = context.watch<ThemeController>().hideSidebarPhone;
     final username = (user?.username?.isNotEmpty ?? false)
         ? '@${user!.username}'
@@ -250,10 +251,10 @@ class _ProfileViewState extends State<ProfileView> {
                 const Spacer(),
                 GestureDetector(
                   onTap: _openMyProfile,
-                  child: const AppIcon(
+                  child: AppIcon(
                     HeroAppIcons.circleUser,
                     size: 22,
-                    color: Colors.white,
+                    color: foreground,
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -267,19 +268,19 @@ class _ProfileViewState extends State<ProfileView> {
                       ),
                     ),
                   ),
-                  child: const AppIcon(
+                  child: AppIcon(
                     HeroAppIcons.qrcode,
                     size: 22,
-                    color: Colors.white,
+                    color: foreground,
                   ),
                 ),
                 const SizedBox(width: 16),
                 GestureDetector(
                   onTap: () => context.read<dc.DrawerController>().close(),
-                  child: const AppIcon(
+                  child: AppIcon(
                     HeroAppIcons.xmark,
                     size: 22,
-                    color: Colors.white,
+                    color: foreground,
                   ),
                 ),
               ],
@@ -293,7 +294,7 @@ class _ProfileViewState extends State<ProfileView> {
                   child: Container(
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2),
+                      border: Border.all(color: foreground, width: 2),
                     ),
                     child: PhotoAvatar(
                       title:
@@ -316,10 +317,10 @@ class _ProfileViewState extends State<ProfileView> {
                                   AppStrings.t(AppStringKeys.contactsLoading),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 22,
                                 fontWeight: FontWeight.bold,
-                                color: Colors.white,
+                                color: foreground,
                               ),
                             ),
                           ),
@@ -338,7 +339,7 @@ class _ProfileViewState extends State<ProfileView> {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 13,
-                            color: Colors.white.withValues(alpha: 0.85),
+                            color: foreground.withValues(alpha: 0.78),
                           ),
                         ),
                       ],
@@ -351,10 +352,10 @@ class _ProfileViewState extends State<ProfileView> {
                   onTap: () => _root.push(
                     MaterialPageRoute(builder: (_) => const EditProfileView()),
                   ),
-                  child: const AppIcon(
+                  child: AppIcon(
                     HeroAppIcons.penToSquare,
                     size: 22,
-                    color: Colors.white,
+                    color: foreground,
                   ),
                 ),
               ],
@@ -366,6 +367,7 @@ class _ProfileViewState extends State<ProfileView> {
   }
 
   Widget _nameStatusIcon(CurrentUser? user) {
+    final foreground = context.colors.onAccent;
     final hasStatus = (user?.emojiStatusId ?? 0) != 0;
     final premium = user?.isPremium ?? false;
     if (!hasStatus && !premium) return const SizedBox.shrink();
@@ -378,23 +380,21 @@ class _ProfileViewState extends State<ProfileView> {
             ? CustomEmojiView(
                 id: user!.emojiStatusId,
                 size: 24,
-                color: Colors.white,
+                color: foreground,
               )
             : Container(
                 width: 24,
                 height: 24,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.18),
+                  color: foreground.withValues(alpha: 0.16),
                   shape: BoxShape.circle,
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.55),
-                  ),
+                  border: Border.all(color: foreground.withValues(alpha: 0.5)),
                 ),
                 child: AppIcon(
                   HeroAppIcons.plus,
                   size: 16,
-                  color: Colors.white.withValues(alpha: 0.9),
+                  color: foreground.withValues(alpha: 0.9),
                 ),
               ),
       ),
@@ -485,8 +485,15 @@ class _ProfileViewState extends State<ProfileView> {
                 child: AppIcon(icon, size: 20, color: color),
               ),
               const SizedBox(width: 12),
-              Text(label, style: TextStyle(fontSize: 15, color: c.textPrimary)),
-              const Spacer(),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 15, color: c.textPrimary),
+                ),
+              ),
+              const SizedBox(width: 12),
               AppIcon(
                 HeroAppIcons.chevronRight,
                 size: 15,
@@ -856,8 +863,8 @@ class _SwipeActionButton extends StatelessWidget {
           label,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: readableForeground(color),
             fontSize: 13,
             fontWeight: FontWeight.w600,
           ),

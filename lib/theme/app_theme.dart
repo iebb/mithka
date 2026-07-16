@@ -8,6 +8,8 @@
 //  surface automatically (the Flutter equivalent of the dynamic UIColor tokens).
 //
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 Color _hex(int rgb, [double opacity = 1]) =>
@@ -215,6 +217,7 @@ abstract final class AppTheme {
   // [applyBrand]; defaults to azure).
   static const int defaultBrand = 0x0099FF;
   static Color brand = _hex(defaultBrand);
+  static Color onBrand = const Color(0xFFFFFFFF);
   static Color brandDeep = _hex(0x0A84E0);
   static LinearGradient brandGradient = LinearGradient(
     colors: [_hex(0x33ADFF), _hex(0x0099FF)],
@@ -226,7 +229,9 @@ abstract final class AppTheme {
   /// from a user-chosen base color. Call before/at theme rebuilds.
   static void applyBrand(Color base) {
     brand = base;
+    onBrand = readableForeground(base);
     bubbleOutgoing = base;
+    bubbleOutgoingText = onBrand;
     final hsl = HSLColor.fromColor(base);
     brandDeep = hsl
         .withLightness((hsl.lightness - 0.08).clamp(0.0, 1.0))
@@ -243,7 +248,7 @@ abstract final class AppTheme {
 
   // MARK: Bubbles (outgoing tracks the brand color)
   static Color bubbleOutgoing = _hex(defaultBrand);
-  static const Color bubbleOutgoingText = Colors.white;
+  static Color bubbleOutgoingText = const Color(0xFFFFFFFF);
 
   // MARK: Accents (constant)
   static final Color unreadBadge = _hex(0xFF4D4F);
@@ -298,6 +303,7 @@ class AppColors extends ThemeExtension<AppColors> {
     required this.textTertiary,
     required this.divider,
     required this.linkBlue,
+    required this.onAccent,
   });
 
   final Color background; // list row background
@@ -317,6 +323,7 @@ class AppColors extends ThemeExtension<AppColors> {
   final Color textTertiary;
   final Color divider;
   final Color linkBlue;
+  final Color onAccent;
 
   static final AppColors light = AppColors(
     background: _hex(0xFFFFFF),
@@ -336,6 +343,7 @@ class AppColors extends ThemeExtension<AppColors> {
     textTertiary: _hex(0xB0B3B8),
     divider: _hex(0xECECEC),
     linkBlue: _hex(0x4B8DEE),
+    onAccent: _hex(0xFFFFFF),
   );
 
   static final AppColors dark = AppColors(
@@ -356,6 +364,7 @@ class AppColors extends ThemeExtension<AppColors> {
     textTertiary: _hex(0x707276),
     divider: _hex(0x303234),
     linkBlue: _hex(0x5EA0FF),
+    onAccent: _hex(0xFFFFFF),
   );
 
   @override
@@ -377,6 +386,7 @@ class AppColors extends ThemeExtension<AppColors> {
     Color? textTertiary,
     Color? divider,
     Color? linkBlue,
+    Color? onAccent,
   }) {
     return AppColors(
       background: background ?? this.background,
@@ -396,6 +406,7 @@ class AppColors extends ThemeExtension<AppColors> {
       textTertiary: textTertiary ?? this.textTertiary,
       divider: divider ?? this.divider,
       linkBlue: linkBlue ?? this.linkBlue,
+      onAccent: onAccent ?? this.onAccent,
     );
   }
 
@@ -432,8 +443,24 @@ class AppColors extends ThemeExtension<AppColors> {
       textTertiary: Color.lerp(textTertiary, other.textTertiary, t)!,
       divider: Color.lerp(divider, other.divider, t)!,
       linkBlue: Color.lerp(linkBlue, other.linkBlue, t)!,
+      onAccent: Color.lerp(onAccent, other.onAccent, t)!,
     );
   }
+}
+
+/// Returns whichever neutral text color has the stronger WCAG contrast.
+Color readableForeground(Color background) {
+  const dark = Color(0xFF171717);
+  const light = Color(0xFFFFFFFF);
+  final backgroundLuminance = background.computeLuminance();
+  double contrast(Color foreground) {
+    final foregroundLuminance = foreground.computeLuminance();
+    final lighter = math.max(backgroundLuminance, foregroundLuminance);
+    final darker = math.min(backgroundLuminance, foregroundLuminance);
+    return (lighter + 0.05) / (darker + 0.05);
+  }
+
+  return contrast(dark) >= contrast(light) ? dark : light;
 }
 
 extension AppColorsContext on BuildContext {

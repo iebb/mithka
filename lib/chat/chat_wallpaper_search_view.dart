@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
+import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
@@ -86,6 +87,7 @@ class _ChatWallpaperSearchViewState extends State<ChatWallpaperSearchView> {
 
   Future<void> _search(String query, {bool loadMore = false}) async {
     if (query.isEmpty) return;
+    if (!loadMore) _debounce?.cancel();
     final generation = loadMore ? _generation : ++_generation;
     setState(() {
       if (loadMore) {
@@ -134,11 +136,15 @@ class _ChatWallpaperSearchViewState extends State<ChatWallpaperSearchView> {
       if (!mounted) return;
       if (path == null || path.isEmpty) {
         setState(() => _downloadingId = null);
+        showToast(context, AppStringKeys.chatWallpaperSearchFailed);
         return;
       }
       Navigator.of(context).pop(ChatWallpaper.image(path));
     } catch (_) {
-      if (mounted) setState(() => _downloadingId = null);
+      if (mounted) {
+        setState(() => _downloadingId = null);
+        showToast(context, AppStringKeys.chatWallpaperSearchFailed);
+      }
     }
   }
 
@@ -200,7 +206,10 @@ class _ChatWallpaperSearchViewState extends State<ChatWallpaperSearchView> {
               cursorColor: c.linkBlue,
               backgroundCursorColor: c.textTertiary,
               textInputAction: TextInputAction.search,
-              onSubmitted: (value) => _search(value.trim()),
+              onSubmitted: (value) {
+                _debounce?.cancel();
+                _search(value.trim());
+              },
               selectionColor: c.linkBlue.withValues(alpha: 0.25),
             ),
           ),

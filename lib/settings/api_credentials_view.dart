@@ -6,7 +6,6 @@
 //  bundled app credentials on the next authorization bootstrap.
 //
 
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -182,9 +181,8 @@ class _ApiCredentialsViewState extends State<ApiCredentialsView> {
                 style: TextStyle(fontSize: 16, color: c.textPrimary),
               ),
             ),
-            CupertinoSwitch(
+            AppSwitch(
               value: _enabled,
-              activeTrackColor: AppTheme.brand,
               onChanged: (value) => setState(() => _enabled = value),
             ),
           ],

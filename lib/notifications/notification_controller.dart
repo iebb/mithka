@@ -19,7 +19,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app/chat_deep_link_controller.dart';
 import '../l10n/telegram_language_controller.dart';
-import '../settings/country_message_filter.dart';
+import '../settings/country_chat_blocker.dart';
 import '../settings/keyword_blocker.dart';
 import '../tdlib/chat_membership.dart';
 import '../tdlib/json_helpers.dart';
@@ -223,10 +223,17 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
       return;
     }
     if (update.type != 'updateNewMessage') return;
-    if (!isActiveAccount && !_notificationPreferences.allAccounts) return;
 
     final raw = update.obj('message');
     if (raw == null || (raw.boolean('is_outgoing') ?? false)) return;
+
+    if (await CountryChatBlocker.shared.handleIncomingMessage(
+      raw,
+      clientId: clientId,
+    )) {
+      return;
+    }
+    if (!isActiveAccount && !_notificationPreferences.allAccounts) return;
 
     final chatId = raw.int64('chat_id');
     final messageId = raw.int64('id');
@@ -244,8 +251,7 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
           chatId,
           chat: chat,
           clientId: clientId,
-        ) ||
-        await _isCountryFiltered(chat, clientId)) {
+        )) {
       return;
     }
 
@@ -560,30 +566,6 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
       showPreview: showPreview,
       soundEnabled: soundId != 0,
     );
-  }
-
-  Future<bool> _isCountryFiltered(
-    Map<String, dynamic> chat,
-    int clientId,
-  ) async {
-    final type = chat.obj('type');
-    if (type?.type != 'chatTypePrivate' && type?.type != 'chatTypeSecret') {
-      return false;
-    }
-    final userId = type?.int64('user_id');
-    if (userId == null) return false;
-    try {
-      final user = await _query({
-        '@type': 'getUser',
-        'user_id': userId,
-      }, clientId);
-      return CountryMessageFilter.shared.matchesUser(
-        isContact: user.boolean('is_contact') ?? false,
-        phoneNumber: user.str('phone_number'),
-      );
-    } catch (_) {
-      return false;
-    }
   }
 
   String _notificationText(Map<String, dynamic> content) {

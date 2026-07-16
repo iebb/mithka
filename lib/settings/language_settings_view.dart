@@ -60,7 +60,7 @@ class LanguageSettingsView extends StatelessWidget {
                     ),
                     const InsetDivider(leadingInset: 56),
                     _NavLanguageRow(
-                      icon: HeroAppIcons.language,
+                      icon: HeroAppIcons.comment,
                       title: telegramText(AppStringKeys.messageActionTranslate),
                       subtitle: AppStrings.t(
                         AppStringKeys.translationSettingsTitle,

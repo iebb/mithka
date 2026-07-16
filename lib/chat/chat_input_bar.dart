@@ -898,7 +898,9 @@ class _ChatInputBarState extends State<ChatInputBar> {
       title: menu.actionTitle,
       menuWebApp: true,
     );
-    if (!opened && mounted) showToast(context, 'Mini App 暂时无法启动');
+    if (!opened && mounted) {
+      showToast(context, AppStrings.t(AppStringKeys.miniAppCannotStart));
+    }
   }
 
   Widget _botMenuRow({
@@ -1030,7 +1032,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
     final botUserId = await vm.webAppBotUserId(keyboard.message);
     if (!mounted) return;
     if (botUserId == null) {
-      showToast(context, 'Mini App 暂时无法启动');
+      showToast(context, AppStrings.t(AppStringKeys.miniAppCannotStart));
       return;
     }
     final opened = await openTelegramMiniApp(
@@ -1041,7 +1043,9 @@ class _ChatInputBarState extends State<ChatInputBar> {
       title: button.text,
       keyboardButtonText: button.text,
     );
-    if (!opened && mounted) showToast(context, 'Mini App 暂时无法启动');
+    if (!opened && mounted) {
+      showToast(context, AppStrings.t(AppStringKeys.miniAppCannotStart));
+    }
   }
 
   void _pressReplyKeyboardButton(

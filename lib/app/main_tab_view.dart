@@ -37,6 +37,7 @@ import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
+import '../theme/telegram_cloud_theme.dart';
 import '../theme/theme_controller.dart';
 import '../update/update_checker.dart';
 import 'chat_deep_link_controller.dart';
@@ -131,6 +132,18 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
         if (mounted) UpdateChecker.maybePrompt(context);
       });
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_synchronizeInstalledCloudThemes());
+    });
+  }
+
+  Future<void> _synchronizeInstalledCloudThemes() async {
+    final controller = context.read<ThemeController>();
+    final themes = await TelegramCloudThemeService().loadInstalled(
+      fallback: controller.installedCloudThemes,
+    );
+    if (!mounted) return;
+    controller.synchronizeInstalledCloudThemes(themes);
   }
 
   @override

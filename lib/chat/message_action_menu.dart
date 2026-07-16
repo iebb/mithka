@@ -17,7 +17,9 @@ import '../components/app_icons.dart';
 import '../l10n/telegram_language_controller.dart';
 import '../settings/translation_controller.dart';
 import '../tdlib/td_models.dart';
+import 'custom_emoji.dart';
 import 'emoji_store.dart';
+import 'quick_reaction_choice.dart';
 
 enum MessageAction {
   copy(HeroAppIcons.file, AppStringKeys.messageActionCopy),
@@ -62,8 +64,8 @@ class QuickReactionBar extends StatelessWidget {
 
   static const maxFittedButtonCount = 10;
 
-  final List<String> reactions;
-  final ValueChanged<String> onReaction;
+  final List<QuickReactionChoice> reactions;
+  final ValueChanged<QuickReactionChoice> onReaction;
   final VoidCallback onExpand;
 
   @override
@@ -103,20 +105,26 @@ class QuickReactionBar extends StatelessWidget {
     );
   }
 
-  Widget _reactionButton(String emoji) {
+  Widget _reactionButton(QuickReactionChoice reaction) {
     return GestureDetector(
-      key: ValueKey('quick-reaction-$emoji'),
+      key: ValueKey('quick-reaction-${reaction.storageValue}'),
       behavior: HitTestBehavior.opaque,
-      onTap: () => onReaction(emoji),
+      onTap: () => onReaction(reaction),
       child: SizedBox(
         width: 40,
         height: 34,
         child: Center(
-          child: Text(
-            emoji,
-            textScaler: TextScaler.noScaling,
-            style: const TextStyle(fontSize: 28),
-          ),
+          child: reaction.isCustom
+              ? CustomEmojiView(
+                  id: reaction.customEmojiId,
+                  size: 28,
+                  color: Colors.white,
+                )
+              : Text(
+                  reaction.emoji,
+                  textScaler: TextScaler.noScaling,
+                  style: const TextStyle(fontSize: 28),
+                ),
         ),
       ),
     );

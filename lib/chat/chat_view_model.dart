@@ -22,6 +22,7 @@ import '../settings/keyword_blocker.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
+import 'chat_first_contact_info.dart';
 import 'chat_message_merge.dart';
 import 'chat_unread_progress.dart';
 import 'forward_options.dart';
@@ -197,6 +198,7 @@ class ChatViewModel extends ChangeNotifier {
   List<ChatMessage> _allMessages = [];
   String peerTitle;
   TdFileRef? peerPhoto;
+  ChatFirstContactInfo? firstContactInfo;
   bool isGroup = false;
   int memberCount = 0;
   int? peerUserId; // private chat → call target
@@ -274,6 +276,11 @@ class ChatViewModel extends ChangeNotifier {
   bool _restoredFromSession = false;
   bool _historyReachesLatest = false;
   int _knownLatestMessageId = 0;
+  bool _latestHistoryLoadInFlight = false;
+  final Map<int, ChatMessage> _latestHistoryLiveArrivals = {};
+  final Set<int> _latestHistoryDeletedMessageIds = {};
+  bool _latestHistoryLoadInvalidated = false;
+  int _historyWindowGeneration = 0;
   final Set<int> _blockedReadIds = {};
   final Set<int> _locallyViewedMentionIds = {};
   final Set<int> _blockedSenderIds = {};
@@ -1772,16 +1779,81 @@ class ChatViewModel extends ChangeNotifier {
   }
 
   Future<bool> loadLatestHistory() async {
-    anchoredHistory = false;
-    _pendingScrollToId = null;
-    _allMessages = [];
-    messages = [];
-    _hasOlderHistory = true;
-    final ok = await _fetchHistory(0, 0, 40, restorePosition: false);
-    if (!ok) return false;
-    if (messages.length < 12 && _allMessages.isNotEmpty) {
-      await _fetchHistory(_allMessages.first.id, 0, 40, restorePosition: false);
+    if (_latestHistoryLoadInFlight) return false;
+    final requestGeneration = ++_historyWindowGeneration;
+    _latestHistoryLoadInFlight = true;
+    _latestHistoryLiveArrivals.clear();
+    _latestHistoryDeletedMessageIds.clear();
+    _latestHistoryLoadInvalidated = false;
+    final messagesAtRequestStart = List<ChatMessage>.of(_allMessages);
+    try {
+      Map<String, dynamic> response;
+      try {
+        response = await _client.query({
+          '@type': 'getChatHistory',
+          'chat_id': chatId,
+          'from_message_id': 0,
+          'offset': 0,
+          'limit': 40,
+          'only_local': false,
+        });
+      } catch (error) {
+        if (_markTelegramTosRestricted(error)) notifyListeners();
+        return false;
+      }
+      if (_isDisposed ||
+          _latestHistoryLoadInvalidated ||
+          requestGeneration != _historyWindowGeneration) {
+        return false;
+      }
+      final rawMessages =
+          response.objects('messages') ?? const <Map<String, dynamic>>[];
+      final latest = rawMessages
+          .map(TDParse.message)
+          .whereType<ChatMessage>()
+          .toList();
+      if (rawMessages.isNotEmpty && latest.isEmpty) return false;
+
+      final fetched =
+          <ChatMessage>[...latest, ..._latestHistoryLiveArrivals.values]
+              .where(
+                (message) =>
+                    !_latestHistoryDeletedMessageIds.contains(message.id),
+              )
+              .toList();
+
+      ++_historyWindowGeneration;
+      anchoredHistory = false;
+      _pendingScrollToId = null;
+      _hasOlderHistory = true;
+      _historyReachesLatest = true;
+      _knownLatestMessageId = fetched.fold(
+        0,
+        (latestId, message) => math.max(latestId, message.id),
+      );
+      if (fetched.isEmpty) {
+        _allMessages = [];
+        _applyKeywordFilter();
+      } else {
+        _mergeHistoryWindow(
+          fetched,
+          messagesAtRequestStart: messagesAtRequestStart,
+          replaceCurrentWindow: true,
+          preserveLiveArrivals: false,
+        );
+      }
+      _resolveRichMessagesIfNeeded(fetched);
+      _resolveSendersIfNeeded(fetched);
+      _resolveRepliesIfNeeded(fetched);
+      _resolveForwardsIfNeeded(fetched);
+      _resolveServiceUsersIfNeeded(fetched);
+    } finally {
+      _latestHistoryLoadInFlight = false;
+      _latestHistoryLiveArrivals.clear();
+      _latestHistoryDeletedMessageIds.clear();
+      _latestHistoryLoadInvalidated = false;
     }
+
     return true;
   }
 
@@ -1803,6 +1875,9 @@ class ChatViewModel extends ChangeNotifier {
     }
     peerTitle = chat.str('title') ?? peerTitle;
     peerPhoto = TDParse.smallPhoto(chat.obj('photo'));
+    firstContactInfo = ChatFirstContactInfo.fromActionBar(
+      chat.obj('action_bar'),
+    );
     lastReadOutboxId = chat.int64('last_read_outbox_message_id') ?? 0;
     lastReadInboxId = chat.int64('last_read_inbox_message_id') ?? 0;
     unreadCount = chat.integer('unread_count') ?? 0;
@@ -1861,6 +1936,7 @@ class ChatViewModel extends ChangeNotifier {
             peerIsBot = _isBotUser(user);
             peerOnline = TDParse.isUserOnline(user);
             peerStatusText = TDParse.userStatus(user);
+            firstContactInfo = firstContactInfo?.withUser(user);
           } catch (error) {
             if (_markTelegramTosRestricted(error)) {
               notifyListeners();
@@ -2450,6 +2526,9 @@ class ChatViewModel extends ChangeNotifier {
     bool scrollToTarget = true,
     bool replaceCurrentWindow = true,
   }) async {
+    final requestGeneration = replaceCurrentWindow
+        ? ++_historyWindowGeneration
+        : _historyWindowGeneration;
     final messagesAtRequestStart = List<ChatMessage>.of(_allMessages);
     final latestMessageIdAtRequestStart = _knownLatestMessageId;
     final batch = <ChatMessage>[];
@@ -2484,7 +2563,11 @@ class ChatViewModel extends ChangeNotifier {
       if (_markTelegramTosRestricted(error)) notifyListeners();
     }
 
+    if (_isDisposed || requestGeneration != _historyWindowGeneration) {
+      return false;
+    }
     if (batch.isEmpty) return false;
+    if (replaceCurrentWindow) ++_historyWindowGeneration;
     _hasOlderHistory = true;
     anchoredHistory = true;
     if (scrollToTarget) _pendingScrollToId = messageId;
@@ -2636,6 +2719,7 @@ class ChatViewModel extends ChangeNotifier {
     bool restorePosition = true,
     bool onlyLocal = false,
   }) async {
+    final requestGeneration = _historyWindowGeneration;
     final anchor = messages.isNotEmpty ? messages.first.id : null;
     final allAnchor = _allMessages.isNotEmpty ? _allMessages.first.id : null;
     Map<String, dynamic> response;
@@ -2650,6 +2734,9 @@ class ChatViewModel extends ChangeNotifier {
       });
     } catch (error) {
       if (_markTelegramTosRestricted(error)) notifyListeners();
+      return false;
+    }
+    if (_isDisposed || requestGeneration != _historyWindowGeneration) {
       return false;
     }
 
@@ -2818,6 +2905,9 @@ class ChatViewModel extends ChangeNotifier {
         }
         final message = TDParse.message(raw);
         if (message == null) return;
+        if (_latestHistoryLoadInFlight) {
+          _latestHistoryLiveArrivals[message.id] = message;
+        }
         final canAppendToTranscript = shouldMergeLiveMessageIntoChatWindow(
           historyReachesLatest: _historyReachesLatest,
         );
@@ -2871,6 +2961,13 @@ class ChatViewModel extends ChangeNotifier {
         final oldMessageId = update.int64('old_message_id');
         final rawSentMessage = update.obj('message');
         if (oldMessageId == null || rawSentMessage == null) return;
+        if (_latestHistoryLoadInFlight) {
+          _latestHistoryLiveArrivals.remove(oldMessageId);
+          final sentMessage = TDParse.message(rawSentMessage);
+          if (sentMessage != null) {
+            _latestHistoryLiveArrivals[sentMessage.id] = sentMessage;
+          }
+        }
         _replacePendingMessage(oldMessageId, rawSentMessage);
         _recordMessageSendResult(
           oldMessageId,
@@ -2881,6 +2978,9 @@ class ChatViewModel extends ChangeNotifier {
         if (update.int64('chat_id') != chatId) return;
         final oldMessageId = update.int64('old_message_id');
         if (oldMessageId == null) return;
+        if (_latestHistoryLoadInFlight) {
+          _latestHistoryLiveArrivals.remove(oldMessageId);
+        }
         final errorData =
             update.obj('error') ??
             update.obj('message')?.obj('sending_state')?.obj('error') ??
@@ -2914,6 +3014,18 @@ class ChatViewModel extends ChangeNotifier {
         if (chat.containsKey('draft_message')) {
           _applyRemoteDraft(chat.obj('draft_message'), notify: false);
         }
+        if (chat.containsKey('action_bar')) {
+          firstContactInfo = ChatFirstContactInfo.fromActionBar(
+            chat.obj('action_bar'),
+          );
+        }
+        notifyListeners();
+
+      case 'updateChatActionBar':
+        if (update.int64('chat_id') != chatId) return;
+        firstContactInfo = ChatFirstContactInfo.fromActionBar(
+          update.obj('action_bar'),
+        );
         notifyListeners();
 
       case 'updateChatHasProtectedContent':
@@ -2946,13 +3058,31 @@ class ChatViewModel extends ChangeNotifier {
 
       case 'updateDeleteMessages':
         if (update.int64('chat_id') != chatId) return;
-        _removeMessages(update.int64Array('message_ids') ?? const <int>[]);
+        // from_cache unloads (is_permanent == false) must not remove messages
+        // from the UI — the messages still exist on the server.
+        if (update.boolean('is_permanent') != true) return;
+        final deletedIds = update.int64Array('message_ids') ?? const <int>[];
+        if (_latestHistoryLoadInFlight) {
+          _latestHistoryDeletedMessageIds.addAll(deletedIds);
+          for (final messageId in deletedIds) {
+            _latestHistoryLiveArrivals.remove(messageId);
+          }
+        }
+        _removeMessages(deletedIds);
 
       case 'mithkaChatHistoryCleared':
         if (update.int64('chat_id') != chatId) return;
+        ++_historyWindowGeneration;
+        if (_latestHistoryLoadInFlight) {
+          _latestHistoryLoadInvalidated = true;
+          _latestHistoryLiveArrivals.clear();
+        }
         _allMessages = [];
         messages = [];
         _hasOlderHistory = false;
+        anchoredHistory = false;
+        _historyReachesLatest = true;
+        _knownLatestMessageId = 0;
         _pendingScrollToId = null;
         notifyListeners();
 
@@ -3052,20 +3182,26 @@ class ChatViewModel extends ChangeNotifier {
         if (mid == null) return;
         final replyMarkup = update.obj('reply_markup');
         _replaceButtonRows(mid, TDParse.messageButtonRows(replyMarkup));
-        final i = messages.indexWhere((m) => m.id == mid);
-        if (i >= 0) {
-          messages[i].isEdited = true;
+        final targets = _messageRefs(mid);
+        if (targets.isNotEmpty) {
+          for (final message in targets) {
+            message.isEdited = true;
+          }
           notifyListeners();
         }
 
       case 'updateMessageInteractionInfo':
         if (update.int64('chat_id') != chatId) return;
         final mid = update.int64('message_id');
-        final i = messages.indexWhere((m) => m.id == mid);
-        if (i >= 0) {
-          messages[i].reactions = TDParse.reactionsFrom({
+        if (mid == null) return;
+        final targets = _messageRefs(mid);
+        if (targets.isNotEmpty) {
+          final reactions = TDParse.reactionsFrom({
             'interaction_info': update.obj('interaction_info'),
           });
+          for (final message in targets) {
+            message.reactions = reactions;
+          }
           notifyListeners();
         }
 
@@ -3451,6 +3587,10 @@ class ChatViewModel extends ChangeNotifier {
 
   /// Mark messages from Telegram-blocked users so the renderer can show a
   /// compact placeholder instead of the full bubble.
+  ///
+  /// Only ever called from _applyKeywordFilter (right after `messages` is
+  /// reassigned): the chat_view transcript memo relies on list identity to
+  /// notice blocked-state changes, so never flip these flags elsewhere.
   void _markBlockedUserMessages() {
     final svc = BlockedUserService.shared;
     if (!svc.enabled) {
@@ -3591,15 +3731,15 @@ class ChatViewModel extends ChangeNotifier {
     MessageLinkPreview? linkPreview,
     bool updateLinkPreview = false,
   }) {
-    final index = messages.indexWhere((m) => m.id == messageId);
-    final allIndex = _allMessages.indexWhere((m) => m.id == messageId);
-    if (index < 0 && allIndex < 0) return;
-    final target = allIndex >= 0 ? _allMessages[allIndex] : messages[index];
-    target.text = text;
-    if (entities != null) target.textEntities = entities;
-    if (customEmoji != null) target.customEmoji = customEmoji;
-    if (updateLinkPreview) target.linkPreview = linkPreview;
-    if (edited) target.isEdited = true;
+    final targets = _messageRefs(messageId);
+    if (targets.isEmpty) return;
+    for (final target in targets) {
+      target.text = text;
+      if (entities != null) target.textEntities = entities;
+      if (customEmoji != null) target.customEmoji = customEmoji;
+      if (updateLinkPreview) target.linkPreview = linkPreview;
+      if (edited) target.isEdited = true;
+    }
     _applyKeywordFilter();
   }
 
@@ -3635,7 +3775,11 @@ class ChatViewModel extends ChangeNotifier {
       }
     }
     _allMessages.removeWhere((message) => message.id == pendingMessageId);
-    messages.removeWhere((message) => message.id == pendingMessageId);
+    // Reassigned (not mutated) so the transcript memo's identity check stays
+    // valid even if a notify lands before the merge below.
+    messages = messages
+        .where((message) => message.id != pendingMessageId)
+        .toList();
     final sentMessage = TDParse.message(rawMessage);
     if (sentMessage == null) {
       _applyKeywordFilter();
@@ -3703,11 +3847,11 @@ class ChatViewModel extends ChangeNotifier {
   }
 
   void _replaceButtonRows(int messageId, List<List<MessageButton>> buttonRows) {
-    final index = messages.indexWhere((m) => m.id == messageId);
-    final allIndex = _allMessages.indexWhere((m) => m.id == messageId);
-    if (index < 0 && allIndex < 0) return;
-    if (index >= 0) messages[index].buttonRows = buttonRows;
-    if (allIndex >= 0) _allMessages[allIndex].buttonRows = buttonRows;
+    final targets = _messageRefs(messageId);
+    if (targets.isEmpty) return;
+    for (final message in targets) {
+      message.buttonRows = buttonRows;
+    }
     notifyListeners();
   }
 
@@ -3746,6 +3890,11 @@ class ChatViewModel extends ChangeNotifier {
         (index < 0 || !identical(messages[index], _allMessages[allIndex]))) {
       refs.add(_allMessages[allIndex]);
     }
+    final buffered = _latestHistoryLiveArrivals[messageId];
+    if (buffered != null &&
+        !refs.any((message) => identical(message, buffered))) {
+      refs.add(buffered);
+    }
     return refs;
   }
 
@@ -3753,7 +3902,10 @@ class ChatViewModel extends ChangeNotifier {
     if (ids.isEmpty) return;
     final removed = ids.toSet();
     _allMessages.removeWhere((m) => removed.contains(m.id));
-    messages.removeWhere((m) => removed.contains(m.id));
+    // Reassign (never mutate in place): the transcript memo in chat_view
+    // caches on the list's identity, so an in-place removeWhere would keep
+    // rendering the deleted message.
+    messages = messages.where((m) => !removed.contains(m.id)).toList();
     _blockedReadIds.removeWhere(removed.contains);
     if (replyTo != null && removed.contains(replyTo!.id)) replyTo = null;
     if (pinnedMessages.any((m) => removed.contains(m.id))) {
@@ -3903,7 +4055,9 @@ class ChatViewModel extends ChangeNotifier {
     if (names.isEmpty) return;
     final suffix = message.serviceUserIds.length > names.length
         ? AppStrings.t(AppStringKeys.chatAndOthersCount, {
-            'value1': message.serviceUserIds.length,
+            // The string reads "and N others" — N is the remainder beyond
+            // the listed names, not the total joiner count.
+            'value1': message.serviceUserIds.length - names.length,
           })
         : '';
     final text = AppStrings.t(AppStringKeys.chatUsersJoinedGroup, {

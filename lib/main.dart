@@ -271,7 +271,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
   }
 
   ThemeData _themeData(Brightness brightness, ThemeController theme) {
-    final colors = theme.appColorsFor(brightness);
+    final colors = theme.uiColorsFor(brightness);
     final families = theme.effectiveFontFamilyChain();
     final base = ThemeData(
       brightness: brightness,
@@ -282,7 +282,9 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
           : null,
       scaffoldBackgroundColor: colors.background,
       colorScheme: ColorScheme.fromSeed(
-        seedColor: AppTheme.brand,
+        seedColor: theme.useTelegramThemeForUi
+            ? colors.linkBlue
+            : theme.brandColor,
         brightness: brightness,
       ),
       pageTransitionsTheme: const PageTransitionsTheme(
@@ -353,6 +355,11 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
             builder: (context, child) {
               final media = MediaQuery.of(context);
               final currentTheme = Theme.of(context);
+              AppTheme.applyBrand(
+                theme.useTelegramThemeForUi
+                    ? context.colors.linkBlue
+                    : theme.brandColor,
+              );
               final themedChild = Theme(
                 data: currentTheme.copyWith(
                   textTheme: theme.applyAppTextTheme(
@@ -384,7 +391,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
                 ],
               );
               return AnnotatedRegion<SystemUiOverlayStyle>(
-                value: systemUiOverlayStyleFor(currentTheme.brightness),
+                value: systemUiOverlayStyleForSurface(context.colors.navBar),
                 child: _ScaledAppView(
                   fontScale: theme.fontScale,
                   interfaceScale: theme.interfaceScale,

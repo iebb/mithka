@@ -29,6 +29,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../config/secrets.dart';
 import '../settings/api_credentials_config.dart';
 import '../settings/proxy_config.dart';
+import '../settings/transfer_boost_config.dart';
 import 'avatar_animation_index.dart';
 import 'json_helpers.dart';
 import 'td_bindings.dart';
@@ -71,6 +72,19 @@ class _TdSessionStringInfo {
   final bool testMode;
   final int userId;
   final bool isBot;
+}
+
+@visibleForTesting
+List<int> closeStaleDebugTdlibClients(
+  Iterable<int> clientIds,
+  void Function(int clientId, String request) send,
+) {
+  final staleClientIds = clientIds.where((id) => id > 0).toSet().toList();
+  final closeRequest = jsonEncode({'@type': 'close'});
+  for (final clientId in staleClientIds) {
+    send(clientId, closeRequest);
+  }
+  return staleClientIds;
 }
 
 class TdClient {
@@ -128,6 +142,8 @@ class TdClient {
   int? slotForClient(int clientId) => _slotForClient[clientId];
   Map<String, dynamic>? get latestChatFoldersUpdate =>
       _latestChatFoldersByClient[_activeClientId];
+  Map<String, dynamic>? latestChatFoldersUpdateForClient(int clientId) =>
+      _latestChatFoldersByClient[clientId];
   Map<String, dynamic>? get latestEmojiChatThemesUpdate =>
       _latestEmojiChatThemesByClient[_activeClientId];
 
@@ -144,6 +160,21 @@ class TdClient {
     );
 
     _prefs = await SharedPreferences.getInstance();
+    final transferBoost = TransferBoostConfig.fromPrefs(_prefs);
+    _bindings.configureTransferBoost(
+      downloadChunkSize: transferBoost.downloadEnabled
+          ? transferBoost.downloadChunkSizeBytes
+          : 0,
+      downloadParallelism: transferBoost.downloadEnabled
+          ? transferBoost.downloadParallelism
+          : 0,
+      uploadChunkSize: transferBoost.uploadEnabled
+          ? transferBoost.uploadChunkSizeBytes
+          : 0,
+      uploadParallelism: transferBoost.uploadEnabled
+          ? transferBoost.uploadParallelism
+          : 0,
+    );
     _supportDir = (await getApplicationSupportDirectory()).path;
     if (kDebugMode) await _closeStaleDebugClients();
 
@@ -951,6 +982,17 @@ class TdClient {
         .whereType<int>()
         .toList();
     if (ids == null || ids.isEmpty) return;
+    final closedIds = closeStaleDebugTdlibClients(ids, _bindings.send);
+    if (closedIds.isNotEmpty) {
+      debugPrint(
+        '🔑 [Mithka] closing stale TDLib clients after hot restart: '
+        '${closedIds.join(', ')}',
+      );
+      // `close` is asynchronous inside TDLib. Give the native clients time to
+      // release their database handles before creating replacements that use
+      // the same account directories.
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    }
     await _prefs.remove(_liveClientIdsKey);
   }
 

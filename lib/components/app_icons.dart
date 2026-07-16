@@ -122,6 +122,7 @@ class HeroAppIcons {
     HeroiconsOutline.chatBubbleBottomCenterText,
   );
   static const reply = AppIconData(HeroiconsOutline.arrowUturnLeft);
+  static const restore = AppIconData(HeroiconsOutline.arrowPathRoundedSquare);
   static const rightFromBracket = AppIconData(
     HeroiconsOutline.arrowRightStartOnRectangle,
   );

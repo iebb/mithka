@@ -25,6 +25,48 @@ class ChatAutoScrollPolicy {
       !_preserveViewport && wasNearBottom;
 }
 
+class ChatInitialScrollPlan {
+  const ChatInitialScrollPlan({
+    required this.initialOffset,
+    required this.correctToBottomAfterLayout,
+  });
+
+  final double initialOffset;
+  final bool correctToBottomAfterLayout;
+}
+
+ChatInitialScrollPlan chatInitialScrollPlan({
+  required bool hasCachedTranscript,
+  required double? savedPixels,
+  required bool savedAtBottom,
+}) {
+  final finiteSavedPixels = savedPixels?.isFinite == true
+      ? savedPixels!.clamp(0.0, double.maxFinite)
+      : 0.0;
+  return ChatInitialScrollPlan(
+    initialOffset: hasCachedTranscript ? finiteSavedPixels : 0.0,
+    correctToBottomAfterLayout: hasCachedTranscript && savedAtBottom,
+  );
+}
+
+class ChatBottomCorrectionCoordinator {
+  bool _scheduled = false;
+
+  void schedule({
+    required bool enabled,
+    required void Function(void Function()) schedulePostFrame,
+    required bool Function() canCorrect,
+    required void Function() correct,
+  }) {
+    if (!enabled || _scheduled) return;
+    _scheduled = true;
+    schedulePostFrame(() {
+      _scheduled = false;
+      if (canCorrect()) correct();
+    });
+  }
+}
+
 bool shouldRestoreChatSessionOffset({
   required bool hasExplicitTarget,
   required bool hasSnapshot,

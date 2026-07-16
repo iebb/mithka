@@ -37,6 +37,15 @@ SystemUiOverlayStyle systemUiOverlayStyleFor(Brightness brightness) {
   );
 }
 
+/// Transparent system bars whose icon treatment follows an actual semantic
+/// surface color rather than the app's coarse light/dark mode.
+///
+/// Telegram themes can pair a light app mode with a dark navigation surface
+/// (and vice versa), so the active top bar is the reliable contrast source.
+SystemUiOverlayStyle systemUiOverlayStyleForSurface(Color surface) {
+  return systemUiOverlayStyleFor(ThemeData.estimateBrightnessForColor(surface));
+}
+
 /// Convenience for tests and call sites that only have a [ThemeData].
 SystemUiOverlayStyle systemUiOverlayStyleForTheme(ThemeData theme) {
   return systemUiOverlayStyleFor(theme.brightness);

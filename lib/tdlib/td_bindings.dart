@@ -54,6 +54,21 @@ typedef _ImportSessionStringDart =
 typedef _LastErrorC = Pointer<Utf8> Function();
 typedef _LastErrorDart = Pointer<Utf8> Function();
 
+typedef _ConfigureTransferBoostC =
+    Void Function(
+      Int32 downloadChunkSize,
+      Int32 downloadParallelism,
+      Int32 uploadChunkSize,
+      Int32 uploadParallelism,
+    );
+typedef _ConfigureTransferBoostDart =
+    void Function(
+      int downloadChunkSize,
+      int downloadParallelism,
+      int uploadChunkSize,
+      int uploadParallelism,
+    );
+
 /// Opens the tdjson library and binds its four entry points. Safe to construct
 /// in any isolate — `dlopen` reference-counts, so every isolate shares the same
 /// underlying (process-global) tdjson state.
@@ -68,7 +83,8 @@ class TdBindings {
       _execute = lib.lookupFunction<_ExecuteC, _ExecuteDart>('td_execute'),
       _exportSessionString = _lookupExportSessionString(lib),
       _importSessionString = _lookupImportSessionString(lib),
-      _lastError = _lookupLastError(lib);
+      _lastError = _lookupLastError(lib),
+      _configureTransferBoost = _lookupConfigureTransferBoost(lib);
 
   factory TdBindings.open() => TdBindings._(_openLibrary());
 
@@ -79,6 +95,7 @@ class TdBindings {
   final _ExportSessionStringDart? _exportSessionString;
   final _ImportSessionStringDart? _importSessionString;
   final _LastErrorDart? _lastError;
+  final _ConfigureTransferBoostDart? _configureTransferBoost;
 
   /// Creates a fresh per-process client id.
   int createClientId() => _createClientId();
@@ -87,6 +104,8 @@ class TdBindings {
       _exportSessionString != null &&
       _importSessionString != null &&
       _lastError != null;
+
+  bool get supportsTransferBoost => _configureTransferBoost != null;
 
   static _ExportSessionStringDart? _lookupExportSessionString(
     DynamicLibrary lib,
@@ -119,6 +138,19 @@ class TdBindings {
       return lib.lookupFunction<_LastErrorC, _LastErrorDart>(
         'td_mithka_last_error',
       );
+    } on ArgumentError {
+      return null;
+    }
+  }
+
+  static _ConfigureTransferBoostDart? _lookupConfigureTransferBoost(
+    DynamicLibrary lib,
+  ) {
+    try {
+      return lib.lookupFunction<
+        _ConfigureTransferBoostC,
+        _ConfigureTransferBoostDart
+      >('td_mithka_set_transfer_boost');
     } on ArgumentError {
       return null;
     }
@@ -200,6 +232,20 @@ class TdBindings {
     } finally {
       malloc.free(sourcePtr);
     }
+  }
+
+  void configureTransferBoost({
+    required int downloadChunkSize,
+    required int downloadParallelism,
+    required int uploadChunkSize,
+    required int uploadParallelism,
+  }) {
+    _configureTransferBoost?.call(
+      downloadChunkSize,
+      downloadParallelism,
+      uploadChunkSize,
+      uploadParallelism,
+    );
   }
 
   void importSessionString(String sessionString, String destinationPath) {

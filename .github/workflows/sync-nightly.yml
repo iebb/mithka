@@ -1,13 +1,13 @@
 name: 🌙 Sync Nightly
 
-# Merge master into nightly once per day. Every sync that incorporates new
+# Merge master into nightly twice per day. Every sync that incorporates new
 # master commits increments the app's patch version once. A generated
 # GITHUB_TOKEN push doesn't trigger other workflows, so a changed sync
 # explicitly dispatches release.yml.
 
 on:
   schedule:
-    - cron: '0 12 * * *'
+    - cron: '0 0,12 * * *'
   workflow_dispatch:
 
 concurrency:

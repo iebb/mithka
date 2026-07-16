@@ -142,11 +142,15 @@ class _AutoDeleteViewState extends State<AutoDeleteView> {
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Row(
                     children: [
-                      Text(
-                        o.title.l10n(context),
-                        style: TextStyle(fontSize: 16, color: c.textPrimary),
+                      Expanded(
+                        child: Text(
+                          o.title.l10n(context),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 16, color: c.textPrimary),
+                        ),
                       ),
-                      const Spacer(),
+                      const SizedBox(width: 12),
                       if (_selected == o.seconds)
                         AppIcon(
                           HeroAppIcons.check,
