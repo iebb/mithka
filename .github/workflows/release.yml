@@ -67,7 +67,7 @@ jobs:
             ''|*[!0-9]*) echo "Invalid Android version code: $version_code" >&2; exit 1 ;;
           esac
           build_stamp="$(date -u '+%y%m%d%H')"
-          release_date="$(date -u '+%Y-%m-%d')"
+          release_date="$(date -u '+%Y%m%d')"
           play_version_code="$(date -u '+%s')"
           if [ "$play_version_code" -gt 2100000000 ]; then
             echo "Generated Google Play version code exceeds Android's limit" >&2
