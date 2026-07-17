@@ -24,7 +24,6 @@ import '../call/call_manager.dart';
 import '../channels/topic_chat_view.dart';
 import '../components/app_icons.dart';
 import '../components/confirm_dialog.dart';
-import '../components/drawer_controller.dart' as dc;
 import '../components/full_page_back_swipe.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
@@ -37,7 +36,7 @@ import '../settings/blocked_user_service.dart';
 import '../settings/developer_mode_controller.dart';
 import '../settings/keyword_blocker.dart';
 import '../settings/quick_reaction_settings_view.dart';
-import '../settings/safety_notice_controller.dart';
+import '../settings/sensitive_content_controller.dart';
 import '../settings/topic_group_display_mode.dart';
 import '../settings/translation_api.dart';
 import '../settings/translation_controller.dart';
@@ -780,8 +779,6 @@ class _ChatViewState extends State<ChatView> {
   bool _openingUnreadMention = false;
   bool _exitStatePrepared = false;
   bool _notificationVisibilityRegistered = false;
-  bool _safetyNoticeAcknowledged = false;
-  dc.TabBarVisibility? _tabBarVisibility;
 
   /// Gap (seconds) between messages that triggers a fresh time separator.
   static const _separatorGap = 300;
@@ -893,9 +890,6 @@ class _ChatViewState extends State<ChatView> {
     // Sync blocked-user-hiding toggle from theme.
     final theme = context.read<ThemeController>();
     BlockedUserService.shared.enabled = theme.hideBlockedUserMessages;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _retainTabBarSuppression();
-    });
     // Load premium status early so the message menu can correctly hide the
     // emoji add/表情包 actions for non-premium users (the menu reads it).
     EmojiStore.shared.loadIfNeeded();
@@ -940,20 +934,6 @@ class _ChatViewState extends State<ChatView> {
   bool get _hasSessionScrollAnchor =>
       _sessionScrollSnapshot?.anchorMessageId != null &&
       _sessionScrollSnapshot?.anchorViewportOffset != null;
-
-  void _retainTabBarSuppression() {
-    if (!mounted) return;
-    dc.TabBarVisibility? tabBarVisibility;
-    try {
-      tabBarVisibility = context.read<dc.TabBarVisibility>();
-    } on ProviderNotFoundException {
-      tabBarVisibility = null;
-    }
-    if (identical(_tabBarVisibility, tabBarVisibility)) return;
-    _tabBarVisibility?.releaseChatSuppression();
-    _tabBarVisibility = tabBarVisibility;
-    _tabBarVisibility?.retainChatSuppression();
-  }
 
   void _onScroll() {
     if (!_scroll.hasClients) return;
@@ -2338,7 +2318,6 @@ class _ChatViewState extends State<ChatView> {
     _prepareExitState();
     NotificationController.shared.unregisterVisibleChat(this);
     _wallpaperController.removeListener(_onWallpaperChanged);
-    _tabBarVisibility?.releaseChatSuppression();
     _bannerTimer?.cancel();
     _readSyncTimer?.cancel();
     _vm.removeListener(_onModel);
@@ -3817,12 +3796,8 @@ class _ChatViewState extends State<ChatView> {
                   : null);
     // Keep blocked-user hiding toggle in sync with theme.
     BlockedUserService.shared.enabled = themeController.hideBlockedUserMessages;
-    final hideSafetyNotice = context.watch<SafetyNoticeController>().disabled;
-    final showSafetyNotice = shouldShowSafetyNotice(
-      restricted: _vm.isTelegramTosRestricted,
-      disabled: hideSafetyNotice,
-      acknowledged: _safetyNoticeAcknowledged,
-    );
+    final showPeerRestrictionBlock =
+        _vm.isPeerRestricted && _vm.messages.isEmpty;
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
     _syncKeyboardInset(keyboardInset);
     // Not a member, joinable, and nothing to preview → a custom join screen
@@ -3847,23 +3822,33 @@ class _ChatViewState extends State<ChatView> {
             fallbackColor: c.chatBackground,
             brightness: Theme.of(context).brightness,
             child: ChatMediaDropRegion(
-              enabled: _vm.canSendMessages && !_isSelecting,
+              enabled:
+                  _vm.canSendMessages &&
+                  !_isSelecting &&
+                  !showPeerRestrictionBlock,
               onImagesDropped: _previewAndSendDroppedImages,
               child: Stack(
                 children: [
                   Positioned.fill(
                     child: Column(
                       children: [
-                        _isSelecting ? _selectionHeader() : _header(),
-                        Expanded(child: _transcriptLayer()),
-                        _chatMusicPlayer(),
-                        _isSelecting ? _selectionActionBar() : _composerArea(),
+                        showPeerRestrictionBlock
+                            ? _header()
+                            : (_isSelecting ? _selectionHeader() : _header()),
+                        if (showPeerRestrictionBlock)
+                          Expanded(child: _restrictedPeerBlockPage())
+                        else ...[
+                          Expanded(child: _transcriptLayer()),
+                          _chatMusicPlayer(),
+                          _isSelecting
+                              ? _selectionActionBar()
+                              : _composerArea(),
+                        ],
                       ],
                     ),
                   ),
                   if (_actionTarget != null && !_isSelecting)
                     _actionMenuOverlay(),
-                  if (showSafetyNotice) _restrictedChatOverlay(),
                 ],
               ),
             ),
@@ -3889,115 +3874,50 @@ class _ChatViewState extends State<ChatView> {
     if (mounted) _onComposerMessageSent();
   }
 
-  Widget _restrictedChatOverlay() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mask = isDark
-        ? Colors.black.withValues(alpha: 0.56)
-        : Colors.black.withValues(alpha: 0.18);
-    return Positioned.fill(
-      child: Stack(
-        children: [
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () {},
-            child: ColoredBox(color: mask, child: const SizedBox.expand()),
-          ),
-          Center(child: _restrictedChatCard()),
-        ],
-      ),
-    );
+  Widget _restrictedPeerBlockPage() {
+    return Center(child: _restrictedPeerBlockCard());
   }
 
-  Widget _restrictedChatCard() {
+  Widget _restrictedPeerBlockCard() {
     final c = context.colors;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surface = isDark ? AppColors.dark.card : AppColors.light.card;
+    final surface =
+        _effectiveIncomingColor() ??
+        (isDark ? AppColors.dark.card : AppColors.light.card);
+    final textColor = _effectiveIncomingTextColor() ?? c.textPrimary;
+    final text = _vm.peerRestrictionText.trim().isEmpty
+        ? AppStringKeys.chatRestrictedTelegramTosMessage.l10n(context)
+        : _vm.peerRestrictionText.trim();
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 36),
       child: Container(
         width: double.infinity,
-        constraints: const BoxConstraints(maxWidth: 360),
-        padding: const EdgeInsets.fromLTRB(24, 22, 24, 14),
+        constraints: const BoxConstraints(maxWidth: 420),
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
         decoration: BoxDecoration(
           color: surface,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.34 : 0.16),
-              blurRadius: 22,
+              color: Colors.black.withValues(alpha: isDark ? 0.24 : 0.12),
+              blurRadius: 18,
               offset: const Offset(0, 8),
             ),
           ],
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              AppStringKeys.chatRestrictedTitle.l10n(context),
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: c.textPrimary,
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              AppStringKeys.chatRestrictedTelegramTosMessage.l10n(context),
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: c.textSecondary,
-                fontSize: 14,
-                height: 1.35,
-              ),
-            ),
-            const SizedBox(height: 18),
-            Row(
-              children: [
-                Expanded(
-                  child: _restrictedActionButton(
-                    label: AppStringKeys.chatInfoLeaveGroup.l10n(context),
-                    color: Colors.redAccent,
-                    onTap: _leaveRestrictedChat,
-                  ),
-                ),
-                Container(width: 0.5, height: 24, color: c.divider),
-                Expanded(
-                  child: _restrictedActionButton(
-                    label: AppStringKeys.chatRestrictedAcknowledge.l10n(
-                      context,
-                    ),
-                    color: AppTheme.brand,
-                    onTap: _acknowledgeRestrictedChat,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _restrictedActionButton({
-    required String label,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: SizedBox(
-        height: 44,
-        child: Center(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onLongPress: _shouldOfferPeerSensitiveContentUnblock
+              ? () => unawaited(_showPeerSensitiveContentUnblockDialog())
+              : null,
           child: Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+            text,
+            textAlign: TextAlign.center,
             style: TextStyle(
-              color: color,
+              color: textColor,
               fontSize: 15,
-              fontWeight: FontWeight.w500,
+              height: 1.25,
+              fontWeight: FontWeight.w400,
             ),
           ),
         ),
@@ -4005,28 +3925,35 @@ class _ChatViewState extends State<ChatView> {
     );
   }
 
-  void _acknowledgeRestrictedChat() {
-    if (_safetyNoticeAcknowledged) return;
-    setState(() => _safetyNoticeAcknowledged = true);
+  bool get _shouldOfferPeerSensitiveContentUnblock {
+    if (!_vm.isPeerRestricted) return false;
+    if (SensitiveContentController.shared.enabled) return false;
+    return _vm.isPeerPornographicRestricted ||
+        TDParse.isPornographicRestrictionText(_vm.peerRestrictionText);
   }
 
-  Future<void> _leaveRestrictedChat() async {
+  Future<void> _showPeerSensitiveContentUnblockDialog() async {
+    final ok = await confirmDialog(
+      context,
+      title: AppStringKeys.sensitiveContentUnblockTitle,
+      message: AppStringKeys.sensitiveContentUnblockMessage,
+      confirmText: AppStringKeys.sensitiveContentUnblockConfirm,
+    );
+    if (!ok) return;
     try {
-      await _vm.leaveChat();
+      await SensitiveContentController.shared.setEnabled(true);
+      await _vm.refreshPeerRestrictionState();
       if (!mounted) return;
-      final onBack = widget.onBack;
-      if (onBack != null) {
-        onBack();
-      } else {
-        final navigator = Navigator.of(context);
-        if (navigator.canPop()) navigator.pop();
-      }
+      showToast(
+        context,
+        AppStringKeys.sensitiveContentUnblockDone.l10n(context),
+      );
     } catch (error) {
       if (!mounted) return;
       showToast(
         context,
-        AppStrings.t(AppStringKeys.chatRestrictedLeaveFailed, {
-          'value1': error,
+        AppStrings.t(AppStringKeys.sensitiveContentUnblockFailed, {
+          'value1': error.toString(),
         }),
       );
     }
@@ -4356,15 +4283,15 @@ class _ChatViewState extends State<ChatView> {
           height: 46,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            gradient: AppTheme.brandGradient,
+            color: AppTheme.brand,
             borderRadius: BorderRadius.circular(23),
           ),
           child: Text(
             AppStringKeys.startButton.l10n(context),
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
-              color: Colors.white,
+              color: AppTheme.onBrand,
             ),
           ),
         ),
@@ -4435,8 +4362,7 @@ class _ChatViewState extends State<ChatView> {
           height: 46,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            gradient: requested ? null : AppTheme.brandGradient,
-            color: requested ? c.searchFill : null,
+            color: requested ? c.searchFill : AppTheme.brand,
             borderRadius: BorderRadius.circular(23),
           ),
           child: Text(
@@ -4444,7 +4370,7 @@ class _ChatViewState extends State<ChatView> {
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
-              color: requested ? c.textSecondary : Colors.white,
+              color: requested ? c.textSecondary : AppTheme.onBrand,
             ),
           ),
         ),
@@ -4533,8 +4459,7 @@ class _ChatViewState extends State<ChatView> {
                       alignment: Alignment.center,
                       padding: const EdgeInsets.symmetric(horizontal: 28),
                       decoration: BoxDecoration(
-                        gradient: requested ? null : AppTheme.brandGradient,
-                        color: requested ? c.searchFill : null,
+                        color: requested ? c.searchFill : AppTheme.brand,
                         borderRadius: BorderRadius.circular(23),
                       ),
                       child: Text(
@@ -4542,7 +4467,7 @@ class _ChatViewState extends State<ChatView> {
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
-                          color: requested ? c.textSecondary : Colors.white,
+                          color: requested ? c.textSecondary : AppTheme.onBrand,
                         ),
                       ),
                     ),

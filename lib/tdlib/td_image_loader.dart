@@ -432,4 +432,44 @@ class TdFileCenter {
       },
     );
   }
+
+  /// Downloads the complete file for an outgoing upload and returns its path.
+  ///
+  /// Unlike [path], this uses TDLib's synchronous download response so the
+  /// result stays associated with the active account even while background
+  /// accounts are also emitting `updateFile` events.
+  Future<String?> uploadPath(
+    int fileId, {
+    Duration timeout = const Duration(minutes: 10),
+  }) async {
+    _startIfNeeded();
+    if (fileId <= 0) return null;
+    final slot = _client.activeSlot;
+    final k = _key(slot, fileId);
+    final cached = _cache[k];
+    if (cached != null && await File(cached).exists()) return cached;
+    try {
+      final response = await _client
+          .query({
+            '@type': 'downloadFile',
+            'file_id': fileId,
+            'priority': 32,
+            'offset': 0,
+            'limit': 0,
+            'synchronous': true,
+          })
+          .timeout(timeout);
+      _ingest(response);
+      final local = response.obj('local');
+      final path = local?.str('path');
+      if (local?.boolean('is_downloading_completed') == true &&
+          path != null &&
+          path.isNotEmpty &&
+          await File(path).exists()) {
+        _cache[k] = path;
+        return path;
+      }
+    } catch (_) {}
+    return null;
+  }
 }

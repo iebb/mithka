@@ -26,9 +26,12 @@ import 'app/app_navigator.dart';
 import 'app/app_version.dart';
 import 'app/chat_deep_link_controller.dart';
 import 'app/content_view.dart';
+import 'app/global_video_split_host.dart';
 import 'auth/account_store.dart';
 import 'auth/auth_manager.dart';
 import 'auth/terms_sheet.dart';
+import 'call/call_manager.dart';
+import 'call/call_overlay_host.dart';
 import 'chat/music_player_controller.dart';
 import 'components/drawer_controller.dart' as dc;
 import 'components/keyboard_dismiss_on_tap.dart';
@@ -47,6 +50,7 @@ import 'settings/country_message_filter.dart';
 import 'settings/developer_mode_controller.dart';
 import 'settings/keyword_blocker.dart';
 import 'settings/safety_notice_controller.dart';
+import 'settings/sensitive_content_controller.dart';
 import 'settings/translation_controller.dart';
 import 'tdlib/td_client.dart';
 import 'theme/app_theme.dart';
@@ -102,6 +106,7 @@ Future<void> _bootstrapAndRunApp() async {
   final prefs = await SharedPreferences.getInstance();
   KeywordBlocker.shared.initialize(prefs);
   CountryMessageFilter.shared.initialize(prefs);
+  unawaited(SensitiveContentController.shared.initialize());
   MusicPlayerController.shared.initialize(prefs);
   // Preload Telegram blocked-user list so chat filters have data right away.
   unawaited(BlockedUserService.shared.loadBlockedUsers());
@@ -222,14 +227,17 @@ class MithkaApp extends StatefulWidget {
 
 class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
   late final AuthManager _auth = AuthManager();
-  late final ThemeController _theme = ThemeController(widget.prefs);
+  late final AccountStore _accounts = AccountStore(widget.prefs);
+  late final ThemeController _theme = ThemeController(
+    widget.prefs,
+    initialAccountSlot: _accounts.activeSlot,
+  );
   late final TranslationController _translation = TranslationController(
     widget.prefs,
   );
   late final AppLocaleController _locale = AppLocaleController(widget.prefs);
   late final TelegramLanguageController _telegramLanguage =
       TelegramLanguageController.shared;
-  late final AccountStore _accounts = AccountStore(widget.prefs);
   late final dc.DrawerController _drawer = dc.DrawerController();
   late final ChatDeepLinkController _chatDeepLinks =
       ChatDeepLinkController.shared;
@@ -242,11 +250,15 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
   late final SafetyNoticeController _safetyNotice = SafetyNoticeController(
     widget.prefs,
   );
+  late final SensitiveContentController _sensitiveContent =
+      SensitiveContentController.shared;
+  late final CallManager _calls = CallManager()..start();
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _accounts.addListener(_handleActiveAccountChange);
     _theme.loadSelectedEmojiFontIfAvailable();
     _autoDownload.initialize(widget.prefs);
     _auth.start();
@@ -260,7 +272,13 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _accounts.removeListener(_handleActiveAccountChange);
+    _calls.dispose();
     super.dispose();
+  }
+
+  void _handleActiveAccountChange() {
+    _theme.setActiveAccountSlot(_accounts.activeSlot);
   }
 
   @override
@@ -328,6 +346,8 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
         ChangeNotifierProvider.value(value: _autoDownload),
         ChangeNotifierProvider.value(value: _developer),
         ChangeNotifierProvider.value(value: _safetyNotice),
+        ChangeNotifierProvider.value(value: _sensitiveContent),
+        ChangeNotifierProvider.value(value: _calls),
         ChangeNotifierProvider<dc.DrawerController>.value(value: _drawer),
       ],
       child: Consumer3<ThemeController, AccountStore, AppLocaleController>(
@@ -375,7 +395,9 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
               );
               final appChild = Stack(
                 children: [
-                  Positioned.fill(child: themedChild),
+                  Positioned.fill(
+                    child: GlobalVideoSplitHost(child: themedChild),
+                  ),
                   Overlay(
                     initialEntries: [
                       OverlayEntry(
@@ -388,6 +410,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
                       controller: NotificationController.shared,
                     ),
                   ),
+                  const Positioned.fill(child: GlobalCallOverlayHost()),
                 ],
               );
               return AnnotatedRegion<SystemUiOverlayStyle>(

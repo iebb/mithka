@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
+import '../app/app_navigator.dart';
 import '../chat/chat_view.dart';
 import '../components/app_icons.dart';
 import '../components/icon_grid.dart';
@@ -222,7 +223,8 @@ class _AddPeopleViewState extends State<AddPeopleView> {
     ),
   );
 
-  void _openChat(_ChatHit h) => Navigator.of(context).push(
+  void _openChat(_ChatHit h) => pushAppChatRoute(
+    context,
     MaterialPageRoute(
       builder: (_) => ChatView(chatId: h.id, title: h.title),
     ),
@@ -253,7 +255,8 @@ class _AddPeopleViewState extends State<AddPeopleView> {
       final id = chat.int64('id') ?? chat.int64('chat_id');
       if (!mounted || id == null) return;
       unawaited(
-        Navigator.of(context).push(
+        pushAppChatRoute(
+          context,
           MaterialPageRoute(
             builder: (_) => ChatView(chatId: id, title: title),
           ),

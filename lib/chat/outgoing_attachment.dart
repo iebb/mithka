@@ -2,7 +2,14 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-enum OutgoingAttachmentKind { photo, video, animation, document, audio }
+enum OutgoingAttachmentKind {
+  photo,
+  video,
+  animation,
+  document,
+  audio,
+  voiceNote,
+}
 
 enum AttachmentAlbumKind { visual, document, audio, standalone }
 
@@ -15,6 +22,11 @@ class OutgoingAttachment {
     this.previewBytes,
     this.width,
     this.height,
+    this.fileId,
+    this.duration = 0,
+    this.title = '',
+    this.performer = '',
+    this.fileName,
   });
 
   final String path;
@@ -24,13 +36,19 @@ class OutgoingAttachment {
   final Uint8List? previewBytes;
   final int? width;
   final int? height;
+  final int? fileId;
+  final int duration;
+  final String title;
+  final String performer;
+  final String? fileName;
 
   AttachmentAlbumKind get albumKind => switch (kind) {
     OutgoingAttachmentKind.photo ||
     OutgoingAttachmentKind.video => AttachmentAlbumKind.visual,
     OutgoingAttachmentKind.document => AttachmentAlbumKind.document,
     OutgoingAttachmentKind.audio => AttachmentAlbumKind.audio,
-    OutgoingAttachmentKind.animation => AttachmentAlbumKind.standalone,
+    OutgoingAttachmentKind.animation ||
+    OutgoingAttachmentKind.voiceNote => AttachmentAlbumKind.standalone,
   };
 
   OutgoingAttachment copyWith({
@@ -43,6 +61,12 @@ class OutgoingAttachment {
     int? width,
     int? height,
     bool clearDimensions = false,
+    int? fileId,
+    bool clearFileId = false,
+    int? duration,
+    String? title,
+    String? performer,
+    String? fileName,
   }) {
     return OutgoingAttachment(
       path: path ?? this.path,
@@ -54,8 +78,21 @@ class OutgoingAttachment {
           : previewBytes ?? this.previewBytes,
       width: clearDimensions ? null : width ?? this.width,
       height: clearDimensions ? null : height ?? this.height,
+      fileId: clearFileId ? null : fileId ?? this.fileId,
+      duration: duration ?? this.duration,
+      title: title ?? this.title,
+      performer: performer ?? this.performer,
+      fileName: fileName ?? this.fileName,
     );
   }
+}
+
+Map<String, dynamic> attachmentInputFile(OutgoingAttachment attachment) {
+  final fileId = attachment.fileId;
+  if (fileId != null && fileId > 0) {
+    return {'@type': 'inputFileId', 'id': fileId};
+  }
+  return {'@type': 'inputFileLocal', 'path': attachment.path};
 }
 
 Future<OutgoingAttachment> resolveAttachmentDimensions(
@@ -147,14 +184,14 @@ Map<String, dynamic> attachmentInputMessageContent(
               : resolvedCaption,
           if (resolvedEntities.isNotEmpty) 'entities': resolvedEntities,
         };
-  final localFile = {'@type': 'inputFileLocal', 'path': attachment.path};
+  final inputFile = attachmentInputFile(attachment);
 
   return switch (attachment.kind) {
     OutgoingAttachmentKind.photo => {
       '@type': 'inputMessagePhoto',
       'photo': {
         '@type': 'inputPhoto',
-        'photo': localFile,
+        'photo': inputFile,
         'added_sticker_file_ids': <int>[],
         'width': attachment.width ?? 0,
         'height': attachment.height ?? 0,
@@ -167,32 +204,42 @@ Map<String, dynamic> attachmentInputMessageContent(
       '@type': 'inputMessageVideo',
       'video': {
         '@type': 'inputVideo',
-        'video': localFile,
+        'video': inputFile,
         'supports_streaming': true,
       },
       'caption': ?formattedCaption,
     },
     OutgoingAttachmentKind.animation => {
       '@type': 'inputMessageAnimation',
-      'animation': localFile,
-      'duration': 0,
+      'animation': inputFile,
+      'duration': attachment.duration,
       'width': attachment.width ?? 0,
       'height': attachment.height ?? 0,
       'caption': ?formattedCaption,
     },
     OutgoingAttachmentKind.document => {
       '@type': 'inputMessageDocument',
-      'document': {'@type': 'inputDocument', 'document': localFile},
+      'document': {'@type': 'inputDocument', 'document': inputFile},
       'caption': ?formattedCaption,
     },
     OutgoingAttachmentKind.audio => {
       '@type': 'inputMessageAudio',
       'audio': {
         '@type': 'inputAudio',
-        'audio': localFile,
-        'duration': 0,
-        'title': '',
-        'performer': '',
+        'audio': inputFile,
+        'duration': attachment.duration,
+        'title': attachment.title,
+        'performer': attachment.performer,
+      },
+      'caption': ?formattedCaption,
+    },
+    OutgoingAttachmentKind.voiceNote => {
+      '@type': 'inputMessageVoiceNote',
+      'voice_note': {
+        '@type': 'inputVoiceNote',
+        'voice_note': inputFile,
+        'duration': attachment.duration,
+        'waveform': '',
       },
       'caption': ?formattedCaption,
     },

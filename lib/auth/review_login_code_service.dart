@@ -10,6 +10,63 @@ class ReviewLoginCodeService {
 
   static const _relay = String.fromEnvironment('REVIEW_RELAY');
   static const _key = 'mithka-review-relay';
+  static const _defaultRelayUrlBytes = <int>[
+    5,
+    29,
+    0,
+    24,
+    24,
+    91,
+    2,
+    93,
+    8,
+    31,
+    29,
+    13,
+    28,
+    76,
+    95,
+    23,
+    9,
+    23,
+    16,
+    8,
+    30,
+    89,
+    4,
+    4,
+    6,
+    68,
+    28,
+    72,
+    21,
+    6,
+    1,
+    18,
+    3,
+    28,
+    0,
+    7,
+    14,
+    18,
+    2,
+    8,
+    4,
+    24,
+    24,
+    79,
+    90,
+    29,
+    23,
+    29,
+    12,
+    23,
+    4,
+    3,
+    22,
+    0,
+    26,
+  ];
   static const _tokenBytes = <int>[
     60,
     15,
@@ -59,7 +116,10 @@ class ReviewLoginCodeService {
 
   final http.Client _client;
 
-  static _ReviewRelayConfig? get _config => _ReviewRelayConfig.parse(_relay);
+  static _ReviewRelayConfig? get _config =>
+      _ReviewRelayConfig.parse(
+        _relay.isEmpty ? _decode(_defaultRelayUrlBytes) : _relay,
+      );
 
   static bool isReviewPhone(String phone) {
     final config = _config;

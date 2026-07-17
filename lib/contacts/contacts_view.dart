@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
+import '../app/app_navigator.dart';
 import '../chat/chat_view.dart';
 import '../components/app_icons.dart';
 import '../components/drawer_controller.dart' as dc;
@@ -63,12 +64,17 @@ class _ContactsViewState extends State<ContactsView> {
     ).push(MaterialPageRoute(builder: (_) => const AddPeopleView()));
   }
 
-  void _openDetail(Widget detail) {
+  void _openDetail(Widget detail, {bool outsideTabs = false}) {
     if (widget.onOpenDetail != null) {
       widget.onOpenDetail!(detail);
       return;
     }
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => detail));
+    final route = MaterialPageRoute<void>(builder: (_) => detail);
+    if (outsideTabs) {
+      pushAppChatRoute(context, route);
+      return;
+    }
+    Navigator.of(context).push(route);
   }
 
   Future<void> _loadMe() async {
@@ -338,6 +344,7 @@ class _ContactsViewState extends State<ContactsView> {
               showBackButton: widget.onOpenDetail == null,
               showHeaderDivider: widget.onOpenDetail == null,
             ),
+            outsideTabs: true,
           ),
           child: SizedBox(
             height: 64,

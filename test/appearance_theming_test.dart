@@ -33,12 +33,14 @@ void main() {
     expect(find.text('Theme'), findsNothing);
     expect(find.text('Wallpaper'), findsNothing);
     expect(find.text('Use chat theme for UI'), findsNothing);
+    expect(find.text('Use themes per account'), findsNothing);
 
     controller.themingEnabled = true;
     await tester.pump();
     expect(find.text('Theme'), findsOneWidget);
     expect(find.text('Wallpaper'), findsOneWidget);
     expect(find.text('Use chat theme for UI'), findsOneWidget);
+    expect(find.text('Use themes per account'), findsOneWidget);
   });
 
   testWidgets(
@@ -88,6 +90,10 @@ void main() {
         find.byType(ChatWallpaperView),
       );
       expect(picker.forDarkTheme, isTrue);
+      expect(
+        find.byKey(const ValueKey('global-wallpaper-brightness-picker')),
+        findsOneWidget,
+      );
     },
   );
 
@@ -101,6 +107,7 @@ void main() {
       HeroAppIcons.palette,
       HeroAppIcons.image,
       HeroAppIcons.mobileScreenButton,
+      HeroAppIcons.users,
       HeroAppIcons.expand,
       HeroAppIcons.eye,
       HeroAppIcons.font,

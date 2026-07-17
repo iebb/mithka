@@ -9,6 +9,7 @@ import '../theme/theme_controller.dart';
 import 'blocked_user_service.dart';
 import 'country_message_filter.dart';
 import 'country_message_filter_view.dart';
+import 'keyword_blocker_view.dart';
 import 'privacy_detail_views.dart';
 
 class BlockingSettingsView extends StatelessWidget {
@@ -61,6 +62,20 @@ class BlockingSettingsView extends StatelessWidget {
                       onTap: () => Navigator.of(context).push(
                         PageRouteBuilder<void>(
                           pageBuilder: (_, _, _) => const BlockedUsersView(),
+                        ),
+                      ),
+                    ),
+                    const InsetDivider(leadingInset: 52),
+                    SettingsRow(
+                      title: AppStringKeys.keywordBlockerTitle,
+                      leading: AppIcon(
+                        HeroAppIcons.ban,
+                        size: 20,
+                        color: AppTheme.brand,
+                      ),
+                      onTap: () => Navigator.of(context).push(
+                        PageRouteBuilder<void>(
+                          pageBuilder: (_, _, _) => const KeywordBlockerView(),
                         ),
                       ),
                     ),

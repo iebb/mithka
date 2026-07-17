@@ -10,6 +10,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../app/app_navigator.dart';
 import '../chat/chat_view.dart';
 import '../chat/custom_emoji.dart';
 import '../components/app_icons.dart';
@@ -61,7 +62,8 @@ class _ForumTopicBrowserViewState extends State<ForumTopicBrowserView> {
   void _selectChat(ChatSummary chat) {
     if (_selectedChat.id == chat.id) return;
     if (!chat.isForum) {
-      Navigator.of(context).pushReplacement(
+      replaceWithAppChatRoute(
+        context,
         MaterialPageRoute(
           builder: (_) => ChatView(
             chatId: chat.id,
@@ -227,7 +229,8 @@ class _ForumTopicBrowserViewState extends State<ForumTopicBrowserView> {
   }
 
   void _openTopic(_ForumTopicEntry topic) {
-    Navigator.of(context).push(
+    pushAppChatRoute(
+      context,
       MaterialPageRoute(
         builder: (_) =>
             TopicChatView(chat: _selectedChat, initialThreadId: topic.id),

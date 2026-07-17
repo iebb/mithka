@@ -110,6 +110,7 @@ const frMessages = <String, String>{
   'appearanceEmojiFontCatalogDescription':
       "La liste des polices provient du manifeste iebb/emojifonts ; le téléchargement se fait depuis GitHub Releases lors de la sélection. Les aperçus proviennent d’Emojipedia.",
   'appearanceEnableTheming': "Activer les thèmes",
+  'appearancePerAccountTheming': "Utiliser un thème par compte",
   'appearanceFileCount': "{value1}",
   'appearanceFont': "Police",
   'appearanceFontCache': "Cache des polices",
@@ -747,6 +748,9 @@ const frMessages = <String, String>{
   'globalThemeSwitchModeAction': "Changer",
   'globalThemeSwitchToDark': "Passer au mode sombre ?",
   'globalThemeSwitchToLight': "Passer au mode clair ?",
+  'globalThemeWallpaperApply': "Utiliser le fond",
+  'globalThemeWallpaperKeep': "Garder l’actuel",
+  'globalThemeWallpaperPrompt': "Utiliser aussi le fond de ce thème ?",
   'globalThemeTitle': "Thème",
   'globalThemeUseForUi': "Utiliser le thème Telegram pour l’interface",
   'globalThemeUseForUiDescription':
@@ -1154,6 +1158,7 @@ const frMessages = <String, String>{
   'privacySectionTitle': "Confidentialité",
   'privacySecuritySectionTitle': "Sécurité",
   'privacySecurityTitle': "Confidentialité et sécurité",
+  'privacySensitiveContent': "Afficher le contenu 18+",
   'privacyShowReadDate': "Afficher l’heure de lecture",
   'privacyShowReadDateHint':
       "L’heure de lecture est toujours visible par les utilisateurs qui peuvent voir votre statut en ligne.",
@@ -1341,6 +1346,13 @@ const frMessages = <String, String>{
   'secretChatStartTitle': "Démarrer une discussion secrète ?",
   'secretChatWaiting':
       "En attente de la disponibilité de la discussion secrète…",
+  'sensitiveContentUnblockConfirm': "Tout débloquer",
+  'sensitiveContentUnblockDone': "Le contenu 18+ est activé",
+  'sensitiveContentUnblockFailed':
+      "Impossible d’activer le contenu 18+ : {value1}",
+  'sensitiveContentUnblockMessage':
+      "Cela active le réglage Telegram de contenu 18+ pour tout le compte. Vous pourrez le désactiver plus tard dans Confidentialité et sécurité.",
+  'sensitiveContentUnblockTitle': "Afficher le contenu 18+ ?",
   'settingsAboutMithka': "À propos de Mithka",
   'settingsLogOut': "Se déconnecter",
   'sharedMediaCacheDeleted': "Cache local supprimé",

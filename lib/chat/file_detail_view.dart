@@ -295,15 +295,15 @@ class _FileDetailViewState extends State<FileDetailView> {
         height: 50,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          gradient: AppTheme.brandGradient,
+          color: AppTheme.brand,
           borderRadius: BorderRadius.circular(25),
         ),
         child: Text(
           AppStrings.t(AppStringKeys.fileDetailOpen),
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w600,
-            color: Colors.white,
+            color: AppTheme.onBrand,
           ),
         ),
       ),

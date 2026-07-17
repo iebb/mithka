@@ -1,9 +1,10 @@
 name: 🌙 Sync Nightly
 
 # Merge master into nightly twice per day. Every sync that incorporates new
-# master commits increments the app's patch version once. A generated
-# GITHUB_TOKEN push doesn't trigger other workflows, so a changed sync
-# explicitly dispatches release.yml.
+# master commits increments the app's patch version once. Master is
+# authoritative for the nightly tree; only pubspec.yaml receives a generated
+# nightly version. A generated GITHUB_TOKEN push doesn't trigger other
+# workflows, so a changed sync explicitly dispatches release.yml.
 
 on:
   schedule:
@@ -51,19 +52,13 @@ jobs:
             previous_raw="$(git show origin/nightly:pubspec.yaml | awk '/^version:/ { print $2; exit }')"
             test -n "$previous_raw"
             git checkout -B nightly origin/nightly
-            if ! git merge --no-commit --no-ff origin/master; then
-              conflicts="$(git diff --name-only --diff-filter=U)"
-              if [ "$conflicts" != "pubspec.yaml" ]; then
-                echo "nightly merge has conflicts outside pubspec.yaml:" >&2
-                printf '%s\n' "$conflicts" >&2
-                exit 1
-              fi
-              # Both branches may have changed the version line. The generated
-              # nightly version below is based on both values, so start from
-              # master's copy of the rest of pubspec.yaml.
-              git checkout --theirs -- pubspec.yaml
-              git add pubspec.yaml
-            fi
+            # Record both histories without asking Git to reconcile two trees
+            # that may contain generated or backported nightly changes. Then
+            # replace the staged tree with master's exact contents. This keeps
+            # master authoritative and makes merge conflicts impossible while
+            # retaining both parents for the next ancestry check.
+            git merge --no-commit --no-ff --strategy=ours origin/master
+            git read-tree --reset -u origin/master
           else
             previous_raw="$master_raw"
             git checkout -B nightly origin/master
@@ -100,7 +95,13 @@ jobs:
           sed -i -E "s/^version:.*/version: $nightly_raw/" pubspec.yaml
           test "$(awk '/^version:/ { print $2; exit }' pubspec.yaml)" = "$nightly_raw"
           git add pubspec.yaml
-          git diff --check --cached -- pubspec.yaml
+          unexpected="$(git diff --name-only origin/master -- | grep -v '^pubspec.yaml$' || true)"
+          if [ -n "$unexpected" ]; then
+            echo "nightly differs from master outside pubspec.yaml:" >&2
+            printf '%s\n' "$unexpected" >&2
+            exit 1
+          fi
+          git diff --check --cached
           git commit -m "chore: sync nightly $nightly_version"
           git push origin HEAD:nightly
           echo "changed=true" >> "$GITHUB_OUTPUT"

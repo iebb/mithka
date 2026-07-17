@@ -11,6 +11,7 @@ import '../l10n/app_localizations.dart';
 import 'app_theme.dart';
 import 'telegram_cloud_theme.dart';
 import 'theme_controller.dart';
+import 'theme_wallpaper_prompt.dart';
 
 /// Global Telegram .attheme management. This intentionally contains no chat
 /// emoji themes. Applying its palette to the rest of the app is opt-in.
@@ -85,6 +86,22 @@ class _GlobalThemeViewState extends State<GlobalThemeView> {
           ? AppearanceMode.dark
           : AppearanceMode.light;
     }
+    await _installTheme(controller, theme, target);
+  }
+
+  Future<void> _installTheme(
+    ThemeController controller,
+    TelegramCloudTheme theme,
+    Brightness target,
+  ) async {
+    await promptForThemeWallpaper(
+      context,
+      theme: theme,
+      brightness: target,
+      previousTheme: controller.cloudThemeFor(target),
+      colors: _pageColors,
+    );
+    if (!mounted) return;
     controller.installCloudTheme(theme, brightness: target);
   }
 
@@ -296,10 +313,7 @@ class _GlobalThemeViewState extends State<GlobalThemeView> {
             theme,
             selected: selectedTheme?.slug == theme.slug,
             onTap: () => theme.isBuiltIn
-                ? controller.installCloudTheme(
-                    theme,
-                    brightness: _targetBrightness,
-                  )
+                ? _installTheme(controller, theme, _targetBrightness)
                 : _applyImportedTheme(controller, theme),
           );
         },

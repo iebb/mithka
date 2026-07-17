@@ -63,47 +63,45 @@ class RichMessageRelayResult {
   final bool senderRemoved;
 }
 
-String replaceRichMessageMediaIds(String html, Map<String, String> fileIds) {
-  var result = html;
-  for (final entry in fileIds.entries) {
-    result = result
-        .replaceAll('src="${entry.key}"', 'src="${entry.value}"')
-        .replaceAll("src='${entry.key}'", "src='${entry.value}'");
-  }
-  return result;
-}
-
-String stripRichMessageMediaBlocks(String html) {
-  var result = html.replaceAllMapped(
-    RegExp(
-      r'<figure\b[^>]*>.*?<figcaption\b[^>]*>(.*?)</figcaption>.*?</figure>',
-      caseSensitive: false,
-      dotAll: true,
+Map<String, dynamic> botApiRichMessageMediaPayload(
+  OutgoingAttachment attachment,
+  String fileId,
+) {
+  return switch (attachment.kind) {
+    OutgoingAttachmentKind.photo => {'type': 'photo', 'media': fileId},
+    OutgoingAttachmentKind.video => {
+      'type': 'video',
+      'media': fileId,
+      'supports_streaming': true,
+      if ((attachment.width ?? 0) > 0) 'width': attachment.width,
+      if ((attachment.height ?? 0) > 0) 'height': attachment.height,
+      if (attachment.duration > 0) 'duration': attachment.duration,
+    },
+    OutgoingAttachmentKind.animation => {
+      'type': 'animation',
+      'media': fileId,
+      if ((attachment.width ?? 0) > 0) 'width': attachment.width,
+      if ((attachment.height ?? 0) > 0) 'height': attachment.height,
+      if (attachment.duration > 0) 'duration': attachment.duration,
+    },
+    OutgoingAttachmentKind.audio => {
+      'type': 'audio',
+      'media': fileId,
+      if (attachment.duration > 0) 'duration': attachment.duration,
+      if (attachment.title.isNotEmpty) 'title': attachment.title,
+      if (attachment.performer.isNotEmpty) 'performer': attachment.performer,
+    },
+    OutgoingAttachmentKind.voiceNote => {
+      'type': 'voice_note',
+      'media': fileId,
+      if (attachment.duration > 0) 'duration': attachment.duration,
+    },
+    OutgoingAttachmentKind.document => throw ArgumentError.value(
+      attachment.kind,
+      'attachment.kind',
+      'Documents are not rich-message media',
     ),
-    (match) => '<p>${match.group(1) ?? ''}</p>',
-  );
-  result = result
-      .replaceAll(
-        RegExp(r'<img\b[^>]*?/?>', caseSensitive: false, dotAll: true),
-        '',
-      )
-      .replaceAll(
-        RegExp(
-          r'<(?:video|audio)\b[^>]*>.*?</(?:video|audio)>',
-          caseSensitive: false,
-          dotAll: true,
-        ),
-        '',
-      )
-      .replaceAll(
-        RegExp(
-          r'<(?:tg-collage|tg-slideshow)\b[^>]*>\s*</(?:tg-collage|tg-slideshow)>',
-          caseSensitive: false,
-          dotAll: true,
-        ),
-        '',
-      );
-  return result.trim();
+  };
 }
 
 List<Map<String, dynamic>> parseRelayForwardResponse(
@@ -207,66 +205,61 @@ class RichMessageBotRelay {
     RichMessageRelayProgressCallback? onProgress,
   }) async {
     final bot = await validateToken(token);
-    final totalSteps = files.length + 3;
-    final uploads =
-        <({OutgoingAttachmentKind kind, int messageId, int date})>[];
-    for (var index = 0; index < files.length; index++) {
-      onProgress?.call(
-        RichMessageRelayProgress(
-          stage: RichMessageRelayStage.upload,
-          step: index + 1,
-          totalSteps: totalSteps,
-          mediaIndex: index + 1,
-          mediaCount: files.length,
-        ),
-      );
-      final file = files[index];
-      final uploaded = await _uploadMedia(
-        token,
-        currentUserId,
-        file.attachment,
-      );
-      uploads.add((
-        kind: file.attachment.kind,
-        messageId: uploaded.messageId,
-        date: uploaded.date,
-      ));
-    }
+    await _ensureBotCanMessageUser(
+      token: token,
+      currentUserId: currentUserId,
+      botUserId: bot.id,
+      tdClient: tdClient,
+    );
+    const totalSteps = 3;
     onProgress?.call(
       RichMessageRelayProgress(
-        stage: RichMessageRelayStage.compose,
-        step: files.length + 1,
+        stage: files.isEmpty
+            ? RichMessageRelayStage.compose
+            : RichMessageRelayStage.upload,
+        step: 1,
         totalSteps: totalSteps,
-        mediaCount: files.length,
       ),
     );
-    Map<String, dynamic>? sent;
-    final mediaFallback = files.isNotEmpty;
-    if (mediaFallback) {
-      final fallbackHtml = stripRichMessageMediaBlocks(html);
-      if (fallbackHtml.isNotEmpty) {
-        sent = await _call(token, 'sendRichMessage', {
-          'chat_id': currentUserId,
-          'rich_message': {
-            'html': fallbackHtml,
-            'is_rtl': false,
-            'skip_entity_detection': false,
-          },
-        });
-      }
-    } else {
-      sent = await _call(token, 'sendRichMessage', {
-        'chat_id': currentUserId,
-        'rich_message': {
-          'html': html,
-          'is_rtl': false,
-          'skip_entity_detection': false,
-        },
-      });
-    }
-    final botApiMessageId = sent?.integer('message_id');
-    final sentDate = sent?.integer('date') ?? 0;
-    if (!mediaFallback && (botApiMessageId == null || botApiMessageId <= 0)) {
+    final richMessage = <String, dynamic>{
+      'html': html,
+      if (files.isNotEmpty)
+        'media': [
+          for (var index = 0; index < files.length; index++)
+            {
+              'id': files[index].id,
+              'media': botApiRichMessageMediaPayload(
+                files[index].attachment,
+                'attach://rich_media_$index',
+              ),
+            },
+        ],
+      'is_rtl': false,
+      'skip_entity_detection': false,
+    };
+    final sent = files.isEmpty
+        ? await _call(token, 'sendRichMessage', {
+            'chat_id': currentUserId,
+            'rich_message': richMessage,
+          })
+        : await _callMultipartFiles(
+            token,
+            'sendRichMessage',
+            fields: {
+              'chat_id': '$currentUserId',
+              'rich_message': jsonEncode(richMessage),
+            },
+            files: [
+              for (var index = 0; index < files.length; index++)
+                (
+                  field: 'rich_media_$index',
+                  path: files[index].attachment.path,
+                ),
+            ],
+          );
+    final botApiMessageId = sent.integer('message_id');
+    final sentDate = sent.integer('date') ?? 0;
+    if (botApiMessageId == null || botApiMessageId <= 0) {
       throw const RichMessageRelayException(
         'missing_message',
         'Telegram did not return the relayed message.',
@@ -289,37 +282,21 @@ class RichMessageBotRelay {
     onProgress?.call(
       RichMessageRelayProgress(
         stage: RichMessageRelayStage.waitForMessage,
-        step: files.length + 2,
+        step: 2,
         totalSteps: totalSteps,
         mediaCount: files.length,
       ),
     );
     final sourceMessageIds = <int>[];
-    if (botApiMessageId != null && botApiMessageId > 0) {
-      sourceMessageIds.add(
-        await _waitForTdMessage(
-          tdClient,
-          fromChatId,
-          botApiMessageId: botApiMessageId,
-          botUserId: bot.id,
-          sentDate: sentDate,
-        ),
-      );
-    }
-    if (mediaFallback) {
-      for (final upload in uploads) {
-        sourceMessageIds.add(
-          await _waitForTdMessage(
-            tdClient,
-            fromChatId,
-            botApiMessageId: upload.messageId,
-            botUserId: bot.id,
-            sentDate: upload.date,
-            expectedContentTypes: _contentTypesForAttachment(upload.kind),
-          ),
-        );
-      }
-    }
+    sourceMessageIds.add(
+      await _waitForTdMessage(
+        tdClient,
+        fromChatId,
+        botApiMessageId: botApiMessageId,
+        botUserId: bot.id,
+        sentDate: sentDate,
+      ),
+    );
     if (sourceMessageIds.isEmpty) {
       throw const RichMessageRelayException(
         'missing_message',
@@ -331,7 +308,7 @@ class RichMessageBotRelay {
       onProgress?.call(
         RichMessageRelayProgress(
           stage: RichMessageRelayStage.forward,
-          step: files.length + 3,
+          step: 3,
           totalSteps: totalSteps,
           mediaCount: files.length,
         ),
@@ -359,19 +336,13 @@ class RichMessageBotRelay {
       throw RichMessageRelayException('copy_failed', error.toString());
     } finally {
       if (forwarded) {
-        final cleanupIds = <int>{
-          ?botApiMessageId,
-          for (final upload in uploads) upload.messageId,
-        };
-        for (final messageId in cleanupIds) {
-          try {
-            await _call(token, 'deleteMessage', {
-              'chat_id': currentUserId,
-              'message_id': messageId,
-            });
-          } catch (_) {
-            // Cleanup failure must not turn a successful relay into a send failure.
-          }
+        try {
+          await _call(token, 'deleteMessage', {
+            'chat_id': currentUserId,
+            'message_id': botApiMessageId,
+          });
+        } catch (_) {
+          // Cleanup failure must not turn a successful relay into a send failure.
         }
       }
     }
@@ -387,6 +358,12 @@ class RichMessageBotRelay {
     RichMessageRelayProgressCallback? onProgress,
   }) async {
     final bot = await validateToken(token);
+    await _ensureBotCanMessageUser(
+      token: token,
+      currentUserId: currentUserId,
+      botUserId: bot.id,
+      tdClient: tdClient,
+    );
     const totalSteps = 4;
     onProgress?.call(
       const RichMessageRelayProgress(
@@ -466,6 +443,55 @@ class RichMessageBotRelay {
     return result;
   }
 
+  Future<void> _ensureBotCanMessageUser({
+    required String token,
+    required int currentUserId,
+    required int botUserId,
+    required TdClient tdClient,
+  }) async {
+    try {
+      await _call(token, 'getChat', {'chat_id': currentUserId});
+      return;
+    } on RichMessageRelayException catch (error) {
+      if (error.code != 'bot_not_started') rethrow;
+    }
+
+    final botChat = await tdClient.query({
+      '@type': 'createPrivateChat',
+      'user_id': botUserId,
+      'force': true,
+    });
+    final botChatId = botChat.int64('id');
+    if (botChatId == null) {
+      throw const RichMessageRelayException(
+        'missing_bot_chat',
+        'The relay bot chat could not be opened.',
+      );
+    }
+    await tdClient.query({
+      '@type': 'sendMessage',
+      'chat_id': botChatId,
+      'input_message_content': {
+        '@type': 'inputMessageText',
+        'text': {'@type': 'formattedText', 'text': '/start'},
+      },
+    });
+
+    for (var attempt = 0; attempt < 20; attempt++) {
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      try {
+        await _call(token, 'getChat', {'chat_id': currentUserId});
+        return;
+      } on RichMessageRelayException catch (error) {
+        if (error.code != 'bot_not_started') rethrow;
+      }
+    }
+    throw const RichMessageRelayException(
+      'bot_not_started',
+      'Start the relay bot in Telegram before using it.',
+    );
+  }
+
   Future<({String fileId, int messageId, int date})> _uploadMedia(
     String token,
     int chatId,
@@ -476,6 +502,7 @@ class RichMessageBotRelay {
       OutgoingAttachmentKind.video => ('sendVideo', 'video'),
       OutgoingAttachmentKind.animation => ('sendAnimation', 'animation'),
       OutgoingAttachmentKind.audio => ('sendAudio', 'audio'),
+      OutgoingAttachmentKind.voiceNote => ('sendVoice', 'voice'),
       OutgoingAttachmentKind.document => ('sendDocument', 'document'),
     };
     final result = await _callMultipart(
@@ -524,6 +551,7 @@ class RichMessageBotRelay {
       OutgoingAttachmentKind.video => 'video',
       OutgoingAttachmentKind.animation => 'animation',
       OutgoingAttachmentKind.audio => 'audio',
+      OutgoingAttachmentKind.voiceNote => 'voice',
       OutgoingAttachmentKind.document => 'document',
       OutgoingAttachmentKind.photo => 'photo',
     };
@@ -536,6 +564,7 @@ class RichMessageBotRelay {
       OutgoingAttachmentKind.video => const {'messageVideo'},
       OutgoingAttachmentKind.animation => const {'messageAnimation'},
       OutgoingAttachmentKind.audio => const {'messageAudio'},
+      OutgoingAttachmentKind.voiceNote => const {'messageVoiceNote'},
       OutgoingAttachmentKind.document => const {'messageDocument'},
     };
   }
@@ -718,6 +747,50 @@ class RichMessageBotRelay {
     }
   }
 
+  Future<Map<String, dynamic>> _callMultipartFiles(
+    String token,
+    String method, {
+    required Map<String, String> fields,
+    required List<({String field, String path})> files,
+  }) async {
+    final normalizedToken = token.trim();
+    if (!RegExp(r'^\d+:[A-Za-z0-9_-]{20,}$').hasMatch(normalizedToken)) {
+      throw const RichMessageRelayException(
+        'invalid_token',
+        'The bot token format is invalid.',
+      );
+    }
+    final endpoint = _apiBase.replace(
+      path: '${_apiBase.path}/bot$normalizedToken/$method',
+    );
+    try {
+      final request = http.MultipartRequest('POST', endpoint)
+        ..fields.addAll(fields);
+      for (final file in files) {
+        request.files.add(
+          await http.MultipartFile.fromPath(file.field, file.path),
+        );
+      }
+      final streamed = await _http
+          .send(request)
+          .timeout(const Duration(minutes: 5));
+      final body = await streamed.stream.bytesToString();
+      return _decodeApiResponse(body, streamed.statusCode);
+    } on RichMessageRelayException {
+      rethrow;
+    } on TimeoutException {
+      throw const RichMessageRelayException(
+        'timeout',
+        'Telegram did not respond in time.',
+      );
+    } catch (_) {
+      throw const RichMessageRelayException(
+        'network_error',
+        'The relay bot could not upload the rich-message media.',
+      );
+    }
+  }
+
   Map<String, dynamic> _decodeApiResponse(String body, int statusCode) {
     Object? decoded;
     try {
@@ -736,12 +809,20 @@ class RichMessageBotRelay {
     }
     if (decoded['ok'] != true) {
       final description = decoded['description']?.toString().trim();
-      final code = description?.toLowerCase().contains('chat not found') == true
-          ? 'bot_not_started'
-          : 'telegram_error';
+      final normalizedDescription = description?.toLowerCase() ?? '';
+      final code = switch (normalizedDescription) {
+        final value when value.contains('chat not found') => 'bot_not_started',
+        final value
+            when value.contains('voice_messages_forbidden') ||
+                value.contains('restricted receiving of voice note messages') =>
+          'voice_messages_forbidden',
+        _ => 'telegram_error',
+      };
       throw RichMessageRelayException(
         code,
-        description?.isNotEmpty == true
+        code == 'voice_messages_forbidden'
+            ? 'Telegram privacy settings block voice-note rich messages.'
+            : description?.isNotEmpty == true
             ? description!
             : 'Telegram rejected the request.',
       );

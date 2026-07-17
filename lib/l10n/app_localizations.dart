@@ -240,6 +240,7 @@ abstract final class AppStringKeys {
   static const appearanceEmojiFontCatalogDescription =
       'appearanceEmojiFontCatalogDescription';
   static const appearanceEnableTheming = 'appearanceEnableTheming';
+  static const appearancePerAccountTheming = 'appearancePerAccountTheming';
   static const appearanceFileCount = 'appearanceFileCount';
   static const appearanceFont = 'appearanceFont';
   static const appearanceFontCache = 'appearanceFontCache';
@@ -1064,6 +1065,9 @@ abstract final class AppStringKeys {
   static const globalThemeSwitchModeAction = 'globalThemeSwitchModeAction';
   static const globalThemeSwitchToDark = 'globalThemeSwitchToDark';
   static const globalThemeSwitchToLight = 'globalThemeSwitchToLight';
+  static const globalThemeWallpaperApply = 'globalThemeWallpaperApply';
+  static const globalThemeWallpaperKeep = 'globalThemeWallpaperKeep';
+  static const globalThemeWallpaperPrompt = 'globalThemeWallpaperPrompt';
   static const globalThemeTitle = 'globalThemeTitle';
   static const globalThemeUseForUi = 'globalThemeUseForUi';
   static const globalThemeUseForUiDescription =
@@ -1495,6 +1499,7 @@ abstract final class AppStringKeys {
   static const privacySectionTitle = 'privacySectionTitle';
   static const privacySecuritySectionTitle = 'privacySecuritySectionTitle';
   static const privacySecurityTitle = 'privacySecurityTitle';
+  static const privacySensitiveContent = 'privacySensitiveContent';
   static const privacyShowReadDate = 'privacyShowReadDate';
   static const privacyShowReadDateHint = 'privacyShowReadDateHint';
   static const privacyTerminateAllOtherSessions =
@@ -1693,6 +1698,13 @@ abstract final class AppStringKeys {
   static const secretChatStartMessage = 'secretChatStartMessage';
   static const secretChatStartTitle = 'secretChatStartTitle';
   static const secretChatWaiting = 'secretChatWaiting';
+  static const sensitiveContentUnblockConfirm =
+      'sensitiveContentUnblockConfirm';
+  static const sensitiveContentUnblockDone = 'sensitiveContentUnblockDone';
+  static const sensitiveContentUnblockFailed = 'sensitiveContentUnblockFailed';
+  static const sensitiveContentUnblockMessage =
+      'sensitiveContentUnblockMessage';
+  static const sensitiveContentUnblockTitle = 'sensitiveContentUnblockTitle';
   static const settingsAboutMithka = 'settingsAboutMithka';
   static const settingsLogOut = 'settingsLogOut';
   static const sharedMediaCacheDeleted = 'sharedMediaCacheDeleted';

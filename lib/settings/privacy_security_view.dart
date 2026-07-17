@@ -10,6 +10,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
+import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../components/app_icons.dart';
@@ -21,9 +22,9 @@ import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
 import 'account_backup_view.dart';
 import 'auto_delete_view.dart';
-import 'keyword_blocker_view.dart';
 import 'privacy_detail_views.dart';
 import 'privacy_rule_options.dart';
+import 'sensitive_content_controller.dart';
 
 class PrivacySecurityView extends StatefulWidget {
   const PrivacySecurityView({super.key});
@@ -211,9 +212,24 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
     }
   }
 
+  Future<void> _setSensitiveContentEnabled(bool value) async {
+    try {
+      await SensitiveContentController.shared.setEnabled(value);
+    } catch (error) {
+      if (!mounted) return;
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.sensitiveContentUnblockFailed, {
+          'value1': error.toString(),
+        }),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final sensitiveContent = context.watch<SensitiveContentController>();
     return Scaffold(
       backgroundColor: c.groupedBackground,
       body: Column(
@@ -266,12 +282,14 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
                       '',
                       () => _open(const AccountBackupView()),
                     ),
-                    _Row(
-                      HeroAppIcons.ban,
-                      AppStrings.t(AppStringKeys.keywordBlockerTitle),
-                      '',
-                      () => _open(const KeywordBlockerView()),
-                    ),
+                    if (sensitiveContent.shouldShowToggle)
+                      _SwitchRow(
+                        HeroAppIcons.eye,
+                        AppStrings.t(AppStringKeys.privacySensitiveContent),
+                        sensitiveContent.enabled,
+                        (value) =>
+                            unawaited(_setSensitiveContentEnabled(value)),
+                      ),
                     _Row(
                       HeroAppIcons.trash,
                       AppStrings.t(AppStringKeys.privacyDeleteTelegramAccount),
@@ -294,7 +312,7 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
     );
   }
 
-  Widget _group(String title, List<_Row> rows) {
+  Widget _group(String title, List<_SettingsEntry> rows) {
     final c = context.colors;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -337,7 +355,15 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
                               ),
                             ),
                           ),
-                          if (row.value.isNotEmpty) ...[
+                          if (row is _SwitchRow) ...[
+                            const SizedBox(width: 12),
+                            IgnorePointer(
+                              child: AppSwitch(
+                                value: row.value,
+                                onChanged: row.onChanged,
+                              ),
+                            ),
+                          ] else if (row is _Row && row.value.isNotEmpty) ...[
                             const SizedBox(width: 12),
                             ConstrainedBox(
                               constraints: const BoxConstraints(maxWidth: 150),
@@ -353,7 +379,7 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
                               ),
                             ),
                           ],
-                          if (row.onTap != null) ...[
+                          if (row is _Row && row.onTap != null) ...[
                             const SizedBox(width: 6),
                             AppIcon(
                               HeroAppIcons.chevronRight,
@@ -388,10 +414,31 @@ class _PrivacyRuleEntry {
   final String setting;
 }
 
-class _Row {
-  _Row(this.icon, this.title, this.value, this.onTap);
+abstract class _SettingsEntry {
+  _SettingsEntry(this.icon, this.title);
+
   final AppIconData icon;
   final String title;
+
+  VoidCallback? get onTap;
+}
+
+class _Row extends _SettingsEntry {
+  _Row(super.icon, super.title, this.value, this.onTap);
+
   final String value;
+
+  @override
   final VoidCallback? onTap;
+}
+
+class _SwitchRow extends _SettingsEntry {
+  _SwitchRow(super.icon, super.title, this.value, this.onChanged);
+
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  VoidCallback get onTap =>
+      () => onChanged(!value);
 }

@@ -10,6 +10,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
+import '../app/app_navigator.dart';
 import '../chat/chat_view.dart';
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
@@ -95,7 +96,8 @@ class _CreateGroupViewState extends State<CreateGroupView> {
       if (!mounted) return;
       if (chatId != null) {
         unawaited(
-          Navigator.of(context).pushReplacement(
+          replaceWithAppChatRoute(
+            context,
             MaterialPageRoute(
               builder: (_) => ChatView(chatId: chatId, title: title),
             ),

@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
+import '../app/app_navigator.dart';
 import '../auth/account_store.dart';
 import '../auth/auth_manager.dart';
 import '../channels/forum_topic_browser_view.dart';
@@ -277,7 +278,8 @@ class _ChatListViewState extends State<ChatListView>
       if (!mounted) return;
       if (mode.isChat) {
         unawaited(
-          Navigator.of(context).push(
+          pushAppChatRoute(
+            context,
             _chatEntryRoute(
               ChatView(
                 chatId: chat.id,
@@ -294,7 +296,8 @@ class _ChatListViewState extends State<ChatListView>
         railChats[summary.id] = summary;
       }
       unawaited(
-        Navigator.of(context).push(
+        pushAppChatRoute(
+          context,
           _chatEntryRoute(
             ForumTopicBrowserView(
               chats: railChats.values.toList(),
@@ -306,7 +309,8 @@ class _ChatListViewState extends State<ChatListView>
       return;
     }
     unawaited(
-      Navigator.of(context).push(
+      pushAppChatRoute(
+        context,
         _chatEntryRoute(
           ChatView(
             chatId: chat.id,
@@ -379,9 +383,10 @@ class _ChatListViewState extends State<ChatListView>
         return;
       }
       unawaited(
-        Navigator.of(
+        pushAppChatRoute(
           context,
-        ).push(_chatEntryRoute(ChatView(chatId: id, title: title))),
+          _chatEntryRoute(ChatView(chatId: id, title: title)),
+        ),
       );
     } catch (_) {
       if (mounted) {

@@ -108,6 +108,7 @@ const deMessages = <String, String>{
   'appearanceEmojiFontCatalogDescription':
       "Die Schriftliste stammt aus dem iebb/emojifonts-Manifest; ausgewählte Schriftarten werden aus GitHub Releases geladen. Vorschaubilder stammen von Emojipedia.",
   'appearanceEnableTheming': "Designs aktivieren",
+  'appearancePerAccountTheming': "Designs pro Konto verwenden",
   'appearanceFileCount': "{value1} Dateien",
   'appearanceFont': "Schriftart",
   'appearanceFontCache': "Schriftcache",
@@ -747,6 +748,10 @@ const deMessages = <String, String>{
   'globalThemeSwitchModeAction': "Wechseln",
   'globalThemeSwitchToDark': "Zum dunklen Modus wechseln?",
   'globalThemeSwitchToLight': "Zum hellen Modus wechseln?",
+  'globalThemeWallpaperApply': "Hintergrund verwenden",
+  'globalThemeWallpaperKeep': "Aktuellen behalten",
+  'globalThemeWallpaperPrompt':
+      "Auch den Hintergrund dieses Designs verwenden?",
   'globalThemeTitle': "Thema",
   'globalThemeUseForUi': "Telegram-Design für die Oberfläche verwenden",
   'globalThemeUseForUiDescription':
@@ -1145,6 +1150,7 @@ const deMessages = <String, String>{
   'privacySectionTitle': "Datenschutz",
   'privacySecuritySectionTitle': "Sicherheit",
   'privacySecurityTitle': "Datenschutz und Sicherheit",
+  'privacySensitiveContent': "18+ Inhalte anzeigen",
   'privacyShowReadDate': "Lesezeit anzeigen",
   'privacyShowReadDateHint':
       "Nutzer, die deinen Online-Status sehen können, sehen immer auch die Lesezeit.",
@@ -1338,6 +1344,13 @@ const deMessages = <String, String>{
       "Nachrichten in geheimen Chats sind Ende-zu-Ende-verschlüsselt und können nur auf den Geräten gelesen werden, auf denen sie erstellt wurden.",
   'secretChatStartTitle': "Geheimen Chat starten?",
   'secretChatWaiting': "Warten, bis der geheime Chat bereit ist…",
+  'sensitiveContentUnblockConfirm': "Alles entsperren",
+  'sensitiveContentUnblockDone': "18+ Inhalte sind aktiviert",
+  'sensitiveContentUnblockFailed':
+      "18+ Inhalte konnten nicht aktiviert werden: {value1}",
+  'sensitiveContentUnblockMessage':
+      "Dies aktiviert Telegrams kontoweite Einstellung für 18+ Inhalte. Du kannst sie später unter Datenschutz und Sicherheit ausschalten.",
+  'sensitiveContentUnblockTitle': "18+ Inhalte anzeigen?",
   'settingsAboutMithka': "Über Mithka",
   'settingsLogOut': "Abmelden",
   'sharedMediaCacheDeleted': "Lokaler Cache gelöscht",

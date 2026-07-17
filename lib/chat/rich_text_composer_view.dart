@@ -13,8 +13,10 @@ import 'package:provider/provider.dart';
 import '../components/app_icons.dart';
 import '../components/toast.dart';
 import '../media/app_asset_picker.dart';
+import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
+import 'audio_search_view.dart';
 import 'emoji_text_controller.dart';
 import 'image_edit_view.dart';
 import 'location_picker_view.dart';
@@ -340,6 +342,58 @@ class _RichTableDraft {
     return buffer.toString();
   }
 
+  Map<String, dynamic> toInputPageBlock() {
+    final tableTitle = title.text.trim();
+    return {
+      '@type': 'inputPageBlockTable',
+      'caption': formattedTextToRichText(tableTitle, const []),
+      'cells': [
+        for (var rowIndex = 0; rowIndex < cells.length; rowIndex++)
+          [
+            for (
+              var columnIndex = 0;
+              columnIndex < cells[rowIndex].length;
+              columnIndex++
+            )
+              _inputCell(rowIndex, columnIndex),
+          ],
+      ],
+      'is_bordered': bordered,
+      'is_striped': striped,
+    };
+  }
+
+  Map<String, dynamic> _inputCell(int row, int column) {
+    final formatted = cells[row][column].toFormatted();
+    final style = styles[row][column];
+    return {
+      '@type': 'pageBlockTableCell',
+      'text': formattedTextToRichText(formatted.$1, formatted.$2),
+      'is_header': style.isHeader,
+      'colspan': 1,
+      'rowspan': 1,
+      'align': {
+        '@type': switch (style.horizontal) {
+          _RichCellHorizontalAlignment.left =>
+            'pageBlockHorizontalAlignmentLeft',
+          _RichCellHorizontalAlignment.center =>
+            'pageBlockHorizontalAlignmentCenter',
+          _RichCellHorizontalAlignment.right =>
+            'pageBlockHorizontalAlignmentRight',
+        },
+      },
+      'valign': {
+        '@type': switch (style.vertical) {
+          _RichCellVerticalAlignment.top => 'pageBlockVerticalAlignmentTop',
+          _RichCellVerticalAlignment.middle =>
+            'pageBlockVerticalAlignmentMiddle',
+          _RichCellVerticalAlignment.bottom =>
+            'pageBlockVerticalAlignmentBottom',
+        },
+      },
+    };
+  }
+
   static String _escapeCell(String value) {
     return value
         .replaceAll('\n', ' ')
@@ -490,6 +544,7 @@ class _RichContentBlock {
       OutgoingAttachmentKind.video => _RichBlockKind.video,
       OutgoingAttachmentKind.animation => _RichBlockKind.animation,
       OutgoingAttachmentKind.audio => _RichBlockKind.audio,
+      OutgoingAttachmentKind.voiceNote => _RichBlockKind.voiceNote,
       OutgoingAttachmentKind.document => _RichBlockKind.document,
     };
   }
@@ -595,6 +650,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
     final segments = <RichMessageSendSegment>[];
     final htmlBuffer = StringBuffer();
     final htmlFiles = <RichMessageSendFile>[];
+    final inputBlocks = <Map<String, dynamic>>[];
     final pendingAttachments = <OutgoingAttachment>[];
     var hasContent = false;
 
@@ -605,11 +661,13 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
           RichMessageSendSegment.html(
             html,
             richFiles: List<RichMessageSendFile>.unmodifiable(htmlFiles),
+            blocks: List<Map<String, dynamic>>.unmodifiable(inputBlocks),
           ),
         );
       }
       htmlBuffer.clear();
       htmlFiles.clear();
+      inputBlocks.clear();
     }
 
     void flushAttachments() {
@@ -644,6 +702,19 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
           );
         }
         htmlBuffer.write('</$tag>');
+        inputBlocks.add({
+          '@type': mediaGroup.kind == _RichBlockKind.collage
+              ? 'inputPageBlockCollage'
+              : 'inputPageBlockSlideshow',
+          'blocks': mediaGroup.items.map(richMessageMediaBlockPayload).toList(),
+          'caption': caption.isEmpty
+              ? null
+              : {
+                  '@type': 'pageBlockCaption',
+                  'text': formattedTextToRichText(caption, const []),
+                  'credit': null,
+                },
+        });
         continue;
       }
       final attachment = block.attachment;
@@ -658,6 +729,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
         final id = 'mithka-rich-${segments.length}-${htmlFiles.length}';
         htmlFiles.add(RichMessageSendFile(id: id, attachment: attachment));
         htmlBuffer.write(_mediaBlockHtml(attachment, id));
+        inputBlocks.add(richMessageMediaBlockPayload(attachment));
         continue;
       }
       flushAttachments();
@@ -668,19 +740,28 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
         text = formatted.$1;
         blockEntities = formatted.$2;
         htmlBuffer.write(_textBlockHtml(block.text!, text, blockEntities));
+        final inputBlock = _textInputBlock(block.text!, text, blockEntities);
+        if (inputBlock != null) inputBlocks.add(inputBlock);
       } else if (block.math != null) {
         text = block.math!.controller.text.trim();
         if (text.isNotEmpty) {
           htmlBuffer.write(
             '<tg-math-block>${escapeRichHtml(text)}</tg-math-block>',
           );
+          inputBlocks.add({
+            '@type': 'inputPageBlockMathematicalExpression',
+            'expression': text,
+          });
         }
       } else if (block.table != null) {
         text = block.table?.toMarkdown() ?? '';
         htmlBuffer.write(block.table?.toHtml() ?? '');
+        inputBlocks.add(block.table!.toInputPageBlock());
       } else {
         text = block.generic?.primary.text.trim() ?? '';
         htmlBuffer.write(_genericBlockHtml(block));
+        final inputBlock = _genericInputBlock(block);
+        if (inputBlock != null) inputBlocks.add(inputBlock);
       }
       if (text.trim().isEmpty) continue;
       if (hasContent) buffer.write('\n\n');
@@ -731,11 +812,141 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
 
   String _mediaBlockHtml(OutgoingAttachment attachment, String id) {
     return switch (attachment.kind) {
-      OutgoingAttachmentKind.photo => '<img src="$id"/>',
-      OutgoingAttachmentKind.video ||
-      OutgoingAttachmentKind.animation => '<video src="$id"></video>',
-      OutgoingAttachmentKind.audio => '<audio src="$id"></audio>',
+      OutgoingAttachmentKind.photo => '<img src="tg://photo?id=$id"/>',
+      OutgoingAttachmentKind.video || OutgoingAttachmentKind.animation =>
+        '<video src="tg://video?id=$id"></video>',
+      OutgoingAttachmentKind.audio || OutgoingAttachmentKind.voiceNote =>
+        '<audio src="tg://audio?id=$id"></audio>',
       OutgoingAttachmentKind.document => '',
+    };
+  }
+
+  Map<String, dynamic>? _textInputBlock(
+    _RichTextBlock block,
+    String text,
+    List<Map<String, dynamic>> entities,
+  ) {
+    if (text.trim().isEmpty) return null;
+    final richText = formattedTextToRichText(text, entities);
+    return switch (block.kind) {
+      _RichBlockKind.heading => {
+        '@type': 'inputPageBlockSectionHeading',
+        'text': richText,
+        'size': block.headingLevel.clamp(1, 6),
+      },
+      _RichBlockKind.preformatted => {
+        '@type': 'inputPageBlockPreformatted',
+        'text': richText,
+        'language': '',
+      },
+      _RichBlockKind.footer => {
+        '@type': 'inputPageBlockFooter',
+        'footer': richText,
+      },
+      _RichBlockKind.list => _listInputBlock(text, entities),
+      _RichBlockKind.blockQuotation => {
+        '@type': 'inputPageBlockBlockQuote',
+        'blocks': [
+          {'@type': 'inputPageBlockParagraph', 'text': richText},
+        ],
+        'credit': null,
+      },
+      _RichBlockKind.pullQuotation => {
+        '@type': 'inputPageBlockPullQuote',
+        'text': richText,
+        'credit': null,
+      },
+      // A thinking block is ephemeral and bot-only. Preserve legacy drafts as a
+      // normal paragraph when the user sends them so final sends are valid.
+      _RichBlockKind.thinking || _RichBlockKind.paragraph => {
+        '@type': 'inputPageBlockParagraph',
+        'text': richText,
+      },
+      _ => null,
+    };
+  }
+
+  Map<String, dynamic> _listInputBlock(
+    String text,
+    List<Map<String, dynamic>> entities,
+  ) {
+    final items = <Map<String, dynamic>>[];
+    var sourceOffset = 0;
+    for (final line in text.split('\n')) {
+      final task = RegExp(r'^\s*-\s*\[([ xX])\]\s*(.*)$').firstMatch(line);
+      final unordered = RegExp(r'^\s*[-*+]\s+(.*)$').firstMatch(line);
+      final ordered = RegExp(r'^\s*(\d+)[.)]\s+(.*)$').firstMatch(line);
+      final content =
+          task?.group(2) ??
+          unordered?.group(1) ??
+          ordered?.group(2) ??
+          line.trim();
+      if (content.isNotEmpty) {
+        final localOffset = line.indexOf(content);
+        items.add({
+          '@type': 'inputPageBlockListItem',
+          'blocks': [
+            {
+              '@type': 'inputPageBlockParagraph',
+              'text': formattedTextToRichText(
+                content,
+                entities,
+                sourceOffset: sourceOffset + math.max(0, localOffset),
+              ),
+            },
+          ],
+          'has_checkbox': task != null,
+          'is_checked': task?.group(1)?.toLowerCase() == 'x',
+          'value': int.tryParse(ordered?.group(1) ?? '') ?? 0,
+          'type': ordered == null ? '' : '1',
+        });
+      }
+      sourceOffset += line.length + 1;
+    }
+    return {'@type': 'inputPageBlockList', 'items': items};
+  }
+
+  Map<String, dynamic>? _genericInputBlock(_RichContentBlock block) {
+    final draft = block.generic;
+    if (block.kind == _RichBlockKind.divider) {
+      return {'@type': 'inputPageBlockDivider'};
+    }
+    if (draft == null) return null;
+    final primary = draft.primary.text.trim();
+    final secondary = draft.secondary.text.trim();
+    return switch (block.kind) {
+      _RichBlockKind.anchor when primary.isNotEmpty => {
+        '@type': 'inputPageBlockAnchor',
+        'name': primary,
+      },
+      _RichBlockKind.details when primary.isNotEmpty || secondary.isNotEmpty =>
+        {
+          '@type': 'inputPageBlockDetails',
+          'header': formattedTextToRichText(primary, const []),
+          'blocks': secondary.isEmpty
+              ? <Map<String, dynamic>>[]
+              : [
+                  {
+                    '@type': 'inputPageBlockParagraph',
+                    'text': formattedTextToRichText(secondary, const []),
+                  },
+                ],
+          'is_open': draft.enabled,
+        },
+      _RichBlockKind.map => {
+        '@type': 'inputPageBlockMap',
+        'location': {
+          '@type': 'location',
+          'latitude': double.tryParse(draft.primary.text.trim()) ?? 0,
+          'longitude': double.tryParse(draft.secondary.text.trim()) ?? 0,
+          'horizontal_accuracy': 0,
+        },
+        'zoom': draft.number.clamp(0, 24),
+        'width': 320,
+        'height': 180,
+        'caption': null,
+      },
+      _ => null,
     };
   }
 
@@ -755,7 +966,9 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
       _RichBlockKind.blockQuotation =>
         '<blockquote><p>$inline</p></blockquote>',
       _RichBlockKind.pullQuotation => '<aside>$inline</aside>',
-      _RichBlockKind.thinking => '<tg-thinking>$inline</tg-thinking>',
+      // Thinking is valid only in bot drafts. Legacy saved composer state must
+      // become a persistent paragraph for both direct and relay final sends.
+      _RichBlockKind.thinking => '<p>$inline</p>',
       _ => '<p>$inline</p>',
     };
   }
@@ -975,6 +1188,10 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
   }
 
   Future<void> _pickSingleFileBlock(_RichBlockKind kind) async {
+    if (kind == _RichBlockKind.audio) {
+      await _pickAudioFromSearch(single: true);
+      return;
+    }
     final extensions = switch (kind) {
       _RichBlockKind.animation => const ['gif', 'webm', 'mp4'],
       _RichBlockKind.voiceNote => const ['ogg', 'opus', 'm4a'],
@@ -985,9 +1202,11 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
       allowedExtensions: extensions,
     );
     if (!mounted || result == null || result.files.single.path == null) return;
-    final attachmentKind = kind == _RichBlockKind.animation
-        ? OutgoingAttachmentKind.animation
-        : OutgoingAttachmentKind.audio;
+    final attachmentKind = switch (kind) {
+      _RichBlockKind.animation => OutgoingAttachmentKind.animation,
+      _RichBlockKind.voiceNote => OutgoingAttachmentKind.voiceNote,
+      _ => OutgoingAttachmentKind.audio,
+    };
     _insertStructuredBlock(
       _RichContentBlock.attachment(
         OutgoingAttachment(
@@ -2747,7 +2966,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    _fileName(item.path),
+                    _attachmentFileName(item),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: AppTextStyle.callout(
@@ -2847,6 +3066,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
           OutgoingAttachmentKind.animation => HeroAppIcons.solidFileVideo,
           OutgoingAttachmentKind.document => HeroAppIcons.file,
           OutgoingAttachmentKind.audio => HeroAppIcons.music,
+          OutgoingAttachmentKind.voiceNote => HeroAppIcons.microphone,
         },
         size: 23,
         color: c.textSecondary,
@@ -2863,12 +3083,22 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
       OutgoingAttachmentKind.document =>
         AppStringKeys.topicPostContentFile.l10n(context),
       OutgoingAttachmentKind.audio => AppStringKeys.composerAudio.l10n(context),
+      OutgoingAttachmentKind.voiceNote =>
+        AppStringKeys.richTextBlockVoiceNote.l10n(context),
     };
   }
 
   String _fileName(String path) {
     final segments = File(path).uri.pathSegments;
     return segments.isEmpty ? path : segments.last;
+  }
+
+  String _attachmentFileName(OutgoingAttachment attachment) {
+    final explicit = attachment.fileName?.trim();
+    if (explicit != null && explicit.isNotEmpty) return explicit;
+    if (attachment.title.trim().isNotEmpty) return attachment.title.trim();
+    if (attachment.path.trim().isNotEmpty) return _fileName(attachment.path);
+    return attachment.kind.name;
   }
 
   Future<void> _editAttachment(int index) async {
@@ -2973,7 +3203,68 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
     } catch (_) {}
   }
 
-  Future<void> _pickMusic() async {
+  Future<void> _pickMusic() => _pickAudioFromSearch(single: false);
+
+  Future<void> _pickAudioFromSearch({required bool single}) async {
+    final selected = await Navigator.of(context).push<(int, ChatMessage)>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => AudioSearchView(
+          selectOnly: true,
+          onPickLocal: () =>
+              single ? _pickLocalSingleAudio() : _pickLocalMusicFiles(),
+        ),
+      ),
+    );
+    if (!mounted || selected == null) return;
+    final music = selected.$2.music;
+    final file = music?.file;
+    if (music == null || file == null || file.id <= 0) return;
+    final attachment = OutgoingAttachment(
+      path: file.localPath ?? '',
+      kind: OutgoingAttachmentKind.audio,
+      fileId: file.id,
+      duration: music.duration,
+      title: music.title,
+      performer: music.performer ?? '',
+      fileName: music.title,
+    );
+    if (single) {
+      _insertStructuredBlock(
+        _RichContentBlock.attachment(attachment, kind: _RichBlockKind.audio),
+      );
+    } else {
+      _insertAttachmentsAfterActive([attachment]);
+    }
+  }
+
+  Future<void> _pickLocalSingleAudio() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const [
+        'mp3',
+        'm4a',
+        'aac',
+        'flac',
+        'wav',
+        'ogg',
+        'opus',
+      ],
+    );
+    if (!mounted || result == null || result.files.single.path == null) return;
+    _insertStructuredBlock(
+      _RichContentBlock.attachment(
+        OutgoingAttachment(
+          path: result.files.single.path!,
+          kind: OutgoingAttachmentKind.audio,
+          fileName: result.files.single.name,
+        ),
+        kind: _RichBlockKind.audio,
+      ),
+    );
+  }
+
+  Future<void> _pickLocalMusicFiles() async {
     final remaining = _maxAttachments - _attachmentCount;
     if (remaining <= 0) return;
     try {
@@ -2992,14 +3283,15 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
         ],
       );
       if (!mounted || result == null) return;
-      final paths = result.files.map((file) => file.path).whereType<String>();
       _insertAttachmentsAfterActive(
-        paths
+        result.files
+            .where((file) => file.path != null)
             .take(remaining)
             .map(
-              (path) => OutgoingAttachment(
-                path: path,
+              (file) => OutgoingAttachment(
+                path: file.path!,
                 kind: OutgoingAttachmentKind.audio,
+                fileName: file.name,
               ),
             ),
       );
@@ -3370,15 +3662,13 @@ class _RichTableInsertIcon extends StatelessWidget {
 }
 
 enum _RichInlineFormatAction {
-  quote('textEntityTypeBlockQuote'),
   spoiler('textEntityTypeSpoiler'),
   bold('textEntityTypeBold'),
   italic('textEntityTypeItalic'),
   monospace('textEntityTypeCode'),
   link(''),
   strikethrough('textEntityTypeStrikethrough'),
-  underline('textEntityTypeUnderline'),
-  codeBlock('textEntityTypePre');
+  underline('textEntityTypeUnderline');
 
   const _RichInlineFormatAction(this.entityType);
   final String entityType;
@@ -3388,7 +3678,6 @@ enum _RichInlineFormatAction {
   };
 
   String get labelKey => switch (this) {
-    quote => AppStringKeys.messageActionQuote,
     spoiler => AppStringKeys.richTextComposerFormatSpoiler,
     bold => AppStringKeys.richTextComposerFormatBold,
     italic => AppStringKeys.richTextComposerFormatItalic,
@@ -3396,7 +3685,6 @@ enum _RichInlineFormatAction {
     link => AppStringKeys.composerFormatLink,
     strikethrough => AppStringKeys.richTextComposerFormatStrikethrough,
     underline => AppStringKeys.richTextComposerFormatUnderline,
-    codeBlock => AppStringKeys.composerFormatCodeBlock,
   };
 }
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../app/app_navigator.dart';
 import '../chat/chat_view.dart';
 import '../components/app_icons.dart';
 import '../components/ui_components.dart';
@@ -147,7 +148,8 @@ class FilteredChatsView extends StatelessWidget {
                 final chat = chats[index];
                 return GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onTap: () => Navigator.of(context).push(
+                  onTap: () => pushAppChatRoute(
+                    context,
                     MaterialPageRoute(
                       builder: (_) =>
                           ChatView(chatId: chat.id, title: chat.title),

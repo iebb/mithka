@@ -8,6 +8,7 @@ import '../components/ui_components.dart';
 import 'app_theme.dart';
 import 'telegram_cloud_theme.dart';
 import 'theme_controller.dart';
+import 'theme_wallpaper_prompt.dart';
 
 class TelegramCloudThemePreviewView extends StatelessWidget {
   const TelegramCloudThemePreviewView({
@@ -191,6 +192,14 @@ class TelegramCloudThemePreviewView extends StatelessWidget {
           ? AppearanceMode.dark
           : AppearanceMode.light;
     }
+    await promptForThemeWallpaper(
+      context,
+      theme: theme,
+      brightness: target,
+      previousTheme: controller.cloudThemeFor(target),
+      colors: colors,
+    );
+    if (!context.mounted) return;
     controller.installCloudTheme(theme, brightness: target);
     if (context.mounted) Navigator.of(context).pop();
   }

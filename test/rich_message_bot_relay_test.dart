@@ -3,31 +3,45 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:mithka/chat/outgoing_attachment.dart';
 import 'package:mithka/chat/rich_message_bot_relay.dart';
 
 void main() {
-  test('replaces local rich media ids with HTTPS URLs', () {
-    expect(
-      replaceRichMessageMediaIds(
-        '<img src="media-1"><video src=\'media-2\'></video>',
-        const {
-          'media-1': 'https://example.test/photo.jpg',
-          'media-2': 'https://example.test/video.mp4',
-        },
-      ),
-      '<img src="https://example.test/photo.jpg">'
-      '<video src=\'https://example.test/video.mp4\'></video>',
-    );
-  });
+  test('builds every Bot API 10.2 rich-message media payload', () {
+    const cases = <OutgoingAttachmentKind, String>{
+      OutgoingAttachmentKind.photo: 'photo',
+      OutgoingAttachmentKind.video: 'video',
+      OutgoingAttachmentKind.animation: 'animation',
+      OutgoingAttachmentKind.audio: 'audio',
+      OutgoingAttachmentKind.voiceNote: 'voice_note',
+    };
 
-  test('media fallback keeps captions and removes unsupported media tags', () {
+    for (final entry in cases.entries) {
+      final payload = botApiRichMessageMediaPayload(
+        OutgoingAttachment(
+          path: '/tmp/${entry.key.name}',
+          kind: entry.key,
+          width: 640,
+          height: 360,
+          duration: 12,
+          title: 'Song',
+          performer: 'Artist',
+        ),
+        'telegram-file-id',
+      );
+      expect(payload['type'], entry.value);
+      expect(payload['media'], 'telegram-file-id');
+    }
+
     expect(
-      stripRichMessageMediaBlocks(
-        '<p>Before</p><figure><img src="x"/>'
-        '<figcaption>Caption</figcaption></figure>'
-        '<video src="y"></video><p>After</p>',
+      () => botApiRichMessageMediaPayload(
+        const OutgoingAttachment(
+          path: '/tmp/file.pdf',
+          kind: OutgoingAttachmentKind.document,
+        ),
+        'telegram-file-id',
       ),
-      '<p>Before</p><p>Caption</p><p>After</p>',
+      throwsArgumentError,
     );
   });
 

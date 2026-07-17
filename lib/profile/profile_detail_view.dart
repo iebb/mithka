@@ -17,6 +17,7 @@ import 'package:intl/intl.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
+import '../app/app_navigator.dart';
 import '../call/call_manager.dart';
 import '../chat/audio_search_view.dart';
 import '../chat/chat_search_view.dart';
@@ -307,7 +308,8 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
   void _openChat() {
     final cid = _chatId;
     if (cid == null) return;
-    Navigator.of(context).push(
+    pushAppChatRoute(
+      context,
       MaterialPageRoute(
         builder: (_) => ChatView(chatId: cid, title: _name),
       ),
@@ -329,7 +331,8 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
       final secretChat = await SecretChatService.create(widget.userId);
       if (!mounted) return;
       final title = secretChat.title.isNotEmpty ? secretChat.title : _name;
-      await Navigator.of(context).push(
+      await pushAppChatRoute(
+        context,
         MaterialPageRoute(
           builder: (_) => ChatView(chatId: secretChat.id, title: title),
         ),

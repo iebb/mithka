@@ -32,6 +32,7 @@ import '../media/app_asset_picker.dart';
 import '../settings/rich_message_relay_config.dart';
 import '../settings/rich_message_relay_view.dart';
 import '../tdlib/td_client.dart';
+import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import 'audio_search_view.dart';
@@ -151,6 +152,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
   int _mentionSearchGeneration = 0;
   OverlayEntry? _relayProgressEntry;
   RichMessageRelayProgress? _relayProgress;
+  static bool _directRichMessageBlocksUnsupported = false;
 
   ChatViewModel get vm => widget.vm;
 
@@ -540,6 +542,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
     editableTextState.hideToolbar();
     final action = await showGeneralDialog<_ComposerFormatAction>(
       context: context,
+      requestFocus: false,
       barrierDismissible: true,
       barrierLabel: AppStringKeys.countryPickerCancel.l10n(context),
       barrierColor: Colors.transparent,
@@ -560,7 +563,11 @@ class _ChatInputBarState extends State<ChatInputBar> {
         );
       },
     );
-    if (!mounted || action == null) return;
+    if (!mounted) return;
+    if (action == null) {
+      _focus.unfocus();
+      return;
+    }
     _controller.selection = TextSelection(baseOffset: start, extentOffset: end);
     if (action == _ComposerFormatAction.link) {
       final url = await showGeneralDialog<String>(
@@ -1907,7 +1914,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
     try {
       var sentAny = false;
       if (mode == _RichTextSendMode.premium) {
-        for (final segment in result.segments) {
+        for (var index = 0; index < result.segments.length; index++) {
+          final segment = result.segments[index];
           if (segment.isHtml) {
             final files = await Future.wait(
               segment.richFiles.map((file) async {
@@ -1917,7 +1925,22 @@ class _ChatInputBarState extends State<ChatInputBar> {
                 return RichMessageSendFile(id: file.id, attachment: attachment);
               }),
             );
-            await widget.vm.sendRichMessageHtml(segment.html, files: files);
+            try {
+              await widget.vm.sendRichMessageHtml(
+                segment.html,
+                files: files,
+                blocks: segment.blocks,
+              );
+            } on TdError catch (error) {
+              if (!_isUnsupportedDirectRichMessage(error)) rethrow;
+              _directRichMessageBlocksUnsupported = true;
+              sentAny =
+                  await _sendRichSegmentsViaRelay(
+                    result.segments.sublist(index),
+                  ) ||
+                  sentAny;
+              break;
+            }
             sentAny = true;
           } else if (segment.attachments.isNotEmpty) {
             await widget.vm.sendAttachments(segment.attachments);
@@ -1925,53 +1948,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
           }
         }
       } else {
-        final token = await RichMessageRelayConfig.readToken();
-        if (token == null) return;
-        final currentUserId = await widget.vm.currentUserId();
-        final relay = RichMessageBotRelay();
-        _showRelayProgress();
-        try {
-          for (final segment in result.segments) {
-            if (segment.isHtml) {
-              final files = await Future.wait(
-                segment.richFiles.map((file) async {
-                  final attachment = await resolveAttachmentDimensions(
-                    file.attachment,
-                  );
-                  return RichMessageSendFile(
-                    id: file.id,
-                    attachment: attachment,
-                  );
-                }),
-              );
-              await relay.sendAndCopy(
-                token: token,
-                html: segment.html,
-                currentUserId: currentUserId,
-                targetChatId: widget.vm.chatId,
-                tdClient: TdClient.shared,
-                files: files,
-                onProgress: _updateRelayProgress,
-              );
-              sentAny = true;
-            } else {
-              for (final attachment in segment.attachments) {
-                await relay.sendAttachmentAndCopy(
-                  token: token,
-                  attachment: attachment,
-                  currentUserId: currentUserId,
-                  targetChatId: widget.vm.chatId,
-                  tdClient: TdClient.shared,
-                  onProgress: _updateRelayProgress,
-                );
-                sentAny = true;
-              }
-            }
-          }
-        } finally {
-          relay.close();
-          _hideRelayProgress();
-        }
+        sentAny = await _sendRichSegmentsViaRelay(result.segments);
       }
       if (!sentAny) return;
       widget.onMessageSent();
@@ -2000,6 +1977,90 @@ class _ChatInputBarState extends State<ChatInputBar> {
         showToast(context, message);
       }
     }
+  }
+
+  bool _isUnsupportedDirectRichMessage(TdError error) {
+    if (error.code != 400 || !error.message.contains('Unknown class')) {
+      return false;
+    }
+    return error.message.contains('richMessageSourceBlocks') ||
+        error.message.contains('inputPageBlock');
+  }
+
+  Future<bool> _sendRichSegmentsViaRelay(
+    List<RichMessageSendSegment> segments,
+  ) async {
+    var token = await RichMessageRelayConfig.readToken();
+    if (token == null) {
+      if (!mounted || !await _configureRichMessageRelay()) return false;
+      token = await RichMessageRelayConfig.readToken();
+    }
+    if (token == null) return false;
+    final currentUserId = await widget.vm.currentUserId();
+    final relay = RichMessageBotRelay();
+    var sentAny = false;
+    _showRelayProgress();
+    try {
+      for (final segment in segments) {
+        if (segment.isHtml) {
+          final files = await Future.wait(
+            segment.richFiles.map((file) async {
+              final relayAttachment = await _resolveRelayAttachment(
+                file.attachment,
+              );
+              final attachment = await resolveAttachmentDimensions(
+                relayAttachment,
+              );
+              return RichMessageSendFile(id: file.id, attachment: attachment);
+            }),
+          );
+          await relay.sendAndCopy(
+            token: token,
+            html: segment.html,
+            currentUserId: currentUserId,
+            targetChatId: widget.vm.chatId,
+            tdClient: TdClient.shared,
+            files: files,
+            onProgress: _updateRelayProgress,
+          );
+          sentAny = true;
+        } else {
+          for (final attachment in segment.attachments) {
+            await relay.sendAttachmentAndCopy(
+              token: token,
+              attachment: attachment,
+              currentUserId: currentUserId,
+              targetChatId: widget.vm.chatId,
+              tdClient: TdClient.shared,
+              onProgress: _updateRelayProgress,
+            );
+            sentAny = true;
+          }
+        }
+      }
+    } finally {
+      relay.close();
+      _hideRelayProgress();
+    }
+    return sentAny;
+  }
+
+  Future<OutgoingAttachment> _resolveRelayAttachment(
+    OutgoingAttachment attachment,
+  ) async {
+    final path = attachment.path.trim();
+    if (path.isNotEmpty && await File(path).exists()) return attachment;
+    final fileId = attachment.fileId;
+    if (fileId == null || fileId <= 0) {
+      throw StateError('Unable to read rich message media');
+    }
+    final downloaded = await TdFileCenter.shared.uploadPath(fileId);
+    if (downloaded == null ||
+        downloaded.isEmpty ||
+        !await File(downloaded).exists()) {
+      throw StateError('Unable to download rich message media');
+    }
+    return attachment.copyWith(path: downloaded);
   }
 
   void _showRelayProgress() {
@@ -2031,7 +2092,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   Future<_RichTextSendMode?> _richTextSendMode() async {
     try {
-      if (await widget.vm.currentUserIsPremium()) {
+      if (!_directRichMessageBlocksUnsupported &&
+          await widget.vm.currentUserIsPremium()) {
         return _RichTextSendMode.premium;
       }
       if (await RichMessageRelayConfig.isConfigured()) {
@@ -3058,46 +3120,48 @@ class _ComposerFormatMenu extends StatelessWidget {
           left: left,
           top: top,
           width: _width,
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: _padding),
-            decoration: BoxDecoration(
-              color: c.card,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: c.divider, width: 0.5),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.22),
-                  blurRadius: 18,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (final action in _ComposerFormatAction.values)
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => Navigator.of(context).pop(action),
-                    child: SizedBox(
-                      height: _rowHeight,
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-                          child: Text(
-                            action.labelKey.l10n(context),
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: c.textPrimary,
-                              decoration: TextDecoration.none,
+          child: TextFieldTapRegion(
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: _padding),
+              decoration: BoxDecoration(
+                color: c.card,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: c.divider, width: 0.5),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.22),
+                    blurRadius: 18,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final action in _ComposerFormatAction.values)
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => Navigator.of(context).pop(action),
+                      child: SizedBox(
+                        height: _rowHeight,
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            child: Text(
+                              action.labelKey.l10n(context),
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: c.textPrimary,
+                                decoration: TextDecoration.none,
+                              ),
                             ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

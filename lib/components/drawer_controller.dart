@@ -26,7 +26,6 @@ class DrawerController extends ChangeNotifier {
 /// Tracks per-tab navigation depth so the classic bar hides on pushes.
 class TabBarVisibility extends ChangeNotifier {
   final Map<int, int> _depths = {};
-  int _chatSuppressions = 0;
   bool _notifyScheduled = false;
 
   void setDepth(int tab, int depth) {
@@ -36,19 +35,6 @@ class TabBarVisibility extends ChangeNotifier {
   }
 
   int depth(int tab) => _depths[tab] ?? 0;
-
-  bool get isChatSuppressed => _chatSuppressions > 0;
-
-  void retainChatSuppression() {
-    _chatSuppressions++;
-    _notifyListenersSafely();
-  }
-
-  void releaseChatSuppression() {
-    if (_chatSuppressions == 0) return;
-    _chatSuppressions--;
-    _notifyListenersSafely();
-  }
 
   void _notifyListenersSafely() {
     if (SchedulerBinding.instance.schedulerPhase == SchedulerPhase.idle) {

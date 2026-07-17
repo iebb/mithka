@@ -176,53 +176,204 @@ class RichMessageTableCell {
   final String verticalAlignment;
 }
 
-class RichMessageBlock {
-  const RichMessageBlock.table(
-    this.tableRows, {
-    this.isBordered = true,
-    this.isStriped = false,
-  }) : mathExpression = null,
-       mapLocation = null,
-       mapZoom = 16,
-       mapWidth = 0,
-       mapHeight = 0,
-       caption = '',
-       captionEntities = const [];
+enum RichMessageBlockKind {
+  paragraph,
+  heading,
+  preformatted,
+  footer,
+  thinking,
+  divider,
+  math,
+  anchor,
+  list,
+  blockQuote,
+  pullQuote,
+  animation,
+  audio,
+  photo,
+  video,
+  voiceNote,
+  collage,
+  slideshow,
+  table,
+  details,
+  map,
+}
 
-  const RichMessageBlock.math(this.mathExpression)
-    : tableRows = const [],
-      mapLocation = null,
-      mapZoom = 16,
-      mapWidth = 0,
-      mapHeight = 0,
-      caption = '',
-      captionEntities = const [],
-      isBordered = false,
-      isStriped = false;
+class RichMessageListItem {
+  const RichMessageListItem({
+    required this.blocks,
+    this.label = '',
+    this.hasCheckbox = false,
+    this.isChecked = false,
+    this.value = 0,
+    this.numberingType = '',
+  });
+
+  final List<RichMessageBlock> blocks;
+  final String label;
+  final bool hasCheckbox;
+  final bool isChecked;
+  final int value;
+  final String numberingType;
+}
+
+class RichMessageBlock {
+  const RichMessageBlock._({
+    required this.kind,
+    this.text = '',
+    this.textEntities = const [],
+    this.size = 0,
+    this.language = '',
+    this.name = '',
+    this.children = const [],
+    this.listItems = const [],
+    this.isOpen = false,
+    this.image,
+    this.imageWidth,
+    this.imageHeight,
+    this.video,
+    this.videoDuration = 0,
+    this.music,
+    this.voice,
+    this.hasSpoiler = false,
+    this.tableRows = const [],
+    this.mathExpression,
+    this.mapLocation,
+    this.mapZoom = 16,
+    this.mapWidth = 0,
+    this.mapHeight = 0,
+    this.caption = '',
+    this.captionEntities = const [],
+    this.isBordered = false,
+    this.isStriped = false,
+  });
+
+  const RichMessageBlock.text({
+    required RichMessageBlockKind kind,
+    required String text,
+    List<MessageTextEntity> entities = const [],
+    int size = 0,
+    String language = '',
+  }) : this._(
+         kind: kind,
+         text: text,
+         textEntities: entities,
+         size: size,
+         language: language,
+       );
+
+  const RichMessageBlock.container({
+    required RichMessageBlockKind kind,
+    List<RichMessageBlock> children = const [],
+    List<RichMessageListItem> listItems = const [],
+    String text = '',
+    List<MessageTextEntity> textEntities = const [],
+    bool isOpen = false,
+    String name = '',
+    String caption = '',
+    List<MessageTextEntity> captionEntities = const [],
+  }) : this._(
+         kind: kind,
+         children: children,
+         listItems: listItems,
+         text: text,
+         textEntities: textEntities,
+         isOpen: isOpen,
+         name: name,
+         caption: caption,
+         captionEntities: captionEntities,
+       );
+
+  const RichMessageBlock.media({
+    required RichMessageBlockKind kind,
+    TdFileRef? image,
+    int? imageWidth,
+    int? imageHeight,
+    TdFileRef? video,
+    int videoDuration = 0,
+    MessageMusic? music,
+    MessageVoice? voice,
+    bool hasSpoiler = false,
+    String caption = '',
+    List<MessageTextEntity> captionEntities = const [],
+  }) : this._(
+         kind: kind,
+         image: image,
+         imageWidth: imageWidth,
+         imageHeight: imageHeight,
+         video: video,
+         videoDuration: videoDuration,
+         music: music,
+         voice: voice,
+         hasSpoiler: hasSpoiler,
+         caption: caption,
+         captionEntities: captionEntities,
+       );
+
+  const RichMessageBlock.table(
+    List<List<RichMessageTableCell>> tableRows, {
+    bool isBordered = true,
+    bool isStriped = false,
+  }) : this._(
+         kind: RichMessageBlockKind.table,
+         tableRows: tableRows,
+         isBordered: isBordered,
+         isStriped: isStriped,
+       );
+
+  const RichMessageBlock.math(String? expression)
+    : this._(kind: RichMessageBlockKind.math, mathExpression: expression);
 
   const RichMessageBlock.map({
-    required this.mapLocation,
-    this.mapZoom = 16,
-    this.mapWidth = 220,
-    this.mapHeight = 120,
-    this.caption = '',
-    this.captionEntities = const [],
-  }) : tableRows = const [],
-       mathExpression = null,
-       isBordered = false,
-       isStriped = false;
+    required MessageLocation? mapLocation,
+    int mapZoom = 16,
+    int mapWidth = 220,
+    int mapHeight = 120,
+    String caption = '',
+    List<MessageTextEntity> captionEntities = const [],
+  }) : this._(
+         kind: RichMessageBlockKind.map,
+         mapLocation: mapLocation,
+         mapZoom: mapZoom,
+         mapWidth: mapWidth,
+         mapHeight: mapHeight,
+         caption: caption,
+         captionEntities: captionEntities,
+       );
 
   const RichMessageBlock.captionedTable({
-    required this.tableRows,
-    this.caption = '',
-    this.captionEntities = const [],
-    this.isBordered = true,
-    this.isStriped = false,
-  }) : mathExpression = null,
-       mapLocation = null,
-       mapZoom = 16,
-       mapWidth = 0,
-       mapHeight = 0;
+    required List<List<RichMessageTableCell>> tableRows,
+    String caption = '',
+    List<MessageTextEntity> captionEntities = const [],
+    bool isBordered = true,
+    bool isStriped = false,
+  }) : this._(
+         kind: RichMessageBlockKind.table,
+         tableRows: tableRows,
+         caption: caption,
+         captionEntities: captionEntities,
+         isBordered: isBordered,
+         isStriped: isStriped,
+       );
+
+  final RichMessageBlockKind kind;
+  final String text;
+  final List<MessageTextEntity> textEntities;
+  final int size;
+  final String language;
+  final String name;
+  final List<RichMessageBlock> children;
+  final List<RichMessageListItem> listItems;
+  final bool isOpen;
+  final TdFileRef? image;
+  final int? imageWidth;
+  final int? imageHeight;
+  final TdFileRef? video;
+  final int videoDuration;
+  final MessageMusic? music;
+  final MessageVoice? voice;
+  final bool hasSpoiler;
 
   final List<List<RichMessageTableCell>> tableRows;
   final String? mathExpression;
@@ -235,9 +386,9 @@ class RichMessageBlock {
   final bool isBordered;
   final bool isStriped;
 
-  bool get isTable => tableRows.isNotEmpty;
-  bool get isMath => mathExpression != null && mathExpression!.isNotEmpty;
-  bool get isMap => mapLocation != null;
+  bool get isTable => kind == RichMessageBlockKind.table;
+  bool get isMath => kind == RichMessageBlockKind.math;
+  bool get isMap => kind == RichMessageBlockKind.map;
 }
 
 class _ParsedMarkdownText {
@@ -412,6 +563,9 @@ class ChatMessage {
     this.callDuration = 0,
     this.contentType,
     this.restrictionReason,
+    this.restrictionReasonCode,
+    this.restrictedContentText,
+    this.restrictedContentTextEntities = const [],
     this.containsUnreadMention = false,
     this.senderId,
     this.senderPhoto,
@@ -483,6 +637,9 @@ class ChatMessage {
   /// TDLib's message-level restriction reason. When present, the original
   /// content must be replaced by this server-provided explanation.
   String? restrictionReason;
+  String? restrictionReasonCode;
+  String? restrictedContentText;
+  List<MessageTextEntity> restrictedContentTextEntities;
   bool containsUnreadMention;
   int? senderId;
   TdFileRef? senderPhoto;
@@ -558,6 +715,27 @@ class ChatMessage {
 
   bool get isContentRestricted =>
       restrictionReason != null && restrictionReason!.trim().isNotEmpty;
+
+  bool get hasRestrictedRevealContent {
+    if (!isContentRestricted) return false;
+    final originalText = restrictedContentText?.trim();
+    if (originalText != null &&
+        originalText.isNotEmpty &&
+        originalText != text.trim()) {
+      return true;
+    }
+    return image != null ||
+        document != null ||
+        music != null ||
+        animatedSticker != null ||
+        videoSticker != null ||
+        video != null ||
+        diceEmoji != null ||
+        location != null ||
+        voice != null ||
+        linkPreview != null ||
+        richBlocks.isNotEmpty;
+  }
 
   /// Visual media that Telegram may place in the same media album.
   ///
@@ -894,21 +1072,22 @@ abstract final class TDParse {
     final date = message.integer('date') ?? 0;
     final content = message.obj('content');
     final restrictionReason = restrictionReasonFor(message);
+    final restrictionReasonCode = restrictionReasonCodeFor(message);
     final isContentRestricted = restrictionReason != null;
-    final service = !isContentRestricted && isServiceContent(content?.type);
+    final rawService = isServiceContent(content?.type);
+    final service = !isContentRestricted && rawService;
     final isCall = !isContentRestricted && content?.type == 'messageCall';
     final callIsVideo = isCall && (content?.boolean('is_video') ?? false);
     final callDuration = isCall ? (content?.integer('duration') ?? 0) : 0;
     final callDiscardReason = isCall
         ? content?.obj('discard_reason')?.type
         : null;
-    final text =
-        restrictionReason ??
-        (service
-            ? serviceText(content)
-            : (content != null
-                  ? messageText(content)
-                  : telegramText(AppStringKeys.chatSearchMessageResultLabel)));
+    final contentText = rawService
+        ? serviceText(content)
+        : (content != null
+              ? messageText(content)
+              : telegramText(AppStringKeys.chatSearchMessageResultLabel));
+    final text = restrictionReason ?? contentText;
 
     int? senderId;
     final sender = message.obj('sender_id');
@@ -919,9 +1098,7 @@ abstract final class TDParse {
         senderId = sender?.int64('chat_id');
     }
 
-    final media = isContentRestricted
-        ? const MediaAttachment()
-        : mediaAttachment(content);
+    final media = mediaAttachment(content);
 
     // 转发: forward_info.origin identifies the original author.
     final origin = message.obj('forward_info')?.obj('origin');
@@ -946,31 +1123,32 @@ abstract final class TDParse {
         ? replyTo?.int64('message_id')
         : null;
 
-    final parsedEntities = isContentRestricted
-        ? const <MessageTextEntity>[]
-        : messageTextEntities(content);
-    final markdown = !service && parsedEntities.isEmpty
-        ? _markdownText(text)
+    final parsedEntities = messageTextEntities(content);
+    final contentMarkdown = !rawService && parsedEntities.isEmpty
+        ? _markdownText(contentText)
         : null;
     final replyInfo = message.obj('interaction_info')?.obj('reply_info');
-    var displayText = markdown?.text ?? text;
-    var displayEntities = markdown?.entities ?? parsedEntities;
-    final richBlocks = isContentRestricted
-        ? <RichMessageBlock>[]
-        : <RichMessageBlock>[...richMessageBlocks(content)];
-    if (!isContentRestricted &&
-        content?.type == 'messageRichMessage' &&
-        richBlocks.isNotEmpty &&
-        displayText ==
-            telegramText(AppStringKeys.chatSearchMessageResultLabel)) {
-      displayText = '';
+    var contentDisplayText = contentMarkdown?.text ?? contentText;
+    var contentDisplayEntities = contentMarkdown?.entities ?? parsedEntities;
+    final contentRichBlocks = <RichMessageBlock>[...richMessageBlocks(content)];
+    if (content?.type == 'messageRichMessage' && contentRichBlocks.isNotEmpty) {
+      contentDisplayText = '';
+      contentDisplayEntities = const [];
     }
-    if (!isContentRestricted && content?.type != 'messageRichMessage') {
-      final extracted = _extractMarkdownTables(displayText, displayEntities);
-      displayText = extracted.text;
-      displayEntities = extracted.entities;
-      richBlocks.addAll(extracted.blocks);
+    if (content?.type != 'messageRichMessage') {
+      final extracted = _extractMarkdownTables(
+        contentDisplayText,
+        contentDisplayEntities,
+      );
+      contentDisplayText = extracted.text;
+      contentDisplayEntities = extracted.entities;
+      contentRichBlocks.addAll(extracted.blocks);
     }
+    final displayText = isContentRestricted ? text : contentDisplayText;
+    final displayEntities = isContentRestricted
+        ? const <MessageTextEntity>[]
+        : contentDisplayEntities;
+    final richBlocks = contentRichBlocks;
 
     return ChatMessage(
         id: id,
@@ -985,6 +1163,11 @@ abstract final class TDParse {
         callDuration: callDuration,
         contentType: isContentRestricted ? 'messageText' : content?.type,
         restrictionReason: restrictionReason,
+        restrictionReasonCode: restrictionReasonCode,
+        restrictedContentText: isContentRestricted ? contentDisplayText : null,
+        restrictedContentTextEntities: isContentRestricted
+            ? contentDisplayEntities
+            : const [],
         containsUnreadMention:
             message.boolean('contains_unread_mention') ?? false,
         senderId: senderId,
@@ -1002,17 +1185,17 @@ abstract final class TDParse {
         videoSticker: media.videoSticker,
         video: media.video,
         videoDuration: media.videoDuration,
-        diceEmoji: !isContentRestricted && content?.type == 'messageDice'
+        diceEmoji: content?.type == 'messageDice'
             ? content?.str('emoji')
             : null,
-        diceValue: !isContentRestricted && content?.type == 'messageDice'
+        diceValue: content?.type == 'messageDice'
             ? content?.integer('value')
             : null,
         stickerFileId: media.stickerFileId,
         stickerSetId: media.stickerSetId,
         isAnimatedEmoji: media.isAnimatedEmoji,
-        location: isContentRestricted ? null : locationAttachment(content),
-        voice: isContentRestricted ? null : voiceAttachment(content),
+        location: locationAttachment(content),
+        voice: voiceAttachment(content),
         replyToMessageId: isContentRestricted ? null : replyToMessageId,
         serviceUserIds: isContentRestricted
             ? const []
@@ -1021,9 +1204,7 @@ abstract final class TDParse {
             ? const []
             : customEmojiEntitiesFrom(parsedEntities),
         textEntities: displayEntities,
-        linkPreview: isContentRestricted
-            ? null
-            : linkPreview(content?.obj('link_preview')),
+        linkPreview: linkPreview(content?.obj('link_preview')),
         buttonRows: isContentRestricted
             ? const []
             : messageButtonRows(message.obj('reply_markup')),
@@ -1053,7 +1234,67 @@ abstract final class TDParse {
   /// Returns the server-provided reason that makes a chat or message
   /// unavailable on this client platform.
   static String? restrictionReasonFor(Map<String, dynamic>? object) =>
-      _cleanString(object?.obj('restriction_info')?.str('restriction_reason'));
+      _cleanString(
+        object?.obj('restriction_info')?.str('restriction_reason'),
+      ) ??
+      _cleanString(object?.obj('restriction_info')?.str('text'));
+
+  /// Returns the machine-readable restriction reason such as `porno` or
+  /// `terms` when TDLib includes it.
+  static String? restrictionReasonCodeFor(Map<String, dynamic>? object) {
+    final restrictionInfo = object?.obj('restriction_info');
+    return _cleanString(
+      restrictionInfo?.str('reason') ??
+          restrictionInfo?.str('restriction_reason_code'),
+    )?.toLowerCase();
+  }
+
+  static bool hasSensitiveRestriction(Map<String, dynamic>? object) =>
+      object?.obj('restriction_info')?.boolean('has_sensitive_content') ??
+      false;
+
+  static bool isBlockingRestriction(Map<String, dynamic>? object) =>
+      restrictionReasonFor(object) != null;
+
+  static bool isPornographicRestriction(Map<String, dynamic>? object) {
+    final code = restrictionReasonCodeFor(object);
+    final text = restrictionReasonFor(object);
+    return isPornographicRestrictionText(code) ||
+        isPornographicRestrictionText(text);
+  }
+
+  static bool isTermsRestriction(Map<String, dynamic>? object) {
+    final code = restrictionReasonCodeFor(object);
+    final text = restrictionReasonFor(object);
+    if (hasSensitiveRestriction(object) ||
+        isPornographicRestrictionText(code) ||
+        isPornographicRestrictionText(text)) {
+      return false;
+    }
+    return code == 'terms' || isTelegramTermsRestrictionText(text);
+  }
+
+  static bool isPornographicRestrictionText(String? value) {
+    final normalized = _normalizedRestrictionText(value);
+    return normalized.contains('porn') ||
+        normalized.contains('pornographic material');
+  }
+
+  static bool isTelegramTermsRestrictionText(String? value) {
+    final normalized = _normalizedRestrictionText(value);
+    final cannotDisplay =
+        normalized.contains("can't be displayed") ||
+        normalized.contains("couldn't be displayed") ||
+        normalized.contains('cannot be displayed') ||
+        normalized.contains('could not be displayed');
+    final telegramTerms =
+        normalized.contains('terms of service') ||
+        normalized.contains('violated telegram');
+    return cannotDisplay && telegramTerms;
+  }
+
+  static String _normalizedRestrictionText(String? value) =>
+      (value ?? '').toLowerCase().replaceAll('’', "'");
 
   static String? _cleanString(String? value) {
     final text = value?.trim();
@@ -1373,28 +1614,124 @@ abstract final class TDParse {
     List<RichMessageBlock> out,
     Map<String, dynamic> block,
   ) {
+    final parsed = _parseRichBlock(block);
+    if (parsed != null) out.add(parsed);
+  }
+
+  static RichMessageBlock? _parseRichBlock(Map<String, dynamic> block) {
     switch (block.type) {
+      case 'pageBlockParagraph':
+      case 'RichBlockParagraph':
+        final text = _richBlockText(block.obj('text'));
+        return RichMessageBlock.text(
+          kind: RichMessageBlockKind.paragraph,
+          text: text.text,
+          entities: text.entities,
+        );
+      case 'pageBlockSectionHeading':
+      case 'RichBlockSectionHeading':
+        final text = _richBlockText(block.obj('text'));
+        return RichMessageBlock.text(
+          kind: RichMessageBlockKind.heading,
+          text: text.text,
+          entities: text.entities,
+          size: (block.integer('size') ?? 1).clamp(1, 6),
+        );
+      case 'pageBlockPreformatted':
+      case 'RichBlockPreformatted':
+        final text = _richBlockText(block.obj('text'));
+        return RichMessageBlock.text(
+          kind: RichMessageBlockKind.preformatted,
+          text: text.text,
+          entities: text.entities,
+          language: block.str('language') ?? '',
+        );
+      case 'pageBlockFooter':
+      case 'RichBlockFooter':
+        final text = _richBlockText(block.obj('footer') ?? block.obj('text'));
+        return RichMessageBlock.text(
+          kind: RichMessageBlockKind.footer,
+          text: text.text,
+          entities: text.entities,
+        );
+      case 'pageBlockThinking':
+      case 'RichBlockThinking':
+        final text = _richBlockText(block.obj('text'));
+        return RichMessageBlock.text(
+          kind: RichMessageBlockKind.thinking,
+          text: text.text,
+          entities: text.entities,
+        );
+      case 'pageBlockDivider':
+      case 'RichBlockDivider':
+        return const RichMessageBlock.container(
+          kind: RichMessageBlockKind.divider,
+        );
+      case 'pageBlockAnchor':
+      case 'RichBlockAnchor':
+        return RichMessageBlock.container(
+          kind: RichMessageBlockKind.anchor,
+          name: block.str('name') ?? '',
+        );
+      case 'pageBlockList':
+      case 'RichBlockList':
+        final items = <RichMessageListItem>[];
+        for (final item
+            in block.objects('items') ?? const <Map<String, dynamic>>[]) {
+          items.add(
+            RichMessageListItem(
+              blocks: _parseRichChildren(item.objects('blocks')),
+              label: item.str('label') ?? '',
+              hasCheckbox: item.boolean('has_checkbox') ?? false,
+              isChecked: item.boolean('is_checked') ?? false,
+              value: item.integer('value') ?? 0,
+              numberingType: item.str('type') ?? '',
+            ),
+          );
+        }
+        return RichMessageBlock.container(
+          kind: RichMessageBlockKind.list,
+          listItems: items,
+        );
+      case 'pageBlockBlockQuote':
+      case 'RichBlockBlockQuotation':
+        final credit = _richBlockText(block.obj('credit'));
+        return RichMessageBlock.container(
+          kind: RichMessageBlockKind.blockQuote,
+          children: _parseRichChildren(block.objects('blocks')),
+          caption: credit.text,
+          captionEntities: credit.entities,
+        );
+      case 'pageBlockPullQuote':
+      case 'RichBlockPullQuotation':
+        final text = _richBlockText(block.obj('text'));
+        final credit = _richBlockText(block.obj('credit'));
+        return RichMessageBlock.container(
+          kind: RichMessageBlockKind.pullQuote,
+          text: text.text,
+          textEntities: text.entities,
+          caption: credit.text,
+          captionEntities: credit.entities,
+        );
       case 'pageBlockTable':
       case 'RichBlockTable':
         final rows = _richTableRows(block['cells'] ?? block['rows']);
-        if (rows.isEmpty) return;
+        if (rows.isEmpty) return null;
         final caption = _richBlockCaption(block.obj('caption'));
-        out.add(
-          RichMessageBlock.captionedTable(
-            tableRows: rows,
-            caption: caption.text,
-            captionEntities: caption.entities,
-            isBordered:
-                block.boolean('is_bordered') ??
-                block.boolean('isBordered') ??
-                block.boolean('bordered') ??
-                false,
-            isStriped:
-                block.boolean('is_striped') ??
-                block.boolean('isStriped') ??
-                block.boolean('striped') ??
-                false,
-          ),
+        return RichMessageBlock.captionedTable(
+          tableRows: rows,
+          caption: caption.text,
+          captionEntities: caption.entities,
+          isBordered:
+              block.boolean('is_bordered') ??
+              block.boolean('isBordered') ??
+              block.boolean('bordered') ??
+              false,
+          isStriped:
+              block.boolean('is_striped') ??
+              block.boolean('isStriped') ??
+              block.boolean('striped') ??
+              false,
         );
       case 'pageBlockMathematicalExpression':
       case 'RichBlockMathematicalExpression':
@@ -1403,9 +1740,46 @@ abstract final class TDParse {
             block.str('formula') ??
             block.str('source') ??
             '';
-        if (expression.trim().isNotEmpty) {
-          out.add(RichMessageBlock.math(expression));
-        }
+        return expression.trim().isEmpty
+            ? null
+            : RichMessageBlock.math(expression);
+      case 'pageBlockPhoto':
+      case 'RichBlockPhoto':
+        return _richMediaBlock(block, RichMessageBlockKind.photo, {
+          '@type': 'messagePhoto',
+          'photo': block['photo'],
+        });
+      case 'pageBlockVideo':
+      case 'RichBlockVideo':
+        return _richMediaBlock(block, RichMessageBlockKind.video, {
+          '@type': 'messageVideo',
+          'video': block['video'],
+        });
+      case 'pageBlockAnimation':
+      case 'RichBlockAnimation':
+        return _richMediaBlock(block, RichMessageBlockKind.animation, {
+          '@type': 'messageAnimation',
+          'animation': block['animation'],
+        });
+      case 'pageBlockAudio':
+      case 'RichBlockAudio':
+        return _richMediaBlock(block, RichMessageBlockKind.audio, {
+          '@type': 'messageAudio',
+          'audio': block['audio'],
+        });
+      case 'pageBlockVoiceNote':
+      case 'RichBlockVoiceNote':
+        final caption = _richBlockCaption(block.obj('caption'));
+        final voice = voiceAttachment({
+          '@type': 'messageVoiceNote',
+          'voice_note': block['voice_note'] ?? block['voice'],
+        });
+        return RichMessageBlock.media(
+          kind: RichMessageBlockKind.voiceNote,
+          voice: voice,
+          caption: caption.text,
+          captionEntities: caption.entities,
+        );
       case 'pageBlockMap':
       case 'richBlockMap':
       case 'RichBlockMap':
@@ -1423,40 +1797,87 @@ abstract final class TDParse {
             block.dbl('longitude') ??
             block.dbl('long') ??
             block.dbl('lon');
-        if (latitude == null || longitude == null) return;
+        if (latitude == null || longitude == null) return null;
         final caption = _richBlockCaption(block.obj('caption'));
-        out.add(
-          RichMessageBlock.map(
-            mapLocation: MessageLocation(
-              latitude: latitude,
-              longitude: longitude,
-              title: caption.text.isEmpty ? null : caption.text,
-            ),
-            mapZoom: (block.integer('zoom') ?? 16).clamp(13, 20),
-            mapWidth: (block.integer('width') ?? 220).clamp(1, 4096),
-            mapHeight: (block.integer('height') ?? 120).clamp(1, 4096),
-            caption: caption.text,
-            captionEntities: caption.entities,
+        return RichMessageBlock.map(
+          mapLocation: MessageLocation(
+            latitude: latitude,
+            longitude: longitude,
+            title: caption.text.isEmpty ? null : caption.text,
           ),
+          mapZoom: (block.integer('zoom') ?? 16).clamp(0, 24),
+          mapWidth: (block.integer('width') ?? 220).clamp(1, 10000),
+          mapHeight: (block.integer('height') ?? 120).clamp(1, 10000),
+          caption: caption.text,
+          captionEntities: caption.entities,
+        );
+      case 'pageBlockCollage':
+      case 'RichBlockCollage':
+        final caption = _richBlockCaption(block.obj('caption'));
+        return RichMessageBlock.container(
+          kind: RichMessageBlockKind.collage,
+          children: _parseRichChildren(block.objects('blocks')),
+          caption: caption.text,
+          captionEntities: caption.entities,
+        );
+      case 'pageBlockSlideshow':
+      case 'RichBlockSlideshow':
+        final caption = _richBlockCaption(block.obj('caption'));
+        return RichMessageBlock.container(
+          kind: RichMessageBlockKind.slideshow,
+          children: _parseRichChildren(block.objects('blocks')),
+          caption: caption.text,
+          captionEntities: caption.entities,
+        );
+      case 'pageBlockDetails':
+      case 'RichBlockDetails':
+        final header = _richBlockText(block.obj('header'));
+        return RichMessageBlock.container(
+          kind: RichMessageBlockKind.details,
+          text: header.text,
+          textEntities: header.entities,
+          children: _parseRichChildren(block.objects('blocks')),
+          isOpen: block.boolean('is_open') ?? block.boolean('isOpen') ?? false,
         );
       case 'pageBlockCover':
       case 'RichBlockCover':
         final cover = block.obj('cover');
-        if (cover != null) _appendRichBlocks(out, cover);
-      case 'pageBlockEmbeddedPost':
-      case 'pageBlockCollage':
-      case 'pageBlockSlideshow':
-      case 'pageBlockDetails':
-      case 'RichBlockEmbeddedPost':
-      case 'RichBlockCollage':
-      case 'RichBlockSlideshow':
-      case 'RichBlockDetails':
-        final nested = block.objects('blocks');
-        if (nested == null) return;
-        for (final child in nested) {
-          _appendRichBlocks(out, child);
-        }
+        return cover == null ? null : _parseRichBlock(cover);
     }
+    return null;
+  }
+
+  static List<RichMessageBlock> _parseRichChildren(
+    List<Map<String, dynamic>>? blocks,
+  ) {
+    if (blocks == null) return const [];
+    return blocks.map(_parseRichBlock).whereType<RichMessageBlock>().toList();
+  }
+
+  static _ParsedMarkdownText _richBlockText(Map<String, dynamic>? value) {
+    if (value == null) return const _ParsedMarkdownText('', []);
+    return _ParsedMarkdownText(richTextText(value), richTextEntities(value));
+  }
+
+  static RichMessageBlock _richMediaBlock(
+    Map<String, dynamic> block,
+    RichMessageBlockKind kind,
+    Map<String, dynamic> content,
+  ) {
+    final media = mediaAttachment(content);
+    final caption = _richBlockCaption(block.obj('caption'));
+    return RichMessageBlock.media(
+      kind: kind,
+      image: media.image,
+      imageWidth: media.width,
+      imageHeight: media.height,
+      video: media.video,
+      videoDuration: media.videoDuration ?? 0,
+      music: media.music,
+      hasSpoiler: block.boolean('has_spoiler') ?? false,
+      caption: caption.text,
+      captionEntities: caption.entities,
+    );
   }
 
   static _ParsedMarkdownText _richBlockCaption(Map<String, dynamic>? caption) {
@@ -1695,7 +2116,8 @@ abstract final class TDParse {
       case 'RichTexts':
       case 'RichText':
       case 'textConcat':
-        for (final item in value.objects('texts') ?? const []) {
+        for (final item
+            in value.objects('texts') ?? const <Map<String, dynamic>>[]) {
           _appendRichText(builder, item);
         }
         return;
@@ -1786,7 +2208,7 @@ abstract final class TDParse {
         final cashtag = value.str('cashtag');
         return cashtag == null || cashtag.isEmpty ? '' : '\$$cashtag';
       case 'richTextBotCommand':
-        final command = value.str('command');
+        final command = value.str('bot_command') ?? value.str('command');
         return command == null || command.isEmpty ? '' : '/$command';
       case 'richTextAnchorLink':
       case 'richTextReferenceLink':
@@ -1873,7 +2295,10 @@ abstract final class TDParse {
       case 'richTextAnchorLink':
         final url = value.str('url') ?? value.str('href');
         if (url != null && url.isNotEmpty) return url;
-        final name = value.str('name');
+        final name =
+            value.str('anchor_name') ??
+            value.str('reference_name') ??
+            value.str('name');
         return name == null || name.isEmpty ? null : '#$name';
       case 'richTextMention':
         final username = value.str('username');

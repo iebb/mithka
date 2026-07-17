@@ -106,8 +106,9 @@ debug signature is used. Neither the keystore nor `key.properties` is committed.
 GitHub Actions merges new `master` commits into `nightly` and increments the
 app's patch version once; `nightly` publishes dated GitHub prereleases. Xcode
 Cloud keeps the same major/minor version but forces the iOS patch to `0`. Pushes
-to `release` publish dated stable GitHub releases and submit the production AAB
-to Google Play.
+to `release` publish dated stable GitHub releases. Google Play publishing is
+split into a separate guarded, manual-only workflow and is not triggered by
+release pushes.
 `secrets.dart` is generated on the runner from the `TELEGRAM_API_ID` /
 `TELEGRAM_API_HASH` repository secrets.
 

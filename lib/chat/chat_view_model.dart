@@ -245,8 +245,9 @@ class ChatViewModel extends ChangeNotifier {
       false; // notifications muted (channel subscribers get a toggle)
   bool canDeleteMessagesBySender = false;
   String sendDisabledReason = ''; // shown in the disabled composer bar
-  bool isTelegramTosRestricted = false;
-  String telegramTosRestrictionText = '';
+  bool isPeerRestricted = false;
+  bool isPeerPornographicRestricted = false;
+  String peerRestrictionText = '';
   bool hasProtectedContent = false;
   bool _chatCanSend = true; // chat-wide default can_send_basic_messages
   bool peerIsBot = false;
@@ -860,9 +861,13 @@ class ChatViewModel extends ChangeNotifier {
   Future<void> sendRichMessageHtml(
     String html, {
     List<RichMessageSendFile> files = const [],
+    List<Map<String, dynamic>> blocks = const [],
   }) async {
-    if (html.trim().isEmpty) return;
+    if (blocks.isEmpty) {
+      throw StateError('Rich message blocks are required for user accounts');
+    }
     for (final file in files) {
+      if ((file.attachment.fileId ?? 0) > 0) continue;
       final localFile = File(file.attachment.path);
       if (!await localFile.exists() || await localFile.length() <= 0) {
         throw StateError('Unable to read rich message media');
@@ -872,18 +877,7 @@ class ChatViewModel extends ChangeNotifier {
     final request = <String, dynamic>{
       '@type': 'sendMessage',
       'chat_id': chatId,
-      'input_message_content': {
-        '@type': 'inputMessageRichMessage',
-        'message': {
-          '@type': 'inputRichMessage',
-          'source': {'@type': 'richMessageSourceHtml', 'text': html},
-          'is_rtl': false,
-          'detect_automatic_blocks': true,
-          if (files.isNotEmpty)
-            'files': files.map(richMessageFilePayload).toList(),
-        },
-        'clear_draft': true,
-      },
+      'input_message_content': richMessageInputContent(blocks),
     };
     if (replyTo != null) {
       request['reply_to'] = {
@@ -1824,7 +1818,7 @@ class ChatViewModel extends ChangeNotifier {
           'only_local': false,
         });
       } catch (error) {
-        if (_markTelegramTosRestricted(error)) notifyListeners();
+        if (_markPeerRestricted(error)) notifyListeners();
         return false;
       }
       if (_isDisposed ||
@@ -1888,11 +1882,7 @@ class ChatViewModel extends ChangeNotifier {
     try {
       chat = await _client.query({'@type': 'getChat', 'chat_id': chatId});
     } catch (error) {
-      if (_markTelegramTosRestricted(error)) {
-        canSendMessages = false;
-        sendDisabledReason = AppStrings.t(
-          AppStringKeys.chatRestrictedTelegramTosMessage,
-        );
+      if (_markPeerRestricted(error)) {
         notifyListeners();
       }
       return;
@@ -1933,6 +1923,16 @@ class ChatViewModel extends ChangeNotifier {
     isChannel = false;
     canDeleteMessagesBySender = false;
     sendDisabledReason = '';
+    isPeerRestricted = false;
+    isPeerPornographicRestricted = false;
+    peerRestrictionText = '';
+    final chatRestrictionReason = TDParse.restrictionReasonFor(chat);
+    if (chatRestrictionReason != null && TDParse.isBlockingRestriction(chat)) {
+      _setPeerRestricted(
+        chatRestrictionReason,
+        isPornographic: TDParse.isPornographicRestriction(chat),
+      );
+    }
 
     final type = chat.obj('type');
     if (type?.type == 'chatTypeSecret') {
@@ -1954,15 +1954,19 @@ class ChatViewModel extends ChangeNotifier {
               'user_id': uid,
             });
             final restrictionReason = TDParse.restrictionReasonFor(user);
-            if (restrictionReason != null) {
-              _setTelegramTosRestricted(restrictionReason);
+            if (restrictionReason != null &&
+                TDParse.isBlockingRestriction(user)) {
+              _setPeerRestricted(
+                restrictionReason,
+                isPornographic: TDParse.isPornographicRestriction(user),
+              );
             }
             peerIsBot = _isBotUser(user);
             peerOnline = TDParse.isUserOnline(user);
             peerStatusText = TDParse.userStatus(user);
             firstContactInfo = firstContactInfo?.withUser(user);
           } catch (error) {
-            if (_markTelegramTosRestricted(error)) {
+            if (_markPeerRestricted(error)) {
               notifyListeners();
             }
           }
@@ -1993,8 +1997,12 @@ class ChatViewModel extends ChangeNotifier {
               'supergroup_id': sgid,
             });
             final restrictionReason = TDParse.restrictionReasonFor(sg);
-            if (restrictionReason != null) {
-              _setTelegramTosRestricted(restrictionReason);
+            if (restrictionReason != null &&
+                TDParse.isBlockingRestriction(sg)) {
+              _setPeerRestricted(
+                restrictionReason,
+                isPornographic: TDParse.isPornographicRestriction(sg),
+              );
             }
             isChannel = sg.boolean('is_channel') ?? false;
             isForum = isForum || (sg.boolean('is_forum') ?? false);
@@ -2002,7 +2010,7 @@ class ChatViewModel extends ChangeNotifier {
             _setPaidMessageStarCount(_paidMessageStars(sg), notify: false);
             _applyGroupStatus(sg.obj('status'));
           } catch (error) {
-            if (_markTelegramTosRestricted(error)) {
+            if (_markPeerRestricted(error)) {
               notifyListeners();
             }
           }
@@ -2018,9 +2026,7 @@ class ChatViewModel extends ChangeNotifier {
     if (isChannel || peerIsBot) {
       unawaited(_retrieveSponsoredMessages());
     }
-    if (!canSendMessages &&
-        sendDisabledReason.isEmpty &&
-        isTelegramTosRestricted) {
+    if (!canSendMessages && sendDisabledReason.isEmpty && isPeerRestricted) {
       sendDisabledReason = AppStrings.t(
         AppStringKeys.chatRestrictedTelegramTosMessage,
       );
@@ -2028,6 +2034,8 @@ class ChatViewModel extends ChangeNotifier {
     notifyListeners();
     unawaited(_loadPinnedMessage());
   }
+
+  Future<void> refreshPeerRestrictionState() => _loadChatHeader();
 
   Future<void> _loadSecretChatState() async {
     final secretChatId = _secretChatId;
@@ -2051,7 +2059,7 @@ class ChatViewModel extends ChangeNotifier {
   }) {
     switch (readiness) {
       case SecretChatReadiness.ready:
-        canSendMessages = _chatCanSend && !isTelegramTosRestricted;
+        canSendMessages = _chatCanSend;
         sendDisabledReason = canSendMessages
             ? ''
             : AppStrings.t(AppStringKeys.chatRestrictedTelegramTosMessage);
@@ -2578,7 +2586,7 @@ class ChatViewModel extends ChangeNotifier {
             .whereType<ChatMessage>(),
       );
     } catch (error) {
-      if (_markTelegramTosRestricted(error)) notifyListeners();
+      if (_markPeerRestricted(error)) notifyListeners();
     }
 
     if (_isDisposed || requestGeneration != _historyWindowGeneration) {
@@ -2751,7 +2759,7 @@ class ChatViewModel extends ChangeNotifier {
         'only_local': onlyLocal,
       });
     } catch (error) {
-      if (_markTelegramTosRestricted(error)) notifyListeners();
+      if (_markPeerRestricted(error)) notifyListeners();
       return false;
     }
     if (_isDisposed || requestGeneration != _historyWindowGeneration) {
@@ -2787,35 +2795,30 @@ class ChatViewModel extends ChangeNotifier {
     return true;
   }
 
-  bool _markTelegramTosRestricted(Object error) {
+  bool _markPeerRestricted(Object error) {
     final text = error.toString();
     final normalized = _normalizedRestrictionText(text);
     final restricted =
-        _isTelegramTosRestrictedText(text) ||
+        TDParse.isTelegramTermsRestrictionText(text) ||
+        TDParse.isPornographicRestrictionText(text) ||
         normalized.contains('chat_restricted') ||
         normalized.contains('channel_restricted');
     if (!restricted) return false;
-    _setTelegramTosRestricted(text);
+    _setPeerRestricted(
+      text,
+      isPornographic: TDParse.isPornographicRestrictionText(text),
+    );
     return true;
-  }
-
-  bool _isTelegramTosRestrictedText(String text) {
-    final normalized = _normalizedRestrictionText(text);
-    final cannotDisplay =
-        normalized.contains("can't be displayed") ||
-        normalized.contains('cannot be displayed');
-    final telegramTerms =
-        normalized.contains('terms of service') ||
-        normalized.contains('violated telegram');
-    return cannotDisplay && telegramTerms;
   }
 
   String _normalizedRestrictionText(String text) =>
       text.toLowerCase().replaceAll('’', "'");
 
-  void _setTelegramTosRestricted(String text) {
-    isTelegramTosRestricted = true;
-    telegramTosRestrictionText = text;
+  void _setPeerRestricted(String text, {required bool isPornographic}) {
+    isPeerRestricted = true;
+    isPeerPornographicRestricted =
+        isPeerPornographicRestricted || isPornographic;
+    peerRestrictionText = text;
   }
 
   Future<void> leaveChat() async {

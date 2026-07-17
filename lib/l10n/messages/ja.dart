@@ -105,6 +105,7 @@ const jaMessages = <String, String>{
   'appearanceEmojiFontCatalogDescription':
       "フォント一覧は iebb/emojifonts manifest から取得します。選択時に GitHub Releases からダウンロードします。プレビュー画像は Emojipedia 提供です。",
   'appearanceEnableTheming': "テーマを有効にする",
+  'appearancePerAccountTheming': "アカウントごとにテーマを使用",
   'appearanceFileCount': "{value1} 個",
   'appearanceFont': "フォント",
   'appearanceFontCache': "フォントキャッシュ",
@@ -696,6 +697,9 @@ const jaMessages = <String, String>{
   'globalThemeSwitchModeAction': "切り替える",
   'globalThemeSwitchToDark': "ダークモードに切り替えますか？",
   'globalThemeSwitchToLight': "ライトモードに切り替えますか？",
+  'globalThemeWallpaperApply': "壁紙を使用",
+  'globalThemeWallpaperKeep': "現在のまま",
+  'globalThemeWallpaperPrompt': "このテーマの壁紙も使用しますか？",
   'globalThemeTitle': "テーマ",
   'globalThemeUseForUi': "UIにTelegramテーマを使用",
   'globalThemeUseForUiDescription':
@@ -1067,6 +1071,7 @@ const jaMessages = <String, String>{
   'privacySectionTitle': "プライバシー",
   'privacySecuritySectionTitle': "セキュリティ",
   'privacySecurityTitle': "プライバシーとセキュリティ",
+  'privacySensitiveContent': "18+ コンテンツを表示",
   'privacyShowReadDate': "既読時刻を表示",
   'privacyShowReadDateHint': "オンライン状態を確認できるユーザーには、既読時刻も常に表示されます。",
   'privacyTerminateAllOtherSessions': "他のすべてのセッションを終了",
@@ -1246,6 +1251,12 @@ const jaMessages = <String, String>{
       "シークレットチャットのメッセージはエンドツーエンドで暗号化され、作成した端末でのみ読むことができます。",
   'secretChatStartTitle': "シークレットチャットを開始しますか？",
   'secretChatWaiting': "シークレットチャットの準備ができるまで待機しています…",
+  'sensitiveContentUnblockConfirm': "すべて解除",
+  'sensitiveContentUnblockDone': "18+ コンテンツが有効になりました",
+  'sensitiveContentUnblockFailed': "18+ コンテンツを有効にできません：{value1}",
+  'sensitiveContentUnblockMessage':
+      "Telegram アカウント全体の 18+ コンテンツ設定を有効にします。後でプライバシーとセキュリティからオフにできます。",
+  'sensitiveContentUnblockTitle': "18+ コンテンツを表示しますか？",
   'settingsAboutMithka': "Mithka について",
   'settingsLogOut': "ログアウト",
   'sharedMediaCacheDeleted': "ローカルキャッシュを削除しました",

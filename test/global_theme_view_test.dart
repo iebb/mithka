@@ -268,6 +268,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('app-confirm-accept')));
     await tester.pumpAndSettle();
+    expect(find.text('Use this theme’s wallpaper too?'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('app-confirm-cancel')));
+    await tester.pumpAndSettle();
 
     expect(controller.lightCloudTheme?.slug, 'MountainSolitude');
     expect(controller.darkCloudTheme, isNull);

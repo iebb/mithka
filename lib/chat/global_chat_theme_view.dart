@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:provider/provider.dart';
 
+import '../components/app_confirm_dialog.dart';
 import '../components/app_icons.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
@@ -68,6 +69,28 @@ class _GlobalChatThemeViewState extends State<GlobalChatThemeView> {
     if (_saving || option.id == _selection.id) return;
     setState(() => _saving = true);
     try {
+      final nextWallpaper = option.wallpaper;
+      if (nextWallpaper != null) {
+        await _controller.loadDefaultWallpaper(dark: _dark);
+        if (!mounted) return;
+        final existingDefault = _controller.defaultWallpaper(dark: _dark);
+        final previousWallpaper = _controller.globalThemeWallpaperFor(
+          dark: _dark,
+        );
+        final useWallpaper = await showAppConfirmDialog(
+          context,
+          title: AppStringKeys.globalThemeWallpaperPrompt,
+          confirmText: AppStringKeys.globalThemeWallpaperApply,
+          cancelText: AppStringKeys.globalThemeWallpaperKeep,
+        );
+        if (!mounted) return;
+        final wallpaper = useWallpaper
+            ? nextWallpaper
+            : existingDefault ?? previousWallpaper;
+        if (wallpaper != null && (useWallpaper || existingDefault == null)) {
+          await _controller.applyDefaultWallpaper(wallpaper, dark: _dark);
+        }
+      }
       await _controller.setGlobalChatTheme(option.id, dark: _dark);
     } catch (_) {
       if (mounted) showToast(context, AppStringKeys.chatThemeSaveFailed);

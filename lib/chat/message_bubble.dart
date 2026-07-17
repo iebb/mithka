@@ -8,6 +8,7 @@
 //  left to reply. Port of the Swift `MessageBubble`.
 //
 
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -19,10 +20,12 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
 import '../components/app_icons.dart';
+import '../components/confirm_dialog.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../l10n/telegram_language_controller.dart';
 import '../profile/profile_detail_view.dart';
+import '../settings/sensitive_content_controller.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -141,17 +144,65 @@ class _MessageBubbleState extends State<MessageBubble>
   double? _layoutWidth;
   final Set<String> _expandedQuotes = {};
   final Set<String> _revealedSpoilers = {};
+  bool _showRestrictedContent = false;
 
   void _handleLongPress([
     MessageActionSource source = MessageActionSource.normal,
   ]) {
     _lastTapAt = null;
+    if (_shouldOfferSensitiveContentUnblock) {
+      unawaited(_showSensitiveContentUnblockDialog());
+      return;
+    }
+    if (message.hasRestrictedRevealContent) {
+      setState(() => _showRestrictedContent = !_showRestrictedContent);
+      return;
+    }
     final box = _bubbleKey.currentContext?.findRenderObject() as RenderBox?;
     Rect? bounds;
     if (box != null && box.hasSize) {
       bounds = box.localToGlobal(Offset.zero) & box.size;
     }
     widget.onLongPress?.call(message, bounds, source);
+  }
+
+  bool get _shouldOfferSensitiveContentUnblock {
+    if (!message.isContentRestricted || _showRestrictedContent) return false;
+    if (SensitiveContentController.shared.enabled) return false;
+    return TDParse.isPornographicRestrictionText(
+          message.restrictionReasonCode,
+        ) ||
+        TDParse.isPornographicRestrictionText(message.restrictionReason) ||
+        TDParse.isPornographicRestrictionText(message.text);
+  }
+
+  Future<void> _showSensitiveContentUnblockDialog() async {
+    final ok = await confirmDialog(
+      context,
+      title: AppStringKeys.sensitiveContentUnblockTitle,
+      message: AppStringKeys.sensitiveContentUnblockMessage,
+      confirmText: AppStringKeys.sensitiveContentUnblockConfirm,
+    );
+    if (!ok) return;
+    try {
+      await SensitiveContentController.shared.setEnabled(true);
+      if (!mounted) return;
+      showToast(
+        context,
+        AppStringKeys.sensitiveContentUnblockDone.l10n(context),
+      );
+      if (message.hasRestrictedRevealContent) {
+        setState(() => _showRestrictedContent = true);
+      }
+    } catch (error) {
+      if (!mounted) return;
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.sensitiveContentUnblockFailed, {
+          'value1': error.toString(),
+        }),
+      );
+    }
   }
 
   void _handleTapDown(TapDownDetails details) {
@@ -553,7 +604,7 @@ class _MessageBubbleState extends State<MessageBubble>
 
   Widget _contentBody(bool outgoing) {
     late final Widget body;
-    if (message.isContentRestricted) {
+    if (message.isContentRestricted && !_showRestrictedContent) {
       body = _textBubble(message.text, outgoing);
       return _withButtonRows(_withFloatingMeta(body, outgoing), outgoing);
     }
@@ -632,9 +683,34 @@ class _MessageBubbleState extends State<MessageBubble>
     } else if (message.document != null) {
       body = _fileCard(message.document!, outgoing);
     } else {
-      body = _textBubble(message.text, outgoing);
+      body = _textBubble(_activeMessageText, outgoing);
     }
     return _withButtonRows(_withFloatingMeta(body, outgoing), outgoing);
+  }
+
+  String get _activeMessageText {
+    if (message.isContentRestricted && _showRestrictedContent) {
+      return message.restrictedContentText ?? '';
+    }
+    return message.text;
+  }
+
+  List<MessageTextEntity> get _activeTextEntities {
+    if (message.isContentRestricted && _showRestrictedContent) {
+      return message.restrictedContentTextEntities;
+    }
+    if (message.isContentRestricted) return const [];
+    return message.textEntities;
+  }
+
+  List<RichMessageBlock> get _activeRichBlocks {
+    if (message.isContentRestricted && !_showRestrictedContent) return const [];
+    return message.richBlocks;
+  }
+
+  MessageLinkPreview? get _activeLinkPreview {
+    if (message.isContentRestricted && !_showRestrictedContent) return null;
+    return message.linkPreview;
   }
 
   Widget _withFloatingMeta(Widget child, bool outgoing) {
@@ -927,8 +1003,8 @@ class _MessageBubbleState extends State<MessageBubble>
             _replyQuote(outgoing),
             const SizedBox(height: 5),
           ],
-          if (message.linkPreview?.showAboveText ?? false) ...[
-            _linkPreviewCard(message.linkPreview!, outgoing),
+          if (_activeLinkPreview?.showAboveText ?? false) ...[
+            _linkPreviewCard(_activeLinkPreview!, outgoing),
             if (text.isNotEmpty) const SizedBox(height: 6),
           ],
           ..._richTextWidgets(
@@ -937,18 +1013,18 @@ class _MessageBubbleState extends State<MessageBubble>
             linkColor,
             outgoing,
             false,
-            null,
+            _activeTextEntities,
             textFontSize,
           ),
-          if (message.richBlocks.isNotEmpty) ...[
+          if (_activeRichBlocks.isNotEmpty) ...[
             if (text.isNotEmpty) const SizedBox(height: 8),
-            ..._richBlockWidgets(message.richBlocks, outgoing),
+            ..._richBlockWidgets(_activeRichBlocks, outgoing),
           ],
-          if (message.linkPreview != null &&
-              !message.linkPreview!.showAboveText) ...[
-            if (text.isNotEmpty || message.richBlocks.isNotEmpty)
+          if (_activeLinkPreview != null &&
+              !_activeLinkPreview!.showAboveText) ...[
+            if (text.isNotEmpty || _activeRichBlocks.isNotEmpty)
               const SizedBox(height: 7),
-            _linkPreviewCard(message.linkPreview!, outgoing),
+            _linkPreviewCard(_activeLinkPreview!, outgoing),
           ],
           if (_showsTranslation) ...[
             const SizedBox(height: 7),
@@ -1010,17 +1086,630 @@ class _MessageBubbleState extends State<MessageBubble>
 
   List<Widget> _richBlockWidgets(List<RichMessageBlock> blocks, bool outgoing) {
     final widgets = <Widget>[];
-    for (final block in blocks) {
+    for (var index = 0; index < blocks.length; index++) {
+      final block = blocks[index];
       if (widgets.isNotEmpty) widgets.add(const SizedBox(height: 8));
-      if (block.isTable) {
-        widgets.add(_richTableBlock(block, outgoing));
-      } else if (block.isMath) {
-        widgets.add(_richMathBlock(block.mathExpression!, outgoing));
-      } else if (block.isMap) {
-        widgets.add(_richMapBlock(block, outgoing));
+      final widget = _richBlockWidget(block, outgoing);
+      if (widget != null) {
+        widgets.add(
+          KeyedSubtree(
+            key: ValueKey('rich-message-block-$index-${block.kind.name}'),
+            child: widget,
+          ),
+        );
       }
     }
     return widgets;
+  }
+
+  Widget? _richBlockWidget(RichMessageBlock block, bool outgoing) {
+    return switch (block.kind) {
+      RichMessageBlockKind.paragraph ||
+      RichMessageBlockKind.heading ||
+      RichMessageBlockKind.preformatted ||
+      RichMessageBlockKind.footer ||
+      RichMessageBlockKind.thinking => _richTextBlock(block, outgoing),
+      RichMessageBlockKind.divider => Divider(
+        height: 12,
+        color: context.colors.divider,
+      ),
+      RichMessageBlockKind.math => _richMathBlock(
+        block.mathExpression ?? '',
+        outgoing,
+      ),
+      RichMessageBlockKind.anchor => const SizedBox.shrink(),
+      RichMessageBlockKind.list => _richListBlock(block, outgoing),
+      RichMessageBlockKind.blockQuote ||
+      RichMessageBlockKind.pullQuote => _richQuoteContainer(block, outgoing),
+      RichMessageBlockKind.animation ||
+      RichMessageBlockKind.audio ||
+      RichMessageBlockKind.photo ||
+      RichMessageBlockKind.video ||
+      RichMessageBlockKind.voiceNote => _richMediaBlock(block, outgoing),
+      RichMessageBlockKind.collage => _richCollageBlock(block, outgoing),
+      RichMessageBlockKind.slideshow => _richSlideshowBlock(block, outgoing),
+      RichMessageBlockKind.table => _richTableBlock(block, outgoing),
+      RichMessageBlockKind.details => _richDetailsBlock(block, outgoing),
+      RichMessageBlockKind.map => _richMapBlock(block, outgoing),
+    };
+  }
+
+  Widget _richTextBlock(RichMessageBlock block, bool outgoing) {
+    final c = context.colors;
+    final base = block.kind == RichMessageBlockKind.footer
+        ? c.textSecondary
+        : (outgoing ? _outgoingTextColor : _incomingTextColor);
+    final link = outgoing ? _outgoingTextColor : c.linkBlue;
+    final entities = <MessageTextEntity>[...block.textEntities];
+    final fontSize = switch (block.kind) {
+      RichMessageBlockKind.heading => switch (block.size.clamp(1, 6)) {
+        1 => 24.0,
+        2 => 22.0,
+        3 => 20.0,
+        4 => 18.0,
+        5 => 16.0,
+        _ => 15.0,
+      },
+      RichMessageBlockKind.footer => 13.0,
+      _ => 15.0,
+    };
+    if (block.text.isNotEmpty && block.kind == RichMessageBlockKind.heading) {
+      entities.add(
+        MessageTextEntity(
+          offset: 0,
+          length: block.text.length,
+          type: 'textEntityTypeBold',
+        ),
+      );
+    }
+    if (block.text.isNotEmpty && block.kind == RichMessageBlockKind.thinking) {
+      entities.add(
+        MessageTextEntity(
+          offset: 0,
+          length: block.text.length,
+          type: 'textEntityTypeItalic',
+        ),
+      );
+    }
+    if (block.text.isNotEmpty &&
+        block.kind == RichMessageBlockKind.preformatted) {
+      entities.add(
+        MessageTextEntity(
+          offset: 0,
+          length: block.text.length,
+          type: 'textEntityTypePreCode',
+          language: block.language,
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: _richTextWidgets(
+        block.text,
+        base,
+        link,
+        outgoing,
+        false,
+        entities,
+        fontSize,
+      ),
+    );
+  }
+
+  Widget _richListBlock(RichMessageBlock block, bool outgoing) {
+    final c = context.colors;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var index = 0; index < block.listItems.length; index++)
+          Padding(
+            padding: EdgeInsets.only(top: index == 0 ? 0 : 5),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 26,
+                  child: block.listItems[index].hasCheckbox
+                      ? AppIcon(
+                          block.listItems[index].isChecked
+                              ? HeroAppIcons.check
+                              : HeroAppIcons.square,
+                          size: 16,
+                          color: outgoing
+                              ? _outgoingTextColor
+                              : c.textSecondary,
+                        )
+                      : Text(
+                          _richListLabel(block.listItems[index], index),
+                          style: TextStyle(
+                            fontSize: 15,
+                            color: outgoing
+                                ? _outgoingTextColor
+                                : c.textSecondary,
+                          ),
+                        ),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: _richBlockWidgets(
+                      block.listItems[index].blocks,
+                      outgoing,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  String _richListLabel(RichMessageListItem item, int index) {
+    if (item.label.isNotEmpty) return item.label;
+    if (item.value > 0 || item.numberingType.isNotEmpty) {
+      return '${item.value > 0 ? item.value : index + 1}.';
+    }
+    return '•';
+  }
+
+  Widget _richQuoteContainer(RichMessageBlock block, bool outgoing) {
+    final c = context.colors;
+    final base = outgoing ? _outgoingTextColor : _incomingTextColor;
+    final link = outgoing ? _outgoingTextColor : c.linkBlue;
+    final body = block.kind == RichMessageBlockKind.pullQuote
+        ? _richTextWidgets(block.text, base, link, outgoing, false, [
+            ...block.textEntities,
+            if (block.text.isNotEmpty)
+              MessageTextEntity(
+                offset: 0,
+                length: block.text.length,
+                type: 'textEntityTypeItalic',
+              ),
+          ])
+        : _richBlockWidgets(block.children, outgoing);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(10, 7, 8, 7),
+      decoration: BoxDecoration(
+        color: base.withValues(alpha: 0.07),
+        border: Border(left: BorderSide(color: base, width: 3)),
+      ),
+      child: Column(
+        crossAxisAlignment: block.kind == RichMessageBlockKind.pullQuote
+            ? CrossAxisAlignment.center
+            : CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ...body,
+          if (block.caption.isNotEmpty) ...[
+            const SizedBox(height: 5),
+            ..._richTextWidgets(
+              block.caption,
+              base.withValues(alpha: 0.78),
+              link,
+              outgoing,
+              false,
+              block.captionEntities,
+              13,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _richDetailsBlock(RichMessageBlock block, bool outgoing) {
+    final c = context.colors;
+    final base = outgoing ? _outgoingTextColor : _incomingTextColor;
+    final link = outgoing ? _outgoingTextColor : c.linkBlue;
+    return _RichDetailsBlock(
+      initiallyOpen: block.isOpen,
+      color: base,
+      header: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: _richTextWidgets(
+          block.text,
+          base,
+          link,
+          outgoing,
+          false,
+          block.textEntities,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: _richBlockWidgets(block.children, outgoing),
+      ),
+    );
+  }
+
+  Widget _richMediaBlock(RichMessageBlock block, bool outgoing) {
+    return switch (block.kind) {
+      RichMessageBlockKind.photo => _richPhotoBlock(block, outgoing),
+      RichMessageBlockKind.video ||
+      RichMessageBlockKind.animation => _richVideoBlock(block, outgoing),
+      RichMessageBlockKind.audio => _richAudioBlock(block, outgoing),
+      RichMessageBlockKind.voiceNote => _richVoiceBlock(block, outgoing),
+      _ => const SizedBox.shrink(),
+    };
+  }
+
+  Widget _richPhotoBlock(RichMessageBlock block, bool outgoing) {
+    final image = block.image;
+    if (image == null) return _richMissingMedia(HeroAppIcons.image, outgoing);
+    final maxWidth = _mediaMaxWidth();
+    final size = _fitSize(
+      width: block.imageWidth,
+      height: block.imageHeight,
+      maxWidth: maxWidth,
+      maxHeight: maxWidth,
+      fallback: Size(maxWidth, maxWidth * 0.72),
+    );
+    Widget media = GestureDetector(
+      onTap: () => widget.onOpenImage?.call(_richMediaMessage(block)),
+      child: SizedBox(
+        width: size.width,
+        height: size.height,
+        child: TDImage(
+          photo: image,
+          fit: BoxFit.contain,
+          cacheWidth: _cachePx(size.width),
+          cacheHeight: _cachePx(size.height),
+          showProgress: true,
+        ),
+      ),
+    );
+    if (block.hasSpoiler) {
+      media = _RichSpoiler(color: context.colors.card, child: media);
+    }
+    return _richMediaWithCaption(media, block, outgoing);
+  }
+
+  Widget _richVideoBlock(RichMessageBlock block, bool outgoing) {
+    final maxWidth = _mediaMaxWidth();
+    final size = _fitSize(
+      width: block.imageWidth,
+      height: block.imageHeight,
+      maxWidth: maxWidth,
+      maxHeight: maxWidth,
+      fallback: Size(maxWidth, maxWidth * 0.62),
+    );
+    Widget media = GestureDetector(
+      onTap: block.video == null
+          ? null
+          : () => widget.onPlayVideo?.call(_richMediaMessage(block)),
+      child: SizedBox(
+        width: size.width,
+        height: size.height,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: block.image == null
+                  ? ColoredBox(color: context.colors.searchFill)
+                  : TDImage(
+                      photo: block.image,
+                      cacheWidth: _cachePx(size.width),
+                      cacheHeight: _cachePx(size.height),
+                      showProgress: true,
+                    ),
+            ),
+            const Center(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Color(0x99000000),
+                  shape: BoxShape.circle,
+                ),
+                child: Padding(
+                  padding: EdgeInsets.all(11),
+                  child: AppIcon(
+                    HeroAppIcons.play,
+                    size: 22,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (block.hasSpoiler) {
+      media = _RichSpoiler(color: context.colors.card, child: media);
+    }
+    return _richMediaWithCaption(media, block, outgoing);
+  }
+
+  Widget _richAudioBlock(RichMessageBlock block, bool outgoing) {
+    final music = block.music;
+    if (music == null) return _richMissingMedia(HeroAppIcons.music, outgoing);
+    final synthetic = _richMediaMessage(block);
+    final player = MusicPlayerController.shared;
+    final canPlay = music.file != null && widget.onPlayMusic != null;
+    return _richMediaWithCaption(
+      AnimatedBuilder(
+        animation: player,
+        builder: (context, _) {
+          final active = player.isActive(music.file);
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: canPlay ? () => widget.onPlayMusic!(synthetic) : null,
+            child: Container(
+              width: math.min(_mediaMaxWidth(), 300),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: context.colors.card,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: context.colors.divider, width: 0.5),
+              ),
+              child: Row(
+                children: [
+                  AppIcon(
+                    active && player.isPlaying
+                        ? HeroAppIcons.pause
+                        : HeroAppIcons.play,
+                    size: 22,
+                    color: outgoing ? _outgoingTextColor : AppTheme.brand,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          music.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: context.colors.textPrimary,
+                          ),
+                        ),
+                        if ((music.performer ?? '').trim().isNotEmpty)
+                          Text(
+                            music.performer!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: context.colors.textSecondary,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+      block,
+      outgoing,
+    );
+  }
+
+  Widget _richVoiceBlock(RichMessageBlock block, bool outgoing) {
+    final voice = block.voice;
+    if (voice == null) {
+      return _richMissingMedia(HeroAppIcons.microphone, outgoing);
+    }
+    return _richMediaWithCaption(
+      AnimatedBuilder(
+        animation: _voice,
+        builder: (context, _) {
+          final active = _voice.isActive(voice.file);
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _voice.toggleVoice(voice.file),
+            child: Container(
+              width: math.min(_mediaMaxWidth(), 250),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: context.colors.card,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: context.colors.divider, width: 0.5),
+              ),
+              child: Row(
+                children: [
+                  AppIcon(
+                    active && _voice.isPlaying
+                        ? HeroAppIcons.pause
+                        : HeroAppIcons.play,
+                    size: 22,
+                    color: outgoing ? _outgoingTextColor : AppTheme.brand,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: LinearProgressIndicator(
+                      value: active && _voice.total.inMilliseconds > 0
+                          ? (_voice.position.inMilliseconds /
+                                    _voice.total.inMilliseconds)
+                                .clamp(0, 1)
+                                .toDouble()
+                          : 0,
+                      minHeight: 3,
+                      color: outgoing ? _outgoingTextColor : AppTheme.brand,
+                      backgroundColor: context.colors.divider,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    _durationString(voice.duration),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: context.colors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+      block,
+      outgoing,
+    );
+  }
+
+  Widget _richCollageBlock(RichMessageBlock block, bool outgoing) {
+    final media = block.children
+        .where((child) => _isRichMediaKind(child.kind))
+        .toList();
+    if (media.isEmpty) return _richMissingMedia(HeroAppIcons.images, outgoing);
+    final width = _mediaMaxWidth();
+    final cellWidth = media.length == 1 ? width : (width - 4) / 2;
+    final collage = Wrap(
+      spacing: 4,
+      runSpacing: 4,
+      children: [
+        for (final child in media)
+          SizedBox(
+            width: cellWidth,
+            height: media.length == 1 ? width * 0.7 : cellWidth,
+            child: _richMediaThumbnail(child, outgoing),
+          ),
+      ],
+    );
+    return _richMediaWithCaption(collage, block, outgoing);
+  }
+
+  Widget _richSlideshowBlock(RichMessageBlock block, bool outgoing) {
+    final media = block.children
+        .where((child) => _isRichMediaKind(child.kind))
+        .toList();
+    if (media.isEmpty) {
+      return _richMissingMedia(HeroAppIcons.tableColumns, outgoing);
+    }
+    final width = _mediaMaxWidth();
+    final slideshow = SizedBox(
+      width: width,
+      height: width * 0.68,
+      child: PageView.builder(
+        itemCount: media.length,
+        itemBuilder: (_, index) => Padding(
+          padding: EdgeInsets.only(right: index == media.length - 1 ? 0 : 4),
+          child: _richMediaThumbnail(media[index], outgoing),
+        ),
+      ),
+    );
+    return _richMediaWithCaption(slideshow, block, outgoing);
+  }
+
+  bool _isRichMediaKind(RichMessageBlockKind kind) =>
+      kind == RichMessageBlockKind.photo ||
+      kind == RichMessageBlockKind.video ||
+      kind == RichMessageBlockKind.animation ||
+      kind == RichMessageBlockKind.audio ||
+      kind == RichMessageBlockKind.voiceNote;
+
+  Widget _richMediaThumbnail(RichMessageBlock block, bool outgoing) {
+    if (block.kind == RichMessageBlockKind.photo && block.image != null) {
+      return GestureDetector(
+        onTap: () => widget.onOpenImage?.call(_richMediaMessage(block)),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(7),
+          child: TDImage(photo: block.image),
+        ),
+      );
+    }
+    if ((block.kind == RichMessageBlockKind.video ||
+            block.kind == RichMessageBlockKind.animation) &&
+        block.image != null) {
+      return GestureDetector(
+        onTap: () => widget.onPlayVideo?.call(_richMediaMessage(block)),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(7),
+              child: TDImage(photo: block.image),
+            ),
+            const Center(
+              child: AppIcon(HeroAppIcons.play, size: 25, color: Colors.white),
+            ),
+          ],
+        ),
+      );
+    }
+    return Center(child: _richMediaBlock(block, outgoing));
+  }
+
+  Widget _richMediaWithCaption(
+    Widget media,
+    RichMessageBlock block,
+    bool outgoing,
+  ) {
+    if (block.caption.isEmpty) return media;
+    final c = context.colors;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        media,
+        const SizedBox(height: 5),
+        ..._richTextWidgets(
+          block.caption,
+          outgoing ? _outgoingTextColor : _incomingTextColor,
+          outgoing ? _outgoingTextColor : c.linkBlue,
+          outgoing,
+          false,
+          block.captionEntities,
+          13,
+        ),
+      ],
+    );
+  }
+
+  Widget _richMissingMedia(AppIconData icon, bool outgoing) {
+    return Container(
+      width: math.min(_mediaMaxWidth(), 250),
+      height: 72,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: context.colors.searchFill,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: AppIcon(
+        icon,
+        size: 24,
+        color: outgoing ? _outgoingTextColor : context.colors.textSecondary,
+      ),
+    );
+  }
+
+  ChatMessage _richMediaMessage(RichMessageBlock block) {
+    final contentType = switch (block.kind) {
+      RichMessageBlockKind.photo => 'messagePhoto',
+      RichMessageBlockKind.video => 'messageVideo',
+      RichMessageBlockKind.animation => 'messageAnimation',
+      RichMessageBlockKind.audio => 'messageAudio',
+      RichMessageBlockKind.voiceNote => 'messageVoiceNote',
+      _ => 'messageRichMessage',
+    };
+    return ChatMessage(
+      id: message.id,
+      chatId: message.chatId,
+      isOutgoing: message.isOutgoing,
+      text: block.caption,
+      date: message.date,
+      contentType: contentType,
+      image: block.image,
+      imageWidth: block.imageWidth,
+      imageHeight: block.imageHeight,
+      video: block.video,
+      videoDuration: block.videoDuration,
+      music: block.music,
+      voice: block.voice,
+    );
   }
 
   Widget _richMathBlock(String expression, bool outgoing) {
@@ -2886,7 +3575,7 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   String? _caption() {
-    final t = message.text;
+    final t = _activeMessageText;
     if (t.isEmpty) return null;
     if (t.startsWith('[') && t.endsWith(']')) return null;
     return t;
@@ -3355,6 +4044,112 @@ class _MessageBubbleState extends State<MessageBubble>
       default:
         return ext.length > 4 ? ext.substring(0, 4) : ext;
     }
+  }
+}
+
+class _RichDetailsBlock extends StatefulWidget {
+  const _RichDetailsBlock({
+    required this.initiallyOpen,
+    required this.color,
+    required this.header,
+    required this.child,
+  });
+
+  final bool initiallyOpen;
+  final Color color;
+  final Widget header;
+  final Widget child;
+
+  @override
+  State<_RichDetailsBlock> createState() => _RichDetailsBlockState();
+}
+
+class _RichDetailsBlockState extends State<_RichDetailsBlock> {
+  late bool _open = widget.initiallyOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: widget.color.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(color: widget.color.withValues(alpha: 0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setState(() => _open = !_open),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              child: Row(
+                children: [
+                  Expanded(child: widget.header),
+                  const SizedBox(width: 8),
+                  AppIcon(
+                    _open
+                        ? HeroAppIcons.chevronDown
+                        : HeroAppIcons.chevronRight,
+                    size: 16,
+                    color: widget.color,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_open)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 0, 10, 9),
+              child: widget.child,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RichSpoiler extends StatefulWidget {
+  const _RichSpoiler({required this.color, required this.child});
+
+  final Color color;
+  final Widget child;
+
+  @override
+  State<_RichSpoiler> createState() => _RichSpoilerState();
+}
+
+class _RichSpoilerState extends State<_RichSpoiler> {
+  bool _revealed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        widget.child,
+        if (!_revealed)
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => setState(() => _revealed = true),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: widget.color,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Center(
+                  child: AppIcon(
+                    HeroAppIcons.eye,
+                    size: 22,
+                    color: context.colors.textSecondary,
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
   }
 }
 

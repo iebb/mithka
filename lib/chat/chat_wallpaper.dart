@@ -833,7 +833,9 @@ class ChatWallpaperController extends ChangeNotifier {
     required bool dark,
     bool resolvePatterns = false,
   }) => [
-    _stockThemeOption(GlobalChatThemeStock.classic),
+    _stockThemeOption(
+      dark ? GlobalChatThemeStock.night : GlobalChatThemeStock.classic,
+    ),
     for (final theme in _emojiThemes[_activeSlot()] ?? const [])
       ?_globalEmojiThemeOption(
         theme,
@@ -864,7 +866,9 @@ class ChatWallpaperController extends ChangeNotifier {
       }
     }
     return options.firstWhere(
-      (option) => option.stock == GlobalChatThemeStock.classic,
+      (option) =>
+          option.stock ==
+          (dark ? GlobalChatThemeStock.night : GlobalChatThemeStock.classic),
     );
   }
 

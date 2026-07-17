@@ -52,8 +52,11 @@ void main() {
         ),
       );
 
-      expect(payload['@type'], 'inputRichMessageFilePhoto');
-      final photo = payload['photo']! as Map<String, dynamic>;
+      expect(payload['@type'], 'inputRichMessageMedia');
+      expect(payload['id'], 'photo-1');
+      final media = payload['media']! as Map<String, dynamic>;
+      expect(media['@type'], 'inputMessagePhoto');
+      final photo = media['photo']! as Map<String, dynamic>;
       expect(photo['width'], 1440);
       expect(photo['height'], 1920);
       expect(
@@ -64,11 +67,11 @@ void main() {
 
     test('builds every supported rich media file type', () {
       const cases = <OutgoingAttachmentKind, String>{
-        OutgoingAttachmentKind.photo: 'inputRichMessageFilePhoto',
-        OutgoingAttachmentKind.video: 'inputRichMessageFileVideo',
-        OutgoingAttachmentKind.animation: 'inputRichMessageFileAnimation',
-        OutgoingAttachmentKind.audio: 'inputRichMessageFileAudio',
-        OutgoingAttachmentKind.document: 'inputRichMessageFileDocument',
+        OutgoingAttachmentKind.photo: 'inputMessagePhoto',
+        OutgoingAttachmentKind.video: 'inputMessageVideo',
+        OutgoingAttachmentKind.animation: 'inputMessageAnimation',
+        OutgoingAttachmentKind.audio: 'inputMessageAudio',
+        OutgoingAttachmentKind.voiceNote: 'inputMessageVoiceNote',
       };
 
       for (final entry in cases.entries) {
@@ -83,9 +86,159 @@ void main() {
             ),
           ),
         );
-        expect(payload['@type'], entry.value);
+        expect(payload['@type'], 'inputRichMessageMedia');
+        expect((payload['media'] as Map)['@type'], entry.value);
         expect(payload['id'], entry.key.name);
       }
     });
+
+    test(
+      'rejects documents because Telegram rich media cannot contain them',
+      () {
+        expect(
+          () => richMessageFilePayload(
+            const RichMessageSendFile(
+              id: 'document',
+              attachment: OutgoingAttachment(
+                path: '/tmp/file.pdf',
+                kind: OutgoingAttachmentKind.document,
+              ),
+            ),
+          ),
+          throwsArgumentError,
+        );
+      },
+    );
+  });
+
+  test('builds a user rich message from explicit blocks', () {
+    final content = richMessageInputContent([
+      {
+        '@type': 'inputPageBlockParagraph',
+        'text': {'@type': 'richTextPlain', 'text': 'Hello'},
+      },
+    ]);
+
+    expect(content['@type'], 'inputMessageRichMessage');
+    final message = content['message']! as Map<String, dynamic>;
+    expect(message['@type'], 'inputRichMessage');
+    final source = message['source']! as Map<String, dynamic>;
+    expect(source['@type'], 'richMessageSourceBlocks');
+    expect(source['blocks'], hasLength(1));
+    expect(source, isNot(contains('media')));
+    expect(message, isNot(contains('files')));
+    expect(content['clear_draft'], isTrue);
+    expect(() => richMessageInputContent(const []), throwsArgumentError);
+  });
+
+  test('converts formatted entities into TDLib RichText nodes', () {
+    final richText = formattedTextToRichText('bold link @user', const [
+      {
+        '@type': 'textEntity',
+        'offset': 0,
+        'length': 4,
+        'type': {'@type': 'textEntityTypeBold'},
+      },
+      {
+        '@type': 'textEntity',
+        'offset': 5,
+        'length': 4,
+        'type': {
+          '@type': 'textEntityTypeTextUrl',
+          'url': 'https://example.com',
+        },
+      },
+      {
+        '@type': 'textEntity',
+        'offset': 10,
+        'length': 5,
+        'type': {'@type': 'textEntityTypeMention'},
+      },
+    ]);
+
+    expect(richText['@type'], 'richTexts');
+    final nodes = richText['texts']! as List;
+    expect((nodes[0] as Map)['@type'], 'richTextBold');
+    expect((nodes[2] as Map)['@type'], 'richTextUrl');
+    expect((nodes[2] as Map)['url'], 'https://example.com');
+    expect((nodes[4] as Map)['@type'], 'richTextMention');
+    expect((nodes[4] as Map)['username'], 'user');
+  });
+
+  test('preserves date-time formatting for direct and relay sends', () {
+    const entity = {
+      '@type': 'textEntity',
+      'offset': 0,
+      'length': 8,
+      'type': {
+        '@type': 'textEntityTypeDateTime',
+        'unix_time': 1647531900,
+        'formatting_type': {
+          '@type': 'dateTimeFormattingTypeAbsolute',
+          'show_day_of_week': true,
+          'date_precision': {'@type': 'dateTimePartPrecisionLong'},
+          'time_precision': {'@type': 'dateTimePartPrecisionShort'},
+        },
+      },
+    };
+
+    final richText = formattedTextToRichText('tomorrow', const [entity]);
+    expect(richText['@type'], 'richTextDateTime');
+    expect(richText['unix_time'], 1647531900);
+    expect(
+      (richText['formatting_type'] as Map)['@type'],
+      'dateTimeFormattingTypeAbsolute',
+    );
+    expect(
+      formattedTextToRichInlineHtml('tomorrow', const [entity]),
+      '<tg-time unix="1647531900" format="wDt">tomorrow</tg-time>',
+    );
+  });
+
+  test('builds every supported direct rich media block from a file id', () {
+    const cases = <OutgoingAttachmentKind, (String, String, String)>{
+      OutgoingAttachmentKind.photo: ('inputPageBlockPhoto', 'photo', 'photo'),
+      OutgoingAttachmentKind.video: ('inputPageBlockVideo', 'video', 'video'),
+      OutgoingAttachmentKind.animation: (
+        'inputPageBlockAnimation',
+        'animation',
+        'animation',
+      ),
+      OutgoingAttachmentKind.audio: ('inputPageBlockAudio', 'audio', 'audio'),
+      OutgoingAttachmentKind.voiceNote: (
+        'inputPageBlockVoiceNote',
+        'voice_note',
+        'voice_note',
+      ),
+    };
+
+    for (final entry in cases.entries) {
+      final payload = richMessageMediaBlockPayload(
+        OutgoingAttachment(
+          path: '',
+          kind: entry.key,
+          fileId: 77,
+          duration: 12,
+          title: 'Song',
+          performer: 'Artist',
+          caption: 'Caption',
+        ),
+      );
+      expect(payload['@type'], entry.value.$1);
+      final typedMedia = payload[entry.value.$2]! as Map<String, dynamic>;
+      final inputFile = typedMedia[entry.value.$3]! as Map<String, dynamic>;
+      expect(inputFile, {'@type': 'inputFileId', 'id': 77});
+      expect((payload['caption'] as Map)['@type'], 'pageBlockCaption');
+    }
+
+    expect(
+      () => richMessageMediaBlockPayload(
+        const OutgoingAttachment(
+          path: '/tmp/file.pdf',
+          kind: OutgoingAttachmentKind.document,
+        ),
+      ),
+      throwsArgumentError,
+    );
   });
 }
