@@ -1046,20 +1046,22 @@ class _LoginViewState extends State<LoginView> {
           borderRadius: BorderRadius.circular(25),
         ),
         child: auth.isWorking
-            ? SizedBox(
+            ? const SizedBox(
                 width: 22,
                 height: 22,
                 child: CircularProgressIndicator(
                   strokeWidth: 2.4,
-                  valueColor: AlwaysStoppedAnimation(AppTheme.onBrand),
+                  valueColor: AlwaysStoppedAnimation(
+                    Color(0xFFFFFFFF),
+                  ),
                 ),
               )
             : Text(
                 title,
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.w600,
-                  color: AppTheme.onBrand,
+                  color: Color(0xFFFFFFFF),
                 ),
               ),
       ),

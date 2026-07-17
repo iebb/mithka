@@ -420,8 +420,8 @@ class SettingsCard extends StatelessWidget {
 }
 
 /// Colored settings glyph tile used by the main settings list and nested
-/// settings menus. QQ/iOS-style colored tiles always use a white glyph,
-/// including on yellow and other light backgrounds.
+/// settings menus. The 28 px tile has a 7 px radius and a centered 15 px white
+/// glyph, including on yellow and other light backgrounds.
 class SettingsIconTile extends StatelessWidget {
   const SettingsIconTile({
     super.key,

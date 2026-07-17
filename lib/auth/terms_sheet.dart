@@ -208,12 +208,14 @@ class _TermsAcceptButtonState extends State<_TermsAcceptButton> {
           onTap: _working ? null : _submit,
           child: Center(
             child: _working
-                ? SizedBox(
+                ? const SizedBox(
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(
                       strokeWidth: 2.2,
-                      valueColor: AlwaysStoppedAnimation(AppTheme.onBrand),
+                      valueColor: AlwaysStoppedAnimation(
+                        Color(0xFFFFFFFF),
+                      ),
                     ),
                   )
                 : Text(
@@ -222,8 +224,8 @@ class _TermsAcceptButtonState extends State<_TermsAcceptButton> {
                     // This app-owned action uses our plain localized label so
                     // those markers are never rendered literally.
                     AppStrings.tLocal(AppStringKeys.loginTermsAccept),
-                    style: TextStyle(
-                      color: AppTheme.onBrand,
+                    style: const TextStyle(
+                      color: Color(0xFFFFFFFF),
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
                     ),

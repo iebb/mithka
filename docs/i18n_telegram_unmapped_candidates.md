@@ -6,29 +6,6 @@ Generated for the Telegram language-pack migration. Mapped strings use Telegram 
 - Mapped to Telegram keys: 601
 - Unmapped app strings: 388
 
-## Custom Chinese Telegram Pack Overrides
-
-The `zhhanscn-qq` Telegram language pack keeps standard Telegram concepts on
-the upstream keys and overrides only context-safe familiar Chinese wording.
-The Android pack currently contains 108 deliberate overrides. A fresh export
-from `translations.telegram.org` was compared with the official `zh-hans` pack
-after publishing, and all 108 values matched the intended glossary.
-
-The overrides cover these groups:
-
-| Area | Representative Telegram keys | Familiar Chinese examples |
-| --- | --- | --- |
-| Pinning and group tasks | `PinMessage`, `UnpinMessage`, `PinnedMessages`, `MessagePinnedHint` | 群待办、取消群待办 |
-| Chats, groups, and folders | `SearchAllChatsShort`, `NewGroup`, `JoinGroup`, `LeaveMegaMenu`, `SettingsFolders` | 消息、创建群聊、退出群聊、聊天分组 |
-| Contacts and profile | `AddContactChat`, `BlockedUsers`, `UserBio`, `EditName`, `ProfileActionsEditUsername` | 加好友、黑名单、个性签名、修改名字 |
-| Calls | `VoipCamera`, `VoipEndCall`, `VoipSpeaker`, `Call` | 摄像头、挂断、免提、语音通话 |
-| Media and playback | `AttachSticker`, `ProfilePlaylistTitleMine`, `ShuffleList`, `VideoPlayerSpeed` | 表情包、列表、随机播放、播放速度 |
-| Privacy and devices | `PrivacySettings`, `CurrentSession`, `Devices`, `OtherSessions`, `TerminateAllSessions` | 隐私与安全、当前设备、已登录设备、其他设备 |
-| Composer and permissions | `Todo`, `TodoTitle`, `SendMediaPermissionPhotos`, `HideCaption`, `ShareComment` | 清单、新建清单、发送图片、移除说明 |
-| Formatting | `Bold`, `Code`, `Spoiler` | 加粗、代码、剧透 |
-| General UI | `ClearCache`, `StorageUsage`, `MarkAsUnread`, `FilterNoChats`, `NoReplies`, `NoTopics` | 清除缓存、存储空间、标为未读、还没有聊天、暂无回复 |
-| Membership | `TelegramPremiumShort` | VIP |
-
 ## Unmapped Strings
 
 | Mithka key | English text | Similar Telegram concept candidates |

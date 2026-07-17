@@ -14,7 +14,6 @@ import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
-import '../l10n/telegram_language_controller.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
@@ -113,14 +112,6 @@ class ChatRowView extends StatelessWidget {
                 chat.draftText.trim().isNotEmpty
                     ? ChatPreviewText(message: chat.draftText, draft: true)
                     : ChatPreviewText(
-                        alertPrefix:
-                            chat.unreadMentionCount > 0 &&
-                                TelegramLanguageController
-                                        .shared
-                                        .activePackId ==
-                                    'zhhanscn-qq'
-                            ? AppStringKeys.commonUiMentionedBySomeoneBadge
-                            : null,
                         sender: chat.lastSender,
                         message: chat.lastMessage,
                       ),

@@ -784,7 +784,7 @@ class _MusicPlayerBarContents extends StatelessWidget {
               : AppStrings.t(AppStringKeys.musicPlayerPlay),
           onTap: controller.toggleCurrent,
           child: controller.isLoading
-              ? _QqSpinner(size: 18, color: c.textSecondary)
+              ? _ArcSpinner(size: 18, color: c.textSecondary)
               : AppIcon(
                   controller.isPlaying ? HeroAppIcons.pause : HeroAppIcons.play,
                   size: 20,
@@ -913,17 +913,17 @@ class _MusicProgress extends StatelessWidget {
   }
 }
 
-class _QqSpinner extends StatefulWidget {
-  const _QqSpinner({required this.size, required this.color});
+class _ArcSpinner extends StatefulWidget {
+  const _ArcSpinner({required this.size, required this.color});
 
   final double size;
   final Color color;
 
   @override
-  State<_QqSpinner> createState() => _QqSpinnerState();
+  State<_ArcSpinner> createState() => _ArcSpinnerState();
 }
 
-class _QqSpinnerState extends State<_QqSpinner>
+class _ArcSpinnerState extends State<_ArcSpinner>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
@@ -942,14 +942,14 @@ class _QqSpinnerState extends State<_QqSpinner>
       turns: _controller,
       child: CustomPaint(
         size: Size.square(widget.size),
-        painter: _QqSpinnerPainter(color: widget.color),
+        painter: _ArcSpinnerPainter(color: widget.color),
       ),
     );
   }
 }
 
-class _QqSpinnerPainter extends CustomPainter {
-  const _QqSpinnerPainter({required this.color});
+class _ArcSpinnerPainter extends CustomPainter {
+  const _ArcSpinnerPainter({required this.color});
 
   final Color color;
 
@@ -977,7 +977,7 @@ class _QqSpinnerPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_QqSpinnerPainter oldDelegate) =>
+  bool shouldRepaint(_ArcSpinnerPainter oldDelegate) =>
       oldDelegate.color != color;
 }
 
@@ -1010,7 +1010,7 @@ class _MiniButton extends StatelessWidget {
   }
 }
 
-Future<T?> _showQqMusicSheet<T>(
+Future<T?> _showMusicBottomSheet<T>(
   BuildContext context, {
   required WidgetBuilder builder,
 }) {
@@ -1047,7 +1047,7 @@ Future<T?> _showQqMusicSheet<T>(
   );
 }
 
-Route<T> _qqPageRoute<T>({required WidgetBuilder builder}) {
+Route<T> _musicPageRoute<T>({required WidgetBuilder builder}) {
   return PageRouteBuilder<T>(
     transitionDuration: const Duration(milliseconds: 220),
     reverseTransitionDuration: const Duration(milliseconds: 180),
@@ -1075,7 +1075,7 @@ Route<T> _qqPageRoute<T>({required WidgetBuilder builder}) {
 void _showMusicQueue(BuildContext context, MusicPlayerController controller) {
   final navigatorContext = appNavigatorKey.currentContext;
   if (navigatorContext == null) return;
-  _showQqMusicSheet<void>(
+  _showMusicBottomSheet<void>(
     navigatorContext,
     builder: (sheetContext) => StatefulBuilder(
       builder: (sheetContext, setSheetState) {
@@ -1223,7 +1223,7 @@ Future<void> showMusicPlaylists(
     return;
   }
   if (!rootContext.mounted) return;
-  await _showQqMusicSheet<void>(
+  await _showMusicBottomSheet<void>(
     rootContext,
     builder: (sheetContext) =>
         _MusicPlaylistsSheet(controller: controller, addMessage: addMessage),
@@ -1271,7 +1271,7 @@ Future<void> showPlayedMusicChatTracks(
     return;
   }
   if (!context.mounted) return;
-  await _showQqMusicSheet<void>(
+  await _showMusicBottomSheet<void>(
     context,
     builder: (_) => _PlayedChatTracksSheet(
       source: source,
@@ -1634,13 +1634,13 @@ class _CreatePlaylistDialogState extends State<_CreatePlaylistDialog> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  _QqDialogAction(
+                  _DialogActionButton(
                     label: AppStrings.t(AppStringKeys.countryPickerCancel),
                     color: c.textSecondary,
                     onTap: () => Navigator.of(context).pop(),
                   ),
                   const SizedBox(width: 8),
-                  _QqDialogAction(
+                  _DialogActionButton(
                     label: AppStrings.t(
                       AppStringKeys.musicPlayerCreatePlaylist,
                     ),
@@ -1659,8 +1659,8 @@ class _CreatePlaylistDialogState extends State<_CreatePlaylistDialog> {
   }
 }
 
-class _QqDialogAction extends StatelessWidget {
-  const _QqDialogAction({
+class _DialogActionButton extends StatelessWidget {
+  const _DialogActionButton({
     required this.label,
     required this.color,
     required this.onTap,
@@ -1735,7 +1735,7 @@ Future<void> _showPlaylistTracks(
   MusicPlaylist playlist,
   MusicPlayerController controller,
 ) async {
-  await _showQqMusicSheet<void>(
+  await _showMusicBottomSheet<void>(
     context,
     builder: (trackContext) => _PlaylistTracksSheet(
       playlistChatId: playlist.chatId,
@@ -2121,7 +2121,7 @@ void _openOriginal(ChatMessage message) {
   final chatId = message.chatId;
   if (chatId == null || chatId == 0 || message.id == 0) return;
   appNavigatorKey.currentState?.push(
-    _qqPageRoute(
+    _musicPageRoute(
       builder: (_) => ChatView(
         chatId: chatId,
         title: message.senderName ?? '',

@@ -10,9 +10,9 @@ import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import 'chat_first_contact_info.dart';
 
-/// Compact QQ-style identity card shown inline above an unaccepted private
-/// conversation. Unlike Telegram's modal-looking notice, it remains part of
-/// the transcript and never blocks reading or replying.
+/// Inline identity card for an unaccepted private conversation. The card uses
+/// a 22 px radius, a subtle brand-tinted gradient and border, and an 18 px soft
+/// shadow. It stays in the transcript and never blocks reading or replying.
 class ChatFirstContactCard extends StatelessWidget {
   const ChatFirstContactCard({
     super.key,

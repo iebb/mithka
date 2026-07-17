@@ -105,7 +105,8 @@ class TelegramLanguageController extends ChangeNotifier {
   }
 
   static final shared = TelegramLanguageController._();
-  static const _selectedPackKey = 'telegram.language_pack_id';
+  static const _selectedPackKey = 'telegram.language_pack_id.v2';
+  static const _previousSelectedPackKey = 'telegram.language_pack_id';
   static const _targetOption = 'localization_target';
   static const _packOption = 'language_pack_id';
   static const _queryTimeout = Duration(seconds: 20);
@@ -140,17 +141,9 @@ class TelegramLanguageController extends ChangeNotifier {
     _initialized = true;
     _prefs = prefs;
     AppStrings.telegramStringResolver = resolveMappedText;
+    await prefs.remove(_previousSelectedPackKey);
     final stored = prefs.getString(_selectedPackKey)?.trim();
-    if (_legacyPackMigrations.containsKey(stored)) {
-      _selectedPackId = _legacyPackMigrations[stored];
-      if (_selectedPackId == null) {
-        await prefs.remove(_selectedPackKey);
-      } else {
-        await prefs.setString(_selectedPackKey, _selectedPackId!);
-      }
-    } else {
-      _selectedPackId = stored == null || stored.isEmpty ? null : stored;
-    }
+    _selectedPackId = stored == null || stored.isEmpty ? null : stored;
     _languageUpdates ??= TdClient.shared.subscribe().listen(_handleTdUpdate);
     await refresh();
   }
@@ -228,12 +221,7 @@ class TelegramLanguageController extends ChangeNotifier {
     Map<String, Object?> placeholders,
   ) {
     final telegramKey = _telegramKeyForAppKey[appFallbackKey];
-    final familiarOverride = _activePackId == 'zhhanscn-qq'
-        ? _familiarGlossaryOverrides[appFallbackKey]
-        : null;
-    final template =
-        familiarOverride ??
-        (telegramKey == null ? null : _strings[telegramKey]);
+    final template = telegramKey == null ? null : _strings[telegramKey];
     if (template == null || template.trim().isEmpty) return null;
     final result = _interpolate(template, placeholders);
     return _hasUnresolvedPlaceholder(result) ? null : result;
@@ -286,7 +274,7 @@ class TelegramLanguageController extends ChangeNotifier {
   }
 
   Future<void> _loadAvailablePacks() async {
-    _packs = _knownRemotePacks;
+    _packs = const [];
     final response = await _query({
       '@type': 'getLocalizationTargetInfo',
       'only_local': false,
@@ -298,7 +286,7 @@ class TelegramLanguageController extends ChangeNotifier {
             .toList() ??
         <TelegramLanguagePackOption>[];
     if (packs.isEmpty) {
-      _packs = _knownRemotePacks;
+      _packs = const [];
       return;
     }
     packs.sort((a, b) {
@@ -306,11 +294,7 @@ class TelegramLanguageController extends ChangeNotifier {
       if (official != 0) return official;
       return a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase());
     });
-    final knownIds = _knownRemotePacks.map((pack) => pack.id).toSet();
-    _packs = [
-      ..._knownRemotePacks,
-      ...packs.where((pack) => !knownIds.contains(pack.id)),
-    ];
+    _packs = packs;
   }
 
   Future<void> _applyPack(String packId) async {
@@ -508,30 +492,6 @@ extension _FirstOrNull<T> on Iterable<T> {
     return iterator.current;
   }
 }
-
-const _knownRemotePacks = <TelegramLanguagePackOption>[
-  TelegramLanguagePackOption(
-    id: 'zhhanscn-qq',
-    baseLanguagePackId: 'zh-hans',
-    name: 'Familiar Chinese Glossary',
-    nativeName: '简体中文（熟悉术语）',
-    pluralCode: 'zh',
-    isOfficial: false,
-    isRtl: false,
-    isBeta: false,
-    isInstalled: true,
-  ),
-];
-
-const _legacyPackMigrations = <String?, String?>{
-  'mithka-zh-hans-glossary': 'zhhanscn-qq',
-  'mithka-zh-hant-glossary': null,
-};
-
-const _familiarGlossaryOverrides = <String, String>{
-  AppStringKeys.archivedChatsGroupAssistant: '群助手',
-  AppStringKeys.appearanceArchivedChats: '群助手',
-};
 
 const _telegramKeyForAppKey = <String, String>{
   AppStringKeys.aboutTelegramChannel: 'Channel',
