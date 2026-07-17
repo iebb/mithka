@@ -10,6 +10,7 @@ import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
+import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
 import 'chat_view.dart';
@@ -49,6 +50,8 @@ class _SavedMessagesViewState extends State<SavedMessagesView> {
   int _messageGeneration = 0;
   bool _loadingTopics = false;
   bool _topicsExhausted = false;
+  String _meName = '';
+  TdFileRef? _mePhoto;
 
   @override
   void initState() {
@@ -57,6 +60,7 @@ class _SavedMessagesViewState extends State<SavedMessagesView> {
     if (widget.service == null) {
       _updates = TdClient.shared.subscribe().listen(_handleUpdate);
     }
+    unawaited(_loadMe());
     unawaited(_loadTags());
     unawaited(_resetMessages());
     unawaited(_loadMoreTopics());
@@ -95,7 +99,20 @@ class _SavedMessagesViewState extends State<SavedMessagesView> {
         final message = update.obj('message');
         if (message == null) return;
         unawaited(_refreshIfSavedMessage(message));
+      case 'updateUser':
+        unawaited(_loadMe());
     }
+  }
+
+  Future<void> _loadMe() async {
+    try {
+      final me = await _service.currentUser();
+      if (!mounted) return;
+      setState(() {
+        _meName = TDParse.userName(me);
+        _mePhoto = TDParse.smallPhoto(me.obj('profile_photo'));
+      });
+    } catch (_) {}
   }
 
   Future<void> _refreshIfSavedMessage(Map<String, dynamic> message) async {
@@ -679,8 +696,11 @@ class _SavedMessagesViewState extends State<SavedMessagesView> {
             ),
           MessageBubble(
             message: message,
-            peerTitle: AppStringKeys.savedMessages,
+            peerTitle: _meName.isEmpty ? AppStringKeys.savedMessages : _meName,
+            peerPhoto: _mePhoto,
             isGroup: false,
+            meName: _meName.isEmpty ? AppStringKeys.chatMeLabel : _meName,
+            mePhoto: _mePhoto,
             forceShowTimestamp: true,
           ),
         ],

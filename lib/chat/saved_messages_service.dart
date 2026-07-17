@@ -129,6 +129,8 @@ class SavedMessagesService {
   final SavedMessagesQuery _query;
   int? _savedChatId;
 
+  Future<Map<String, dynamic>> currentUser() => _query({'@type': 'getMe'});
+
   Future<int> savedChatId() async {
     final cached = _savedChatId;
     if (cached != null) return cached;

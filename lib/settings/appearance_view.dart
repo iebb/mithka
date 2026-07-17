@@ -531,10 +531,10 @@ class DisplaySettingsView extends StatelessWidget {
                     context,
                     HeroAppIcons.thumbtack.data,
                     AppStrings.t(
-                      AppStringKeys.appearanceDisplayOwnChatAsFavorites,
+                      AppStringKeys.appearanceSavedMessagesBookmarkView,
                     ),
-                    theme.displayOwnChatAsFavorites,
-                    (v) => theme.displayOwnChatAsFavorites = v,
+                    theme.savedMessagesBookmarkView,
+                    (v) => theme.savedMessagesBookmarkView = v,
                   ),
                   _toggleRow(
                     context,

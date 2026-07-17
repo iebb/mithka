@@ -54,6 +54,7 @@ import '../theme/theme_controller.dart';
 import 'channel_direct_messages_view.dart';
 import 'chat_picker_view.dart';
 import 'chat_view.dart';
+import 'saved_messages_service.dart';
 import 'saved_messages_view.dart';
 import 'sticker_set_detail_view.dart';
 import 'telegram_ai_service.dart';
@@ -144,7 +145,7 @@ Future<void> openLink(BuildContext context, String url) async {
       case 'internalLinkTypeMessageDraft':
         if (context.mounted) await _shareDraft(context, nav, type);
       case 'internalLinkTypeSavedMessages':
-        await _openSavedMessages(nav);
+        if (context.mounted) await _openSavedMessages(context, nav);
       case 'internalLinkTypeStickerSet':
         await _openStickerSet(nav, type.str('sticker_set_name') ?? '');
       case 'internalLinkTypeSearch':
@@ -886,10 +887,27 @@ Future<void> _setChatDraft(
   );
 }
 
-Future<void> _openSavedMessages(NavigatorState nav) async {
+Future<void> _openSavedMessages(
+  BuildContext context,
+  NavigatorState nav,
+) async {
   if (!nav.mounted) return;
+  final bookmarkView = context
+      .read<ThemeController>()
+      .savedMessagesBookmarkView;
+  final Widget destination;
+  if (bookmarkView) {
+    destination = const SavedMessagesView();
+  } else {
+    final chatId = await SavedMessagesService().savedChatId();
+    if (!nav.mounted) return;
+    destination = ChatView(
+      chatId: chatId,
+      title: AppStrings.t(AppStringKeys.savedMessages),
+    );
+  }
   unawaited(
-    nav.push(MaterialPageRoute(builder: (_) => const SavedMessagesView())),
+    nav.push(PageRouteBuilder<void>(pageBuilder: (_, _, _) => destination)),
   );
 }
 

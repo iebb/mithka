@@ -273,8 +273,8 @@ abstract final class AppStringKeys {
   static const appearanceDisableChatListSwipeActions =
       'appearanceDisableChatListSwipeActions';
   static const appearanceDisplay = 'appearanceDisplay';
-  static const appearanceDisplayOwnChatAsFavorites =
-      'appearanceDisplayOwnChatAsFavorites';
+  static const appearanceSavedMessagesBookmarkView =
+      'appearanceSavedMessagesBookmarkView';
   static const appearanceGestures = 'appearanceGestures';
   static const appearanceDownloadFailed = 'appearanceDownloadFailed';
   static const appearanceEmojiFont = 'appearanceEmojiFont';

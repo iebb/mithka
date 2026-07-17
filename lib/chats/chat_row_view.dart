@@ -47,16 +47,17 @@ class ChatRowView extends StatelessWidget {
     final c = context.colors;
     final theme = context.watch<ThemeController>();
     final rowHeight = theme.rowHeight;
-    final asFavorites = chat.isSavedMessages && theme.displayOwnChatAsFavorites;
+    final bookmarkView =
+        chat.isSavedMessages && theme.savedMessagesBookmarkView;
     final premiumNameColor =
-        theme.showPremiumNameColors && chat.peerIsPremium && !asFavorites
+        theme.showPremiumNameColors && chat.peerIsPremium && !bookmarkView
         ? _accentColor(chat.peerAccentColorId)
         : c.textPrimary;
     final showPremiumStatus =
         theme.showPremiumEmojiStatus &&
         chat.peerIsPremium &&
         chat.peerEmojiStatusId != 0 &&
-        !asFavorites;
+        !bookmarkView;
     return Container(
       height: rowHeight,
       color: selected
@@ -84,14 +85,14 @@ class ChatRowView extends StatelessWidget {
                     ],
                     Flexible(
                       child: Text(
-                        asFavorites
+                        bookmarkView
                             ? AppStringKeys.savedMessages.l10n(context)
                             : chat.title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: AppTextSize.body,
-                          fontWeight: chat.peerIsPremium && !asFavorites
+                          fontWeight: chat.peerIsPremium && !bookmarkView
                               ? FontWeight.w600
                               : FontWeight.w500,
                           color: premiumNameColor,
@@ -136,14 +137,15 @@ class ChatRowView extends StatelessWidget {
     final theme = context.watch<ThemeController>();
     final circleGroups = theme.circularGroupAvatars;
     final avatarSize = theme.avatarSize;
-    final asFavorites = chat.isSavedMessages && theme.displayOwnChatAsFavorites;
+    final bookmarkView =
+        chat.isSavedMessages && theme.savedMessagesBookmarkView;
     return SizedBox(
       width: avatarSize,
       height: avatarSize,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          asFavorites
+          bookmarkView
               ? Container(
                   width: avatarSize,
                   height: avatarSize,

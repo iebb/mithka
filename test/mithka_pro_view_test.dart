@@ -67,6 +67,37 @@ void main() {
     expect(gateway.managedProductId, mithkaProYearlyProductId);
   });
 
+  testWidgets('Pro header owns the system inset like other settings pages', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final service = MithkaProService(gateway: _ViewGateway());
+    await service.initialize();
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<ThemeController>(
+        create: (_) => ThemeController(prefs),
+        child: MaterialApp(
+          theme: ThemeData(extensions: [AppColors.light]),
+          home: MediaQuery(
+            data: const MediaQueryData(
+              size: Size(390, 844),
+              padding: EdgeInsets.only(top: 44, bottom: 34),
+            ),
+            child: MithkaProView(service: service),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final header = find.byType(NavHeader);
+    final list = find.byType(ListView);
+    expect(tester.getTopLeft(header).dy, 0);
+    expect(tester.getTopLeft(list).dy, tester.getBottomLeft(header).dy);
+  });
+
   test('new Pro and login surfaces avoid stock platform controls and icons', () {
     final files = [
       File('lib/pro/mithka_pro_view.dart'),
@@ -85,6 +116,7 @@ void main() {
     expect(builtInIcon.allMatches(proSource), isEmpty);
     expect(proSource, isNot(contains('package:flutter/material.dart')));
     expect(proSource, isNot(contains('package:flutter/cupertino.dart')));
+    expect(proSource, isNot(contains('SafeArea(')));
 
     final backupSource = files[3].readAsStringSync();
     expect(forbidden.allMatches(backupSource), isEmpty);

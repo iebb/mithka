@@ -949,8 +949,16 @@ class ThemeController extends ChangeNotifier {
       (behavior) => behavior.name == storedThreeFingerBehavior,
       orElse: () => ThreeFingerSwipeBehavior.switchFolders,
     );
-    _displayOwnChatAsFavorites =
-        _prefs.getBool(_displayOwnChatAsFavoritesKey) ?? false;
+    final storedSavedMessagesBookmarkView = _prefs.getBool(
+      _savedMessagesBookmarkViewKey,
+    );
+    _savedMessagesBookmarkView =
+        storedSavedMessagesBookmarkView ??
+        _prefs.getBool(_legacyDisplayOwnChatAsFavoritesKey) ??
+        false;
+    if (storedSavedMessagesBookmarkView == null) {
+      _prefs.setBool(_savedMessagesBookmarkViewKey, _savedMessagesBookmarkView);
+    }
     _hideSidebarPhone = _prefs.getBool(_hideSidebarPhoneKey) ?? false;
     _showMemberTags = _prefs.getBool(_memberTagsKey) ?? false;
     _showPlainMemberRoleTags = _prefs.getBool(_plainMemberRoleTagsKey) ?? false;
@@ -1040,7 +1048,9 @@ class ThemeController extends ChangeNotifier {
   static const _chatListSwipeBehaviorKey = 'chatListSwipeBehavior';
   static const _chatListHoldSwipeActionsKey = 'chatListHoldSwipeActions';
   static const _threeFingerSwipeBehaviorKey = 'threeFingerSwipeBehavior';
-  static const _displayOwnChatAsFavoritesKey = 'displayOwnChatAsFavorites';
+  static const _savedMessagesBookmarkViewKey = 'savedMessagesBookmarkView';
+  static const _legacyDisplayOwnChatAsFavoritesKey =
+      'displayOwnChatAsFavorites';
   static const _hideSidebarPhoneKey = 'hideSidebarPhone';
   static const _memberTagsKey = 'showMemberTags';
   static const _plainMemberRoleTagsKey = 'showPlainMemberRoleTags';
@@ -1096,7 +1106,7 @@ class ThemeController extends ChangeNotifier {
   late ChatListSwipeBehavior _chatListSwipeBehavior;
   bool _chatListHoldSwipeActions = false;
   late ThreeFingerSwipeBehavior _threeFingerSwipeBehavior;
-  bool _displayOwnChatAsFavorites = false;
+  bool _savedMessagesBookmarkView = false;
   bool _hideSidebarPhone = false;
   bool _showMemberTags = false;
   bool _showPlainMemberRoleTags = false;
@@ -1264,7 +1274,7 @@ class ThemeController extends ChangeNotifier {
       _chatListSwipeBehavior == ChatListSwipeBehavior.switchFolders;
   bool get chatListFolderSwipeSwitching =>
       _chatListSwipeBehavior == ChatListSwipeBehavior.switchFolders;
-  bool get displayOwnChatAsFavorites => _displayOwnChatAsFavorites;
+  bool get savedMessagesBookmarkView => _savedMessagesBookmarkView;
   bool get hideSidebarPhone => _hideSidebarPhone;
   bool get showMemberTags => _showMemberTags;
   bool get showPlainMemberRoleTags => _showPlainMemberRoleTags;
@@ -1708,9 +1718,10 @@ class ThemeController extends ChangeNotifier {
     notifyListeners();
   }
 
-  set displayOwnChatAsFavorites(bool value) {
-    _displayOwnChatAsFavorites = value;
-    _prefs.setBool(_displayOwnChatAsFavoritesKey, value);
+  set savedMessagesBookmarkView(bool value) {
+    if (_savedMessagesBookmarkView == value) return;
+    _savedMessagesBookmarkView = value;
+    _prefs.setBool(_savedMessagesBookmarkViewKey, value);
     notifyListeners();
   }
 

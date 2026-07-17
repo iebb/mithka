@@ -143,7 +143,7 @@ const enMessages = <String, String>{
   'appearanceColor': "Color",
   'appearanceDisableChatListSwipeActions': "Disable swipe actions",
   'appearanceDisplay': "Display",
-  'appearanceDisplayOwnChatAsFavorites': "Saved Messages shortcut",
+  'appearanceSavedMessagesBookmarkView': "Saved Messages bookmark view",
   'appearanceGestures': "Gestures",
   'gesturesChatActions': "Chat actions",
   'gesturesChatListSwipe': "Chat list swipe",

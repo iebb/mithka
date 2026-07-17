@@ -26,6 +26,21 @@ Map<String, dynamic> _message({
 };
 
 void main() {
+  test('current user lookup is available for bookmark avatars', () async {
+    late Map<String, dynamic> request;
+    final service = SavedMessagesService(
+      query: (value) async {
+        request = value;
+        return {'@type': 'user', 'id': 9, 'first_name': 'Natu'};
+      },
+    );
+
+    final user = await service.currentUser();
+
+    expect(request, {'@type': 'getMe'});
+    expect(user['id'], 9);
+  });
+
   test('all-messages history resolves the Saved Messages chat', () async {
     final requests = <Map<String, dynamic>>[];
     final service = SavedMessagesService(

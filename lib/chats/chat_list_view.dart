@@ -276,8 +276,22 @@ class _ChatListViewState extends State<ChatListView>
       return;
     }
     if (chat.isSavedMessages) {
+      final bookmarkView = context
+          .read<ThemeController>()
+          .savedMessagesBookmarkView;
       unawaited(
-        pushAppChatRoute(context, _chatEntryRoute(const SavedMessagesView())),
+        pushAppChatRoute(
+          context,
+          _chatEntryRoute(
+            bookmarkView
+                ? const SavedMessagesView()
+                : ChatView(
+                    chatId: chat.id,
+                    title: AppStrings.t(AppStringKeys.savedMessages),
+                    seedMessage: chat.lastChatMessage,
+                  ),
+          ),
+        ),
       );
       return;
     }

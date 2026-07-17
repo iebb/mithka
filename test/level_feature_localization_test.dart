@@ -19,7 +19,17 @@ void main() {
       AppStrings.tForLocale('zhHans', AppStringKeys.profilePhotoSetAsAvatar),
       '设为头像',
     );
-    expect(AppStrings.tForLocale('zhHans', AppStringKeys.savedMessages), '收藏夹');
+    expect(
+      AppStrings.tForLocale('zhHans', AppStringKeys.savedMessages),
+      '保存的消息',
+    );
+    expect(
+      AppStrings.tForLocale(
+        'zhHans',
+        AppStringKeys.appearanceSavedMessagesBookmarkView,
+      ),
+      '保存的消息书签视图',
+    );
   });
 
   test('gallery and TGS actions have native Traditional Chinese wording', () {
@@ -39,5 +49,26 @@ void main() {
       AppStrings.tForLocale('zhHant', AppStringKeys.profilePhotoSetAsAvatar),
       '設為頭像',
     );
+  });
+
+  test('call history is localized in every non-English locale', () {
+    const locales = ['de', 'es', 'fr', 'ja', 'ko', 'zhHans', 'zhHant'];
+    for (final locale in locales) {
+      expect(
+        AppStrings.tForLocale(locale, AppStringKeys.callsTitle),
+        isNot('Calls'),
+        reason: locale,
+      );
+      expect(
+        AppStrings.tForLocale(locale, AppStringKeys.callsLoadFailed),
+        isNot('Couldn’t load call history'),
+        reason: locale,
+      );
+      expect(
+        AppStrings.tForLocale(locale, AppStringKeys.callsRetry),
+        isNot('Try again'),
+        reason: locale,
+      );
+    }
   });
 }
