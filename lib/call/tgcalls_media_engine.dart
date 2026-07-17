@@ -1,9 +1,9 @@
 //
 //  tgcalls_media_engine.dart
 //
-//  Android media engine backed by ntgcalls (via the native CallMediaPlugin). It
-//  marshals the TDLib `callStateReady` payload over a MethodChannel and runs the
-//  signaling loop over an EventChannel:
+//  Native Telegram media engine backed by ntgcalls on Android and
+//  TgVoipWebrtc on iOS. It marshals the TDLib `callStateReady` payload over a
+//  MethodChannel and runs the signaling loop over an EventChannel:
 //    • outbound: ntgcalls emits signaling bytes → 'signaling' event → onSignalingData
 //      → CallManager relays via TDLib sendCallSignalingData;
 //    • inbound: TDLib updateNewCallSignalingData → receiveSignaling() → ntgcalls.
@@ -52,6 +52,9 @@ class TgcallsMediaEngine implements CallMediaEngine {
             'p2pAllowed': config.allowP2p,
             'encryptionKey': config.encryptionKey,
             'libraryVersions': config.libraryVersions,
+            'maxLayer': config.maxLayer,
+            'serverConfig': config.config,
+            'customParameters': config.customParameters,
             'servers': config.servers
                 .map(_normalizeServer)
                 .whereType<Map<String, dynamic>>()
@@ -103,7 +106,7 @@ class TgcallsMediaEngine implements CallMediaEngine {
     }
   }
 
-  /// TDLib `callServer` → the flat shape CallMediaPlugin turns into an RTCServer.
+  /// TDLib `callServer` → the flat shape the native bridges turn into relays.
   /// TDLib JSON encodes int64 (`id`) as a string and bytes (`peer_tag`) as base64.
   static Map<String, dynamic>? _normalizeServer(Map<String, dynamic> s) {
     final rawId = s['id'];

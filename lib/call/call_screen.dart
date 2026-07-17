@@ -32,58 +32,180 @@ class CallScreen extends StatefulWidget {
 
 class _CallScreenState extends State<CallScreen> {
   Timer? _ticker;
+  Timer? _overlayTimer;
+  bool _videoWasActive = false;
+  bool _overlayVisible = true;
+
+  bool get _isActiveVideo {
+    final call = widget.manager.call;
+    return call != null &&
+        call.phase == CallPhase.active &&
+        widget.manager.isVideoEnabled;
+  }
 
   @override
   void initState() {
     super.initState();
+    widget.manager.addListener(_handleManagerChanged);
+    _videoWasActive = _isActiveVideo;
+    if (_videoWasActive) _scheduleOverlayHide();
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
     });
   }
 
   @override
+  void didUpdateWidget(covariant CallScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.manager == widget.manager) return;
+    oldWidget.manager.removeListener(_handleManagerChanged);
+    widget.manager.addListener(_handleManagerChanged);
+    _videoWasActive = _isActiveVideo;
+    _overlayVisible = true;
+    _overlayTimer?.cancel();
+    if (_videoWasActive) _scheduleOverlayHide();
+  }
+
+  @override
   void dispose() {
+    widget.manager.removeListener(_handleManagerChanged);
     _ticker?.cancel();
+    _overlayTimer?.cancel();
     super.dispose();
+  }
+
+  void _handleManagerChanged() {
+    final activeVideo = _isActiveVideo;
+    if (activeVideo == _videoWasActive) return;
+    _videoWasActive = activeVideo;
+    _overlayTimer?.cancel();
+    _overlayVisible = true;
+    if (activeVideo) _scheduleOverlayHide();
+    if (mounted) setState(() {});
+  }
+
+  void _scheduleOverlayHide() {
+    _overlayTimer?.cancel();
+    _overlayTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted || !_isActiveVideo) return;
+      setState(() => _overlayVisible = false);
+    });
+  }
+
+  void _keepOverlayVisible() {
+    if (!_isActiveVideo) return;
+    if (!_overlayVisible) setState(() => _overlayVisible = true);
+    _scheduleOverlayHide();
   }
 
   @override
   Widget build(BuildContext context) {
     final call = widget.manager.call;
     if (call == null) return const SizedBox.shrink();
-    final isVideoActive = call.isVideo && call.phase == CallPhase.active;
+    final isVideoActive =
+        widget.manager.isVideoEnabled && call.phase == CallPhase.active;
+    final showLocalPreview =
+        widget.manager.isVideoEnabled &&
+        call.phase != CallPhase.ringingIncoming &&
+        call.phase != CallPhase.ending;
     return Material(
       color: const Color(0xFF0B0F14),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          _backdrop(call, isVideoActive),
-          // Local camera preview (PiP) during a video call.
-          if (isVideoActive) _localPreview(),
-          // Flip front/back camera while the camera is on.
-          if (isVideoActive &&
-              widget.manager.isVideoEnabled &&
-              Platform.isAndroid)
-            Positioned(top: 54, left: 16, child: _flipCameraButton()),
-          SafeArea(
-            child: Column(
-              children: [
-                SizedBox(height: isVideoActive ? 12 : 56),
-                _header(call, compact: isVideoActive),
-                if (!isVideoActive &&
-                    call.phase == CallPhase.active &&
-                    call.emojis.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 24),
-                    child: _secureRow(call.emojis),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isLandscape = constraints.maxWidth > constraints.maxHeight;
+          final showOverlay = !isVideoActive || _overlayVisible;
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              _backdrop(call, isVideoActive),
+              GestureDetector(
+                key: const Key('callSurfaceTap'),
+                behavior: HitTestBehavior.opaque,
+                onTap: _keepOverlayVisible,
+              ),
+              IgnorePointer(
+                ignoring: !showOverlay,
+                child: AnimatedOpacity(
+                  key: const Key('callControlsOverlay'),
+                  opacity: showOverlay ? 1 : 0,
+                  duration: const Duration(milliseconds: 180),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      _overlayScrim(isVideoActive),
+                      if (showLocalPreview) _localPreview(isLandscape),
+                      if (showLocalPreview &&
+                          (Platform.isAndroid || Platform.isIOS))
+                        Positioned(
+                          top: isLandscape ? 16 : 54,
+                          left: isLandscape ? 24 : 16,
+                          child: _flipCameraButton(),
+                        ),
+                      _callChrome(call, isVideoActive, isLandscape),
+                    ],
                   ),
-                const Spacer(),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 40, top: 12),
-                  child: _controls(call),
                 ),
-              ],
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _callChrome(ActiveCall call, bool isVideoActive, bool isLandscape) {
+    if (isLandscape && !isVideoActive) {
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+          child: Row(
+            children: [
+              Expanded(
+                key: const Key('callIdentityPanel'),
+                flex: 6,
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _header(call, compact: false),
+                      if (call.phase == CallPhase.active &&
+                          call.emojis.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 18),
+                          child: _secureRow(call.emojis),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 24),
+              Expanded(
+                key: const Key('callControlsPanel'),
+                flex: 5,
+                child: Center(child: _controls(call, horizontal: true)),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return SafeArea(
+      child: Column(
+        children: [
+          SizedBox(height: isVideoActive ? (isLandscape ? 8 : 12) : 56),
+          _header(call, compact: isVideoActive),
+          if (!isVideoActive &&
+              call.phase == CallPhase.active &&
+              call.emojis.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 24),
+              child: _secureRow(call.emojis),
             ),
+          const Spacer(),
+          Padding(
+            padding: EdgeInsets.only(bottom: isLandscape ? 12 : 40, top: 12),
+            child: _controls(call, horizontal: isLandscape),
           ),
         ],
       ),
@@ -112,40 +234,40 @@ class _CallScreenState extends State<CallScreen> {
               ),
             ),
           ),
-        // Remote camera feed (Android/ntgcalls) — fills the screen over the
+        // Remote camera feed — fills the screen over the
         // blurred-avatar fallback once decoded frames arrive (black until then).
-        if (isVideoActive && Platform.isAndroid)
-          const AndroidView(
-            viewType: 'mithka/video_view',
-            creationParams: {'role': 'remote'},
-            creationParamsCodec: StandardMessageCodec(),
-          ),
-        // Darkening scrim so white text/controls stay legible.
-        DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                Colors.black.withValues(alpha: isVideoActive ? 0.35 : 0.45),
-                Colors.black.withValues(alpha: isVideoActive ? 0.55 : 0.7),
-              ],
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-            ),
-          ),
-        ),
+        if (isVideoActive && (Platform.isAndroid || Platform.isIOS))
+          _nativeVideoView('remote'),
       ],
     );
   }
 
-  Widget _localPreview() {
+  Widget _overlayScrim(bool isVideoActive) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Colors.black.withValues(alpha: isVideoActive ? 0.35 : 0.45),
+            Colors.black.withValues(alpha: isVideoActive ? 0.55 : 0.7),
+          ],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+      ),
+    );
+  }
+
+  Widget _localPreview(bool isLandscape) {
     // Show our own camera feed when it's on; otherwise a placeholder glyph.
-    final showVideo = Platform.isAndroid && widget.manager.isVideoEnabled;
+    final showVideo =
+        (Platform.isAndroid || Platform.isIOS) && widget.manager.isVideoEnabled;
     return Positioned(
       top: 56,
-      right: 16,
+      right: isLandscape ? 24 : 16,
       child: Container(
-        width: 96,
-        height: 132,
+        key: const Key('callLocalPreview'),
+        width: isLandscape ? 132 : 96,
+        height: isLandscape ? 96 : 132,
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: Colors.black.withValues(alpha: 0.4),
@@ -153,11 +275,7 @@ class _CallScreenState extends State<CallScreen> {
           border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
         ),
         child: showVideo
-            ? const AndroidView(
-                viewType: 'mithka/video_view',
-                creationParams: {'role': 'local'},
-                creationParamsCodec: StandardMessageCodec(),
-              )
+            ? _nativeVideoView('local')
             : Center(
                 child: AppIcon(
                   HeroAppIcons.video,
@@ -169,10 +287,30 @@ class _CallScreenState extends State<CallScreen> {
     );
   }
 
+  Widget _nativeVideoView(String role) {
+    const creationParamsCodec = StandardMessageCodec();
+    final creationParams = {'role': role};
+    if (Platform.isIOS) {
+      return UiKitView(
+        viewType: 'mithka/video_view',
+        creationParams: creationParams,
+        creationParamsCodec: creationParamsCodec,
+      );
+    }
+    return AndroidView(
+      viewType: 'mithka/video_view',
+      creationParams: creationParams,
+      creationParamsCodec: creationParamsCodec,
+    );
+  }
+
   Widget _flipCameraButton() {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: widget.manager.switchCamera,
+      onTap: () {
+        _keepOverlayVisible();
+        widget.manager.switchCamera();
+      },
       child: Container(
         width: 40,
         height: 40,
@@ -193,10 +331,13 @@ class _CallScreenState extends State<CallScreen> {
 
   /// 摄像头 toggle: turning the camera ON first asks which lens to use;
   /// turning it OFF is immediate.
-  void _onCameraToggle() {
+  void _onCameraToggle({bool selectCamera = true}) {
+    _keepOverlayVisible();
     final m = widget.manager;
     if (m.isVideoEnabled) {
       m.disableVideo();
+    } else if (!selectCamera) {
+      m.enableVideo(true);
     } else {
       _showCameraSelector();
     }
@@ -317,11 +458,15 @@ class _CallScreenState extends State<CallScreen> {
               child: Text(e, style: const TextStyle(fontSize: 22)),
             ),
           const SizedBox(width: 6),
-          Text(
-            AppStrings.t(AppStringKeys.callEndToEndEncrypted),
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.white.withValues(alpha: 0.6),
+          Flexible(
+            child: Text(
+              AppStrings.t(AppStringKeys.callEndToEndEncrypted),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.white.withValues(alpha: 0.6),
+              ),
             ),
           ),
         ],
@@ -329,7 +474,7 @@ class _CallScreenState extends State<CallScreen> {
     );
   }
 
-  Widget _controls(ActiveCall call) {
+  Widget _controls(ActiveCall call, {bool horizontal = false}) {
     final m = widget.manager;
     if (call.phase == CallPhase.ringingIncoming) {
       return Row(
@@ -352,63 +497,138 @@ class _CallScreenState extends State<CallScreen> {
         ],
       );
     }
+    List<Widget> buildToggles(double slotWidth, {required bool compact}) {
+      return [
+        _CallControlSlot(
+          key: const Key('callControlMute'),
+          width: slotWidth,
+          child: _CallToggle(
+            icon: m.isMuted
+                ? HeroAppIcons.microphoneSlash.data
+                : HeroAppIcons.microphone.data,
+            label: AppStrings.t(AppStringKeys.callMute),
+            isOn: m.isMuted,
+            compact: compact,
+            onTap: () {
+              _keepOverlayVisible();
+              m.toggleMute();
+            },
+          ),
+        ),
+        if (call.phase == CallPhase.active || call.isVideo)
+          _CallControlSlot(
+            key: const Key('callControlCamera'),
+            width: slotWidth,
+            child: _CallToggle(
+              icon: HeroAppIcons.video.data,
+              label: AppStrings.t(AppStringKeys.callCamera),
+              isOn: m.isVideoEnabled,
+              compact: compact,
+              onTap: () => _onCameraToggle(selectCamera: !horizontal),
+            ),
+          ),
+        _CallControlSlot(
+          key: const Key('callControlSpeaker'),
+          width: slotWidth,
+          child: _CallToggle(
+            icon: HeroAppIcons.volumeHigh.data,
+            label: AppStrings.t(AppStringKeys.callSpeakerphone),
+            isOn: m.isSpeaker,
+            compact: compact,
+            onTap: () {
+              _keepOverlayVisible();
+              m.toggleSpeaker();
+            },
+          ),
+        ),
+      ];
+    }
+
+    Widget buildHangUp({required bool compact}) => _CallButton(
+      key: const Key('callControlHangup'),
+      icon: HeroAppIcons.phoneSlash.data,
+      label: AppStrings.t(AppStringKeys.callHangUp),
+      background: const Color(0xFFFF3B30),
+      size: compact ? 56 : 66,
+      compact: compact,
+      onTap: m.end,
+    );
+
+    if (horizontal) {
+      final itemCount = (call.phase == CallPhase.active || call.isVideo)
+          ? 4
+          : 3;
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final availableWidth = constraints.maxWidth.isFinite
+              ? constraints.maxWidth
+              : itemCount * 80.0;
+          final slotWidth = (availableWidth / itemCount)
+              .clamp(64.0, 80.0)
+              .toDouble();
+          return Center(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ...buildToggles(slotWidth, compact: true),
+                SizedBox(
+                  width: slotWidth,
+                  child: Center(child: buildHangUp(compact: true)),
+                ),
+              ],
+            ),
+          );
+        },
+      );
+    }
+
+    final toggles = buildToggles(104, compact: false);
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Row(
+          mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _CallToggle(
-              icon: m.isMuted
-                  ? HeroAppIcons.microphoneSlash.data
-                  : HeroAppIcons.microphone.data,
-              label: AppStrings.t(AppStringKeys.callMute),
-              isOn: m.isMuted,
-              onTap: m.toggleMute,
-            ),
-            const SizedBox(width: 26),
-            if (call.isVideo) ...[
-              _CallToggle(
-                icon: HeroAppIcons.video.data,
-                label: AppStrings.t(AppStringKeys.callCamera),
-                isOn: m.isVideoEnabled,
-                onTap: _onCameraToggle,
-              ),
-              const SizedBox(width: 26),
-            ],
-            _CallToggle(
-              icon: HeroAppIcons.volumeHigh.data,
-              label: AppStrings.t(AppStringKeys.callSpeakerphone),
-              isOn: m.isSpeaker,
-              onTap: m.toggleSpeaker,
-            ),
-          ],
+          children: toggles,
         ),
         const SizedBox(height: 30),
-        _CallButton(
-          icon: HeroAppIcons.phoneSlash.data,
-          label: AppStrings.t(AppStringKeys.callHangUp),
-          background: const Color(0xFFFF3B30),
-          size: 66,
-          onTap: m.end,
-        ),
+        buildHangUp(compact: false),
       ],
+    );
+  }
+}
+
+class _CallControlSlot extends StatelessWidget {
+  const _CallControlSlot({super.key, required this.child, this.width = 104});
+
+  final Widget child;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: width,
+      child: Center(child: child),
     );
   }
 }
 
 class _CallButton extends StatelessWidget {
   const _CallButton({
+    super.key,
     required this.icon,
     required this.label,
     required this.background,
     this.size = 68,
+    this.compact = false,
     required this.onTap,
   });
   final IconData icon;
   final String label;
   final Color background;
   final double size;
+  final bool compact;
   final VoidCallback onTap;
 
   @override
@@ -433,8 +653,10 @@ class _CallButton extends StatelessWidget {
         const SizedBox(height: 10),
         Text(
           label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            fontSize: 13,
+            fontSize: compact ? 11 : 13,
             color: Colors.white.withValues(alpha: 0.85),
           ),
         ),
@@ -450,11 +672,13 @@ class _CallToggle extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.isOn,
+    this.compact = false,
     required this.onTap,
   });
   final IconData icon;
   final String label;
   final bool isOn;
+  final bool compact;
   final VoidCallback onTap;
 
   @override
@@ -466,8 +690,8 @@ class _CallToggle extends StatelessWidget {
           behavior: HitTestBehavior.opaque,
           onTap: onTap,
           child: Container(
-            width: 60,
-            height: 60,
+            width: compact ? 52 : 60,
+            height: compact ? 52 : 60,
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: isOn ? Colors.white : Colors.white.withValues(alpha: 0.18),
@@ -475,7 +699,7 @@ class _CallToggle extends StatelessWidget {
             ),
             child: Icon(
               icon,
-              size: 24,
+              size: compact ? 22 : 24,
               color: isOn ? Colors.black : Colors.white,
             ),
           ),
@@ -483,8 +707,10 @@ class _CallToggle extends StatelessWidget {
         const SizedBox(height: 10),
         Text(
           label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            fontSize: 13,
+            fontSize: compact ? 11 : 13,
             color: Colors.white.withValues(alpha: 0.85),
           ),
         ),
