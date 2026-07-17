@@ -37,6 +37,17 @@ void main() {
     expect(controller.text(AppStringKeys.archivedChatsGroupAssistant), '归档的聊天');
   });
 
+  test('keeps channel feeds and Stories as distinct app labels', () {
+    final controller = TelegramLanguageController.test(
+      strings: const {'NotificationsStories': '动态'},
+    );
+
+    expect(
+      controller.resolveMappedText(AppStringKeys.momentsStories, const {}),
+      isNull,
+    );
+  });
+
   test('uses Telegram Android presence keys on every platform', () {
     final controller = TelegramLanguageController.test(
       strings: const {

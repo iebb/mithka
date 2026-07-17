@@ -881,7 +881,6 @@ const _telegramKeyForAppKey = <String, String>{
   AppStringKeys.momentsSearching: 'Search',
   AppStringKeys.momentsSelectChannel: 'ChooseChannel',
   AppStringKeys.momentsSending: 'AccDescrMsgSending',
-  AppStringKeys.momentsStories: 'NotificationsStories',
   AppStringKeys.momentsUnknown: 'NumberUnknown',
   AppStringKeys.musicPlayerAdd: 'Add',
   AppStringKeys.musicPlayerAddToPlaylist: 'ProfilePlaylistTitleMine',
