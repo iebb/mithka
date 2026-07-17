@@ -602,14 +602,9 @@ abstract final class AppStringKeys {
   static const chatNewMessagesCount = 'chatNewMessagesCount';
   static const chatNewMessagesDivider = 'chatNewMessagesDivider';
   static const chatNoTopics = 'chatNoTopics';
-  static const chatOffline = 'chatOffline';
-  static const chatOnline = 'chatOnline';
-  static const chatOnlineWithinMonth = 'chatOnlineWithinMonth';
-  static const chatOnlineWithinWeek = 'chatOnlineWithinWeek';
   static const chatPeopleDoingAction = 'chatPeopleDoingAction';
   static const chatPeopleTyping = 'chatPeopleTyping';
   static const chatPickerChooseChat = 'chatPickerChooseChat';
-  static const chatRecentlyOnline = 'chatRecentlyOnline';
   static const chatReportConfirm = 'chatReportConfirm';
   static const chatReportFailed = 'chatReportFailed';
   static const chatReportMessage = 'chatReportMessage';

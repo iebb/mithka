@@ -36,4 +36,42 @@ void main() {
 
     expect(controller.text(AppStringKeys.archivedChatsGroupAssistant), '归档的聊天');
   });
+
+  test('uses Telegram Android presence keys on every platform', () {
+    final controller = TelegramLanguageController.test(
+      strings: const {
+        'Online': 'android online',
+        'Lately': 'android recently',
+        'WithinAWeek': 'android week',
+        'WithinAMonth': 'android month',
+      },
+    );
+
+    expect(
+      controller.presenceText(TelegramPresenceLabel.online),
+      'android online',
+    );
+    expect(
+      controller.presenceText(TelegramPresenceLabel.recently),
+      'android recently',
+    );
+    expect(
+      controller.presenceText(TelegramPresenceLabel.withinWeek),
+      'android week',
+    );
+    expect(
+      controller.presenceText(TelegramPresenceLabel.withinMonth),
+      'android month',
+    );
+  });
+
+  test('presence strings have Telegram English startup fallbacks', () {
+    final controller = TelegramLanguageController.test();
+
+    expect(controller.presenceText(TelegramPresenceLabel.online), 'online');
+    expect(
+      controller.presenceText(TelegramPresenceLabel.recently),
+      'last seen recently',
+    );
+  });
 }

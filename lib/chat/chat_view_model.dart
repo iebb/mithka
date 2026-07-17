@@ -313,7 +313,7 @@ class ChatViewModel extends ChangeNotifier {
     final base = isGroup
         ? ''
         : (peerOnline
-              ? AppStrings.t(AppStringKeys.chatOnline)
+              ? telegramPresenceText(TelegramPresenceLabel.online)
               : peerStatusText);
     final action = _chatActionSubtitle;
     if (base.isEmpty) return action;
@@ -3197,8 +3197,11 @@ class ChatViewModel extends ChangeNotifier {
 
       case 'updateUserStatus':
         if (isGroup || update.int64('user_id') != peerUserId) return;
-        peerOnline = update.obj('status')?.type == 'userStatusOnline';
-        peerStatusText = _statusLabel(update.obj('status')?.type);
+        final status = update.obj('status');
+        peerOnline = status?.type == 'userStatusOnline';
+        peerStatusText = status == null
+            ? ''
+            : TDParse.userStatus({'status': status});
         notifyListeners();
 
       case 'updateMessageEdited':
@@ -3449,21 +3452,6 @@ class ChatViewModel extends ChangeNotifier {
       case 'chatActionTyping':
       default:
         return AppStrings.t(AppStringKeys.chatTyping);
-    }
-  }
-
-  String _statusLabel(String? type) {
-    switch (type) {
-      case 'userStatusOnline':
-        return AppStrings.t(AppStringKeys.chatOnline);
-      case 'userStatusRecently':
-        return AppStrings.t(AppStringKeys.chatRecentlyOnline);
-      case 'userStatusLastWeek':
-        return AppStrings.t(AppStringKeys.chatOnlineWithinWeek);
-      case 'userStatusLastMonth':
-        return AppStrings.t(AppStringKeys.chatOnlineWithinMonth);
-      default:
-        return AppStrings.t(AppStringKeys.chatOffline);
     }
   }
 

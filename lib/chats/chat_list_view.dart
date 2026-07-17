@@ -31,6 +31,7 @@ import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../contacts/add_people_view.dart';
 import '../contacts/create_group_view.dart';
+import '../l10n/telegram_language_controller.dart';
 import '../profile/emoji_status_picker.dart';
 import '../settings/edit_field_view.dart';
 import '../settings/topic_group_display_mode.dart';
@@ -815,7 +816,7 @@ class _ChatListViewState extends State<ChatListView>
                       ),
                       const SizedBox(width: AppSpacing.xs),
                       Text(
-                        AppStringKeys.chatOnline.l10n(context),
+                        telegramPresenceText(TelegramPresenceLabel.online),
                         style: TextStyle(
                           fontSize: AppTextSize.caption,
                           color: c.textSecondary,

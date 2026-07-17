@@ -214,6 +214,14 @@ bool _isGoogleFontLoadFailureText(String value) {
       text.contains('clientexception');
 }
 
+typedef _MithkaAppConsumer =
+    Consumer4<
+      ThemeController,
+      AccountStore,
+      AppLocaleController,
+      TelegramLanguageController
+    >;
+
 class MithkaApp extends StatefulWidget {
   const MithkaApp({super.key, required this.prefs});
   final SharedPreferences prefs;
@@ -347,8 +355,8 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
         ChangeNotifierProvider.value(value: _calls),
         ChangeNotifierProvider<dc.DrawerController>.value(value: _drawer),
       ],
-      child: Consumer3<ThemeController, AccountStore, AppLocaleController>(
-        builder: (context, theme, accounts, locale, _) {
+      child: _MithkaAppConsumer(
+        builder: (context, theme, accounts, locale, _, _) {
           return MaterialApp(
             navigatorKey: appNavigatorKey,
             title: 'Mithka',

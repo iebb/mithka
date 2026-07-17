@@ -3191,15 +3191,15 @@ abstract final class TDParse {
   static String userStatus(Map<String, dynamic> user) {
     switch (user.obj('status')?.type) {
       case 'userStatusOnline':
-        return AppStrings.t(AppStringKeys.chatOnline);
+        return telegramPresenceText(TelegramPresenceLabel.online);
       case 'userStatusRecently':
-        return AppStrings.t(AppStringKeys.chatRecentlyOnline);
+        return telegramPresenceText(TelegramPresenceLabel.recently);
       case 'userStatusOffline':
         return _lastOnlineText(user.obj('status')?.integer('was_online') ?? 0);
       case 'userStatusLastWeek':
-        return AppStrings.t(AppStringKeys.chatOnlineWithinWeek);
+        return telegramPresenceText(TelegramPresenceLabel.withinWeek);
       case 'userStatusLastMonth':
-        return AppStrings.t(AppStringKeys.chatOnlineWithinMonth);
+        return telegramPresenceText(TelegramPresenceLabel.withinMonth);
       default:
         return '';
     }

@@ -36,6 +36,7 @@ import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../components/vip_badge.dart';
+import '../l10n/telegram_language_controller.dart';
 import '../moments/story_viewer_view.dart';
 import '../settings/blocked_user_service.dart';
 import '../settings/edit_profile_view.dart';
@@ -677,7 +678,7 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
     final top = MediaQuery.of(context).padding.top;
     final bannerH = top + 232;
     final status = _isOnline
-        ? AppStrings.t(AppStringKeys.chatOnline)
+        ? telegramPresenceText(TelegramPresenceLabel.online)
         : _statusText;
     return Stack(
       clipBehavior: Clip.none,
