@@ -240,14 +240,15 @@ class CallMediaPlugin(
 
     @Suppress("UNCHECKED_CAST")
     private fun start(config: Map<String, Any?>) {
-        stop() // tear down any previous call
+        val isVideo = config["isVideo"] as Boolean
+        // Keep a permission-approved outgoing preview alive while the peer is
+        // ringing; it becomes the encoder source as soon as media starts.
+        stop(keepCamera = isVideo && camera != null)
         sawRemoteFrame = false
-        useFrontCamera = true
         isGroupCall = false
 
         chatId = (config["callId"] as Number).toLong()
         val isOutgoing = config["isOutgoing"] as Boolean
-        val isVideo = config["isVideo"] as Boolean
         android.util.Log.i("CallMediaVid", "start isVideo=$isVideo isOutgoing=$isOutgoing")
         val p2pAllowed = config["p2pAllowed"] as? Boolean ?: true
         val key = config["encryptionKey"] as ByteArray
@@ -297,9 +298,11 @@ class CallMediaPlugin(
         if (isVideo) startCameraCapture(useFrontCamera)
     }
 
-    private fun stop() {
-        runCatching { camera?.stop() }
-        camera = null
+    private fun stop(keepCamera: Boolean = false) {
+        if (!keepCamera) {
+            runCatching { camera?.stop() }
+            camera = null
+        }
         groupVideoEndpointBySsrc.clear()
         groupVideoSourcesByEndpoint.clear()
         isGroupCall = false
@@ -315,8 +318,20 @@ class CallMediaPlugin(
     }
 
     private fun setVideoEnabled(enabled: Boolean) {
-        ntg?.setStreamSources(chatId, StreamMode.CAPTURE, captureMedia(enabled))
-        if (enabled) startCameraCapture(useFrontCamera) else camera?.stop()
+        if (enabled) {
+            startCameraCapture(useFrontCamera)
+        } else {
+            camera?.stop()
+            camera = null
+        }
+        val instance = ntg ?: return
+        instance.setStreamSources(chatId, StreamMode.CAPTURE, captureMedia(enabled))
+        // Group calls keep a permanent playback camera and manage individual
+        // remote subscriptions separately. P2P calls must add/remove their
+        // playback camera when switching between voice and video.
+        if (!isGroupCall) {
+            instance.setStreamSources(chatId, StreamMode.PLAYBACK, playbackMedia(enabled))
+        }
     }
 
     /** Flip between the front- and back-facing camera (CameraVideoCapturer handles

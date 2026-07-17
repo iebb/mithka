@@ -6,10 +6,9 @@
 //  `callStateReady` payload; the media engine is what actually carries audio /
 //  video over the negotiated relay servers using the agreed encryption key.
 //
-//  TDLib itself does NOT ship a media engine. On Android the real engine is
-//  `TgcallsMediaEngine` (ntgcalls, via the CallMediaPlugin platform channel);
-//  `NoopCallMediaEngine` remains the fallback (e.g. iOS) where signaling works
-//  end to end but no audio flows. Port of the Swift `CallMediaEngine`.
+//  TDLib itself does NOT ship a media engine. Android and iOS use
+//  `TgcallsMediaEngine` through their native Telegram-call bridges;
+//  `NoopCallMediaEngine` remains the fallback on unsupported platforms.
 //
 
 import 'package:flutter/foundation.dart';
@@ -24,6 +23,7 @@ class CallReadyConfig {
     required this.config,
     required this.customParameters,
     required this.libraryVersions,
+    required this.maxLayer,
     required this.isOutgoing,
     required this.isVideo,
     required this.allowP2p,
@@ -36,6 +36,7 @@ class CallReadyConfig {
   final String config;
   final String customParameters;
   final List<String> libraryVersions;
+  final int maxLayer;
   final bool isOutgoing;
   final bool isVideo;
   final bool allowP2p;

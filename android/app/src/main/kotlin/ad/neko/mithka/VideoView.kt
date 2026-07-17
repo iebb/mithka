@@ -31,7 +31,9 @@ private class VideoPlatformView(
 ) : PlatformView {
     private val renderer = TextureViewRenderer(context).apply {
         init(plugin.eglContext(), null)
-        setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FILL)
+        // Preserve the decoded frame's aspect ratio. Any unused space stays
+        // black instead of stretching or cropping the caller's video.
+        setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FIT)
         setEnableHardwareScaler(true)
         // Mirror the local self-preview like a front-facing camera.
         if (role == "local") setMirror(true)
