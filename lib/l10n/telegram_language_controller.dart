@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:ui' show Locale, PlatformDispatcher;
 
 import 'package:flutter/foundation.dart';
@@ -45,6 +44,11 @@ String telegramText(
     placeholders: placeholders,
   );
 }
+
+enum TelegramPresenceLabel { online, recently, withinWeek, withinMonth }
+
+String telegramPresenceText(TelegramPresenceLabel label) =>
+    TelegramLanguageController.shared.presenceText(label);
 
 class TelegramLanguagePackOption {
   const TelegramLanguagePackOption({
@@ -108,6 +112,7 @@ class TelegramLanguageController extends ChangeNotifier {
   static const _selectedPackKey = 'telegram.language_pack_id.v2';
   static const _previousSelectedPackKey = 'telegram.language_pack_id';
   static const _targetOption = 'localization_target';
+  static const _localizationTarget = 'android';
   static const _packOption = 'language_pack_id';
   static const _queryTimeout = Duration(seconds: 20);
   static const _retryDelays = <Duration>[
@@ -216,6 +221,13 @@ class TelegramLanguageController extends ChangeNotifier {
         AppStrings.tLocal(appFallbackKey, placeholders);
   }
 
+  String presenceText(TelegramPresenceLabel label) {
+    final telegramKey = _telegramPresenceKeys[label]!;
+    final value = _strings[telegramKey];
+    if (value != null && value.trim().isNotEmpty) return value;
+    return _telegramPresenceEnglishFallback[label]!;
+  }
+
   String? resolveMappedText(
     String appFallbackKey,
     Map<String, Object?> placeholders,
@@ -249,7 +261,7 @@ class TelegramLanguageController extends ChangeNotifier {
       unawaited(refresh());
       return;
     }
-    final allowedKeys = _telegramKeyForAppKey.values.toSet();
+    final allowedKeys = _requestedTelegramKeys;
     var touched = false;
     for (final item in changed) {
       final key = _tdString(item, 'key');
@@ -269,7 +281,12 @@ class TelegramLanguageController extends ChangeNotifier {
     await _query({
       '@type': 'setOption',
       'name': _targetOption,
-      'value': {'@type': 'optionValueString', 'value': _localizationTarget()},
+      'value': {
+        '@type': 'optionValueString',
+        // Mithka is one Flutter UI on every platform, so it deliberately uses
+        // Telegram's Android string namespace everywhere for consistent keys.
+        'value': _localizationTarget,
+      },
     }).ignoreTimeout();
   }
 
@@ -322,7 +339,7 @@ class TelegramLanguageController extends ChangeNotifier {
     final response = await _query({
       '@type': 'getLanguagePackStrings',
       'language_pack_id': packId,
-      'keys': _telegramKeyForAppKey.values.toSet().toList(),
+      'keys': _requestedTelegramKeys.toList(),
     });
     final result = <String, String>{};
     for (final item in _tdObjects(response, 'strings') ?? const []) {
@@ -407,13 +424,10 @@ class TelegramLanguageController extends ChangeNotifier {
     }
   }
 
-  static String _localizationTarget() {
-    if (Platform.isIOS) return 'ios';
-    if (Platform.isAndroid) return 'android';
-    if (Platform.isMacOS) return 'macos';
-    if (Platform.isWindows || Platform.isLinux) return 'tdesktop';
-    return 'web';
-  }
+  Set<String> get _requestedTelegramKeys => {
+    ..._telegramKeyForAppKey.values,
+    ..._telegramPresenceKeys.values,
+  };
 
   static String _interpolate(
     String template,
@@ -492,6 +506,20 @@ extension _FirstOrNull<T> on Iterable<T> {
     return iterator.current;
   }
 }
+
+const _telegramPresenceKeys = <TelegramPresenceLabel, String>{
+  TelegramPresenceLabel.online: 'Online',
+  TelegramPresenceLabel.recently: 'Lately',
+  TelegramPresenceLabel.withinWeek: 'WithinAWeek',
+  TelegramPresenceLabel.withinMonth: 'WithinAMonth',
+};
+
+const _telegramPresenceEnglishFallback = <TelegramPresenceLabel, String>{
+  TelegramPresenceLabel.online: 'online',
+  TelegramPresenceLabel.recently: 'last seen recently',
+  TelegramPresenceLabel.withinWeek: 'last seen within a week',
+  TelegramPresenceLabel.withinMonth: 'last seen within a month',
+};
 
 const _telegramKeyForAppKey = <String, String>{
   AppStringKeys.aboutTelegramChannel: 'Channel',
@@ -626,12 +654,7 @@ const _telegramKeyForAppKey = <String, String>{
   AppStringKeys.chatNewMessagesCount: 'NewMessages',
   AppStringKeys.chatNewMessagesDivider: 'NewMessages',
   AppStringKeys.chatNoTopics: 'NoTopics',
-  AppStringKeys.chatOffline: 'Offline',
-  AppStringKeys.chatOnline: 'Online',
-  AppStringKeys.chatOnlineWithinMonth: 'WithinAMonth',
-  AppStringKeys.chatOnlineWithinWeek: 'WithinAWeek',
   AppStringKeys.chatPickerChooseChat: 'SelectChat',
-  AppStringKeys.chatRecentlyOnline: 'Lately',
   AppStringKeys.chatReportConfirm: 'ReportChat',
   AppStringKeys.chatReportFailed: 'ErrorOccurred',
   AppStringKeys.chatReportSent: 'ReportChatSent',
