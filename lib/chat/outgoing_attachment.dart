@@ -11,6 +11,17 @@ enum OutgoingAttachmentKind {
   voiceNote,
 }
 
+OutgoingAttachmentKind galleryAttachmentKind({
+  required bool sendAsFile,
+  required bool isVideo,
+  required bool isAnimation,
+}) {
+  if (sendAsFile) return OutgoingAttachmentKind.document;
+  if (isVideo) return OutgoingAttachmentKind.video;
+  if (isAnimation) return OutgoingAttachmentKind.animation;
+  return OutgoingAttachmentKind.photo;
+}
+
 enum AttachmentAlbumKind { visual, document, audio, standalone }
 
 class OutgoingAttachment {

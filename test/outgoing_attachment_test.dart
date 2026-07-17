@@ -21,6 +21,56 @@ OutgoingAttachment attachment(
 );
 
 void main() {
+  test('gallery media can always be converted to document attachments', () {
+    for (final media in [
+      (isVideo: false, isAnimation: false),
+      (isVideo: true, isAnimation: false),
+      (isVideo: false, isAnimation: true),
+    ]) {
+      expect(
+        galleryAttachmentKind(
+          sendAsFile: true,
+          isVideo: media.isVideo,
+          isAnimation: media.isAnimation,
+        ),
+        OutgoingAttachmentKind.document,
+      );
+    }
+
+    expect(
+      galleryAttachmentKind(
+        sendAsFile: false,
+        isVideo: true,
+        isAnimation: false,
+      ),
+      OutgoingAttachmentKind.video,
+    );
+    expect(
+      galleryAttachmentKind(
+        sendAsFile: false,
+        isVideo: false,
+        isAnimation: true,
+      ),
+      OutgoingAttachmentKind.animation,
+    );
+
+    final document = attachmentInputMessageContent(
+      attachment(
+        '/tmp/IMG_1234.HEIC',
+        galleryAttachmentKind(
+          sendAsFile: true,
+          isVideo: false,
+          isAnimation: false,
+        ),
+      ),
+    );
+    expect(document['@type'], 'inputMessageDocument');
+    expect(
+      ((document['document'] as Map)['document'] as Map)['path'],
+      '/tmp/IMG_1234.HEIC',
+    );
+  });
+
   test('groups compatible attachments without reordering', () {
     final batches = groupOutgoingAttachments([
       attachment('1.jpg', OutgoingAttachmentKind.photo),

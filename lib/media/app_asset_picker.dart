@@ -47,6 +47,7 @@ abstract final class AppAssetPicker {
     int maxAssets = 9,
     Duration? maxVideoDuration,
     bool preferLivePhotoVideo = false,
+    bool preserveOriginalFiles = false,
   }) async {
     final selection = await pickDetailed(
       context,
@@ -54,6 +55,7 @@ abstract final class AppAssetPicker {
       maxAssets: maxAssets,
       maxVideoDuration: maxVideoDuration,
       preferLivePhotoVideo: preferLivePhotoVideo,
+      preserveOriginalFiles: preserveOriginalFiles,
     );
     return selection.assets.map((asset) => asset.file).toList(growable: false);
   }
@@ -64,6 +66,7 @@ abstract final class AppAssetPicker {
     int maxAssets = 9,
     Duration? maxVideoDuration,
     bool preferLivePhotoVideo = false,
+    bool preserveOriginalFiles = false,
   }) async {
     if (maxAssets <= 0) {
       return const AppAssetPickerSelection(assets: [], failedCount: 0);
@@ -86,7 +89,11 @@ abstract final class AppAssetPicker {
     for (final asset in assets) {
       try {
         resolved.add(
-          await _materialize(asset, preferLivePhotoVideo: preferLivePhotoVideo),
+          await _materialize(
+            asset,
+            preferLivePhotoVideo: preferLivePhotoVideo,
+            preserveOriginalFiles: preserveOriginalFiles,
+          ),
         );
       } catch (_) {
         failedCount++;
@@ -187,6 +194,7 @@ abstract final class AppAssetPicker {
   static Future<AppPickedAsset> _materialize(
     AssetEntity asset, {
     required bool preferLivePhotoVideo,
+    required bool preserveOriginalFiles,
   }) async {
     final originalMimeType = asset.mimeType ?? await asset.mimeTypeAsync;
     final livePhotoAsVideo = preferLivePhotoVideo && asset.isLivePhoto;
@@ -201,6 +209,7 @@ abstract final class AppAssetPicker {
         lowerTitle.endsWith('.png');
     final file = await asset.loadFile(
       isOrigin:
+          preserveOriginalFiles ||
           asset.type == AssetType.video ||
           livePhotoAsVideo ||
           preserveOriginalAnimatedImage,
@@ -215,6 +224,7 @@ abstract final class AppAssetPicker {
     final isApng = await _isApngFile(file, mimeType);
     final isAnimatedImage = isGif || isApng;
     final shouldCompressPhoto =
+        !preserveOriginalFiles &&
         asset.type == AssetType.image &&
         !isAnimatedImage &&
         !livePhotoAsVideo &&
@@ -237,9 +247,20 @@ abstract final class AppAssetPicker {
               ? 'png'
               : _fileExtension(file.path, mimeType, asset.type));
     final directory = await getTemporaryDirectory();
-    final durableFile = File(
-      '${directory.path}/mithka-picker-${DateTime.now().microsecondsSinceEpoch}-${asset.id.hashCode}.$extension',
-    );
+    final timestamp = DateTime.now().microsecondsSinceEpoch;
+    final targetDirectory = preserveOriginalFiles
+        ? await Directory(
+            '${directory.path}/mithka-picker-$timestamp-${asset.id.hashCode}',
+          ).create(recursive: true)
+        : directory;
+    final durableName = preserveOriginalFiles
+        ? pickedAssetDocumentFileName(
+            title: asset.title,
+            sourcePath: file.path,
+            fallbackExtension: extension,
+          )
+        : 'mithka-picker-$timestamp-${asset.id.hashCode}.$extension';
+    final durableFile = File('${targetDirectory.path}/$durableName');
     if (sendBytes == null) {
       await file.copy(durableFile.path);
     } else {
@@ -253,6 +274,7 @@ abstract final class AppAssetPicker {
       file: XFile(
         durableFile.path,
         mimeType: shouldCompressPhoto ? 'image/jpeg' : mimeType,
+        name: durableName,
       ),
       thumbnailBytes: thumbnailBytes,
       width: asset.width > 0 ? asset.width : null,
@@ -342,13 +364,35 @@ abstract final class AppAssetPicker {
       return name.substring(dot + 1).toLowerCase();
     }
     return switch (mimeType?.toLowerCase()) {
+      'image/jpeg' => 'jpg',
       'image/png' => 'png',
       'image/gif' => 'gif',
       'image/webp' => 'webp',
+      'image/heic' => 'heic',
+      'image/heif' => 'heif',
+      'image/avif' => 'avif',
+      'video/mp4' => 'mp4',
       'video/quicktime' => 'mov',
       _ => type == AssetType.video ? 'mp4' : 'jpg',
     };
   }
+}
+
+String pickedAssetDocumentFileName({
+  required String? title,
+  required String sourcePath,
+  required String fallbackExtension,
+}) {
+  final trimmedTitle = title?.trim() ?? '';
+  final sourceName = trimmedTitle.isNotEmpty
+      ? trimmedTitle
+      : sourcePath.split(RegExp(r'[/\\]')).last;
+  var safeName = sourceName.replaceAll(RegExp(r'[\\/:*?"<>|\x00-\x1F]'), '_');
+  if (safeName.isEmpty || safeName == '.' || safeName == '..') {
+    safeName = 'attachment.$fallbackExtension';
+  }
+  if (!safeName.contains('.')) safeName = '$safeName.$fallbackExtension';
+  return safeName;
 }
 
 ThumbnailSize scaledPhotoThumbnailSize(

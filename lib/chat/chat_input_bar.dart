@@ -42,6 +42,7 @@ import 'custom_emoji.dart';
 import 'emoji_catalog.dart';
 import 'emoji_store.dart';
 import 'emoji_text_controller.dart';
+import 'gallery_send_mode_sheet.dart';
 import 'gif_preview.dart';
 import 'gif_store.dart';
 import 'image_edit_view.dart';
@@ -1541,10 +1542,14 @@ class _ChatInputBarState extends State<ChatInputBar> {
   /// 图片: pick one or more photos/videos and preserve their album order.
   Future<void> _pickPhotos() async {
     try {
+      final sendMode = await showGallerySendModeSheet(context);
+      if (!mounted || sendMode == null) return;
+      final sendAsFile = sendMode == GallerySendMode.file;
       final selection = await AppAssetPicker.pickDetailed(
         context,
         type: AppAssetPickerType.imageAndVideo,
         maxAssets: 10,
+        preserveOriginalFiles: sendAsFile,
       );
       if (!mounted) return;
       if (selection.failedCount > 0) {
@@ -1558,14 +1563,15 @@ class _ChatInputBarState extends State<ChatInputBar> {
       final attachments = selection.assets
           .map((asset) {
             final file = asset.file;
-            final kind = isPickedAssetVideo(file)
-                ? OutgoingAttachmentKind.video
-                : isPickedAssetGif(file)
-                ? OutgoingAttachmentKind.animation
-                : OutgoingAttachmentKind.photo;
+            final kind = galleryAttachmentKind(
+              sendAsFile: sendAsFile,
+              isVideo: isPickedAssetVideo(file),
+              isAnimation: isPickedAssetGif(file),
+            );
             return OutgoingAttachment(
               path: file.path,
               kind: kind,
+              fileName: file.name,
               previewBytes: asset.thumbnailBytes,
               width: asset.width,
               height: asset.height,

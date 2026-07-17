@@ -764,6 +764,9 @@ abstract final class AppStringKeys {
   static const composerRichTextMessageTitle = 'composerRichTextMessageTitle';
   static const composerRichTextSendFailed = 'composerRichTextSendFailed';
   static const composerSend = 'composerSend';
+  static const composerSendAsFile = 'composerSendAsFile';
+  static const composerSendAsFileDescription = 'composerSendAsFileDescription';
+  static const composerSendAsMedia = 'composerSendAsMedia';
   static const composerSendAsRichText = 'composerSendAsRichText';
   static const composerSendPaidMessageQuestion =
       'composerSendPaidMessageQuestion';

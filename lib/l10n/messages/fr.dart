@@ -619,6 +619,10 @@ const frMessages = <String, String>{
   'composerRichTextMessageTitle': "Message en texte enrichi",
   'composerRichTextSendFailed': "Impossible d’envoyer le message enrichi",
   'composerSend': "Envoyer",
+  'composerSendAsFile': "Envoyer comme fichier",
+  'composerSendAsFileDescription':
+      "Choisir dans la photothèque et envoyer les fichiers originaux",
+  'composerSendAsMedia': "Envoyer comme photo ou vidéo",
   'composerSendAsRichText': "Envoyer en texte enrichi",
   'composerSendPaidMessageQuestion': "Envoyer le message payant ?",
   'composerVideoCall': "Appel vidéo",

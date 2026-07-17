@@ -602,6 +602,10 @@ const enMessages = <String, String>{
   'composerRichTextMessageTitle': "Rich text message",
   'composerRichTextSendFailed': "Could not send rich message",
   'composerSend': "Send",
+  'composerSendAsFile': "Send as file",
+  'composerSendAsFileDescription':
+      "Choose from your library and send the original files",
+  'composerSendAsMedia': "Send as photo or video",
   'composerSendAsRichText': "Send as rich text",
   'composerSendPaidMessageQuestion': "Send paid message?",
   'composerVideoCall': "Video call",

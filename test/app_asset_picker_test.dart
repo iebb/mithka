@@ -90,6 +90,33 @@ void main() {
     expect(isPickedAssetVideo(XFile('/tmp/photo.jpg')), isFalse);
   });
 
+  test('document picks preserve safe gallery filenames and extensions', () {
+    expect(
+      pickedAssetDocumentFileName(
+        title: 'IMG_1234.HEIC',
+        sourcePath: '/tmp/rendered.jpg',
+        fallbackExtension: 'heic',
+      ),
+      'IMG_1234.HEIC',
+    );
+    expect(
+      pickedAssetDocumentFileName(
+        title: null,
+        sourcePath: '/tmp/clip.MOV',
+        fallbackExtension: 'mov',
+      ),
+      'clip.MOV',
+    );
+    expect(
+      pickedAssetDocumentFileName(
+        title: '..',
+        sourcePath: '/tmp/photo.jpg',
+        fallbackExtension: 'jpg',
+      ),
+      'attachment.jpg',
+    );
+  });
+
   test('photo send thumbnail size preserves aspect ratio', () {
     expect(
       scaledPhotoThumbnailSize(4032, 3024, 4096),

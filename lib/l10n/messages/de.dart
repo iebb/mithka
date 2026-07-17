@@ -619,6 +619,10 @@ const deMessages = <String, String>{
   'composerRichTextSendFailed':
       "Formatierte Nachricht konnte nicht gesendet werden",
   'composerSend': "Senden",
+  'composerSendAsFile': "Als Datei senden",
+  'composerSendAsFileDescription':
+      "Aus der Galerie wählen und die Originaldateien senden",
+  'composerSendAsMedia': "Als Foto oder Video senden",
   'composerSendAsRichText': "Als Rich Text senden",
   'composerSendPaidMessageQuestion': "Kostenpflichtige Nachricht senden?",
   'composerVideoCall': "Videoanruf",

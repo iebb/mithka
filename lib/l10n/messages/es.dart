@@ -610,6 +610,10 @@ const esMessages = <String, String>{
   'composerRichTextMessageTitle': "Mensaje de texto enriquecido",
   'composerRichTextSendFailed': "No se pudo enviar el mensaje enriquecido",
   'composerSend': "Enviar",
+  'composerSendAsFile': "Enviar como archivo",
+  'composerSendAsFileDescription':
+      "Elegir de la galería y enviar los archivos originales",
+  'composerSendAsMedia': "Enviar como foto o vídeo",
   'composerSendAsRichText': "Enviar como texto enriquecido",
   'composerSendPaidMessageQuestion': "¿Enviar mensaje de pago?",
   'composerVideoCall': "Videollamada",
