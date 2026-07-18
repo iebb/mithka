@@ -5,11 +5,15 @@ import 'package:flutter/services.dart';
 
 import '../components/app_icons.dart';
 import '../components/confirm_dialog.dart';
+import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
+import '../l10n/app_localizations.dart';
 import '../media/app_asset_picker.dart';
 import '../tdlib/json_helpers.dart';
+import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
+import '../theme/date_text.dart';
 import 'story_authoring_view.dart';
 import 'story_media_preparer.dart';
 import 'story_service.dart';
@@ -20,7 +24,7 @@ class StoryManagementView extends StatefulWidget {
   const StoryManagementView({
     super.key,
     required this.chatId,
-    this.title = 'Stories',
+    this.title = AppStringKeys.storiesMy,
     this.service,
   });
 
@@ -37,6 +41,7 @@ class _StoryManagementViewState extends State<StoryManagementView> {
   List<Map<String, dynamic>> _profile = [];
   List<Map<String, dynamic>> _archive = [];
   List<Map<String, dynamic>> _albums = [];
+  Map<int, List<Map<String, dynamic>>> _albumStories = {};
   Set<int> _pinned = {};
   bool _loading = true;
   int _tab = 0;
@@ -65,12 +70,35 @@ class _StoryManagementViewState extends State<StoryManagementView> {
       final profile = results[0] as StoryCollectionResult;
       final archive = results[1] as StoryCollectionResult;
       final albums = results[2] as Map<String, dynamic>;
+      final albumRows = albums.objects('albums') ?? const [];
+      final albumStories = <int, List<Map<String, dynamic>>>{};
+      await Future.wait(
+        albumRows.map((album) async {
+          final id = album.integer('id');
+          if (id == null) return;
+          try {
+            final response = await _service.albumStories(widget.chatId, id);
+            albumStories[id] = response.objects('stories') ?? const [];
+          } catch (_) {
+            albumStories[id] = const [];
+          }
+        }),
+      );
+      if (!mounted) return;
       _profile = profile.stories;
       _archive = archive.stories;
       _pinned = profile.pinnedStoryIds.toSet();
-      _albums = albums.objects('albums') ?? const [];
+      _albums = albumRows;
+      _albumStories = albumStories;
     } catch (error) {
-      if (mounted) showToast(context, 'Stories could not be loaded: $error');
+      if (mounted) {
+        showToast(
+          context,
+          context.l10n.t(AppStringKeys.storyManagementLoadFailed, {
+            'value1': error,
+          }),
+        );
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -708,6 +736,89 @@ class _StoryManagementViewState extends State<StoryManagementView> {
     await _load();
   }
 
+  Future<void> _showPageActions() async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: context.colors.background,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _actionRow(
+              sheetContext,
+              sheetContext.l10n.t(AppStringKeys.groupAdminRefresh),
+              HeroAppIcons.arrowsRotate,
+              'refresh',
+            ),
+            _actionRow(
+              sheetContext,
+              sheetContext.l10n.t(AppStringKeys.storyManagementLive),
+              HeroAppIcons.towerBroadcast,
+              'live',
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted) return;
+    switch (action) {
+      case 'refresh':
+        await _load();
+      case 'live':
+        await _openLive();
+    }
+  }
+
+  Future<void> _openAlbum(int index) async {
+    final album = _albums[index];
+    final id = album.integer('id');
+    if (id == null) return;
+    try {
+      var stories = _albumStories[id] ?? const <Map<String, dynamic>>[];
+      if (stories.isEmpty) {
+        final response = await _service.albumStories(widget.chatId, id);
+        stories = response.objects('stories') ?? const [];
+      }
+      final ids = stories
+          .map((story) => story.integer('id'))
+          .whereType<int>()
+          .toList(growable: false);
+      if (!mounted) return;
+      if (ids.isEmpty) {
+        await _albumAction(index);
+        return;
+      }
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (_) => StoryViewerView(chatId: widget.chatId, storyIds: ids),
+        ),
+      );
+    } catch (error) {
+      if (mounted) {
+        showToast(
+          context,
+          context.l10n.t(AppStringKeys.storyManagementAlbumOpenFailed, {
+            'value1': error,
+          }),
+        );
+      }
+    }
+  }
+
+  void _openStory(int index) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => StoryViewerView(
+          chatId: widget.chatId,
+          storyIds: _storyIds,
+          initialIndex: index,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
@@ -721,11 +832,18 @@ class _StoryManagementViewState extends State<StoryManagementView> {
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _headerButton(HeroAppIcons.arrowsRotate, _load),
-                const SizedBox(width: 14),
-                _headerButton(HeroAppIcons.towerBroadcast, _openLive),
-                const SizedBox(width: 14),
-                _headerButton(HeroAppIcons.plus, _newStory),
+                _headerButton(
+                  HeroAppIcons.plus,
+                  _newStory,
+                  label: context.l10n.t(AppStringKeys.storiesCreate),
+                  prominent: true,
+                ),
+                const SizedBox(width: 8),
+                _headerButton(
+                  HeroAppIcons.ellipsis,
+                  _showPageActions,
+                  label: context.l10n.t(AppStringKeys.storyManagementActions),
+                ),
               ],
             ),
           ),
@@ -734,81 +852,15 @@ class _StoryManagementViewState extends State<StoryManagementView> {
             child: _loading
                 ? const Center(child: StoryActivityIndicator())
                 : ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 30),
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
                     children: [
-                      if (_stories.isEmpty)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 64),
-                          child: Column(
-                            children: [
-                              AppIcon(
-                                HeroAppIcons.images,
-                                size: 46,
-                                color: c.textTertiary,
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                _tab == 0
-                                    ? 'No stories on this profile'
-                                    : 'No archived stories',
-                                style: TextStyle(color: c.textSecondary),
-                              ),
-                            ],
-                          ),
-                        )
-                      else
-                        SettingsCard(
-                          children: [
-                            for (var i = 0; i < _stories.length; i++) ...[
-                              _storyRow(_stories[i]),
-                              if (i != _stories.length - 1)
-                                const InsetDivider(leadingInset: 52),
-                            ],
-                          ],
-                        ),
-                      const SizedBox(height: 18),
-                      Row(
-                        children: [
-                          Text(
-                            'Albums',
-                            style: TextStyle(
-                              color: c.textSecondary,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const Spacer(),
-                          GestureDetector(
-                            onTap: _createAlbum,
-                            child: Text(
-                              'New album',
-                              style: TextStyle(
-                                color: AppTheme.brand,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      if (_albums.isEmpty)
-                        Text(
-                          'No story albums',
-                          style: TextStyle(color: c.textTertiary),
-                        )
-                      else
-                        SettingsCard(
-                          children: [
-                            for (var i = 0; i < _albums.length; i++) ...[
-                              SettingsRow(
-                                title: _albums[i].str('name') ?? 'Album',
-                                value: 'Manage',
-                                onTap: () => _albumAction(i),
-                              ),
-                              if (i != _albums.length - 1)
-                                const InsetDivider(leadingInset: 16),
-                            ],
-                          ],
-                        ),
+                      _storySectionHeader(),
+                      const SizedBox(height: 10),
+                      if (_stories.isEmpty) _emptyStories() else _storyGrid(),
+                      const SizedBox(height: 24),
+                      _albumSectionHeader(),
+                      const SizedBox(height: 10),
+                      if (_albums.isEmpty) _emptyAlbums() else _albumGrid(),
                     ],
                   ),
           ),
@@ -817,94 +869,735 @@ class _StoryManagementViewState extends State<StoryManagementView> {
     );
   }
 
-  Widget _headerButton(AppIconData icon, VoidCallback onTap) => GestureDetector(
-    behavior: HitTestBehavior.opaque,
-    onTap: onTap,
-    child: Padding(
-      padding: const EdgeInsets.all(4),
-      child: AppIcon(icon, size: 22, color: AppTheme.brand),
+  Widget _headerButton(
+    AppIconData icon,
+    VoidCallback onTap, {
+    required String label,
+    bool prominent = false,
+  }) => Semantics(
+    button: true,
+    label: label,
+    child: GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        width: 36,
+        height: 36,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: prominent ? AppTheme.brand : context.colors.searchFill,
+          shape: BoxShape.circle,
+        ),
+        child: AppIcon(
+          icon,
+          size: 20,
+          color: prominent ? Colors.white : context.colors.textPrimary,
+        ),
+      ),
     ),
   );
 
   Widget _tabs() => Container(
-    height: 46,
+    key: const ValueKey('story-management-tabs'),
+    height: 54,
+    padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
     color: context.colors.background,
-    child: Row(
-      children: [
-        Expanded(child: _tabButton('Profile', 0)),
-        Expanded(child: _tabButton('Archive', 1)),
-      ],
+    child: Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: context.colors.searchFill,
+        borderRadius: BorderRadius.circular(13),
+      ),
+      child: Row(
+        children: [
+          Expanded(child: _tabButton(AppStringKeys.storyManagementActive, 0)),
+          Expanded(child: _tabButton(AppStringKeys.storyManagementArchive, 1)),
+        ],
+      ),
     ),
   );
 
   Widget _tabButton(String title, int value) => GestureDetector(
     behavior: HitTestBehavior.opaque,
     onTap: () => setState(() => _tab = value),
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        Expanded(
-          child: Center(
-            child: Text(
-              title,
-              style: TextStyle(
-                color: _tab == value
-                    ? AppTheme.brand
-                    : context.colors.textSecondary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
+    child: AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: _tab == value ? context.colors.background : Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: _tab == value
+            ? const [
+                BoxShadow(
+                  color: Color(0x1F000000),
+                  blurRadius: 4,
+                  offset: Offset(0, 1),
+                ),
+              ]
+            : null,
+      ),
+      child: Text(
+        title.l10n(context),
+        style: TextStyle(
+          color: _tab == value
+              ? context.colors.textPrimary
+              : context.colors.textSecondary,
+          fontSize: 14,
+          fontWeight: FontWeight.w700,
         ),
-        Container(
-          height: 2,
-          color: _tab == value ? AppTheme.brand : Colors.transparent,
-        ),
-      ],
+      ),
     ),
   );
 
-  Widget _storyRow(Map<String, dynamic> story) {
-    final id = story.integer('id') ?? 0;
-    final caption = story.obj('caption')?.str('text') ?? '';
-    final content = story.obj('content')?.type ?? 'storyContentUnsupported';
-    return SettingsRow(
-      leading: AppIcon(
-        content == 'storyContentVideo'
-            ? HeroAppIcons.video
-            : content == 'storyContentLive'
-            ? HeroAppIcons.towerBroadcast
-            : HeroAppIcons.image,
-        size: 22,
-        color: AppTheme.brand,
-      ),
-      title: caption.isEmpty ? 'Story $id' : caption,
-      value: _pinned.contains(id)
-          ? 'Pinned'
-          : (story.boolean('is_posted_to_chat_page') == true
-                ? 'On profile'
-                : 'Archived'),
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(
-          fullscreenDialog: true,
-          builder: (_) =>
-              StoryViewerView(chatId: widget.chatId, storyIds: [id]),
+  Widget _storySectionHeader() {
+    final key = _tab == 0
+        ? AppStringKeys.storiesActiveCount
+        : AppStringKeys.storyManagementArchivedCount;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: Text(
+        context.l10n.t(key, {'value1': _stories.length}),
+        style: TextStyle(
+          color: context.colors.textSecondary,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
         ),
       ),
-      trailing: GestureDetector(
+    );
+  }
+
+  Widget _storyGrid() => GridView.builder(
+    key: ValueKey('story-grid-$_tab'),
+    shrinkWrap: true,
+    physics: const NeverScrollableScrollPhysics(),
+    itemCount: _stories.length,
+    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+      crossAxisCount: 3,
+      mainAxisSpacing: 9,
+      crossAxisSpacing: 9,
+      childAspectRatio: 9 / 16,
+    ),
+    itemBuilder: (context, index) => _storyCard(_stories[index], index),
+  );
+
+  Widget _storyCard(Map<String, dynamic> story, int index) {
+    final id = story.integer('id') ?? 0;
+    final caption = story.obj('caption')?.str('text')?.trim() ?? '';
+    final contentType = story.obj('content')?.type;
+    final isVideo = contentType == 'storyContentVideo';
+    final isLive = contentType == 'storyContentLive';
+    final preview = _storyPreview(story);
+    final viewCount = story.obj('interaction_info')?.integer('view_count') ?? 0;
+    final pinned = _pinned.contains(id);
+    return Semantics(
+      button: true,
+      label: caption.isEmpty
+          ? '${AppStringKeys.momentsStories.l10n(context)} $id'
+          : caption,
+      child: GestureDetector(
+        key: ValueKey('story-card-$id'),
         behavior: HitTestBehavior.opaque,
-        onTap: () => _storyAction(story),
-        child: Padding(
-          padding: const EdgeInsets.all(8),
-          child: AppIcon(
-            HeroAppIcons.ellipsis,
-            size: 20,
-            color: context.colors.textSecondary,
+        onTap: () => _openStory(index),
+        onLongPress: () => _storyAction(story),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(15),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              _storyArtwork(preview),
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Color(0x33000000),
+                      Color(0x00000000),
+                      Color(0xC9000000),
+                    ],
+                    stops: [0, 0.48, 1],
+                  ),
+                ),
+              ),
+              if (isVideo) const Center(child: _StoryPlayBadge()),
+              Positioned(
+                top: 7,
+                left: 7,
+                right: 7,
+                child: Row(
+                  children: [
+                    if (isLive)
+                      _storyStatusChip(
+                        HeroAppIcons.towerBroadcast,
+                        context.l10n.t(AppStringKeys.storyManagementLive),
+                      )
+                    else if (pinned)
+                      _storyStatusChip(
+                        HeroAppIcons.thumbtack,
+                        context.l10n.t(AppStringKeys.chatTodoSetSuccess),
+                      ),
+                    const Spacer(),
+                    _cardMenuButton(
+                      onTap: () => _storyAction(story),
+                      semanticsLabel: context.l10n.t(
+                        AppStringKeys.storyManagementActions,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Positioned(
+                left: 9,
+                right: 9,
+                bottom: 9,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (caption.isNotEmpty) ...[
+                      Text(
+                        caption,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          height: 1.15,
+                          fontWeight: FontWeight.w700,
+                          shadows: [Shadow(blurRadius: 4)],
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                    ],
+                    Row(
+                      children: [
+                        const AppIcon(
+                          HeroAppIcons.eye,
+                          size: 13,
+                          color: Color(0xE6FFFFFF),
+                        ),
+                        const SizedBox(width: 3),
+                        Text(
+                          '$viewCount',
+                          style: const TextStyle(
+                            color: Color(0xE6FFFFFF),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const Spacer(),
+                        Flexible(
+                          child: Text(
+                            _storyTimeLabel(story),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.right,
+                            style: const TextStyle(
+                              color: Color(0xE6FFFFFF),
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
+
+  Widget _storyArtwork(TdFileRef? preview) {
+    if (preview != null) {
+      return TDImage(
+        photo: preview,
+        cornerRadius: 0,
+        cacheWidth: 360,
+        cacheHeight: 640,
+      );
+    }
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppTheme.brand.withValues(alpha: 0.78),
+            const Color(0xFF302A58),
+            const Color(0xFF15151B),
+          ],
+        ),
+      ),
+      child: Center(
+        child: AppIcon(
+          HeroAppIcons.images,
+          size: 30,
+          color: Colors.white.withValues(alpha: 0.82),
+        ),
+      ),
+    );
+  }
+
+  TdFileRef? _storyPreview(Map<String, dynamic> story) {
+    final content = story.obj('content');
+    switch (content?.type) {
+      case 'storyContentPhoto':
+        final photo = content?.obj('photo');
+        final sizes = photo?.objects('sizes') ?? const [];
+        if (sizes.isEmpty) return null;
+        final best = TDParse.bestPhotoSize(sizes);
+        final thumbnail = TDParse.photoThumbnailSize(sizes, best);
+        return TDParse.fileRef(
+          (thumbnail ?? best).obj('photo'),
+          miniThumb: TDParse.decodeMiniThumb(photo?.obj('minithumbnail')),
+        );
+      case 'storyContentVideo':
+        final video = content?.obj('video');
+        return TDParse.fileRef(
+          video?.obj('thumbnail')?.obj('file'),
+          miniThumb: TDParse.decodeMiniThumb(video?.obj('minithumbnail')),
+        );
+    }
+    return null;
+  }
+
+  String _storyTimeLabel(Map<String, dynamic> story) {
+    if (_tab == 1) {
+      return DateText.listLabel(story.integer('date') ?? 0);
+    }
+    final expiration = story.integer('expiration_date') ?? 0;
+    if (expiration > 0) {
+      final seconds =
+          expiration - DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final hours = ((seconds < 0 ? 0 : seconds) + 3599) ~/ 3600;
+      return context.l10n.t(AppStringKeys.storyManagementHoursLeft, {
+        'value1': hours,
+      });
+    }
+    return DateText.listLabel(story.integer('date') ?? 0);
+  }
+
+  Widget _storyStatusChip(AppIconData icon, String label) => Container(
+    constraints: const BoxConstraints(maxWidth: 76),
+    height: 25,
+    padding: const EdgeInsets.symmetric(horizontal: 7),
+    decoration: BoxDecoration(
+      color: const Color(0xA6000000),
+      borderRadius: BorderRadius.circular(13),
+      border: Border.all(color: const Color(0x33FFFFFF)),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AppIcon(icon, size: 12, color: Colors.white),
+        const SizedBox(width: 4),
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  Widget _cardMenuButton({
+    required VoidCallback onTap,
+    required String semanticsLabel,
+  }) => Semantics(
+    button: true,
+    label: semanticsLabel,
+    child: GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: SizedBox(
+        width: 36,
+        height: 36,
+        child: Center(
+          child: Container(
+            width: 30,
+            height: 30,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(
+              color: Color(0xA6000000),
+              shape: BoxShape.circle,
+            ),
+            child: const AppIcon(
+              HeroAppIcons.ellipsis,
+              size: 17,
+              color: Colors.white,
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+
+  Widget _emptyStories() {
+    final active = _tab == 0;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 22),
+      decoration: BoxDecoration(
+        color: context.colors.background,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: context.colors.divider),
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 54,
+            height: 54,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: AppTheme.brand.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: AppIcon(
+              active ? HeroAppIcons.camera : HeroAppIcons.images,
+              size: 25,
+              color: AppTheme.brand,
+            ),
+          ),
+          const SizedBox(height: 13),
+          Text(
+            (active
+                    ? AppStringKeys.storyManagementEmptyActiveTitle
+                    : AppStringKeys.storyManagementEmptyArchiveTitle)
+                .l10n(context),
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: context.colors.textPrimary,
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            (active
+                    ? AppStringKeys.storyManagementEmptyActiveDescription
+                    : AppStringKeys.storyManagementEmptyArchiveDescription)
+                .l10n(context),
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: context.colors.textSecondary,
+              fontSize: 13,
+              height: 1.35,
+            ),
+          ),
+          if (active) ...[
+            const SizedBox(height: 16),
+            Semantics(
+              button: true,
+              child: GestureDetector(
+                onTap: _newStory,
+                child: Container(
+                  height: 42,
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  decoration: BoxDecoration(
+                    color: AppTheme.brand,
+                    borderRadius: BorderRadius.circular(13),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const AppIcon(
+                        HeroAppIcons.plus,
+                        size: 17,
+                        color: Colors.white,
+                      ),
+                      const SizedBox(width: 7),
+                      Text(
+                        AppStringKeys.storiesCreate.l10n(context),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _albumSectionHeader() => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 2),
+    child: Row(
+      children: [
+        Expanded(
+          child: Text(
+            AppStringKeys.storyManagementAlbums.l10n(context),
+            style: TextStyle(
+              color: context.colors.textPrimary,
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+        Semantics(
+          button: true,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _createAlbum,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AppIcon(HeroAppIcons.plus, size: 16, color: AppTheme.brand),
+                  const SizedBox(width: 4),
+                  Text(
+                    AppStringKeys.storyManagementNewAlbum.l10n(context),
+                    style: TextStyle(
+                      color: AppTheme.brand,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  Widget _albumGrid() => GridView.builder(
+    shrinkWrap: true,
+    physics: const NeverScrollableScrollPhysics(),
+    itemCount: _albums.length,
+    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+      crossAxisCount: 2,
+      mainAxisSpacing: 10,
+      crossAxisSpacing: 10,
+      childAspectRatio: 1.42,
+    ),
+    itemBuilder: (context, index) => _albumCard(index),
+  );
+
+  Widget _albumCard(int index) {
+    final album = _albums[index];
+    final id = album.integer('id') ?? 0;
+    final stories = _albumStories[id] ?? const <Map<String, dynamic>>[];
+    final preview = stories.isEmpty ? null : _storyPreview(stories.first);
+    final name = album.str('name')?.trim();
+    return Semantics(
+      button: true,
+      label: name,
+      child: GestureDetector(
+        key: ValueKey('story-album-$id'),
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _openAlbum(index),
+        onLongPress: () => _albumAction(index),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(15),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              _albumArtwork(preview),
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Color(0x12000000), Color(0xD9000000)],
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 8,
+                left: 9,
+                child: Container(
+                  width: 29,
+                  height: 29,
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                    color: Color(0xA6000000),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const AppIcon(
+                    HeroAppIcons.folder,
+                    size: 16,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 7,
+                right: 7,
+                child: _cardMenuButton(
+                  onTap: () => _albumAction(index),
+                  semanticsLabel: context.l10n.t(
+                    AppStringKeys.storyManagementActions,
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 10,
+                right: 10,
+                bottom: 10,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      name?.isNotEmpty == true
+                          ? name!
+                          : AppStringKeys.storyManagementAlbums.l10n(context),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      context.l10n.t(AppStringKeys.storyManagementAlbumCount, {
+                        'value1': stories.length,
+                      }),
+                      style: const TextStyle(
+                        color: Color(0xCCFFFFFF),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _albumArtwork(TdFileRef? preview) {
+    if (preview != null) return _storyArtwork(preview);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppTheme.brand.withValues(alpha: 0.78),
+            const Color(0xFF363348),
+          ],
+        ),
+      ),
+      child: Align(
+        alignment: const Alignment(0.8, -0.15),
+        child: AppIcon(
+          HeroAppIcons.solidFolder,
+          size: 54,
+          color: Colors.white.withValues(alpha: 0.16),
+        ),
+      ),
+    );
+  }
+
+  Widget _emptyAlbums() => Semantics(
+    button: true,
+    child: GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _createAlbum,
+      child: Container(
+        height: 92,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: BoxDecoration(
+          color: context.colors.background,
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(color: context.colors.divider),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AppTheme.brand.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: AppIcon(
+                HeroAppIcons.folder,
+                size: 24,
+                color: AppTheme.brand,
+              ),
+            ),
+            const SizedBox(width: 13),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    AppStringKeys.storyManagementNewAlbum.l10n(context),
+                    style: TextStyle(
+                      color: context.colors.textPrimary,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    AppStringKeys.storyManagementNoAlbums.l10n(context),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: context.colors.textSecondary,
+                      fontSize: 12,
+                      height: 1.25,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            AppIcon(HeroAppIcons.chevronRight, size: 17, color: AppTheme.brand),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class _StoryPlayBadge extends StatelessWidget {
+  const _StoryPlayBadge();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: 42,
+    height: 42,
+    alignment: Alignment.center,
+    decoration: BoxDecoration(
+      color: Colors.black.withValues(alpha: 0.46),
+      shape: BoxShape.circle,
+      border: Border.all(color: const Color(0x44FFFFFF)),
+    ),
+    child: const Padding(
+      padding: EdgeInsets.only(left: 2),
+      child: AppIcon(HeroAppIcons.play, size: 19, color: Colors.white),
+    ),
+  );
 }
 
 class LiveStorySetupView extends StatefulWidget {

@@ -104,7 +104,8 @@ double chatListItemScrollOffset({
   required int itemIndex,
   required double rowHeight,
   required double maxScrollExtent,
-}) => math.min(itemIndex * rowHeight, maxScrollExtent);
+  double leadingExtent = 0,
+}) => math.min(leadingExtent + itemIndex * rowHeight, maxScrollExtent);
 
 class CommunityListSelection {
   const CommunityListSelection({
@@ -150,6 +151,8 @@ class _ChatListViewState extends State<ChatListView>
     with SingleTickerProviderStateMixin {
   static const _folderTransitionDuration = Duration(milliseconds: 210);
   static const _folderTransitionDistance = 22.0;
+  static const _searchPillExtent =
+      AppSpacing.md + AppMetric.searchHeight + AppSpacing.sm;
 
   final ChatListViewModel _model = ChatListViewModel();
   late final ScrollController _scrollController = _newScrollController();
@@ -648,6 +651,9 @@ class _ChatListViewState extends State<ChatListView>
       itemIndex: itemIndex,
       rowHeight: context.read<ThemeController>().rowHeight,
       maxScrollExtent: _scrollController.position.maxScrollExtent,
+      leadingExtent: context.read<ThemeController>().showChatListSearch
+          ? _searchPillExtent
+          : 0,
     );
   }
 
@@ -817,8 +823,8 @@ class _ChatListViewState extends State<ChatListView>
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: AppTextSize.title,
-                            fontWeight: FontWeight.w600,
+                            fontSize: AppTextSize.bodyLarge,
+                            fontWeight: FontWeight.w500,
                             color: c.textPrimary,
                           ),
                         ),
@@ -848,7 +854,6 @@ class _ChatListViewState extends State<ChatListView>
                       ],
                     ],
                   ),
-                  const SizedBox(height: AppSpacing.xxs),
                   Row(
                     children: [
                       Container(
@@ -863,7 +868,7 @@ class _ChatListViewState extends State<ChatListView>
                       Text(
                         telegramPresenceText(TelegramPresenceLabel.online),
                         style: TextStyle(
-                          fontSize: AppTextSize.caption,
+                          fontSize: AppTextSize.tiny,
                           color: c.textSecondary,
                         ),
                       ),
@@ -1061,13 +1066,8 @@ class _ChatListViewState extends State<ChatListView>
       child: LayoutBuilder(
         builder: (context, geo) {
           final rowH = theme.rowHeight + 0.5;
-          final searchHeight = showSearch
-              ? AppSpacing.md + AppMetric.searchHeight + AppSpacing.sm
-              : 0.0;
-          final visibleRows = math.max(
-            1,
-            ((geo.maxHeight - searchHeight) / rowH).ceil(),
-          );
+          final searchHeight = showSearch ? _searchPillExtent : 0.0;
+          final visibleRows = math.max(1, (geo.maxHeight / rowH).ceil());
           _lastVisibleRows = visibleRows;
           final entries = _model.chatListEntries(
             communitiesEnabled: theme.communitiesEnabled,
@@ -1095,8 +1095,11 @@ class _ChatListViewState extends State<ChatListView>
                 parent: BouncingScrollPhysics(),
               ),
               padding: EdgeInsets.zero,
-              itemCount: visibleRows,
-              itemBuilder: (context, i) => const _ChatRowPlaceholder(),
+              itemCount: visibleRows + (showSearch ? 1 : 0),
+              itemBuilder: (context, index) {
+                if (showSearch && index == 0) return _searchPill();
+                return const _ChatRowPlaceholder();
+              },
             );
           } else if (entries.isEmpty && !showInlineArchive && !hasFiltered) {
             list = ListView(
@@ -1106,6 +1109,7 @@ class _ChatListViewState extends State<ChatListView>
               ),
               padding: EdgeInsets.zero,
               children: [
+                if (showSearch) _searchPill(),
                 SizedBox(
                   height: math.max(180, geo.maxHeight - searchHeight - rowH),
                   child: _emptyChatList(),
@@ -1120,14 +1124,17 @@ class _ChatListViewState extends State<ChatListView>
               ),
               padding: EdgeInsets.zero,
               itemCount:
+                  (showSearch ? 1 : 0) +
                   entries.length +
                   (showInlineArchive ? 1 : 0) +
                   (hasFiltered ? 1 : 0),
               itemBuilder: (context, index) {
-                if (hasFiltered && index == 0) {
+                if (showSearch && index == 0) return _searchPill();
+                final contentIndex = showSearch ? index - 1 : index;
+                if (hasFiltered && contentIndex == 0) {
                   return _filteredChatsRow();
                 }
-                final listIndex = hasFiltered ? index - 1 : index;
+                final listIndex = hasFiltered ? contentIndex - 1 : contentIndex;
                 if (showInlineArchive && listIndex == archiveIndex) {
                   return _assistantRow();
                 }
@@ -1168,7 +1175,6 @@ class _ChatListViewState extends State<ChatListView>
 
           return Column(
             children: [
-              if (showSearch) _searchPill(),
               if (hasArchive &&
                   archiveMode == ArchivedChatsDisplayMode.pullDown)
                 AnimatedSize(

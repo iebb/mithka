@@ -1552,6 +1552,27 @@ abstract final class AppStringKeys {
   static const storiesRecent = 'storiesRecent';
   static const storiesSeeAll = 'storiesSeeAll';
   static const storiesYourActive = 'storiesYourActive';
+  static const storyManagementActions = 'storyManagementActions';
+  static const storyManagementActive = 'storyManagementActive';
+  static const storyManagementAlbumCount = 'storyManagementAlbumCount';
+  static const storyManagementAlbumOpenFailed =
+      'storyManagementAlbumOpenFailed';
+  static const storyManagementAlbums = 'storyManagementAlbums';
+  static const storyManagementArchive = 'storyManagementArchive';
+  static const storyManagementArchivedCount = 'storyManagementArchivedCount';
+  static const storyManagementEmptyActiveDescription =
+      'storyManagementEmptyActiveDescription';
+  static const storyManagementEmptyActiveTitle =
+      'storyManagementEmptyActiveTitle';
+  static const storyManagementEmptyArchiveDescription =
+      'storyManagementEmptyArchiveDescription';
+  static const storyManagementEmptyArchiveTitle =
+      'storyManagementEmptyArchiveTitle';
+  static const storyManagementHoursLeft = 'storyManagementHoursLeft';
+  static const storyManagementLive = 'storyManagementLive';
+  static const storyManagementLoadFailed = 'storyManagementLoadFailed';
+  static const storyManagementNewAlbum = 'storyManagementNewAlbum';
+  static const storyManagementNoAlbums = 'storyManagementNoAlbums';
   static const momentsUnknown = 'momentsUnknown';
   static const momentsUserLiked = 'momentsUserLiked';
   static const musicPlayerAdd = 'musicPlayerAdd';

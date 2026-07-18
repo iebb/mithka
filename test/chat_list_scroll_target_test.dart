@@ -23,4 +23,19 @@ void main() {
       1800,
     );
   });
+
+  test(
+    'unread chat scroll target includes a scrollable leading search item',
+    () {
+      expect(
+        chatListItemScrollOffset(
+          itemIndex: 4,
+          rowHeight: 72,
+          leadingExtent: 56,
+          maxScrollExtent: 10000,
+        ),
+        344,
+      );
+    },
+  );
 }
