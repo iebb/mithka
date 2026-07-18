@@ -23,6 +23,7 @@ import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../tdlib/td_requests.dart';
+import '../tdlib/td_user_index.dart';
 import 'chat_first_contact_info.dart';
 import 'chat_message_merge.dart';
 import 'chat_unread_progress.dart';
@@ -372,6 +373,7 @@ class ChatViewModel extends ChangeNotifier {
 
   final Map<int, _SenderInfo> _senderCache = {};
   final Set<int> _resolvingSenders = {};
+  final Set<int> _resolvedSenderDetails = {};
   bool _isDisposed = false;
 
   @override
@@ -3701,6 +3703,11 @@ class ChatViewModel extends ChangeNotifier {
         }
         _loadAvailableMessageSenders();
 
+      case 'updateUser':
+        final user = update.obj('user');
+        if (user == null) return;
+        _applySenderUserUpdate(user);
+
       case 'updateUserFullInfo':
         if (isGroup || update.int64('user_id') != peerUserId) return;
         _setPaidMessageStarCount(
@@ -4512,6 +4519,7 @@ class ChatViewModel extends ChangeNotifier {
     for (final m in messages) {
       if (m.senderId != senderId || (m.isOutgoing && !m.senderIsChat)) continue;
       if (m.senderName == info.name &&
+          _sameSenderPhoto(m.senderPhoto, info.photo) &&
           m.senderRole == info.role &&
           m.senderTitle == (info.title ?? m.senderTitle) &&
           m.senderIsPremium == info.isPremium &&
@@ -4531,6 +4539,15 @@ class ChatViewModel extends ChangeNotifier {
     if (changed) _scheduleSenderPatchNotify();
   }
 
+  bool _sameSenderPhoto(TdFileRef? current, TdFileRef? next) {
+    if (identical(current, next)) return true;
+    if (current == null || next == null) return false;
+    return current.id == next.id &&
+        current.localPath == next.localPath &&
+        current.photoId == next.photoId &&
+        current.hasAnimation == next.hasAnimation;
+  }
+
   void _scheduleSenderPatchNotify() {
     if (_isDisposed) return;
     if (_senderPatchTimer != null) return;
@@ -4544,6 +4561,7 @@ class ChatViewModel extends ChangeNotifier {
 
   void _resolveSendersIfNeeded(List<ChatMessage> batch) {
     if (!isGroup) return;
+    _primeCachedSenderIdentities(batch);
     final pending = <int>{};
     for (final message in batch) {
       if ((message.isOutgoing && !message.senderIsChat) || message.isService) {
@@ -4554,6 +4572,10 @@ class ChatViewModel extends ChangeNotifier {
       final cached = _senderCache[senderId];
       if (cached != null) {
         _patchSender(cached, senderId);
+        if (!_resolvedSenderDetails.contains(senderId) &&
+            !_resolvingSenders.contains(senderId)) {
+          pending.add(senderId);
+        }
       } else if (!_resolvingSenders.contains(senderId)) {
         pending.add(senderId);
       }
@@ -4562,6 +4584,73 @@ class ChatViewModel extends ChangeNotifier {
       _resolvingSenders.add(senderId);
       _resolveSender(senderId);
     }
+  }
+
+  void _primeCachedSenderIdentities(List<ChatMessage> batch) {
+    for (final message in batch) {
+      if ((message.isOutgoing && !message.senderIsChat) || message.isService) {
+        continue;
+      }
+      final senderId = message.senderId;
+      if (senderId == null || senderId <= 0) continue;
+      final user = TdUserIndex.shared.userFor(_client.activeSlot, senderId);
+      if (user == null) continue;
+      final existing = _senderCache[senderId];
+      final info = _senderInfoFromUser(
+        user,
+        role: existing?.role ?? MemberRole.member,
+        title: existing?.title,
+      );
+      _senderCache[senderId] = info;
+      _patchSender(info, senderId);
+    }
+  }
+
+  @visibleForTesting
+  void primeCachedSenderIdentitiesForTesting() {
+    _primeCachedSenderIdentities(messages);
+  }
+
+  @visibleForTesting
+  void applySenderUserUpdateForTesting(Map<String, dynamic> user) {
+    _applySenderUserUpdate(user);
+  }
+
+  void _applySenderUserUpdate(Map<String, dynamic> user) {
+    if (!isGroup) return;
+    final userId = user.int64('id');
+    if (userId == null) return;
+    final isVisibleSender = messages.any(
+      (message) =>
+          message.senderId == userId &&
+          !(message.isOutgoing && !message.senderIsChat) &&
+          !message.isService,
+    );
+    if (!isVisibleSender && !_senderCache.containsKey(userId)) return;
+    final existing = _senderCache[userId];
+    final info = _senderInfoFromUser(
+      user,
+      role: existing?.role ?? MemberRole.member,
+      title: existing?.title,
+    );
+    _senderCache[userId] = info;
+    _patchSender(info, userId);
+  }
+
+  _SenderInfo _senderInfoFromUser(
+    Map<String, dynamic> user, {
+    required MemberRole role,
+    required String? title,
+  }) {
+    return _SenderInfo(
+      TDParse.userName(user),
+      TDParse.smallPhoto(user.obj('profile_photo')),
+      role,
+      title,
+      isPremium: user.boolean('is_premium') ?? false,
+      accentColorId: user.integer('accent_color_id') ?? -1,
+      emojiStatusId: TDParse.emojiStatusCustomEmojiId(user.obj('emoji_status')),
+    );
   }
 
   /// Fills `forwardOrigin` for forwarded messages whose origin is a user or
@@ -4673,75 +4762,77 @@ class ChatViewModel extends ChangeNotifier {
   }
 
   Future<void> _resolveSender(int senderId) async {
-    _SenderInfo info;
-    if (senderId > 0) {
-      String name;
-      TdFileRef? photo;
-      var isPremium = false;
-      var accentColorId = -1;
-      var emojiStatusId = 0;
-      try {
-        final user = await _client.query({
-          '@type': 'getUser',
-          'user_id': senderId,
-        });
-        name = TDParse.userName(user);
-        photo = TDParse.smallPhoto(user.obj('profile_photo'));
-        isPremium = user.boolean('is_premium') ?? false;
-        accentColorId = user.integer('accent_color_id') ?? -1;
-        emojiStatusId = TDParse.emojiStatusCustomEmojiId(
-          user.obj('emoji_status'),
+    try {
+      _SenderInfo info;
+      if (senderId > 0) {
+        Map<String, dynamic>? user = TdUserIndex.shared.userFor(
+          _client.activeSlot,
+          senderId,
         );
-      } catch (_) {
-        name = AppStrings.t(AppStringKeys.chatUserFallbackName, {
-          'value1': senderId,
-        });
-        photo = null;
+        if (user == null) {
+          try {
+            user = await _client.query({
+              '@type': 'getUser',
+              'user_id': senderId,
+            });
+          } catch (_) {
+            // A discovery update can still be in flight. Do not permanently
+            // cache a placeholder; updateUser will patch the sender when it
+            // arrives, and a later batch remains free to retry resolution.
+            return;
+          }
+        }
+        final existing = _senderCache[senderId];
+        final immediate = _senderInfoFromUser(
+          user,
+          role: existing?.role ?? MemberRole.member,
+          title: existing?.title,
+        );
+        if (_isDisposed) return;
+        _senderCache[senderId] = immediate;
+        _patchSender(immediate, senderId);
+        final role = isChannel
+            ? (MemberRole.member, null)
+            : await _resolveRole(senderId);
+        final latestUser =
+            TdUserIndex.shared.userFor(_client.activeSlot, senderId) ?? user;
+        info = _senderInfoFromUser(latestUser, role: role.$1, title: role.$2);
+      } else {
+        try {
+          final chat = await _client.query({
+            '@type': 'getChat',
+            'chat_id': senderId,
+          });
+          info = _SenderInfo(
+            chat.str('title') ??
+                telegramText(AppStringKeys.chatInfoGroupMembers),
+            TDParse.smallPhoto(chat.obj('photo')),
+            MemberRole.channel,
+            null,
+          );
+        } catch (_) {
+          info = _SenderInfo(
+            telegramText(AppStringKeys.chatInfoGroupMembers),
+            null,
+            MemberRole.channel,
+            null,
+          );
+        }
       }
-      final role = isChannel
-          ? (MemberRole.member, null)
-          : await _resolveRole(senderId);
-      info = _SenderInfo(
-        name,
-        photo,
-        role.$1,
-        role.$2,
-        isPremium: isPremium,
-        accentColorId: accentColorId,
-        emojiStatusId: emojiStatusId,
-      );
-    } else {
-      try {
-        final chat = await _client.query({
-          '@type': 'getChat',
-          'chat_id': senderId,
-        });
-        info = _SenderInfo(
-          chat.str('title') ?? telegramText(AppStringKeys.chatInfoGroupMembers),
-          TDParse.smallPhoto(chat.obj('photo')),
-          MemberRole.channel,
-          null,
-        );
-      } catch (_) {
-        info = _SenderInfo(
-          telegramText(AppStringKeys.chatInfoGroupMembers),
-          null,
-          MemberRole.channel,
-          null,
+      if (_isDisposed) return;
+      _senderCache[senderId] = info;
+      _resolvedSenderDetails.add(senderId);
+      final activeAction = _chatActions[senderId];
+      if (activeAction != null && activeAction.name.isEmpty) {
+        _chatActions[senderId] = _ChatActionInfo(
+          info.name,
+          activeAction.actionType,
         );
       }
+      _patchSender(info, senderId);
+    } finally {
+      _resolvingSenders.remove(senderId);
     }
-    if (_isDisposed) return;
-    _senderCache[senderId] = info;
-    final activeAction = _chatActions[senderId];
-    if (activeAction != null && activeAction.name.isEmpty) {
-      _chatActions[senderId] = _ChatActionInfo(
-        info.name,
-        activeAction.actionType,
-      );
-    }
-    _resolvingSenders.remove(senderId);
-    _patchSender(info, senderId);
   }
 
   Future<(MemberRole, String?)> _resolveRole(int userId) async {

@@ -34,6 +34,7 @@ import '../settings/transfer_boost_config.dart';
 import 'avatar_animation_index.dart';
 import 'json_helpers.dart';
 import 'td_bindings.dart';
+import 'td_user_index.dart';
 
 /// An error returned by TDLib (its "error" object).
 class TdError implements Exception {
@@ -892,6 +893,7 @@ class TdClient {
     if (cid != null) {
       _bindings.send(cid, jsonEncode({'@type': 'close'}));
       _slotForClient.remove(cid);
+      TdUserIndex.shared.clearSlot(slot);
       _latestChatFoldersByClient.remove(cid);
       _latestEmojiChatThemesByClient.remove(cid);
       _latestCommunitiesByClient.remove(cid);
@@ -920,6 +922,7 @@ class TdClient {
     final clientId = object.integer('@client_id') ?? -1;
     final slot = _slotForClient[clientId] ?? _activeSlot;
     AvatarAnimationIndex.shared.observe(slot, object);
+    TdUserIndex.shared.observe(slot, object);
 
     // Responses to our requests carry the "@extra" we attached (any client).
     final extra = object.str('@extra');
@@ -937,6 +940,7 @@ class TdClient {
 
     if (object.type == 'updateAuthorizationState' &&
         object.obj('authorization_state')?.type == 'authorizationStateClosed') {
+      TdUserIndex.shared.clearSlot(slot);
       final waiter = _clientClosedWaiters.remove(clientId);
       if (waiter != null && !waiter.isCompleted) waiter.complete();
     }

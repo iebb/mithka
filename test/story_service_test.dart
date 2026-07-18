@@ -177,6 +177,37 @@ void main() {
       });
     });
 
+    test('keeps only story destinations allowed by TDLib', () async {
+      final checkedChatIds = <int>[];
+      final service = StoryService(
+        query: (request) async {
+          switch (request['@type']) {
+            case 'getMe':
+              return {'@type': 'user', 'id': 1};
+            case 'createPrivateChat':
+              return {'@type': 'chat', 'id': 10};
+            case 'getChatsToPostStories':
+              return {
+                '@type': 'chats',
+                'chat_ids': [20, 30, 10],
+              };
+            case 'canPostStory':
+              final chatId = request['chat_id'] as int;
+              checkedChatIds.add(chatId);
+              return {
+                '@type': chatId == 20
+                    ? 'canPostStoryResultOk'
+                    : 'canPostStoryResultPremiumNeeded',
+              };
+          }
+          throw StateError('Unexpected request: $request');
+        },
+      );
+
+      expect(await service.postableChatIds(), [20]);
+      expect(checkedChatIds, containsAllInOrder([10, 20, 30]));
+    });
+
     test(
       'paginates profile stories until TDLib returns no new story',
       () async {

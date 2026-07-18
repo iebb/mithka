@@ -509,6 +509,7 @@ class _ChannelDirectMessageTopicViewState
               isGroup: true,
               meName: _controller.meName,
               mePhoto: _controller.mePhoto,
+              meId: _controller.meId,
               forceShowTimestamp: true,
               onReply: (target) => setState(() => _replyTo = target),
             ),

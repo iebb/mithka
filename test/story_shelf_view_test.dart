@@ -80,9 +80,9 @@ void main() {
                   child: IgnorePointer(
                     child: StoryShelf(
                       model: model,
+                      canPublish: true,
                       onCreate: () {},
                       onManage: () {},
-                      onViewAll: () {},
                     ),
                   ),
                 ),
@@ -95,16 +95,12 @@ void main() {
     await tester.pump();
 
     expect(find.text('故事'), findsOneWidget);
-    expect(find.text('发布故事'), findsOneWidget);
     expect(find.text('我的故事'), findsOneWidget);
-    expect(find.text('查看全部'), findsOneWidget);
+    expect(find.text('发布故事'), findsNothing);
+    expect(find.text('查看全部'), findsNothing);
     expect(find.text('Alice'), findsOneWidget);
     expect(find.text('小林'), findsOneWidget);
     expect(find.text('Charlie'), findsOneWidget);
-    expect(
-      tester.getCenter(find.text('发布故事')).dx,
-      lessThan(tester.getCenter(find.text('我的故事')).dx),
-    );
     expect(
       tester.getCenter(find.text('我的故事')).dx,
       lessThan(tester.getCenter(find.text('Alice')).dx),

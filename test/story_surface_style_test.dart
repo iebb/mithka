@@ -6,6 +6,7 @@ void main() {
   test('new story surfaces use owned controls and icon wrappers', () {
     const paths = [
       'lib/moments/story_authoring_view.dart',
+      'lib/moments/story_camera_view.dart',
       'lib/moments/story_management_view.dart',
       'lib/moments/story_area_editor_view.dart',
       'lib/moments/story_ui_components.dart',

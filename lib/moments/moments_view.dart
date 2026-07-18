@@ -168,9 +168,10 @@ Color _momentQuoteFill(AppColors c) =>
     c.groupedBackground.withValues(alpha: 0.88);
 
 class MomentsView extends StatefulWidget {
-  const MomentsView({super.key, this.onOpenDetail});
+  const MomentsView({super.key, this.onOpenDetail, this.storyService});
 
   final ValueChanged<Widget>? onOpenDetail;
+  final StoryService? storyService;
 
   @override
   State<MomentsView> createState() => _MomentsViewState();
@@ -179,6 +180,10 @@ class MomentsView extends StatefulWidget {
 class _MomentsViewState extends State<MomentsView> {
   final _channels = ChatListViewModel();
   final _stories = MomentsViewModel();
+  late final StoryService _storyService = widget.storyService ?? StoryService();
+  StreamSubscription<int>? _accountSub;
+  bool _canPublishStories = false;
+  int _storyPermissionGeneration = 0;
 
   @override
   void initState() {
@@ -187,12 +192,18 @@ class _MomentsViewState extends State<MomentsView> {
     _stories.addListener(_onStories);
     _channels.onAppear();
     _stories.start();
+    _accountSub = TdClient.shared.subscribeActiveSlotChanges().listen((_) {
+      if (mounted) setState(() => _canPublishStories = false);
+      unawaited(_loadStoryPublishingPermission());
+    });
+    unawaited(_loadStoryPublishingPermission());
   }
 
   @override
   void dispose() {
     _channels.removeListener(_onChannels);
     _stories.removeListener(_onStories);
+    _accountSub?.cancel();
     _channels.dispose();
     _stories.dispose();
     super.dispose();
@@ -204,6 +215,17 @@ class _MomentsViewState extends State<MomentsView> {
 
   void _onStories() {
     if (mounted) setState(() {});
+  }
+
+  Future<void> _loadStoryPublishingPermission() async {
+    final generation = ++_storyPermissionGeneration;
+    var allowed = false;
+    try {
+      allowed = await _storyService.canPostAnyStory();
+    } catch (_) {}
+    if (mounted && generation == _storyPermissionGeneration) {
+      setState(() => _canPublishStories = allowed);
+    }
   }
 
   List<ChatSummary> get _unreadChannels => _allChannels
@@ -231,26 +253,26 @@ class _MomentsViewState extends State<MomentsView> {
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => detail));
   }
 
-  void _openStories() =>
-      _openDetail(StoriesView(showBackButton: widget.onOpenDetail == null));
-
   Future<void> _createStory() async {
-    final changed = await Navigator.of(context).push<bool>(
+    if (!_canPublishStories) return;
+    final changed = await Navigator.of(context, rootNavigator: true).push<bool>(
       PageRouteBuilder<bool>(
         fullscreenDialog: true,
-        pageBuilder: (_, _, _) => const StoryAuthoringView(),
+        pageBuilder: (_, _, _) => StoryAuthoringView(service: _storyService),
       ),
     );
     if (changed == true) _stories.refresh();
+    await _loadStoryPublishingPermission();
   }
 
   Future<void> _manageStories() async {
     try {
-      final chatId = await StoryService().savedMessagesChatId();
+      final chatId = await _storyService.savedMessagesChatId();
       if (!mounted) return;
       await Navigator.of(context).push(
         PageRouteBuilder<void>(
-          pageBuilder: (_, _, _) => StoryManagementView(chatId: chatId),
+          pageBuilder: (_, _, _) =>
+              StoryManagementView(chatId: chatId, service: _storyService),
         ),
       );
       _stories.refresh();
@@ -279,9 +301,9 @@ class _MomentsViewState extends State<MomentsView> {
               children: [
                 StoryShelf(
                   model: _stories,
+                  canPublish: _canPublishStories,
                   onCreate: _createStory,
                   onManage: _manageStories,
-                  onViewAll: _openStories,
                 ),
                 const SizedBox(height: AppSpacing.md),
                 Container(
@@ -4145,15 +4167,15 @@ class StoryShelf extends StatelessWidget {
   const StoryShelf({
     super.key,
     required this.model,
+    required this.canPublish,
     required this.onCreate,
     required this.onManage,
-    required this.onViewAll,
   });
 
   final MomentsViewModel model;
+  final bool canPublish;
   final VoidCallback onCreate;
   final VoidCallback onManage;
-  final VoidCallback onViewAll;
 
   @override
   Widget build(BuildContext context) {
@@ -4176,33 +4198,6 @@ class StoryShelf extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                const Spacer(),
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: onViewAll,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 5),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          AppStringKeys.storiesSeeAll.l10n(context),
-                          style: TextStyle(
-                            color: AppTheme.brand,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(width: 3),
-                        AppIcon(
-                          HeroAppIcons.chevronRight,
-                          size: 14,
-                          color: AppTheme.brand,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
               ],
             ),
           ),
@@ -4214,21 +4209,18 @@ class StoryShelf extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 12),
               children: [
                 _StoryActionTile(
-                  label: AppStringKeys.storiesAdd.l10n(context),
-                  icon: HeroAppIcons.camera,
-                  prominent: true,
-                  onTap: onCreate,
-                ),
-                _StoryActionTile(
+                  key: const ValueKey('my-story-action'),
                   label: AppStringKeys.storiesMy.l10n(context),
                   icon: HeroAppIcons.inbox,
                   photo: model.selfPhoto,
                   photoTitle: model.selfName,
                   count: model.ownGroup?.storyIds.length,
                   onTap: model.ownGroup == null
-                      ? onManage
+                      ? (canPublish ? onCreate : onManage)
                       : () => _openStory(context, model.ownGroup!),
-                  onBadgeTap: onManage,
+                  onBadgeTap: canPublish ? onCreate : null,
+                  showBadge: canPublish || model.ownGroup != null,
+                  prominent: model.ownGroup == null && canPublish,
                 ),
                 for (final group in model.groups)
                   _StoryGroupTile(
@@ -4261,6 +4253,7 @@ class StoryShelf extends StatelessWidget {
 
 class _StoryActionTile extends StatelessWidget {
   const _StoryActionTile({
+    super.key,
     required this.label,
     required this.icon,
     required this.onTap,
@@ -4269,6 +4262,7 @@ class _StoryActionTile extends StatelessWidget {
     this.photoTitle = '',
     this.count,
     this.onBadgeTap,
+    this.showBadge = true,
   });
 
   final String label;
@@ -4279,6 +4273,7 @@ class _StoryActionTile extends StatelessWidget {
   final String photoTitle;
   final int? count;
   final VoidCallback? onBadgeTap;
+  final bool showBadge;
 
   @override
   Widget build(BuildContext context) {
@@ -4334,43 +4329,44 @@ class _StoryActionTile extends StatelessWidget {
                               ),
                             ),
                     ),
-                    Positioned(
-                      right: -1,
-                      bottom: -1,
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: onBadgeTap,
-                        child: Container(
-                          constraints: const BoxConstraints(
-                            minWidth: 21,
-                            minHeight: 21,
-                          ),
-                          alignment: Alignment.center,
-                          padding: count != null
-                              ? const EdgeInsets.symmetric(horizontal: 5)
-                              : EdgeInsets.zero,
-                          decoration: BoxDecoration(
-                            color: AppTheme.brand,
-                            borderRadius: BorderRadius.circular(11),
-                            border: Border.all(color: c.background, width: 2),
-                          ),
-                          child: count != null
-                              ? Text(
-                                  '$count',
-                                  style: const TextStyle(
+                    if (showBadge)
+                      Positioned(
+                        right: -1,
+                        bottom: -1,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: onBadgeTap,
+                          child: Container(
+                            constraints: const BoxConstraints(
+                              minWidth: 21,
+                              minHeight: 21,
+                            ),
+                            alignment: Alignment.center,
+                            padding: count != null
+                                ? const EdgeInsets.symmetric(horizontal: 5)
+                                : EdgeInsets.zero,
+                            decoration: BoxDecoration(
+                              color: AppTheme.brand,
+                              borderRadius: BorderRadius.circular(11),
+                              border: Border.all(color: c.background, width: 2),
+                            ),
+                            child: count != null
+                                ? Text(
+                                    '$count',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  )
+                                : const AppIcon(
+                                    HeroAppIcons.plus,
+                                    size: 12,
                                     color: Colors.white,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w700,
                                   ),
-                                )
-                              : const AppIcon(
-                                  HeroAppIcons.plus,
-                                  size: 12,
-                                  color: Colors.white,
-                                ),
+                          ),
                         ),
                       ),
-                    ),
                   ],
                 ),
               ),
@@ -4457,9 +4453,10 @@ class _StoryGroupTile extends StatelessWidget {
 }
 
 class StoriesView extends StatefulWidget {
-  const StoriesView({super.key, this.showBackButton = true});
+  const StoriesView({super.key, this.showBackButton = true, this.service});
 
   final bool showBackButton;
+  final StoryService? service;
 
   @override
   State<StoriesView> createState() => _StoriesViewState();
@@ -4467,23 +4464,38 @@ class StoriesView extends StatefulWidget {
 
 class _StoriesViewState extends State<StoriesView> {
   final _model = MomentsViewModel();
+  late final StoryService _service = widget.service ?? StoryService();
+  bool _canPublish = false;
+
+  Future<void> _loadPublishingPermission() async {
+    var allowed = false;
+    try {
+      allowed = await _service.canPostAnyStory();
+    } catch (_) {}
+    if (mounted) setState(() => _canPublish = allowed);
+  }
 
   Future<void> _createStory() async {
-    final changed = await Navigator.of(context).push<bool>(
+    if (!_canPublish) return;
+    final changed = await Navigator.of(context, rootNavigator: true).push<bool>(
       PageRouteBuilder<bool>(
         fullscreenDialog: true,
-        pageBuilder: (_, _, _) => const StoryAuthoringView(),
+        pageBuilder: (_, _, _) => StoryAuthoringView(service: _service),
       ),
     );
     if (changed == true) _model.refresh();
+    await _loadPublishingPermission();
   }
 
   Future<void> _manageStories() async {
     try {
-      final chatId = await StoryService().savedMessagesChatId();
+      final chatId = await _service.savedMessagesChatId();
       if (!mounted) return;
       await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => StoryManagementView(chatId: chatId)),
+        MaterialPageRoute(
+          builder: (_) =>
+              StoryManagementView(chatId: chatId, service: _service),
+        ),
       );
       _model.refresh();
     } catch (error) {
@@ -4503,6 +4515,7 @@ class _StoriesViewState extends State<StoriesView> {
       if (mounted) setState(() {});
     });
     _model.start();
+    unawaited(_loadPublishingPermission());
   }
 
   @override
@@ -4538,19 +4551,22 @@ class _StoriesViewState extends State<StoriesView> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _createStory,
-                  child: Padding(
-                    padding: const EdgeInsets.all(5),
-                    child: AppIcon(
-                      HeroAppIcons.plus,
-                      size: 22,
-                      color: AppTheme.brand,
+                if (_canPublish) ...[
+                  const SizedBox(width: 12),
+                  GestureDetector(
+                    key: const ValueKey('stories-publish-action'),
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _createStory,
+                    child: Padding(
+                      padding: const EdgeInsets.all(5),
+                      child: AppIcon(
+                        HeroAppIcons.plus,
+                        size: 22,
+                        color: AppTheme.brand,
+                      ),
                     ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
@@ -4568,16 +4584,18 @@ class _StoriesViewState extends State<StoriesView> {
       children: [
         Row(
           children: [
-            Expanded(
-              child: _primaryAction(
-                icon: HeroAppIcons.camera,
-                title: AppStringKeys.storiesNew.l10n(context),
-                subtitle: AppStringKeys.storiesPhotoVideo.l10n(context),
-                onTap: _createStory,
-                prominent: true,
+            if (_canPublish) ...[
+              Expanded(
+                child: _primaryAction(
+                  icon: HeroAppIcons.camera,
+                  title: AppStringKeys.storiesNew.l10n(context),
+                  subtitle: AppStringKeys.storiesPhotoVideo.l10n(context),
+                  onTap: _createStory,
+                  prominent: true,
+                ),
               ),
-            ),
-            const SizedBox(width: 10),
+              const SizedBox(width: 10),
+            ],
             Expanded(
               child: _primaryAction(
                 icon: HeroAppIcons.inbox,
@@ -4804,28 +4822,30 @@ class _StoriesViewState extends State<StoriesView> {
               height: 1.35,
             ),
           ),
-          const SizedBox(height: 18),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: _createStory,
-            child: Container(
-              height: 42,
-              alignment: Alignment.center,
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              decoration: BoxDecoration(
-                color: AppTheme.brand,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                AppStringKeys.storiesCreate.l10n(context),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
+          if (_canPublish) ...[
+            const SizedBox(height: 18),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _createStory,
+              child: Container(
+                height: 42,
+                alignment: Alignment.center,
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                decoration: BoxDecoration(
+                  color: AppTheme.brand,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  AppStringKeys.storiesCreate.l10n(context),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ),
-          ),
+          ],
         ],
       ),
     );

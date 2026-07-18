@@ -59,6 +59,10 @@ void main() {
     expect(find.byKey(const ValueKey('story-card-32')), findsOneWidget);
     expect(find.byKey(const ValueKey('story-card-33')), findsOneWidget);
     expect(find.byKey(const ValueKey('story-album-7')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('story-management-publish-action')),
+      findsOneWidget,
+    );
     expect(find.byType(SettingsCard), findsNothing);
     expect(tester.takeException(), isNull);
 
@@ -138,6 +142,11 @@ class _FakeStoryService extends StoryService {
     'albums': [
       {'@type': 'storyAlbum', 'id': 7, 'name': '夏天'},
     ],
+  };
+
+  @override
+  Future<Map<String, dynamic>> canPost(int chatId) async => {
+    '@type': 'canPostStoryResultOk',
   };
 
   @override

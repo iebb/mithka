@@ -2466,6 +2466,7 @@ class _ChatViewState extends State<ChatView> {
       isGroup: _vm.isGroup,
       meName: _vm.meName,
       mePhoto: _vm.mePhoto,
+      meId: _vm.meId,
       showRepeat: _vm.canForwardContent && _isRepeatTail(messageIndex),
       onRepeat: () => _vm.repeatMessage(message),
       onLongPress: _isSelecting ? null : _showActionMenuForMessage,
