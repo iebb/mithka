@@ -224,4 +224,25 @@ void main() {
     const l10n = AppLocalizations(Locale('ja'));
     expect(l10n.t(AppStringKeys.aboutTitle), jaMessages['aboutTitle']);
   });
+
+  test('profile tools strings are translated and interpolate chat IDs', () {
+    for (final localeKey in localeTables.keys) {
+      final title = AppStrings.tForLocale(
+        localeKey,
+        AppStringKeys.profileToolsTitle,
+      );
+      final chatId = AppStrings.tForLocale(
+        localeKey,
+        AppStringKeys.profileToolsProfileChatId,
+        {'value1': 42},
+      );
+
+      expect(title.trim(), isNotEmpty);
+      if (localeKey != 'en') {
+        expect(title, isNot(enMessages[AppStringKeys.profileToolsTitle]));
+      }
+      expect(chatId, contains('42'));
+      expect(chatId, isNot(contains('{value1}')));
+    }
+  });
 }

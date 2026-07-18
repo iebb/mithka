@@ -1,19 +1,20 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../auth/account_backup_service.dart';
 import '../auth/account_store.dart';
 import '../auth/auth_manager.dart';
+import '../components/app_confirm_dialog.dart';
 import '../components/app_icons.dart';
-import '../components/confirm_dialog.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
+import '../pro/mithka_pro_view.dart';
 import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
 
@@ -40,7 +41,9 @@ class _AccountBackupViewState extends State<AccountBackupView> {
   final _dateFormat = DateFormat.yMMMd().add_jm();
   var _loading = true;
   var _working = false;
-  var _enabled = true;
+  var _consented = false;
+  var _supported = false;
+  var _canAddConsent = false;
   List<AccountSessionBackup> _backups = const [];
 
   @override
@@ -52,13 +55,21 @@ class _AccountBackupViewState extends State<AccountBackupView> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final enabled = await _service.isEnabled;
+      final supported = await _service.isSupported;
+      final consented = widget.showCreateAction
+          ? await _service.activeAccountHasConsent()
+          : false;
+      final canAddConsent = widget.showCreateAction
+          ? await _service.canAddBackupConsentForActiveAccount()
+          : false;
       final backups = widget.excludeLoggedInBackups
           ? await _service.listRestorableBackups()
           : await _service.listBackups();
       if (mounted) {
         setState(() {
-          _enabled = enabled;
+          _consented = consented;
+          _supported = supported;
+          _canAddConsent = canAddConsent;
           _backups = backups;
         });
       }
@@ -71,17 +82,19 @@ class _AccountBackupViewState extends State<AccountBackupView> {
 
   Future<void> _setEnabled(bool value) async {
     if (_working) return;
+    if (value && !_canAddConsent && !_consented) {
+      _openMithkaPro();
+      return;
+    }
     setState(() {
-      _enabled = value;
+      _consented = value;
       _working = true;
-      if (!value) _backups = const [];
     });
     try {
-      await _service.setEnabled(value);
-      if (value && widget.showCreateAction && Platform.isIOS) {
-        await _service.backupActiveAccountIfEnabled();
-      }
+      await _service.setActiveAccountConsent(value);
       await _load();
+    } on AccountBackupLimitException {
+      if (mounted) _openMithkaPro();
     } catch (error) {
       if (mounted) showToast(context, error.toString());
     } finally {
@@ -127,7 +140,7 @@ class _AccountBackupViewState extends State<AccountBackupView> {
   ) async {
     if (!_isInvalidSessionError(error)) return false;
     if (!mounted) return true;
-    final delete = await confirmDialog(
+    final delete = await showAppConfirmDialog(
       context,
       title: AppStringKeys.accountBackupInvalidTitle,
       message: AppStrings.t(AppStringKeys.accountBackupInvalidMessage, {
@@ -145,28 +158,101 @@ class _AccountBackupViewState extends State<AccountBackupView> {
   }
 
   Future<void> _showInvalidImportedSessionAlert() async {
-    await showCupertinoDialog<void>(
+    final c = context.colors;
+    await showGeneralDialog<void>(
       context: context,
-      builder: (dialogContext) => CupertinoAlertDialog(
-        title: Text(
-          AppStringKeys.accountBackupInvalidTitle.l10n(dialogContext),
-        ),
-        content: Text(
-          AppStringKeys.accountBackupInvalidImportedMessage.l10n(dialogContext),
-        ),
-        actions: [
-          CupertinoDialogAction(
-            isDefaultAction: true,
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: Text(AppStringKeys.confirmOk.l10n(dialogContext)),
+      barrierDismissible: true,
+      barrierLabel: AppStringKeys.confirmOk.l10n(context),
+      barrierColor: const Color(0x99000000),
+      transitionDuration: const Duration(milliseconds: 160),
+      pageBuilder: (dialogContext, _, _) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 320),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: c.card,
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x44000000),
+                    blurRadius: 24,
+                    offset: Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          AppStringKeys.accountBackupInvalidTitle.l10n(
+                            dialogContext,
+                          ),
+                          textAlign: TextAlign.center,
+                          style: AppTextStyle.title(
+                            c.textPrimary,
+                            weight: AppTextWeight.semibold,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          AppStringKeys.accountBackupInvalidImportedMessage
+                              .l10n(dialogContext),
+                          textAlign: TextAlign.center,
+                          style: AppTextStyle.body(
+                            c.textSecondary,
+                          ).copyWith(height: 1.35),
+                        ),
+                      ],
+                    ),
+                  ),
+                  ColoredBox(
+                    color: c.divider,
+                    child: const SizedBox(height: 1),
+                  ),
+                  Semantics(
+                    button: true,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => Navigator.of(dialogContext).pop(),
+                      child: SizedBox(
+                        height: 50,
+                        child: Center(
+                          child: Text(
+                            AppStringKeys.confirmOk.l10n(dialogContext),
+                            style: AppTextStyle.bodyLarge(
+                              c.linkBlue,
+                              weight: AppTextWeight.semibold,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
-        ],
+        ),
+      ),
+      transitionBuilder: (_, animation, _, child) => FadeTransition(
+        opacity: animation,
+        child: ScaleTransition(
+          scale: Tween<double>(begin: 0.96, end: 1).animate(animation),
+          child: child,
+        ),
       ),
     );
   }
 
   Future<void> _copyPyrogramSession() async {
-    final ok = await confirmDialog(
+    final ok = await showAppConfirmDialog(
       context,
       title: AppStringKeys.accountBackupCopyPyrogramTitle,
       message: AppStringKeys.accountBackupCopyPyrogramMessage,
@@ -188,7 +274,7 @@ class _AccountBackupViewState extends State<AccountBackupView> {
   }
 
   Future<void> _restore(AccountSessionBackup backup) async {
-    final ok = await confirmDialog(
+    final ok = await showAppConfirmDialog(
       context,
       title: AppStringKeys.accountBackupRestoreTitle,
       message: AppStringKeys.accountBackupRestoreMessage,
@@ -215,10 +301,23 @@ class _AccountBackupViewState extends State<AccountBackupView> {
 
   Future<void> _loadPyrogramSession() async {
     if (_working) return;
-    final sessionString = await showCupertinoModalPopup<String>(
+    final sessionString = await showGeneralDialog<String>(
       context: context,
+      barrierDismissible: true,
+      barrierLabel: AppStringKeys.countryPickerCancel.l10n(context),
       barrierColor: const Color(0x66000000),
-      builder: (_) => const _PyrogramSessionImportSheet(),
+      transitionDuration: const Duration(milliseconds: 190),
+      pageBuilder: (_, _, _) => const Align(
+        alignment: Alignment.bottomCenter,
+        child: _PyrogramSessionImportSheet(),
+      ),
+      transitionBuilder: (_, animation, _, child) => SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(0, 0.08),
+          end: Offset.zero,
+        ).animate(animation),
+        child: FadeTransition(opacity: animation, child: child),
+      ),
     );
     if (sessionString == null || sessionString.trim().isEmpty || !mounted) {
       return;
@@ -250,7 +349,7 @@ class _AccountBackupViewState extends State<AccountBackupView> {
     if (!mounted) return;
 
     showToast(context, AppStrings.t(toastKey, {'value1': '$slot'}));
-    final createFreshSession = await confirmDialog(
+    final createFreshSession = await showAppConfirmDialog(
       context,
       title: AppStringKeys.accountBackupFreshSessionTitle,
       message: AppStringKeys.accountBackupFreshSessionMessage,
@@ -282,7 +381,7 @@ class _AccountBackupViewState extends State<AccountBackupView> {
   }
 
   Future<void> _delete(AccountSessionBackup backup) async {
-    final ok = await confirmDialog(
+    final ok = await showAppConfirmDialog(
       context,
       title: AppStringKeys.accountBackupDeleteTitle,
       message: AppStringKeys.accountBackupDeleteMessage,
@@ -305,6 +404,12 @@ class _AccountBackupViewState extends State<AccountBackupView> {
     Navigator.of(context).pop(widget.returnToPhoneOnBack ? true : null);
   }
 
+  void _openMithkaPro() {
+    Navigator.of(context).push(
+      PageRouteBuilder<void>(pageBuilder: (_, _, _) => const MithkaProView()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
@@ -317,48 +422,94 @@ class _AccountBackupViewState extends State<AccountBackupView> {
       },
       child: DefaultTextStyle(
         style: AppTextStyle.body(c.textPrimary),
-        child: CupertinoPageScaffold(
-          backgroundColor: c.groupedBackground,
-          child: Column(
-            children: [
-              NavHeader(
-                title: AppStrings.t(AppStringKeys.accountBackupTitle),
-                onBack: _close,
-              ),
-              Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
-                  children: [
-                    if (widget.showCreateAction) ...[
-                      _enabledSwitch(),
+        child: ColoredBox(
+          color: c.groupedBackground,
+          child: SafeArea(
+            bottom: false,
+            child: Column(
+              children: [
+                _backupHeader(),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
+                    children: [
+                      if (widget.showCreateAction) ...[
+                        _enabledSwitch(),
+                        const SizedBox(height: 12),
+                        _actionButton(),
+                        const SizedBox(height: 8),
+                        _copyPyrogramButton(),
+                        const SizedBox(height: 8),
+                        _loadPyrogramButton(),
+                      ] else
+                        _loadPyrogramButton(),
                       const SizedBox(height: 12),
-                      _actionButton(),
-                      const SizedBox(height: 8),
-                      _copyPyrogramButton(),
-                      const SizedBox(height: 8),
-                      _loadPyrogramButton(),
-                    ] else
-                      _loadPyrogramButton(),
-                    const SizedBox(height: 12),
-                    _notice(),
-                    const SizedBox(height: 18),
-                    _sectionTitle(AppStringKeys.accountBackupSessions),
-                    if (_loading)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 24),
-                        child: Center(child: CupertinoActivityIndicator()),
-                      )
-                    else if (!Platform.isIOS)
-                      _empty(AppStringKeys.accountBackupIOSOnly)
-                    else if (_backups.isEmpty)
-                      _empty(AppStringKeys.accountBackupEmpty)
-                    else
-                      _backupList(),
-                  ],
+                      _notice(),
+                      const SizedBox(height: 18),
+                      _sectionTitle(AppStringKeys.accountBackupSessions),
+                      if (_loading)
+                        const Padding(
+                          padding: EdgeInsets.only(top: 24),
+                          child: Center(child: AppActivityIndicator()),
+                        )
+                      else if (!_supported)
+                        _empty(AppStringKeys.accountBackupUnavailable)
+                      else if (_backups.isEmpty)
+                        _empty(AppStringKeys.accountBackupEmpty)
+                      else
+                        _backupList(),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _backupHeader() {
+    final c = context.colors;
+    return SizedBox(
+      key: const ValueKey('account-backup-header'),
+      height: 56,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        child: Row(
+          children: [
+            Semantics(
+              button: true,
+              label: AppStrings.t(AppStringKeys.loginBackToAccount, {
+                'value1': AppStrings.t(AppStringKeys.accountBackupTitle),
+              }),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _close,
+                child: const SizedBox(
+                  width: 40,
+                  height: 40,
+                  child: Center(
+                    child: AppIcon(HeroAppIcons.chevronLeft, size: 24),
+                  ),
                 ),
               ),
-            ],
-          ),
+            ),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Text(
+                AppStrings.t(AppStringKeys.accountBackupTitle),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 21,
+                  fontWeight: FontWeight.w600,
+                  color: c.textPrimary,
+                ),
+              ),
+            ),
+            const SizedBox(width: 40),
+          ],
         ),
       ),
     );
@@ -368,7 +519,7 @@ class _AccountBackupViewState extends State<AccountBackupView> {
     final c = context.colors;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: _working || !_enabled || !Platform.isIOS ? null : _backupActive,
+      onTap: _working || !_consented || !_supported ? null : _backupActive,
       child: Container(
         height: 52,
         decoration: BoxDecoration(
@@ -378,20 +529,20 @@ class _AccountBackupViewState extends State<AccountBackupView> {
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Row(
           children: [
-            Icon(HeroAppIcons.key.data, size: 20, color: AppTheme.brand),
+            AppIcon(HeroAppIcons.key, size: 20, color: AppTheme.brand),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                AppStrings.t(AppStringKeys.accountBackupCreate),
+                AppStrings.t(
+                  Platform.isIOS
+                      ? AppStringKeys.accountBackupLoginICloud
+                      : AppStringKeys.accountBackupLoginAndroid,
+                ),
                 style: TextStyle(fontSize: 16, color: c.textPrimary),
               ),
             ),
             if (_working)
-              const SizedBox(
-                width: 18,
-                height: 18,
-                child: CupertinoActivityIndicator(radius: 9),
-              )
+              const AppActivityIndicator(size: 18)
             else
               AppIcon(
                 HeroAppIcons.chevronRight,
@@ -408,7 +559,7 @@ class _AccountBackupViewState extends State<AccountBackupView> {
     return _tileButton(
       icon: HeroAppIcons.code,
       title: AppStringKeys.accountBackupCopyPyrogramSession,
-      onTap: _working || !Platform.isIOS ? null : _copyPyrogramSession,
+      onTap: _working || !_supported ? null : _copyPyrogramSession,
     );
   }
 
@@ -416,7 +567,7 @@ class _AccountBackupViewState extends State<AccountBackupView> {
     return _tileButton(
       icon: HeroAppIcons.upload,
       title: AppStringKeys.accountBackupLoadPyrogramSession,
-      onTap: _working || !Platform.isIOS ? null : _loadPyrogramSession,
+      onTap: _working || !_supported ? null : _loadPyrogramSession,
     );
   }
 
@@ -441,7 +592,7 @@ class _AccountBackupViewState extends State<AccountBackupView> {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
             children: [
-              Icon(icon.data, size: 20, color: AppTheme.brand),
+              AppIcon(icon, size: 20, color: AppTheme.brand),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
@@ -450,11 +601,7 @@ class _AccountBackupViewState extends State<AccountBackupView> {
                 ),
               ),
               if (_working)
-                const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CupertinoActivityIndicator(radius: 9),
-                )
+                const AppActivityIndicator(size: 18)
               else
                 AppIcon(
                   HeroAppIcons.chevronRight,
@@ -477,10 +624,12 @@ class _AccountBackupViewState extends State<AccountBackupView> {
       ),
       clipBehavior: Clip.antiAlias,
       child: SettingsSwitchRow(
-        title: AppStringKeys.accountBackupEnabled,
-        value: _enabled,
-        onChanged: Platform.isIOS && !_working ? _setEnabled : (_) {},
-        leading: Icon(HeroAppIcons.key.data, size: 20, color: AppTheme.brand),
+        title: Platform.isIOS
+            ? AppStringKeys.accountBackupLoginICloud
+            : AppStringKeys.accountBackupLoginAndroid,
+        value: _consented,
+        onChanged: _supported && !_working ? _setEnabled : (_) {},
+        leading: AppIcon(HeroAppIcons.key, size: 20, color: AppTheme.brand),
       ),
     );
   }
@@ -488,7 +637,11 @@ class _AccountBackupViewState extends State<AccountBackupView> {
   Widget _notice() {
     final c = context.colors;
     return Text(
-      AppStrings.t(AppStringKeys.accountBackupNotice),
+      AppStrings.t(
+        Platform.isIOS
+            ? AppStringKeys.accountBackupNoticeICloud
+            : AppStringKeys.accountBackupNoticeAndroid,
+      ),
       style: TextStyle(fontSize: 13, height: 1.35, color: c.textTertiary),
     );
   }
@@ -571,10 +724,12 @@ class _PyrogramSessionImportSheet extends StatefulWidget {
 class _PyrogramSessionImportSheetState
     extends State<_PyrogramSessionImportSheet> {
   final _controller = TextEditingController();
+  final _focusNode = FocusNode();
 
   @override
   void dispose() {
     _controller.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -650,32 +805,58 @@ class _PyrogramSessionImportSheetState
                 ),
                 const SizedBox(height: 14),
                 Container(
+                  constraints: const BoxConstraints(
+                    minHeight: 112,
+                    maxHeight: 184,
+                  ),
                   decoration: BoxDecoration(
                     color: c.card,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: c.divider),
                   ),
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: CupertinoTextField(
-                    controller: _controller,
-                    autofocus: true,
-                    minLines: 4,
-                    maxLines: 7,
-                    autocorrect: false,
-                    enableSuggestions: false,
-                    keyboardType: TextInputType.visiblePassword,
-                    textInputAction: TextInputAction.done,
-                    onSubmitted: (_) => _submit(),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    style: TextStyle(fontSize: 14, color: c.textPrimary),
-                    placeholder: AppStrings.t(
-                      AppStringKeys.accountBackupLoadPyrogramPlaceholder,
-                    ),
-                    placeholderStyle: TextStyle(
-                      fontSize: 14,
-                      color: c.textTertiary,
-                    ),
-                    decoration: null,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 11,
+                  ),
+                  child: Stack(
+                    children: [
+                      ValueListenableBuilder<TextEditingValue>(
+                        valueListenable: _controller,
+                        builder: (_, value, _) => value.text.isEmpty
+                            ? IgnorePointer(
+                                child: Text(
+                                  AppStrings.t(
+                                    AppStringKeys
+                                        .accountBackupLoadPyrogramPlaceholder,
+                                  ),
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: c.textTertiary,
+                                  ),
+                                ),
+                              )
+                            : const SizedBox.shrink(),
+                      ),
+                      EditableText(
+                        controller: _controller,
+                        focusNode: _focusNode,
+                        autofocus: true,
+                        maxLines: null,
+                        autocorrect: false,
+                        enableSuggestions: false,
+                        keyboardType: TextInputType.visiblePassword,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => _submit(),
+                        style: TextStyle(
+                          fontSize: 14,
+                          height: 1.3,
+                          color: c.textPrimary,
+                        ),
+                        cursorColor: AppTheme.brand,
+                        backgroundCursorColor: c.textTertiary,
+                        selectionColor: AppTheme.brand.withValues(alpha: 0.24),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -732,7 +913,7 @@ class _BackupRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Row(
           children: [
-            Icon(HeroAppIcons.circleUser.data, size: 24, color: AppTheme.brand),
+            AppIcon(HeroAppIcons.circleUser, size: 24, color: AppTheme.brand),
             const SizedBox(width: 14),
             Expanded(
               child: Column(

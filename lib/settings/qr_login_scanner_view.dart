@@ -57,6 +57,23 @@ class _QrLoginScannerViewState extends State<QrLoginScannerView> {
     }
   }
 
+  Future<void> _switchCamera() async {
+    final state = _controller.value;
+    if (_accepting || !state.isInitialized || !state.isRunning) return;
+    await _controller.switchCamera();
+  }
+
+  Future<void> _toggleTorch() async {
+    final state = _controller.value;
+    if (_accepting ||
+        !state.isInitialized ||
+        !state.isRunning ||
+        state.torchState == TorchState.unavailable) {
+      return;
+    }
+    await _controller.toggleTorch();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -107,9 +124,15 @@ class _QrLoginScannerViewState extends State<QrLoginScannerView> {
                     onTap: () => Navigator.of(context).pop(false),
                   ),
                   const Spacer(),
-                  _CircleButton(
-                    icon: HeroAppIcons.camera,
-                    onTap: _accepting ? null : _controller.switchCamera,
+                  ValueListenableBuilder<MobileScannerState>(
+                    valueListenable: _controller,
+                    builder: (context, state, _) => _CircleButton(
+                      icon: HeroAppIcons.camera,
+                      onTap:
+                          !_accepting && state.isInitialized && state.isRunning
+                          ? _switchCamera
+                          : null,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   ValueListenableBuilder<MobileScannerState>(
@@ -119,9 +142,11 @@ class _QrLoginScannerViewState extends State<QrLoginScannerView> {
                       active: state.torchState == TorchState.on,
                       onTap:
                           _accepting ||
+                              !state.isInitialized ||
+                              !state.isRunning ||
                               state.torchState == TorchState.unavailable
                           ? null
-                          : _controller.toggleTorch,
+                          : _toggleTorch,
                     ),
                   ),
                 ],

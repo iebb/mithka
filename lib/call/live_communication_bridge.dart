@@ -77,6 +77,13 @@ class LiveCommunicationBridge {
 
   Future<void> end(String uuid) async {
     if (!Platform.isIOS) return;
-    await _channel.invokeMethod<void>('end', {'uuid': uuid});
+    try {
+      await _channel.invokeMethod<void>('end', {'uuid': uuid});
+    } on PlatformException catch (error) {
+      // CallKit rejects a second end transaction when its UI already ended the
+      // conversation. The app has already stopped media and cleared its local
+      // call state, so that idempotency race is safe to ignore.
+      if (error.code != 'live_communication_failed') rethrow;
+    }
   }
 }

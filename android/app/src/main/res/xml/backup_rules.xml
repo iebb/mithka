@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!--
+      Android 7-8.1 do not support conditional backup transport flags. This
+      include still makes every other app-private file, preference, database and
+      cache ineligible. API 28+ selects xml-v28/backup_rules.xml instead, which
+      additionally requires encrypted cloud backup or device transfer.
+    -->
+    <include domain="file" path="account_backups/" />
+</full-backup-content>

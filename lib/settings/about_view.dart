@@ -12,12 +12,14 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
 import '../app/app_version.dart';
+import '../app/telemetry_config.dart';
 import '../chat/link_handler.dart';
 import '../components/app_icons.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../theme/app_theme.dart';
 import 'developer_mode_controller.dart';
+import 'feedback_report_view.dart';
 
 class AboutView extends StatefulWidget {
   const AboutView({super.key});
@@ -132,6 +134,29 @@ class _AboutViewState extends State<AboutView> {
                   clipBehavior: Clip.antiAlias,
                   child: Column(
                     children: [
+                      if (sentryEnabled) ...[
+                        _AboutLinkRow(
+                          icon: HeroAppIcons.comments.data,
+                          title: AppStrings.t(
+                            AppStringKeys.aboutReportProblem,
+                          ),
+                          value: AppStrings.t(
+                            AppStringKeys.aboutReportProblemDetail,
+                          ),
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              settings: const RouteSettings(
+                                name: '/settings/feedback',
+                              ),
+                              builder: (_) => const FeedbackReportView(),
+                            ),
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.only(left: 48),
+                          child: Divider(height: 1, color: c.divider),
+                        ),
+                      ],
                       _AboutLinkRow(
                         icon: HeroAppIcons.globe.data,
                         title: AppStrings.t(AppStringKeys.aboutWebsite),

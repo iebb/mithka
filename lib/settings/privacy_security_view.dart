@@ -7,21 +7,25 @@
 //
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 
+import '../auth/telegram_passkey_service.dart';
 import '../components/app_icons.dart';
-import '../components/confirm_dialog.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
+import '../security/local_app_lock_controller.dart';
+import '../security/local_app_lock_views.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
 import 'account_backup_view.dart';
+import 'account_security_views.dart';
 import 'auto_delete_view.dart';
+import 'passkeys_view.dart';
 import 'privacy_detail_views.dart';
 import 'privacy_rule_options.dart';
 import 'sensitive_content_controller.dart';
@@ -41,6 +45,8 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
   StreamSubscription<int>? _activeSlotChanges;
   String _twoStep = '';
   int _passwordRevision = 0;
+  int _passkeyRevision = 0;
+  int? _passkeyCount;
 
   static const _privacyRules = <_PrivacyRuleEntry>[
     _PrivacyRuleEntry(
@@ -130,9 +136,11 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
       _bumpRuleRevision(entry.setting);
     }
     _passwordRevision += 1;
+    _passkeyRevision += 1;
     setState(() {
       _ruleValue.clear();
       _twoStep = '';
+      _passkeyCount = null;
     });
     unawaited(_load());
   }
@@ -154,6 +162,7 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
     for (final entry in _privacyRules) {
       unawaited(_loadRule(entry.setting));
     }
+    unawaited(_loadPasskeys());
     final clientId = _client.activeClientId;
     final revision = ++_passwordRevision;
     try {
@@ -168,6 +177,24 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
         );
       }
     } catch (_) {}
+  }
+
+  Future<void> _loadPasskeys() async {
+    if (!Platform.isAndroid) return;
+    final clientId = _client.activeClientId;
+    final revision = ++_passkeyRevision;
+    try {
+      final service = TelegramPasskeyService.shared;
+      if (!await service.canUse(clientId: clientId)) return;
+      final passkeys = await service.list(clientId: clientId);
+      if (mounted &&
+          _client.activeClientId == clientId &&
+          _passkeyRevision == revision) {
+        setState(() => _passkeyCount = passkeys.length);
+      }
+    } catch (_) {
+      // Older TDLib builds and unsupported providers simply omit the row.
+    }
   }
 
   Future<void> _loadRule(String setting) async {
@@ -196,22 +223,6 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
   Future<void> _open(Widget screen) =>
       Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
 
-  Future<void> _openDeleteAccountPage() async {
-    final ok = await confirmDialog(
-      context,
-      title: AppStringKeys.privacyDeleteTelegramAccount,
-      message: AppStringKeys.privacyDeleteTelegramAccountMessage,
-      confirmText: AppStringKeys.privacyDeleteTelegramAccountOpen,
-      destructive: true,
-    );
-    if (!ok) return;
-    final uri = Uri.parse('https://my.telegram.org/delete');
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication) &&
-        mounted) {
-      showToast(context, uri.toString());
-    }
-  }
-
   Future<void> _setSensitiveContentEnabled(bool value) async {
     try {
       await SensitiveContentController.shared.setEnabled(value);
@@ -229,6 +240,7 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final appLock = context.watch<LocalAppLockController>();
     final sensitiveContent = context.watch<SensitiveContentController>();
     return Scaffold(
       backgroundColor: c.groupedBackground,
@@ -266,9 +278,27 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
                   [
                     _Row(
                       HeroAppIcons.lock,
+                      AppStrings.t(AppStringKeys.appLockTitle),
+                      appLock.enabled
+                          ? (appLock.credentialType == AppLockCredentialType.pin
+                                ? AppStringKeys.appLockPin
+                                : AppStringKeys.appLockGesture)
+                          : AppStringKeys.privacyDisabled,
+                      () => _open(const AppLockSettingsView()),
+                    ),
+                    _Row(
+                      HeroAppIcons.lock,
                       AppStrings.t(AppStringKeys.privacyTwoStepVerification),
                       _twoStep,
-                      null,
+                      () => _open(
+                        const TwoStepPasswordView(),
+                      ).then((_) => _load()),
+                    ),
+                    _Row(
+                      HeroAppIcons.phone,
+                      'Change Phone Number',
+                      '',
+                      () => _open(const ChangePhoneNumberView()),
                     ),
                     _Row(
                       HeroAppIcons.networkWired,
@@ -276,6 +306,15 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
                       '',
                       () => _open(const ActiveSessionsView()),
                     ),
+                    if (_passkeyCount != null)
+                      _Row(
+                        HeroAppIcons.key,
+                        AppStrings.t(AppStringKeys.passkeysTitle),
+                        '$_passkeyCount',
+                        () => _open(
+                          const PasskeysView(),
+                        ).then((_) => _loadPasskeys()),
+                      ),
                     _Row(
                       HeroAppIcons.key,
                       AppStrings.t(AppStringKeys.accountBackupTitle),
@@ -291,10 +330,16 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
                             unawaited(_setSensitiveContentEnabled(value)),
                       ),
                     _Row(
+                      HeroAppIcons.stopwatch,
+                      'Delete Account If Away For',
+                      '',
+                      () => _open(const AccountInactivityView()),
+                    ),
+                    _Row(
                       HeroAppIcons.trash,
                       AppStrings.t(AppStringKeys.privacyDeleteTelegramAccount),
                       '',
-                      _openDeleteAccountPage,
+                      () => _open(const DeleteTelegramAccountView()),
                     ),
                     _Row(
                       HeroAppIcons.stopwatch,

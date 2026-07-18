@@ -33,10 +33,18 @@ class ChatPickerView extends StatefulWidget {
     this.title = AppStringKeys.chatPickerChooseChat,
     this.showForwardOptions = false,
     this.allowChannels = true,
+    this.allowedKinds,
+    this.allowedChatIds,
+    this.allowContacts = true,
+    this.emptyText,
   });
   final String title;
   final bool showForwardOptions;
   final bool allowChannels;
+  final Set<ChatKind>? allowedKinds;
+  final Set<int>? allowedChatIds;
+  final bool allowContacts;
+  final String? emptyText;
 
   @override
   State<ChatPickerView> createState() => _ChatPickerViewState();
@@ -80,10 +88,13 @@ class _ChatPickerViewState extends State<ChatPickerView> {
         .toSet();
     final all = <_PickerEntry>[
       for (final chat in chats)
-        if (widget.allowChannels || chat.kind != ChatKind.channel)
+        if (_allowsKind(chat.kind) &&
+            (widget.allowedChatIds?.contains(chat.id) ?? true))
           _PickerEntry.chat(chat),
       for (final contact in _contacts)
-        if (!chatPeerUserIds.contains(contact.id))
+        if (widget.allowContacts &&
+            _allowsKind(ChatKind.privateChat) &&
+            !chatPeerUserIds.contains(contact.id))
           _PickerEntry.contact(contact),
     ];
     if (_query.trim().isEmpty) return all;
@@ -92,6 +103,7 @@ class _ChatPickerViewState extends State<ChatPickerView> {
   }
 
   Future<void> _loadContacts() async {
+    if (!widget.allowContacts || !_allowsKind(ChatKind.privateChat)) return;
     if (_contactsLoading) return;
     setState(() => _contactsLoading = true);
     try {
@@ -126,6 +138,12 @@ class _ChatPickerViewState extends State<ChatPickerView> {
     } catch (_) {
       if (mounted) setState(() => _contactsLoading = false);
     }
+  }
+
+  bool _allowsKind(ChatKind kind) {
+    final allowed = widget.allowedKinds;
+    if (allowed != null) return allowed.contains(kind);
+    return widget.allowChannels || kind != ChatKind.channel;
   }
 
   Future<void> _pick(_PickerEntry entry) async {
@@ -173,11 +191,22 @@ class _ChatPickerViewState extends State<ChatPickerView> {
         children: [
           _header(),
           Expanded(
-            child: ListView.builder(
-              padding: EdgeInsets.zero,
-              itemCount: _filtered.length,
-              itemBuilder: (context, i) => _row(_filtered[i]),
-            ),
+            child: _filtered.isEmpty && widget.emptyText != null
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 32),
+                      child: Text(
+                        widget.emptyText!,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 15, color: c.textSecondary),
+                      ),
+                    ),
+                  )
+                : ListView.builder(
+                    padding: EdgeInsets.zero,
+                    itemCount: _filtered.length,
+                    itemBuilder: (context, i) => _row(_filtered[i]),
+                  ),
           ),
         ],
       ),

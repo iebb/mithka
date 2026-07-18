@@ -599,6 +599,62 @@ class AppSwitch extends StatelessWidget {
   }
 }
 
+/// Owned square selection control used where a persistent opt-in must be
+/// explicit. It intentionally does not inherit platform checkbox styling.
+class AppCheckbox extends StatelessWidget {
+  const AppCheckbox({
+    super.key,
+    required this.value,
+    required this.onChanged,
+    this.enabled = true,
+    this.size = 22,
+  });
+
+  final bool value;
+  final ValueChanged<bool> onChanged;
+  final bool enabled;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final foreground = enabled ? c.textPrimary : c.textTertiary;
+    return Semantics(
+      checked: value,
+      enabled: enabled,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: enabled ? () => onChanged(!value) : null,
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 150),
+          opacity: enabled ? 1 : 0.42,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            width: size,
+            height: size,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: value ? AppTheme.brand : Colors.transparent,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(
+                color: value ? AppTheme.brand : foreground,
+                width: 1.6,
+              ),
+            ),
+            child: value
+                ? AppIcon(
+                    HeroAppIcons.check,
+                    size: size * 0.62,
+                    color: const Color(0xFFFFFFFF),
+                  )
+                : null,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class SettingsSwitchRow extends StatelessWidget {
   const SettingsSwitchRow({
     super.key,
@@ -651,6 +707,289 @@ class SettingsSwitchRow extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Project-owned activity glyph used instead of platform-styled progress
+/// indicators.
+class AppActivityIndicator extends StatefulWidget {
+  const AppActivityIndicator({super.key, this.size = 26, this.color});
+
+  final double size;
+  final Color? color;
+
+  @override
+  State<AppActivityIndicator> createState() => _AppActivityIndicatorState();
+}
+
+class _AppActivityIndicatorState extends State<AppActivityIndicator>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 850),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    label: 'Loading',
+    child: AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) => Transform.rotate(
+        angle: _controller.value * math.pi * 2,
+        child: child,
+      ),
+      child: AppIcon(
+        HeroAppIcons.arrowsRotate,
+        size: widget.size,
+        color: widget.color ?? context.colors.linkBlue,
+      ),
+    ),
+  );
+}
+
+/// Project-owned determinate progress track.
+class AppProgressBar extends StatelessWidget {
+  const AppProgressBar({super.key, required this.value, this.height = 3});
+
+  final double value;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = value.clamp(0.0, 1.0);
+    return Semantics(
+      value: '${(progress * 100).round()}%',
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(height / 2),
+        child: SizedBox(
+          height: height,
+          child: LayoutBuilder(
+            builder: (context, constraints) => Stack(
+              children: [
+                Positioned.fill(
+                  child: ColoredBox(color: context.colors.divider),
+                ),
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOut,
+                  width: constraints.maxWidth * progress,
+                  color: context.colors.linkBlue,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Project-owned single-value scrubber.
+class AppValueScrubber extends StatelessWidget {
+  const AppValueScrubber({
+    super.key,
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.onChanged,
+  });
+
+  final double value;
+  final double min;
+  final double max;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final range = math.max(0.000001, max - min);
+      final progress = ((value - min) / range).clamp(0.0, 1.0);
+      void update(double dx) =>
+          onChanged(min + (dx / constraints.maxWidth).clamp(0.0, 1.0) * range);
+      return Semantics(
+        slider: true,
+        value: '${(progress * 100).round()}%',
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapDown: (event) => update(event.localPosition.dx),
+          onHorizontalDragUpdate: (event) => update(event.localPosition.dx),
+          child: SizedBox(
+            height: 34,
+            child: Stack(
+              alignment: Alignment.centerLeft,
+              children: [
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  child: Container(
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: context.colors.divider,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 0,
+                  width: constraints.maxWidth * progress,
+                  child: Container(
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: context.colors.linkBlue,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: constraints.maxWidth * progress - 9,
+                  child: Container(
+                    width: 18,
+                    height: 18,
+                    decoration: BoxDecoration(
+                      color: context.colors.linkBlue,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: context.colors.card, width: 2),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x28000000),
+                          blurRadius: 4,
+                          offset: Offset(0, 1),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    },
+  );
+}
+
+/// Project-owned two-thumb scrubber for lossless trim bounds.
+class AppRangeScrubber extends StatefulWidget {
+  const AppRangeScrubber({
+    super.key,
+    required this.start,
+    required this.end,
+    required this.min,
+    required this.max,
+    required this.onChanged,
+    this.minimumGap = 0,
+  });
+
+  final double start;
+  final double end;
+  final double min;
+  final double max;
+  final double minimumGap;
+  final void Function(double start, double end) onChanged;
+
+  @override
+  State<AppRangeScrubber> createState() => _AppRangeScrubberState();
+}
+
+class _AppRangeScrubberState extends State<AppRangeScrubber> {
+  bool _movesStart = false;
+
+  void _selectThumb(double value) {
+    _movesStart = (value - widget.start).abs() <= (value - widget.end).abs();
+  }
+
+  void _update(double value) {
+    if (_movesStart) {
+      widget.onChanged(
+        value.clamp(widget.min, widget.end - widget.minimumGap),
+        widget.end,
+      );
+    } else {
+      widget.onChanged(
+        widget.start,
+        value.clamp(widget.start + widget.minimumGap, widget.max),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final range = math.max(0.000001, widget.max - widget.min);
+      final start = ((widget.start - widget.min) / range).clamp(0.0, 1.0);
+      final end = ((widget.end - widget.min) / range).clamp(0.0, 1.0);
+      double valueAt(double dx) =>
+          widget.min + (dx / constraints.maxWidth).clamp(0.0, 1.0) * range;
+      return Semantics(
+        slider: true,
+        value: '${(start * 100).round()}%–${(end * 100).round()}%',
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapDown: (event) {
+            final value = valueAt(event.localPosition.dx);
+            _selectThumb(value);
+            _update(value);
+          },
+          onHorizontalDragStart: (event) =>
+              _selectThumb(valueAt(event.localPosition.dx)),
+          onHorizontalDragUpdate: (event) =>
+              _update(valueAt(event.localPosition.dx)),
+          child: SizedBox(
+            height: 36,
+            child: Stack(
+              alignment: Alignment.centerLeft,
+              children: [
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  child: Container(
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: context.colors.divider,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: constraints.maxWidth * start,
+                  width: constraints.maxWidth * (end - start),
+                  child: Container(height: 4, color: context.colors.linkBlue),
+                ),
+                for (final progress in [start, end])
+                  Positioned(
+                    left: constraints.maxWidth * progress - 9,
+                    child: Container(
+                      width: 18,
+                      height: 18,
+                      decoration: BoxDecoration(
+                        color: context.colors.linkBlue,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: context.colors.card,
+                          width: 2,
+                        ),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x28000000),
+                            blurRadius: 4,
+                            offset: Offset(0, 1),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      );
+    },
+  );
 }
 
 /// Centered gray timestamp separator in a conversation.

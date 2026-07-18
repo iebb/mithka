@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -15,7 +16,7 @@ import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
 import 'media_library_saver.dart';
 
-enum StickerExportFormat { png, gif, mov }
+enum StickerExportFormat { png, gif, mov, lottie }
 
 enum StickerExportDestination { photos, files }
 
@@ -32,12 +33,14 @@ extension StickerExportFormatLabel on StickerExportFormat {
     StickerExportFormat.png => animated ? 'APNG' : 'PNG',
     StickerExportFormat.gif => 'GIF',
     StickerExportFormat.mov => 'MOV',
+    StickerExportFormat.lottie => 'Lottie JSON',
   };
 
   String get extension => switch (this) {
     StickerExportFormat.png => 'png',
     StickerExportFormat.gif => 'gif',
     StickerExportFormat.mov => 'mov',
+    StickerExportFormat.lottie => 'json',
   };
 }
 
@@ -59,6 +62,7 @@ class StickerExportService {
     StickerExportFormat.gif,
     if (supportsMov ?? defaultTargetPlatform == TargetPlatform.iOS)
       StickerExportFormat.mov,
+    if (message.animatedSticker != null) StickerExportFormat.lottie,
   ];
 
   static Future<StickerExportResult> export(
@@ -70,6 +74,11 @@ class StickerExportService {
       return StickerExportResult.unsupported;
     }
     if (format == StickerExportFormat.mov && !Platform.isIOS) {
+      return StickerExportResult.unsupported;
+    }
+    if (format == StickerExportFormat.lottie &&
+        (destination == StickerExportDestination.photos ||
+            message.animatedSticker == null)) {
       return StickerExportResult.unsupported;
     }
 
@@ -149,6 +158,22 @@ class StickerExportService {
     final input = File(sourcePath);
     if (!await input.exists()) return null;
 
+    final directory = Directory(
+      '${(await getTemporaryDirectory()).path}/mithka-sticker-export',
+    );
+    await directory.create(recursive: true);
+    final sourceName = message.isAnimatedEmoji ? 'emoji' : 'sticker';
+    final baseName =
+        '$sourceName-${message.id}-${DateTime.now().microsecondsSinceEpoch}';
+    if (format == StickerExportFormat.lottie) {
+      if (message.animatedSticker == null) return null;
+      final json = decodeTgsLottie(await input.readAsBytes());
+      if (json == null) return null;
+      final output = File('${directory.path}/$baseName.json');
+      await output.writeAsBytes(json, flush: true);
+      return output;
+    }
+
     final intermediateFormat = format == StickerExportFormat.mov
         ? StickerExportFormat.png
         : format;
@@ -159,13 +184,6 @@ class StickerExportService {
         : await _encodeStatic(input, intermediateFormat);
     if (bytes == null || bytes.isEmpty) return null;
 
-    final directory = Directory(
-      '${(await getTemporaryDirectory()).path}/mithka-sticker-export',
-    );
-    await directory.create(recursive: true);
-    final sourceName = message.isAnimatedEmoji ? 'emoji' : 'sticker';
-    final baseName =
-        '$sourceName-${message.id}-${DateTime.now().microsecondsSinceEpoch}';
     final intermediate = File(
       '${directory.path}/$baseName.${intermediateFormat.extension}',
     );
@@ -258,6 +276,24 @@ class StickerExportService {
     return encoder.finish();
   }
 
+  @visibleForTesting
+  static Uint8List? decodeTgsLottie(Uint8List compressed) {
+    try {
+      final json = Uint8List.fromList(GZipDecoder().decodeBytes(compressed));
+      final document = jsonDecode(utf8.decode(json));
+      if (document is! Map<String, dynamic> ||
+          document['fr'] is! num ||
+          document['ip'] is! num ||
+          document['op'] is! num ||
+          document['layers'] is! List) {
+        return null;
+      }
+      return json;
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Future<Uint8List?> _encodeVideo(
     File input,
     StickerExportFormat format,
@@ -331,6 +367,7 @@ class StickerExportService {
     required int durationMs,
     required StickerExportFormat format,
   }) {
+    if (format == StickerExportFormat.lottie) return null;
     final encoder = _StickerFrameEncoder(format, frameCount: frames.length);
     for (final frame in frames) {
       encoder.addRgba(

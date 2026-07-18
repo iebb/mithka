@@ -10,6 +10,11 @@
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_models.dart';
 
+Map<String, dynamic> communityFullInfoRequest(int communityId) => {
+  '@type': 'getCommunityFullInfo',
+  'community_id': communityId,
+};
+
 class CommunitySummary {
   CommunitySummary({
     required this.id,
@@ -111,7 +116,11 @@ abstract final class CommunityChatListProjection {
     required List<ChatSummary> chats,
     required Map<int, int> communityByChat,
     required Map<int, CommunitySummary> communities,
+    bool communitiesEnabled = true,
   }) {
+    if (!communitiesEnabled) {
+      return chats.map(CommunityChatEntry.new).toList(growable: false);
+    }
     final chatsByCommunity = <int, List<ChatSummary>>{};
     for (final chat in chats) {
       final communityId = communityByChat[chat.id];

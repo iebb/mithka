@@ -18,6 +18,9 @@ import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../components/app_icons.dart';
+import '../components/ui_components.dart';
+import '../pro/mithka_pro_service.dart';
+import '../pro/mithka_pro_view.dart';
 import '../settings/account_backup_view.dart';
 import '../settings/api_credentials_view.dart';
 import '../settings/proxy_config.dart';
@@ -41,6 +44,7 @@ class _LoginViewState extends State<LoginView> {
   static const _resendCooldown = Duration(seconds: 60);
 
   final _phone = TextEditingController(text: '+');
+  final _email = TextEditingController();
   final _code = TextEditingController();
   final _password = ObscuringController();
   final _firstName = TextEditingController();
@@ -50,6 +54,9 @@ class _LoginViewState extends State<LoginView> {
   int _resendRemainingSeconds = 0;
   ProxyConfig? _proxy;
   int _restorableBackupCount = 0;
+  bool _backupConsent = false;
+  bool _backupSupported = false;
+  int _backupConsentCount = 0;
 
   // When true, show the phone-number step even though TDLib is still at a later
   // auth state — lets the user back out of QR / code / 2FA to fix the number.
@@ -62,13 +69,16 @@ class _LoginViewState extends State<LoginView> {
   void initState() {
     super.initState();
     _loadProxy();
-    if (Platform.isIOS) unawaited(_loadRestorableBackupCount());
+    if (Platform.isIOS || Platform.isAndroid) {
+      unawaited(_initializeBackupConsent());
+      unawaited(_loadRestorableBackupCount());
+    }
   }
 
   @override
   void dispose() {
     _resendTimer?.cancel();
-    for (final c in [_phone, _code, _password, _firstName, _lastName]) {
+    for (final c in [_phone, _email, _code, _password, _firstName, _lastName]) {
       c.dispose();
     }
     super.dispose();
@@ -86,6 +96,48 @@ class _LoginViewState extends State<LoginView> {
     } catch (_) {
       if (mounted) setState(() => _restorableBackupCount = 0);
     }
+  }
+
+  Future<void> _initializeBackupConsent() async {
+    final slot = TdClient.shared.activeSlot;
+    try {
+      await AccountBackupService.shared.beginLoginConsent(slot: slot);
+      final results = await Future.wait<Object>([
+        AccountBackupService.shared.isSupported,
+        AccountBackupService.shared.consentedAccountCount(),
+      ]);
+      if (!mounted || slot != TdClient.shared.activeSlot) return;
+      setState(() {
+        _backupConsent = false;
+        _backupSupported = results[0] as bool;
+        _backupConsentCount = results[1] as int;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _backupSupported = false);
+    }
+  }
+
+  Future<void> _setBackupConsent(bool value) async {
+    final pro = context.read<MithkaProService>();
+    if (value &&
+        !pro.canAddCloudSessionSync(
+          _backupConsentCount,
+          alreadySynced: _backupConsent,
+        )) {
+      _openMithkaPro();
+      return;
+    }
+    setState(() => _backupConsent = value);
+    await AccountBackupService.shared.setPendingLoginConsent(
+      slot: TdClient.shared.activeSlot,
+      enabled: value,
+    );
+  }
+
+  void _openMithkaPro() {
+    Navigator.of(context).push(
+      PageRouteBuilder<void>(pageBuilder: (_, _, _) => const MithkaProView()),
+    );
   }
 
   /// Formats the input as `+<cc> <national groups>` via libphonenumber's
@@ -119,9 +171,13 @@ class _LoginViewState extends State<LoginView> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthManager>();
     final accounts = context.watch<AccountStore>();
+    final pro = context.watch<MithkaProService>();
     final c = context.colors;
     final beyondPhone =
         auth.step is AuthWaitCode ||
+        auth.step is AuthWaitPremiumPurchase ||
+        auth.step is AuthWaitEmailAddress ||
+        auth.step is AuthWaitEmailCode ||
         auth.step is AuthWaitQrCode ||
         auth.step is AuthWaitPassword ||
         auth.step is AuthWaitRegistration;
@@ -156,6 +212,12 @@ class _LoginViewState extends State<LoginView> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         _stepFor(auth, accounts),
+                        if (_backupSupported &&
+                            auth.step is! AuthMissingCredentials &&
+                            !accounts.isActiveSessionReplacementPending) ...[
+                          const SizedBox(height: 18),
+                          _backupConsentRow(pro),
+                        ],
                         if (auth.errorMessage != null) ...[
                           const SizedBox(height: 18),
                           Align(
@@ -211,6 +273,81 @@ class _LoginViewState extends State<LoginView> {
     );
   }
 
+  Widget _backupConsentRow(MithkaProService pro) {
+    final c = context.colors;
+    final allowed = pro.canAddCloudSessionSync(
+      _backupConsentCount,
+      alreadySynced: _backupConsent,
+    );
+    final label = Platform.isIOS
+        ? AppStringKeys.accountBackupLoginICloud
+        : AppStringKeys.accountBackupLoginAndroid;
+    return Semantics(
+      button: true,
+      enabled: allowed || _backupConsent,
+      checked: _backupConsent,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: allowed || _backupConsent
+            ? () => unawaited(_setBackupConsent(!_backupConsent))
+            : _openMithkaPro,
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 160),
+          opacity: allowed || _backupConsent ? 1 : 0.42,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+            decoration: BoxDecoration(
+              color: c.card,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: c.divider, width: 0.7),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                IgnorePointer(
+                  child: AppCheckbox(
+                    value: _backupConsent,
+                    enabled: allowed || _backupConsent,
+                    onChanged: (_) {},
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        AppStrings.t(label),
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: c.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        AppStrings.t(
+                          allowed || _backupConsent
+                              ? AppStringKeys.accountBackupLoginDescription
+                              : AppStringKeys.mithkaProBackupLimitReached,
+                        ),
+                        style: TextStyle(
+                          fontSize: 12,
+                          height: 1.3,
+                          color: c.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _termsFooter() {
     final c = context.colors;
     return SafeArea(
@@ -245,6 +382,9 @@ class _LoginViewState extends State<LoginView> {
         !_forcePhone &&
         (auth.step is AuthWaitQrCode ||
             auth.step is AuthWaitCode ||
+            auth.step is AuthWaitPremiumPurchase ||
+            auth.step is AuthWaitEmailAddress ||
+            auth.step is AuthWaitEmailCode ||
             auth.step is AuthWaitPassword ||
             auth.step is AuthWaitRegistration);
     final pendingAdd = accounts.hasPendingAdd;
@@ -319,6 +459,9 @@ class _LoginViewState extends State<LoginView> {
             ? _freshSessionWaitingStep()
             : _qrCodeStep(auth, link),
       AuthWaitCode(:final info) => _codeStep(auth, info),
+      AuthWaitPremiumPurchase() => _premiumPurchaseStep(auth),
+      AuthWaitEmailAddress() => _emailAddressStep(auth),
+      AuthWaitEmailCode() => _emailCodeStep(auth),
       AuthWaitPassword(:final hint) => _passwordStep(auth, hint),
       AuthWaitRegistration() => _registrationStep(auth),
       _ => _phoneStep(auth),
@@ -443,6 +586,10 @@ class _LoginViewState extends State<LoginView> {
           _phoneDigits.length >= 7,
           () => unawaited(_submitPhone(auth)),
         ),
+        if (Platform.isAndroid && auth.canUseLoginPasskey) ...[
+          const SizedBox(height: 12),
+          _loginPasskeyButton(auth),
+        ],
         const SizedBox(height: 20),
         Text(
           AppStrings.t(AppStringKeys.loginCodeWillBeSentToNumber),
@@ -460,6 +607,237 @@ class _LoginViewState extends State<LoginView> {
     }
   }
 
+  Widget _emailAddressStep(AuthManager auth) {
+    final c = context.colors;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Confirm your email address',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+            color: c.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          'Telegram requires an email address to finish signing in.',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 14, color: c.textSecondary),
+        ),
+        const SizedBox(height: 22),
+        Container(
+          height: 56,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: c.card,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            children: [
+              AppIcon(HeroAppIcons.at, size: 22, color: c.textTertiary),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  controller: _email,
+                  keyboardType: TextInputType.emailAddress,
+                  autocorrect: false,
+                  style: TextStyle(fontSize: 17, color: c.textPrimary),
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    hintText: 'Email address',
+                  ),
+                  onChanged: (_) => setState(() {}),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        _primaryButton(
+          auth,
+          'Send email code',
+          _email.text.trim().contains('@'),
+          () => auth.submitEmailAddress(_email.text),
+        ),
+      ],
+    );
+  }
+
+  Widget _emailCodeStep(AuthManager auth) {
+    final c = context.colors;
+    final step = auth.step as AuthWaitEmailCode;
+    final requiredLength = step.length > 0 ? step.length : 0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Enter the email code',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+            color: c.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          step.emailPattern.isEmpty
+              ? 'Telegram sent a code to your email address.'
+              : 'Telegram sent a code to ${step.emailPattern}.',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 14, color: c.textSecondary),
+        ),
+        const SizedBox(height: 22),
+        Container(
+          height: 56,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: c.card,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            children: [
+              AppIcon(
+                HeroAppIcons.checkDouble,
+                size: 22,
+                color: c.textTertiary,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  controller: _code,
+                  keyboardType: TextInputType.text,
+                  autocorrect: false,
+                  style: TextStyle(fontSize: 20, color: c.textPrimary),
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    hintText: 'Email verification code',
+                  ),
+                  onChanged: (_) => setState(() {}),
+                  onSubmitted: (_) {
+                    if (_code.text.trim().isNotEmpty) {
+                      auth.submitEmailCode(_code.text);
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        _primaryButton(
+          auth,
+          'Verify email',
+          requiredLength == 0
+              ? _code.text.trim().isNotEmpty
+              : _code.text.trim().length == requiredLength,
+          () => auth.submitEmailCode(_code.text),
+        ),
+        const SizedBox(height: 14),
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: auth.isWorking ? null : auth.resendCode,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Text(
+              'Resend email code',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.brand,
+              ),
+            ),
+          ),
+        ),
+        if (step.canReset)
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: auth.isWorking ? null : auth.resetAuthenticationEmailAddress,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Text(
+                step.resetPending && step.resetWaitSeconds > 0
+                    ? 'Email reset available in ${step.resetWaitSeconds} seconds'
+                    : 'Reset email address',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 14, color: c.textSecondary),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _premiumPurchaseStep(AuthManager auth) {
+    final c = context.colors;
+    final step = auth.step as AuthWaitPremiumPurchase;
+    final days = step.premiumDayCount;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AppIcon(HeroAppIcons.solidStar, size: 54, color: AppTheme.brand),
+        const SizedBox(height: 16),
+        Text(
+          'Telegram Premium is required',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+            color: c.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          days > 0
+              ? 'Purchase $days days of Telegram Premium to finish signing in.'
+              : 'Complete the required Telegram Premium purchase to finish signing in.',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 14, height: 1.35, color: c.textSecondary),
+        ),
+        const SizedBox(height: 22),
+        _primaryButton(
+          auth,
+          Platform.isIOS ? 'Continue with App Store' : 'Purchase unavailable',
+          Platform.isIOS,
+          () => unawaited(auth.purchaseRequiredPremium()),
+        ),
+        if (Platform.isIOS) ...[
+          const SizedBox(height: 10),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: auth.isWorking
+                ? null
+                : () => unawaited(auth.purchaseRequiredPremium(restore: true)),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Text(
+                'Restore App Store purchase',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.brand,
+                ),
+              ),
+            ),
+          ),
+        ],
+        if (step.supportEmail.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Text(
+            'Purchase support: ${step.supportEmail}',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 12, color: c.textTertiary),
+          ),
+        ],
+      ],
+    );
+  }
+
   Widget _topRightActions(AuthManager auth, bool showingPhone) {
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -471,7 +849,7 @@ class _LoginViewState extends State<LoginView> {
             enabled: !auth.isWorking,
             onTap: () => _requestQrLogin(auth),
           ),
-        if (showingPhone && Platform.isIOS)
+        if (showingPhone && (Platform.isIOS || Platform.isAndroid))
           _loginIconButton(
             icon: HeroAppIcons.key,
             tooltip: AppStrings.t(AppStringKeys.accountBackupRestoreAccount),
@@ -481,6 +859,60 @@ class _LoginViewState extends State<LoginView> {
           ),
         _proxyIconButton(),
       ],
+    );
+  }
+
+  Widget _loginPasskeyButton(AuthManager auth) {
+    final c = context.colors;
+    final enabled = !auth.isWorking;
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: AppStrings.t(AppStringKeys.loginWithPasskey),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: enabled ? () => unawaited(auth.loginWithPasskey()) : null,
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 160),
+          opacity: enabled ? 1 : 0.46,
+          child: Container(
+            key: const ValueKey('android-login-passkey'),
+            height: 50,
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            decoration: BoxDecoration(
+              color: c.card,
+              borderRadius: BorderRadius.circular(25),
+              border: Border.all(color: c.divider, width: 0.8),
+            ),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: AppIcon(
+                    HeroAppIcons.key,
+                    size: 21,
+                    color: AppTheme.brand,
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 30),
+                  child: Text(
+                    AppStrings.t(AppStringKeys.loginWithPasskey),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: c.textPrimary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -1051,9 +1483,7 @@ class _LoginViewState extends State<LoginView> {
                 height: 22,
                 child: CircularProgressIndicator(
                   strokeWidth: 2.4,
-                  valueColor: AlwaysStoppedAnimation(
-                    Color(0xFFFFFFFF),
-                  ),
+                  valueColor: AlwaysStoppedAnimation(Color(0xFFFFFFFF)),
                 ),
               )
             : Text(

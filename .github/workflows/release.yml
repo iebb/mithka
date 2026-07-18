@@ -32,7 +32,7 @@ permissions:
 
 env:
   # Keep each Mithka release reproducible by pinning an immutable TDLib build.
-  TDJSON_RELEASE_TAG: tdlib-1.8.66-1b08c83bc078
+  TDJSON_RELEASE_TAG: tdlib-1.8.66-1b08c83bc078-rebuild-29623073124-1
 
 jobs:
   prepare:

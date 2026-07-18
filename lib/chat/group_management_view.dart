@@ -18,6 +18,8 @@ import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
 import 'chat_members_view.dart';
+import 'group_administration_service.dart';
+import 'group_administration_view.dart';
 import 'group_appearance_view.dart';
 import 'group_management_log_view.dart';
 
@@ -37,11 +39,15 @@ class GroupManagementView extends StatefulWidget {
 
 class _GroupManagementViewState extends State<GroupManagementView> {
   final TdClient _client = TdClient.shared;
+  final GroupAdministrationService _administration =
+      GroupAdministrationService();
 
   String _title = '';
   String _username = '';
   int? _supergroupId;
   bool _isChannel = false;
+  bool _isForum = false;
+  bool _canGetStatistics = false;
   bool _joinToSend = false;
   bool _joinByRequest = false;
   bool _loading = true;
@@ -122,6 +128,14 @@ class _GroupManagementViewState extends State<GroupManagementView> {
               '';
           _joinToSend = sg.boolean('join_to_send_messages') ?? false;
           _joinByRequest = sg.boolean('join_by_request') ?? false;
+          _isForum = sg.boolean('is_forum') ?? false;
+          try {
+            final full = await _client.query({
+              '@type': 'getSupergroupFullInfo',
+              'supergroup_id': _supergroupId,
+            });
+            _canGetStatistics = full.boolean('can_get_statistics') ?? false;
+          } catch (_) {}
         }
       }
     } catch (_) {
@@ -265,6 +279,83 @@ class _GroupManagementViewState extends State<GroupManagementView> {
                           ],
                         ),
                       ],
+                      _gap(),
+                      _section('Administration', [
+                        _navRow(
+                          'Invite links',
+                          onTap: () => Navigator.of(context).push(
+                            _pageRoute(
+                              ChatInviteLinksAdministrationView(
+                                chatId: widget.chatId,
+                              ),
+                            ),
+                          ),
+                        ),
+                        _divider(),
+                        _navRow(
+                          'Join requests',
+                          onTap: () => Navigator.of(context).push(
+                            _pageRoute(
+                              ChatJoinRequestsAdministrationView(
+                                chatId: widget.chatId,
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (_supergroupId != null) ...[
+                          _divider(),
+                          _navRow(
+                            'Advanced controls',
+                            onTap: () => Navigator.of(context).push(
+                              _pageRoute(
+                                GroupAdvancedAdministrationView(
+                                  chatId: widget.chatId,
+                                  supergroupId: _supergroupId!,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                        if (_isForum) ...[
+                          _divider(),
+                          _navRow(
+                            'Forum topics',
+                            onTap: () => Navigator.of(context).push(
+                              _pageRoute(
+                                ForumTopicsAdministrationView(
+                                  chatId: widget.chatId,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                        if (_canGetStatistics) ...[
+                          _divider(),
+                          _navRow(
+                            'Statistics',
+                            onTap: () => Navigator.of(context).push(
+                              _pageRoute(
+                                ChatStatisticsAdministrationView(
+                                  chatId: widget.chatId,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                        if (_supergroupId != null) ...[
+                          _divider(),
+                          _navRow(
+                            'Boosts and giveaways',
+                            onTap: () => Navigator.of(context).push(
+                              _pageRoute(
+                                ChatBoostsAdministrationView(
+                                  chatId: widget.chatId,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ]),
                       _gap(),
                       _section(
                         AppStrings.t(
@@ -514,11 +605,7 @@ class _GroupManagementViewState extends State<GroupManagementView> {
     if (id == null) return;
     setState(() => _joinByRequest = value);
     try {
-      await _client.query({
-        '@type': 'toggleSupergroupJoinByRequest',
-        'supergroup_id': id,
-        'join_by_request': value,
-      });
+      await _administration.setJoinByRequest(id, value);
     } catch (_) {
       if (mounted) {
         setState(() => _joinByRequest = !value);

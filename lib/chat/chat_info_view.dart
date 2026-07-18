@@ -15,6 +15,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/notifications/scope_notification_settings.dart';
 import 'package:provider/provider.dart';
 
+import '../chats/chat_delete_policy.dart';
 import '../components/app_icons.dart';
 import '../components/confirm_dialog.dart';
 import '../components/icon_grid.dart';
@@ -22,6 +23,7 @@ import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/telegram_language_controller.dart';
+import '../moments/story_management_view.dart';
 import '../notifications/notification_settings_payload.dart';
 import '../profile/qr_code_view.dart';
 import '../tdlib/json_helpers.dart';
@@ -30,9 +32,11 @@ import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import 'add_members_view.dart';
+import 'channel_direct_messages_view.dart';
 import 'chat_members_view.dart';
 import 'chat_search_view.dart';
 import 'chat_theme_view.dart';
+import 'chat_view.dart';
 import 'chat_wallpaper_view.dart';
 import 'group_management_view.dart';
 import 'pinned_messages_view.dart';
@@ -115,6 +119,18 @@ class _ChatInfoViewState extends State<ChatInfoView> {
       PageRouteBuilder<void>(
         pageBuilder: (_, _, _) =>
             ChatThemeView(chatId: widget.chatId, chatTitle: _vm.title),
+      ),
+    );
+  }
+
+  void _openDirectMessages() {
+    final chatId = _vm.directMessagesChatId;
+    if (chatId == 0) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _vm.opensDirectMessagesAsTopics
+            ? ChannelDirectMessagesView(chatId: chatId, title: _vm.title)
+            : ChatView(chatId: chatId, title: _vm.title),
       ),
     );
   }
@@ -461,6 +477,27 @@ class _ChatInfoViewState extends State<ChatInfoView> {
             AppStrings.t(AppStringKeys.chatInfoChatFolders),
             _openChatFolders,
           ),
+          if (_vm.canOpenDirectMessages) ...[
+            const InsetDivider(leadingInset: 14),
+            _infoRow(
+              AppStrings.t(AppStringKeys.channelDirectMessages),
+              _openDirectMessages,
+            ),
+          ],
+          if (_vm.isGroup && _vm.canManageGroup) ...[
+            const InsetDivider(leadingInset: 14),
+            _infoRow(
+              'Stories',
+              () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => StoryManagementView(
+                    chatId: widget.chatId,
+                    title: '${_vm.title} Stories',
+                  ),
+                ),
+              ),
+            ),
+          ],
           if (!_vm.isGroup) ...[
             const InsetDivider(leadingInset: 14),
             _infoRow(
@@ -1618,6 +1655,14 @@ class ChatInfoViewModel extends ChangeNotifier {
   bool canInvite = false;
   bool canRemove = false;
   bool canManageGroup = false;
+  bool canManageDirectMessages = false;
+  bool isDirectMessagesGroup = false;
+  bool isAdministeredDirectMessagesGroup = false;
+  int directMessagesChatId = 0;
+  bool get canOpenDirectMessages =>
+      directMessagesChatId != 0 && !isDirectMessagesGroup;
+  bool get opensDirectMessagesAsTopics =>
+      isAdministeredDirectMessagesGroup || canManageDirectMessages;
   bool canChangeAutoDelete = false;
   bool isMember = false; // confirmed member → may quit; false hides 退出
   bool _loaded = false;
@@ -1747,6 +1792,13 @@ class ChatInfoViewModel extends ChangeNotifier {
         final uname = sg.obj('usernames')?.str('editable_username') ?? '';
         username = uname.isEmpty ? null : uname;
         isPublic = uname.isNotEmpty;
+        isDirectMessagesGroup = sg.boolean('is_direct_messages_group') ?? false;
+        isAdministeredDirectMessagesGroup =
+            sg.boolean('is_administered_direct_messages_group') ?? false;
+        if (isAdministeredDirectMessagesGroup) {
+          directMessagesChatId = chatId;
+          canManageDirectMessages = true;
+        }
         _applySelfStatus(sg.obj('status'), defaultInvite: false);
         // Fetch supergroupFullInfo for the description.
         try {
@@ -1757,6 +1809,12 @@ class ChatInfoViewModel extends ChangeNotifier {
           final desc = info.str('description') ?? '';
           _setDescription(desc);
           memberCount = info.integer('member_count') ?? memberCount;
+          final linkedDirectMessagesChatId =
+              info.int64('direct_messages_chat_id') ?? 0;
+          if (linkedDirectMessagesChatId != 0 &&
+              !isAdministeredDirectMessagesGroup) {
+            directMessagesChatId = linkedDirectMessagesChatId;
+          }
         } catch (_) {}
       }
     } catch (_) {}
@@ -1797,6 +1855,7 @@ class ChatInfoViewModel extends ChangeNotifier {
         canInvite = true;
         canRemove = true;
         canManageGroup = true;
+        canManageDirectMessages = true;
         canChangeAutoDelete = true;
       case 'chatMemberStatusAdministrator':
         final rights = status?.obj('rights');
@@ -1804,18 +1863,22 @@ class ChatInfoViewModel extends ChangeNotifier {
         canInvite = rights?.boolean('can_invite_users') ?? false;
         canRemove = rights?.boolean('can_restrict_members') ?? false;
         canManageGroup = true;
+        canManageDirectMessages =
+            rights?.boolean('can_manage_direct_messages') ?? false;
         canChangeAutoDelete = rights?.boolean('can_change_info') ?? false;
       case 'chatMemberStatusMember':
         isMember = true;
         canInvite = defaultInvite;
         canRemove = false;
         canManageGroup = false;
+        canManageDirectMessages = false;
         canChangeAutoDelete = false;
       case 'chatMemberStatusRestricted':
         isMember = status?.boolean('is_member') ?? false;
         canInvite = defaultInvite;
         canRemove = false;
         canManageGroup = false;
+        canManageDirectMessages = false;
         canChangeAutoDelete = false;
       case 'chatMemberStatusLeft':
       case 'chatMemberStatusBanned':
@@ -1823,12 +1886,14 @@ class ChatInfoViewModel extends ChangeNotifier {
         canInvite = false;
         canRemove = false;
         canManageGroup = false;
+        canManageDirectMessages = false;
         canChangeAutoDelete = false;
       default:
         isMember = false;
         canInvite = defaultInvite;
         canRemove = false;
         canManageGroup = false;
+        canManageDirectMessages = false;
         canChangeAutoDelete = !isGroup;
     }
   }
@@ -1979,6 +2044,9 @@ class ChatInfoViewModel extends ChangeNotifier {
 
   Future<void> leaveChat() async {
     await TdClient.shared.query({'@type': 'leaveChat', 'chat_id': chatId});
+    await TdClient.shared.query(
+      deleteChatHistoryRequest(chatId: chatId, scope: ChatDeleteScope.self),
+    );
     isMember = false;
     notifyListeners();
     TdClient.shared.emitLocalUpdate({

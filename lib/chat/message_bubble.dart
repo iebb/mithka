@@ -23,6 +23,7 @@ import '../components/app_icons.dart';
 import '../components/confirm_dialog.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
+import '../components/ui_components.dart';
 import '../l10n/telegram_language_controller.dart';
 import '../profile/profile_detail_view.dart';
 import '../settings/sensitive_content_controller.dart';
@@ -34,12 +35,14 @@ import '../theme/date_text.dart';
 import '../theme/message_name_colors.dart';
 import '../theme/theme_controller.dart';
 import 'animated_sticker_view.dart';
+import 'bot_button_presentation.dart';
 import 'chat_appearance_preview.dart';
 import 'custom_emoji.dart';
 import 'file_detail_view.dart';
 import 'link_handler.dart';
 import 'location_detail_view.dart';
 import 'message_action_menu.dart';
+import 'message_special_content.dart';
 import 'music_player_controller.dart';
 import 'video_sticker_view.dart';
 import 'voice_audio.dart';
@@ -54,6 +57,7 @@ class MessageBubble extends StatefulWidget {
     this.meName = AppStringKeys.chatMeLabel,
     this.mePhoto,
     this.showRepeat = false,
+    this.forceShowTimestamp = false,
     this.onRepeat,
     this.onLongPress,
     this.onDoubleTap,
@@ -73,6 +77,16 @@ class MessageBubble extends StatefulWidget {
     this.onToggleReaction,
     this.onShowReactionUsers,
     this.onRedial,
+    this.onOpenContact,
+    this.onVotePoll,
+    this.onStopPoll,
+    this.onAddPollOption,
+    this.onShowPollResults,
+    this.onToggleChecklistTask,
+    this.onAddChecklistTask,
+    this.onOpenStory,
+    this.onTranscribeVoice,
+    this.onSummarizeMessage,
     this.isRead = false,
     this.outgoingBubbleColor,
     this.outgoingBubbleTextColor,
@@ -87,6 +101,7 @@ class MessageBubble extends StatefulWidget {
   final String meName;
   final TdFileRef? mePhoto;
   final bool showRepeat;
+  final bool forceShowTimestamp;
   final VoidCallback? onRepeat;
   final void Function(
     ChatMessage message,
@@ -113,6 +128,17 @@ class MessageBubble extends StatefulWidget {
   onShowReactionUsers;
   final ValueChanged<bool>?
   onRedial; // tap a call log to redial (bool = isVideo)
+  final ValueChanged<ChatMessage>? onOpenContact;
+  final void Function(ChatMessage message, int optionIndex)? onVotePoll;
+  final ValueChanged<ChatMessage>? onStopPoll;
+  final ValueChanged<ChatMessage>? onAddPollOption;
+  final ValueChanged<ChatMessage>? onShowPollResults;
+  final void Function(ChatMessage message, MessageChecklistTask task)?
+  onToggleChecklistTask;
+  final ValueChanged<ChatMessage>? onAddChecklistTask;
+  final ValueChanged<ChatMessage>? onOpenStory;
+  final ValueChanged<ChatMessage>? onTranscribeVoice;
+  final ValueChanged<ChatMessage>? onSummarizeMessage;
   final bool isRead; // outgoing message read by the peer (two delivery dots)
   final Color? outgoingBubbleColor;
   final Color? outgoingBubbleTextColor;
@@ -364,7 +390,8 @@ class _MessageBubbleState extends State<MessageBubble>
     final outgoingAvatarPhoto = message.senderIsChat
         ? message.senderPhoto
         : widget.mePhoto;
-    final alwaysShowTime = theme.alwaysShowMessageTime;
+    final alwaysShowTime =
+        widget.forceShowTimestamp || theme.alwaysShowMessageTime;
     final body = GestureDetector(
       key: _bubbleKey,
       behavior: HitTestBehavior.opaque,
@@ -612,6 +639,78 @@ class _MessageBubbleState extends State<MessageBubble>
       body = _callBubble(outgoing);
       return _withButtonRows(_withFloatingMeta(body, outgoing), outgoing);
     }
+    final specialBackground = outgoing
+        ? _outgoingBubbleColor
+        : _incomingBubbleColor;
+    final specialForeground = outgoing
+        ? _outgoingTextColor
+        : _incomingTextColor;
+    final specialSecondary = specialForeground.withValues(alpha: 0.68);
+    if (message.contact != null) {
+      body = MessageContactCardContent(
+        contact: message.contact!,
+        background: specialBackground,
+        foreground: specialForeground,
+        secondary: specialSecondary,
+        onOpen: () => widget.onOpenContact?.call(message),
+      );
+      return _withButtonRows(_withFloatingMeta(body, outgoing), outgoing);
+    }
+    if (message.poll != null) {
+      body = MessagePollContent(
+        poll: message.poll!,
+        background: specialBackground,
+        foreground: specialForeground,
+        secondary: specialSecondary,
+        onVote: message.poll!.isClosed
+            ? null
+            : (index) => widget.onVotePoll?.call(message, index),
+        onStop: message.isOutgoing && !message.poll!.isClosed
+            ? () => widget.onStopPoll?.call(message)
+            : null,
+        onAddOption: message.poll!.canAddOption
+            ? () => widget.onAddPollOption?.call(message)
+            : null,
+        onShowResults: message.poll!.canGetVoters
+            ? () => widget.onShowPollResults?.call(message)
+            : null,
+      );
+      return _withButtonRows(_withFloatingMeta(body, outgoing), outgoing);
+    }
+    if (message.checklist != null) {
+      body = MessageChecklistContent(
+        checklist: message.checklist!,
+        background: specialBackground,
+        foreground: specialForeground,
+        secondary: specialSecondary,
+        onToggleTask: message.checklist!.canMarkTasksAsDone
+            ? (task) => widget.onToggleChecklistTask?.call(message, task)
+            : null,
+        onAddTask: message.checklist!.canAddTasks
+            ? () => widget.onAddChecklistTask?.call(message)
+            : null,
+      );
+      return _withButtonRows(_withFloatingMeta(body, outgoing), outgoing);
+    }
+    if (message.story != null) {
+      body = MessageStoryContent(
+        story: message.story!,
+        background: specialBackground,
+        foreground: specialForeground,
+        secondary: specialSecondary,
+        onOpen: () => widget.onOpenStory?.call(message),
+      );
+      return _withButtonRows(_withFloatingMeta(body, outgoing), outgoing);
+    }
+    if (message.summaryCard != null) {
+      body = MessageSummaryCardContent(
+        card: message.summaryCard!,
+        background: specialBackground,
+        foreground: specialForeground,
+        secondary: specialSecondary,
+      );
+      return _withButtonRows(_withFloatingMeta(body, outgoing), outgoing);
+    }
     if (message.animatedSticker != null) {
       final s = _stickerSize();
       body = SizedBox(
@@ -669,7 +768,9 @@ class _MessageBubbleState extends State<MessageBubble>
     if (message.isDice) {
       body = _diceBubble(outgoing);
     } else if (message.video != null) {
-      body = _videoContent(outgoing);
+      body = message.contentType == 'messageVideoNote'
+          ? _videoNoteContent()
+          : _videoContent(outgoing);
     } else if (message.stickerFileId != null && message.image != null) {
       body = _staticStickerContent(message.image!);
     } else if (message.image != null) {
@@ -686,6 +787,126 @@ class _MessageBubbleState extends State<MessageBubble>
       body = _textBubble(_activeMessageText, outgoing);
     }
     return _withButtonRows(_withFloatingMeta(body, outgoing), outgoing);
+  }
+
+  Widget _videoNoteContent() {
+    const size = 220.0;
+    final duration = message.videoDuration ?? 0;
+    final transcription = message.videoNoteTranscription;
+    final showsTranscription =
+        transcription.isNotEmpty ||
+        message.videoNoteTranscriptionPending ||
+        message.videoNoteTranscriptionError != null ||
+        widget.onTranscribeVoice != null;
+    final transcriptionColor = message.isOutgoing
+        ? _outgoingTextColor.withValues(alpha: 0.88)
+        : context.colors.textSecondary;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        GestureDetector(
+          key: const ValueKey('messageVideoNote'),
+          behavior: HitTestBehavior.opaque,
+          onTap: () => widget.onPlayVideo?.call(message),
+          child: SizedBox(
+            width: size,
+            height: size,
+            child: ClipOval(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (message.image != null)
+                    TDImage(
+                      photo: message.image,
+                      cornerRadius: 0,
+                      cacheWidth: _cachePx(size),
+                      cacheHeight: _cachePx(size),
+                    )
+                  else
+                    ColoredBox(color: AppTheme.brand.withValues(alpha: 0.16)),
+                  Center(
+                    child: Container(
+                      width: 48,
+                      height: 48,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.42),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const AppIcon(
+                        HeroAppIcons.play,
+                        size: 23,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                  if (duration > 0)
+                    Positioned(
+                      left: 76,
+                      right: 76,
+                      bottom: 12,
+                      child: Container(
+                        alignment: Alignment.center,
+                        padding: const EdgeInsets.symmetric(vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.42),
+                          borderRadius: BorderRadius.circular(9),
+                        ),
+                        child: Text(
+                          _formatCallDuration(duration),
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        if (showsTranscription) ...[
+          const SizedBox(height: 7),
+          GestureDetector(
+            key: const ValueKey('videoNoteTranscription'),
+            behavior: HitTestBehavior.opaque,
+            onTap: message.videoNoteTranscriptionPending
+                ? null
+                : () => widget.onTranscribeVoice?.call(message),
+            child: SizedBox(
+              width: size,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  AppIcon(
+                    HeroAppIcons.microphone,
+                    size: 15,
+                    color: transcriptionColor,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      transcription.isNotEmpty
+                          ? transcription
+                          : message.videoNoteTranscriptionPending
+                          ? 'Transcribing…'
+                          : message.videoNoteTranscriptionError ??
+                                'Transcribe video message',
+                      style: TextStyle(
+                        fontSize: 12,
+                        height: 1.25,
+                        color: transcriptionColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
   }
 
   String get _activeMessageText {
@@ -714,10 +935,10 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   Widget _withFloatingMeta(Widget child, bool outgoing) {
-    final show =
-        message.isEdited ||
-        outgoing ||
+    final alwaysShowTime =
+        widget.forceShowTimestamp ||
         context.watch<ThemeController>().alwaysShowMessageTime;
+    final show = message.isEdited || outgoing || alwaysShowTime;
     if (!show) return child;
     return Stack(
       clipBehavior: Clip.none,
@@ -730,6 +951,9 @@ class _MessageBubbleState extends State<MessageBubble>
 
   Widget _floatingMeta(bool outgoing) {
     final c = context.colors;
+    final alwaysShowTime =
+        widget.forceShowTimestamp ||
+        context.watch<ThemeController>().alwaysShowMessageTime;
     final faint = outgoing
         ? _outgoingTextColor.withValues(alpha: 0.72)
         : c.textTertiary;
@@ -746,14 +970,13 @@ class _MessageBubbleState extends State<MessageBubble>
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (context.watch<ThemeController>().alwaysShowMessageTime)
+              if (alwaysShowTime)
                 Text(
                   DateText.messageDetailLabel(message.date),
                   key: const ValueKey('messageInlineTimestamp'),
                   style: TextStyle(fontSize: 9, height: 1, color: faint),
                 ),
-              if (context.watch<ThemeController>().alwaysShowMessageTime &&
-                  (message.isEdited || outgoing))
+              if (alwaysShowTime && (message.isEdited || outgoing))
                 const SizedBox(width: 4),
               if (message.isEdited)
                 AppIcon(HeroAppIcons.pen, size: 13, color: faint),
@@ -777,8 +1000,19 @@ class _MessageBubbleState extends State<MessageBubble>
     if (message.isContentRestricted) return body;
     final showComments =
         widget.showCommentAttachment && message.commentCount > 0;
-    if (message.buttonRows.isEmpty && !showComments) return body;
+    final showSuggestedPost = message.suggestedPostInfo != null;
+    if (message.buttonRows.isEmpty && !showComments && !showSuggestedPost) {
+      return body;
+    }
+    final foreground = outgoing ? _outgoingTextColor : _incomingTextColor;
     final extras = <Widget>[
+      if (showSuggestedPost)
+        MessageSuggestedPostStatusContent(
+          info: message.suggestedPostInfo!,
+          background: outgoing ? _outgoingBubbleColor : _incomingBubbleColor,
+          foreground: foreground,
+          secondary: foreground.withValues(alpha: 0.68),
+        ),
       if (showComments) _commentThreadRow(outgoing),
       if (message.buttonRows.isNotEmpty) _buttonRows(outgoing),
     ];
@@ -877,11 +1111,20 @@ class _MessageBubbleState extends State<MessageBubble>
 
   Widget _buttonCell(MessageButton button, bool outgoing) {
     final c = context.colors;
-    final fg = outgoing ? AppTheme.brand : c.linkBlue;
+    final colors = botButtonPalette(
+      button.style,
+      primary: AppTheme.brand,
+      standard: (
+        background: outgoing
+            ? Colors.white.withValues(alpha: 0.92)
+            : _incomingBubbleColor,
+        foreground: outgoing ? AppTheme.brand : c.linkBlue,
+        border: outgoing ? Colors.white.withValues(alpha: 0.65) : c.divider,
+      ),
+    );
     return Material(
-      color: outgoing
-          ? Colors.white.withValues(alpha: 0.92)
-          : _incomingBubbleColor,
+      key: ValueKey('message-button-${button.text}'),
+      color: colors.background,
       borderRadius: BorderRadius.circular(6),
       child: InkWell(
         borderRadius: BorderRadius.circular(6),
@@ -892,23 +1135,13 @@ class _MessageBubbleState extends State<MessageBubble>
           padding: const EdgeInsets.symmetric(horizontal: 8),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(6),
-            border: Border.all(
-              color: outgoing
-                  ? Colors.white.withValues(alpha: 0.65)
-                  : c.divider,
-              width: 0.5,
-            ),
+            border: Border.all(color: colors.border, width: 0.5),
           ),
-          child: Text(
-            button.text,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: fg,
-            ),
+          child: BotButtonLabel(
+            button: button,
+            color: colors.foreground,
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
           ),
         ),
       ),
@@ -969,6 +1202,9 @@ class _MessageBubbleState extends State<MessageBubble>
 
   Widget _textBubble(String text, bool outgoing) {
     final c = context.colors;
+    final alwaysShowTime =
+        widget.forceShowTimestamp ||
+        context.watch<ThemeController>().alwaysShowMessageTime;
     final baseColor = outgoing ? _outgoingTextColor : _incomingTextColor;
     final linkColor = outgoing ? _outgoingTextColor : c.linkBlue;
     for (final r in _linkRecognizers) {
@@ -979,7 +1215,7 @@ class _MessageBubbleState extends State<MessageBubble>
     final textFontSize = emojiOnly ? 34.0 : 16.0;
     return Container(
       constraints: BoxConstraints(maxWidth: _bubbleMaxWidth()),
-      padding: context.watch<ThemeController>().alwaysShowMessageTime
+      padding: alwaysShowTime
           ? (emojiOnly
                 ? const EdgeInsets.fromLTRB(10, 7, 10, 18)
                 : const EdgeInsets.fromLTRB(12, 9, 12, 20))
@@ -1029,6 +1265,47 @@ class _MessageBubbleState extends State<MessageBubble>
           if (_showsTranslation) ...[
             const SizedBox(height: 7),
             _translationBlock(outgoing),
+          ],
+          if (_showsAiSummary) ...[
+            const SizedBox(height: 7),
+            _aiSummaryBlock(outgoing),
+          ] else if (message.summaryLanguageCode.isNotEmpty &&
+              widget.onSummarizeMessage != null) ...[
+            const SizedBox(height: 7),
+            GestureDetector(
+              key: const ValueKey('messageSummarizeAction'),
+              behavior: HitTestBehavior.opaque,
+              onTap: () => widget.onSummarizeMessage?.call(message),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: AppTheme.brand.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    AppIcon(
+                      HeroAppIcons.wandMagicSparkles,
+                      size: 15,
+                      color: AppTheme.brand,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Summarize',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.brand,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ],
         ],
       ),
@@ -1947,6 +2224,77 @@ class _MessageBubbleState extends State<MessageBubble>
   bool get _showsTranslation =>
       message.isTranslating ||
       (message.translationText?.trim().isNotEmpty ?? false);
+
+  bool get _showsAiSummary =>
+      message.aiSummaryLoading ||
+      (message.aiSummaryText?.trim().isNotEmpty ?? false);
+
+  Widget _aiSummaryBlock(bool outgoing, {double? width}) {
+    final c = context.colors;
+    final base = outgoing ? _outgoingTextColor : c.textPrimary;
+    final secondary = outgoing
+        ? _outgoingTextColor.withValues(alpha: 0.70)
+        : c.textSecondary;
+    final link = outgoing ? _outgoingTextColor : c.linkBlue;
+    return Container(
+      key: const ValueKey('messageAiSummaryBlock'),
+      width: width ?? _bubbleMaxWidth(),
+      decoration: BoxDecoration(
+        color: outgoing
+            ? _outgoingTextColor.withValues(alpha: 0.10)
+            : AppTheme.brand.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(7),
+        border: Border(left: BorderSide(color: AppTheme.brand, width: 2.5)),
+      ),
+      padding: const EdgeInsets.fromLTRB(10, 7, 10, 8),
+      child: message.aiSummaryLoading
+          ? Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AppActivityIndicator(size: 13, color: secondary),
+                const SizedBox(width: 8),
+                Text(
+                  'Summarizing privately with Telegram…',
+                  style: TextStyle(fontSize: 13, color: secondary),
+                ),
+              ],
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    AppIcon(
+                      HeroAppIcons.wandMagicSparkles,
+                      size: 14,
+                      color: secondary,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      'AI Summary',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: secondary,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                ..._richTextWidgets(
+                  message.aiSummaryText ?? '',
+                  base,
+                  link,
+                  outgoing,
+                  false,
+                  message.aiSummaryEntities,
+                ),
+              ],
+            ),
+    );
+  }
 
   Widget _translationBlock(bool outgoing, {double? width}) {
     final c = context.colors;
@@ -3666,100 +4014,146 @@ class _MessageBubbleState extends State<MessageBubble>
             borderRadius: BorderRadius.circular(6),
             border: outgoing ? null : Border.all(color: c.divider, width: 0.5),
           ),
-          child: Row(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              GestureDetector(
-                onTap: () => _voice.toggleVoice(voice.file),
-                child: Container(
-                  width: 32,
-                  height: 32,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: outgoing
-                        ? _outgoingTextColor.withValues(alpha: 0.25)
-                        : AppTheme.brand.withValues(alpha: 0.12),
+              Row(
+                children: [
+                  GestureDetector(
+                    onTap: () => _voice.toggleVoice(voice.file),
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: outgoing
+                            ? _outgoingTextColor.withValues(alpha: 0.25)
+                            : AppTheme.brand.withValues(alpha: 0.12),
+                      ),
+                      child: _voice.isLoading
+                          ? AppActivityIndicator(size: 14, color: fg)
+                          : AppIcon(
+                              _voice.isPlaying
+                                  ? HeroAppIcons.pause
+                                  : HeroAppIcons.play,
+                              size: 14,
+                              color: fg,
+                            ),
+                    ),
                   ),
-                  child: _voice.isLoading
-                      ? SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation(fg),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: LayoutBuilder(
+                      builder: (ctx, box) {
+                        final w = box.maxWidth;
+                        void seekAt(double dx) =>
+                            _voice.seekFraction(dx / w, voice.duration);
+                        return GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTapDown: (d) => seekAt(d.localPosition.dx),
+                          onHorizontalDragStart: (d) =>
+                              seekAt(d.localPosition.dx),
+                          onHorizontalDragUpdate: (d) =>
+                              seekAt(d.localPosition.dx),
+                          child: SizedBox(
+                            height: 22,
+                            child: Stack(
+                              alignment: Alignment.centerLeft,
+                              children: [
+                                Container(
+                                  height: 3,
+                                  decoration: BoxDecoration(
+                                    color: track,
+                                    borderRadius: BorderRadius.circular(2),
+                                  ),
+                                ),
+                                FractionallySizedBox(
+                                  widthFactor: frac,
+                                  child: Container(
+                                    height: 3,
+                                    decoration: BoxDecoration(
+                                      color: fg,
+                                      borderRadius: BorderRadius.circular(2),
+                                    ),
+                                  ),
+                                ),
+                                Align(
+                                  alignment: Alignment(frac * 2 - 1, 0),
+                                  child: Container(
+                                    width: 11,
+                                    height: 11,
+                                    decoration: BoxDecoration(
+                                      color: fg,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        )
-                      : AppIcon(
-                          _voice.isPlaying
-                              ? HeroAppIcons.pause
-                              : HeroAppIcons.play,
-                          size: 14,
-                          color: fg,
-                        ),
-                ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 7),
+                  GestureDetector(
+                    key: const ValueKey('voicePlaybackSpeed'),
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _voice.cycleSpeed,
+                    child: Text(
+                      _voice.speed == 1
+                          ? timeText
+                          : '${_voice.speed.toStringAsFixed(_voice.speed == 1.5 ? 1 : 0)}×',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: _voice.speed == 1
+                            ? FontWeight.w400
+                            : FontWeight.w700,
+                        color: outgoing
+                            ? _outgoingTextColor.withValues(alpha: 0.9)
+                            : c.textSecondary,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: LayoutBuilder(
-                  builder: (ctx, box) {
-                    final w = box.maxWidth;
-                    void seekAt(double dx) =>
-                        _voice.seekFraction(dx / w, voice.duration);
-                    return GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTapDown: (d) => seekAt(d.localPosition.dx),
-                      onHorizontalDragStart: (d) => seekAt(d.localPosition.dx),
-                      onHorizontalDragUpdate: (d) => seekAt(d.localPosition.dx),
-                      child: SizedBox(
-                        height: 22,
-                        child: Stack(
-                          alignment: Alignment.centerLeft,
-                          children: [
-                            Container(
-                              height: 3,
-                              decoration: BoxDecoration(
-                                color: track,
-                                borderRadius: BorderRadius.circular(2),
-                              ),
-                            ),
-                            FractionallySizedBox(
-                              widthFactor: frac,
-                              child: Container(
-                                height: 3,
-                                decoration: BoxDecoration(
-                                  color: fg,
-                                  borderRadius: BorderRadius.circular(2),
-                                ),
-                              ),
-                            ),
-                            Align(
-                              alignment: Alignment(frac * 2 - 1, 0),
-                              child: Container(
-                                width: 11,
-                                height: 11,
-                                decoration: BoxDecoration(
-                                  color: fg,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                            ),
-                          ],
+              if (voice.transcription.isNotEmpty ||
+                  voice.transcriptionPending ||
+                  voice.transcriptionError != null ||
+                  widget.onTranscribeVoice != null) ...[
+                const SizedBox(height: 7),
+                GestureDetector(
+                  key: const ValueKey('voiceTranscription'),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: voice.transcriptionPending
+                      ? null
+                      : () => widget.onTranscribeVoice?.call(message),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      AppIcon(HeroAppIcons.microphone, size: 15, color: fg),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          voice.transcription.isNotEmpty
+                              ? voice.transcription
+                              : voice.transcriptionPending
+                              ? 'Transcribing…'
+                              : voice.transcriptionError ?? 'Transcribe voice',
+                          style: TextStyle(
+                            fontSize: 12,
+                            height: 1.25,
+                            color: outgoing
+                                ? _outgoingTextColor.withValues(alpha: 0.88)
+                                : c.textSecondary,
+                          ),
                         ),
                       ),
-                    );
-                  },
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                timeText,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: outgoing
-                      ? _outgoingTextColor.withValues(alpha: 0.9)
-                      : c.textSecondary,
-                ),
-              ),
+              ],
             ],
           ),
         );

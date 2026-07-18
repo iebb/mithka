@@ -22,16 +22,22 @@ import '../settings/keyword_blocker.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
+import '../tdlib/td_requests.dart';
 import 'chat_first_contact_info.dart';
 import 'chat_message_merge.dart';
 import 'chat_unread_progress.dart';
+import 'checklist_composer_view.dart';
+import 'checklist_service.dart';
 import 'forward_options.dart';
 import 'gif_item.dart';
+import 'message_send_options.dart';
 import 'outgoing_attachment.dart';
+import 'poll_composer_view.dart';
 import 'rich_message_source.dart';
 import 'secret_chat_service.dart';
 import 'sponsored_messages_cache.dart';
 import 'sticker_item.dart';
+import 'telegram_ai_service.dart';
 
 class _SenderInfo {
   _SenderInfo(
@@ -241,6 +247,8 @@ class ChatViewModel extends ChangeNotifier {
   bool joinByRequest = false; // joining needs approval → "申请加入"
   bool joinRequested = false; // a join request was sent (awaiting approval)
   bool isChannel = false; // broadcast channel (members can't post)
+  bool isDirectMessagesGroup = false;
+  bool isAdministeredDirectMessagesGroup = false;
   bool isMuted =
       false; // notifications muted (channel subscribers get a toggle)
   bool canDeleteMessagesBySender = false;
@@ -252,6 +260,10 @@ class ChatViewModel extends ChangeNotifier {
   bool _chatCanSend = true; // chat-wide default can_send_basic_messages
   bool peerIsBot = false;
   bool isSecretChat = false;
+  int businessBotUserId = 0;
+  String businessBotManageUrl = '';
+  bool businessBotPaused = false;
+  bool businessBotCanReply = false;
   int? _secretChatId;
   bool botStartSent = false;
   BotMenuInfo? botMenu;
@@ -266,6 +278,8 @@ class ChatViewModel extends ChangeNotifier {
   SponsoredMessagesSnapshot? sponsoredMessages;
 
   final TdClient _client = TdClient.shared;
+  late final TelegramAiService telegramAi = TelegramAiService(client: _client);
+  TelegramAiCapabilities? aiCapabilities;
   static final SponsoredMessagesCache _sponsoredMessagesCache =
       SponsoredMessagesCache();
   StreamSubscription? _sub;
@@ -289,6 +303,8 @@ class ChatViewModel extends ChangeNotifier {
   int get historyWindowInvalidationRevision =>
       _historyWindowInvalidationRevision;
   final Set<int> _blockedReadIds = {};
+  final Set<int> _messagePropertiesLoading = {};
+  final Map<int, bool> _speechRecognitionEligibility = {};
   final Set<int> _locallyViewedMentionIds = {};
   final Set<int> _blockedSenderIds = {};
   final Set<int> _discardedPendingMessageIds = {};
@@ -313,7 +329,7 @@ class ChatViewModel extends ChangeNotifier {
     final base = isGroup
         ? ''
         : (peerOnline
-              ? AppStrings.t(AppStringKeys.chatOnline)
+              ? telegramPresenceText(TelegramPresenceLabel.online)
               : peerStatusText);
     final action = _chatActionSubtitle;
     if (base.isEmpty) return action;
@@ -340,6 +356,14 @@ class ChatViewModel extends ChangeNotifier {
   }
 
   bool get requiresPaidMessage => paidMessageStarCount > 0;
+  bool get canUseAiComposition =>
+      aiCapabilities?.compositionSupported == true && !isSecretChat;
+  bool get canUseAiSummary => aiCapabilities?.summarySupported == true;
+  bool get canUseSpeechRecognition =>
+      aiCapabilities?.transcriptionSupported == true;
+  bool get canSendWhenOnline => !isGroup && !peerIsBot;
+  List<AvailableMessageEffect> availableMessageEffects = const [];
+  MessageSendConfiguration? _nextSendConfiguration;
   String get inputPlaceholder => messageAutoDeleteTime > 0
       ? AppStrings.t(AppStringKeys.chatAutoDeleteCountdown, {
           'value1': TDParse.formatDuration(messageAutoDeleteTime),
@@ -364,15 +388,30 @@ class ChatViewModel extends ChangeNotifier {
 
   List<int> consumeLiveIncomingMessageIds() => _liveIncomingMessages.takeAll();
 
-  Map<String, dynamic> _withPaidMessageOptions(Map<String, dynamic> request) {
+  void useNextSendConfiguration(MessageSendConfiguration configuration) {
+    _nextSendConfiguration = configuration;
+  }
+
+  Map<String, dynamic> _withPaidMessageOptions(
+    Map<String, dynamic> request, {
+    MessageSendConfiguration? sendConfiguration,
+    bool consumePendingConfiguration = true,
+  }) {
     final count = paidMessageStarCount;
-    if (count <= 0) return request;
+    final pending = sendConfiguration ?? _nextSendConfiguration;
+    if (consumePendingConfiguration && sendConfiguration == null) {
+      _nextSendConfiguration = null;
+    }
     final existing = request.obj('options') ?? const <String, dynamic>{};
-    request['options'] = {
-      ...existing,
-      '@type': 'messageSendOptions',
-      'paid_message_star_count': count,
-    };
+    if (count > 0 || pending != null || existing.isNotEmpty) {
+      request['options'] = {
+        if (pending != null)
+          ...pending.messageSendOptions(paidStarCount: count),
+        ...existing,
+        '@type': 'messageSendOptions',
+        if (count > 0) 'paid_message_star_count': count,
+      };
+    }
     return request;
   }
 
@@ -392,6 +431,7 @@ class ChatViewModel extends ChangeNotifier {
     KeywordBlocker.shared.addListener(_applyKeywordFilter);
     () async {
       unawaited(_loadMe());
+      unawaited(_loadAiCapabilities());
       await _loadChatHeader();
       if (_restoredFromSession) {
         unawaited(_discardStaleRestoredPendingMessages());
@@ -426,6 +466,50 @@ class ChatViewModel extends ChangeNotifier {
       notifyListeners();
       unawaited(_loadAvailableMessageSenders());
     }();
+  }
+
+  Future<void> _loadAiCapabilities() async {
+    try {
+      aiCapabilities = await telegramAi.capabilities();
+      notifyListeners();
+    } catch (_) {
+      // Capability discovery is optional. Unsupported servers keep all AI
+      // entry points hidden instead of exposing actions that will fail.
+    }
+  }
+
+  void ensureMessageCapabilities(ChatMessage message) {
+    if (message.contentType != 'messageVoiceNote' &&
+        message.contentType != 'messageVideoNote') {
+      return;
+    }
+    final cached = _speechRecognitionEligibility[message.id];
+    if (cached != null) {
+      message.canRecognizeSpeech = cached;
+      return;
+    }
+    if (!_messagePropertiesLoading.add(message.id)) return;
+    unawaited(_loadMessageCapabilities(message.id));
+  }
+
+  Future<void> _loadMessageCapabilities(int messageId) async {
+    try {
+      final properties = await _client.query({
+        '@type': 'getMessageProperties',
+        'chat_id': chatId,
+        'message_id': messageId,
+      });
+      final eligible = properties.boolean('can_recognize_speech') ?? false;
+      _speechRecognitionEligibility[messageId] = eligible;
+      for (final target in _messageRefs(messageId)) {
+        target.canRecognizeSpeech = eligible;
+      }
+      notifyListeners();
+    } catch (_) {
+      _speechRecognitionEligibility[messageId] = false;
+    } finally {
+      _messagePropertiesLoading.remove(messageId);
+    }
   }
 
   Future<void> _loadMe() async {
@@ -570,6 +654,7 @@ class ChatViewModel extends ChangeNotifier {
       }
     }
     _messageSendWaiters.clear();
+    telegramAi.dispose();
     super.dispose();
   }
 
@@ -628,12 +713,13 @@ class ChatViewModel extends ChangeNotifier {
     if (trimmed.isEmpty) {
       if (_lastSavedDraftText == '') return;
       _lastSavedDraftText = '';
-      _client.send({
-        '@type': 'setChatDraftMessage',
-        'chat_id': chatId,
-        'message_thread_id': 0,
-        'draft_message': null,
-      });
+      _client.send(
+        setTextChatDraftRequest(
+          chatId: chatId,
+          formattedText: null,
+          date: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        ),
+      );
       return;
     }
 
@@ -643,23 +729,17 @@ class ChatViewModel extends ChangeNotifier {
     ];
     if (_lastSavedDraftText == text && allEntities.isEmpty) return;
     _lastSavedDraftText = text;
-    _client.send({
-      '@type': 'setChatDraftMessage',
-      'chat_id': chatId,
-      'message_thread_id': 0,
-      'draft_message': {
-        '@type': 'draftMessage',
-        'date': DateTime.now().millisecondsSinceEpoch ~/ 1000,
-        'input_message_text': {
-          '@type': 'inputMessageText',
-          'text': {
-            '@type': 'formattedText',
-            'text': text,
-            if (allEntities.isNotEmpty) 'entities': allEntities,
-          },
+    _client.send(
+      setTextChatDraftRequest(
+        chatId: chatId,
+        date: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        formattedText: {
+          '@type': 'formattedText',
+          'text': text,
+          if (allEntities.isNotEmpty) 'entities': allEntities,
         },
-      },
-    });
+      ),
+    );
   }
 
   void _applyRemoteDraft(
@@ -799,6 +879,68 @@ class ChatViewModel extends ChangeNotifier {
     replyTo = null;
     _client.send(_withPaidMessageOptions(request));
     notifyListeners();
+  }
+
+  Future<void> sendSuggestedPost({
+    required String text,
+    OutgoingAttachment? attachment,
+    SuggestedPostPrice? price,
+    int sendDate = 0,
+  }) async {
+    if (!canSendMessages || !isDirectMessagesGroup) return;
+    final trimmed = text.trim();
+    if (trimmed.isEmpty && attachment == null) return;
+    Map<String, dynamic> content;
+    if (attachment == null) {
+      content = {
+        '@type': 'inputMessageText',
+        'text': {'@type': 'formattedText', 'text': trimmed},
+      };
+    } else {
+      final resolved = await resolveAttachmentDimensions(attachment);
+      content = attachmentInputMessageContent(resolved, caption: trimmed);
+    }
+    final request = <String, dynamic>{
+      '@type': 'sendMessage',
+      'chat_id': chatId,
+      'options': {
+        '@type': 'messageSendOptions',
+        'suggested_post_info': {
+          '@type': 'inputSuggestedPostInfo',
+          'price': price?.toTdJson(),
+          'send_date': sendDate,
+        },
+      },
+      'input_message_content': content,
+    };
+    final response = await _client.query(_withPaidMessageOptions(request));
+    final message = TDParse.message(response);
+    if (message != null) {
+      _merge([message]);
+      _resolveSendersIfNeeded([message]);
+    }
+  }
+
+  Future<void> addSuggestedPostOffer(
+    int messageId, {
+    SuggestedPostPrice? price,
+    int sendDate = 0,
+  }) async {
+    if (!isDirectMessagesGroup) return;
+    await _client.query({
+      '@type': 'addOffer',
+      'chat_id': chatId,
+      'message_id': messageId,
+      'options': {
+        '@type': 'messageSendOptions',
+        'suggested_post_info': {
+          '@type': 'inputSuggestedPostInfo',
+          'price': price?.toTdJson(),
+          'send_date': sendDate,
+        },
+      },
+    });
+    await _refreshMessage(messageId);
   }
 
   bool sendBotStart() {
@@ -1050,6 +1192,8 @@ class ChatViewModel extends ChangeNotifier {
     List<OutgoingAttachment> attachments, {
     String caption = '',
     List<Map<String, dynamic>> captionEntities = const [],
+    MessageSendConfiguration sendConfiguration =
+        const MessageSendConfiguration(),
   }) async {
     if (attachments.isEmpty) return;
     final allEntities = [
@@ -1065,12 +1209,19 @@ class ChatViewModel extends ChangeNotifier {
       replyTo: reply == null
           ? null
           : {'@type': 'inputMessageReplyToMessage', 'message_id': reply.id},
+      sendConfiguration: sendConfiguration,
     );
     replyTo = null;
     _clearDraft();
     notifyListeners();
     for (final request in requests) {
-      await _client.query(_withPaidMessageOptions(request));
+      await _client.query(
+        _withPaidMessageOptions(
+          request,
+          sendConfiguration: sendConfiguration,
+          consumePendingConfiguration: false,
+        ),
+      );
     }
   }
 
@@ -1243,18 +1394,129 @@ class ChatViewModel extends ChangeNotifier {
     );
   }
 
-  void sendVoice(String path, int duration) {
-    _client.send(
-      _withPaidMessageOptions({
-        '@type': 'sendMessage',
-        'chat_id': chatId,
-        'input_message_content': {
-          '@type': 'inputMessageVoiceNote',
-          'voice_note': {'@type': 'inputFileLocal', 'path': path},
-          'duration': duration,
-        },
-      }),
-    );
+  Future<bool> sendVenue({
+    required double latitude,
+    required double longitude,
+    required String title,
+    required String address,
+  }) async {
+    final venueTitle = title.trim();
+    if (venueTitle.isEmpty) return false;
+    try {
+      await _client.query(
+        _withPaidMessageOptions({
+          '@type': 'sendMessage',
+          'chat_id': chatId,
+          'input_message_content': {
+            '@type': 'inputMessageVenue',
+            'venue': {
+              '@type': 'venue',
+              'location': {
+                '@type': 'location',
+                'latitude': latitude,
+                'longitude': longitude,
+                'horizontal_accuracy': 0,
+              },
+              'title': venueTitle,
+              'address': address.trim(),
+              'provider': '',
+              'id': '',
+              'type': '',
+            },
+          },
+        }),
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> sendContact(MessageContactCard contact) async {
+    if (contact.phoneNumber.trim().isEmpty) return false;
+    try {
+      await _client.query(
+        _withPaidMessageOptions({
+          '@type': 'sendMessage',
+          'chat_id': chatId,
+          'input_message_content': {
+            '@type': 'inputMessageContact',
+            'contact': {
+              '@type': 'contact',
+              'phone_number': contact.phoneNumber,
+              'first_name': contact.firstName,
+              'last_name': contact.lastName,
+              'vcard': contact.vcard,
+              'user_id': contact.userId,
+            },
+          },
+        }),
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> sendVoice(
+    String path,
+    int duration, {
+    String waveform = '',
+    MessageSendConfiguration sendConfiguration =
+        const MessageSendConfiguration(),
+  }) async {
+    try {
+      await _client.query(
+        _withPaidMessageOptions({
+          '@type': 'sendMessage',
+          'chat_id': chatId,
+          'input_message_content': {
+            '@type': 'inputMessageVoiceNote',
+            'voice_note': {
+              '@type': 'inputVoiceNote',
+              'voice_note': {'@type': 'inputFileLocal', 'path': path},
+              'duration': duration,
+              'waveform': waveform,
+            },
+            'self_destruct_type': ?sendConfiguration.selfDestructType,
+          },
+        }, sendConfiguration: sendConfiguration),
+      );
+      return true;
+    } catch (error) {
+      debugPrint('Failed to send voice note: $error');
+      return false;
+    }
+  }
+
+  Future<bool> sendVideoNote(
+    String path,
+    int duration, {
+    MessageSendConfiguration sendConfiguration =
+        const MessageSendConfiguration(),
+  }) async {
+    try {
+      await _client.query(
+        _withPaidMessageOptions({
+          '@type': 'sendMessage',
+          'chat_id': chatId,
+          'input_message_content': {
+            '@type': 'inputMessageVideoNote',
+            'video_note': {
+              '@type': 'inputVideoNote',
+              'video_note': {'@type': 'inputFileLocal', 'path': path},
+              'duration': duration,
+              'length': 0,
+            },
+            'self_destruct_type': ?sendConfiguration.selfDestructType,
+          },
+        }, sendConfiguration: sendConfiguration),
+      );
+      return true;
+    } catch (error) {
+      debugPrint('Failed to send video note: $error');
+      return false;
+    }
   }
 
   /// 音频: send a picked audio file as a music message (TDLib computes metadata).
@@ -1325,58 +1587,261 @@ class ChatViewModel extends ChangeNotifier {
   }
 
   /// 清单: send a checklist (to-do list). Creating checklists needs Premium.
-  void sendChecklist(String title, List<String> tasks) {
-    final items = tasks
-        .map((t) => t.trim())
-        .where((t) => t.isNotEmpty)
-        .toList();
-    if (title.trim().isEmpty || items.isEmpty) return;
+  void sendChecklist(ChecklistComposerResult draft) {
+    if (draft.title.trim().isEmpty || draft.tasks.isEmpty) return;
     _client.send(
       _withPaidMessageOptions({
         '@type': 'sendMessage',
         'chat_id': chatId,
         'input_message_content': {
           '@type': 'inputMessageChecklist',
-          'checklist': {
-            '@type': 'inputChecklist',
-            'title': {'@type': 'formattedText', 'text': title.trim()},
-            'tasks': [
-              for (var i = 0; i < items.length; i++)
-                {
-                  '@type': 'inputChecklistTask',
-                  'id': i + 1,
-                  'text': {'@type': 'formattedText', 'text': items[i]},
-                },
-            ],
-            'others_can_add_tasks': false,
-            'others_can_mark_tasks_as_done': true,
-          },
+          'checklist': ChecklistRequests.inputChecklist(draft),
         },
       }),
     );
   }
 
-  void sendPoll(String question, List<String> options) {
-    final q = question.trim();
-    final opts = options
-        .map((o) => o.trim())
-        .where((o) => o.isNotEmpty)
-        .toList();
-    if (q.isEmpty || opts.length < 2) return;
-    _client.send(
-      _withPaidMessageOptions({
-        '@type': 'sendMessage',
-        'chat_id': chatId,
-        'input_message_content': {
-          '@type': 'inputMessagePoll',
-          'question': {'@type': 'formattedText', 'text': q},
-          'options': opts
-              .map((o) => {'@type': 'formattedText', 'text': o})
-              .toList(),
-          'type': {'@type': 'pollTypeRegular', 'allow_multiple_answers': false},
-        },
-      }),
+  Future<void> editChecklist(
+    ChatMessage message,
+    ChecklistComposerResult draft,
+  ) async {
+    final checklist = message.checklist;
+    if (checklist == null) return;
+    await _client.query(
+      ChecklistRequests.edit(
+        chatId: chatId,
+        messageId: message.id,
+        original: checklist,
+        draft: draft,
+      ),
     );
+    await _refreshMessage(message.id);
+  }
+
+  Future<int> pollAnswerCountMax() async {
+    try {
+      final option = await _client.query({
+        '@type': 'getOption',
+        'name': 'poll_answer_count_max',
+      });
+      return (option.integer('value') ?? 30).clamp(2, 100);
+    } catch (_) {
+      return 30;
+    }
+  }
+
+  Future<bool> sendPoll(PollComposerResult draft) async {
+    final question = draft.question.trim();
+    final options = draft.options
+        .where((option) => option.text.trim().isNotEmpty)
+        .toList(growable: false);
+    if (question.isEmpty || options.length < 2) return false;
+    if (draft.isQuiz && draft.correctOptionIndexes.isEmpty) return false;
+    try {
+      await _client.query(
+        _withPaidMessageOptions({
+          '@type': 'sendMessage',
+          'chat_id': chatId,
+          'input_message_content': {
+            '@type': 'inputMessagePoll',
+            'question': {'@type': 'formattedText', 'text': question},
+            'options': [
+              for (final option in options)
+                {
+                  '@type': 'inputPollOption',
+                  'text': {
+                    '@type': 'formattedText',
+                    'text': option.text.trim(),
+                  },
+                  if (option.mediaPath case final path?)
+                    'media': _inputPollPhoto(path),
+                },
+            ],
+            if (draft.description.trim().isNotEmpty)
+              'description': {
+                '@type': 'formattedText',
+                'text': draft.description.trim(),
+              },
+            if (draft.pollMediaPath case final path?)
+              'media': _inputPollPhoto(path),
+            'is_anonymous': draft.isAnonymous,
+            'allows_multiple_answers': draft.allowsMultipleAnswers,
+            'allows_revoting': draft.allowsRevoting,
+            'shuffle_options': draft.shuffleOptions,
+            'hide_results_until_closes': draft.hideResultsUntilCloses,
+            'type': draft.isQuiz
+                ? {
+                    '@type': 'inputPollTypeQuiz',
+                    'correct_option_ids': draft.correctOptionIndexes.toList()
+                      ..sort(),
+                    'explanation': {
+                      '@type': 'formattedText',
+                      'text': draft.explanation.trim(),
+                    },
+                  }
+                : {
+                    '@type': 'inputPollTypeRegular',
+                    'allow_adding_options': draft.allowAddingOptions,
+                  },
+            'open_period': draft.openPeriod,
+          },
+        }),
+      );
+      return true;
+    } catch (error) {
+      debugPrint('Failed to send poll: $error');
+      return false;
+    }
+  }
+
+  Map<String, dynamic> _inputPollPhoto(String path) => {
+    '@type': 'inputPollMediaPhoto',
+    'photo': {
+      '@type': 'inputPhoto',
+      'photo': {'@type': 'inputFileLocal', 'path': path},
+    },
+  };
+
+  Future<void> addPollOption(ChatMessage message, String text) async {
+    final value = text.trim();
+    if (message.poll == null || value.isEmpty) return;
+    await _client.query({
+      '@type': 'addPollOption',
+      'chat_id': chatId,
+      'message_id': message.id,
+      'option': {
+        '@type': 'inputPollOption',
+        'text': {'@type': 'formattedText', 'text': value},
+      },
+    });
+    await _refreshMessage(message.id);
+  }
+
+  Future<void> recognizeSpeech(ChatMessage message) async {
+    if (!canUseSpeechRecognition) {
+      throw StateError('SPEECH_RECOGNITION_UNAVAILABLE');
+    }
+    final properties = await _client.query({
+      '@type': 'getMessageProperties',
+      'chat_id': chatId,
+      'message_id': message.id,
+    });
+    if (properties.boolean('can_recognize_speech') != true) {
+      _speechRecognitionEligibility[message.id] = false;
+      for (final target in _messageRefs(message.id)) {
+        target.canRecognizeSpeech = false;
+      }
+      notifyListeners();
+      throw StateError('SPEECH_RECOGNITION_UNAVAILABLE');
+    }
+    await _client.query({
+      '@type': 'recognizeSpeech',
+      'chat_id': chatId,
+      'message_id': message.id,
+    });
+    await _refreshMessage(message.id);
+  }
+
+  Future<Map<String, dynamic>> pollVoteStatistics(
+    ChatMessage message, {
+    required bool isDark,
+  }) => _client.query({
+    '@type': 'getPollVoteStatistics',
+    'chat_id': chatId,
+    'message_id': message.id,
+    'is_dark': isDark,
+  });
+
+  Future<List<Map<String, dynamic>>> pollVoters(
+    ChatMessage message,
+    int optionIndex, {
+    int offset = 0,
+  }) async {
+    final response = await _client.query({
+      '@type': 'getPollVoters',
+      'chat_id': chatId,
+      'message_id': message.id,
+      'option_id': optionIndex,
+      'offset': offset,
+      'limit': 50,
+    });
+    return response.objects('voters') ?? const <Map<String, dynamic>>[];
+  }
+
+  Future<void> votePoll(ChatMessage message, int optionIndex) async {
+    final poll = message.poll;
+    if (poll == null || poll.isClosed) return;
+    final selected = <int>[...poll.chosenOptionIndexes];
+    if (poll.allowsMultipleAnswers) {
+      selected.contains(optionIndex)
+          ? selected.remove(optionIndex)
+          : selected.add(optionIndex);
+    } else if (selected.length == 1 && selected.first == optionIndex) {
+      if (!poll.allowsRevoting) return;
+      selected.clear();
+    } else {
+      selected
+        ..clear()
+        ..add(optionIndex);
+    }
+    await _client.query({
+      '@type': 'setPollAnswer',
+      'chat_id': chatId,
+      'message_id': message.id,
+      'option_ids': selected,
+    });
+    await _refreshMessage(message.id);
+  }
+
+  Future<void> stopPoll(ChatMessage message) async {
+    if (message.poll == null || message.poll!.isClosed) return;
+    await _client.query({
+      '@type': 'stopPoll',
+      'chat_id': chatId,
+      'message_id': message.id,
+    });
+    await _refreshMessage(message.id);
+  }
+
+  Future<void> toggleChecklistTask(
+    ChatMessage message,
+    MessageChecklistTask task,
+  ) async {
+    final checklist = message.checklist;
+    if (checklist == null || !checklist.canMarkTasksAsDone) return;
+    await _client.query({
+      '@type': 'markChecklistTasksAsDone',
+      'chat_id': chatId,
+      'message_id': message.id,
+      'marked_as_done_task_ids': task.isCompleted ? <int>[] : [task.id],
+      'marked_as_not_done_task_ids': task.isCompleted ? [task.id] : <int>[],
+    });
+    await _refreshMessage(message.id);
+  }
+
+  Future<void> addChecklistTask(ChatMessage message, String text) async {
+    final checklist = message.checklist;
+    final value = text.trim();
+    if (checklist == null || !checklist.canAddTasks || value.isEmpty) return;
+    final nextId =
+        checklist.tasks.fold<int>(
+          0,
+          (current, task) => math.max(current, task.id),
+        ) +
+        1;
+    await _client.query({
+      '@type': 'addChecklistTasks',
+      'chat_id': chatId,
+      'message_id': message.id,
+      'tasks': [
+        {
+          '@type': 'inputChecklistTask',
+          'id': nextId,
+          'text': {'@type': 'formattedText', 'text': value},
+        },
+      ],
+    });
+    await _refreshMessage(message.id);
   }
 
   /// Re-sends the same content (the "+1" quick repeat) — only plain text and
@@ -1512,6 +1977,44 @@ class ChatViewModel extends ChangeNotifier {
       'to_language_code': toLanguageCode,
     });
     return formatted.str('text') ?? '';
+  }
+
+  Future<void> summarizeMessage(
+    ChatMessage message, {
+    String translateToLanguageCode = '',
+    String tone = 'neutral',
+  }) async {
+    if (!canUseAiSummary ||
+        message.summaryLanguageCode.isEmpty ||
+        message.aiSummaryLoading) {
+      return;
+    }
+    final targets = _messageRefs(message.id);
+    for (final target in targets) {
+      target.aiSummaryLoading = true;
+    }
+    notifyListeners();
+    try {
+      final result = await telegramAi.summarize(
+        chatId: chatId,
+        messageId: message.id,
+        translateToLanguageCode: translateToLanguageCode,
+        tone: tone,
+      );
+      final formatted = result.toTdJson();
+      for (final target in _messageRefs(message.id)) {
+        target.aiSummaryText = result.text;
+        target.aiSummaryEntities = TDParse.textEntities(formatted);
+        target.aiSummaryLoading = false;
+      }
+      notifyListeners();
+    } catch (_) {
+      for (final target in _messageRefs(message.id)) {
+        target.aiSummaryLoading = false;
+      }
+      notifyListeners();
+      rethrow;
+    }
   }
 
   Future<void> translateMessageExternally(
@@ -1892,6 +2395,7 @@ class ChatViewModel extends ChangeNotifier {
     firstContactInfo = ChatFirstContactInfo.fromActionBar(
       chat.obj('action_bar'),
     );
+    _applyBusinessBotManageBar(chat.obj('business_bot_manage_bar'));
     lastReadOutboxId = chat.int64('last_read_outbox_message_id') ?? 0;
     lastReadInboxId = chat.int64('last_read_inbox_message_id') ?? 0;
     unreadCount = chat.integer('unread_count') ?? 0;
@@ -1921,6 +2425,8 @@ class ChatViewModel extends ChangeNotifier {
     canJoin = false;
     joinByRequest = false;
     isChannel = false;
+    isDirectMessagesGroup = false;
+    isAdministeredDirectMessagesGroup = false;
     canDeleteMessagesBySender = false;
     sendDisabledReason = '';
     isPeerRestricted = false;
@@ -2005,6 +2511,10 @@ class ChatViewModel extends ChangeNotifier {
               );
             }
             isChannel = sg.boolean('is_channel') ?? false;
+            isDirectMessagesGroup =
+                sg.boolean('is_direct_messages_group') ?? false;
+            isAdministeredDirectMessagesGroup =
+                sg.boolean('is_administered_direct_messages_group') ?? false;
             isForum = isForum || (sg.boolean('is_forum') ?? false);
             joinByRequest = sg.boolean('join_by_request') ?? false;
             _setPaidMessageStarCount(_paidMessageStars(sg), notify: false);
@@ -2972,6 +3482,16 @@ class ChatViewModel extends ChangeNotifier {
           final target = _messageRefs(messageId);
           _resolveRichMessagesIfNeeded(target);
         }
+        if (content.type == 'messageVoiceNote' ||
+            content.type == 'messageVideoNote') {
+          unawaited(_refreshMessage(messageId));
+        }
+
+      case 'updateMessageSuggestedPostInfo':
+        if (update.int64('chat_id') != chatId) return;
+        final messageId = update.int64('message_id');
+        if (messageId == null) return;
+        unawaited(_refreshMessage(messageId));
 
       case 'updateChatUnreadMentionCount':
         if (update.int64('chat_id') != chatId) return;
@@ -3049,6 +3569,11 @@ class ChatViewModel extends ChangeNotifier {
         firstContactInfo = ChatFirstContactInfo.fromActionBar(
           update.obj('action_bar'),
         );
+        notifyListeners();
+
+      case 'updateChatBusinessBotManageBar':
+        if (update.int64('chat_id') != chatId) return;
+        _applyBusinessBotManageBar(update.obj('business_bot_manage_bar'));
         notifyListeners();
 
       case 'updateChatHasProtectedContent':
@@ -3197,8 +3722,11 @@ class ChatViewModel extends ChangeNotifier {
 
       case 'updateUserStatus':
         if (isGroup || update.int64('user_id') != peerUserId) return;
-        peerOnline = update.obj('status')?.type == 'userStatusOnline';
-        peerStatusText = _statusLabel(update.obj('status')?.type);
+        final status = update.obj('status');
+        peerOnline = status?.type == 'userStatusOnline';
+        peerStatusText = status == null
+            ? ''
+            : TDParse.userStatus({'status': status});
         notifyListeners();
 
       case 'updateMessageEdited':
@@ -3230,6 +3758,13 @@ class ChatViewModel extends ChangeNotifier {
           notifyListeners();
         }
 
+      case 'updateAvailableMessageEffects':
+        final ids = <int>{
+          ...?update.int64Array('reaction_effect_ids'),
+          ...?update.int64Array('sticker_effect_ids'),
+        };
+        unawaited(_resolveMessageEffects(ids));
+
       case 'updateBlockMessageSender':
         // Invalidate blocked-user cache so the hide-on-block toggle
         // takes effect immediately without app restart.
@@ -3241,6 +3776,42 @@ class ChatViewModel extends ChangeNotifier {
           );
         }
     }
+  }
+
+  void _applyBusinessBotManageBar(Map<String, dynamic>? value) {
+    businessBotUserId = value?.int64('bot_user_id') ?? 0;
+    businessBotManageUrl = value?.str('manage_url') ?? '';
+    businessBotPaused = value?.boolean('is_bot_paused') ?? false;
+    businessBotCanReply = value?.boolean('can_bot_reply') ?? false;
+  }
+
+  Future<void> _resolveMessageEffects(Set<int> ids) async {
+    if (ids.isEmpty) {
+      availableMessageEffects = const [];
+      notifyListeners();
+      return;
+    }
+    final effects = await Future.wait(
+      ids.map((id) async {
+        try {
+          final effect = await _client.query({
+            '@type': 'getMessageEffect',
+            'effect_id': id,
+          });
+          return AvailableMessageEffect(
+            id: id,
+            emoji: effect.str('emoji') ?? '✨',
+          );
+        } catch (_) {
+          return null;
+        }
+      }),
+    );
+    if (_isDisposed) return;
+    availableMessageEffects = effects
+        .whereType<AvailableMessageEffect>()
+        .toList(growable: false);
+    notifyListeners();
   }
 
   // MARK: - Reactions
@@ -3449,21 +4020,6 @@ class ChatViewModel extends ChangeNotifier {
       case 'chatActionTyping':
       default:
         return AppStrings.t(AppStringKeys.chatTyping);
-    }
-  }
-
-  String _statusLabel(String? type) {
-    switch (type) {
-      case 'userStatusOnline':
-        return AppStrings.t(AppStringKeys.chatOnline);
-      case 'userStatusRecently':
-        return AppStrings.t(AppStringKeys.chatRecentlyOnline);
-      case 'userStatusLastWeek':
-        return AppStrings.t(AppStringKeys.chatOnlineWithinWeek);
-      case 'userStatusLastMonth':
-        return AppStrings.t(AppStringKeys.chatOnlineWithinMonth);
-      default:
-        return AppStrings.t(AppStringKeys.chatOffline);
     }
   }
 

@@ -6,9 +6,19 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/call/call_manager.dart';
 import 'package:mithka/call/call_media_engine.dart';
 import 'package:mithka/call/call_screen.dart';
+import 'package:mithka/call/calls_view.dart';
 import 'package:mithka/components/photo_avatar.dart';
 
 void main() {
+  test('call history uses the pinned dedicated TDLib search method', () {
+    expect(callHistorySearchRequest(offset: 'next', limit: 25), {
+      '@type': 'searchCallMessages',
+      'offset': 'next',
+      'limit': 25,
+      'only_missed': false,
+    });
+  });
+
   test(
     'selects the first locally preferred call version supported by peer',
     () {

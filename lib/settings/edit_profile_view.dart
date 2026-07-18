@@ -23,6 +23,7 @@ import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../media/app_asset_picker.dart';
 import '../platform/animated_avatar_preparer.dart';
+import '../profile/profile_contact_management_view.dart';
 import '../profile/profile_icon_picker_view.dart';
 import '../profile/profile_photo_policy.dart';
 import '../tdlib/json_helpers.dart';
@@ -54,6 +55,7 @@ class _EditProfileViewState extends State<EditProfileView> {
   String _username = '';
   String _bio = '';
   String _phone = '';
+  int _userId = 0;
   int _accentColorId = 0;
   int _profileAccentColorId = -1;
   int _backgroundCustomEmojiId = 0;
@@ -74,6 +76,7 @@ class _EditProfileViewState extends State<EditProfileView> {
     try {
       final me = await _client.query({'@type': 'getMe'});
       final uid = me.int64('id');
+      _userId = uid ?? 0;
       _firstName = me.str('first_name') ?? '';
       _lastName = me.str('last_name') ?? '';
       _username = me.obj('usernames')?.str('editable_username') ?? '';
@@ -696,6 +699,24 @@ class _EditProfileViewState extends State<EditProfileView> {
                               builder: (_) => const BusinessSettingsView(),
                             ),
                           );
+                        },
+                        faded: true,
+                      ),
+                      _field(
+                        AppStrings.t(AppStringKeys.profileToolsTitle),
+                        AppStrings.t(
+                          AppStringKeys.profileToolsPhotoChatSummary,
+                        ),
+                        () async {
+                          await Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => ProfileContactManagementView(
+                                userId: _userId,
+                                initialName: '$_firstName $_lastName'.trim(),
+                              ),
+                            ),
+                          );
+                          if (mounted) await _load();
                         },
                         faded: true,
                       ),

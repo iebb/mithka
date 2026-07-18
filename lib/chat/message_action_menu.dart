@@ -24,6 +24,8 @@ import 'quick_reaction_choice.dart';
 enum MessageAction {
   copy(HeroAppIcons.file, AppStringKeys.messageActionCopy),
   edit(HeroAppIcons.pen, AppStringKeys.messageActionEdit),
+  suggestOffer(HeroAppIcons.penToSquare, AppStringKeys.suggestedPostEditOffer),
+  info(HeroAppIcons.circleInfo, AppStringKeys.messageActionInfo),
   translate(HeroAppIcons.language, AppStringKeys.messageActionTranslate),
   reply(HeroAppIcons.quoteLeft, AppStringKeys.messageActionQuote),
   replies(HeroAppIcons.comments, AppStringKeys.messageActionReplies),
@@ -166,12 +168,14 @@ class MessageActionMenu extends StatelessWidget {
     required this.isPinned,
     required this.onSelect,
     this.allowForwarding = true,
+    this.allowSuggestedPostOffer = false,
     this.source = MessageActionSource.normal,
   });
   final ChatMessage message;
   final bool isPinned;
   final ValueChanged<MessageAction> onSelect;
   final bool allowForwarding;
+  final bool allowSuggestedPostOffer;
   final MessageActionSource source;
 
   static const _surface = Color(0xFF2C2C2E);
@@ -198,13 +202,14 @@ class MessageActionMenu extends StatelessWidget {
       message.contentType == 'messageVideo' ||
       message.contentType == 'messageAnimation' ||
       message.contentType == 'messageAudio' ||
-      message.contentType == 'messageDocument';
+      message.contentType == 'messageDocument' ||
+      message.contentType == 'messageChecklist';
 
   bool get _hasCopyableText => message.text.trim().isNotEmpty;
 
   List<MessageAction> _actions(bool translationEnabled) {
-    // Call logs / special messages: only 删除 (no copy/reply/forward/react).
-    if (message.isCall) return [MessageAction.delete];
+    // Call logs aren't reactable, but their delivery metadata remains useful.
+    if (message.isCall) return [MessageAction.info, MessageAction.delete];
     final result = <MessageAction>[];
     if (_hasCopyableText) {
       result.add(MessageAction.copy);
@@ -215,6 +220,9 @@ class MessageActionMenu extends StatelessWidget {
     }
     if (!_hasCopyableText && message.isOutgoing && _isEditableMessage) {
       result.add(MessageAction.edit);
+    }
+    if (allowSuggestedPostOffer && !message.isService && _isEditableMessage) {
+      result.add(MessageAction.suggestOffer);
     }
     result.add(MessageAction.reply);
     if (message.hasActualReplies) {
@@ -246,6 +254,7 @@ class MessageActionMenu extends StatelessWidget {
     if (message.stickerSetId != null && canAddEmoji) {
       result.add(MessageAction.viewStickerSet);
     }
+    result.add(MessageAction.info);
     result.add(MessageAction.delete);
     return result;
   }

@@ -2,7 +2,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class TransferBoostConfig {
   const TransferBoostConfig({
-    this.downloadEnabled = false,
+    this.downloadEnabled = true,
     this.downloadChunkSizeBytes = defaultDownloadChunkSizeBytes,
     this.downloadParallelism = defaultDownloadParallelism,
     this.uploadEnabled = false,
@@ -77,7 +77,9 @@ class TransferBoostConfig {
     final hasExplicitDownloadSetting = prefs.containsKey(_downloadEnabledKey);
     final legacyDownloadLevel = prefs.getString(_legacyDownloadKey);
     final migratedDownloadEnabled =
-        legacyDownloadLevel == 'medium' || legacyDownloadLevel == 'maximum';
+        legacyDownloadLevel == null ||
+        legacyDownloadLevel == 'medium' ||
+        legacyDownloadLevel == 'maximum';
     final migratedDownloadChunkSize = legacyDownloadLevel == 'medium'
         ? 512 * kibibyte
         : defaultDownloadChunkSizeBytes;

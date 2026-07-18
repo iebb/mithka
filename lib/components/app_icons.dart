@@ -36,6 +36,7 @@ class HeroAppIcons {
   static const arrowsUpDown = AppIconData(HeroiconsOutline.arrowsUpDown);
   static const at = AppIconData(HeroiconsOutline.atSymbol);
   static const ban = AppIconData(HeroiconsOutline.noSymbol);
+  static const backspace = AppIconData(HeroiconsOutline.backspace);
   static const bars = AppIconData(HeroiconsOutline.bars3);
   static const alignLeft = AppIconData(HeroiconsOutline.bars3BottomLeft);
   static const alignCenter = AppIconData(HeroiconsOutline.bars3CenterLeft);
@@ -74,8 +75,10 @@ class HeroAppIcons {
   static const expand = AppIconData(HeroiconsOutline.arrowsPointingOut);
   static const eye = AppIconData(HeroiconsOutline.eye);
   static const eyeSlash = AppIconData(HeroiconsOutline.eyeSlash);
+  static const faceScan = AppIconData(HeroiconsOutline.viewfinderCircle);
   static const file = AppIconData(HeroiconsOutline.document);
   static const filter = AppIconData(HeroiconsOutline.funnel);
+  static const fingerprint = AppIconData(HeroiconsOutline.fingerPrint);
   static const flash = AppIconData(HeroiconsOutline.bolt);
   static const folder = AppIconData(HeroiconsOutline.folder);
   static const font = AppIconData(HeroiconsOutline.documentText);
@@ -119,6 +122,9 @@ class HeroAppIcons {
   static const play = AppIconData(HeroiconsOutline.play);
   static const plus = AppIconData(HeroiconsOutline.plus);
   static const qrcode = AppIconData(HeroiconsOutline.qrCode);
+  static const questionCircle = AppIconData(
+    HeroiconsOutline.questionMarkCircle,
+  );
   static const quoteLeft = AppIconData(
     HeroiconsOutline.chatBubbleBottomCenterText,
   );

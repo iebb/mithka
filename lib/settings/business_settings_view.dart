@@ -4,6 +4,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
 import '../chat/location_picker_view.dart';
+import '../chat/sticker_item.dart';
 import '../components/app_icons.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
@@ -12,6 +13,8 @@ import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
+import 'business_service.dart';
+import 'business_tools_views.dart';
 
 /// Telegram Business settings which belong to the current account. The data is
 /// sourced from `userFullInfo.business_info`, so the editor never relies on a
@@ -25,9 +28,13 @@ class BusinessSettingsView extends StatefulWidget {
 
 class _BusinessSettingsViewState extends State<BusinessSettingsView> {
   final TdClient _client = TdClient.shared;
+  final BusinessService _businessService = BusinessService();
   Map<String, dynamic>? _location;
   Map<String, dynamic>? _openingHours;
   Map<String, dynamic>? _startPage;
+  Map<String, dynamic>? _greetingMessage;
+  Map<String, dynamic>? _awayMessage;
+  BusinessCapabilities? _capabilities;
   int _emojiStatusId = 0;
   bool _loading = true;
 
@@ -42,16 +49,32 @@ class _BusinessSettingsViewState extends State<BusinessSettingsView> {
       final me = await _client.query({'@type': 'getMe'});
       final id = me.int64('id');
       if (id == null) return;
-      final full = await _client.query({
-        '@type': 'getUserFullInfo',
-        'user_id': id,
-      });
-      final business = full.obj('business_info');
+      Map<String, dynamic>? business;
+      try {
+        final full = await _client.query({
+          '@type': 'getUserFullInfo',
+          'user_id': id,
+        });
+        business = full.obj('business_info');
+      } catch (_) {
+        // Profile summaries may be unavailable while TDLib refreshes the user;
+        // capability loading below must still populate the settings rows.
+      }
+      BusinessCapabilities? capabilities;
+      try {
+        capabilities = await _businessService.capabilities();
+      } catch (_) {
+        // Keep all editing controls capability-gated if TDLib can't describe
+        // the feature set for this account.
+      }
       if (!mounted) return;
       setState(() {
         _location = business?.obj('location');
         _openingHours = business?.obj('opening_hours');
         _startPage = business?.obj('start_page');
+        _greetingMessage = business?.obj('greeting_message_settings');
+        _awayMessage = business?.obj('away_message_settings');
+        _capabilities = capabilities;
         _emojiStatusId = TDParse.emojiStatusCustomEmojiId(
           me.obj('emoji_status'),
         );
@@ -63,7 +86,18 @@ class _BusinessSettingsViewState extends State<BusinessSettingsView> {
     }
   }
 
-  Future<void> _open(Widget view) async {
+  bool _supports(String feature) => _capabilities?.supports(feature) ?? false;
+
+  Future<void> _open(Widget view, {required String feature}) async {
+    final capabilities = _capabilities;
+    if (capabilities == null || !capabilities.supports(feature)) {
+      showToast(context, 'This Business feature is unavailable in this build');
+      return;
+    }
+    if (!capabilities.isPremium) {
+      showToast(context, 'Telegram Premium is required for Business tools');
+      return;
+    }
     final changed = await Navigator.of(
       context,
     ).push<bool>(MaterialPageRoute(builder: (_) => view));
@@ -121,70 +155,217 @@ class _BusinessSettingsViewState extends State<BusinessSettingsView> {
                 : ListView(
                     padding: const EdgeInsets.fromLTRB(12, 18, 12, 24),
                     children: [
+                      if (_capabilities?.isPremium == false) ...[
+                        Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: AppTheme.brand.withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: AppTheme.brand.withValues(alpha: 0.24),
+                              width: 0.5,
+                            ),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              AppIcon(
+                                HeroAppIcons.solidStar,
+                                size: 19,
+                                color: AppTheme.brand,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  'Telegram Business tools require Telegram Premium. Your profile details remain visible, but editing is locked.',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    height: 1.35,
+                                    color: c.textSecondary,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                      ],
                       _sectionLabel(AppStringKeys.businessSettingsProfile),
                       _card([
-                        _row(
-                          HeroAppIcons.locationDot,
-                          const Color(0xFFFF7A2F),
-                          AppStringKeys.businessSettingsLocation,
-                          _locationSummary,
-                          () =>
-                              _open(_BusinessLocationView(initial: _location)),
-                        ),
-                        const InsetDivider(leadingInset: 56),
-                        _row(
-                          HeroAppIcons.clock,
-                          const Color(0xFFFF5B50),
-                          AppStringKeys.businessSettingsOpeningHours,
-                          _hoursSummary,
-                          () => _open(
-                            _BusinessOpeningHoursView(initial: _openingHours),
+                        if (_supports('businessFeatureLocation'))
+                          _row(
+                            HeroAppIcons.locationDot,
+                            const Color(0xFFFF7A2F),
+                            AppStringKeys.businessSettingsLocation,
+                            _locationSummary,
+                            () => _open(
+                              _BusinessLocationView(initial: _location),
+                              feature: 'businessFeatureLocation',
+                            ),
                           ),
-                        ),
-                        const InsetDivider(leadingInset: 56),
-                        _row(
-                          HeroAppIcons.message,
-                          const Color(0xFF6D73F5),
-                          AppStringKeys.businessSettingsStartPage,
-                          _startPageSummary,
-                          () => _open(
-                            _BusinessStartPageView(initial: _startPage),
+                        if (_supports('businessFeatureLocation') &&
+                            _supports('businessFeatureOpeningHours'))
+                          const InsetDivider(leadingInset: 56),
+                        if (_supports('businessFeatureOpeningHours'))
+                          _row(
+                            HeroAppIcons.clock,
+                            const Color(0xFFFF5B50),
+                            AppStringKeys.businessSettingsOpeningHours,
+                            _hoursSummary,
+                            () => _open(
+                              _BusinessOpeningHoursView(initial: _openingHours),
+                              feature: 'businessFeatureOpeningHours',
+                            ),
                           ),
-                        ),
+                        if ((_supports('businessFeatureLocation') ||
+                                _supports('businessFeatureOpeningHours')) &&
+                            _supports('businessFeatureStartPage'))
+                          const InsetDivider(leadingInset: 56),
+                        if (_supports('businessFeatureStartPage'))
+                          _row(
+                            HeroAppIcons.message,
+                            const Color(0xFF6D73F5),
+                            AppStringKeys.businessSettingsStartPage,
+                            _startPageSummary,
+                            () => _open(
+                              _BusinessStartPageView(initial: _startPage),
+                              feature: 'businessFeatureStartPage',
+                            ),
+                          ),
                       ]),
                       const SizedBox(height: 22),
                       _sectionLabel(AppStringKeys.businessSettingsTools),
                       _card([
-                        _row(
-                          HeroAppIcons.link,
-                          const Color(0xFF9B63F6),
-                          AppStringKeys.businessSettingsChatLinks,
-                          AppStrings.t(
-                            AppStringKeys.businessSettingsChatLinksSubtitle,
+                        if (_supports('businessFeatureQuickReplies')) ...[
+                          _literalRow(
+                            HeroAppIcons.solidMessage,
+                            const Color(0xFF2FA96B),
+                            'Quick Replies',
+                            'Create, edit, reorder, and send reusable replies',
+                            () => _open(
+                              const BusinessQuickRepliesView(),
+                              feature: 'businessFeatureQuickReplies',
+                            ),
                           ),
-                          () => _open(const _BusinessChatLinksView()),
-                        ),
-                        const InsetDivider(leadingInset: 56),
-                        _row(
-                          HeroAppIcons.solidStar,
-                          const Color(0xFF6D73F5),
-                          AppStringKeys.businessSettingsEmojiStatus,
-                          _emojiStatusId == 0
-                              ? AppStrings.t(
-                                  AppStringKeys.businessSettingsNotSet,
-                                )
-                              : AppStrings.t(
-                                  AppStringKeys.businessSettingsEmojiStatusSet,
-                                ),
-                          () async {
-                            await showEmojiStatusPicker(
-                              context,
-                              currentStatusId: _emojiStatusId,
-                            );
-                            await _load();
-                          },
-                        ),
+                        ],
+                        if (_supports('businessFeatureQuickReplies') &&
+                            (_supports('businessFeatureGreetingMessage') ||
+                                _supports('businessFeatureAwayMessage')))
+                          const InsetDivider(leadingInset: 56),
+                        if (_supports('businessFeatureGreetingMessage')) ...[
+                          _literalRow(
+                            HeroAppIcons.thumbsUp,
+                            const Color(0xFF19A874),
+                            'Greeting Message',
+                            _greetingMessage == null ? 'Off' : 'On',
+                            () => _open(
+                              BusinessGreetingMessageView(
+                                initial: _greetingMessage,
+                              ),
+                              feature: 'businessFeatureGreetingMessage',
+                            ),
+                          ),
+                        ],
+                        if (_supports('businessFeatureGreetingMessage') &&
+                            _supports('businessFeatureAwayMessage'))
+                          const InsetDivider(leadingInset: 56),
+                        if (_supports('businessFeatureAwayMessage')) ...[
+                          _literalRow(
+                            HeroAppIcons.solidMoon,
+                            const Color(0xFF675CE8),
+                            'Away Message',
+                            _awayMessage == null ? 'Off' : 'On',
+                            () => _open(
+                              BusinessAwayMessageView(initial: _awayMessage),
+                              feature: 'businessFeatureAwayMessage',
+                            ),
+                          ),
+                        ],
+                        if ((_supports('businessFeatureQuickReplies') ||
+                                _supports('businessFeatureGreetingMessage') ||
+                                _supports('businessFeatureAwayMessage')) &&
+                            _supports('businessFeatureAccountLinks'))
+                          const InsetDivider(leadingInset: 56),
+                        if (_supports('businessFeatureAccountLinks'))
+                          _row(
+                            HeroAppIcons.link,
+                            const Color(0xFF9B63F6),
+                            AppStringKeys.businessSettingsChatLinks,
+                            AppStrings.t(
+                              AppStringKeys.businessSettingsChatLinksSubtitle,
+                            ),
+                            () => _open(
+                              const _BusinessChatLinksView(),
+                              feature: 'businessFeatureAccountLinks',
+                            ),
+                          ),
+                        if ((_supports('businessFeatureQuickReplies') ||
+                                _supports('businessFeatureGreetingMessage') ||
+                                _supports('businessFeatureAwayMessage') ||
+                                _supports('businessFeatureAccountLinks')) &&
+                            _supports('businessFeatureBots'))
+                          const InsetDivider(leadingInset: 56),
+                        if (_supports('businessFeatureBots'))
+                          _literalRow(
+                            HeroAppIcons.code,
+                            const Color(0xFF3288D6),
+                            'Connected Bot',
+                            'Automate selected private chats with granular rights',
+                            () => _open(
+                              const BusinessConnectedBotView(),
+                              feature: 'businessFeatureBots',
+                            ),
+                          ),
+                        if ((_supports('businessFeatureQuickReplies') ||
+                                _supports('businessFeatureGreetingMessage') ||
+                                _supports('businessFeatureAwayMessage') ||
+                                _supports('businessFeatureAccountLinks') ||
+                                _supports('businessFeatureBots')) &&
+                            _supports('businessFeatureEmojiStatus'))
+                          const InsetDivider(leadingInset: 56),
+                        if (_supports('businessFeatureEmojiStatus'))
+                          _row(
+                            HeroAppIcons.solidStar,
+                            const Color(0xFF6D73F5),
+                            AppStringKeys.businessSettingsEmojiStatus,
+                            _emojiStatusId == 0
+                                ? AppStrings.t(
+                                    AppStringKeys.businessSettingsNotSet,
+                                  )
+                                : AppStrings.t(
+                                    AppStringKeys
+                                        .businessSettingsEmojiStatusSet,
+                                  ),
+                            () async {
+                              final capabilities = _capabilities;
+                              if (capabilities?.canUse(
+                                    'businessFeatureEmojiStatus',
+                                  ) !=
+                                  true) {
+                                showToast(
+                                  context,
+                                  'Telegram Premium is required for Business tools',
+                                );
+                                return;
+                              }
+                              await showEmojiStatusPicker(
+                                context,
+                                currentStatusId: _emojiStatusId,
+                              );
+                              await _load();
+                            },
+                          ),
                       ]),
+                      if ((_capabilities?.features.isEmpty ?? true)) ...[
+                        const SizedBox(height: 14),
+                        Text(
+                          'Business capabilities could not be loaded for this account.',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: c.textSecondary,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
           ),
@@ -242,6 +423,64 @@ class _BusinessSettingsViewState extends State<BusinessSettingsView> {
                   children: [
                     Text(
                       AppStrings.t(title),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 16, color: c.textPrimary),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 13, color: c.textSecondary),
+                    ),
+                  ],
+                ),
+              ),
+              AppIcon(
+                HeroAppIcons.chevronRight,
+                size: 17,
+                color: c.textTertiary,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _literalRow(
+    AppIconData icon,
+    Color iconColor,
+    String title,
+    String subtitle,
+    VoidCallback onTap,
+  ) {
+    final c = context.colors;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: SizedBox(
+        height: 66,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Row(
+            children: [
+              SettingsIconTile(
+                icon: icon,
+                backgroundColor: iconColor,
+                size: 30,
+                iconSize: 17,
+                radius: 8,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(fontSize: 16, color: c.textPrimary),
@@ -535,11 +774,16 @@ class _BusinessOpeningHoursViewState extends State<_BusinessOpeningHoursView> {
       final endInDay = end == _minutesPerWeek
           ? _minutesPerDay
           : end % _minutesPerDay;
-      _days[day] = _BusinessDayHours(
-        enabled: true,
-        start: startInDay,
-        end: endInDay == 0 ? _minutesPerDay : endInDay,
-      );
+      final normalizedEnd = endInDay == 0 ? _minutesPerDay : endInDay;
+      if (!_days[day].enabled) {
+        _days[day] = _BusinessDayHours(
+          enabled: true,
+          start: startInDay,
+          end: normalizedEnd,
+        );
+      } else {
+        _days[day].ranges.add(_BusinessTimeRange(startInDay, normalizedEnd));
+      }
     }
   }
 
@@ -553,16 +797,17 @@ class _BusinessOpeningHoursViewState extends State<_BusinessOpeningHoursView> {
     if (selected != null && mounted) setState(() => _timeZoneId = selected.id);
   }
 
-  Future<void> _chooseMinute(int day, bool start) async {
+  Future<void> _chooseMinute(int day, int rangeIndex, bool start) async {
     final value = _days[day];
-    final current = start ? value.start : value.end;
+    final range = value.ranges[rangeIndex];
+    final current = start ? range.start : range.end;
     final selected = await showCupertinoModalPopup<int>(
       context: context,
       builder: (_) => _MinutePicker(initial: current, isEnd: !start),
     );
     if (selected == null || !mounted) return;
     setState(() {
-      final updated = _days[day];
+      final updated = _days[day].ranges[rangeIndex];
       if (start) {
         updated.start = selected >= updated.end ? updated.end - 30 : selected;
       } else {
@@ -571,27 +816,61 @@ class _BusinessOpeningHoursViewState extends State<_BusinessOpeningHoursView> {
     });
   }
 
+  void _addInterval(int day) {
+    final value = _days[day];
+    if (value.ranges.length >= 4) return;
+    final last = value.ranges.last;
+    final start = last.end <= _minutesPerDay - 60 ? last.end : 9 * 60;
+    final end = (start + 60).clamp(30, _minutesPerDay);
+    setState(() {
+      value.enabled = true;
+      value.ranges.add(_BusinessTimeRange(start, end));
+    });
+  }
+
+  void _removeInterval(int day, int rangeIndex) {
+    final value = _days[day];
+    setState(() {
+      if (value.ranges.length == 1) {
+        value.enabled = false;
+      } else {
+        value.ranges.removeAt(rangeIndex);
+      }
+    });
+  }
+
   Future<void> _save({bool remove = false}) async {
     if (_saving) return;
+    final intervals = <Map<String, dynamic>>[];
+    if (!remove && !_alwaysOpen) {
+      for (var day = 0; day < _days.length; day++) {
+        final value = _days[day];
+        if (!value.enabled) continue;
+        final ranges = [...value.ranges]
+          ..sort((left, right) => left.start.compareTo(right.start));
+        for (var index = 0; index < ranges.length; index++) {
+          final range = ranges[index];
+          if (range.end <= range.start ||
+              (index > 0 && ranges[index - 1].end > range.start)) {
+            showToast(context, 'Business-hour intervals cannot overlap');
+            return;
+          }
+          intervals.add({
+            '@type': 'businessOpeningHoursInterval',
+            'start_minute': day * _minutesPerDay + range.start,
+            'end_minute': day * _minutesPerDay + range.end,
+          });
+        }
+      }
+    }
     setState(() => _saving = true);
     try {
-      final intervals = <Map<String, dynamic>>[];
       if (_alwaysOpen) {
         intervals.add({
           '@type': 'businessOpeningHoursInterval',
           'start_minute': 0,
           'end_minute': _minutesPerWeek,
         });
-      } else {
-        for (var day = 0; day < _days.length; day++) {
-          final value = _days[day];
-          if (!value.enabled) continue;
-          intervals.add({
-            '@type': 'businessOpeningHoursInterval',
-            'start_minute': day * _minutesPerDay + value.start,
-            'end_minute': day * _minutesPerDay + value.end,
-          });
-        }
       }
       await TdClient.shared.query({
         '@type': 'setBusinessOpeningHours',
@@ -730,44 +1009,73 @@ class _BusinessOpeningHoursViewState extends State<_BusinessOpeningHoursView> {
     final value = _days[day];
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 92,
-            child: Text(
-              AppStrings.t(_dayKeys[day]),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 15, color: c.textPrimary),
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  AppStrings.t(_dayKeys[day]),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 15, color: c.textPrimary),
+                ),
+              ),
+              AppSwitch(
+                value: value.enabled,
+                onChanged: (enabled) => setState(() => value.enabled = enabled),
+              ),
+            ],
           ),
           if (value.enabled) ...[
-            Expanded(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
+            const SizedBox(height: 5),
+            for (var index = 0; index < value.ranges.length; index++)
+              Row(
                 children: [
+                  const SizedBox(width: 12),
+                  AppIcon(HeroAppIcons.clock, size: 15, color: c.textTertiary),
+                  const SizedBox(width: 8),
                   _timeButton(
-                    _formatMinute(value.start),
-                    () => _chooseMinute(day, true),
+                    _formatMinute(value.ranges[index].start),
+                    () => _chooseMinute(day, index, true),
                   ),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     child: Text('-', style: TextStyle(color: c.textTertiary)),
                   ),
                   _timeButton(
-                    _formatMinute(value.end),
-                    () => _chooseMinute(day, false),
+                    _formatMinute(value.ranges[index].end),
+                    () => _chooseMinute(day, index, false),
+                  ),
+                  const Spacer(),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => _removeInterval(day, index),
+                    child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: AppIcon(
+                        HeroAppIcons.xmark,
+                        size: 14,
+                        color: c.textTertiary,
+                      ),
+                    ),
                   ),
                 ],
               ),
-            ),
-          ] else
-            const Spacer(),
-          const SizedBox(width: 10),
-          AppSwitch(
-            value: value.enabled,
-            onChanged: (enabled) => setState(() => value.enabled = enabled),
-          ),
+            if (value.ranges.length < 4)
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _addInterval(day),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 6, 8, 3),
+                  child: Text(
+                    'Add interval',
+                    style: TextStyle(fontSize: 13, color: AppTheme.brand),
+                  ),
+                ),
+              ),
+          ],
         ],
       ),
     );
@@ -799,6 +1107,10 @@ class _BusinessStartPageViewState extends State<_BusinessStartPageView> {
   late final TextEditingController _message = TextEditingController(
     text: widget.initial?.str('message') ?? '',
   );
+  late int? _stickerFileId = widget.initial
+      ?.obj('sticker')
+      ?.obj('sticker')
+      ?.integer('id');
   bool _saving = false;
 
   @override
@@ -829,7 +1141,9 @@ class _BusinessStartPageViewState extends State<_BusinessStartPageView> {
                 '@type': 'inputBusinessStartPage',
                 'title': title,
                 'message': message,
-                'sticker': null,
+                'sticker': _stickerFileId == null
+                    ? null
+                    : {'@type': 'inputFileId', 'id': _stickerFileId},
               },
       });
       if (mounted) Navigator.of(context).pop(true);
@@ -842,6 +1156,15 @@ class _BusinessStartPageViewState extends State<_BusinessStartPageView> {
       }
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _chooseSticker() async {
+    final sticker = await Navigator.of(context).push<StickerItem>(
+      MaterialPageRoute(builder: (_) => const BusinessIntroStickerPickerView()),
+    );
+    if (sticker != null && mounted) {
+      setState(() => _stickerFileId = sticker.id);
     }
   }
 
@@ -890,6 +1213,58 @@ class _BusinessStartPageViewState extends State<_BusinessStartPageView> {
                     style: TextStyle(fontSize: 16, color: c.textPrimary),
                     placeholderStyle: TextStyle(color: c.textTertiary),
                     decoration: const BoxDecoration(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _fieldLabel('Greeting sticker'),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _chooseSticker,
+                  child: _editorCard(
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Row(
+                        children: [
+                          AppIcon(
+                            HeroAppIcons.solidFaceSmile,
+                            size: 19,
+                            color: AppTheme.brand,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              _stickerFileId == null
+                                  ? 'Choose an optional greeting sticker'
+                                  : 'Greeting sticker selected',
+                              style: TextStyle(
+                                fontSize: 15,
+                                color: c.textPrimary,
+                              ),
+                            ),
+                          ),
+                          if (_stickerFileId != null)
+                            GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () =>
+                                  setState(() => _stickerFileId = null),
+                              child: Padding(
+                                padding: const EdgeInsets.all(8),
+                                child: AppIcon(
+                                  HeroAppIcons.xmark,
+                                  size: 16,
+                                  color: c.textTertiary,
+                                ),
+                              ),
+                            )
+                          else
+                            AppIcon(
+                              HeroAppIcons.chevronRight,
+                              size: 17,
+                              color: c.textTertiary,
+                            ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
                 if (widget.initial != null) ...[
@@ -1043,6 +1418,14 @@ class _BusinessChatLinksViewState extends State<_BusinessChatLinksView> {
                                         style: TextStyle(
                                           fontSize: 13,
                                           color: c.textSecondary,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        '${link.integer('view_count') ?? 0} opens',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: c.textTertiary,
                                         ),
                                       ),
                                     ],
@@ -1287,11 +1670,17 @@ String _formatMinute(int minute) {
 class _BusinessDayHours {
   _BusinessDayHours({
     this.enabled = false,
-    this.start = 9 * 60,
-    this.end = 17 * 60,
-  });
+    int start = 9 * 60,
+    int end = 17 * 60,
+  }) : ranges = [_BusinessTimeRange(start, end)];
 
   bool enabled;
+  final List<_BusinessTimeRange> ranges;
+}
+
+class _BusinessTimeRange {
+  _BusinessTimeRange(this.start, this.end);
+
   int start;
   int end;
 }

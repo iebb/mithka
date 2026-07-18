@@ -4,41 +4,54 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   group('TransferBoostConfig', () {
-    test('defaults to disabled with protocol-safe tuning values', () async {
-      SharedPreferences.setMockInitialValues({});
+    test(
+      'defaults download boost on with protocol-safe tuning values',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+
+        final config = await TransferBoostConfig.load();
+
+        expect(config.downloadEnabled, isTrue);
+        expect(
+          config.downloadChunkSizeBytes,
+          TransferBoostConfig.defaultDownloadChunkSizeBytes,
+        );
+        expect(
+          config.downloadParallelism,
+          TransferBoostConfig.defaultDownloadParallelism,
+        );
+        expect(config.uploadEnabled, isFalse);
+        expect(
+          config.uploadChunkSizeBytes,
+          TransferBoostConfig.defaultUploadChunkSizeBytes,
+        );
+        expect(
+          config.uploadParallelism,
+          TransferBoostConfig.defaultUploadParallelism,
+        );
+        expect(config.enabled, isTrue);
+      },
+    );
+
+    test('honors an explicit opt-out from download boost', () async {
+      SharedPreferences.setMockInitialValues({
+        'mithka.transfer_boost.download_enabled': false,
+      });
 
       final config = await TransferBoostConfig.load();
 
       expect(config.downloadEnabled, isFalse);
-      expect(
-        config.downloadChunkSizeBytes,
-        TransferBoostConfig.defaultDownloadChunkSizeBytes,
-      );
-      expect(
-        config.downloadParallelism,
-        TransferBoostConfig.defaultDownloadParallelism,
-      );
-      expect(config.uploadEnabled, isFalse);
-      expect(
-        config.uploadChunkSizeBytes,
-        TransferBoostConfig.defaultUploadChunkSizeBytes,
-      );
-      expect(
-        config.uploadParallelism,
-        TransferBoostConfig.defaultUploadParallelism,
-      );
       expect(config.enabled, isFalse);
     });
 
     test('persists independent download and upload tuning', () async {
       SharedPreferences.setMockInitialValues({});
       const expected = TransferBoostConfig(
-        downloadEnabled: true,
         downloadChunkSizeBytes: 512 * 1024,
         downloadParallelism: 18,
         uploadEnabled: true,
         uploadChunkSizeBytes: 256 * 1024,
-        uploadParallelism: 24,
+        uploadParallelism: 21,
       );
 
       await TransferBoostConfig.save(expected);
@@ -49,7 +62,7 @@ void main() {
       expect(actual.downloadParallelism, 18);
       expect(actual.uploadEnabled, isTrue);
       expect(actual.uploadChunkSizeBytes, 256 * 1024);
-      expect(actual.uploadParallelism, 24);
+      expect(actual.uploadParallelism, 21);
       expect(actual.enabled, isTrue);
     });
 

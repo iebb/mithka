@@ -2213,8 +2213,15 @@ class ChatWallpaperBackground extends StatelessWidget {
     final hasFreeformGradient = value.colors.length >= 3;
     final path = value.imagePath;
     final hasFile = path != null && path.isNotEmpty;
-    final invertedPattern =
-        hasFile && value.remoteType == 'pattern' && value.isInverted;
+    // TDLib exposes the downloaded pattern path before the asynchronous
+    // normalizer/rasterizer finishes. Rendering that raw file here can race a
+    // temporary-file move or feed malformed Telegram SVG into flutter_svg.
+    // Keep the fill visible until the controller publishes its cached PNG.
+    final hasPreparedPattern =
+        hasFile &&
+        value.remoteType == 'pattern' &&
+        _isPreparedPatternPath(path);
+    final invertedPattern = hasPreparedPattern && value.isInverted;
     final dark =
         (brightness ?? MediaQuery.platformBrightnessOf(context)) ==
         Brightness.dark;
@@ -2245,7 +2252,7 @@ class ChatWallpaperBackground extends StatelessWidget {
                 ),
               ),
             ),
-          if (value.remoteType == 'pattern' && hasFile)
+          if (hasPreparedPattern)
             _wallpaperEffects(
               value,
               RepaintBoundary(

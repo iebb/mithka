@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as image_lib;
 import 'package:mithka/chat/sticker_export_service.dart';
@@ -30,8 +32,24 @@ void main() {
   test('labels animated PNG exports as APNG', () {
     final animated = message(animatedSticker: TdFileRef(id: 9));
     expect(StickerExportService.isAnimated(animated), isTrue);
+    expect(
+      StickerExportService.availableFormats(animated, supportsMov: true),
+      contains(StickerExportFormat.lottie),
+    );
     expect(StickerExportFormat.png.label(animated: true), 'APNG');
     expect(StickerExportFormat.png.label(animated: false), 'PNG');
+    expect(StickerExportFormat.lottie.label(animated: true), 'Lottie JSON');
+  });
+
+  test('TGS export returns the original standard Lottie JSON', () {
+    final source = utf8.encode(
+      '{"v":"5.7.4","fr":60,"ip":0,"op":120,"w":512,"h":512,"layers":[]}',
+    );
+    final tgs = Uint8List.fromList(GZipEncoder().encode(source)!);
+    final decoded = StickerExportService.decodeTgsLottie(tgs);
+    expect(decoded, isNotNull);
+    expect(jsonDecode(utf8.decode(decoded!))['w'], 512);
+    expect(StickerExportService.decodeTgsLottie(Uint8List(4)), isNull);
   });
 
   test('APNG encoder keeps animation frames and full alpha', () {

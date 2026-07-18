@@ -6,18 +6,32 @@
 //  chat's images. Port of the Swift `FullImageViewer`.
 //
 
+import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 
 import '../components/app_icons.dart';
+import '../components/ui_components.dart';
 import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
+import '../theme/app_theme.dart';
 
 class FullImageViewer extends StatefulWidget {
-  const FullImageViewer({super.key, required this.items, this.startIndex = 0});
+  const FullImageViewer({
+    super.key,
+    required this.items,
+    this.startIndex = 0,
+    this.primaryActionLabel,
+    this.onPrimaryAction,
+    this.onMore,
+  });
+
   final List<TdFileRef> items;
   final int startIndex;
+  final String? primaryActionLabel;
+  final Future<void> Function(int index)? onPrimaryAction;
+  final Future<void> Function(int index)? onMore;
 
   @override
   State<FullImageViewer> createState() => _FullImageViewerState();
@@ -30,6 +44,7 @@ class _FullImageViewerState extends State<FullImageViewer> {
   late int _index = widget.startIndex.clamp(0, _max);
   double _dragY = 0;
   bool _zoomed = false;
+  bool _runningAction = false;
 
   int get _max => widget.items.isEmpty ? 0 : widget.items.length - 1;
 
@@ -39,12 +54,22 @@ class _FullImageViewerState extends State<FullImageViewer> {
     super.dispose();
   }
 
+  Future<void> _runAction(Future<void> Function(int index) action) async {
+    if (_runningAction) return;
+    setState(() => _runningAction = true);
+    try {
+      await action(_index);
+    } finally {
+      if (mounted) setState(() => _runningAction = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final progress = (_dragY.abs() / 260).clamp(0.0, 1.0);
-    return Scaffold(
-      backgroundColor: Colors.black.withValues(alpha: 1 - progress * 0.85),
-      body: Stack(
+    return ColoredBox(
+      color: const Color(0xFF000000).withValues(alpha: 1 - progress * 0.85),
+      child: Stack(
         children: [
           GestureDetector(
             onVerticalDragUpdate: _zoomed
@@ -88,49 +113,118 @@ class _FullImageViewerState extends State<FullImageViewer> {
                   _circleAppIcon(
                     HeroAppIcons.xmark,
                     () => Navigator.of(context).pop(),
+                    key: const ValueKey('image-viewer-close'),
                   ),
-                  const Spacer(),
-                  if (widget.items.length > 1)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      height: 32,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.18),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Text(
-                        '${_index + 1} / ${widget.items.length}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
+                  Expanded(
+                    child: Center(
+                      child: widget.items.length > 1
+                          ? Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                              ),
+                              height: 32,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: const Color(
+                                  0xFFFFFFFF,
+                                ).withValues(alpha: 0.18),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Text(
+                                '${_index + 1} / ${widget.items.length}',
+                                style: const TextStyle(
+                                  color: Color(0xFFFFFFFF),
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            )
+                          : const SizedBox.shrink(),
                     ),
-                  if (widget.items.length > 1) const Spacer(),
-                  if (widget.items.length > 1) const SizedBox(width: 40),
+                  ),
+                  if (widget.onMore != null)
+                    _circleAppIcon(
+                      HeroAppIcons.ellipsis,
+                      _runningAction
+                          ? null
+                          : () => unawaited(_runAction(widget.onMore!)),
+                      key: const ValueKey('image-viewer-more'),
+                    )
+                  else
+                    const SizedBox(width: 40, height: 40),
                 ],
               ),
             ),
           ),
+          if (widget.primaryActionLabel != null &&
+              widget.onPrimaryAction != null)
+            Positioned(
+              left: 22,
+              right: 22,
+              bottom: MediaQuery.of(context).padding.bottom + 18,
+              child: Opacity(
+                opacity: 1 - progress,
+                child: Semantics(
+                  button: true,
+                  label: widget.primaryActionLabel,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _runningAction
+                        ? null
+                        : () => unawaited(_runAction(widget.onPrimaryAction!)),
+                    child: Container(
+                      key: const ValueKey('image-viewer-primary-action'),
+                      height: 48,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: AppTheme.brand,
+                        borderRadius: BorderRadius.circular(14),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x55000000),
+                            blurRadius: 18,
+                            offset: Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      child: _runningAction
+                          ? const AppActivityIndicator(
+                              size: 20,
+                              color: Color(0xFFFFFFFF),
+                            )
+                          : Text(
+                              widget.primaryActionLabel!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: AppTheme.onBrand,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
 
-  Widget _circleAppIcon(AppIconData name, VoidCallback onTap) =>
+  Widget _circleAppIcon(AppIconData name, VoidCallback? onTap, {Key? key}) =>
       GestureDetector(
+        key: key,
         onTap: onTap,
         child: Container(
           width: 40,
           height: 40,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.18),
+            color: const Color(0xFFFFFFFF).withValues(alpha: 0.18),
             shape: BoxShape.circle,
           ),
-          child: AppIcon(name, size: 18, color: Colors.white),
+          child: AppIcon(name, size: 18, color: const Color(0xFFFFFFFF)),
         ),
       );
 }
@@ -184,9 +278,7 @@ class _ViewerPageState extends State<_ViewerPage> {
         );
       }
       return const Center(
-        child: CircularProgressIndicator(
-          valueColor: AlwaysStoppedAnimation(Colors.white),
-        ),
+        child: AppActivityIndicator(size: 24, color: Color(0xFFFFFFFF)),
       );
     }
     return InteractiveViewer(

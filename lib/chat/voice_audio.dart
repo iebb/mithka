@@ -25,6 +25,7 @@ class VoicePlayer extends ChangeNotifier {
   bool isLoading = false;
   Duration position = Duration.zero;
   Duration total = Duration.zero;
+  double speed = 1;
   void Function(int fileId)? onFinished;
 
   int? _fileId;
@@ -154,6 +155,7 @@ class VoicePlayer extends ChangeNotifier {
           if (finishedFileId != null) onFinished?.call(finishedFileId);
         },
       );
+      await player.setSpeed(speed);
       if (fromMs > 0) {
         await player.seekToPlayer(Duration(milliseconds: fromMs));
       }
@@ -162,6 +164,21 @@ class VoicePlayer extends ChangeNotifier {
       isPlaying = false;
       notifyListeners();
     }
+  }
+
+  Future<void> cycleSpeed() async {
+    speed = switch (speed) {
+      < 1.25 => 1.5,
+      < 1.75 => 2,
+      _ => 1,
+    };
+    final player = _player;
+    if (_opened && player != null && (player.isPlaying || player.isPaused)) {
+      try {
+        await player.setSpeed(speed);
+      } catch (_) {}
+    }
+    notifyListeners();
   }
 
   /// Drag-to-seek. [fraction] in 0..1; [fallbackSeconds] is the note's known

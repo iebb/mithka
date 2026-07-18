@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!--
+      Android 9-11: only the dedicated account directory is eligible. Separate
+      rules make encrypted cloud backup and device-to-device transfer alternate
+      transports rather than requiring both transport flags simultaneously.
+    -->
+    <include
+        domain="file"
+        path="account_backups/"
+        requireFlags="clientSideEncryption" />
+    <include
+        domain="file"
+        path="account_backups/"
+        requireFlags="deviceToDeviceTransfer" />
+</full-backup-content>

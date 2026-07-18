@@ -134,17 +134,25 @@ class _RichMessageRelayViewState extends State<RichMessageRelayView> {
                             ),
                             const SizedBox(width: 10),
                             Expanded(
-                              child: EditableText(
+                              child: TextField(
                                 controller: _token,
                                 focusNode: _focusNode,
                                 style: AppTextStyle.body(c.textPrimary),
                                 cursorColor: AppTheme.brand,
-                                backgroundCursorColor: c.textTertiary,
                                 obscureText: _obscure,
                                 autocorrect: false,
                                 enableSuggestions: false,
                                 keyboardType: TextInputType.visiblePassword,
                                 textInputAction: TextInputAction.done,
+                                decoration: const InputDecoration(
+                                  border: InputBorder.none,
+                                  isCollapsed: true,
+                                ),
+                                contextMenuBuilder:
+                                    (context, editableTextState) =>
+                                        AdaptiveTextSelectionToolbar.editableText(
+                                          editableTextState: editableTextState,
+                                        ),
                                 onSubmitted: (_) => _save(),
                               ),
                             ),

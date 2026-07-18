@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/call/group_call_controller.dart';
+import 'package:mithka/call/group_call_media_engine.dart';
 
 void main() {
   test('parses Telegram group-call participant video sources', () {
@@ -57,5 +58,58 @@ void main() {
     expect(participant.order, isEmpty);
     expect(participant.hasVideo, isFalse);
     expect(participant.isMuted, isTrue);
+  });
+
+  test('video-chat join request preserves the deep-link invite hash', () {
+    const payload = GroupCallJoinPayload(audioSourceId: 44, payload: 'offer');
+    expect(
+      buildJoinVideoChatRequest(
+        groupCallId: 81,
+        join: payload,
+        isMuted: true,
+        isVideoEnabled: false,
+        inviteHash: 'speaker-access',
+        participantId: const {'@type': 'messageSenderUser', 'user_id': 7},
+      ),
+      {
+        '@type': 'joinVideoChat',
+        'group_call_id': 81,
+        'participant_id': {'@type': 'messageSenderUser', 'user_id': 7},
+        'join_parameters': {
+          '@type': 'groupCallJoinParameters',
+          'audio_source_id': 44,
+          'payload': 'offer',
+          'is_muted': true,
+          'is_my_video_enabled': false,
+        },
+        'invite_hash': 'speaker-access',
+      },
+    );
+  });
+
+  test('unbound call join uses inputGroupCallLink', () {
+    const payload = GroupCallJoinPayload(audioSourceId: 9, payload: 'offer');
+    expect(
+      buildJoinUnboundGroupCallRequest(
+        inviteLink: 'https://t.me/call/abc',
+        join: payload,
+        isMuted: false,
+        isVideoEnabled: true,
+      ),
+      {
+        '@type': 'joinGroupCall',
+        'input_group_call': {
+          '@type': 'inputGroupCallLink',
+          'link': 'https://t.me/call/abc',
+        },
+        'join_parameters': {
+          '@type': 'groupCallJoinParameters',
+          'audio_source_id': 9,
+          'payload': 'offer',
+          'is_muted': false,
+          'is_my_video_enabled': true,
+        },
+      },
+    );
   });
 }

@@ -49,17 +49,26 @@ class LocationPickerResult {
   final double zoom;
 }
 
+class LocationShareResult {
+  const LocationShareResult({required this.center, required this.address});
+
+  final LatLng center;
+  final String address;
+}
+
 class LocationPickerView extends StatefulWidget {
   const LocationPickerView({
     super.key,
     required this.initial,
     this.initialZoom = 16,
     this.returnCamera = false,
+    this.returnShareResult = false,
   });
 
   final LatLng initial;
   final double initialZoom;
   final bool returnCamera;
+  final bool returnShareResult;
 
   @override
   State<LocationPickerView> createState() => _LocationPickerViewState();
@@ -172,6 +181,8 @@ class _LocationPickerViewState extends State<LocationPickerView> {
   void _send() => Navigator.of(context).pop(
     widget.returnCamera
         ? LocationPickerResult(center: _center, zoom: _zoom)
+        : widget.returnShareResult
+        ? LocationShareResult(center: _center, address: _address)
         : _center,
   );
 

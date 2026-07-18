@@ -14,20 +14,54 @@ import '../components/app_icons.dart';
 import '../components/ui_components.dart';
 import '../theme/app_theme.dart';
 
+class ChecklistComposerResult {
+  const ChecklistComposerResult({
+    required this.title,
+    required this.tasks,
+    required this.othersCanAddTasks,
+    required this.othersCanMarkTasksAsDone,
+  });
+
+  final String title;
+  final List<String> tasks;
+  final bool othersCanAddTasks;
+  final bool othersCanMarkTasksAsDone;
+}
+
 class ChecklistComposerView extends StatefulWidget {
-  const ChecklistComposerView({super.key});
+  const ChecklistComposerView({
+    super.key,
+    this.initialTitle = '',
+    this.initialTasks = const [],
+    this.initialOthersCanAddTasks = false,
+    this.initialOthersCanMarkTasksAsDone = true,
+  });
+
+  final String initialTitle;
+  final List<String> initialTasks;
+  final bool initialOthersCanAddTasks;
+  final bool initialOthersCanMarkTasksAsDone;
 
   @override
   State<ChecklistComposerView> createState() => _ChecklistComposerViewState();
 }
 
 class _ChecklistComposerViewState extends State<ChecklistComposerView> {
-  final _title = TextEditingController();
-  final List<TextEditingController> _tasks = [TextEditingController()];
+  late final TextEditingController _title;
+  late final List<TextEditingController> _tasks;
+  late bool _othersCanAddTasks;
+  late bool _othersCanMarkTasksAsDone;
 
   @override
   void initState() {
     super.initState();
+    _title = TextEditingController(text: widget.initialTitle);
+    _tasks =
+        (widget.initialTasks.isEmpty ? const <String>[''] : widget.initialTasks)
+            .map((text) => TextEditingController(text: text))
+            .toList();
+    _othersCanAddTasks = widget.initialOthersCanAddTasks;
+    _othersCanMarkTasksAsDone = widget.initialOthersCanMarkTasksAsDone;
     _title.addListener(_refresh);
     for (final t in _tasks) {
       t.addListener(_refresh);
@@ -69,7 +103,14 @@ class _ChecklistComposerViewState extends State<ChecklistComposerView> {
         .map((t) => t.text.trim())
         .where((t) => t.isNotEmpty)
         .toList();
-    Navigator.of(context).pop((title, tasks));
+    Navigator.of(context).pop(
+      ChecklistComposerResult(
+        title: title,
+        tasks: tasks,
+        othersCanAddTasks: _othersCanAddTasks,
+        othersCanMarkTasksAsDone: _othersCanMarkTasksAsDone,
+      ),
+    );
   }
 
   @override
@@ -131,6 +172,26 @@ class _ChecklistComposerViewState extends State<ChecklistComposerView> {
                     style: TextStyle(fontSize: 13, color: c.textSecondary),
                   ),
                 ),
+                const SizedBox(height: 14),
+                _card([
+                  _permissionRow(
+                    title: 'Allow others to add tasks',
+                    subtitle:
+                        'Members can append new tasks after the checklist is sent.',
+                    value: _othersCanAddTasks,
+                    onChanged: (value) =>
+                        setState(() => _othersCanAddTasks = value),
+                  ),
+                  const InsetDivider(leadingInset: 16),
+                  _permissionRow(
+                    title: 'Allow others to mark tasks',
+                    subtitle:
+                        'Members can complete tasks or mark them as not done.',
+                    value: _othersCanMarkTasksAsDone,
+                    onChanged: (value) =>
+                        setState(() => _othersCanMarkTasksAsDone = value),
+                  ),
+                ]),
               ],
             ),
           ),
@@ -245,6 +306,44 @@ class _ChecklistComposerViewState extends State<ChecklistComposerView> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _permissionRow({
+    required String title,
+    required String subtitle,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    final c = context.colors;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => onChanged(!value),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 11, 12, 11),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(fontSize: 16, color: c.textPrimary),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    subtitle,
+                    style: TextStyle(fontSize: 12, color: c.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            AppSwitch(value: value, onChanged: onChanged),
+          ],
         ),
       ),
     );

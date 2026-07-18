@@ -22,6 +22,7 @@ import '../channels/forum_topic_browser_view.dart';
 import '../chat/chat_view.dart';
 import '../chat/custom_emoji.dart';
 import '../chat/link_handler.dart';
+import '../chat/saved_messages_view.dart';
 import '../communities/community_models.dart';
 import '../communities/community_view.dart';
 import '../components/app_icons.dart';
@@ -31,6 +32,7 @@ import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../contacts/add_people_view.dart';
 import '../contacts/create_group_view.dart';
+import '../l10n/telegram_language_controller.dart';
 import '../profile/emoji_status_picker.dart';
 import '../settings/edit_field_view.dart';
 import '../settings/topic_group_display_mode.dart';
@@ -108,12 +110,20 @@ class CommunityListSelection {
   const CommunityListSelection({
     required this.community,
     required this.chats,
+    required this.viewableChats,
     required this.onCollapsedChanged,
+    this.updates,
+    this.chatsProvider,
+    this.viewableChatsProvider,
   });
 
   final CommunitySummary community;
   final List<ChatSummary> chats;
+  final List<ChatSummary> viewableChats;
   final ValueChanged<bool> onCollapsedChanged;
+  final Listenable? updates;
+  final List<ChatSummary> Function()? chatsProvider;
+  final List<ChatSummary> Function()? viewableChatsProvider;
 }
 
 class ChatListView extends StatefulWidget {
@@ -273,6 +283,26 @@ class _ChatListViewState extends State<ChatListView>
       onChatSelected(ChatListSelection.fromChat(chat));
       return;
     }
+    if (chat.isSavedMessages) {
+      final bookmarkView = context
+          .read<ThemeController>()
+          .savedMessagesBookmarkView;
+      unawaited(
+        pushAppChatRoute(
+          context,
+          _chatEntryRoute(
+            bookmarkView
+                ? const SavedMessagesView()
+                : ChatView(
+                    chatId: chat.id,
+                    title: AppStrings.t(AppStringKeys.savedMessages),
+                    seedMessage: chat.lastChatMessage,
+                  ),
+          ),
+        ),
+      );
+      return;
+    }
     if (chat.isForum) {
       final mode = await TopicGroupDisplayPreference.load();
       if (!mounted) return;
@@ -323,11 +353,17 @@ class _ChatListViewState extends State<ChatListView>
   }
 
   void _openCommunity(CommunityGroupEntry entry) {
+    if (!context.read<ThemeController>().communitiesEnabled) return;
     final selection = CommunityListSelection(
       community: entry.community,
       chats: _model.chatsInCommunity(entry.community.id),
+      viewableChats: _model.viewableChatsInCommunity(entry.community.id),
       onCollapsedChanged: (value) =>
           _model.setCommunityCollapsed(entry.community.id, value),
+      updates: _model,
+      chatsProvider: () => _model.chatsInCommunity(entry.community.id),
+      viewableChatsProvider: () =>
+          _model.viewableChatsInCommunity(entry.community.id),
     );
     final onCommunitySelected = widget.onCommunitySelected;
     if (onCommunitySelected != null) {
@@ -339,6 +375,10 @@ class _ChatListViewState extends State<ChatListView>
         builder: (_) => CommunityView(
           community: selection.community,
           chats: selection.chats,
+          viewableChats: selection.viewableChats,
+          updates: selection.updates,
+          chatsProvider: selection.chatsProvider,
+          viewableChatsProvider: selection.viewableChatsProvider,
           onCollapsedChanged: selection.onCollapsedChanged,
         ),
       ),
@@ -412,11 +452,15 @@ class _ChatListViewState extends State<ChatListView>
   }
 
   void _openCommunityDirectory() {
+    if (!context.read<ThemeController>().communitiesEnabled) return;
     final entries = [
       for (final community in _model.availableCommunities)
         CommunityGroupEntry(
           community: community,
-          chats: _model.chatsInCommunity(community.id),
+          chats: [
+            ..._model.chatsInCommunity(community.id),
+            ..._model.viewableChatsInCommunity(community.id),
+          ],
         ),
     ];
     if (entries.isEmpty) return;
@@ -578,7 +622,9 @@ class _ChatListViewState extends State<ChatListView>
   }
 
   double? _firstUnreadScrollOffset() {
-    final entries = _model.chatListEntries;
+    final entries = _model.chatListEntries(
+      communitiesEnabled: context.read<ThemeController>().communitiesEnabled,
+    );
     final entryIndex = entries.indexWhere(
       (entry) => entry.showsUnreadIndicator,
     );
@@ -815,7 +861,7 @@ class _ChatListViewState extends State<ChatListView>
                       ),
                       const SizedBox(width: AppSpacing.xs),
                       Text(
-                        AppStringKeys.chatOnline.l10n(context),
+                        telegramPresenceText(TelegramPresenceLabel.online),
                         style: TextStyle(
                           fontSize: AppTextSize.caption,
                           color: c.textSecondary,
@@ -1023,7 +1069,9 @@ class _ChatListViewState extends State<ChatListView>
             ((geo.maxHeight - searchHeight) / rowH).ceil(),
           );
           _lastVisibleRows = visibleRows;
-          final entries = _model.chatListEntries;
+          final entries = _model.chatListEntries(
+            communitiesEnabled: theme.communitiesEnabled,
+          );
           final hasFiltered = _model.isAllFilter && _model.filtered.isNotEmpty;
           final hasArchive = _model.isAllFilter && _model.archived.isNotEmpty;
           final showPulledDownArchive =
@@ -1475,7 +1523,9 @@ class _ChatListViewState extends State<ChatListView>
             onTap: () {},
             child: PlusMenu(
               onSelect: _selectPlusMenuItem,
-              showCommunities: _model.availableCommunities.isNotEmpty,
+              showCommunities:
+                  context.watch<ThemeController>().communitiesEnabled &&
+                  _model.availableCommunities.isNotEmpty,
             ),
           ),
         ),

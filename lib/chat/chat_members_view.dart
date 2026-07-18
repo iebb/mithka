@@ -47,6 +47,7 @@ class GroupMember {
 
   GroupMember copyWith({
     String? title,
+    bool clearTitle = false,
     MemberRole? role,
     Map<String, dynamic>? rawStatus,
   }) => GroupMember(
@@ -54,7 +55,7 @@ class GroupMember {
     name: name,
     photo: photo,
     role: role ?? this.role,
-    title: title ?? this.title,
+    title: clearTitle ? null : title ?? this.title,
     status: status,
     isOnline: isOnline,
     rawStatus: rawStatus ?? this.rawStatus,
@@ -82,6 +83,8 @@ class _ChatMembersViewState extends State<ChatMembersView> {
   bool _loading = true;
   bool _canRemove = false;
   bool _canPromote = false;
+  bool _canManageTags = false;
+  bool _isCreator = false;
   int? _openRowId;
 
   @override
@@ -165,12 +168,15 @@ class _ChatMembersViewState extends State<ChatMembersView> {
       });
       final status = member.obj('status');
       if (status?.type == 'chatMemberStatusCreator') {
+        _isCreator = true;
         _canRemove = true;
         _canPromote = true;
+        _canManageTags = true;
       } else if (status?.type == 'chatMemberStatusAdministrator') {
         final rights = status?.obj('rights');
         _canRemove = rights?.boolean('can_restrict_members') ?? false;
         _canPromote = rights?.boolean('can_promote_members') ?? false;
+        _canManageTags = rights?.boolean('can_manage_tags') ?? false;
       }
     } catch (_) {}
   }
@@ -267,6 +273,7 @@ class _ChatMembersViewState extends State<ChatMembersView> {
           name: member.name,
           status: member.rawStatus,
           canEdit: _canPromote && member.role != MemberRole.owner,
+          canTransferOwnership: _isCreator && member.role != MemberRole.owner,
         ),
       ),
     );
@@ -283,7 +290,7 @@ class _ChatMembersViewState extends State<ChatMembersView> {
   }
 
   Future<void> _editTitle(GroupMember member) async {
-    if (!_canPromote) return;
+    if (!_canManageTags) return;
     if (member.role != MemberRole.admin) {
       showToast(context, AppStringKeys.chatMembersPromoteFirst);
       return;
@@ -300,14 +307,55 @@ class _ChatMembersViewState extends State<ChatMembersView> {
     if (!mounted || value == null) return;
     try {
       await TdClient.shared.query({
-        '@type': 'setChatMemberCustomTitle',
+        '@type': 'setChatMemberTag',
         'chat_id': widget.chatId,
         'user_id': member.id,
-        'custom_title': value.trim(),
+        'tag': value.trim(),
       });
       setState(() {
         final index = _members.indexWhere((item) => item.id == member.id);
-        if (index >= 0) _members[index] = member.copyWith(title: value.trim());
+        if (index >= 0) {
+          final title = value.trim();
+          _members[index] = member.copyWith(
+            title: title,
+            clearTitle: title.isEmpty,
+          );
+        }
+      });
+    } catch (_) {
+      if (mounted) showToast(context, AppStringKeys.chatMembersUpdateFailed);
+    }
+  }
+
+  Future<void> _editMemberTag(GroupMember member) async {
+    if (!_canManageTags || member.role != MemberRole.member) return;
+    final value = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => EditFieldView(
+          title: 'Member tag',
+          initial: member.title ?? '',
+          maxLength: 16,
+        ),
+      ),
+    );
+    if (!mounted || value == null) return;
+    final tag = value.trim();
+    try {
+      await TdClient.shared.query({
+        '@type': 'setChatMemberTag',
+        'chat_id': widget.chatId,
+        'user_id': member.id,
+        'tag': tag,
+      });
+      if (!mounted) return;
+      setState(() {
+        final index = _members.indexWhere((item) => item.id == member.id);
+        if (index >= 0) {
+          _members[index] = member.copyWith(
+            title: tag,
+            clearTitle: tag.isEmpty,
+          );
+        }
       });
     } catch (_) {
       if (mounted) showToast(context, AppStringKeys.chatMembersUpdateFailed);
@@ -371,11 +419,17 @@ class _ChatMembersViewState extends State<ChatMembersView> {
                             color: AppTheme.brand,
                             onTap: () => _openAdministratorEditor(m),
                           ),
-                        if (_canPromote && m.role != MemberRole.owner)
+                        if (_canManageTags && m.role == MemberRole.admin)
                           _MemberSwipeAction(
                             title: AppStringKeys.chatMembersSetTitle,
                             color: const Color(0xFF16A085),
                             onTap: () => _editTitle(m),
+                          ),
+                        if (_canManageTags && m.role == MemberRole.member)
+                          _MemberSwipeAction(
+                            title: 'Member tag',
+                            color: const Color(0xFF16A085),
+                            onTap: () => _editMemberTag(m),
                           ),
                       ];
                       final trailingActions = <_MemberSwipeAction>[

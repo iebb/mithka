@@ -5,6 +5,11 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.ClipDescription
 import android.content.pm.PackageManager
+import android.media.MediaCodec
+import android.media.MediaExtractor
+import android.media.MediaFormat
+import android.media.MediaMetadataRetriever
+import android.media.MediaMuxer
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -19,18 +24,22 @@ import com.google.mlkit.nl.translate.TranslateLanguage
 import com.google.mlkit.nl.translate.Translation
 import com.google.mlkit.nl.translate.Translator
 import com.google.mlkit.nl.translate.TranslatorOptions
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.MethodChannel
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
+import java.nio.ByteBuffer
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
 
-class MainActivity : FlutterActivity() {
+class MainActivity : FlutterFragmentActivity() {
     private var callMedia: CallMediaPlugin? = null
+    private var telegramPasskeys: TelegramPasskeyPlugin? = null
+    private var accountBackup: AccountBackupPlugin? = null
+    private var mithkaPro: MithkaProPlugin? = null
     private var mediaDropChannel: MethodChannel? = null
     private var acceptingImageDrop = false
     private val translators = mutableMapOf<String, Translator>()
@@ -43,6 +52,18 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         registerPlugins(flutterEngine)
+        telegramPasskeys = TelegramPasskeyPlugin(
+            this,
+            flutterEngine.dartExecutor.binaryMessenger,
+        )
+        accountBackup = AccountBackupPlugin(
+            applicationContext,
+            flutterEngine.dartExecutor.binaryMessenger,
+        )
+        mithkaPro = MithkaProPlugin(
+            this,
+            flutterEngine.dartExecutor.binaryMessenger,
+        )
         val plugin = CallMediaPlugin(
             applicationContext,
             flutterEngine.dartExecutor.binaryMessenger,
@@ -236,6 +257,31 @@ class MainActivity : FlutterActivity() {
                 } catch (e: Exception) {
                     result.error("clipboard_unavailable", e.message, null)
                 }
+            }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mithka/media_editor")
+            .setMethodCallHandler { call, result ->
+                if (call.method != "trimVideo") {
+                    result.notImplemented()
+                    return@setMethodCallHandler
+                }
+                val path = call.argument<String>("path")
+                val startMs = call.argument<Number>("startMs")?.toLong()
+                val endMs = call.argument<Number>("endMs")?.toLong()
+                if (path.isNullOrBlank() || startMs == null || endMs == null || startMs < 0 || endMs <= startMs) {
+                    result.error("invalid_arguments", "A valid video trim range is required", null)
+                    return@setMethodCallHandler
+                }
+                Thread {
+                    try {
+                        val output = trimVideo(path, startMs, endMs)
+                        runOnUiThread { result.success(output) }
+                    } catch (error: Exception) {
+                        runOnUiThread {
+                            result.error("video_trim_failed", error.localizedMessage, null)
+                        }
+                    }
+                }.start()
             }
         mediaDropChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
@@ -485,6 +531,83 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    private fun trimVideo(path: String, startMs: Long, endMs: Long): String {
+        val source = File(path)
+        require(source.isFile && source.length() > 0) { "The source video is unavailable" }
+        val output = File(cacheDir, "mithka-trim-${System.nanoTime()}.mp4")
+        val extractor = MediaExtractor()
+        var muxer: MediaMuxer? = null
+        try {
+            extractor.setDataSource(source.absolutePath)
+            muxer = MediaMuxer(
+                output.absolutePath,
+                MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4,
+            )
+            val trackMap = mutableMapOf<Int, Int>()
+            var bufferSize = 1024 * 1024
+            for (track in 0 until extractor.trackCount) {
+                val format = extractor.getTrackFormat(track)
+                val mime = format.getString(MediaFormat.KEY_MIME) ?: continue
+                if (!mime.startsWith("video/") && !mime.startsWith("audio/")) continue
+                extractor.selectTrack(track)
+                trackMap[track] = muxer.addTrack(format)
+                if (format.containsKey(MediaFormat.KEY_MAX_INPUT_SIZE)) {
+                    bufferSize = maxOf(bufferSize, format.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE))
+                }
+            }
+            require(trackMap.isNotEmpty()) { "The file has no video or audio tracks" }
+            val metadata = MediaMetadataRetriever()
+            try {
+                metadata.setDataSource(source.absolutePath)
+                val rotation = metadata.extractMetadata(
+                    MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION,
+                )?.toIntOrNull() ?: 0
+                if (rotation != 0) muxer.setOrientationHint(rotation)
+            } finally {
+                metadata.release()
+            }
+            muxer.start()
+            val startUs = startMs * 1000
+            val endUs = endMs * 1000
+            extractor.seekTo(startUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
+            val baseUs = extractor.sampleTime.coerceAtLeast(0)
+            val buffer = ByteBuffer.allocateDirect(bufferSize)
+            val info = MediaCodec.BufferInfo()
+            while (true) {
+                val sourceTrack = extractor.sampleTrackIndex
+                val sampleTime = extractor.sampleTime
+                if (sourceTrack < 0 || sampleTime < 0 || sampleTime > endUs) break
+                val targetTrack = trackMap[sourceTrack]
+                if (targetTrack != null) {
+                    buffer.clear()
+                    val size = extractor.readSampleData(buffer, 0)
+                    if (size < 0) break
+                    info.offset = 0
+                    info.size = size
+                    info.presentationTimeUs = (sampleTime - baseUs).coerceAtLeast(0)
+                    info.flags = extractor.sampleFlags
+                    muxer.writeSampleData(targetTrack, buffer, info)
+                }
+                if (!extractor.advance()) break
+            }
+            muxer.stop()
+            muxer.release()
+            muxer = null
+            require(output.isFile && output.length() > 0) { "The trimmed video is empty" }
+            return output.absolutePath
+        } catch (error: Exception) {
+            output.delete()
+            throw error
+        } finally {
+            extractor.release()
+            try {
+                muxer?.release()
+            } catch (_: Exception) {
+                // The muxer may not have reached its started state.
+            }
+        }
+    }
+
     private fun translateOnDevice(args: Map<*, *>?, result: MethodChannel.Result) {
         val text = args?.get("text") as? String
         val targetLanguageCode = args?.get("targetLanguageCode") as? String
@@ -572,6 +695,12 @@ class MainActivity : FlutterActivity() {
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
         translators.values.forEach { it.close() }
         translators.clear()
+        telegramPasskeys?.dispose()
+        telegramPasskeys = null
+        accountBackup?.dispose()
+        accountBackup = null
+        mithkaPro?.dispose()
+        mithkaPro = null
         callMedia?.dispose()
         callMedia = null
         super.cleanUpFlutterEngine(flutterEngine)

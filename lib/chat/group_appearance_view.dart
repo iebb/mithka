@@ -56,6 +56,9 @@ class _GroupAppearanceViewState extends State<GroupAppearanceView> {
   int _profileIconLevel = 0;
   int _emojiStatusLevel = 0;
   int _customEmojiSetLevel = 0;
+  int _automaticTranslationLevel = 0;
+  bool _automaticTranslation = false;
+  bool _isPremium = false;
   List<_ProfileColorOption> _profileColors = _fallbackProfileColors;
 
   @override
@@ -69,6 +72,10 @@ class _GroupAppearanceViewState extends State<GroupAppearanceView> {
       final values = await Future.wait([
         _client.query({'@type': 'getChat', 'chat_id': widget.chatId}),
         _client.query({
+          '@type': 'getSupergroup',
+          'supergroup_id': widget.supergroupId,
+        }),
+        _client.query({
           '@type': 'getSupergroupFullInfo',
           'supergroup_id': widget.supergroupId,
         }),
@@ -81,12 +88,15 @@ class _GroupAppearanceViewState extends State<GroupAppearanceView> {
           'is_channel': widget.isChannel,
         }),
         _client.query({'@type': 'getCurrentState'}),
+        _client.query({'@type': 'getMe'}),
       ]);
       final chat = values[0];
-      final full = values[1];
-      final status = values[2];
-      final features = values[3];
-      final state = values[4];
+      final supergroup = values[1];
+      final full = values[2];
+      final status = values[3];
+      final features = values[4];
+      final state = values[5];
+      final me = values[6];
       if (!mounted) return;
       _profileColorId = chat.integer('profile_accent_color_id') ?? -1;
       _profileIconId = chat.int64('profile_background_custom_emoji_id') ?? 0;
@@ -94,6 +104,9 @@ class _GroupAppearanceViewState extends State<GroupAppearanceView> {
         chat.obj('emoji_status'),
       );
       _customEmojiSetId = full.int64('custom_emoji_sticker_set_id') ?? 0;
+      _automaticTranslation =
+          supergroup.boolean('has_automatic_translation') ?? false;
+      _isPremium = me.boolean('is_premium') ?? false;
       _stickerSetId = full.int64('sticker_set_id') ?? 0;
       _boostLevel = status.integer('level') ?? 0;
       _profileIconLevel =
@@ -102,6 +115,8 @@ class _GroupAppearanceViewState extends State<GroupAppearanceView> {
       _emojiStatusLevel = features.integer('min_emoji_status_boost_level') ?? 0;
       _customEmojiSetLevel =
           features.integer('min_custom_emoji_sticker_set_boost_level') ?? 0;
+      _automaticTranslationLevel =
+          features.integer('min_automatic_translation_boost_level') ?? 0;
       _profileColors = _parseProfileColors(
         state,
         dark: context.colors.background.computeLuminance() < 0.45,
@@ -314,6 +329,26 @@ class _GroupAppearanceViewState extends State<GroupAppearanceView> {
     }
   }
 
+  Future<void> _setAutomaticTranslation(bool value) async {
+    final requiredLevel = _isPremium ? 0 : _automaticTranslationLevel;
+    if (!_canUse(requiredLevel)) {
+      _explainLock(requiredLevel);
+      return;
+    }
+    setState(() => _automaticTranslation = value);
+    try {
+      await _client.query({
+        '@type': 'toggleSupergroupHasAutomaticTranslation',
+        'supergroup_id': widget.supergroupId,
+        'has_automatic_translation': value,
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _automaticTranslation = !value);
+      showToast(context, AppStringKeys.groupManagementSetFailed);
+    }
+  }
+
   void _openWallpaper() {
     if (!widget.canChangeInfo) {
       _explainLock(0);
@@ -499,6 +534,13 @@ class _GroupAppearanceViewState extends State<GroupAppearanceView> {
       ),
       _row(AppStringKeys.chatThemeTitle, onTap: _openTheme),
       _row(AppStringKeys.groupAppearanceWallpaper, onTap: _openWallpaper),
+      if (widget.isChannel)
+        _switchRow(
+          'Automatic translation',
+          value: _automaticTranslation,
+          requiredLevel: _isPremium ? 0 : _automaticTranslationLevel,
+          onChanged: _setAutomaticTranslation,
+        ),
     ];
     return Container(
       decoration: BoxDecoration(
@@ -585,6 +627,49 @@ class _GroupAppearanceViewState extends State<GroupAppearanceView> {
                 HeroAppIcons.chevronRight,
                 size: 14,
                 color: c.textTertiary,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _switchRow(
+    String title, {
+    required bool value,
+    required int requiredLevel,
+    required ValueChanged<bool> onChanged,
+  }) {
+    final c = context.colors;
+    final locked = !_canUse(requiredLevel);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => onChanged(!value),
+      child: SizedBox(
+        height: 56,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: locked ? c.textTertiary : c.textPrimary,
+                  ),
+                ),
+              ),
+              if (locked && requiredLevel > 0) ...[
+                Text(
+                  'Level $requiredLevel',
+                  style: TextStyle(fontSize: 12, color: c.textTertiary),
+                ),
+                const SizedBox(width: 8),
+              ],
+              IgnorePointer(
+                child: AppSwitch(value: value, onChanged: onChanged),
               ),
             ],
           ),

@@ -1,7 +1,7 @@
 name: mithka
 description: "Mithka — a cross-platform Telegram client (Flutter), built on TDLib."
 publish_to: 'none'
-version: 0.6.6+281
+version: 0.7.1+281
 
 environment:
   sdk: ^3.12.2
@@ -40,6 +40,7 @@ dependencies:
 
   # Media pickers for the composer's + panel: photos/camera, documents, location.
   image_picker: ^1.1.2
+  camera: ^0.12.0+2
   file_picker: ^8.1.6
   geolocator: ^13.0.2
 
@@ -62,6 +63,10 @@ dependencies:
   # video_player that decodes VP8/VP9 transparent WebM (Telegram video stickers) —
   # replaces the old ffmpeg_kit→WebP transcode.
   video_player: ^2.9.2
+  # Story video preparation: native 60-second segmentation and mobile-friendly
+  # re-encoding before TDLib's inputStoryContentVideo upload.
+  video_compress: ^3.1.4
+  video_thumbnail_gen: ^0.6.3
   fvp: ^0.37.2
   flutter_local_notifications: ^22.0.1
   google_fonts: ^8.1.0
@@ -85,6 +90,7 @@ dependencies:
   webview_flutter: ^4.14.0
   webview_flutter_android: ^4.13.0
   webview_flutter_wkwebview: ^3.26.0
+  local_auth: ^3.0.2
 
 dev_dependencies:
   flutter_test:

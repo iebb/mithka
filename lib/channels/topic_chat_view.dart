@@ -446,12 +446,14 @@ class _TopicChatViewState extends State<TopicChatView> {
     );
   }
 
-  void _openSearch() {
-    Navigator.of(context).push(
+  Future<void> _openSearch() async {
+    final topicId = await Navigator.of(context).push<int>(
       MaterialPageRoute(
         builder: (_) => _TopicSearchView(chat: widget.chat, topics: _topics),
       ),
     );
+    if (!mounted || topicId == null) return;
+    _selectTopic(topicId);
   }
 
   void _openSettings() {
@@ -1730,6 +1732,7 @@ class _TopicSearchViewState extends State<_TopicSearchView> {
   final _controller = TextEditingController();
   Timer? _debounce;
   List<ChatMessage> _results = const [];
+  List<_TopicNameSearchHit> _topicResults = const [];
   bool _loading = false;
 
   @override
@@ -1743,7 +1746,10 @@ class _TopicSearchViewState extends State<_TopicSearchView> {
     setState(() {});
     _debounce?.cancel();
     if (value.trim().isEmpty) {
-      setState(() => _results = const []);
+      setState(() {
+        _results = const [];
+        _topicResults = const [];
+      });
       return;
     }
     _debounce = Timer(const Duration(milliseconds: 300), () => _run(value));
@@ -1752,25 +1758,47 @@ class _TopicSearchViewState extends State<_TopicSearchView> {
   Future<void> _run(String query) async {
     setState(() => _loading = true);
     try {
-      final response = await TdClient.shared.query({
-        '@type': 'searchChatMessages',
-        'chat_id': widget.chat.id,
-        'query': query,
-        'sender_id': null,
-        'from_message_id': 0,
-        'offset': 0,
-        'limit': 50,
-        'filter': {'@type': 'searchMessagesFilterEmpty'},
-      });
+      final responses = await Future.wait([
+        TdClient.shared.query({
+          '@type': 'getForumTopics',
+          'chat_id': widget.chat.id,
+          'query': query,
+          'offset_date': 0,
+          'offset_message_id': 0,
+          'offset_forum_topic_id': 0,
+          'limit': 50,
+        }),
+        TdClient.shared.query({
+          '@type': 'searchChatMessages',
+          'chat_id': widget.chat.id,
+          'topic_id': null,
+          'query': query,
+          'sender_id': null,
+          'from_message_id': 0,
+          'offset': 0,
+          'limit': 50,
+          'filter': {'@type': 'searchMessagesFilterEmpty'},
+        }),
+      ]);
       final results =
-          (response.objects('messages') ?? const <Map<String, dynamic>>[])
+          (responses[1].objects('messages') ?? const <Map<String, dynamic>>[])
               .map(TDParse.message)
               .whereType<ChatMessage>()
               .where((message) => !message.isService)
               .toList();
+      final topicResults = <_TopicNameSearchHit>[];
+      for (final topic
+          in responses[0].objects('topics') ?? const <Map<String, dynamic>>[]) {
+        final info = topic.obj('info') ?? topic;
+        final id = info.integer('forum_topic_id');
+        final name = info.str('name');
+        if (id == null || id == 0 || name == null || name.isEmpty) continue;
+        topicResults.add(_TopicNameSearchHit(id: id, name: name));
+      }
       if (!mounted || query != _controller.text) return;
       setState(() {
         _results = results;
+        _topicResults = topicResults;
         _loading = false;
       });
     } catch (_) {
@@ -1863,17 +1891,107 @@ class _TopicSearchViewState extends State<_TopicSearchView> {
             Expanded(
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
-                  : ListView.separated(
-                      padding: const EdgeInsets.symmetric(horizontal: 18),
-                      itemCount: _results.length,
-                      separatorBuilder: (_, _) => Divider(color: c.divider),
-                      itemBuilder: (context, index) =>
-                          _SearchResultRow(message: _results[index]),
-                    ),
+                  : _searchResults(c),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _searchResults(AppColors c) {
+    if (_topicResults.isEmpty && _results.isEmpty) {
+      return Center(
+        child: Text(
+          AppStringKeys.chatSearchNoMessagesFound.l10n(context),
+          style: TextStyle(fontSize: 14, color: c.textTertiary),
+        ),
+      );
+    }
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 18),
+      children: [
+        if (_topicResults.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.only(top: 8, bottom: 6),
+            child: Text(
+              AppStringKeys.topicChatSelectSection.l10n(context),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: c.textSecondary,
+              ),
+            ),
+          ),
+          for (final topic in _topicResults)
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => Navigator.of(context).pop(topic.id),
+              child: Container(
+                height: 52,
+                decoration: BoxDecoration(
+                  border: Border(bottom: BorderSide(color: c.divider)),
+                ),
+                child: Row(
+                  children: [
+                    AppIcon(
+                      HeroAppIcons.comments,
+                      size: 20,
+                      color: AppTheme.brand,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        topic.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 15, color: c.textPrimary),
+                      ),
+                    ),
+                    AppIcon(
+                      HeroAppIcons.chevronRight,
+                      size: 15,
+                      color: c.textTertiary,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+        if (_results.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.only(top: 14, bottom: 2),
+            child: Text(
+              AppStringKeys.chatSearchMessageResultLabel.l10n(context),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: c.textSecondary,
+              ),
+            ),
+          ),
+          for (final message in _results)
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => pushAppChatRoute(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ChatView(
+                    chatId: widget.chat.id,
+                    title: widget.chat.title,
+                    initialMessageId: message.id,
+                  ),
+                ),
+              ),
+              child: Column(
+                children: [
+                  _SearchResultRow(message: message),
+                  Divider(height: 1, color: c.divider),
+                ],
+              ),
+            ),
+        ],
+      ],
     );
   }
 
@@ -1897,6 +2015,13 @@ class _TopicSearchViewState extends State<_TopicSearchView> {
       ),
     );
   }
+}
+
+class _TopicNameSearchHit {
+  const _TopicNameSearchHit({required this.id, required this.name});
+
+  final int id;
+  final String name;
 }
 
 class _SearchResultRow extends StatelessWidget {

@@ -41,6 +41,13 @@ class StickerStore extends ChangeNotifier {
   bool loading = false;
   bool _loaded = false;
 
+  void reset() {
+    packs = [];
+    loading = false;
+    _loaded = false;
+    notifyListeners();
+  }
+
   void loadIfNeeded() {
     if (_loaded) return;
     _loaded = true;

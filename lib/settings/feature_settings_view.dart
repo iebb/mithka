@@ -55,6 +55,28 @@ class FeatureSettingsView extends StatelessWidget {
                       value: theme.showMomentsTab,
                       onChanged: (value) => theme.showMomentsTab = value,
                     ),
+                    const InsetDivider(leadingInset: 16),
+                    SettingsSwitchRow(
+                      title: '短视频',
+                      value: theme.showShortVideos,
+                      onChanged: (value) => theme.showShortVideos = value,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.section),
+                _sectionHeader(
+                  context,
+                  AppStrings.t(AppStringKeys.communityTitle),
+                ),
+                SettingsCard(
+                  children: [
+                    SettingsSwitchRow(
+                      title: AppStrings.t(
+                        AppStringKeys.featureCommunitiesEnabled,
+                      ),
+                      value: theme.communitiesEnabled,
+                      onChanged: (value) => theme.communitiesEnabled = value,
+                    ),
                   ],
                 ),
                 const SizedBox(height: AppSpacing.section),

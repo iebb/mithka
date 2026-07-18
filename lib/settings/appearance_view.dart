@@ -30,6 +30,7 @@ import '../theme/global_theme_view.dart';
 import '../theme/system_font_catalog.dart';
 import '../theme/theme_controller.dart';
 import 'app_icon_controller.dart';
+import 'chat_folder_management_view.dart';
 import 'quick_reaction_settings_view.dart';
 
 class AppearanceView extends StatelessWidget {
@@ -530,10 +531,10 @@ class DisplaySettingsView extends StatelessWidget {
                     context,
                     HeroAppIcons.thumbtack.data,
                     AppStrings.t(
-                      AppStringKeys.appearanceDisplayOwnChatAsFavorites,
+                      AppStringKeys.appearanceSavedMessagesBookmarkView,
                     ),
-                    theme.displayOwnChatAsFavorites,
-                    (v) => theme.displayOwnChatAsFavorites = v,
+                    theme.savedMessagesBookmarkView,
+                    (v) => theme.savedMessagesBookmarkView = v,
                   ),
                   _toggleRow(
                     context,
@@ -644,6 +645,20 @@ class ChatFolderSettingsView extends StatelessWidget {
                       theme.chatFolderDisplayMode == mode,
                       () => theme.chatFolderDisplayMode = mode,
                     ),
+                ]),
+                const SizedBox(height: AppSpacing.xl),
+                const AppearanceView()._card(context, [
+                  const AppearanceView()._navigationRow(
+                    context,
+                    'Manage folders',
+                    '',
+                    () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const ChatFolderManagementView(),
+                      ),
+                    ),
+                    icon: HeroAppIcons.folder.data,
+                  ),
                 ]),
               ],
             ),

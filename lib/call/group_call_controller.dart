@@ -13,6 +13,52 @@ import 'tgcalls_group_media_engine.dart';
 
 enum GroupCallPhase { joining, active, ending }
 
+Map<String, dynamic> buildGroupCallJoinParameters(
+  GroupCallJoinPayload join, {
+  required bool isMuted,
+  required bool isVideoEnabled,
+}) => {
+  '@type': 'groupCallJoinParameters',
+  'audio_source_id': join.audioSourceId,
+  'payload': join.payload,
+  'is_muted': isMuted,
+  'is_my_video_enabled': isVideoEnabled,
+};
+
+Map<String, dynamic> buildJoinVideoChatRequest({
+  required int groupCallId,
+  required GroupCallJoinPayload join,
+  required bool isMuted,
+  required bool isVideoEnabled,
+  required String inviteHash,
+  Map<String, dynamic>? participantId,
+}) => {
+  '@type': 'joinVideoChat',
+  'group_call_id': groupCallId,
+  'participant_id': ?participantId,
+  'join_parameters': buildGroupCallJoinParameters(
+    join,
+    isMuted: isMuted,
+    isVideoEnabled: isVideoEnabled,
+  ),
+  'invite_hash': inviteHash,
+};
+
+Map<String, dynamic> buildJoinUnboundGroupCallRequest({
+  required String inviteLink,
+  required GroupCallJoinPayload join,
+  required bool isMuted,
+  required bool isVideoEnabled,
+}) => {
+  '@type': 'joinGroupCall',
+  'input_group_call': {'@type': 'inputGroupCallLink', 'link': inviteLink},
+  'join_parameters': buildGroupCallJoinParameters(
+    join,
+    isMuted: isMuted,
+    isVideoEnabled: isVideoEnabled,
+  ),
+};
+
 class GroupCallParticipant {
   GroupCallParticipant({
     required this.key,
@@ -127,6 +173,8 @@ class GroupCallController extends ChangeNotifier {
   final Map<String, GroupCallParticipant> _participants = {};
   final List<String> _displayOrder = [];
   Map<String, dynamic>? _selfSender;
+  String _inviteHash = '';
+  String _unboundInviteLink = '';
 
   ActiveGroupCall? session;
   bool isMuted = false;
@@ -158,6 +206,7 @@ class GroupCallController extends ChangeNotifier {
     required int chatId,
     required String title,
     required bool isVideo,
+    String inviteHash = '',
   }) async {
     if (session != null) return;
     if (!await _engine.isSupported) {
@@ -196,6 +245,8 @@ class GroupCallController extends ChangeNotifier {
     isMuted = false;
     isSpeaker = true;
     isVideoEnabled = isVideo;
+    _inviteHash = inviteHash;
+    _unboundInviteLink = '';
     notifyListeners();
     await LiveCommunicationBridge.instance.start(
       uuid: uuid,
@@ -234,6 +285,81 @@ class GroupCallController extends ChangeNotifier {
             })
             .catchError((_) => <String, dynamic>{}),
       );
+      await LiveCommunicationBridge.instance.connected(uuid);
+      notifyListeners();
+    } catch (_) {
+      await _leave(clearTelegram: true, reportSystem: true);
+      rethrow;
+    }
+  }
+
+  Future<void> joinUnbound({
+    required String inviteLink,
+    String title = 'Group call',
+    bool isVideo = true,
+  }) async {
+    if (session != null) return;
+    final link = inviteLink.trim();
+    if (link.isEmpty) throw ArgumentError.value(inviteLink, 'inviteLink');
+    if (!await _engine.isSupported) {
+      throw UnsupportedError(
+        'This build does not include Telegram group-call media for this platform',
+      );
+    }
+    await _ensurePermissions(isVideo);
+    final temporaryMediaId = link.hashCode & 0x7fffffff;
+    final join = await _engine.createJoinPayload(
+      groupCallId: temporaryMediaId == 0 ? 1 : temporaryMediaId,
+      isVideo: isVideo,
+    );
+    isMuted = false;
+    isSpeaker = true;
+    isVideoEnabled = isVideo;
+    final response = await _client.query(
+      buildJoinUnboundGroupCallRequest(
+        inviteLink: link,
+        join: join,
+        isMuted: isMuted,
+        isVideoEnabled: isVideo,
+      ),
+    );
+    final groupCallId = response.integer('group_call_id') ?? 0;
+    final responsePayload = response.str('join_payload') ?? '';
+    if (groupCallId == 0 || responsePayload.isEmpty) {
+      _engine.stop();
+      throw StateError('Telegram returned invalid group-call join data');
+    }
+    final uuid = LiveCommunicationBridge.newUuid();
+    session = ActiveGroupCall(
+      chatId: 0,
+      groupCallId: groupCallId,
+      title: title,
+      isVideo: isVideo,
+      phase: GroupCallPhase.joining,
+      systemUuid: uuid,
+    );
+    _inviteHash = '';
+    _unboundInviteLink = link;
+    notifyListeners();
+    try {
+      final me = await _client.query({'@type': 'getMe'});
+      final meId = me.int64('id');
+      if (meId != null) {
+        _selfSender = {'@type': 'messageSenderUser', 'user_id': meId};
+      }
+      await LiveCommunicationBridge.instance.start(
+        uuid: uuid,
+        title: title,
+        isVideo: isVideo,
+        memberHandles: const [],
+      );
+      await _engine.connect(responsePayload);
+      final current = session;
+      if (current == null || current.groupCallId != groupCallId) return;
+      current.phase = GroupCallPhase.active;
+      current.startedAt = DateTime.now();
+      await _refreshGroupCall();
+      await _refreshUnboundParticipants();
       await LiveCommunicationBridge.instance.connected(uuid);
       notifyListeners();
     } catch (_) {
@@ -351,20 +477,15 @@ class GroupCallController extends ChangeNotifier {
   }) async {
     final current = session;
     if (current == null) return;
-    final request = <String, dynamic>{
-      '@type': 'joinVideoChat',
-      'group_call_id': current.groupCallId,
-      'join_parameters': {
-        '@type': 'groupCallJoinParameters',
-        'audio_source_id': join.audioSourceId,
-        'payload': join.payload,
-        'is_muted': isMuted,
-        'is_my_video_enabled': isVideoEnabled,
-      },
-      'invite_hash': '',
-    };
     final sender = _selfSender;
-    if (sender != null) request['participant_id'] = sender;
+    final request = buildJoinVideoChatRequest(
+      groupCallId: current.groupCallId,
+      join: join,
+      isMuted: isMuted,
+      isVideoEnabled: isVideoEnabled,
+      inviteHash: _inviteHash,
+      participantId: sender,
+    );
     final response = await _client.query(request);
     final responsePayload = response.str('text');
     if (responsePayload == null || responsePayload.isEmpty) {
@@ -426,6 +547,12 @@ class GroupCallController extends ChangeNotifier {
         if (update.integer('group_call_id') != current.groupCallId) return;
         final raw = update.obj('participant');
         if (raw != null) _upsertParticipant(raw);
+      case 'updateGroupCallParticipants':
+        if (update.integer('group_call_id') != current.groupCallId ||
+            _unboundInviteLink.isEmpty) {
+          return;
+        }
+        unawaited(_refreshUnboundParticipants());
     }
   }
 
@@ -440,6 +567,43 @@ class GroupCallController extends ChangeNotifier {
         ? groupCall.str('title')!
         : current.title;
     current.isOwned = groupCall.boolean('is_owned') ?? false;
+  }
+
+  Future<void> _refreshUnboundParticipants() async {
+    final link = _unboundInviteLink;
+    if (link.isEmpty || session == null) return;
+    final response = await _client.query({
+      '@type': 'getGroupCallParticipants',
+      'input_group_call': {'@type': 'inputGroupCallLink', 'link': link},
+      'limit': 100,
+    });
+    final senders = response.objects('participant_ids') ?? const [];
+    final keep = <String>{};
+    for (final sender in senders) {
+      final key = GroupCallParticipant.senderKey(sender);
+      if (key == null) continue;
+      keep.add(key);
+      final previous = _participants[key];
+      final participant = GroupCallParticipant(
+        key: key,
+        sender: sender,
+        audioSourceId: previous?.audioSourceId ?? 0,
+        order: previous?.order ?? '1',
+        isCurrentUser:
+            GroupCallParticipant.senderKey(_selfSender ?? const {}) == key,
+        isSpeaking: previous?.isSpeaking ?? false,
+        isMuted: previous?.isMuted ?? false,
+        name: previous?.name ?? '',
+        photo: previous?.photo,
+      );
+      _participants[key] = participant;
+      if (!_displayOrder.contains(key)) _displayOrder.add(key);
+      unawaited(_resolveParticipant(participant));
+    }
+    _participants.removeWhere((key, _) => !keep.contains(key));
+    _displayOrder.removeWhere((key) => !keep.contains(key));
+    _updateSystemMembers();
+    notifyListeners();
   }
 
   void _upsertParticipant(Map<String, dynamic> raw) {
@@ -580,6 +744,8 @@ class GroupCallController extends ChangeNotifier {
     _participants.clear();
     _displayOrder.clear();
     _selfSender = null;
+    _inviteHash = '';
+    _unboundInviteLink = '';
     isMuted = false;
     isSpeaker = true;
     isVideoEnabled = false;

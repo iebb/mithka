@@ -12,7 +12,7 @@ void main() {
     (tester) async {
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
-      (String, List<String>)? result;
+      PollComposerResult? result;
       await tester.pumpWidget(
         ChangeNotifierProvider(
           create: (_) => ThemeController(prefs),
@@ -20,12 +20,9 @@ void main() {
             home: Builder(
               builder: (context) => ElevatedButton(
                 onPressed: () async {
-                  result = await Navigator.of(context)
-                      .push<(String, List<String>)>(
-                        MaterialPageRoute(
-                          builder: (_) => const PollComposerView(),
-                        ),
-                      );
+                  result = await Navigator.of(context).push<PollComposerResult>(
+                    MaterialPageRoute(builder: (_) => const PollComposerView()),
+                  );
                 },
                 child: const Text('open'),
               ),
@@ -75,17 +72,22 @@ void main() {
         findsOneWidget,
       );
 
-      // Fill question + two options, send returns (question, options).
+      // Fill question + two options; the advanced composer result preserves
+      // the poll mode and interaction settings alongside the text fields.
       await tester.enterText(find.byType(TextField).at(0), 'Dinner plan');
-      await tester.enterText(find.byType(TextField).at(1), 'Hotpot');
-      await tester.enterText(find.byType(TextField).at(2), 'Barbecue');
+      await tester.enterText(find.byType(TextField).at(2), 'Hotpot');
+      await tester.enterText(find.byType(TextField).at(3), 'Barbecue');
       await tester.pumpAndSettle();
       await tester.tap(find.text(AppStrings.t(AppStringKeys.composerSend)));
       await tester.pumpAndSettle();
 
       expect(result, isNotNull);
-      expect(result!.$1, 'Dinner plan');
-      expect(result!.$2, ['Hotpot', 'Barbecue']);
+      expect(result!.question, 'Dinner plan');
+      expect(result!.options.map((option) => option.text), [
+        'Hotpot',
+        'Barbecue',
+      ]);
+      expect(result!.isQuiz, isFalse);
     },
   );
 }

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <!-- Android 12+: refuse cloud backup unless client-side encryption exists. -->
+    <cloud-backup disableIfNoEncryptionCapabilities="true">
+        <include domain="file" path="account_backups/" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="file" path="account_backups/" />
+    </device-transfer>
+</data-extraction-rules>

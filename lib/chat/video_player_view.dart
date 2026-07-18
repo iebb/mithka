@@ -9,12 +9,14 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:fvp/fvp.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
+import 'package:video_thumbnail_gen/video_thumbnail_gen.dart';
 
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
@@ -38,10 +40,14 @@ class _TdVideoStreamServer {
   HttpServer? _server;
   String? _path;
   int _total = 0;
-  int _downloadedPrefix = 0;
+  int _downloadOffset = 0;
+  int _downloadedPrefixSize = 0;
+  bool _downloadComplete = false;
+  int? _continuousDownloadOffset;
   Future<void> _downloadQueue = Future<void>.value();
 
   static const _chunkSize = 2 * 1024 * 1024;
+  static const _streamChunkSize = 512 * 1024;
   static const _nativeMetadataChunkSize = 4 * 1024 * 1024;
 
   Future<Uri?> start() async {
@@ -54,7 +60,7 @@ class _TdVideoStreamServer {
     } catch (_) {}
 
     if (_path == null || _path!.isEmpty || _total <= 0) {
-      await _primePlaybackFile();
+      await _startContinuousDownload(0);
     }
     if (_total <= 0) {
       try {
@@ -66,6 +72,9 @@ class _TdVideoStreamServer {
       } catch (_) {}
     }
     if (_total <= 0) return null;
+    if (!_downloadComplete && _continuousDownloadOffset == null) {
+      await _startContinuousDownload(0);
+    }
 
     _server = await HttpServer.bind(
       InternetAddress.loopbackIPv4,
@@ -100,21 +109,8 @@ class _TdVideoStreamServer {
   }
 
   void startBackgroundDownload() {
-    unawaited(
-      TdClient.shared
-          .query({
-            '@type': 'downloadFile',
-            'file_id': fileId,
-            'priority': 32,
-            'offset': 0,
-            'limit': 0,
-            'synchronous': false,
-          })
-          .then<void>(_updateFileInfo, onError: _ignoreDownloadError),
-    );
+    unawaited(_startContinuousDownload(0));
   }
-
-  static void _ignoreDownloadError(Object _) {}
 
   void _updateFileInfo(Map<String, dynamic> file) {
     final expected = file.integer('expected_size') ?? 0;
@@ -125,25 +121,36 @@ class _TdVideoStreamServer {
     final path = file.obj('local')?.str('path');
     if (path != null && path.isNotEmpty) _path = path;
     final local = file.obj('local');
+    _downloadOffset = local?.integer('download_offset') ?? _downloadOffset;
     final prefix = local?.integer('downloaded_prefix_size') ?? 0;
-    if (prefix > _downloadedPrefix) _downloadedPrefix = prefix;
-    if (local?.boolean('is_downloading_completed') == true && _total > 0) {
-      _downloadedPrefix = _total;
+    _downloadedPrefixSize = prefix;
+    _downloadComplete =
+        local?.boolean('is_downloading_completed') == true && _total > 0;
+    if (_downloadComplete) {
+      _downloadOffset = 0;
+      _downloadedPrefixSize = _total;
+      _continuousDownloadOffset = null;
     }
   }
 
-  Future<void> _primePlaybackFile() async {
+  Future<void> _startContinuousDownload(int offset) async {
+    if (_downloadComplete) return;
+    _continuousDownloadOffset = offset;
     try {
       final file = await TdClient.shared.query({
         '@type': 'downloadFile',
         'file_id': fileId,
-        'priority': 30,
-        'offset': 0,
-        'limit': _chunkSize,
+        'priority': 32,
+        'offset': offset,
+        'limit': 0,
         'synchronous': false,
       });
       _updateFileInfo(file);
-    } catch (_) {}
+    } catch (_) {
+      if (_continuousDownloadOffset == offset) {
+        _continuousDownloadOffset = null;
+      }
+    }
   }
 
   Future<void> _handleRequest(HttpRequest request) async {
@@ -227,7 +234,7 @@ class _TdVideoStreamServer {
     _writeRangeHeaders(request.response, start, end, partial);
     var offset = start;
     while (offset <= end) {
-      final chunkEnd = math.min(end, offset + _chunkSize - 1);
+      final chunkEnd = math.min(end, offset + _streamChunkSize - 1);
       final ok = await _ensureRange(offset, chunkEnd);
       if (!ok || _path == null) {
         throw const HttpException('Video bytes are not available');
@@ -270,14 +277,31 @@ class _TdVideoStreamServer {
   }
 
   Future<bool> _ensureRange(int start, int end) async {
+    if (await _rangeIsReadable(start, end)) return true;
+
+    final readableEnd = _downloadOffset + _downloadedPrefixSize - 1;
+    final continuousOffset = _continuousDownloadOffset;
+    final continuousDownloadCanReachRange =
+        continuousOffset != null &&
+        continuousOffset <= start &&
+        start <= readableEnd + _chunkSize;
+    if (continuousDownloadCanReachRange &&
+        await _waitForReadableRange(start, end)) {
+      return true;
+    }
+
     final length = end - start + 1;
     try {
       final file = await _downloadPlaybackRange(start, length);
       if (file != null) _updateFileInfo(file);
       if (_path == null || _path!.isEmpty) {
-        await _primePlaybackFile();
+        await _startContinuousDownload(start);
       }
-      return _waitForReadableRange(start, end);
+      final readable = await _waitForReadableRange(start, end);
+      if (!_downloadComplete && start != 0) {
+        unawaited(_startContinuousDownload(0));
+      }
+      return readable;
     } catch (_) {
       return _waitForReadableRange(start, end);
     }
@@ -285,6 +309,7 @@ class _TdVideoStreamServer {
 
   Future<Map<String, dynamic>?> _downloadPlaybackRange(int offset, int length) {
     final task = _downloadQueue.then((_) async {
+      _continuousDownloadOffset = null;
       try {
         return await TdClient.shared
             .query({
@@ -307,30 +332,33 @@ class _TdVideoStreamServer {
   Future<bool> _waitForReadableRange(int start, int end) async {
     final deadline = DateTime.now().add(const Duration(seconds: 45));
     while (DateTime.now().isBefore(deadline)) {
-      try {
-        if (_downloadedPrefix > end) return true;
-        final file = await TdClient.shared.query({
-          '@type': 'getFile',
-          'file_id': fileId,
-        });
-        _updateFileInfo(file);
-      } catch (_) {}
-      await Future<void>.delayed(const Duration(milliseconds: 180));
+      if (await _rangeIsReadable(start, end)) return true;
+      await Future<void>.delayed(const Duration(milliseconds: 100));
     }
     return false;
+  }
+
+  Future<bool> _rangeIsReadable(int start, int end) async {
+    if (_downloadComplete) return true;
+    try {
+      final prefix = await TdClient.shared.query({
+        '@type': 'getFileDownloadedPrefixSize',
+        'file_id': fileId,
+        'offset': start,
+      });
+      return (prefix.integer('size') ?? 0) >= end - start + 1;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<List<int>> _readRange(int start, int end) async {
     final path = _path;
     if (path == null || path.isEmpty) return const [];
-    if (_downloadedPrefix <= start) return const [];
     final file = File(path);
     final available = await file.length();
     if (available <= start) return const [];
-    final readableEnd = math.min(
-      end,
-      math.min(available - 1, _downloadedPrefix - 1),
-    );
+    final readableEnd = math.min(end, available - 1);
     final raf = await file.open();
     try {
       await raf.setPosition(start);
@@ -528,6 +556,18 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   VideoCompletionAction _completionAction = VideoCompletionAction.prompt;
   bool _completionHandled = false;
   bool _showCompletionPrompt = false;
+  final GlobalKey _scrubberKey = GlobalKey(debugLabel: 'video-scrubber');
+  final Map<int, Uint8List> _scrubPreviewCache = {};
+  OverlayEntry? _scrubPreviewOverlay;
+  Timer? _scrubPreviewTimer;
+  Duration? _scrubPosition;
+  Duration? _pendingScrubPreviewPosition;
+  Uint8List? _scrubPreviewBytes;
+  bool _scrubPreviewLoading = false;
+  bool _resumeAfterScrub = false;
+  bool _scrubPreviewCompact = false;
+  Future<void>? _scrubPause;
+  int _scrubPreviewGeneration = 0;
 
   static const _speeds = <double>[0.5, 0.75, 1, 1.25, 1.5, 2];
   static const _resumePrefix = 'mithka.video.resume.';
@@ -1087,6 +1127,10 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
       unawaited(ScreenWakelock.disable());
     }
     _hideTimer?.cancel();
+    _scrubPreviewTimer?.cancel();
+    _scrubPreviewOverlay?.remove();
+    _scrubPreviewOverlay = null;
+    _scrubPreviewGeneration++;
     _progressSub?.cancel();
     unawaited(_storePlaybackPosition(force: true));
     _controller?.removeListener(_onTick);
@@ -2226,6 +2270,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     final position = _displayPosition(c).inMilliseconds.clamp(0, duration);
     final loaded = _loadedFraction(value);
     return SizedBox(
+      key: _scrubberKey,
       height: compact ? 28 : 34,
       child: Stack(
         alignment: Alignment.centerLeft,
@@ -2274,9 +2319,13 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
             child: Slider(
               max: duration <= 0 ? 1 : duration.toDouble(),
               value: duration <= 0 ? 0 : position.toDouble(),
-              onChanged: duration <= 0
+              onChangeStart: duration <= 0
                   ? null
-                  : (v) => c.seekTo(Duration(milliseconds: v.round())),
+                  : (v) => _beginScrub(c, v, compact: compact),
+              onChanged: duration <= 0 ? null : (v) => _updateScrub(c, v),
+              onChangeEnd: duration <= 0
+                  ? null
+                  : (v) => unawaited(_finishScrub(c, v)),
             ),
           ),
         ],
@@ -2285,11 +2334,245 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   }
 
   Duration _displayPosition(VideoPlayerController controller) {
+    final scrubPosition = _scrubPosition;
+    if (scrubPosition != null) return scrubPosition;
     return switch (_activeGesture) {
       _PlayerGesture.seek ||
       _PlayerGesture.skipTenSeconds => _gestureSeekPosition,
       _ => controller.value.position,
     };
+  }
+
+  void _beginScrub(
+    VideoPlayerController controller,
+    double value, {
+    required bool compact,
+  }) {
+    _hideTimer?.cancel();
+    _resumeAfterScrub = controller.value.isPlaying;
+    _scrubPause = _resumeAfterScrub ? controller.pause() : null;
+    _scrubPreviewCompact = compact;
+    _scrubPreviewBytes = null;
+    _scrubPreviewGeneration++;
+    final position = Duration(milliseconds: value.round());
+    setState(() => _scrubPosition = position);
+    _showScrubPreviewOverlay();
+    _queueScrubPreview(position, immediate: true);
+  }
+
+  void _updateScrub(VideoPlayerController controller, double value) {
+    final position = Duration(milliseconds: value.round());
+    setState(() => _scrubPosition = position);
+    unawaited(controller.seekTo(position));
+    _scrubPreviewOverlay?.markNeedsBuild();
+    _queueScrubPreview(position);
+  }
+
+  Future<void> _finishScrub(
+    VideoPlayerController controller,
+    double value,
+  ) async {
+    final position = Duration(milliseconds: value.round());
+    _scrubPreviewTimer?.cancel();
+    _pendingScrubPreviewPosition = null;
+    _scrubPreviewGeneration++;
+    await _scrubPause;
+    _scrubPause = null;
+    await controller.seekTo(position);
+    if (_resumeAfterScrub) await controller.play();
+    _resumeAfterScrub = false;
+    if (!mounted) return;
+    setState(() => _scrubPosition = null);
+    _hideScrubPreviewOverlay();
+    _scheduleHide();
+  }
+
+  void _queueScrubPreview(Duration position, {bool immediate = false}) {
+    final bucketMs = (position.inMilliseconds ~/ 500) * 500;
+    final cached = _scrubPreviewCache[bucketMs];
+    if (cached != null) {
+      _scrubPreviewBytes = cached;
+      _scrubPreviewOverlay?.markNeedsBuild();
+      return;
+    }
+    _pendingScrubPreviewPosition = Duration(milliseconds: bucketMs);
+    _scrubPreviewTimer?.cancel();
+    if (immediate) {
+      unawaited(_drainScrubPreviewQueue());
+    } else {
+      _scrubPreviewTimer = Timer(
+        const Duration(milliseconds: 120),
+        () => unawaited(_drainScrubPreviewQueue()),
+      );
+    }
+  }
+
+  Future<void> _drainScrubPreviewQueue() async {
+    if (_scrubPreviewLoading || _scrubPosition == null) return;
+    final position = _pendingScrubPreviewPosition;
+    final source = _localPath;
+    if (position == null || source == null || source.isEmpty) return;
+    _pendingScrubPreviewPosition = null;
+    _scrubPreviewLoading = true;
+    _scrubPreviewOverlay?.markNeedsBuild();
+    final generation = _scrubPreviewGeneration;
+    Uint8List? bytes;
+    try {
+      bytes = await VideoThumbnail.thumbnailData(
+        video: source,
+        imageFormat: ImageFormat.JPEG,
+        maxWidth: 240,
+        timeMs: position.inMilliseconds,
+        quality: 72,
+      );
+    } catch (_) {
+      bytes = null;
+    } finally {
+      _scrubPreviewLoading = false;
+    }
+    if (!mounted ||
+        generation != _scrubPreviewGeneration ||
+        _scrubPosition == null) {
+      return;
+    }
+    if (bytes != null && bytes.isNotEmpty) {
+      final bucketMs = position.inMilliseconds;
+      _scrubPreviewCache[bucketMs] = bytes;
+      while (_scrubPreviewCache.length > 24) {
+        _scrubPreviewCache.remove(_scrubPreviewCache.keys.first);
+      }
+      _scrubPreviewBytes = bytes;
+    }
+    _scrubPreviewOverlay?.markNeedsBuild();
+    if (_pendingScrubPreviewPosition != null) {
+      unawaited(_drainScrubPreviewQueue());
+    }
+  }
+
+  void _showScrubPreviewOverlay() {
+    if (_scrubPreviewOverlay != null) return;
+    final overlay = Overlay.of(context);
+    final entry = OverlayEntry(builder: _buildScrubPreviewOverlay);
+    _scrubPreviewOverlay = entry;
+    overlay.insert(entry);
+  }
+
+  void _hideScrubPreviewOverlay() {
+    _scrubPreviewOverlay?.remove();
+    _scrubPreviewOverlay = null;
+    _scrubPreviewBytes = null;
+  }
+
+  Widget _buildScrubPreviewOverlay(BuildContext overlayContext) {
+    final scrubberContext = _scrubberKey.currentContext;
+    final position = _scrubPosition;
+    if (scrubberContext == null || position == null) {
+      return const SizedBox.shrink();
+    }
+    final scrubberBox = scrubberContext.findRenderObject();
+    final overlayBox = overlayContext.findRenderObject();
+    if (scrubberBox is! RenderBox || overlayBox is! RenderBox) {
+      return const SizedBox.shrink();
+    }
+    final durationMs = _controller?.value.duration.inMilliseconds ?? 0;
+    final fraction = durationMs <= 0
+        ? 0.0
+        : (position.inMilliseconds / durationMs).clamp(0.0, 1.0);
+    final trackInset = _scrubPreviewCompact ? 0.0 : 24.0;
+    final trackWidth = math.max(0.0, scrubberBox.size.width - trackInset * 2);
+    final target = scrubberBox.localToGlobal(
+      Offset(trackInset + trackWidth * fraction, 0),
+      ancestor: overlayBox,
+    );
+    final previewWidth = _scrubPreviewCompact ? 128.0 : 160.0;
+    final sourceAspect =
+        widget.width != null &&
+            widget.height != null &&
+            widget.width! > 0 &&
+            widget.height! > 0
+        ? widget.width! / widget.height!
+        : 16 / 9;
+    final previewHeight = (previewWidth / sourceAspect)
+        .clamp(72.0, 110.0)
+        .toDouble();
+    final left = (target.dx - previewWidth / 2)
+        .clamp(8.0, math.max(8.0, overlayBox.size.width - previewWidth - 8))
+        .toDouble();
+    final top = math.max(8.0, target.dy - previewHeight - 14);
+    final bytes = _scrubPreviewBytes;
+    return Positioned(
+      left: left,
+      top: top,
+      width: previewWidth,
+      height: previewHeight,
+      child: IgnorePointer(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: const Color(0xFF111113),
+            borderRadius: BorderRadius.circular(9),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x88000000),
+                blurRadius: 12,
+                offset: Offset(0, 4),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (bytes != null)
+                  Image.memory(bytes, fit: BoxFit.cover, gaplessPlayback: true)
+                else if (widget.thumb != null)
+                  TDImage(photo: widget.thumb)
+                else
+                  const ColoredBox(color: Color(0xFF111113)),
+                if (bytes == null && _scrubPreviewLoading)
+                  const Center(
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    ),
+                  ),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: DecoratedBox(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Colors.transparent, Color(0xCC000000)],
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(6, 12, 6, 5),
+                      child: Text(
+                        _fmt(position),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   double _loadedFraction(VideoPlayerValue value) {

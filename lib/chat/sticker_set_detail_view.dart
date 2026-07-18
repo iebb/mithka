@@ -18,6 +18,7 @@ import '../theme/app_theme.dart';
 import 'custom_emoji.dart'; // parseStickers
 import 'sticker_item.dart';
 import 'sticker_preview.dart';
+import 'sticker_set_studio_view.dart';
 
 class StickerSetDetailView extends StatefulWidget {
   const StickerSetDetailView({super.key, required this.setId});
@@ -31,6 +32,7 @@ class _StickerSetDetailViewState extends State<StickerSetDetailView> {
   String _title = '';
   List<StickerItem> _stickers = const [];
   bool _installed = false;
+  bool _owned = false;
   bool _loading = true;
   bool _working = false;
 
@@ -51,6 +53,7 @@ class _StickerSetDetailViewState extends State<StickerSetDetailView> {
         _title = set.str('title') ?? '';
         _stickers = parseStickers(set.objects('stickers'));
         _installed = set.boolean('is_installed') ?? false;
+        _owned = set.boolean('is_owned') ?? false;
         _loading = false;
       });
     } catch (_) {
@@ -146,6 +149,29 @@ class _StickerSetDetailViewState extends State<StickerSetDetailView> {
               ),
             ),
           ),
+          if (_owned)
+            Align(
+              alignment: Alignment.centerRight,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () async {
+                  await Navigator.of(context).push<void>(
+                    MaterialPageRoute(
+                      builder: (_) => StickerSetManageView(setId: widget.setId),
+                    ),
+                  );
+                  await _load();
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  child: AppIcon(
+                    HeroAppIcons.penToSquare,
+                    size: 22,
+                    color: c.textPrimary,
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );

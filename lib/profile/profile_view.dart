@@ -3,7 +3,8 @@
 //
 //  The "我" side menu (slides in from the left, ~88% width). Redesigned to match
 //  the reference app's drawer: an azure avatar banner → an edit-profile card → a vertical list
-//  of rows (相册 / 收藏 / 文件 / 外观) → account switcher → an icon-only bottom
+//  of rows (Calls / Saved Messages / Files / Videos) → account switcher →
+//  an icon-only bottom
 //  bar. Backed by real TDLib via ProfileViewModel + AccountStore.
 //
 
@@ -17,8 +18,10 @@ import 'package:provider/provider.dart';
 import '../app/app_navigator.dart';
 import '../auth/account_store.dart';
 import '../auth/auth_manager.dart';
+import '../call/calls_view.dart';
 import '../chat/chat_view.dart';
 import '../chat/custom_emoji.dart';
+import '../chat/saved_messages_view.dart';
 import '../chat/shared_media_view.dart';
 import '../components/app_icons.dart';
 import '../components/confirm_dialog.dart';
@@ -35,7 +38,6 @@ import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import 'emoji_status_picker.dart';
-import 'my_album_view.dart';
 import 'profile_detail_view.dart';
 import 'qr_code_view.dart';
 
@@ -181,10 +183,15 @@ class _ProfileViewState extends State<ProfileView> {
 
   void _openSaved(String title) {
     final cid = _vm.savedChatId ?? _vm.user?.id ?? 0;
+    final bookmarkView = context
+        .read<ThemeController>()
+        .savedMessagesBookmarkView;
     pushAppChatRoute(
       context,
-      MaterialPageRoute(
-        builder: (_) => ChatView(chatId: cid, title: title),
+      PageRouteBuilder<void>(
+        pageBuilder: (_, _, _) => bookmarkView
+            ? const SavedMessagesView()
+            : ChatView(chatId: cid, title: title),
       ),
     );
   }
@@ -412,22 +419,18 @@ class _ProfileViewState extends State<ProfileView> {
       child: Column(
         children: [
           _row(
-            HeroAppIcons.image,
-            const Color(0xFFF5A623),
-            AppStrings.t(AppStringKeys.chatInfoAlbum),
+            HeroAppIcons.phone,
+            const Color(0xFF34C759),
+            AppStrings.t(AppStringKeys.callsTitle),
             () {
-              _root.push(
-                MaterialPageRoute(
-                  builder: (_) => MyAlbumView(userId: _vm.user?.id ?? 0),
-                ),
-              );
+              _root.push(MaterialPageRoute(builder: (_) => const CallsView()));
             },
           ),
           _row(
-            HeroAppIcons.star,
+            HeroAppIcons.thumbtack,
             const Color(0xFFFF9D2E),
-            AppStrings.t(AppStringKeys.messageActionFavorite),
-            () => _openSaved(AppStrings.t(AppStringKeys.messageActionFavorite)),
+            AppStrings.t(AppStringKeys.savedMessages),
+            () => _openSaved(AppStrings.t(AppStringKeys.savedMessages)),
           ),
           _row(
             HeroAppIcons.folder,
@@ -542,9 +545,7 @@ class _ProfileViewState extends State<ProfileView> {
           ],
           GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: () => context.read<AccountStore>().addAccount(
-              context.read<AuthManager>(),
-            ),
+            onTap: () => accounts.addAccount(context.read<AuthManager>()),
             child: SizedBox(
               height: 54,
               child: Padding(
@@ -566,9 +567,11 @@ class _ProfileViewState extends State<ProfileView> {
                       ),
                     ),
                     const SizedBox(width: 12),
-                    Text(
-                      AppStrings.t(AppStringKeys.profileAddAccount),
-                      style: TextStyle(fontSize: 15, color: AppTheme.brand),
+                    Expanded(
+                      child: Text(
+                        AppStrings.t(AppStringKeys.profileAddAccount),
+                        style: TextStyle(fontSize: 15, color: AppTheme.brand),
+                      ),
                     ),
                   ],
                 ),

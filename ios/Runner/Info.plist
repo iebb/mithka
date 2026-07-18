@@ -35,6 +35,8 @@
 	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>Mithka uses the camera for photos and videos you choose to send, Telegram video calls, and login QR codes.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Mithka uses Face ID to unlock the app and when you approve biometric access for a Telegram Mini App.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Mithka needs your location to share where you are.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>

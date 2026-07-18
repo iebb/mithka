@@ -2,6 +2,8 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'message_send_options.dart';
+
 enum OutgoingAttachmentKind {
   photo,
   video,
@@ -9,6 +11,17 @@ enum OutgoingAttachmentKind {
   document,
   audio,
   voiceNote,
+}
+
+OutgoingAttachmentKind galleryAttachmentKind({
+  required bool sendAsFile,
+  required bool isVideo,
+  required bool isAnimation,
+}) {
+  if (sendAsFile) return OutgoingAttachmentKind.document;
+  if (isVideo) return OutgoingAttachmentKind.video;
+  if (isAnimation) return OutgoingAttachmentKind.animation;
+  return OutgoingAttachmentKind.photo;
 }
 
 enum AttachmentAlbumKind { visual, document, audio, standalone }
@@ -27,6 +40,8 @@ class OutgoingAttachment {
     this.title = '',
     this.performer = '',
     this.fileName,
+    this.coverPath,
+    this.startTimestamp = 0,
   });
 
   final String path;
@@ -41,6 +56,8 @@ class OutgoingAttachment {
   final String title;
   final String performer;
   final String? fileName;
+  final String? coverPath;
+  final int startTimestamp;
 
   AttachmentAlbumKind get albumKind => switch (kind) {
     OutgoingAttachmentKind.photo ||
@@ -67,6 +84,9 @@ class OutgoingAttachment {
     String? title,
     String? performer,
     String? fileName,
+    String? coverPath,
+    bool clearCoverPath = false,
+    int? startTimestamp,
   }) {
     return OutgoingAttachment(
       path: path ?? this.path,
@@ -83,6 +103,8 @@ class OutgoingAttachment {
       title: title ?? this.title,
       performer: performer ?? this.performer,
       fileName: fileName ?? this.fileName,
+      coverPath: clearCoverPath ? null : coverPath ?? this.coverPath,
+      startTimestamp: startTimestamp ?? this.startTimestamp,
     );
   }
 }
@@ -172,6 +194,7 @@ Map<String, dynamic> attachmentInputMessageContent(
   OutgoingAttachment attachment, {
   String? caption,
   List<Map<String, dynamic>>? captionEntities,
+  MessageSendConfiguration sendConfiguration = const MessageSendConfiguration(),
 }) {
   final resolvedCaption = caption ?? attachment.caption;
   final resolvedEntities = captionEntities ?? attachment.captionEntities;
@@ -199,15 +222,24 @@ Map<String, dynamic> attachmentInputMessageContent(
       if ((attachment.width ?? 0) > 0) 'width': attachment.width,
       if ((attachment.height ?? 0) > 0) 'height': attachment.height,
       'caption': ?formattedCaption,
+      'show_caption_above_media': sendConfiguration.showCaptionAboveMedia,
+      'self_destruct_type': ?sendConfiguration.selfDestructType,
+      'has_spoiler': sendConfiguration.hasSpoiler,
     },
     OutgoingAttachmentKind.video => {
       '@type': 'inputMessageVideo',
       'video': {
         '@type': 'inputVideo',
         'video': inputFile,
+        if (attachment.coverPath case final path?)
+          'cover': {'@type': 'inputFileLocal', 'path': path},
+        'start_timestamp': attachment.startTimestamp,
         'supports_streaming': true,
       },
       'caption': ?formattedCaption,
+      'show_caption_above_media': sendConfiguration.showCaptionAboveMedia,
+      'self_destruct_type': ?sendConfiguration.selfDestructType,
+      'has_spoiler': sendConfiguration.hasSpoiler,
     },
     OutgoingAttachmentKind.animation => {
       '@type': 'inputMessageAnimation',
@@ -216,6 +248,8 @@ Map<String, dynamic> attachmentInputMessageContent(
       'width': attachment.width ?? 0,
       'height': attachment.height ?? 0,
       'caption': ?formattedCaption,
+      'show_caption_above_media': sendConfiguration.showCaptionAboveMedia,
+      'has_spoiler': sendConfiguration.hasSpoiler,
     },
     OutgoingAttachmentKind.document => {
       '@type': 'inputMessageDocument',
@@ -242,6 +276,7 @@ Map<String, dynamic> attachmentInputMessageContent(
         'waveform': '',
       },
       'caption': ?formattedCaption,
+      'self_destruct_type': ?sendConfiguration.selfDestructType,
     },
   };
 }
@@ -252,6 +287,7 @@ List<Map<String, dynamic>> buildAttachmentSendRequests({
   String caption = '',
   List<Map<String, dynamic>> captionEntities = const [],
   Map<String, dynamic>? replyTo,
+  MessageSendConfiguration sendConfiguration = const MessageSendConfiguration(),
 }) {
   final requests = <Map<String, dynamic>>[];
   var primaryCaptionApplied = false;
@@ -265,6 +301,7 @@ List<Map<String, dynamic>> buildAttachmentSendRequests({
           attachment,
           caption: appliesPrimaryCaption ? caption : null,
           captionEntities: appliesPrimaryCaption ? captionEntities : null,
+          sendConfiguration: sendConfiguration,
         ),
       );
       primaryCaptionApplied = primaryCaptionApplied || appliesPrimaryCaption;
@@ -277,6 +314,7 @@ List<Map<String, dynamic>> buildAttachmentSendRequests({
       else
         'input_message_content': contents.single,
       if (replyTo != null && requests.isEmpty) 'reply_to': replyTo,
+      'options': sendConfiguration.messageSendOptions(),
     });
   }
   return requests;

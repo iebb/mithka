@@ -382,6 +382,12 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
         body: body,
         notificationDetails: systemNotificationDetailsForChatIcon(
           chatIconPath,
+          conversationTitle: title,
+          messageBody: body,
+          groupConversation: switch (TDParse.chatKind(latestChat)) {
+            ChatKind.group || ChatKind.channel => true,
+            _ => false,
+          },
           playSound: latestEffective.soundEnabled,
           showOnLockScreen: _notificationPreferences.namesOnLockScreen,
         ),

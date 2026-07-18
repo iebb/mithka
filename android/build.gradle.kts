@@ -28,6 +28,18 @@ subprojects {
             compilerOptions.jvmTarget.set(JvmTarget.JVM_17)
         }
     }
+
+    // camera_android_camerax 0.7.4+1 compiles against CameraX 1.6.0. With
+    // AGP 9's stricter compile classpath, CameraX's public class metadata also
+    // needs the Jetpack artifact that owns CallbackToFutureAdapter.
+    if (name == "camera_android_camerax") {
+        pluginManager.withPlugin("com.android.library") {
+            dependencies.add(
+                "implementation",
+                "androidx.concurrent:concurrent-futures:1.2.0",
+            )
+        }
+    }
 }
 
 // fvp 0.37.2 calls MDK_setGlobalOptionInt32("profiler.gpu", 1) from

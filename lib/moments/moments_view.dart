@@ -12,6 +12,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../app/app_navigator.dart';
 import '../chat/chat_picker_view.dart';
@@ -42,6 +43,11 @@ import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
+import '../theme/theme_controller.dart';
+import 'short_video_view.dart';
+import 'story_authoring_view.dart';
+import 'story_management_view.dart';
+import 'story_service.dart';
 import 'story_viewer_view.dart';
 
 class StoryGroup {
@@ -172,22 +178,31 @@ class MomentsView extends StatefulWidget {
 
 class _MomentsViewState extends State<MomentsView> {
   final _channels = ChatListViewModel();
+  final _stories = MomentsViewModel();
 
   @override
   void initState() {
     super.initState();
     _channels.addListener(_onChannels);
+    _stories.addListener(_onStories);
     _channels.onAppear();
+    _stories.start();
   }
 
   @override
   void dispose() {
     _channels.removeListener(_onChannels);
+    _stories.removeListener(_onStories);
     _channels.dispose();
+    _stories.dispose();
     super.dispose();
   }
 
   void _onChannels() {
+    if (mounted) setState(() {});
+  }
+
+  void _onStories() {
     if (mounted) setState(() {});
   }
 
@@ -216,9 +231,43 @@ class _MomentsViewState extends State<MomentsView> {
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => detail));
   }
 
+  void _openStories() =>
+      _openDetail(StoriesView(showBackButton: widget.onOpenDetail == null));
+
+  Future<void> _createStory() async {
+    final changed = await Navigator.of(context).push<bool>(
+      PageRouteBuilder<bool>(
+        fullscreenDialog: true,
+        pageBuilder: (_, _, _) => const StoryAuthoringView(),
+      ),
+    );
+    if (changed == true) _stories.refresh();
+  }
+
+  Future<void> _manageStories() async {
+    try {
+      final chatId = await StoryService().savedMessagesChatId();
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        PageRouteBuilder<void>(
+          pageBuilder: (_, _, _) => StoryManagementView(chatId: chatId),
+        ),
+      );
+      _stories.refresh();
+    } catch (error) {
+      if (mounted) {
+        showToast(
+          context,
+          context.l10n.t(AppStringKeys.storiesOpenFailed, {'value1': error}),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final theme = context.watch<ThemeController>();
     return Material(
       color: c.groupedBackground,
       child: Column(
@@ -228,6 +277,13 @@ class _MomentsViewState extends State<MomentsView> {
             child: ListView(
               padding: const EdgeInsets.only(top: AppSpacing.md),
               children: [
+                StoryShelf(
+                  model: _stories,
+                  onCreate: _createStory,
+                  onManage: _manageStories,
+                  onViewAll: _openStories,
+                ),
+                const SizedBox(height: AppSpacing.md),
                 Container(
                   color: c.background,
                   child: Column(
@@ -244,16 +300,6 @@ class _MomentsViewState extends State<MomentsView> {
                                 ? AppStrings.t(AppStringKeys.tabMoments)
                                 : AppStrings.t(AppStringKeys.tabFriendMoments),
                             initialChannels: _allChannels,
-                          ),
-                        ),
-                      ),
-                      _menuRow(
-                        icon: HeroAppIcons.wandMagicSparkles.data,
-                        iconColor: const Color(0xFFFFBE00),
-                        title: AppStrings.t(AppStringKeys.momentsStories),
-                        onTap: () => _openDetail(
-                          StoriesView(
-                            showBackButton: widget.onOpenDetail == null,
                           ),
                         ),
                       ),
@@ -300,6 +346,18 @@ class _MomentsViewState extends State<MomentsView> {
                     ],
                   ),
                 ),
+                if (theme.showShortVideos) ...[
+                  const SizedBox(height: AppSpacing.md),
+                  Container(
+                    color: c.background,
+                    child: _menuRow(
+                      icon: HeroAppIcons.solidFileVideo.data,
+                      iconColor: const Color(0xFFFF4D67),
+                      title: '短视频',
+                      onTap: () => ShortVideoLauncher.open(context),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -4083,6 +4141,321 @@ class _PostActions extends StatelessWidget {
   }
 }
 
+class StoryShelf extends StatelessWidget {
+  const StoryShelf({
+    super.key,
+    required this.model,
+    required this.onCreate,
+    required this.onManage,
+    required this.onViewAll,
+  });
+
+  final MomentsViewModel model;
+  final VoidCallback onCreate;
+  final VoidCallback onManage;
+  final VoidCallback onViewAll;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Container(
+      color: c.background,
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Text(
+                  AppStringKeys.momentsStories.l10n(context),
+                  style: TextStyle(
+                    color: c.textPrimary,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const Spacer(),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: onViewAll,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 5),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          AppStringKeys.storiesSeeAll.l10n(context),
+                          style: TextStyle(
+                            color: AppTheme.brand,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(width: 3),
+                        AppIcon(
+                          HeroAppIcons.chevronRight,
+                          size: 14,
+                          color: AppTheme.brand,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 4),
+          SizedBox(
+            height: 91,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              children: [
+                _StoryActionTile(
+                  label: AppStringKeys.storiesAdd.l10n(context),
+                  icon: HeroAppIcons.camera,
+                  prominent: true,
+                  onTap: onCreate,
+                ),
+                _StoryActionTile(
+                  label: AppStringKeys.storiesMy.l10n(context),
+                  icon: HeroAppIcons.inbox,
+                  photo: model.selfPhoto,
+                  photoTitle: model.selfName,
+                  count: model.ownGroup?.storyIds.length,
+                  onTap: model.ownGroup == null
+                      ? onManage
+                      : () => _openStory(context, model.ownGroup!),
+                  onBadgeTap: onManage,
+                ),
+                for (final group in model.groups)
+                  _StoryGroupTile(
+                    group: group,
+                    onTap: () => _openStory(context, group),
+                  ),
+                if (model.loading && model.groups.isEmpty)
+                  const SizedBox(
+                    width: 66,
+                    child: Center(child: AppActivityIndicator(size: 24)),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static void _openStory(BuildContext context, StoryGroup group) {
+    Navigator.of(context).push(
+      PageRouteBuilder<void>(
+        fullscreenDialog: true,
+        pageBuilder: (_, _, _) =>
+            StoryViewerView(chatId: group.chatId, storyIds: group.storyIds),
+      ),
+    );
+  }
+}
+
+class _StoryActionTile extends StatelessWidget {
+  const _StoryActionTile({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+    this.prominent = false,
+    this.photo,
+    this.photoTitle = '',
+    this.count,
+    this.onBadgeTap,
+  });
+
+  final String label;
+  final AppIconData icon;
+  final VoidCallback onTap;
+  final bool prominent;
+  final TdFileRef? photo;
+  final String photoTitle;
+  final int? count;
+  final VoidCallback? onBadgeTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Semantics(
+      button: true,
+      label: label,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: SizedBox(
+          width: 76,
+          child: Column(
+            children: [
+              SizedBox(
+                width: 62,
+                height: 62,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Container(
+                      width: 62,
+                      height: 62,
+                      padding: const EdgeInsets.all(2.5),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: prominent ? AppTheme.brandGradient : null,
+                        border: prominent
+                            ? null
+                            : Border.all(color: c.divider, width: 1.5),
+                      ),
+                      child: photo != null
+                          ? PhotoAvatar(
+                              title: photoTitle,
+                              photo: photo,
+                              size: 57,
+                            )
+                          : DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: prominent
+                                    ? c.background
+                                    : c.groupedBackground,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Center(
+                                child: AppIcon(
+                                  icon,
+                                  size: 25,
+                                  color: prominent
+                                      ? AppTheme.brand
+                                      : c.textSecondary,
+                                ),
+                              ),
+                            ),
+                    ),
+                    Positioned(
+                      right: -1,
+                      bottom: -1,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: onBadgeTap,
+                        child: Container(
+                          constraints: const BoxConstraints(
+                            minWidth: 21,
+                            minHeight: 21,
+                          ),
+                          alignment: Alignment.center,
+                          padding: count != null
+                              ? const EdgeInsets.symmetric(horizontal: 5)
+                              : EdgeInsets.zero,
+                          decoration: BoxDecoration(
+                            color: AppTheme.brand,
+                            borderRadius: BorderRadius.circular(11),
+                            border: Border.all(color: c.background, width: 2),
+                          ),
+                          child: count != null
+                              ? Text(
+                                  '$count',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                )
+                              : const AppIcon(
+                                  HeroAppIcons.plus,
+                                  size: 12,
+                                  color: Colors.white,
+                                ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 7),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: c.textSecondary, fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StoryGroupTile extends StatelessWidget {
+  const _StoryGroupTile({required this.group, required this.onTap});
+
+  final StoryGroup group;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Semantics(
+      button: true,
+      label:
+          '${group.name}, ${context.l10n.t(group.hasUnread ? AppStringKeys.storiesCountNew : AppStringKeys.storiesCountViewed, {'value1': group.storyIds.length})}',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: SizedBox(
+          width: 76,
+          child: Column(
+            children: [
+              Container(
+                width: 62,
+                height: 62,
+                padding: const EdgeInsets.all(2.5),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: group.hasUnread ? AppTheme.brandGradient : null,
+                  border: group.hasUnread
+                      ? null
+                      : Border.all(color: c.divider, width: 1.5),
+                ),
+                child: Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    color: c.background,
+                    shape: BoxShape.circle,
+                  ),
+                  child: PhotoAvatar(
+                    title: group.name,
+                    photo: group.photo,
+                    size: 53,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 7),
+              Text(
+                group.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: group.hasUnread ? c.textPrimary : c.textSecondary,
+                  fontSize: 12,
+                  fontWeight: group.hasUnread
+                      ? FontWeight.w600
+                      : FontWeight.w400,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class StoriesView extends StatefulWidget {
   const StoriesView({super.key, this.showBackButton = true});
 
@@ -4094,6 +4467,34 @@ class StoriesView extends StatefulWidget {
 
 class _StoriesViewState extends State<StoriesView> {
   final _model = MomentsViewModel();
+
+  Future<void> _createStory() async {
+    final changed = await Navigator.of(context).push<bool>(
+      PageRouteBuilder<bool>(
+        fullscreenDialog: true,
+        pageBuilder: (_, _, _) => const StoryAuthoringView(),
+      ),
+    );
+    if (changed == true) _model.refresh();
+  }
+
+  Future<void> _manageStories() async {
+    try {
+      final chatId = await StoryService().savedMessagesChatId();
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => StoryManagementView(chatId: chatId)),
+      );
+      _model.refresh();
+    } catch (error) {
+      if (mounted) {
+        showToast(
+          context,
+          context.l10n.t(AppStringKeys.storiesOpenFailed, {'value1': error}),
+        );
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -4122,6 +4523,36 @@ class _StoriesViewState extends State<StoriesView> {
             onBack: widget.showBackButton
                 ? () => Navigator.of(context).pop()
                 : null,
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _model.refresh,
+                  child: Padding(
+                    padding: const EdgeInsets.all(5),
+                    child: AppIcon(
+                      HeroAppIcons.arrowsRotate,
+                      size: 20,
+                      color: AppTheme.brand,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _createStory,
+                  child: Padding(
+                    padding: const EdgeInsets.all(5),
+                    child: AppIcon(
+                      HeroAppIcons.plus,
+                      size: 22,
+                      color: AppTheme.brand,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
           Expanded(child: _content()),
         ],
@@ -4131,49 +4562,271 @@ class _StoriesViewState extends State<StoriesView> {
 
   Widget _content() {
     final c = context.colors;
-    if (_model.groups.isEmpty && _model.loading) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+    final groups = _model.groups;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 28),
+      children: [
+        Row(
           children: [
-            const CircularProgressIndicator(),
-            const SizedBox(height: 12),
-            Text(AppStrings.t(AppStringKeys.momentsLoadingPosts).l10n(context)),
-          ],
-        ),
-      );
-    }
-    if (_model.groups.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AppIcon(HeroAppIcons.circleNotch, size: 46, color: AppTheme.brand),
-            const SizedBox(height: 12),
-            Text(
-              AppStrings.t(AppStringKeys.momentsNoFriendPosts).l10n(context),
-              style: TextStyle(fontSize: 15, color: c.textSecondary),
+            Expanded(
+              child: _primaryAction(
+                icon: HeroAppIcons.camera,
+                title: AppStringKeys.storiesNew.l10n(context),
+                subtitle: AppStringKeys.storiesPhotoVideo.l10n(context),
+                onTap: _createStory,
+                prominent: true,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _primaryAction(
+                icon: HeroAppIcons.inbox,
+                title: AppStringKeys.storiesMy.l10n(context),
+                subtitle: AppStringKeys.storiesProfileArchive.l10n(context),
+                onTap: _manageStories,
+              ),
             ),
           ],
         ),
-      );
-    }
-    return Container(
-      color: c.background,
-      child: ListView.builder(
-        padding: EdgeInsets.zero,
-        itemCount: _model.groups.length,
-        itemBuilder: (context, i) {
-          final group = _model.groups[i];
-          return Column(
-            mainAxisSize: MainAxisSize.min,
+        if (_model.ownGroup case final own?) ...[
+          const SizedBox(height: 12),
+          _ownStoryCard(own),
+        ],
+        const SizedBox(height: 22),
+        Row(
+          children: [
+            Text(
+              AppStringKeys.storiesRecent.l10n(context),
+              style: TextStyle(
+                color: c.textPrimary,
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const Spacer(),
+            if (_model.loading) const AppActivityIndicator(size: 18),
+          ],
+        ),
+        const SizedBox(height: 10),
+        if (groups.isEmpty && _model.loading)
+          _loadingCard()
+        else if (groups.isEmpty)
+          _emptyCard()
+        else
+          for (final group in groups) ...[
+            _row(group),
+            if (group != groups.last) const SizedBox(height: 8),
+          ],
+      ],
+    );
+  }
+
+  Widget _primaryAction({
+    required AppIconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+    bool prominent = false,
+  }) {
+    final c = context.colors;
+    return Semantics(
+      button: true,
+      label: title,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          height: 84,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            gradient: prominent ? AppTheme.brandGradient : null,
+            color: prominent ? null : c.background,
+            borderRadius: BorderRadius.circular(16),
+            border: prominent ? null : Border.all(color: c.divider),
+          ),
+          child: Row(
             children: [
-              _row(group),
-              if (i != _model.groups.length - 1)
-                const InsetDivider(leadingInset: 80),
+              Container(
+                width: 42,
+                height: 42,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: prominent
+                      ? Colors.white.withValues(alpha: 0.2)
+                      : AppTheme.brand.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: AppIcon(
+                  icon,
+                  size: 22,
+                  color: prominent ? Colors.white : AppTheme.brand,
+                ),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: prominent ? Colors.white : c.textPrimary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: prominent
+                            ? Colors.white.withValues(alpha: 0.78)
+                            : c.textSecondary,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
-          );
-        },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _ownStoryCard(StoryGroup group) {
+    final c = context.colors;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _openGroup(group),
+      child: Container(
+        height: 64,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: AppTheme.brand.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppTheme.brand.withValues(alpha: 0.22)),
+        ),
+        child: Row(
+          children: [
+            PhotoAvatar(
+              title: _model.selfName,
+              photo: _model.selfPhoto,
+              size: 42,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    AppStringKeys.storiesYourActive.l10n(context),
+                    style: TextStyle(
+                      color: c.textPrimary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    context.l10n.t(AppStringKeys.storiesActiveCount, {
+                      'value1': group.storyIds.length,
+                    }),
+                    style: TextStyle(color: c.textSecondary, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            AppIcon(HeroAppIcons.chevronRight, size: 17, color: c.textTertiary),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _loadingCard() => Container(
+    height: 150,
+    alignment: Alignment.center,
+    decoration: BoxDecoration(
+      color: context.colors.background,
+      borderRadius: BorderRadius.circular(16),
+    ),
+    child: const AppActivityIndicator(size: 30),
+  );
+
+  Widget _emptyCard() {
+    final c = context.colors;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+      decoration: BoxDecoration(
+        color: c.background,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 58,
+            height: 58,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: AppTheme.brand.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: AppIcon(
+              HeroAppIcons.images,
+              size: 28,
+              color: AppTheme.brand,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            AppStringKeys.storiesEmptyTitle.l10n(context),
+            style: TextStyle(
+              color: c.textPrimary,
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            AppStringKeys.storiesEmptyDescription.l10n(context),
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: c.textSecondary,
+              fontSize: 13,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 18),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _createStory,
+            child: Container(
+              height: 42,
+              alignment: Alignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              decoration: BoxDecoration(
+                color: AppTheme.brand,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                AppStringKeys.storiesCreate.l10n(context),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -4182,29 +4835,36 @@ class _StoriesViewState extends State<StoriesView> {
     final c = context.colors;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(
-          fullscreenDialog: true,
-          builder: (_) =>
-              StoryViewerView(chatId: group.chatId, storyIds: group.storyIds),
-        ),
-      ),
+      onTap: () => _openGroup(group),
       child: Container(
-        height: 72,
-        color: c.background,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
+        height: 78,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        foregroundDecoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(color: c.divider),
+        ),
+        decoration: BoxDecoration(
+          color: c.background,
+          borderRadius: BorderRadius.circular(15),
+        ),
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(3),
+              padding: const EdgeInsets.all(2.5),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: group.hasUnread ? AppTheme.brandGradient : null,
+                border: group.hasUnread
+                    ? null
+                    : Border.all(color: c.divider, width: 1.5),
               ),
-              child: PhotoAvatar(
-                title: group.name,
-                photo: group.photo,
-                size: 54,
+              child: Container(
+                padding: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  color: c.background,
+                  shape: BoxShape.circle,
+                ),
+                child: PhotoAvatar(title: group.name, photo: group.photo),
               ),
             ),
             const SizedBox(width: 12),
@@ -4225,22 +4885,53 @@ class _StoriesViewState extends State<StoriesView> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    AppStrings.t(AppStringKeys.momentsNewPostsCount, {
-                      'value1': group.storyIds.length,
-                    }),
-                    style: TextStyle(fontSize: 13, color: c.textSecondary),
+                    group.hasUnread
+                        ? context.l10n.t(AppStringKeys.storiesCountNew, {
+                            'value1': group.storyIds.length,
+                          })
+                        : context.l10n.t(AppStringKeys.storiesCountViewed, {
+                            'value1': group.storyIds.length,
+                          }),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: group.hasUnread ? AppTheme.brand : c.textSecondary,
+                      fontWeight: group.hasUnread
+                          ? FontWeight.w600
+                          : FontWeight.w400,
+                    ),
                   ),
                 ],
               ),
             ),
-            Text(
-              // order is a sort weight with flag bits, not a timestamp —
-              // rendering it produced dates centuries in the future.
-              DateText.listLabel(group.date),
-              style: TextStyle(fontSize: 12, color: c.textTertiary),
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  // order is a sort weight with flag bits, not a timestamp.
+                  DateText.listLabel(group.date),
+                  style: TextStyle(fontSize: 11, color: c.textTertiary),
+                ),
+                const SizedBox(height: 7),
+                AppIcon(
+                  HeroAppIcons.chevronRight,
+                  size: 16,
+                  color: c.textTertiary,
+                ),
+              ],
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _openGroup(StoryGroup group) {
+    Navigator.of(context).push(
+      PageRouteBuilder<void>(
+        fullscreenDialog: true,
+        pageBuilder: (_, _, _) =>
+            StoryViewerView(chatId: group.chatId, storyIds: group.storyIds),
       ),
     );
   }
@@ -4248,8 +4939,12 @@ class _StoriesViewState extends State<StoriesView> {
 
 class MomentsViewModel extends ChangeNotifier {
   List<StoryGroup> groups = [];
+  StoryGroup? ownGroup;
+  String selfName = '';
+  TdFileRef? selfPhoto;
   bool loading = false;
   final Map<int, StoryGroup> _map = {};
+  int? _selfChatId;
   bool _started = false;
   StreamSubscription? _sub;
 
@@ -4261,7 +4956,32 @@ class MomentsViewModel extends ChangeNotifier {
     _sub = TdClient.shared.subscribe().listen((update) {
       if (update.type == 'updateChatActiveStories') _handle(update);
     });
-    _loadAll();
+    unawaited(_loadSelf());
+    unawaited(_loadAll());
+  }
+
+  void refresh() {
+    if (!_started) return;
+    loading = true;
+    notifyListeners();
+    unawaited(_loadAll());
+  }
+
+  Future<void> _loadSelf() async {
+    try {
+      final me = await TdClient.shared.query({'@type': 'getMe'});
+      final userId = me.int64('id');
+      if (userId == null) return;
+      final chat = await TdClient.shared.query({
+        '@type': 'createPrivateChat',
+        'user_id': userId,
+        'force': false,
+      });
+      _selfChatId = chat.int64('id');
+      selfName = TDParse.userName(me);
+      selfPhoto = TDParse.smallPhoto(me.obj('profile_photo'));
+      _publish();
+    } catch (_) {}
   }
 
   @override
@@ -4356,7 +5076,9 @@ class MomentsViewModel extends ChangeNotifier {
   }
 
   void _publish() {
-    groups = _map.values.toList()..sort((a, b) => b.order.compareTo(a.order));
+    ownGroup = _selfChatId == null ? null : _map[_selfChatId];
+    groups = _map.values.where((group) => group.chatId != _selfChatId).toList()
+      ..sort((a, b) => b.order.compareTo(a.order));
     notifyListeners();
   }
 }

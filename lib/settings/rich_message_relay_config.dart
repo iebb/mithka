@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 abstract final class RichMessageRelayConfig {
@@ -5,8 +6,12 @@ abstract final class RichMessageRelayConfig {
   static const _storage = FlutterSecureStorage();
 
   static Future<String?> readToken() async {
-    final token = (await _storage.read(key: _tokenKey))?.trim();
-    return token == null || token.isEmpty ? null : token;
+    try {
+      final token = (await _storage.read(key: _tokenKey))?.trim();
+      return token == null || token.isEmpty ? null : token;
+    } on MissingPluginException {
+      return null;
+    }
   }
 
   static Future<bool> isConfigured() async => await readToken() != null;
@@ -17,8 +22,18 @@ abstract final class RichMessageRelayConfig {
       await clear();
       return;
     }
-    await _storage.write(key: _tokenKey, value: value);
+    try {
+      await _storage.write(key: _tokenKey, value: value);
+    } on MissingPluginException {
+      return;
+    }
   }
 
-  static Future<void> clear() => _storage.delete(key: _tokenKey);
+  static Future<void> clear() async {
+    try {
+      await _storage.delete(key: _tokenKey);
+    } on MissingPluginException {
+      return;
+    }
+  }
 }

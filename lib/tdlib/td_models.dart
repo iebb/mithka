@@ -584,6 +584,9 @@ class ChatMessage {
     this.videoSticker,
     this.video,
     this.videoDuration,
+    this.videoNoteTranscription = '',
+    this.videoNoteTranscriptionPending = false,
+    this.videoNoteTranscriptionError,
     this.diceEmoji,
     this.diceValue,
     this.stickerFileId,
@@ -591,6 +594,14 @@ class ChatMessage {
     this.isAnimatedEmoji = false,
     this.location,
     this.voice,
+    this.contact,
+    this.poll,
+    this.checklist,
+    this.story,
+    this.suggestedPostInfo,
+    this.summaryCard,
+    this.summaryLanguageCode = '',
+    this.canRecognizeSpeech = false,
     this.replyToMessageId,
     this.replyToDate,
     this.replyToImage,
@@ -609,6 +620,8 @@ class ChatMessage {
     this.richMessageIsFull = true,
     this.isEdited = false,
     this.isSending = false,
+    this.viewCount = 0,
+    this.forwardCount = 0,
     this.hasCommentThread = false,
     this.commentCount = 0,
     this.lastCommentMessageId,
@@ -658,6 +671,9 @@ class ChatMessage {
   TdFileRef? videoSticker; // .webm video sticker file
   TdFileRef? video; // playable video file (messageVideo)
   int? videoDuration; // seconds, for the duration badge
+  String videoNoteTranscription;
+  bool videoNoteTranscriptionPending;
+  String? videoNoteTranscriptionError;
   String? diceEmoji; // messageDice emoji, e.g. 🎲 / 🎯 / 🏀
   int? diceValue; // messageDice value reported by TDLib
   int? stickerFileId; // any sticker's file id (for "add to favorites")
@@ -665,6 +681,19 @@ class ChatMessage {
   bool isAnimatedEmoji; // single-emoji message (messageAnimatedEmoji)
   MessageLocation? location;
   MessageVoice? voice;
+  MessageContactCard? contact;
+  MessagePoll? poll;
+  MessageChecklist? checklist;
+  MessageStoryReference? story;
+  MessageSuggestedPostInfo? suggestedPostInfo;
+  MessageSummaryCard? summaryCard;
+
+  /// Server-provided hint that this message can be summarized by Telegram AI.
+  final String summaryLanguageCode;
+  bool canRecognizeSpeech;
+  String? aiSummaryText;
+  List<MessageTextEntity> aiSummaryEntities = const [];
+  bool aiSummaryLoading = false;
 
   // 引用 / reply: the message this one replies to, resolved lazily for the quote.
   int? replyToMessageId;
@@ -693,6 +722,8 @@ class ChatMessage {
 
   bool isEdited; // shows a "已编辑" tag
   bool isSending;
+  int viewCount;
+  int forwardCount;
   bool hasCommentThread;
   int
   commentCount; // channel discussion replies/comments, when TDLib exposes it
@@ -733,6 +764,11 @@ class ChatMessage {
         diceEmoji != null ||
         location != null ||
         voice != null ||
+        contact != null ||
+        poll != null ||
+        checklist != null ||
+        story != null ||
+        summaryCard != null ||
         linkPreview != null ||
         richBlocks.isNotEmpty;
   }
@@ -809,10 +845,16 @@ class ChatMessage {
             currentVoice.file?.inheritLocalPathFrom(previousVoice.file) ??
             previousVoice.file,
         duration: currentVoice.duration,
+        waveform: currentVoice.waveform,
+        transcription: currentVoice.transcription,
+        transcriptionPending: currentVoice.transcriptionPending,
+        transcriptionError: currentVoice.transcriptionError,
       );
     }
   }
 }
+
+enum MessageButtonStyle { standard, primary, danger, success }
 
 class MessageButton {
   const MessageButton({
@@ -823,6 +865,11 @@ class MessageButton {
     this.userId,
     this.copyText,
     this.switchInlineQuery,
+    this.requestId,
+    this.suggestedName,
+    this.suggestedUsername,
+    this.style = MessageButtonStyle.standard,
+    this.iconCustomEmojiId = 0,
     this.isReplyKeyboard = false,
   });
 
@@ -833,6 +880,11 @@ class MessageButton {
   final int? userId;
   final String? copyText;
   final String? switchInlineQuery;
+  final int? requestId;
+  final String? suggestedName;
+  final String? suggestedUsername;
+  final MessageButtonStyle style;
+  final int iconCustomEmojiId;
   final bool isReplyKeyboard;
 
   bool get isCallback =>
@@ -932,9 +984,220 @@ class MessageLocation {
 }
 
 class MessageVoice {
-  MessageVoice({required this.file, required this.duration});
+  MessageVoice({
+    required this.file,
+    required this.duration,
+    this.waveform = '',
+    this.transcription = '',
+    this.transcriptionPending = false,
+    this.transcriptionError,
+  });
   final TdFileRef? file;
   final int duration;
+  final String waveform;
+  final String transcription;
+  final bool transcriptionPending;
+  final String? transcriptionError;
+}
+
+class MessageContactCard {
+  const MessageContactCard({
+    required this.phoneNumber,
+    required this.firstName,
+    required this.lastName,
+    required this.vcard,
+    required this.userId,
+  });
+
+  final String phoneNumber;
+  final String firstName;
+  final String lastName;
+  final String vcard;
+  final int userId;
+
+  String get displayName {
+    final value = '$firstName $lastName'.trim();
+    return value.isEmpty ? phoneNumber : value;
+  }
+}
+
+class MessagePollOption {
+  const MessagePollOption({
+    required this.index,
+    required this.id,
+    required this.text,
+    required this.voterCount,
+    required this.votePercentage,
+    required this.isChosen,
+    required this.isBeingChosen,
+  });
+
+  final int index;
+  final String id;
+  final String text;
+  final int voterCount;
+  final int votePercentage;
+  final bool isChosen;
+  final bool isBeingChosen;
+}
+
+class MessagePoll {
+  const MessagePoll({
+    required this.id,
+    required this.question,
+    required this.description,
+    required this.options,
+    required this.totalVoterCount,
+    required this.canGetVoters,
+    required this.canSeeResults,
+    required this.isAnonymous,
+    required this.allowsMultipleAnswers,
+    required this.allowsRevoting,
+    required this.isQuiz,
+    required this.isClosed,
+    required this.canAddOption,
+    this.correctOptionId = -1,
+    this.explanation = '',
+    this.media,
+  });
+
+  final int id;
+  final String question;
+  final String description;
+  final List<MessagePollOption> options;
+  final int totalVoterCount;
+  final bool canGetVoters;
+  final bool canSeeResults;
+  final bool isAnonymous;
+  final bool allowsMultipleAnswers;
+  final bool allowsRevoting;
+  final bool isQuiz;
+  final bool isClosed;
+  final bool canAddOption;
+  final int correctOptionId;
+  final String explanation;
+  final TdFileRef? media;
+
+  List<int> get chosenOptionIndexes => [
+    for (final option in options)
+      if (option.isChosen) option.index,
+  ];
+}
+
+class MessageChecklistTask {
+  const MessageChecklistTask({
+    required this.id,
+    required this.text,
+    required this.isCompleted,
+    this.completedByUserId,
+    this.completedByChatId,
+    this.completionDate = 0,
+  });
+
+  final int id;
+  final String text;
+  final bool isCompleted;
+  final int? completedByUserId;
+  final int? completedByChatId;
+  final int completionDate;
+}
+
+class MessageChecklist {
+  const MessageChecklist({
+    required this.title,
+    required this.tasks,
+    required this.othersCanAddTasks,
+    required this.canAddTasks,
+    required this.othersCanMarkTasksAsDone,
+    required this.canMarkTasksAsDone,
+  });
+
+  final String title;
+  final List<MessageChecklistTask> tasks;
+  final bool othersCanAddTasks;
+  final bool canAddTasks;
+  final bool othersCanMarkTasksAsDone;
+  final bool canMarkTasksAsDone;
+}
+
+class MessageStoryReference {
+  const MessageStoryReference({
+    required this.posterChatId,
+    required this.storyId,
+    required this.viaMention,
+  });
+
+  final int posterChatId;
+  final int storyId;
+  final bool viaMention;
+}
+
+enum SuggestedPostPriceKind { stars, ton }
+
+class SuggestedPostPrice {
+  const SuggestedPostPrice({required this.kind, required this.amount});
+
+  final SuggestedPostPriceKind kind;
+
+  /// Telegram Stars for [SuggestedPostPriceKind.stars], or hundredths of one
+  /// TON for [SuggestedPostPriceKind.ton], matching TDLib's gram_cent_count.
+  final int amount;
+
+  Map<String, dynamic> toTdJson() => switch (kind) {
+    SuggestedPostPriceKind.stars => {
+      '@type': 'suggestedPostPriceStar',
+      'star_count': amount,
+    },
+    SuggestedPostPriceKind.ton => {
+      '@type': 'suggestedPostPriceGram',
+      'gram_cent_count': amount,
+    },
+  };
+}
+
+enum SuggestedPostState { pending, approved, declined, unknown }
+
+class MessageSuggestedPostInfo {
+  const MessageSuggestedPostInfo({
+    required this.state,
+    required this.canBeApproved,
+    required this.canBeDeclined,
+    this.price,
+    this.sendDate = 0,
+  });
+
+  final SuggestedPostPrice? price;
+  final int sendDate;
+  final SuggestedPostState state;
+  final bool canBeApproved;
+  final bool canBeDeclined;
+}
+
+enum MessageSummaryKind {
+  game,
+  invoice,
+  giveaway,
+  paidMedia,
+  gift,
+  suggestedPost,
+}
+
+class MessageSummaryCard {
+  const MessageSummaryCard({
+    required this.kind,
+    required this.title,
+    this.subtitle = '',
+    this.detail = '',
+    this.image,
+    this.video,
+  });
+
+  final MessageSummaryKind kind;
+  final String title;
+  final String subtitle;
+  final String detail;
+  final TdFileRef? image;
+  final TdFileRef? video;
 }
 
 class Contact {
@@ -1059,9 +1322,15 @@ abstract final class TDParse {
   /// Text of a chat's unsent draft, or '' if none.
   static String draftText(Map<String, dynamic>? draft) {
     if (draft == null) return '';
-    final content = draft.obj('input_message_text');
-    if (content?.type != 'inputMessageText') return '';
-    return content?.obj('text')?.str('text') ?? '';
+    final content = draft.obj('content');
+    if (content?.type == 'draftMessageContentText') {
+      return content?.obj('text')?.str('text') ?? '';
+    }
+    // Keep old cached fixtures readable during an in-place upgrade. Current
+    // TDLib responses always use draftMessageContentText above.
+    final legacy = draft.obj('input_message_text');
+    if (legacy?.type != 'inputMessageText') return '';
+    return legacy?.obj('text')?.str('text') ?? '';
   }
 
   static ChatMessage? message(Map<String, dynamic> message) {
@@ -1185,6 +1454,9 @@ abstract final class TDParse {
         videoSticker: media.videoSticker,
         video: media.video,
         videoDuration: media.videoDuration,
+        videoNoteTranscription: videoNoteSpeech(content).$1,
+        videoNoteTranscriptionPending: videoNoteSpeech(content).$2,
+        videoNoteTranscriptionError: videoNoteSpeech(content).$3,
         diceEmoji: content?.type == 'messageDice'
             ? content?.str('emoji')
             : null,
@@ -1196,6 +1468,15 @@ abstract final class TDParse {
         isAnimatedEmoji: media.isAnimatedEmoji,
         location: locationAttachment(content),
         voice: voiceAttachment(content),
+        contact: contactAttachment(content),
+        poll: pollAttachment(content),
+        checklist: checklistAttachment(content),
+        story: storyAttachment(content),
+        suggestedPostInfo: suggestedPostInfo(
+          message.obj('suggested_post_info'),
+        ),
+        summaryCard: summaryCard(message, content),
+        summaryLanguageCode: message.str('summary_language_code') ?? '',
         replyToMessageId: isContentRestricted ? null : replyToMessageId,
         serviceUserIds: isContentRestricted
             ? const []
@@ -1215,6 +1496,9 @@ abstract final class TDParse {
             (content?.obj('message')?.boolean('is_full') ?? false),
         isEdited: (message.integer('edit_date') ?? 0) > 0,
         isSending: message.obj('sending_state') != null,
+        viewCount: message.obj('interaction_info')?.integer('view_count') ?? 0,
+        forwardCount:
+            message.obj('interaction_info')?.integer('forward_count') ?? 0,
         hasCommentThread: !isContentRestricted && replyInfo != null,
         commentCount: isContentRestricted
             ? 0
@@ -1509,6 +1793,16 @@ abstract final class TDParse {
       userId: type?.int64('user_id'),
       copyText: type?.str('text') ?? copyText,
       switchInlineQuery: type?.str('query'),
+      requestId: type?.integer('id'),
+      suggestedName: type?.str('suggested_name'),
+      suggestedUsername: type?.str('suggested_username'),
+      style: switch (button.obj('style')?.type ?? button['style']) {
+        'buttonStylePrimary' => MessageButtonStyle.primary,
+        'buttonStyleDanger' => MessageButtonStyle.danger,
+        'buttonStyleSuccess' => MessageButtonStyle.success,
+        _ => MessageButtonStyle.standard,
+      },
+      iconCustomEmojiId: button.int64('icon_custom_emoji_id') ?? 0,
       isReplyKeyboard: isReplyKeyboard,
     );
   }
@@ -2577,10 +2871,395 @@ abstract final class TDParse {
     if (content == null || content.type != 'messageVoiceNote') return null;
     final note = content.obj('voice_note');
     if (note == null) return null;
+    final speech = note.obj('speech_recognition_result');
     return MessageVoice(
       file: fileRef(note.obj('voice')),
       duration: note.integer('duration') ?? 0,
+      waveform: note.str('waveform') ?? '',
+      transcription: speech?.type == 'speechRecognitionResultText'
+          ? speech?.str('text') ?? ''
+          : speech?.type == 'speechRecognitionResultPending'
+          ? speech?.str('partial_text') ?? ''
+          : '',
+      transcriptionPending: speech?.type == 'speechRecognitionResultPending',
+      transcriptionError: speech?.type == 'speechRecognitionResultError'
+          ? speech?.obj('error')?.str('message')
+          : null,
     );
+  }
+
+  static (String, bool, String?) videoNoteSpeech(
+    Map<String, dynamic>? content,
+  ) {
+    if (content?.type != 'messageVideoNote') return ('', false, null);
+    final speech = content?.obj('video_note')?.obj('speech_recognition_result');
+    return (
+      speech?.type == 'speechRecognitionResultText'
+          ? speech?.str('text') ?? ''
+          : speech?.type == 'speechRecognitionResultPending'
+          ? speech?.str('partial_text') ?? ''
+          : '',
+      speech?.type == 'speechRecognitionResultPending',
+      speech?.type == 'speechRecognitionResultError'
+          ? speech?.obj('error')?.str('message')
+          : null,
+    );
+  }
+
+  static MessageContactCard? contactAttachment(Map<String, dynamic>? content) {
+    if (content?.type != 'messageContact') return null;
+    final contact = content?.obj('contact');
+    if (contact == null) return null;
+    return MessageContactCard(
+      phoneNumber: contact.str('phone_number') ?? '',
+      firstName: contact.str('first_name') ?? '',
+      lastName: contact.str('last_name') ?? '',
+      vcard: contact.str('vcard') ?? '',
+      userId: contact.int64('user_id') ?? 0,
+    );
+  }
+
+  static MessagePoll? pollAttachment(Map<String, dynamic>? content) {
+    if (content?.type != 'messagePoll') return null;
+    final poll = content?.obj('poll');
+    if (poll == null) return null;
+    final type = poll.obj('type');
+    final options = <MessagePollOption>[];
+    final rawOptions =
+        poll.objects('options') ?? const <Map<String, dynamic>>[];
+    for (var index = 0; index < rawOptions.length; index++) {
+      final option = rawOptions[index];
+      options.add(
+        MessagePollOption(
+          index: index,
+          id: option.str('id') ?? '$index',
+          text: option.obj('text')?.str('text') ?? '',
+          voterCount: option.integer('voter_count') ?? 0,
+          votePercentage: option.integer('vote_percentage') ?? 0,
+          isChosen: option.boolean('is_chosen') ?? false,
+          isBeingChosen: option.boolean('is_being_chosen') ?? false,
+        ),
+      );
+    }
+    final media = _pollMediaAttachment(content?.obj('media'));
+    return MessagePoll(
+      id: poll.int64('id') ?? 0,
+      question: poll.obj('question')?.str('text') ?? '',
+      description: content?.obj('description')?.str('text') ?? '',
+      options: options,
+      totalVoterCount: poll.integer('total_voter_count') ?? 0,
+      canGetVoters: poll.boolean('can_get_voters') ?? false,
+      canSeeResults: poll.boolean('can_see_results') ?? false,
+      isAnonymous: poll.boolean('is_anonymous') ?? false,
+      allowsMultipleAnswers: poll.boolean('allows_multiple_answers') ?? false,
+      allowsRevoting: poll.boolean('allows_revoting') ?? false,
+      isQuiz: type?.type == 'pollTypeQuiz',
+      isClosed: poll.boolean('is_closed') ?? false,
+      canAddOption: content?.boolean('can_add_option') ?? false,
+      correctOptionId:
+          type?.int64Array('correct_option_ids')?.firstOrNull ?? -1,
+      explanation: type?.obj('explanation')?.str('text') ?? '',
+      media: media.image,
+    );
+  }
+
+  static MediaAttachment _pollMediaAttachment(Map<String, dynamic>? media) {
+    if (media == null) return const MediaAttachment();
+    return switch (media.type) {
+      'pollMediaPhoto' => photoAttachment(media.obj('photo')),
+      'pollMediaVideo' => videoAttachment(media.obj('video'), media),
+      'pollMediaAnimation' => animationAttachment(media.obj('animation')),
+      'pollMediaDocument' => MediaAttachment(
+        image: fileRef(media.obj('document')?.obj('thumbnail')?.obj('file')),
+      ),
+      'pollMediaSticker' => _stickerMedia(media.obj('sticker')),
+      _ => const MediaAttachment(),
+    };
+  }
+
+  static MessageChecklist? checklistAttachment(Map<String, dynamic>? content) {
+    if (content?.type != 'messageChecklist') return null;
+    final checklist = content?.obj('list');
+    if (checklist == null) return null;
+    final tasks = <MessageChecklistTask>[];
+    for (final task
+        in checklist.objects('tasks') ?? const <Map<String, dynamic>>[]) {
+      final completedBy = task.obj('completed_by');
+      tasks.add(
+        MessageChecklistTask(
+          id: task.integer('id') ?? 0,
+          text: task.obj('text')?.str('text') ?? '',
+          isCompleted: completedBy != null,
+          completedByUserId: completedBy?.type == 'messageSenderUser'
+              ? completedBy?.int64('user_id')
+              : null,
+          completedByChatId: completedBy?.type == 'messageSenderChat'
+              ? completedBy?.int64('chat_id')
+              : null,
+          completionDate: task.integer('completion_date') ?? 0,
+        ),
+      );
+    }
+    return MessageChecklist(
+      title: checklist.obj('title')?.str('text') ?? '',
+      tasks: tasks,
+      othersCanAddTasks: checklist.boolean('others_can_add_tasks') ?? false,
+      canAddTasks: checklist.boolean('can_add_tasks') ?? false,
+      othersCanMarkTasksAsDone:
+          checklist.boolean('others_can_mark_tasks_as_done') ?? false,
+      canMarkTasksAsDone: checklist.boolean('can_mark_tasks_as_done') ?? false,
+    );
+  }
+
+  static MessageStoryReference? storyAttachment(Map<String, dynamic>? content) {
+    if (content?.type != 'messageStory') return null;
+    final posterChatId = content?.int64('story_poster_chat_id');
+    final storyId = content?.integer('story_id');
+    if (posterChatId == null || storyId == null) return null;
+    return MessageStoryReference(
+      posterChatId: posterChatId,
+      storyId: storyId,
+      viaMention: content?.boolean('via_mention') ?? false,
+    );
+  }
+
+  static SuggestedPostPrice? suggestedPostPrice(Map<String, dynamic>? price) {
+    if (price == null) return null;
+    return switch (price.type) {
+      'suggestedPostPriceStar' => SuggestedPostPrice(
+        kind: SuggestedPostPriceKind.stars,
+        amount: price.int64('star_count') ?? 0,
+      ),
+      'suggestedPostPriceGram' => SuggestedPostPrice(
+        kind: SuggestedPostPriceKind.ton,
+        amount: price.int64('gram_cent_count') ?? 0,
+      ),
+      _ => null,
+    };
+  }
+
+  static MessageSuggestedPostInfo? suggestedPostInfo(
+    Map<String, dynamic>? info,
+  ) {
+    if (info == null) return null;
+    final state = switch (info.obj('state')?.type) {
+      'suggestedPostStatePending' => SuggestedPostState.pending,
+      'suggestedPostStateApproved' => SuggestedPostState.approved,
+      'suggestedPostStateDeclined' => SuggestedPostState.declined,
+      _ => SuggestedPostState.unknown,
+    };
+    return MessageSuggestedPostInfo(
+      price: suggestedPostPrice(info.obj('price')),
+      sendDate: info.integer('send_date') ?? 0,
+      state: state,
+      canBeApproved: info.boolean('can_be_approved') ?? false,
+      canBeDeclined: info.boolean('can_be_declined') ?? false,
+    );
+  }
+
+  static MessageSummaryCard? summaryCard(
+    Map<String, dynamic> message,
+    Map<String, dynamic>? content,
+  ) {
+    if (content == null) return null;
+    switch (content.type) {
+      case 'messageGame':
+        final game = content.obj('game');
+        if (game == null) return null;
+        final animation = animationAttachment(game.obj('animation'));
+        final photo = photoAttachment(game.obj('photo'));
+        return MessageSummaryCard(
+          kind: MessageSummaryKind.game,
+          title: game.str('title') ?? telegramText(AppStringKeys.tdMessageGame),
+          subtitle:
+              game.str('description') ?? game.obj('text')?.str('text') ?? '',
+          detail: game.str('short_name') ?? '',
+          image: animation.image ?? photo.image,
+          video: animation.video,
+        );
+      case 'messageInvoice':
+        final product = content.obj('product_info');
+        final amount = content.int64('total_amount') ?? 0;
+        final currency = content.str('currency') ?? '';
+        return MessageSummaryCard(
+          kind: MessageSummaryKind.invoice,
+          title:
+              product?.str('title') ??
+              telegramText(AppStringKeys.tdMessageProduct),
+          subtitle: product?.obj('description')?.str('text') ?? '',
+          detail: currency.isEmpty ? '' : '$currency $amount',
+          image: photoAttachment(product?.obj('photo')).image,
+        );
+      case 'messageGiveaway':
+        final prize = content.obj('prize');
+        final parameters = content.obj('parameters');
+        final prizeLabel = switch (prize?.type) {
+          'giveawayPrizePremium' =>
+            '${prize?.integer('month_count') ?? 0} months Premium',
+          'giveawayPrizeStars' =>
+            '${prize?.int64('star_count') ?? 0} Telegram Stars',
+          _ => parameters?.str('prize_description') ?? '',
+        };
+        return MessageSummaryCard(
+          kind: MessageSummaryKind.giveaway,
+          title: telegramText(AppStringKeys.tdMessageGiveaway),
+          subtitle: prizeLabel,
+          detail: '${content.integer('winner_count') ?? 0} winners',
+          image: _stickerMedia(content.obj('sticker')).image,
+        );
+      case 'messageGiveawayWinners':
+        return MessageSummaryCard(
+          kind: MessageSummaryKind.giveaway,
+          title: telegramText(AppStringKeys.tdMessageGiveaway),
+          subtitle: content.str('prize_description') ?? '',
+          detail: '${content.integer('winner_count') ?? 0} winners',
+        );
+      case 'messageGiveawayCompleted':
+      case 'messageGiveawayCreated':
+        return MessageSummaryCard(
+          kind: MessageSummaryKind.giveaway,
+          title: telegramText(AppStringKeys.tdMessageGiveaway),
+          detail: content.type == 'messageGiveawayCreated'
+              ? '${content.int64('star_count') ?? 0} Telegram Stars'
+              : '${content.integer('winner_count') ?? 0} winners',
+        );
+      case 'messagePaidMedia':
+        final media = content['media'];
+        MediaAttachment preview = const MediaAttachment();
+        var mediaCount = 0;
+        if (media is List) {
+          mediaCount = media.length;
+          if (media.isNotEmpty && media.first is Map<String, dynamic>) {
+            preview = _paidMediaAttachment(media.first as Map<String, dynamic>);
+          }
+        }
+        return MessageSummaryCard(
+          kind: MessageSummaryKind.paidMedia,
+          title: telegramText(AppStringKeys.tdMessagePaidContent),
+          subtitle: content.obj('caption')?.str('text') ?? '',
+          detail:
+              '${content.int64('star_count') ?? 0} Stars · $mediaCount media',
+          image: preview.image,
+          video: preview.video,
+        );
+      case 'messageGift':
+        final gift = content.obj('gift');
+        return MessageSummaryCard(
+          kind: MessageSummaryKind.gift,
+          title: telegramText(AppStringKeys.tdMessageGift),
+          subtitle: content.obj('text')?.str('text') ?? '',
+          detail: '${gift?.int64('star_count') ?? 0} Telegram Stars',
+          image: _stickerMedia(gift?.obj('sticker')).image,
+        );
+      case 'messageGiftedPremium':
+      case 'messagePremiumGiftCode':
+        return MessageSummaryCard(
+          kind: MessageSummaryKind.gift,
+          title: telegramText(AppStringKeys.tdMessageGift),
+          subtitle: content.obj('text')?.str('text') ?? '',
+          detail: '${content.integer('month_count') ?? 0} months Premium',
+          image: _stickerMedia(content.obj('sticker')).image,
+        );
+      case 'messageGiftedStars':
+      case 'messageGiveawayPrizeStars':
+        return MessageSummaryCard(
+          kind: MessageSummaryKind.gift,
+          title: telegramText(AppStringKeys.tdMessageGift),
+          detail: '${content.int64('star_count') ?? 0} Telegram Stars',
+          image: _stickerMedia(content.obj('sticker')).image,
+        );
+      case 'messageGiftedTon':
+        return MessageSummaryCard(
+          kind: MessageSummaryKind.gift,
+          title: telegramText(AppStringKeys.tdMessageGift),
+          detail: '${content.int64('gram_amount') ?? 0} nanoton',
+          image: _stickerMedia(content.obj('sticker')).image,
+        );
+      case 'messageUpgradedGift':
+      case 'messageRefundedUpgradedGift':
+      case 'messageUpgradedGiftPurchaseOffer':
+      case 'messageUpgradedGiftPurchaseOfferRejected':
+        final gift = content.obj('gift');
+        return MessageSummaryCard(
+          kind: MessageSummaryKind.gift,
+          title:
+              gift?.str('title') ?? telegramText(AppStringKeys.tdMessageGift),
+          subtitle: gift?.str('name') ?? '',
+          detail: gift?.integer('number') == null
+              ? ''
+              : '#${gift?.integer('number')}',
+          image: _stickerMedia(gift?.obj('model')?.obj('sticker')).image,
+        );
+      case 'messageSuggestedPostApproved':
+      case 'messageSuggestedPostApprovalFailed':
+      case 'messageSuggestedPostDeclined':
+      case 'messageSuggestedPostPaid':
+      case 'messageSuggestedPostRefunded':
+        final eventLabel = switch (content.type) {
+          'messageSuggestedPostApproved' => AppStrings.t(
+            AppStringKeys.suggestedPostApproved,
+          ),
+          'messageSuggestedPostApprovalFailed' => AppStrings.t(
+            AppStringKeys.suggestedPostApprovalFailed,
+          ),
+          'messageSuggestedPostDeclined' => AppStrings.t(
+            AppStringKeys.suggestedPostDeclined,
+          ),
+          'messageSuggestedPostPaid' => AppStrings.t(
+            AppStringKeys.suggestedPostPaid,
+          ),
+          'messageSuggestedPostRefunded' => AppStrings.t(
+            AppStringKeys.suggestedPostRefunded,
+          ),
+          _ => '',
+        };
+        final price = suggestedPostPrice(content.obj('price'));
+        final detail = switch (content.type) {
+          'messageSuggestedPostDeclined' => content.str('comment') ?? '',
+          'messageSuggestedPostRefunded' =>
+            content.obj('reason')?.type ==
+                    'suggestedPostRefundReasonPostDeleted'
+                ? AppStrings.t(AppStringKeys.suggestedPostRefundDeleted)
+                : AppStrings.t(AppStringKeys.suggestedPostRefundPayment),
+          'messageSuggestedPostPaid' =>
+            (content.obj('star_amount')?.int64('star_count') ?? 0) != 0
+                ? '${content.obj('star_amount')?.int64('star_count') ?? 0} Stars'
+                : '${(content.int64('gram_amount') ?? 0) / 1000000000} TON',
+          _ => price == null ? '' : suggestedPostPriceLabel(price),
+        };
+        return MessageSummaryCard(
+          kind: MessageSummaryKind.suggestedPost,
+          title: telegramText(AppStringKeys.tdMessageSubmission),
+          subtitle: eventLabel,
+          detail: detail,
+        );
+    }
+    return null;
+  }
+
+  static String suggestedPostPriceLabel(SuggestedPostPrice price) =>
+      switch (price.kind) {
+        SuggestedPostPriceKind.stars => '${price.amount} Stars',
+        SuggestedPostPriceKind.ton =>
+          '${(price.amount / 100).toStringAsFixed(2)} TON',
+      };
+
+  static MediaAttachment _stickerMedia(Map<String, dynamic>? sticker) {
+    if (sticker == null) return const MediaAttachment();
+    final mini = decodeMiniThumb(sticker.obj('minithumbnail'));
+    return MediaAttachment(
+      image:
+          fileRef(sticker.obj('thumbnail')?.obj('file'), miniThumb: mini) ??
+          fileRef(sticker.obj('sticker'), miniThumb: mini),
+    );
+  }
+
+  static MediaAttachment _paidMediaAttachment(Map<String, dynamic> media) {
+    return switch (media.type) {
+      'paidMediaPhoto' => photoAttachment(media.obj('photo')),
+      'paidMediaVideo' => videoAttachment(media.obj('video')),
+      _ => const MediaAttachment(),
+    };
   }
 
   static MediaAttachment mediaAttachment(Map<String, dynamic>? content) {
@@ -2679,6 +3358,19 @@ abstract final class TDParse {
             videoDuration: video.integer('duration'),
             width: video.integer('width'),
             height: video.integer('height'),
+          );
+        }
+      case 'messageVideoNote':
+        final note = content.obj('video_note');
+        if (note != null) {
+          final mini = decodeMiniThumb(note.obj('minithumbnail'));
+          final length = note.integer('length') ?? 240;
+          return MediaAttachment(
+            image: fileRef(note.obj('thumbnail')?.obj('file'), miniThumb: mini),
+            video: fileRef(note.obj('video')),
+            videoDuration: note.integer('duration'),
+            width: length,
+            height: length,
           );
         }
       case 'messageAudio':
@@ -3191,15 +3883,15 @@ abstract final class TDParse {
   static String userStatus(Map<String, dynamic> user) {
     switch (user.obj('status')?.type) {
       case 'userStatusOnline':
-        return AppStrings.t(AppStringKeys.chatOnline);
+        return telegramPresenceText(TelegramPresenceLabel.online);
       case 'userStatusRecently':
-        return AppStrings.t(AppStringKeys.chatRecentlyOnline);
+        return telegramPresenceText(TelegramPresenceLabel.recently);
       case 'userStatusOffline':
         return _lastOnlineText(user.obj('status')?.integer('was_online') ?? 0);
       case 'userStatusLastWeek':
-        return AppStrings.t(AppStringKeys.chatOnlineWithinWeek);
+        return telegramPresenceText(TelegramPresenceLabel.withinWeek);
       case 'userStatusLastMonth':
-        return AppStrings.t(AppStringKeys.chatOnlineWithinMonth);
+        return telegramPresenceText(TelegramPresenceLabel.withinMonth);
       default:
         return '';
     }

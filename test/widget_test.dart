@@ -916,6 +916,7 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          locale: const Locale('en'),
           localizationsDelegates: const [
             GlobalMaterialLocalizations.delegate,
             GlobalWidgetsLocalizations.delegate,
@@ -3334,7 +3335,7 @@ void main() {
 
     test('AppStrings follows script and regional locale tags', () {
       Intl.defaultLocale = 'zh_Hans';
-      expect(AppStrings.t(AppStringKeys.apiCredentialsTitle), '视频与下载加速');
+      expect(AppStrings.t(AppStringKeys.apiCredentialsTitle), '自定义 API 凭据');
 
       Intl.defaultLocale = 'zh-Hant';
       expect(

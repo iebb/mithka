@@ -27,9 +27,9 @@ import 'app/app_version.dart';
 import 'app/chat_deep_link_controller.dart';
 import 'app/content_view.dart';
 import 'app/global_video_split_host.dart';
+import 'app/telemetry_config.dart';
 import 'auth/account_store.dart';
 import 'auth/auth_manager.dart';
-import 'auth/terms_sheet.dart';
 import 'call/call_manager.dart';
 import 'call/call_overlay_host.dart';
 import 'chat/music_player_controller.dart';
@@ -43,6 +43,9 @@ import 'notifications/notification_controller.dart';
 import 'notifications/push_device_registrar.dart';
 import 'platform/firebase_configuration.dart';
 import 'platform/system_ui.dart';
+import 'pro/mithka_pro_service.dart';
+import 'security/local_app_lock_controller.dart';
+import 'security/local_app_lock_views.dart';
 import 'settings/app_icon_controller.dart';
 import 'settings/auto_download_media_controller.dart';
 import 'settings/blocked_user_service.dart';
@@ -56,17 +59,10 @@ import 'tdlib/td_client.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_controller.dart';
 
-const _sentryDsn = String.fromEnvironment('SENTRY_DSN');
-const _sentryEnvironment = String.fromEnvironment(
-  'SENTRY_ENVIRONMENT',
-  defaultValue: 'production',
-);
-const _gitCommit = String.fromEnvironment('GIT_COMMIT');
-
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   _configureAndroidImageCache();
-  if (_sentryDsn.isEmpty) {
+  if (!sentryEnabled) {
     await _bootstrapAndRunApp();
     return;
   }
@@ -104,6 +100,7 @@ Future<void> _bootstrapAndRunApp() async {
   // Draw under transparent status / navigation bars (edge-to-edge).
   configureImmersiveSystemUI();
   final prefs = await SharedPreferences.getInstance();
+  await LocalAppLockController.shared.initialize();
   KeywordBlocker.shared.initialize(prefs);
   CountryMessageFilter.shared.initialize(prefs);
   unawaited(SensitiveContentController.shared.initialize());
@@ -151,7 +148,7 @@ Future<void> _initTelemetry() async {
     } else {
       debugPrint('Firebase configuration not found; analytics disabled');
     }
-    if (_sentryDsn.isNotEmpty) {
+    if (sentryEnabled) {
       await Sentry.configureScope((scope) async {
         await scope.setTag('app.version', appVersion.version);
         await scope.setTag('app.build_number', appVersion.buildNumber);
@@ -166,11 +163,14 @@ Future<void> _initTelemetry() async {
 }
 
 void _configureSentry(SentryFlutterOptions options) {
-  options.dsn = _sentryDsn;
-  options.environment = _sentryEnvironment;
-  options.release = _gitCommit.isEmpty ? 'mithka' : 'mithka@$_gitCommit';
+  options.dsn = sentryDsn;
+  options.environment = sentryEnvironment;
+  // Let SentryFlutter derive bundle-id@version+build so Dart events share the
+  // same release as native iOS crash reports. The git SHA remains a tag.
+  options.navigatorKey = appNavigatorKey;
   options.sendDefaultPii = false;
   options.tracesSampleRate = 0;
+  options.maxBreadcrumbs = 200;
   options.beforeSend = (event, hint) =>
       _isGoogleFontLoadFailure(event) ? null : event;
 }
@@ -217,6 +217,14 @@ bool _isGoogleFontLoadFailureText(String value) {
       text.contains('clientexception');
 }
 
+typedef _MithkaAppConsumer =
+    Consumer4<
+      ThemeController,
+      AccountStore,
+      AppLocaleController,
+      TelegramLanguageController
+    >;
+
 class MithkaApp extends StatefulWidget {
   const MithkaApp({super.key, required this.prefs});
   final SharedPreferences prefs;
@@ -228,6 +236,7 @@ class MithkaApp extends StatefulWidget {
 class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
   late final AuthManager _auth = AuthManager();
   late final AccountStore _accounts = AccountStore(widget.prefs);
+  late final MithkaProService _mithkaPro = MithkaProService.shared;
   late final ThemeController _theme = ThemeController(
     widget.prefs,
     initialAccountSlot: _accounts.activeSlot,
@@ -252,6 +261,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
   );
   late final SensitiveContentController _sensitiveContent =
       SensitiveContentController.shared;
+  late final LocalAppLockController _appLock = LocalAppLockController.shared;
   late final CallManager _calls = CallManager()..start();
 
   @override
@@ -262,6 +272,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
     _theme.loadSelectedEmojiFontIfAvailable();
     _autoDownload.initialize(widget.prefs);
     _auth.start();
+    unawaited(_mithkaPro.initialize());
     unawaited(_telegramLanguage.initialize(widget.prefs));
     unawaited(_appIcons.initialize());
     unawaited(_accounts.recoverPendingAddOnStartup(_auth));
@@ -283,8 +294,15 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _appLock.lock();
+    }
     if (state == AppLifecycleState.resumed) {
       TdClient.shared.restartReceiveIsolate();
+      unawaited(_mithkaPro.refresh());
     }
   }
 
@@ -341,17 +359,19 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
           },
         ),
         ChangeNotifierProvider.value(value: _accounts),
+        ChangeNotifierProvider.value(value: _mithkaPro),
         ChangeNotifierProvider.value(value: _chatDeepLinks),
         ChangeNotifierProvider.value(value: _appIcons),
         ChangeNotifierProvider.value(value: _autoDownload),
         ChangeNotifierProvider.value(value: _developer),
         ChangeNotifierProvider.value(value: _safetyNotice),
         ChangeNotifierProvider.value(value: _sensitiveContent),
+        ChangeNotifierProvider.value(value: _appLock),
         ChangeNotifierProvider.value(value: _calls),
         ChangeNotifierProvider<dc.DrawerController>.value(value: _drawer),
       ],
-      child: Consumer3<ThemeController, AccountStore, AppLocaleController>(
-        builder: (context, theme, accounts, locale, _) {
+      child: _MithkaAppConsumer(
+        builder: (context, theme, accounts, locale, _, _) {
           return MaterialApp(
             navigatorKey: appNavigatorKey,
             title: 'Mithka',
@@ -367,7 +387,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
               GlobalCupertinoLocalizations.delegate,
               GlobalWidgetsLocalizations.delegate,
             ],
-            navigatorObservers: _analyticsNavigatorObservers(),
+            navigatorObservers: _telemetryNavigatorObservers(),
             theme: _themeData(Brightness.light, theme),
             darkTheme: _themeData(Brightness.dark, theme),
             themeMode: theme.themeMode,
@@ -393,7 +413,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
                 ),
                 child: child ?? const SizedBox.shrink(),
               );
-              final appChild = Stack(
+              final unlockedApp = Stack(
                 children: [
                   Positioned.fill(
                     child: GlobalVideoSplitHost(child: themedChild),
@@ -413,6 +433,18 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
                   const Positioned.fill(child: GlobalCallOverlayHost()),
                 ],
               );
+              final appLock = context.watch<LocalAppLockController>();
+              final appChild = Stack(
+                children: [
+                  Positioned.fill(
+                    child: ExcludeSemantics(
+                      excluding: appLock.locked,
+                      child: unlockedApp,
+                    ),
+                  ),
+                  const Positioned.fill(child: LocalAppLockGate()),
+                ],
+              );
               return AnnotatedRegion<SystemUiOverlayStyle>(
                 value: systemUiOverlayStyleForSurface(context.colors.navBar),
                 child: _ScaledAppView(
@@ -429,12 +461,9 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
               );
             },
             // Rebuild the whole tree when the active account changes.
-            home: FirstLaunchTermsGate(
-              prefs: widget.prefs,
-              child: KeyedSubtree(
-                key: ValueKey(accounts.activeSlot),
-                child: const ContentView(),
-              ),
+            home: KeyedSubtree(
+              key: ValueKey(accounts.activeSlot),
+              child: const ContentView(),
             ),
           );
         },
@@ -443,67 +472,25 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
   }
 }
 
-class FirstLaunchTermsGate extends StatefulWidget {
-  const FirstLaunchTermsGate({
-    super.key,
-    required this.prefs,
-    required this.child,
-  });
+NavigatorObserver? _buildSentryNavigatorObserver() => sentryEnabled
+    ? SentryNavigatorObserver(enableAutoTransactions: false)
+    : null;
 
-  static const acceptedKey = 'mithka.terms.accepted.v1';
+final NavigatorObserver? _sentryNavigatorObserver =
+    _buildSentryNavigatorObserver();
 
-  final SharedPreferences prefs;
-  final Widget child;
-
-  @override
-  State<FirstLaunchTermsGate> createState() => _FirstLaunchTermsGateState();
-}
-
-class _FirstLaunchTermsGateState extends State<FirstLaunchTermsGate> {
-  bool _shown = false;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _showIfNeeded());
-  }
-
-  @override
-  void didUpdateWidget(covariant FirstLaunchTermsGate oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.prefs != widget.prefs) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _showIfNeeded());
-    }
-  }
-
-  Future<void> _showIfNeeded() async {
-    if (!mounted || _shown) return;
-    if (widget.prefs.getBool(FirstLaunchTermsGate.acceptedKey) ?? false) {
-      return;
-    }
-    _shown = true;
-    await showTelegramTermsSheet(
-      context,
-      isDismissible: false,
-      enableDrag: false,
-      onAccept: () async {
-        await widget.prefs.setBool(FirstLaunchTermsGate.acceptedKey, true);
-      },
-    );
-    _shown = false;
-  }
-
-  @override
-  Widget build(BuildContext context) => widget.child;
-}
-
-List<NavigatorObserver> _analyticsNavigatorObservers() {
+List<NavigatorObserver> _telemetryNavigatorObservers() {
+  final observers = <NavigatorObserver>[?_sentryNavigatorObserver];
   try {
-    if (Firebase.apps.isEmpty) return const [];
-    return [FirebaseAnalyticsObserver(analytics: FirebaseAnalytics.instance)];
+    if (Firebase.apps.isNotEmpty) {
+      observers.add(
+        FirebaseAnalyticsObserver(analytics: FirebaseAnalytics.instance),
+      );
+    }
   } catch (_) {
-    return const [];
+    // Sentry navigation breadcrumbs do not depend on Firebase availability.
   }
+  return observers;
 }
 
 class _NoRadiusPageTransitionsBuilder extends PageTransitionsBuilder {

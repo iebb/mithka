@@ -196,11 +196,32 @@ class CallManager extends ChangeNotifier {
     required int chatId,
     required String title,
     required bool isVideo,
+    String inviteHash = '',
   }) {
     if (call != null) {
       return Future.error(StateError('Another call is already active'));
     }
-    return groups.startOrJoin(chatId: chatId, title: title, isVideo: isVideo);
+    return groups.startOrJoin(
+      chatId: chatId,
+      title: title,
+      isVideo: isVideo,
+      inviteHash: inviteHash,
+    );
+  }
+
+  Future<void> joinUnboundGroupCall({
+    required String inviteLink,
+    String title = 'Group call',
+    bool isVideo = true,
+  }) {
+    if (call != null) {
+      return Future.error(StateError('Another call is already active'));
+    }
+    return groups.joinUnbound(
+      inviteLink: inviteLink,
+      title: title,
+      isVideo: isVideo,
+    );
   }
 
   void accept() {

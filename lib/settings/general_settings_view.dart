@@ -18,6 +18,10 @@ import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import 'auto_download_media_controller.dart';
+import 'auto_download_settings_view.dart';
+import 'downloads_view.dart';
+import 'network_usage_view.dart';
+import 'storage_usage_view.dart';
 import 'video_playback_settings_view.dart';
 
 class GeneralSettingsView extends StatefulWidget {
@@ -161,6 +165,17 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
             auto.isApplying,
             (value) => _setAutoDownload(() => auto.setWifiHighResImages(value)),
           ),
+          const InsetDivider(leadingInset: 56),
+          _navigationRow(
+            HeroAppIcons.gear,
+            const Color(0xFFAF52DE),
+            AppStrings.t(AppStringKeys.generalAdvancedAutomaticDownload),
+            () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const AutoDownloadSettingsView(),
+              ),
+            ),
+          ),
         ]),
       ],
     );
@@ -231,6 +246,33 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
                 ],
               ),
             ),
+          ),
+          const InsetDivider(leadingInset: 56),
+          _navigationRow(
+            HeroAppIcons.compactDisc,
+            const Color(0xFF16B0A0),
+            AppStrings.t(AppStringKeys.generalDetailedStorageUsage),
+            () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const StorageUsageView())),
+          ),
+          const InsetDivider(leadingInset: 56),
+          _navigationRow(
+            HeroAppIcons.download,
+            const Color(0xFF3C8CF0),
+            AppStrings.t(AppStringKeys.generalDownloads),
+            () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const DownloadsView())),
+          ),
+          const InsetDivider(leadingInset: 56),
+          _navigationRow(
+            HeroAppIcons.networkWired,
+            const Color(0xFFFF9500),
+            AppStrings.t(AppStringKeys.generalNetworkUsage),
+            () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const NetworkUsageView())),
           ),
           const InsetDivider(leadingInset: 56),
           GestureDetector(

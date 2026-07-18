@@ -15,12 +15,14 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_sound/flutter_sound.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../components/app_dialog.dart';
 import '../components/app_icons.dart';
 import '../components/confirm_dialog.dart';
 import '../components/icon_grid.dart';
@@ -29,33 +31,52 @@ import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/telegram_language_controller.dart';
 import '../media/app_asset_picker.dart';
+import '../settings/business_tools_views.dart';
 import '../settings/rich_message_relay_config.dart';
 import '../settings/rich_message_relay_view.dart';
+import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import 'audio_search_view.dart';
+import 'bot_button_presentation.dart';
+import 'bot_platform_service.dart';
+import 'channel_direct_messages_service.dart';
+import 'channel_direct_messages_view.dart';
 import 'chat_view_model.dart';
 import 'checklist_composer_view.dart';
+import 'contact_share_picker_view.dart';
 import 'custom_emoji.dart';
 import 'emoji_catalog.dart';
 import 'emoji_store.dart';
 import 'emoji_text_controller.dart';
+import 'gallery_send_mode_sheet.dart';
+import 'gif_item.dart';
 import 'gif_preview.dart';
 import 'gif_store.dart';
 import 'image_edit_view.dart';
 import 'link_handler.dart';
 import 'location_picker_view.dart';
 import 'media_send_preview_view.dart';
+import 'message_send_options.dart';
 import 'outgoing_attachment.dart';
 import 'poll_composer_view.dart';
 import 'rich_message_bot_relay.dart';
 import 'rich_message_source.dart';
 import 'rich_text_composer_view.dart';
+import 'scheduled_messages_view.dart';
+import 'sticker_item.dart';
 import 'sticker_preview.dart';
+import 'sticker_set_studio_view.dart';
 import 'sticker_store.dart';
+import 'telegram_ai_editor_view.dart';
+import 'telegram_ai_service.dart';
 import 'telegram_mini_app_view.dart';
+import 'venue_composer_view.dart';
+import 'video_note_preview_view.dart';
+import 'video_note_recorder_view.dart';
+import 'voice_note_preview_view.dart';
 
 enum _Panel { none, function, emoji, sticker, voice }
 
@@ -132,17 +153,32 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   final _controller = EmojiTextEditingController();
   final _focus = FocusNode();
+  final _panelSearch = TextEditingController();
   _Panel _panel = _Panel.none;
   String _emojiTab = 'standard'; // 'standard' or a custom-emoji pack id
   int? _stickerPack; // active sticker pack id
+  Timer? _panelSearchTimer;
+  int _panelSearchGeneration = 0;
+  bool _panelSearchLoading = false;
+  List<String> _emojiSearchResults = const [];
+  List<StickerItem> _customEmojiSearchResults = const [];
+  List<StickerItem> _stickerSearchResults = const [];
+  List<GifItem> _gifSearchResults = const [];
+  String _gifSearchNextOffset = '';
+  bool _gifSearchLoadingMore = false;
 
   // Voice recording (flutter_sound, Opus).
   FlutterSoundRecorder? _recorder;
   bool _recording = false;
+  bool _recordingPaused = false;
+  bool _recordingLocked = false;
   bool _recordCancelled = false;
   double _elapsed = 0;
+  double _pressStartX = 0;
   double _pressStartY = 0;
   Timer? _recTimer;
+  StreamSubscription<RecordingDisposition>? _recProgress;
+  final List<double> _recLevels = [];
   String? _recPath;
   late bool _hasText = vm.draft.trim().isNotEmpty;
   bool _replyKeyboardVisible = false;
@@ -152,8 +188,14 @@ class _ChatInputBarState extends State<ChatInputBar> {
   int _mentionSearchGeneration = 0;
   OverlayEntry? _relayProgressEntry;
   RichMessageRelayProgress? _relayProgress;
-  static bool _directRichMessageBlocksUnsupported = false;
-
+  final BotPlatformService _botPlatform = BotPlatformService();
+  StreamSubscription<Map<String, dynamic>>? _botPlatformUpdates;
+  final List<BotGuestQuery> _guestQueries = [];
+  Timer? _inlineBotTimer;
+  int _inlineBotGeneration = 0;
+  bool _inlineBotLoading = false;
+  BotPlatformCapabilities? _inlineBot;
+  BotInlineResultsPage? _inlineBotResults;
   ChatViewModel get vm => widget.vm;
 
   @override
@@ -161,6 +203,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
     super.initState();
     _controller.text = vm.draft;
     _controller.addListener(_onTextChanged);
+    _panelSearch.addListener(_queuePanelSearch);
     _focus.addListener(() {
       var needsRebuild = false;
       if (_focus.hasFocus && _panel != _Panel.none) {
@@ -173,6 +216,26 @@ class _ChatInputBarState extends State<ChatInputBar> {
     EmojiStore.shared.addListener(_onStore);
     StickerStore.shared.addListener(_onStore);
     GifStore.shared.addListener(_onStore);
+    _botPlatformUpdates = TdClient.shared.subscribe().listen(
+      _handleBotPlatformUpdate,
+    );
+  }
+
+  void _handleBotPlatformUpdate(Map<String, dynamic> update) {
+    if (update.type != 'updateNewGuestQuery') return;
+    try {
+      final query = BotGuestQuery.fromUpdate(update);
+      if (!mounted) return;
+      setState(() {
+        _guestQueries.removeWhere((value) => value.id == query.id);
+        _guestQueries.insert(0, query);
+        if (_guestQueries.length > 50) {
+          _guestQueries.removeRange(50, _guestQueries.length);
+        }
+      });
+    } on FormatException {
+      // Ignore malformed updates; TDLib will redeliver valid guest queries.
+    }
   }
 
   void _onStore() {
@@ -193,6 +256,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
       if (mounted) setState(() {});
     }
     _updateMentionSuggestions();
+    _queueInlineBotResults();
     final now = DateTime.now();
     if (_controller.text.isNotEmpty &&
         (_lastTyping == null || now.difference(_lastTyping!).inSeconds >= 4)) {
@@ -256,6 +320,88 @@ class _ChatInputBarState extends State<ChatInputBar> {
     _focus.requestFocus();
   }
 
+  void _queueInlineBotResults() {
+    final invocation = BotInlineInvocation.fromText(_controller.text);
+    _inlineBotTimer?.cancel();
+    final generation = ++_inlineBotGeneration;
+    if (invocation == null) {
+      if (_inlineBotLoading ||
+          _inlineBotResults != null ||
+          _inlineBot != null) {
+        _inlineBotLoading = false;
+        _inlineBotResults = null;
+        _inlineBot = null;
+        if (mounted) setState(() {});
+      }
+      return;
+    }
+    if (!_inlineBotLoading || _inlineBotResults != null) {
+      _inlineBotLoading = true;
+      _inlineBotResults = null;
+      if (mounted) setState(() {});
+    }
+    _inlineBotTimer = Timer(
+      const Duration(milliseconds: 260),
+      () => unawaited(_loadInlineBotResults(invocation, generation)),
+    );
+  }
+
+  Future<void> _loadInlineBotResults(
+    BotInlineInvocation invocation,
+    int generation,
+  ) async {
+    try {
+      var bot = _inlineBot;
+      if (bot == null ||
+          bot.username.toLowerCase() != invocation.username.toLowerCase()) {
+        bot = await _botPlatform.capabilitiesForUsername(invocation.username);
+      }
+      if (!bot.inlineMode) throw StateError('BOT_INLINE_MODE_DISABLED');
+      final location = bot.needsLocation ? await _inlineBotLocation() : null;
+      if (bot.needsLocation && location == null) {
+        throw StateError('BOT_INLINE_LOCATION_UNAVAILABLE');
+      }
+      final response = await _botPlatform.inlineResults(
+        botUserId: bot.userId,
+        chatId: vm.chatId,
+        query: invocation.query,
+        location: location,
+      );
+      final page = BotInlineResultsPage.fromJson(response);
+      if (!mounted || generation != _inlineBotGeneration) return;
+      setState(() {
+        _inlineBot = bot;
+        _inlineBotResults = page;
+        _inlineBotLoading = false;
+      });
+    } catch (_) {
+      if (!mounted || generation != _inlineBotGeneration) return;
+      setState(() {
+        _inlineBotResults = null;
+        _inlineBotLoading = false;
+      });
+    }
+  }
+
+  Future<Map<String, dynamic>?> _inlineBotLocation() async {
+    if (!await Geolocator.isLocationServiceEnabled()) return null;
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      return null;
+    }
+    final value = await Geolocator.getCurrentPosition();
+    return {
+      '@type': 'location',
+      'latitude': value.latitude,
+      'longitude': value.longitude,
+      'horizontal_accuracy': value.accuracy,
+    };
+  }
+
   void _syncFromVm() {
     final composing = _controller.value.composing;
     final editing = _focus.hasFocus || composing.isValid;
@@ -276,12 +422,177 @@ class _ChatInputBarState extends State<ChatInputBar> {
     StickerStore.shared.removeListener(_onStore);
     GifStore.shared.removeListener(_onStore);
     _controller.dispose();
+    _panelSearch
+      ..removeListener(_queuePanelSearch)
+      ..dispose();
     _focus.dispose();
     _recTimer?.cancel();
+    _recProgress?.cancel();
     _mentionSearchTimer?.cancel();
+    _panelSearchTimer?.cancel();
+    _inlineBotTimer?.cancel();
+    _botPlatformUpdates?.cancel();
     _hideRelayProgress();
     _recorder?.closeRecorder();
     super.dispose();
+  }
+
+  void _queuePanelSearch() {
+    _panelSearchTimer?.cancel();
+    final query = _panelSearch.text.trim();
+    if (query.isEmpty) {
+      _panelSearchGeneration++;
+      if (mounted) {
+        setState(() {
+          _panelSearchLoading = false;
+          _emojiSearchResults = const [];
+          _customEmojiSearchResults = const [];
+          _stickerSearchResults = const [];
+          _gifSearchResults = const [];
+          _gifSearchNextOffset = '';
+          _gifSearchLoadingMore = false;
+        });
+      }
+      return;
+    }
+    _panelSearchTimer = Timer(
+      const Duration(milliseconds: 320),
+      () => unawaited(_runPanelSearch(query)),
+    );
+  }
+
+  Future<void> _runPanelSearch(String query) async {
+    final generation = ++_panelSearchGeneration;
+    if (mounted) setState(() => _panelSearchLoading = true);
+    final languageCodes = mounted
+        ? [Localizations.localeOf(context).languageCode]
+        : const <String>[];
+    var emoji = const <String>[];
+    var customEmoji = const <StickerItem>[];
+    var stickers = const <StickerItem>[];
+    var gifs = const <GifItem>[];
+    var gifNextOffset = '';
+    try {
+      if (_panel == _Panel.emoji) {
+        final results = await Future.wait([
+          TdClient.shared.query({
+            '@type': 'searchEmojis',
+            'text': query,
+            'input_language_codes': languageCodes,
+          }),
+          TdClient.shared.query({
+            '@type': 'searchStickers',
+            'sticker_type': {'@type': 'stickerTypeCustomEmoji'},
+            'emojis': '',
+            'query': query,
+            'input_language_codes': languageCodes,
+            'offset': 0,
+            'limit': 80,
+          }),
+        ]);
+        final values = <String>[];
+        for (final keyword
+            in results.first.objects('emoji_keywords') ??
+                const <Map<String, dynamic>>[]) {
+          final value = keyword.str('emoji');
+          if (value != null && value.isNotEmpty && !values.contains(value)) {
+            values.add(value);
+          }
+        }
+        emoji = values;
+        customEmoji = parseStickers(results.last.objects('stickers'));
+      } else if (_panel == _Panel.sticker) {
+        if (_stickerPack == _gifTabId) {
+          final page = await _searchGifs(query);
+          gifs = page.$1;
+          gifNextOffset = page.$2;
+        } else {
+          final result = await TdClient.shared.query({
+            '@type': 'searchStickers',
+            'sticker_type': {'@type': 'stickerTypeRegular'},
+            'emojis': '',
+            'query': query,
+            'input_language_codes': languageCodes,
+            'offset': 0,
+            'limit': 100,
+          });
+          stickers = parseStickers(result.objects('stickers'));
+        }
+      }
+    } catch (_) {}
+    if (!mounted ||
+        generation != _panelSearchGeneration ||
+        query != _panelSearch.text.trim()) {
+      return;
+    }
+    setState(() {
+      _panelSearchLoading = false;
+      _emojiSearchResults = emoji;
+      _customEmojiSearchResults = customEmoji;
+      _stickerSearchResults = stickers;
+      _gifSearchResults = gifs;
+      _gifSearchNextOffset = gifNextOffset;
+      _gifSearchLoadingMore = false;
+    });
+  }
+
+  Future<(List<GifItem>, String)> _searchGifs(
+    String query, {
+    String offset = '',
+  }) async {
+    final option = await TdClient.shared.query({
+      '@type': 'getOption',
+      'name': 'animation_search_bot_username',
+    });
+    final username = option.str('value') ?? '';
+    if (username.isEmpty) return (const <GifItem>[], '');
+    final botChat = await TdClient.shared.query({
+      '@type': 'searchPublicChat',
+      'username': username,
+    });
+    final botUserId = botChat.obj('type')?.int64('user_id');
+    if (botUserId == null) return (const <GifItem>[], '');
+    final response = await TdClient.shared.query({
+      '@type': 'getInlineQueryResults',
+      'bot_user_id': botUserId,
+      'chat_id': vm.chatId,
+      'query': query,
+      'offset': offset,
+    });
+    final items = <GifItem>[];
+    final seen = <int>{};
+    for (final result
+        in response.objects('results') ?? const <Map<String, dynamic>>[]) {
+      if (result.type != 'inlineQueryResultAnimation') continue;
+      final animation = result.obj('animation');
+      if (animation == null) continue;
+      final parsed = parseSavedAnimations([animation]);
+      if (parsed.isEmpty || !seen.add(parsed.first.id)) continue;
+      items.add(parsed.first);
+    }
+    return (items, response.str('next_offset') ?? '');
+  }
+
+  Future<void> _loadMoreGifSearch() async {
+    final query = _panelSearch.text.trim();
+    final offset = _gifSearchNextOffset;
+    if (query.isEmpty || offset.isEmpty || _gifSearchLoadingMore) return;
+    setState(() => _gifSearchLoadingMore = true);
+    try {
+      final page = await _searchGifs(query, offset: offset);
+      if (!mounted || query != _panelSearch.text.trim()) return;
+      final known = _gifSearchResults.map((item) => item.id).toSet();
+      setState(() {
+        _gifSearchResults = [
+          ..._gifSearchResults,
+          ...page.$1.where((item) => known.add(item.id)),
+        ];
+        _gifSearchNextOffset = page.$2;
+        _gifSearchLoadingMore = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _gifSearchLoadingMore = false);
+    }
   }
 
   // MARK: - Voice recording
@@ -314,6 +625,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
     final r = FlutterSoundRecorder();
     try {
       await r.openRecorder();
+      await r.setSubscriptionDuration(const Duration(milliseconds: 100));
     } catch (_) {
       return;
     }
@@ -358,7 +670,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
     final (codec, path) = picked;
     _recPath = path;
     _recordCancelled = false;
+    _recordingPaused = false;
+    _recordingLocked = false;
     _elapsed = 0;
+    _recLevels.clear();
     try {
       await r.startRecorder(toFile: _recPath, codec: codec, sampleRate: 48000);
     } catch (_) {
@@ -366,8 +681,21 @@ class _ChatInputBarState extends State<ChatInputBar> {
     }
     if (!mounted) return;
     setState(() => _recording = true);
+    await _recProgress?.cancel();
+    _recProgress = r.onProgress?.listen((event) {
+      if (!mounted) return;
+      setState(() {
+        _elapsed = event.duration.inMilliseconds / 1000;
+        final level = event.decibels;
+        if (level != null && level.isFinite) {
+          _recLevels.add((level >= 0 ? level - 120 : level).clamp(-120.0, 0.0));
+        }
+      });
+    });
     _recTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
-      if (mounted) setState(() => _elapsed += 0.1);
+      if (mounted && !_recordingPaused && _elapsed == 0) {
+        setState(() => _elapsed += 0.1);
+      }
     });
   }
 
@@ -375,6 +703,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
     final r = _recorder;
     _recTimer?.cancel();
     _recTimer = null;
+    await _recProgress?.cancel();
+    _recProgress = null;
     if (r == null || !_recording) return;
     final secs = _elapsed.round();
     final cancelled = _recordCancelled;
@@ -383,11 +713,70 @@ class _ChatInputBarState extends State<ChatInputBar> {
       url = await r.stopRecorder();
     } catch (_) {}
     if (!mounted) return;
-    setState(() => _recording = false);
-    if (cancelled || secs < 1 || url == null) return;
-    vm.sendVoice(url, secs);
-    widget.onMessageSent();
-    setState(() => _panel = _Panel.none);
+    setState(() {
+      _recording = false;
+      _recordingPaused = false;
+      _recordingLocked = false;
+    });
+    if (cancelled || secs < 1 || url == null) {
+      if (url != null) unawaited(_deleteTempFile(url));
+      return;
+    }
+    final result = await Navigator.of(context).push<VoiceNotePreviewResult>(
+      MaterialPageRoute(
+        builder: (_) => VoiceNotePreviewView(
+          path: url!,
+          duration: secs,
+          levels: List<double>.unmodifiable(_recLevels),
+          allowWhenOnline: vm.canSendWhenOnline,
+          effects: vm.availableMessageEffects,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (result == null) {
+      unawaited(_deleteTempFile(url));
+      return;
+    }
+    final sent = await vm.sendVoice(
+      result.path,
+      result.duration,
+      waveform: result.waveform,
+      sendConfiguration: result.sendConfiguration,
+    );
+    if (!mounted) return;
+    if (sent) {
+      widget.onMessageSent();
+      setState(() => _panel = _Panel.none);
+    } else {
+      showToast(context, AppStringKeys.topicPostContentActionFailed);
+    }
+  }
+
+  Future<void> _toggleRecPause() async {
+    final recorder = _recorder;
+    if (recorder == null || !_recording) return;
+    try {
+      if (_recordingPaused) {
+        await recorder.resumeRecorder();
+      } else {
+        await recorder.pauseRecorder();
+      }
+      if (mounted) setState(() => _recordingPaused = !_recordingPaused);
+    } catch (_) {}
+  }
+
+  void _cancelLockedRecording() {
+    if (!_recording) return;
+    _recordCancelled = true;
+    unawaited(_stopRec());
+  }
+
+  Future<void> _deleteTempFile(String path) async {
+    try {
+      final file = File(path);
+      if (await file.exists()) await file.delete();
+    } catch (_) {}
   }
 
   static String _recTime(double seconds) {
@@ -452,6 +841,48 @@ class _ChatInputBarState extends State<ChatInputBar> {
     widget.onMessageSent();
     _controller.clear();
     _focus.requestFocus();
+  }
+
+  Future<void> _openTelegramAiEditor() async {
+    if (!vm.canUseAiComposition || _controller.text.trim().isEmpty) return;
+    final (text, entities) = _controller.toFormatted();
+    final result = await Navigator.of(context).push<TelegramAiFormattedText>(
+      MaterialPageRoute(
+        builder: (_) => TelegramAiEditorView(
+          service: vm.telegramAi,
+          source: TelegramAiFormattedText(text: text, entities: entities),
+        ),
+      ),
+    );
+    if (!mounted || result == null) return;
+    _controller.setFormattedText(result.text, result.entities);
+    _focus.requestFocus();
+  }
+
+  Future<void> _showTextSendOptions() async {
+    final configuration = await showMessageSendOptionsSheet(
+      context,
+      allowWhenOnline: widget.vm.canSendWhenOnline,
+      effects: widget.vm.availableMessageEffects,
+      onOpenScheduledMessages: _openScheduledMessages,
+    );
+    if (!mounted || configuration == null) return;
+    widget.vm.useNextSendConfiguration(configuration);
+    await _sendCurrentText();
+  }
+
+  void _openScheduledMessages() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ScheduledMessagesView(
+            chatId: widget.vm.chatId,
+            chatTitle: widget.vm.peerTitle,
+          ),
+        ),
+      );
+    });
   }
 
   Future<void> _openRichTextComposer() async {
@@ -626,7 +1057,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (vm.replyTo != null) _replyBanner(vm.replyTo!),
-              if (_mentionCandidates.isNotEmpty) _mentionMenu(),
+              if (_inlineBotLoading || _inlineBotResults != null)
+                _inlineBotResultMenu()
+              else if (_mentionCandidates.isNotEmpty)
+                _mentionMenu(),
               _inputRow(replyKeyboard),
               if (replyKeyboardPanelVisible)
                 _replyKeyboardPanel(replyKeyboard)
@@ -641,6 +1075,153 @@ class _ChatInputBarState extends State<ChatInputBar> {
         ),
       ),
     );
+  }
+
+  Widget _inlineBotResultMenu() {
+    final c = context.colors;
+    final results = _inlineBotResults?.results ?? const <BotInlineResult>[];
+    Widget child;
+    if (_inlineBotLoading) {
+      child = SizedBox(
+        height: 54,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            AppActivityIndicator(size: 18, color: c.textSecondary),
+            const SizedBox(width: 10),
+            Text(
+              'Searching inline results…',
+              style: TextStyle(color: c.textSecondary, fontSize: 14),
+            ),
+          ],
+        ),
+      );
+    } else if (results.isEmpty) {
+      child = SizedBox(
+        height: 54,
+        child: Center(
+          child: Text(
+            'No inline results',
+            style: TextStyle(color: c.textSecondary, fontSize: 14),
+          ),
+        ),
+      );
+    } else {
+      child = ListView.separated(
+        shrinkWrap: true,
+        padding: EdgeInsets.zero,
+        itemCount: results.length,
+        separatorBuilder: (_, _) => const InsetDivider(leadingInset: 54),
+        itemBuilder: (_, index) {
+          final result = results[index];
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => unawaited(_sendInlineBotResult(result)),
+            child: SizedBox(
+              height: 58,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Row(
+                  children: [
+                    AppIcon(
+                      _inlineResultIcon(result.type),
+                      size: 23,
+                      color: AppTheme.brand,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            result.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: c.textPrimary,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          if (result.description.isNotEmpty)
+                            Text(
+                              result.description,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: c.textSecondary,
+                                fontSize: 12,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    }
+
+    return Container(
+      constraints: const BoxConstraints(maxHeight: 260),
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      decoration: BoxDecoration(
+        color: c.card,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: c.divider, width: 0.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 14,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: child,
+    );
+  }
+
+  AppIconData _inlineResultIcon(String type) => switch (type) {
+    'inlineQueryResultAnimation' => HeroAppIcons.gif,
+    'inlineQueryResultAudio' => HeroAppIcons.music,
+    'inlineQueryResultContact' => HeroAppIcons.circleUser,
+    'inlineQueryResultDocument' => HeroAppIcons.file,
+    'inlineQueryResultGame' => HeroAppIcons.flash,
+    'inlineQueryResultLocation' ||
+    'inlineQueryResultVenue' => HeroAppIcons.locationDot,
+    'inlineQueryResultPhoto' => HeroAppIcons.image,
+    'inlineQueryResultSticker' => HeroAppIcons.solidFaceSmile,
+    'inlineQueryResultVideo' => HeroAppIcons.video,
+    'inlineQueryResultVoiceNote' => HeroAppIcons.microphone,
+    _ => HeroAppIcons.font,
+  };
+
+  Future<void> _sendInlineBotResult(BotInlineResult result) async {
+    final page = _inlineBotResults;
+    if (page == null || page.queryId == 0 || result.id.isEmpty) return;
+    try {
+      final reply = vm.replyTo;
+      await _botPlatform.sendInlineResult(
+        chatId: vm.chatId,
+        queryId: page.queryId,
+        resultId: result.id,
+        replyTo: reply == null
+            ? null
+            : {'@type': 'inputMessageReplyToMessage', 'message_id': reply.id},
+      );
+      if (!mounted) return;
+      vm.setReply(null);
+      _controller.clear();
+      _focus.requestFocus();
+      widget.onMessageSent();
+    } catch (error) {
+      _showBotPlatformFailure(error);
+    }
   }
 
   Widget _mentionMenu() {
@@ -834,7 +1415,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
   void _showBotMenu({bool forceMenu = false}) {
     final commands = vm.botCommands;
     final menu = vm.botMenu;
-    if (!(menu?.isWebApp ?? false) && commands.isEmpty) return;
+    final showTools = vm.peerIsBot || _guestQueries.isNotEmpty;
+    if (!(menu?.isWebApp ?? false) && commands.isEmpty && !showTools) return;
     if (!forceMenu && (menu?.isWebApp ?? false)) {
       unawaited(_openBotMenuWebApp(menu!));
       return;
@@ -866,7 +1448,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
                       unawaited(_openBotMenuWebApp(menu));
                     },
                   ),
-                  if (commands.isNotEmpty) const InsetDivider(leadingInset: 56),
+                  if (commands.isNotEmpty || showTools)
+                    const InsetDivider(leadingInset: 56),
                 ],
                 for (var i = 0; i < commands.length; i++) ...[
                   _botMenuRow(
@@ -878,9 +1461,21 @@ class _ChatInputBarState extends State<ChatInputBar> {
                       _insertBotCommand(commands[i].command);
                     },
                   ),
-                  if (i < commands.length - 1)
+                  if (i < commands.length - 1 || showTools)
                     const InsetDivider(leadingInset: 56),
                 ],
+                if (showTools)
+                  _botMenuRow(
+                    icon: HeroAppIcons.gear,
+                    title: 'Bot tools',
+                    subtitle: _guestQueries.isEmpty
+                        ? 'Inline mode, topics, and automation'
+                        : '${_guestQueries.length} guest ${_guestQueries.length == 1 ? 'query' : 'queries'} waiting',
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      unawaited(_showBotTools());
+                    },
+                  ),
               ],
             ),
           ),
@@ -963,6 +1558,344 @@ class _ChatInputBarState extends State<ChatInputBar> {
       selection: TextSelection.collapsed(offset: text.length),
     );
     _focus.requestFocus();
+  }
+
+  Future<void> _showBotTools() async {
+    BotPlatformCapabilities? capabilities;
+    final botUserId = vm.peerUserId;
+    if (vm.peerIsBot && botUserId != null) {
+      try {
+        capabilities = await _botPlatform.capabilitiesForUserId(botUserId);
+      } catch (_) {
+        // The menu still exposes account-bot and received guest-query tools.
+      }
+    }
+
+    var currentAccountIsBot = false;
+    try {
+      currentAccountIsBot = await _botPlatform.currentAccountIsBot();
+    } catch (_) {
+      // User accounts don't need the bot update status action.
+    }
+    if (!mounted) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        final c = sheetContext.colors;
+        final entries =
+            <
+              ({
+                AppIconData icon,
+                String title,
+                String subtitle,
+                VoidCallback onTap,
+              })
+            >[];
+        final resolved = capabilities;
+        if (resolved?.inlineMode == true &&
+            resolved!.username.trim().isNotEmpty) {
+          entries.add((
+            icon: HeroAppIcons.at,
+            title: 'Use inline mode',
+            subtitle: resolved.inlinePlaceholder.trim().isEmpty
+                ? '@${resolved.username}'
+                : resolved.inlinePlaceholder,
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              _insertInlineBot(resolved);
+            },
+          ));
+        }
+        if (resolved?.hasTopics == true &&
+            resolved?.allowsUsersToCreateTopics == true) {
+          entries.add((
+            icon: HeroAppIcons.comments,
+            title: 'Create bot topic',
+            subtitle: 'Start a named topic in this bot chat',
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              unawaited(_createBotTopic());
+            },
+          ));
+        }
+        if (resolved?.canManageBots == true) {
+          entries.add((
+            icon: HeroAppIcons.userPlus,
+            title: 'Create managed bot',
+            subtitle: 'Create a bot managed by @${resolved!.username}',
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              unawaited(_createManagedBot(resolved.userId));
+            },
+          ));
+        }
+        if (_guestQueries.isNotEmpty) {
+          entries.add((
+            icon: HeroAppIcons.comments,
+            title: 'Guest queries',
+            subtitle:
+                '${_guestQueries.length} ${_guestQueries.length == 1 ? 'query' : 'queries'} waiting',
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              _showGuestQueries();
+            },
+          ));
+        }
+        if (currentAccountIsBot) {
+          entries.add((
+            icon: HeroAppIcons.gear,
+            title: 'Automation status',
+            subtitle: 'Report pending updates or a webhook error',
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              unawaited(_updateBotAutomationStatus());
+            },
+          ));
+        }
+
+        return SafeArea(
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            decoration: BoxDecoration(
+              color: c.card,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: entries.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Text(
+                      'No additional tools are available for this bot.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: c.textSecondary, fontSize: 14),
+                    ),
+                  )
+                : ListView.separated(
+                    shrinkWrap: true,
+                    padding: EdgeInsets.zero,
+                    itemCount: entries.length,
+                    separatorBuilder: (_, _) =>
+                        const InsetDivider(leadingInset: 56),
+                    itemBuilder: (_, index) {
+                      final entry = entries[index];
+                      return _botMenuRow(
+                        icon: entry.icon,
+                        title: entry.title,
+                        subtitle: entry.subtitle,
+                        onTap: entry.onTap,
+                      );
+                    },
+                  ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _insertInlineBot(BotPlatformCapabilities bot) {
+    final clean = bot.username.replaceFirst('@', '').trim();
+    if (clean.isEmpty) return;
+    _inlineBot = bot;
+    final text = '@$clean ';
+    _controller.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+    _focus.requestFocus();
+  }
+
+  Future<void> _createBotTopic() async {
+    final name = await _promptBotText(
+      title: 'Create bot topic',
+      label: 'Topic name',
+      actionLabel: 'Create',
+    );
+    if (name == null) return;
+    try {
+      await _botPlatform.createBotTopic(chatId: vm.chatId, name: name);
+      if (mounted) showToast(context, 'Bot topic created');
+    } catch (error) {
+      _showBotPlatformFailure(error);
+    }
+  }
+
+  Future<void> _createManagedBot(
+    int managerBotUserId, {
+    String suggestedName = '',
+    String suggestedUsername = '',
+  }) async {
+    final name = await _promptBotText(
+      title: 'Create managed bot',
+      label: 'Bot name',
+      initialValue: suggestedName,
+      actionLabel: 'Next',
+    );
+    if (name == null) return;
+    final username = await _promptBotText(
+      title: 'Create managed bot',
+      label: 'Username',
+      initialValue: suggestedUsername,
+      actionLabel: 'Create',
+    );
+    if (username == null) return;
+    try {
+      await _botPlatform.createManagedBot(
+        managerBotUserId: managerBotUserId,
+        name: name,
+        username: username,
+      );
+      if (mounted) showToast(context, 'Managed bot created');
+    } catch (error) {
+      _showBotPlatformFailure(error);
+    }
+  }
+
+  void _showGuestQueries() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        final c = sheetContext.colors;
+        return SafeArea(
+          child: Container(
+            constraints: const BoxConstraints(maxHeight: 420),
+            margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            decoration: BoxDecoration(
+              color: c.card,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: ListView.separated(
+              shrinkWrap: true,
+              padding: EdgeInsets.zero,
+              itemCount: _guestQueries.length,
+              separatorBuilder: (_, _) => const InsetDivider(leadingInset: 56),
+              itemBuilder: (_, index) {
+                final query = _guestQueries[index];
+                return _botMenuRow(
+                  icon: HeroAppIcons.message,
+                  title: _guestQueryPreview(query),
+                  subtitle:
+                      '${query.referenceMessages.length} reference ${query.referenceMessages.length == 1 ? 'message' : 'messages'}',
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    unawaited(_replyToGuestQuery(query));
+                  },
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  String _guestQueryPreview(BotGuestQuery query) {
+    try {
+      final content = query.message.obj('content');
+      final text = content == null ? '' : TDParse.messageText(content).trim();
+      if (text.isNotEmpty) return text;
+    } catch (_) {
+      // Fall back to the stable guest query identifier below.
+    }
+    return 'Guest query ${query.id}';
+  }
+
+  Future<void> _replyToGuestQuery(BotGuestQuery query) async {
+    final reply = await _promptBotText(
+      title: 'Answer guest query',
+      label: 'Reply',
+      actionLabel: 'Send',
+    );
+    if (reply == null) return;
+    try {
+      await _botPlatform.answerGuestQuery(
+        guestQueryId: query.id,
+        result: {
+          '@type': 'inputInlineQueryResultArticle',
+          'id': 'guest_${query.id}',
+          'url': '',
+          'title': 'Reply',
+          'description': reply,
+          'thumbnail_url': '',
+          'thumbnail_width': 0,
+          'thumbnail_height': 0,
+          'reply_markup': null,
+          'input_message_content': {
+            '@type': 'inputMessageText',
+            'text': {
+              '@type': 'formattedText',
+              'text': reply,
+              'entities': <Map<String, dynamic>>[],
+            },
+            'link_preview_options': null,
+            'clear_draft': false,
+          },
+        },
+      );
+      if (!mounted) return;
+      setState(() => _guestQueries.removeWhere((item) => item.id == query.id));
+      showToast(context, 'Guest query answered');
+    } catch (error) {
+      _showBotPlatformFailure(error);
+    }
+  }
+
+  Future<void> _updateBotAutomationStatus() async {
+    final pendingText = await _promptBotText(
+      title: 'Automation status',
+      label: 'Pending update count',
+      initialValue: '0',
+      actionLabel: 'Next',
+      keyboardType: TextInputType.number,
+    );
+    if (pendingText == null) return;
+    final pendingCount = int.tryParse(pendingText);
+    if (pendingCount == null || pendingCount < 0) {
+      if (mounted) showToast(context, 'Enter a non-negative update count');
+      return;
+    }
+    final errorMessage = await _promptBotText(
+      title: 'Automation status',
+      label: 'Error message (optional)',
+      actionLabel: 'Report',
+      allowEmpty: true,
+    );
+    if (errorMessage == null) return;
+    try {
+      await _botPlatform.updateBotAutomationStatus(
+        pendingUpdateCount: pendingCount,
+        errorMessage: errorMessage,
+      );
+      if (mounted) showToast(context, 'Automation status updated');
+    } catch (error) {
+      _showBotPlatformFailure(error);
+    }
+  }
+
+  Future<String?> _promptBotText({
+    required String title,
+    required String label,
+    required String actionLabel,
+    String initialValue = '',
+    bool allowEmpty = false,
+    TextInputType? keyboardType,
+  }) => showAppTextEntryDialog(
+    context,
+    title: title,
+    label: label,
+    actionLabel: actionLabel,
+    initial: initialValue,
+    allowEmpty: allowEmpty,
+    keyboardType: keyboardType,
+  );
+
+  void _showBotPlatformFailure(Object error) {
+    if (!mounted) return;
+    final detail = error is TdError ? error.message : 'Action failed';
+    showToast(context, detail);
   }
 
   Widget _senderOptionRow(MessageSenderOption option) {
@@ -1068,6 +2001,19 @@ class _ChatInputBarState extends State<ChatInputBar> {
       widget.onMessageSent();
       return;
     }
+    if (button.type == 'keyboardButtonTypeRequestManagedBot') {
+      final managerBotUserId = vm.peerUserId;
+      if (managerBotUserId != null) {
+        unawaited(
+          _createManagedBot(
+            managerBotUserId,
+            suggestedName: button.suggestedName ?? '',
+            suggestedUsername: button.suggestedUsername ?? '',
+          ),
+        );
+        return;
+      }
+    }
     showToast(context, AppStringKeys.chatButtonUnsupported);
   }
 
@@ -1097,26 +2043,28 @@ class _ChatInputBarState extends State<ChatInputBar> {
           ] else if (webAppButton != null && replyKeyboard != null) ...[
             _replyKeyboardMiniAppAction(replyKeyboard, webAppButton),
             const SizedBox(width: 8),
-          ] else if (vm.peerIsBot &&
-              (vm.botCommands.isNotEmpty ||
-                  (vm.botMenu?.isWebApp ?? false))) ...[
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: _showBotMenu,
-              onLongPress: () => _showBotMenu(forceMenu: true),
-              child: Container(
-                width: 36,
-                height: 36,
-                margin: const EdgeInsets.only(right: 8),
-                decoration: BoxDecoration(
-                  color: c.searchFill,
-                  shape: BoxShape.circle,
-                ),
-                alignment: Alignment.center,
-                child: AppIcon(
-                  HeroAppIcons.tableCells,
-                  size: 20,
-                  color: c.textSecondary,
+          ] else if (vm.peerIsBot || _guestQueries.isNotEmpty) ...[
+            Semantics(
+              button: true,
+              label: 'Open bot menu',
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _showBotMenu,
+                onLongPress: () => _showBotMenu(forceMenu: true),
+                child: Container(
+                  width: 36,
+                  height: 36,
+                  margin: const EdgeInsets.only(right: 8),
+                  decoration: BoxDecoration(
+                    color: c.searchFill,
+                    shape: BoxShape.circle,
+                  ),
+                  alignment: Alignment.center,
+                  child: AppIcon(
+                    HeroAppIcons.tableCells,
+                    size: 20,
+                    color: c.textSecondary,
+                  ),
                 ),
               ),
             ),
@@ -1291,8 +2239,37 @@ class _ChatInputBarState extends State<ChatInputBar> {
           ),
           if (hasText) ...[
             const SizedBox(width: 8),
+            if (vm.canUseAiComposition &&
+                _controller.text.split('\n').length > 3) ...[
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => unawaited(_openTelegramAiEditor()),
+                child: Container(
+                  width: 36,
+                  height: 36,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: c.searchFill,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: AppTheme.brand.withValues(alpha: 0.45),
+                    ),
+                  ),
+                  child: Text(
+                    'Ai',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.brand,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
             GestureDetector(
               onTap: () => unawaited(_sendCurrentText()),
+              onLongPress: () => unawaited(_showTextSendOptions()),
               child: Container(
                 width: vm.requiresPaidMessage ? 58 : 36,
                 height: 36,
@@ -1384,7 +2361,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
     _ReplyKeyboard keyboard,
     MessageButton button,
   ) {
-    final c = context.colors;
+    final colors = _replyKeyboardButtonColors(button, prominent: true);
     return Semantics(
       button: true,
       label: button.text,
@@ -1398,31 +2375,62 @@ class _ChatInputBarState extends State<ChatInputBar> {
             height: 38,
             padding: const EdgeInsets.symmetric(horizontal: 12),
             decoration: BoxDecoration(
-              color: AppTheme.brand,
+              color: colors.background,
               borderRadius: BorderRadius.circular(19),
-              border: Border.all(
-                color: c.inputBarBackground.withValues(alpha: 0.72),
-                width: 2,
-              ),
+              border: Border.all(color: colors.border, width: 2),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Flexible(
-                  child: Text(
-                    button.text,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
+            child: BotButtonLabel(
+              button: button,
+              color: colors.foreground,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  ({Color background, Color foreground, Color border})
+  _replyKeyboardButtonColors(MessageButton button, {required bool prominent}) {
+    final c = context.colors;
+    return botButtonPalette(
+      button.style,
+      primary: AppTheme.brand,
+      standard: prominent
+          ? (
+              background: AppTheme.brand,
+              foreground: Colors.white,
+              border: c.inputBarBackground.withValues(alpha: 0.72),
+            )
+          : (background: c.card, foreground: c.textPrimary, border: c.divider),
+    );
+  }
+
+  Widget _replyKeyboardButtonCell(
+    _ReplyKeyboard keyboard,
+    MessageButton button,
+  ) {
+    final colors = _replyKeyboardButtonColors(button, prominent: false);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _pressReplyKeyboardButton(keyboard, button),
+      child: Container(
+        key: ValueKey('reply-keyboard-button-${button.text}'),
+        height: 48,
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          color: colors.background,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: colors.border, width: 0.5),
+        ),
+        child: BotButtonLabel(
+          button: button,
+          color: colors.foreground,
+          fontSize: AppTextSize.body,
+          fontWeight: FontWeight.w500,
+          iconSize: 19,
         ),
       ),
     );
@@ -1446,31 +2454,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
                 children: [
                   for (var index = 0; index < row.length; index++) ...[
                     Expanded(
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () =>
-                            _pressReplyKeyboardButton(keyboard, row[index]),
-                        child: Container(
-                          height: 48,
-                          alignment: Alignment.center,
-                          padding: const EdgeInsets.symmetric(horizontal: 10),
-                          decoration: BoxDecoration(
-                            color: c.card,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            row[index].text,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: c.textPrimary,
-                              fontSize: AppTextSize.body,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                      ),
+                      child: _replyKeyboardButtonCell(keyboard, row[index]),
                     ),
                     if (index < row.length - 1) const SizedBox(width: 8),
                   ],
@@ -1504,11 +2488,15 @@ class _ChatInputBarState extends State<ChatInputBar> {
             if (_panel == _Panel.sticker) {
               StickerStore.shared.loadIfNeeded();
               GifStore.shared.loadIfNeeded();
+              if (_panelSearch.text.trim().isNotEmpty) _queuePanelSearch();
             }
           }),
           _icon(HeroAppIcons.solidFaceSmile.data, _panel == _Panel.emoji, () {
             _toggle(_Panel.emoji);
-            if (_panel == _Panel.emoji) EmojiStore.shared.loadIfNeeded();
+            if (_panel == _Panel.emoji) {
+              EmojiStore.shared.loadIfNeeded();
+              if (_panelSearch.text.trim().isNotEmpty) _queuePanelSearch();
+            }
           }),
           _icon(
             _panel != _Panel.none
@@ -1541,10 +2529,22 @@ class _ChatInputBarState extends State<ChatInputBar> {
   /// 图片: pick one or more photos/videos and preserve their album order.
   Future<void> _pickPhotos() async {
     try {
+      final sendMode = await showGallerySendModeSheet(context);
+      if (!mounted || sendMode == null) return;
+      final sendAsFile = sendMode == GallerySendMode.file;
+      final sendLivePhoto = sendMode == GallerySendMode.livePhoto;
+      final maxDimension = switch (sendMode) {
+        GallerySendMode.media => 1280,
+        GallerySendMode.highDefinition => 2560,
+        _ => null,
+      };
       final selection = await AppAssetPicker.pickDetailed(
         context,
         type: AppAssetPickerType.imageAndVideo,
         maxAssets: 10,
+        preserveOriginalFiles: sendAsFile,
+        preferLivePhotoVideo: sendLivePhoto,
+        photoMaxDimension: maxDimension,
       );
       if (!mounted) return;
       if (selection.failedCount > 0) {
@@ -1558,14 +2558,15 @@ class _ChatInputBarState extends State<ChatInputBar> {
       final attachments = selection.assets
           .map((asset) {
             final file = asset.file;
-            final kind = isPickedAssetVideo(file)
-                ? OutgoingAttachmentKind.video
-                : isPickedAssetGif(file)
-                ? OutgoingAttachmentKind.animation
-                : OutgoingAttachmentKind.photo;
+            final kind = galleryAttachmentKind(
+              sendAsFile: sendAsFile,
+              isVideo: isPickedAssetVideo(file),
+              isAnimation: isPickedAssetGif(file),
+            );
             return OutgoingAttachment(
               path: file.path,
               kind: kind,
+              fileName: file.name,
               previewBytes: asset.thumbnailBytes,
               width: asset.width,
               height: asset.height,
@@ -1598,6 +2599,48 @@ class _ChatInputBarState extends State<ChatInputBar> {
       }
     } catch (_) {
       _pickFailed(AppStrings.t(AppStringKeys.composerCamera));
+    }
+  }
+
+  Future<void> _recordVideoNote() async {
+    try {
+      final capture = await Navigator.of(context).push<VideoNoteCaptureResult>(
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (_) => const VideoNoteRecorderView(),
+        ),
+      );
+      if (!mounted || capture == null) return;
+      final preview = await Navigator.of(context).push<VideoNotePreviewResult>(
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (_) => VideoNotePreviewView(
+            path: capture.path,
+            allowWhenOnline: widget.vm.canSendWhenOnline,
+            effects: widget.vm.availableMessageEffects,
+          ),
+        ),
+      );
+      if (!mounted) return;
+      if (preview == null) {
+        unawaited(_deleteTempFile(capture.path));
+        return;
+      }
+      final sent = await widget.vm.sendVideoNote(
+        preview.path,
+        preview.duration,
+        sendConfiguration: preview.sendConfiguration,
+      );
+      if (!mounted) return;
+      if (sent) {
+        widget.onMessageSent();
+      } else {
+        showToast(context, AppStringKeys.topicPostContentActionFailed);
+      }
+    } catch (_) {
+      if (mounted) {
+        showToast(context, AppStringKeys.topicPostContentActionFailed);
+      }
     }
   }
 
@@ -1738,14 +2781,22 @@ class _ChatInputBarState extends State<ChatInputBar> {
     final preview = await Navigator.of(context).push<MediaSendPreviewResult>(
       MaterialPageRoute(
         fullscreenDialog: true,
-        builder: (_) => MediaSendPreviewView(attachments: resolved),
+        builder: (_) => MediaSendPreviewView(
+          attachments: resolved,
+          allowWhenOnline: widget.vm.canSendWhenOnline,
+          effects: widget.vm.availableMessageEffects,
+        ),
       ),
     );
     if (!mounted || preview == null || preview.attachments.isEmpty) return;
     final finalAttachments = await resolveAttachmentListDimensions(
       preview.attachments,
     );
-    await widget.vm.sendAttachments(finalAttachments, caption: preview.caption);
+    await widget.vm.sendAttachments(
+      finalAttachments,
+      caption: preview.caption,
+      sendConfiguration: preview.sendConfiguration,
+    );
     widget.onMessageSent();
   }
 
@@ -1925,22 +2976,11 @@ class _ChatInputBarState extends State<ChatInputBar> {
                 return RichMessageSendFile(id: file.id, attachment: attachment);
               }),
             );
-            try {
-              await widget.vm.sendRichMessageHtml(
-                segment.html,
-                files: files,
-                blocks: segment.blocks,
-              );
-            } on TdError catch (error) {
-              if (!_isUnsupportedDirectRichMessage(error)) rethrow;
-              _directRichMessageBlocksUnsupported = true;
-              sentAny =
-                  await _sendRichSegmentsViaRelay(
-                    result.segments.sublist(index),
-                  ) ||
-                  sentAny;
-              break;
-            }
+            await widget.vm.sendRichMessageHtml(
+              segment.html,
+              files: files,
+              blocks: segment.blocks,
+            );
             sentAny = true;
           } else if (segment.attachments.isNotEmpty) {
             await widget.vm.sendAttachments(segment.attachments);
@@ -1975,16 +3015,30 @@ class _ChatInputBarState extends State<ChatInputBar> {
                 : AppStringKeys.composerRichTextSendFailed.l10n(context),
         };
         showToast(context, message);
+        await _reopenFailedRichTextComposer(result);
       }
     }
   }
 
-  bool _isUnsupportedDirectRichMessage(TdError error) {
-    if (error.code != 400 || !error.message.contains('Unknown class')) {
-      return false;
+  Future<void> _reopenFailedRichTextComposer(
+    RichTextComposerResult failedResult,
+  ) async {
+    if (!mounted) return;
+    final result = await showRichTextComposerSheet(
+      context,
+      initialText: failedResult.text,
+      initialEntities: failedResult.entities,
+      initialAttachments: failedResult.attachments,
+      title: AppStringKeys.composerRichTextMessageTitle,
+      submitText: AppStringKeys.composerSend,
+    );
+    if (result == null || !mounted) return;
+    if (result.text.trim().isEmpty && result.attachments.isEmpty) return;
+    if (vm.requiresPaidMessage) {
+      final ok = await _confirmPaidMessageSend();
+      if (!mounted || !ok) return;
     }
-    return error.message.contains('richMessageSourceBlocks') ||
-        error.message.contains('inputPageBlock');
+    await _sendRichTextResult(result);
   }
 
   Future<bool> _sendRichSegmentsViaRelay(
@@ -2092,8 +3146,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   Future<_RichTextSendMode?> _richTextSendMode() async {
     try {
-      if (!_directRichMessageBlocksUnsupported &&
-          await widget.vm.currentUserIsPremium()) {
+      if (await widget.vm.currentUserIsPremium()) {
         return _RichTextSendMode.premium;
       }
       if (await RichMessageRelayConfig.isConfigured()) {
@@ -2183,16 +3236,70 @@ class _ChatInputBarState extends State<ChatInputBar> {
     }
   }
 
+  Future<void> _sendVenue() async {
+    final start = await resolveLocationPickerStart();
+    if (!mounted) return;
+    final picked = await Navigator.of(context).push<LocationShareResult>(
+      MaterialPageRoute(
+        builder: (_) =>
+            LocationPickerView(initial: start, returnShareResult: true),
+      ),
+    );
+    if (!mounted || picked == null) return;
+    final details = await Navigator.of(context).push<VenueComposerResult>(
+      MaterialPageRoute(
+        builder: (_) => VenueComposerView(
+          location: picked.center,
+          suggestedAddress: picked.address,
+        ),
+      ),
+    );
+    if (!mounted || details == null) return;
+    final sent = await widget.vm.sendVenue(
+      latitude: picked.center.latitude,
+      longitude: picked.center.longitude,
+      title: details.title,
+      address: details.address,
+    );
+    if (!mounted) return;
+    if (sent) {
+      widget.onMessageSent();
+    } else {
+      showToast(context, AppStringKeys.topicPostContentActionFailed);
+    }
+  }
+
+  Future<void> _sendContact() async {
+    final contact = await Navigator.of(context).push<MessageContactCard>(
+      MaterialPageRoute(builder: (_) => const ContactSharePickerView()),
+    );
+    if (!mounted || contact == null) return;
+    final sent = await widget.vm.sendContact(contact);
+    if (!mounted) return;
+    if (sent) {
+      widget.onMessageSent();
+    } else {
+      showToast(context, AppStringKeys.topicPostContentActionFailed);
+    }
+  }
+
   /// 投票: collect a question + options and send a poll.
   Future<void> _createPoll() async {
-    final result = await Navigator.of(context).push<(String, List<String>)>(
-      MaterialPageRoute(builder: (_) => const PollComposerView()),
+    final maxOptions = await widget.vm.pollAnswerCountMax();
+    if (!mounted) return;
+    final result = await Navigator.of(context).push<PollComposerResult>(
+      MaterialPageRoute(
+        builder: (_) => PollComposerView(maxOptions: maxOptions),
+      ),
     );
-    if (result == null) return;
-    final (question, options) = result;
-    if (question.isEmpty || options.length < 2) return;
-    widget.vm.sendPoll(question, options);
-    widget.onMessageSent();
+    if (!mounted || result == null) return;
+    final sent = await widget.vm.sendPoll(result);
+    if (!mounted) return;
+    if (sent) {
+      widget.onMessageSent();
+    } else {
+      showToast(context, AppStringKeys.topicPostContentActionFailed);
+    }
   }
 
   /// 音频: pick a local audio file and send it as a music message.
@@ -2251,14 +3358,54 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   /// 清单: collect a title + tasks and send a checklist (to-do list).
   Future<void> _createChecklist() async {
-    final result = await Navigator.of(context).push<(String, List<String>)>(
+    final result = await Navigator.of(context).push<ChecklistComposerResult>(
       MaterialPageRoute(builder: (_) => const ChecklistComposerView()),
     );
     if (result == null) return;
-    final (title, tasks) = result;
-    if (title.isEmpty || tasks.isEmpty) return;
-    widget.vm.sendChecklist(title, tasks);
+    if (result.title.isEmpty || result.tasks.isEmpty) return;
+    widget.vm.sendChecklist(result);
     widget.onMessageSent();
+  }
+
+  Future<void> _createSuggestedPost() async {
+    final loader = ChannelDirectMessageTopicController(
+      chatId: vm.chatId,
+      topicId: 0,
+    );
+    try {
+      final limits = await loader.loadLimits();
+      if (!mounted) return;
+      final draft = await showModalBottomSheet<SuggestedPostDraft>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => SuggestedPostComposerSheet(limits: limits),
+      );
+      if (draft == null || !mounted) return;
+      await vm.sendSuggestedPost(
+        text: draft.text,
+        attachment: draft.attachment,
+        price: draft.price,
+        sendDate: draft.sendDate,
+      );
+      widget.onMessageSent();
+    } catch (error) {
+      if (mounted) showToast(context, error.toString());
+    } finally {
+      loader.dispose();
+    }
+  }
+
+  Future<void> _openBusinessQuickReplies() async {
+    final sent = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => BusinessQuickReplyPickerView(
+          chatId: widget.vm.chatId,
+          chatTitle: widget.vm.peerTitle,
+        ),
+      ),
+    );
+    if (sent == true && mounted) widget.onMessageSent();
   }
 
   // MARK: - Function panel
@@ -2283,21 +3430,33 @@ class _ChatInputBarState extends State<ChatInputBar> {
         ),
         () => widget.onStartCall(true),
       ),
+      (HeroAppIcons.solidFileVideo.data, 'Video message', _recordVideoNote),
       (
         HeroAppIcons.locationDot.data,
         AppStrings.t(AppStringKeys.composerLocation),
         _sendLocation,
       ),
       (
+        HeroAppIcons.locationPin.data,
+        AppStrings.t(AppStringKeys.composerVenue),
+        _sendVenue,
+      ),
+      (
+        HeroAppIcons.idBadge.data,
+        AppStrings.t(AppStringKeys.composerContact),
+        _sendContact,
+      ),
+      (
         HeroAppIcons.solidFolder.data,
         telegramText(AppStringKeys.topicPostContentFile),
         _pickFile,
       ),
-      (
-        HeroAppIcons.grip.data,
-        AppStrings.t(AppStringKeys.composerPoll),
-        _createPoll,
-      ),
+      if (!vm.isDirectMessagesGroup)
+        (
+          HeroAppIcons.grip.data,
+          AppStrings.t(AppStringKeys.composerPoll),
+          _createPoll,
+        ),
       (
         HeroAppIcons.music.data,
         telegramText(AppStringKeys.composerAudio),
@@ -2308,11 +3467,28 @@ class _ChatInputBarState extends State<ChatInputBar> {
         AppStrings.t(AppStringKeys.composerRichText),
         _openRichTextComposer,
       ),
-      (
-        HeroAppIcons.listCheck.data,
-        AppStrings.t(AppStringKeys.composerChecklist),
-        _createChecklist,
-      ),
+      if (!vm.isDirectMessagesGroup)
+        (
+          HeroAppIcons.listCheck.data,
+          AppStrings.t(AppStringKeys.composerChecklist),
+          _createChecklist,
+        ),
+      if (vm.isDirectMessagesGroup && !vm.isAdministeredDirectMessagesGroup)
+        (
+          HeroAppIcons.penToSquare.data,
+          AppStrings.t(AppStringKeys.suggestedPostComposerTitle),
+          _createSuggestedPost,
+        ),
+      if (!vm.isGroup &&
+          !vm.peerIsBot &&
+          !vm.isSecretChat &&
+          vm.peerUserId != vm.meId)
+        (
+          HeroAppIcons.solidMessage.data,
+          'Quick Replies',
+          _openBusinessQuickReplies,
+        ),
+      (HeroAppIcons.clock.data, 'Scheduled', _openScheduledMessages),
     ];
     final c = context.colors;
     return Container(
@@ -2361,10 +3537,11 @@ class _ChatInputBarState extends State<ChatInputBar> {
   Widget _emojiPanel() {
     final c = context.colors;
     return Container(
-      height: 286,
+      height: 326,
       color: c.panelBackground,
       child: Column(
         children: [
+          _panelSearchField(),
           Expanded(child: _emojiContent()),
           _emojiTabStrip(),
         ],
@@ -2373,6 +3550,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
   }
 
   Widget _emojiContent() {
+    if (_panelSearch.text.trim().isNotEmpty) return _emojiSearchContent();
     final store = EmojiStore.shared;
     if (_emojiTab != 'standard') {
       final id = int.tryParse(_emojiTab);
@@ -2452,6 +3630,112 @@ class _ChatInputBarState extends State<ChatInputBar> {
     );
   }
 
+  Widget _panelSearchField() {
+    final c = context.colors;
+    return Container(
+      height: 42,
+      margin: const EdgeInsets.fromLTRB(10, 8, 10, 2),
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: c.searchFill,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          AppIcon(
+            HeroAppIcons.magnifyingGlass,
+            size: 17,
+            color: c.textTertiary,
+          ),
+          const SizedBox(width: 7),
+          Expanded(
+            child: TextField(
+              controller: _panelSearch,
+              decoration: InputDecoration.collapsed(
+                hintText: AppStringKeys.composerMediaSearch.l10n(context),
+              ),
+              style: TextStyle(fontSize: 14, color: c.textPrimary),
+            ),
+          ),
+          if (_panelSearch.text.isNotEmpty)
+            GestureDetector(
+              key: const ValueKey('composerMediaSearchClear'),
+              behavior: HitTestBehavior.opaque,
+              onTap: _panelSearch.clear,
+              child: SizedBox(
+                width: 30,
+                height: 30,
+                child: Center(
+                  child: AppIcon(
+                    HeroAppIcons.circleXmark,
+                    size: 18,
+                    color: c.textTertiary,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _emojiSearchContent() {
+    final count = _emojiSearchResults.length + _customEmojiSearchResults.length;
+    if (count == 0) return _panelSearchState();
+    return GridView.builder(
+      padding: const EdgeInsets.all(12),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 8,
+      ),
+      itemCount: count,
+      itemBuilder: (context, index) {
+        if (index < _emojiSearchResults.length) {
+          final emoji = _emojiSearchResults[index];
+          return GestureDetector(
+            key: ValueKey('emojiSearch-$emoji'),
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _controller.insertText(emoji),
+            child: Center(
+              child: Text(emoji, style: const TextStyle(fontSize: 26)),
+            ),
+          );
+        }
+        final item =
+            _customEmojiSearchResults[index - _emojiSearchResults.length];
+        return GestureDetector(
+          key: ValueKey('customEmojiSearch-${item.customEmojiId}'),
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            if (item.customEmojiId != 0) {
+              _controller.insertCustomEmoji(item.customEmojiId, item.emoji);
+            } else if (item.emoji.isNotEmpty) {
+              _controller.insertText(item.emoji);
+            }
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(2),
+            child: item.customEmojiId != 0
+                ? CustomEmojiView(
+                    id: item.customEmojiId,
+                    size: 34,
+                    color: context.colors.textPrimary,
+                  )
+                : StickerPreview(item: item),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _panelSearchState() => Center(
+    child: _panelSearchLoading
+        ? const AppActivityIndicator(size: 23)
+        : Text(
+            AppStringKeys.composerMediaSearchEmpty.l10n(context),
+            style: TextStyle(fontSize: 13, color: context.colors.textSecondary),
+          ),
+  );
+
   Widget _emojiTabStrip() {
     final c = context.colors;
     final packs = EmojiStore.shared.customPacks;
@@ -2466,6 +3750,15 @@ class _ChatInputBarState extends State<ChatInputBar> {
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           children: [
+            _emojiTabButton(
+              selected: false,
+              onTap: _openStickerStudio,
+              child: AppIcon(
+                HeroAppIcons.palette,
+                size: 20,
+                color: c.textSecondary,
+              ),
+            ),
             _emojiTabButton(
               selected: _emojiTab == 'standard',
               onTap: () => setState(() => _emojiTab = 'standard'),
@@ -2532,11 +3825,15 @@ class _ChatInputBarState extends State<ChatInputBar> {
         ? AppStrings.t(AppStringKeys.composerMicrophonePermissionRequired)
         : !_recording
         ? AppStrings.t(AppStringKeys.composerHoldToTalk)
+        : _recordingLocked
+        ? (_recordingPaused
+              ? 'Recording paused'
+              : 'Recording locked · pause or stop')
         : (_recordCancelled
               ? AppStrings.t(AppStringKeys.composerReleaseFingerToCancel)
-              : AppStrings.t(AppStringKeys.composerReleaseToSendSlideToCancel));
+              : 'Release to preview · slide up to lock · left to cancel');
     return Container(
-      height: 240,
+      height: 270,
       width: double.infinity,
       color: c.panelBackground,
       child: Column(
@@ -2550,6 +3847,35 @@ class _ChatInputBarState extends State<ChatInputBar> {
             ),
           ),
           const SizedBox(height: 10),
+          if (_recording) ...[
+            SizedBox(
+              width: 220,
+              height: 28,
+              child: Row(
+                children: [
+                  for (final level
+                      in _recLevels.reversed.take(36).toList().reversed)
+                    Expanded(
+                      child: Align(
+                        child: Container(
+                          width: 2,
+                          height:
+                              (4 + ((level.clamp(-60.0, 0.0) + 60) / 60) * 24)
+                                  .toDouble(),
+                          decoration: BoxDecoration(
+                            color: _recordingPaused
+                                ? c.textTertiary
+                                : AppTheme.brand,
+                            borderRadius: BorderRadius.circular(1),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 6),
+          ],
           Opacity(
             opacity: _recording ? 1 : 0.3,
             child: Text(
@@ -2564,6 +3890,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
           const SizedBox(height: 16),
           Listener(
             onPointerDown: (e) {
+              _pressStartX = e.position.dx;
               _pressStartY = e.position.dy;
               // Check the recorder live (not the build-time `granted`) so a press
               // right after the panel opens still records; otherwise prime it.
@@ -2574,15 +3901,23 @@ class _ChatInputBarState extends State<ChatInputBar> {
               }
             },
             onPointerMove: (e) {
-              if (!_recording) return;
-              final cancel = e.position.dy - _pressStartY < -70;
+              if (!_recording || _recordingLocked) return;
+              final cancel = e.position.dx - _pressStartX < -70;
+              final lock = e.position.dy - _pressStartY < -70;
+              if (lock) {
+                setState(() {
+                  _recordingLocked = true;
+                  _recordCancelled = false;
+                });
+                return;
+              }
               if (cancel != _recordCancelled) {
                 setState(() => _recordCancelled = cancel);
               }
             },
             onPointerUp: (_) {
               if (_recorder != null) {
-                _stopRec();
+                if (!_recordingLocked) unawaited(_stopRec());
               } else {
                 _prepareRecorder();
               }
@@ -2606,18 +3941,65 @@ class _ChatInputBarState extends State<ChatInputBar> {
               ),
             ),
           ),
+          if (_recordingLocked) ...[
+            const SizedBox(height: 14),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _voiceRecordingAction(
+                  icon: HeroAppIcons.trash,
+                  color: AppTheme.tagRed,
+                  onTap: _cancelLockedRecording,
+                ),
+                const SizedBox(width: 22),
+                _voiceRecordingAction(
+                  icon: _recordingPaused
+                      ? HeroAppIcons.play
+                      : HeroAppIcons.pause,
+                  color: AppTheme.brand,
+                  onTap: () => unawaited(_toggleRecPause()),
+                ),
+                const SizedBox(width: 22),
+                _voiceRecordingAction(
+                  icon: HeroAppIcons.square,
+                  color: AppTheme.brand,
+                  onTap: () => unawaited(_stopRec()),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
   }
 
+  Widget _voiceRecordingAction({
+    required AppIconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) => GestureDetector(
+    behavior: HitTestBehavior.opaque,
+    onTap: onTap,
+    child: Container(
+      width: 42,
+      height: 42,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        shape: BoxShape.circle,
+      ),
+      child: AppIcon(icon, size: 20, color: color),
+    ),
+  );
+
   Widget _stickerPanel() {
     final c = context.colors;
     return Container(
-      height: 286,
+      height: 326,
       color: c.panelBackground,
       child: Column(
         children: [
+          _panelSearchField(),
           Expanded(child: _stickerContent()),
           _stickerTabStrip(),
         ],
@@ -2632,6 +4014,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
         _stickerPack ??
         (packs.isNotEmpty ? packs.first.id : StickerStore.recentPackId);
     if (activeId == _gifTabId) return _gifContent();
+    if (_panelSearch.text.trim().isNotEmpty) {
+      if (_stickerSearchResults.isEmpty) return _panelSearchState();
+      return _stickerGrid(_stickerSearchResults, search: true);
+    }
     if (packs.isEmpty) {
       return Center(
         child: Text(
@@ -2662,6 +4048,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
     }
     final stickers = pack.stickers;
     // Lazy builder so only on-screen stickers spin up an animation/decoder.
+    return _stickerGrid(stickers);
+  }
+
+  Widget _stickerGrid(List<StickerItem> stickers, {bool search = false}) {
     return GridView.builder(
       padding: const EdgeInsets.all(12),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -2673,30 +4063,35 @@ class _ChatInputBarState extends State<ChatInputBar> {
       itemBuilder: (context, i) {
         final item = stickers[i];
         return GestureDetector(
+          key: search ? ValueKey('stickerSearch-${item.id}') : null,
           behavior: HitTestBehavior.opaque,
-          onTap: () async {
-            final sent = await widget.vm.sendSticker(item);
-            if (!mounted) return;
-            if (sent) {
-              widget.onMessageSent();
-              setState(() => _panel = _Panel.none);
-            } else {
-              showToast(
-                this.context,
-                AppStrings.t(AppStringKeys.stickerSetDetailActionFailed),
-              );
-            }
-          },
+          onTap: () => unawaited(_sendStickerItem(item)),
           child: StickerPreview(item: item),
         );
       },
     );
   }
 
+  Future<void> _sendStickerItem(StickerItem item) async {
+    final sent = await widget.vm.sendSticker(item);
+    if (!mounted) return;
+    if (sent) {
+      widget.onMessageSent();
+      setState(() => _panel = _Panel.none);
+    } else {
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.stickerSetDetailActionFailed),
+      );
+    }
+  }
+
   Widget _gifContent() {
     final store = GifStore.shared;
-    final items = store.items;
+    final searching = _panelSearch.text.trim().isNotEmpty;
+    final items = searching ? _gifSearchResults : store.items;
     if (items.isEmpty) {
+      if (searching) return _panelSearchState();
       return Center(
         child: Text(
           store.loading
@@ -2714,28 +4109,64 @@ class _ChatInputBarState extends State<ChatInputBar> {
         mainAxisSpacing: 4,
         crossAxisSpacing: 4,
       ),
-      itemCount: items.length,
+      itemCount:
+          items.length + (searching && _gifSearchNextOffset.isNotEmpty ? 1 : 0),
       itemBuilder: (_, index) {
+        if (index == items.length) {
+          return Semantics(
+            button: true,
+            label: 'Load more GIF results',
+            child: GestureDetector(
+              key: const ValueKey('gifSearchLoadMore'),
+              behavior: HitTestBehavior.opaque,
+              onTap: _gifSearchLoadingMore
+                  ? null
+                  : () => unawaited(_loadMoreGifSearch()),
+              child: Center(
+                child: _gifSearchLoadingMore
+                    ? const AppActivityIndicator(size: 22)
+                    : Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          AppIcon(
+                            HeroAppIcons.chevronDown,
+                            size: 22,
+                            color: context.colors.textSecondary,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'More',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: context.colors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+            ),
+          );
+        }
         final item = items[index];
         return GestureDetector(
+          key: searching ? ValueKey('gifSearch-${item.id}') : null,
           behavior: HitTestBehavior.opaque,
-          onTap: () async {
-            final sent = await widget.vm.sendGif(item);
-            if (!mounted) return;
-            if (sent) {
-              widget.onMessageSent();
-              setState(() => _panel = _Panel.none);
-            } else {
-              showToast(
-                context,
-                AppStrings.t(AppStringKeys.composerGifSendFailed),
-              );
-            }
-          },
+          onTap: () => unawaited(_sendGifItem(item)),
           child: GifPreview(item: item),
         );
       },
     );
+  }
+
+  Future<void> _sendGifItem(GifItem item) async {
+    final sent = await widget.vm.sendGif(item);
+    if (!mounted) return;
+    if (sent) {
+      widget.onMessageSent();
+      setState(() => _panel = _Panel.none);
+    } else {
+      showToast(context, AppStrings.t(AppStringKeys.composerGifSendFailed));
+    }
   }
 
   Widget _stickerTabStrip() {
@@ -2757,10 +4188,20 @@ class _ChatInputBarState extends State<ChatInputBar> {
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           children: [
             _emojiTabButton(
+              selected: false,
+              onTap: _openStickerStudio,
+              child: AppIcon(
+                HeroAppIcons.palette,
+                size: 20,
+                color: c.textSecondary,
+              ),
+            ),
+            _emojiTabButton(
               selected: activeId == StickerStore.recentPackId,
               onTap: () {
                 setState(() => _stickerPack = StickerStore.recentPackId);
                 StickerStore.shared.loadIfNeeded();
+                if (_panelSearch.text.trim().isNotEmpty) _queuePanelSearch();
               },
               child: AppIcon(
                 HeroAppIcons.clock,
@@ -2775,6 +4216,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
               onTap: () {
                 setState(() => _stickerPack = _gifTabId);
                 GifStore.shared.loadIfNeeded();
+                if (_panelSearch.text.trim().isNotEmpty) _queuePanelSearch();
               },
               child: AppIcon(
                 HeroAppIcons.gif,
@@ -2788,6 +4230,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
                 onTap: () {
                   setState(() => _stickerPack = pack.id);
                   StickerStore.shared.loadPack(pack.id);
+                  if (_panelSearch.text.trim().isNotEmpty) _queuePanelSearch();
                 },
                 child: pack.cover != null
                     ? StickerTabPreview(item: pack.cover!)
@@ -2800,6 +4243,16 @@ class _ChatInputBarState extends State<ChatInputBar> {
         ),
       ),
     );
+  }
+
+  Future<void> _openStickerStudio() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(builder: (_) => const StickerSetStudioView()),
+    );
+    StickerStore.shared.reset();
+    EmojiStore.shared.reset();
+    StickerStore.shared.loadIfNeeded();
+    EmojiStore.shared.loadIfNeeded();
   }
 }
 

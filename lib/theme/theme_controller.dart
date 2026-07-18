@@ -949,8 +949,16 @@ class ThemeController extends ChangeNotifier {
       (behavior) => behavior.name == storedThreeFingerBehavior,
       orElse: () => ThreeFingerSwipeBehavior.switchFolders,
     );
-    _displayOwnChatAsFavorites =
-        _prefs.getBool(_displayOwnChatAsFavoritesKey) ?? false;
+    final storedSavedMessagesBookmarkView = _prefs.getBool(
+      _savedMessagesBookmarkViewKey,
+    );
+    _savedMessagesBookmarkView =
+        storedSavedMessagesBookmarkView ??
+        _prefs.getBool(_legacyDisplayOwnChatAsFavoritesKey) ??
+        false;
+    if (storedSavedMessagesBookmarkView == null) {
+      _prefs.setBool(_savedMessagesBookmarkViewKey, _savedMessagesBookmarkView);
+    }
     _hideSidebarPhone = _prefs.getBool(_hideSidebarPhoneKey) ?? false;
     _showMemberTags = _prefs.getBool(_memberTagsKey) ?? false;
     _showPlainMemberRoleTags = _prefs.getBool(_plainMemberRoleTagsKey) ?? false;
@@ -982,6 +990,8 @@ class ThemeController extends ChangeNotifier {
         _prefs.getBool(_hideBlockedUserMessagesKey) ?? false;
     _showChannelsTab = _prefs.getBool(_showChannelsTabKey) ?? false;
     _showMomentsTab = _prefs.getBool(_showMomentsTabKey) ?? true;
+    _showShortVideos = _prefs.getBool(_showShortVideosKey) ?? true;
+    _communitiesEnabled = _prefs.getBool(_communitiesEnabledKey) ?? true;
     final storedArchivedChatsMode = _prefs.getString(
       _archivedChatsDisplayModeKey,
     );
@@ -1039,7 +1049,9 @@ class ThemeController extends ChangeNotifier {
   static const _chatListSwipeBehaviorKey = 'chatListSwipeBehavior';
   static const _chatListHoldSwipeActionsKey = 'chatListHoldSwipeActions';
   static const _threeFingerSwipeBehaviorKey = 'threeFingerSwipeBehavior';
-  static const _displayOwnChatAsFavoritesKey = 'displayOwnChatAsFavorites';
+  static const _savedMessagesBookmarkViewKey = 'savedMessagesBookmarkView';
+  static const _legacyDisplayOwnChatAsFavoritesKey =
+      'displayOwnChatAsFavorites';
   static const _hideSidebarPhoneKey = 'hideSidebarPhone';
   static const _memberTagsKey = 'showMemberTags';
   static const _plainMemberRoleTagsKey = 'showPlainMemberRoleTags';
@@ -1058,6 +1070,8 @@ class ThemeController extends ChangeNotifier {
   static const _hideBlockedUserMessagesKey = 'hideBlockedUserMessages';
   static const _showChannelsTabKey = 'showChannelsTab';
   static const _showMomentsTabKey = 'showMomentsTab';
+  static const _showShortVideosKey = 'showShortVideos';
+  static const _communitiesEnabledKey = 'communitiesEnabled';
   static const _archivedChatsDisplayModeKey = 'archivedChatsDisplayMode';
   static const _unreadBadgeModeKey = 'unreadBadgeMode';
   static const _unreadBadgeOverflowModeKey = 'unreadBadgeOverflowMode';
@@ -1094,7 +1108,7 @@ class ThemeController extends ChangeNotifier {
   late ChatListSwipeBehavior _chatListSwipeBehavior;
   bool _chatListHoldSwipeActions = false;
   late ThreeFingerSwipeBehavior _threeFingerSwipeBehavior;
-  bool _displayOwnChatAsFavorites = false;
+  bool _savedMessagesBookmarkView = false;
   bool _hideSidebarPhone = false;
   bool _showMemberTags = false;
   bool _showPlainMemberRoleTags = false;
@@ -1112,6 +1126,8 @@ class ThemeController extends ChangeNotifier {
   bool _hideBlockedUserMessages = false;
   bool _showChannelsTab = false;
   bool _showMomentsTab = true;
+  bool _showShortVideos = true;
+  bool _communitiesEnabled = true;
   late ArchivedChatsDisplayMode _archivedChatsDisplayMode;
   late UnreadBadgeMode _unreadBadgeMode;
   late UnreadBadgeOverflowMode _unreadBadgeOverflowMode;
@@ -1261,7 +1277,7 @@ class ThemeController extends ChangeNotifier {
       _chatListSwipeBehavior == ChatListSwipeBehavior.switchFolders;
   bool get chatListFolderSwipeSwitching =>
       _chatListSwipeBehavior == ChatListSwipeBehavior.switchFolders;
-  bool get displayOwnChatAsFavorites => _displayOwnChatAsFavorites;
+  bool get savedMessagesBookmarkView => _savedMessagesBookmarkView;
   bool get hideSidebarPhone => _hideSidebarPhone;
   bool get showMemberTags => _showMemberTags;
   bool get showPlainMemberRoleTags => _showPlainMemberRoleTags;
@@ -1280,6 +1296,8 @@ class ThemeController extends ChangeNotifier {
   bool get hideBlockedUserMessages => _hideBlockedUserMessages;
   bool get showChannelsTab => _showChannelsTab;
   bool get showMomentsTab => _showMomentsTab;
+  bool get showShortVideos => _showShortVideos;
+  bool get communitiesEnabled => _communitiesEnabled;
   ArchivedChatsDisplayMode get archivedChatsDisplayMode =>
       _archivedChatsDisplayMode;
   UnreadBadgeMode get unreadBadgeMode => _unreadBadgeMode;
@@ -1704,9 +1722,10 @@ class ThemeController extends ChangeNotifier {
     notifyListeners();
   }
 
-  set displayOwnChatAsFavorites(bool value) {
-    _displayOwnChatAsFavorites = value;
-    _prefs.setBool(_displayOwnChatAsFavoritesKey, value);
+  set savedMessagesBookmarkView(bool value) {
+    if (_savedMessagesBookmarkView == value) return;
+    _savedMessagesBookmarkView = value;
+    _prefs.setBool(_savedMessagesBookmarkViewKey, value);
     notifyListeners();
   }
 
@@ -1872,6 +1891,19 @@ class ThemeController extends ChangeNotifier {
   set showMomentsTab(bool value) {
     _showMomentsTab = value;
     _prefs.setBool(_showMomentsTabKey, value);
+    notifyListeners();
+  }
+
+  set showShortVideos(bool value) {
+    _showShortVideos = value;
+    _prefs.setBool(_showShortVideosKey, value);
+    notifyListeners();
+  }
+
+  set communitiesEnabled(bool value) {
+    if (_communitiesEnabled == value) return;
+    _communitiesEnabled = value;
+    _prefs.setBool(_communitiesEnabledKey, value);
     notifyListeners();
   }
 

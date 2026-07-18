@@ -133,7 +133,9 @@ class _StickerViewerState extends State<StickerViewer> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  for (final format in formats)
+                  for (final format in formats.where(
+                    (format) => format != StickerExportFormat.lottie,
+                  ))
                     _exportMenuItem(
                       c: c,
                       label: saveToPhotos,

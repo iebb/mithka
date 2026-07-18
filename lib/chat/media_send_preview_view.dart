@@ -1,21 +1,28 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:video_player/video_player.dart';
 
 import '../components/app_icons.dart';
+import '../components/toast.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 import 'image_edit_view.dart';
+import 'message_send_options.dart';
 import 'outgoing_attachment.dart';
+import 'video_trim_service.dart';
 
 class MediaSendPreviewResult {
   const MediaSendPreviewResult({
     required this.attachments,
     required this.caption,
+    required this.sendConfiguration,
   });
 
   final List<OutgoingAttachment> attachments;
   final String caption;
+  final MessageSendConfiguration sendConfiguration;
 }
 
 class MediaSendPreviewView extends StatefulWidget {
@@ -23,10 +30,14 @@ class MediaSendPreviewView extends StatefulWidget {
     super.key,
     required this.attachments,
     this.initialCaption = '',
+    this.allowWhenOnline = false,
+    this.effects = const [],
   });
 
   final List<OutgoingAttachment> attachments;
   final String initialCaption;
+  final bool allowWhenOnline;
+  final List<AvailableMessageEffect> effects;
 
   @override
   State<MediaSendPreviewView> createState() => _MediaSendPreviewViewState();
@@ -36,6 +47,8 @@ class _MediaSendPreviewViewState extends State<MediaSendPreviewView> {
   late final TextEditingController _captionController;
   late final List<OutgoingAttachment> _attachments;
   int _selectedIndex = 0;
+  MessageSendConfiguration _sendConfiguration =
+      const MessageSendConfiguration();
 
   @override
   void initState() {
@@ -56,8 +69,22 @@ class _MediaSendPreviewViewState extends State<MediaSendPreviewView> {
       MediaSendPreviewResult(
         attachments: List.unmodifiable(_attachments),
         caption: _captionController.text,
+        sendConfiguration: _sendConfiguration,
       ),
     );
+  }
+
+  Future<void> _configureAndSubmit() async {
+    final value = await showMessageSendOptionsSheet(
+      context,
+      initial: _sendConfiguration,
+      allowWhenOnline: widget.allowWhenOnline,
+      mediaOptions: true,
+      effects: widget.effects,
+    );
+    if (!mounted || value == null) return;
+    _sendConfiguration = value;
+    _submit();
   }
 
   Future<void> _editSelected() async {
@@ -86,6 +113,232 @@ class _MediaSendPreviewViewState extends State<MediaSendPreviewView> {
       }
     });
   }
+
+  Future<void> _editVideoMetadata() async {
+    if (_attachments.isEmpty) return;
+    final attachment = _attachments[_selectedIndex];
+    if (attachment.kind != OutgoingAttachmentKind.video) return;
+    final startController = TextEditingController(
+      text: attachment.startTimestamp.toString(),
+    );
+    var coverPath = attachment.coverPath;
+    final video = VideoPlayerController.file(File(attachment.path));
+    try {
+      await video.initialize();
+    } catch (_) {
+      await video.dispose();
+      if (mounted) showToast(context, 'Unable to open this video.');
+      return;
+    }
+    if (!mounted) {
+      await video.dispose();
+      return;
+    }
+    final totalMs = video.value.duration.inMilliseconds;
+    var trim = RangeValues(0, totalMs.toDouble());
+    final result = await showModalBottomSheet<(String?, int, RangeValues)>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          final c = context.colors;
+          return SafeArea(
+            top: false,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              decoration: BoxDecoration(
+                color: c.background,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(18),
+                ),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Video presentation',
+                    style: TextStyle(
+                      color: c.textPrimary,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () async {
+                      final image = await ImagePicker().pickImage(
+                        source: ImageSource.gallery,
+                      );
+                      if (image != null) {
+                        setSheetState(() => coverPath = image.path);
+                      }
+                    },
+                    child: Container(
+                      height: 58,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        color: c.card,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          if (coverPath != null)
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(7),
+                              child: Image.file(
+                                File(coverPath!),
+                                width: 40,
+                                height: 40,
+                                fit: BoxFit.cover,
+                              ),
+                            )
+                          else
+                            AppIcon(
+                              HeroAppIcons.image,
+                              size: 21,
+                              color: AppTheme.brand,
+                            ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              coverPath == null
+                                  ? 'Choose video cover'
+                                  : 'Change video cover',
+                              style: TextStyle(
+                                color: c.textPrimary,
+                                fontSize: 15,
+                              ),
+                            ),
+                          ),
+                          if (coverPath != null)
+                            GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () =>
+                                  setSheetState(() => coverPath = null),
+                              child: AppIcon(
+                                HeroAppIcons.circleXmark,
+                                size: 19,
+                                color: c.textTertiary,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: startController,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      filled: true,
+                      fillColor: c.card,
+                      labelText: 'Start timestamp (seconds)',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                  if (totalMs > 1000) ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Text(
+                          'Trim video',
+                          style: TextStyle(
+                            color: c.textPrimary,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          '${_clock((trim.start / 1000).floor())} – ${_clock((trim.end / 1000).ceil())}',
+                          style: TextStyle(
+                            color: c.textSecondary,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                    _MediaRangeSelector(
+                      values: trim,
+                      max: totalMs.toDouble(),
+                      divisions: (video.value.duration.inSeconds * 4).clamp(
+                        4,
+                        600,
+                      ),
+                      onChanged: (value) => setSheetState(() => trim = value),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => Navigator.of(sheetContext).pop((
+                      coverPath,
+                      int.tryParse(startController.text.trim()) ?? 0,
+                      trim,
+                    )),
+                    child: Container(
+                      height: 48,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: AppTheme.brand,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Text(
+                        'Apply',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+    startController.dispose();
+    await video.dispose();
+    if (!mounted || result == null) return;
+    var path = attachment.path;
+    final trimmed = result.$3.start > 1 || result.$3.end < totalMs - 1;
+    if (trimmed) {
+      try {
+        path = await VideoTrimService.trim(
+          path: path,
+          start: Duration(milliseconds: result.$3.start.round()),
+          end: Duration(milliseconds: result.$3.end.round()),
+        );
+      } catch (error) {
+        if (mounted) showToast(context, error.toString());
+        return;
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _attachments[_selectedIndex] = attachment.copyWith(
+        path: path,
+        duration: trimmed
+            ? ((result.$3.end - result.$3.start) / 1000).ceil()
+            : attachment.duration,
+        coverPath: result.$1,
+        clearCoverPath: result.$1 == null,
+        startTimestamp: result.$2.clamp(0, 86400),
+      );
+    });
+  }
+
+  static String _clock(int seconds) =>
+      '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
 
   void _removeSelected() {
     if (_attachments.isEmpty) return;
@@ -176,6 +429,17 @@ class _MediaSendPreviewViewState extends State<MediaSendPreviewView> {
                 onTap: _editSelected,
               ),
             ),
+          if (attachment.kind == OutgoingAttachmentKind.video)
+            Positioned(
+              right: 8,
+              top: 8,
+              child: _mediaAction(
+                key: const ValueKey('mediaPreviewVideoMetadata'),
+                icon: HeroAppIcons.solidFileVideo,
+                color: Colors.white,
+                onTap: _editVideoMetadata,
+              ),
+            ),
         ],
       ),
     );
@@ -225,16 +489,23 @@ class _MediaSendPreviewViewState extends State<MediaSendPreviewView> {
             AppStringKeys.composerSend.l10n(context),
             AppTheme.brand,
             _submit,
+            onLongPress: _configureAndSubmit,
           ),
         ],
       ),
     );
   }
 
-  Widget _textAction(String label, Color color, VoidCallback onTap) {
+  Widget _textAction(
+    String label,
+    Color color,
+    VoidCallback onTap, {
+    VoidCallback? onLongPress,
+  }) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
+      onLongPress: onLongPress,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Text(
@@ -391,4 +662,144 @@ class _MediaSendPreviewViewState extends State<MediaSendPreviewView> {
       ),
     );
   }
+}
+
+enum _MediaRangeThumb { start, end }
+
+class _MediaRangeSelector extends StatefulWidget {
+  const _MediaRangeSelector({
+    required this.values,
+    required this.max,
+    required this.divisions,
+    required this.onChanged,
+  });
+
+  final RangeValues values;
+  final double max;
+  final int divisions;
+  final ValueChanged<RangeValues> onChanged;
+
+  @override
+  State<_MediaRangeSelector> createState() => _MediaRangeSelectorState();
+}
+
+class _MediaRangeSelectorState extends State<_MediaRangeSelector> {
+  static const _thumbSize = 22.0;
+  _MediaRangeThumb _activeThumb = _MediaRangeThumb.start;
+
+  double _valueForPosition(double dx, double width) {
+    final usableWidth = width - _thumbSize;
+    final fraction = ((dx - _thumbSize / 2) / usableWidth).clamp(0.0, 1.0);
+    final raw = widget.max * fraction;
+    final step = widget.max / widget.divisions;
+    return ((raw / step).round() * step).clamp(0.0, widget.max).toDouble();
+  }
+
+  void _chooseThumb(double dx, double width) {
+    final value = _valueForPosition(dx, width);
+    _activeThumb =
+        (value - widget.values.start).abs() <= (value - widget.values.end).abs()
+        ? _MediaRangeThumb.start
+        : _MediaRangeThumb.end;
+  }
+
+  void _update(double dx, double width) {
+    final value = _valueForPosition(dx, width);
+    if (_activeThumb == _MediaRangeThumb.start) {
+      widget.onChanged(
+        RangeValues(value.clamp(0.0, widget.values.end), widget.values.end),
+      );
+    } else {
+      widget.onChanged(
+        RangeValues(
+          widget.values.start,
+          value.clamp(widget.values.start, widget.max),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final usableWidth = constraints.maxWidth - _thumbSize;
+      final start = widget.values.start / widget.max;
+      final end = widget.values.end / widget.max;
+      return Semantics(
+        label: 'Video trim range',
+        value: '${(start * 100).round()}% to ${(end * 100).round()}%',
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapDown: (details) {
+            _chooseThumb(details.localPosition.dx, constraints.maxWidth);
+            _update(details.localPosition.dx, constraints.maxWidth);
+          },
+          onHorizontalDragStart: (details) =>
+              _chooseThumb(details.localPosition.dx, constraints.maxWidth),
+          onHorizontalDragUpdate: (details) =>
+              _update(details.localPosition.dx, constraints.maxWidth),
+          child: SizedBox(
+            height: 44,
+            child: Stack(
+              alignment: Alignment.centerLeft,
+              children: [
+                Positioned(
+                  left: _thumbSize / 2,
+                  right: _thumbSize / 2,
+                  child: Container(
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: context.colors.textTertiary.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: _thumbSize / 2 + usableWidth * start,
+                  width: usableWidth * (end - start),
+                  child: Container(
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppTheme.brand,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: usableWidth * start,
+                  child: const _MediaRangeHandle(),
+                ),
+                Positioned(
+                  left: usableWidth * end,
+                  child: const _MediaRangeHandle(),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    },
+  );
+}
+
+class _MediaRangeHandle extends StatelessWidget {
+  const _MediaRangeHandle();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: _MediaRangeSelectorState._thumbSize,
+    height: _MediaRangeSelectorState._thumbSize,
+    decoration: BoxDecoration(
+      color: AppTheme.brand,
+      shape: BoxShape.circle,
+      border: Border.all(color: Colors.white, width: 2),
+      boxShadow: const [
+        BoxShadow(
+          color: Color(0x33000000),
+          blurRadius: 4,
+          offset: Offset(0, 1),
+        ),
+      ],
+    ),
+  );
 }

@@ -30,9 +30,11 @@ import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/telegram_language_controller.dart';
 import '../media/app_asset_picker.dart';
+import '../moments/story_viewer_view.dart';
 import '../notifications/notification_controller.dart';
 import '../profile/profile_detail_view.dart';
 import '../settings/blocked_user_service.dart';
+import '../settings/business_tools_views.dart';
 import '../settings/developer_mode_controller.dart';
 import '../settings/keyword_blocker.dart';
 import '../settings/quick_reaction_settings_view.dart';
@@ -41,6 +43,7 @@ import '../settings/topic_group_display_mode.dart';
 import '../settings/translation_api.dart';
 import '../settings/translation_controller.dart';
 import '../tdlib/json_helpers.dart';
+import '../tdlib/td_client.dart';
 import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
@@ -48,6 +51,8 @@ import '../theme/date_text.dart';
 import '../theme/telegram_cloud_theme.dart';
 import '../theme/theme_controller.dart';
 import 'blocked_message_runs.dart';
+import 'channel_direct_messages_service.dart';
+import 'channel_direct_messages_view.dart';
 import 'chat_auto_scroll_policy.dart';
 import 'chat_first_contact_card.dart';
 import 'chat_first_contact_info.dart';
@@ -62,6 +67,7 @@ import 'chat_session_cache.dart';
 import 'chat_unread_progress.dart';
 import 'chat_view_model.dart';
 import 'chat_wallpaper.dart';
+import 'checklist_composer_view.dart';
 import 'custom_emoji.dart';
 import 'emoji_store.dart';
 import 'emoji_text_controller.dart';
@@ -74,11 +80,14 @@ import 'media_library_saver.dart';
 import 'media_send_preview_view.dart';
 import 'message_action_menu.dart';
 import 'message_bubble.dart';
+import 'message_info_view.dart';
 import 'message_replies_sheet.dart';
 import 'music_player_controller.dart';
 import 'outgoing_attachment.dart';
+import 'poll_results_view.dart';
 import 'quick_reaction_choice.dart';
 import 'rich_text_composer_view.dart';
+import 'shared_contact_sheet.dart';
 import 'sticker_set_detail_view.dart';
 import 'sticker_viewer.dart';
 import 'telegram_mini_app_view.dart';
@@ -101,6 +110,43 @@ class _MessageDeleteOptions {
 
   bool get hasAny =>
       deleteMessage || reportSpam || blockSender || deleteAllFromSender;
+}
+
+class _ChecklistDialogButton extends StatelessWidget {
+  const _ChecklistDialogButton({
+    required this.label,
+    required this.foreground,
+    required this.onTap,
+    this.fill,
+  });
+
+  final String label;
+  final Color foreground;
+  final VoidCallback? onTap;
+  final Color? fill;
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    behavior: HitTestBehavior.opaque,
+    onTap: onTap,
+    child: Container(
+      height: 38,
+      alignment: Alignment.center,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: fill,
+        borderRadius: BorderRadius.circular(19),
+      ),
+      child: Text(
+        label.l10n(context),
+        style: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: foreground,
+        ),
+      ),
+    ),
+  );
 }
 
 class _MessageDeleteOptionsDialog extends StatefulWidget {
@@ -2412,6 +2458,7 @@ class _ChatViewState extends State<ChatView> {
   }
 
   Widget _messageBubble(ChatMessage message, int messageIndex) {
+    _vm.ensureMessageCapabilities(message);
     return MessageBubble(
       message: message,
       peerTitle: _vm.peerTitle,
@@ -2450,6 +2497,280 @@ class _ChatViewState extends State<ChatView> {
       onToggleReaction: (r) => _vm.toggleReaction(message, r),
       onShowReactionUsers: _showReactionUsers,
       onRedial: _startCall,
+      onOpenContact: _openSharedContact,
+      onVotePoll: (message, optionIndex) =>
+          unawaited(_votePoll(message, optionIndex)),
+      onStopPoll: (message) => unawaited(_stopPoll(message)),
+      onAddPollOption: (message) => unawaited(_addPollOption(message)),
+      onShowPollResults: _showPollResults,
+      onToggleChecklistTask: (message, task) =>
+          unawaited(_toggleChecklistTask(message, task)),
+      onAddChecklistTask: (message) => unawaited(_addChecklistTask(message)),
+      onOpenStory: _openSharedStory,
+      onTranscribeVoice:
+          _vm.canUseSpeechRecognition && message.canRecognizeSpeech
+          ? (message) => unawaited(_transcribeVoice(message))
+          : null,
+      onSummarizeMessage:
+          _vm.canUseAiSummary && message.summaryLanguageCode.isNotEmpty
+          ? (message) => unawaited(_summarizeMessage(message))
+          : null,
+    );
+  }
+
+  Future<void> _votePoll(ChatMessage message, int optionIndex) async {
+    try {
+      await _vm.votePoll(message, optionIndex);
+    } catch (_) {
+      if (mounted) {
+        showToast(context, AppStringKeys.topicPostContentActionFailed);
+      }
+    }
+  }
+
+  Future<void> _transcribeVoice(ChatMessage message) async {
+    try {
+      await _vm.recognizeSpeech(message);
+    } catch (_) {
+      if (mounted) {
+        showToast(context, AppStringKeys.topicPostContentActionFailed);
+      }
+    }
+  }
+
+  Future<void> _summarizeMessage(ChatMessage message) async {
+    try {
+      await _vm.summarizeMessage(message);
+    } catch (error) {
+      if (mounted) showToast(context, error.toString());
+    }
+  }
+
+  Future<void> _stopPoll(ChatMessage message) async {
+    final confirmed = await confirmDialog(
+      context,
+      title: AppStringKeys.messagePollStop,
+      message: AppStringKeys.messagePollStopConfirm,
+      confirmText: AppStringKeys.messagePollStop,
+      destructive: true,
+    );
+    if (!confirmed || !mounted) return;
+    try {
+      await _vm.stopPoll(message);
+    } catch (_) {
+      if (mounted) {
+        showToast(context, AppStringKeys.topicPostContentActionFailed);
+      }
+    }
+  }
+
+  Future<void> _addPollOption(ChatMessage message) async {
+    final value = await _promptChecklistTask(
+      title: 'Add poll option',
+      hint: 'New option',
+    );
+    if (value == null || value.trim().isEmpty || !mounted) return;
+    try {
+      await _vm.addPollOption(message, value);
+    } catch (_) {
+      if (mounted) {
+        showToast(context, AppStringKeys.topicPostContentActionFailed);
+      }
+    }
+  }
+
+  void _showPollResults(ChatMessage message) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PollResultsView(chatId: _vm.chatId, message: message),
+      ),
+    );
+  }
+
+  Future<void> _toggleChecklistTask(
+    ChatMessage message,
+    MessageChecklistTask task,
+  ) async {
+    try {
+      await _vm.toggleChecklistTask(message, task);
+    } catch (_) {
+      if (mounted) {
+        showToast(context, AppStringKeys.topicPostContentActionFailed);
+      }
+    }
+  }
+
+  Future<void> _addChecklistTask(ChatMessage message) async {
+    final value = await _promptChecklistTask();
+    if (value == null || value.trim().isEmpty || !mounted) return;
+    try {
+      await _vm.addChecklistTask(message, value);
+    } catch (_) {
+      if (mounted) {
+        showToast(context, AppStringKeys.topicPostContentActionFailed);
+      }
+    }
+  }
+
+  Future<String?> _promptChecklistTask({String? title, String? hint}) async {
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final c = context.colors;
+          final canSubmit = controller.text.trim().isNotEmpty;
+          return Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+            child: Container(
+              width: 360,
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
+              decoration: BoxDecoration(
+                color: c.card,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x33000000),
+                    blurRadius: 24,
+                    offset: Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title ??
+                        AppStringKeys.messageChecklistNewTask.l10n(context),
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                      color: c.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 13),
+                  TextField(
+                    controller: controller,
+                    autofocus: true,
+                    maxLength: 128,
+                    onChanged: (_) => setDialogState(() {}),
+                    decoration: InputDecoration(
+                      hintText:
+                          hint ??
+                          AppStringKeys.messageChecklistTaskHint.l10n(context),
+                      filled: true,
+                      fillColor: c.searchFill,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      _ChecklistDialogButton(
+                        label: AppStringKeys.countryPickerCancel,
+                        foreground: c.textSecondary,
+                        onTap: () => Navigator.of(dialogContext).pop(),
+                      ),
+                      const SizedBox(width: 8),
+                      _ChecklistDialogButton(
+                        label: AppStringKeys.messageChecklistAdd,
+                        foreground: c.onAccent,
+                        fill: canSubmit ? AppTheme.brand : c.divider,
+                        onTap: canSubmit
+                            ? () => Navigator.of(
+                                dialogContext,
+                              ).pop(controller.text.trim())
+                            : null,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+    controller.dispose();
+    return result;
+  }
+
+  Future<void> _openSharedContact(ChatMessage message) async {
+    final contact = message.contact;
+    if (contact == null) return;
+    final action = await showSharedContactActions(context, contact);
+    if (action == null || !mounted) return;
+    switch (action) {
+      case SharedContactAction.viewProfile:
+        if (contact.userId > 0) {
+          _openUserProfile(contact.userId, contact.displayName);
+        }
+      case SharedContactAction.message:
+        if (contact.userId <= 0) return;
+        try {
+          final chat = await TdClient.shared.query({
+            '@type': 'createPrivateChat',
+            'user_id': contact.userId,
+            'force': false,
+          });
+          final chatId = chat.int64('id');
+          if (!mounted || chatId == null) return;
+          await Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) =>
+                  ChatView(chatId: chatId, title: contact.displayName),
+            ),
+          );
+        } catch (_) {
+          if (mounted) {
+            showToast(context, AppStringKeys.topicPostContentActionFailed);
+          }
+        }
+      case SharedContactAction.call:
+        if (contact.userId > 0) {
+          context.read<CallManager>().startCall(contact.userId, false);
+        }
+      case SharedContactAction.copyNumber:
+        await Clipboard.setData(ClipboardData(text: contact.phoneNumber));
+        if (mounted) showToast(context, AppStringKeys.topicPostContentCopied);
+      case SharedContactAction.addContact:
+        try {
+          await TdClient.shared.query({
+            '@type': 'addContact',
+            'contact': {
+              '@type': 'contact',
+              'phone_number': contact.phoneNumber,
+              'first_name': contact.firstName,
+              'last_name': contact.lastName,
+              'vcard': contact.vcard,
+              'user_id': contact.userId,
+            },
+            'share_phone_number': false,
+          });
+          if (mounted) showToast(context, AppStringKeys.sharedContactAdded);
+        } catch (_) {
+          if (mounted) showToast(context, AppStringKeys.sharedContactAddFailed);
+        }
+    }
+  }
+
+  void _openSharedStory(ChatMessage message) {
+    final story = message.story;
+    if (story == null) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (_) => StoryViewerView(
+          chatId: story.posterChatId,
+          storyIds: [story.storyId],
+        ),
+      ),
     );
   }
 
@@ -2821,6 +3142,15 @@ class _ChatViewState extends State<ChatView> {
       chatId: widget.chatId,
       message: message,
       peerTitle: _vm.peerTitle,
+      onAvatarTap: _openSenderProfile,
+      onOpenReply: _scrollToMessage,
+      onOpenImage: _openImage,
+      onOpenSticker: _openSticker,
+      onPlayVideo: _playVideo,
+      onPlayMusic: _playMusicMessage,
+      onButtonTap: _pressMessageButton,
+      onBotCommandTap: _sendCommand,
+      onHashtagTap: _openHashtagSearch,
     );
   }
 
@@ -2904,6 +3234,17 @@ class _ChatViewState extends State<ChatView> {
         unawaited(Clipboard.setData(ClipboardData(text: message.text)));
       case MessageAction.edit:
         unawaited(_editMessage(message));
+      case MessageAction.suggestOffer:
+        unawaited(_offerSuggestedPost(message));
+      case MessageAction.info:
+        unawaited(
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) =>
+                  MessageInfoView(chatId: widget.chatId, message: message),
+            ),
+          ),
+        );
       case MessageAction.translate:
         unawaited(_translateMessage(message));
       case MessageAction.reply:
@@ -3063,6 +3404,49 @@ class _ChatViewState extends State<ChatView> {
         }
       case MessageAction.delete:
         await _performDeleteAction(message);
+    }
+  }
+
+  Future<void> _offerSuggestedPost(ChatMessage message) async {
+    final loader = ChannelDirectMessageTopicController(
+      chatId: _vm.chatId,
+      topicId: 0,
+    );
+    try {
+      final properties = await TdClient.shared.query({
+        '@type': 'getMessageProperties',
+        'chat_id': _vm.chatId,
+        'message_id': message.id,
+      });
+      if (properties.boolean('can_add_offer') != true &&
+          properties.boolean('can_edit_suggested_post_info') != true) {
+        if (mounted) {
+          showToast(context, AppStringKeys.suggestedPostOfferUnavailable);
+        }
+        return;
+      }
+      final limits = await loader.loadLimits();
+      if (!mounted) return;
+      final draft = await showModalBottomSheet<SuggestedPostDraft>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => SuggestedPostComposerSheet(
+          limits: limits,
+          offerOnly: true,
+          initialInfo: message.suggestedPostInfo,
+        ),
+      );
+      if (draft == null || !mounted) return;
+      await _vm.addSuggestedPostOffer(
+        message.id,
+        price: draft.price,
+        sendDate: draft.sendDate,
+      );
+    } catch (error) {
+      if (mounted) showToast(context, error.toString());
+    } finally {
+      loader.dispose();
     }
   }
 
@@ -3328,6 +3712,25 @@ class _ChatViewState extends State<ChatView> {
       message.contentType == 'messageDocument';
 
   Future<void> _editMessage(ChatMessage message) async {
+    if (message.checklist case final checklist?) {
+      final result = await Navigator.of(context).push<ChecklistComposerResult>(
+        MaterialPageRoute(
+          builder: (_) => ChecklistComposerView(
+            initialTitle: checklist.title,
+            initialTasks: [for (final task in checklist.tasks) task.text],
+            initialOthersCanAddTasks: checklist.othersCanAddTasks,
+            initialOthersCanMarkTasksAsDone: checklist.othersCanMarkTasksAsDone,
+          ),
+        ),
+      );
+      if (!mounted || result == null) return;
+      try {
+        await _vm.editChecklist(message, result);
+      } catch (error) {
+        if (mounted) showToast(context, error.toString());
+      }
+      return;
+    }
     if (_isEditableMediaMessage(message)) {
       final action = await showGeneralDialog<_MediaEditAction>(
         context: context,
@@ -3796,6 +4199,12 @@ class _ChatViewState extends State<ChatView> {
                   : null);
     // Keep blocked-user hiding toggle in sync with theme.
     BlockedUserService.shared.enabled = themeController.hideBlockedUserMessages;
+    if (_vm.isAdministeredDirectMessagesGroup) {
+      return ChannelDirectMessagesView(
+        chatId: widget.chatId,
+        title: widget.title,
+      );
+    }
     final showPeerRestrictionBlock =
         _vm.isPeerRestricted && _vm.messages.isEmpty;
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
@@ -3865,12 +4274,20 @@ class _ChatViewState extends State<ChatView> {
     final preview = await Navigator.of(context).push<MediaSendPreviewResult>(
       MaterialPageRoute(
         fullscreenDialog: true,
-        builder: (_) => MediaSendPreviewView(attachments: attachments),
+        builder: (_) => MediaSendPreviewView(
+          attachments: attachments,
+          allowWhenOnline: _vm.canSendWhenOnline,
+          effects: _vm.availableMessageEffects,
+        ),
       ),
     );
     if (!mounted || preview == null || preview.attachments.isEmpty) return;
     final resolved = await resolveAttachmentListDimensions(preview.attachments);
-    await _vm.sendAttachments(resolved, caption: preview.caption);
+    await _vm.sendAttachments(
+      resolved,
+      caption: preview.caption,
+      sendConfiguration: preview.sendConfiguration,
+    );
     if (mounted) _onComposerMessageSent();
   }
 
@@ -4251,16 +4668,88 @@ class _ChatViewState extends State<ChatView> {
       return _botStartBar();
     }
     if (_vm.canSendMessages) {
-      return ChatInputBar(
-        vm: _vm,
-        onStartCall: _startCall,
-        onMessageSent: _onComposerMessageSent,
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_vm.businessBotUserId != 0) _businessBotManageBar(),
+          ChatInputBar(
+            vm: _vm,
+            onStartCall: _startCall,
+            onMessageSent: _onComposerMessageSent,
+          ),
+        ],
       );
     }
     if (!_vm.isMember && _vm.canJoin) return _joinBar();
     // Subscribed to a channel you can't post in → mute/unmute (like official).
     if (_vm.isChannel && _vm.isMember) return _channelMuteBar();
     return _disabledComposer(_vm.sendDisabledReason);
+  }
+
+  Widget _businessBotManageBar() {
+    final c = context.colors;
+    final paused = _vm.businessBotPaused;
+    return Container(
+      height: 46,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        color: c.navBar,
+        border: Border(top: BorderSide(color: c.divider, width: 0.5)),
+      ),
+      child: Row(
+        children: [
+          AppIcon(
+            paused ? HeroAppIcons.pause : HeroAppIcons.code,
+            size: 18,
+            color: paused ? c.textSecondary : AppTheme.brand,
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _showBusinessBotControls,
+              child: Text(
+                paused
+                    ? 'Business bot paused in this chat'
+                    : _vm.businessBotCanReply
+                    ? 'Business bot can reply in this chat'
+                    : 'Business bot has read-only access',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 13, color: c.textSecondary),
+              ),
+            ),
+          ),
+          if (_vm.businessBotManageUrl.isNotEmpty) ...[
+            const SizedBox(width: 8),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => openLink(context, _vm.businessBotManageUrl),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  'Manage',
+                  style: TextStyle(fontSize: 14, color: AppTheme.brand),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showBusinessBotControls() async {
+    final changed = await showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => BusinessBotChatControlSheet(
+        chatId: widget.chatId,
+        botName: 'Connected Business Bot',
+        paused: _vm.businessBotPaused,
+      ),
+    );
+    if (changed == true) await _vm.refreshPeerRestrictionState();
   }
 
   Widget _botStartBar() {
@@ -6098,6 +6587,9 @@ class _ChatViewState extends State<ChatView> {
                   message: _actionTarget!,
                   isPinned: _vm.pinnedMessage?.id == _actionTarget!.id,
                   allowForwarding: _vm.canForwardContent,
+                  allowSuggestedPostOffer:
+                      _vm.isDirectMessagesGroup &&
+                      !_vm.isAdministeredDirectMessagesGroup,
                   source: _actionSource,
                   onSelect: (action) => _perform(action, _actionTarget!),
                 ),

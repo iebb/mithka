@@ -17,6 +17,8 @@ import '../auth/auth_manager.dart';
 import '../components/app_icons.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
+import '../pro/mithka_pro_service.dart';
+import '../pro/mithka_pro_view.dart';
 import '../theme/app_theme.dart';
 import 'about_view.dart';
 import 'advanced_settings_view.dart';
@@ -65,6 +67,20 @@ class _SettingsViewState extends State<SettingsView> {
                     AppStrings.t(AppStringKeys.editProfileTitle),
                     const Color(0xFF3C8CF0),
                     () => const EditProfileView(),
+                  ),
+                ]),
+                const SizedBox(height: 14),
+                _card([
+                  _navRow(
+                    context,
+                    HeroAppIcons.solidStar,
+                    AppStrings.t(AppStringKeys.mithkaProTitle),
+                    const Color(0xFF7C5CFC),
+                    () => const MithkaProView(),
+                    trailing: context.watch<MithkaProService>().isPro
+                        ? AppStrings.t(AppStringKeys.mithkaProActive)
+                        : null,
+                    platformNeutralRoute: true,
                   ),
                 ]),
                 const SizedBox(height: 14),
@@ -234,14 +250,18 @@ class _SettingsViewState extends State<SettingsView> {
     AppIconData icon,
     String title,
     Color color,
-    Widget Function() destination,
-  ) {
+    Widget Function() destination, {
+    String? trailing,
+    bool platformNeutralRoute = false,
+  }) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => Navigator.of(
-        context,
-      ).push(MaterialPageRoute(builder: (_) => destination())),
-      child: _rowLabel(context, icon, title, color),
+      onTap: () => Navigator.of(context).push(
+        platformNeutralRoute
+            ? PageRouteBuilder<void>(pageBuilder: (_, _, _) => destination())
+            : MaterialPageRoute<void>(builder: (_) => destination()),
+      ),
+      child: _rowLabel(context, icon, title, color, trailing: trailing),
     );
   }
 

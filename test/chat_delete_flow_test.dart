@@ -30,10 +30,15 @@ void main() {
   });
 
   test('builds the correct revoke request and leave policy', () {
+    final selfRequest = deleteChatHistoryRequest(
+      chatId: 7,
+      scope: ChatDeleteScope.self,
+    );
     expect(
-      deleteChatHistoryRequest(chatId: 7, scope: ChatDeleteScope.self),
+      selfRequest,
       containsPair('revoke', false),
     );
+    expect(selfRequest, containsPair('remove_from_chat_list', true));
     expect(
       deleteChatHistoryRequest(chatId: 7, scope: ChatDeleteScope.allUsers),
       containsPair('revoke', true),

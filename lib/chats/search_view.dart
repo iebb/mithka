@@ -24,6 +24,7 @@ import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
 import 'chat_row_view.dart';
 import 'mini_apps_page.dart';
+import 'public_discovery_view.dart';
 
 class SearchView extends StatefulWidget {
   const SearchView({super.key});
@@ -157,6 +158,30 @@ class _SearchViewState extends State<SearchView> {
                               ),
                             ),
                         ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {
+                      _focus.unfocus();
+                      Navigator.of(context).push(
+                        CupertinoPageRoute(
+                          builder: (_) =>
+                              PublicDiscoveryView(initialQuery: _query),
+                        ),
+                      );
+                    },
+                    child: SizedBox(
+                      width: 34,
+                      height: 34,
+                      child: Center(
+                        child: AppIcon(
+                          HeroAppIcons.globe,
+                          size: 21,
+                          color: AppTheme.brand,
+                        ),
                       ),
                     ),
                   ),
@@ -527,6 +552,7 @@ class _SearchViewModel extends ChangeNotifier {
       final local = await TdClient.shared.query({
         '@type': 'searchChats',
         'query': trimmed,
+        'type_filter': null,
         'limit': 50,
       });
       for (final id in (local.int64Array('chat_ids') ?? const <int>[]).take(
@@ -557,6 +583,7 @@ class _SearchViewModel extends ChangeNotifier {
         final public = await TdClient.shared.query({
           '@type': 'searchPublicChats',
           'query': trimmed,
+          'type_filter': null,
         });
         for (final id in (public.int64Array('chat_ids') ?? const <int>[]).take(
           30,
@@ -632,11 +659,10 @@ class _SearchViewModel extends ChangeNotifier {
         '@type': 'searchMessages',
         'chat_list': chatList,
         'query': query,
-        'offset_date': 0,
-        'offset_chat_id': 0,
-        'offset_message_id': 0,
+        'offset': '',
         'limit': 60,
         'filter': {'@type': filter},
+        'chat_type_filter': null,
         'min_date': 0,
         'max_date': 0,
       });

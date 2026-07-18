@@ -26,6 +26,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../app/diagnostic_breadcrumbs.dart';
 import '../config/secrets.dart';
 import '../settings/api_credentials_config.dart';
 import '../settings/proxy_config.dart';
@@ -118,6 +119,8 @@ class TdClient {
   );
   final Map<int, Map<String, dynamic>> _latestChatFoldersByClient = {};
   final Map<int, Map<String, dynamic>> _latestEmojiChatThemesByClient = {};
+  final Map<int, Map<String, dynamic>> _latestTextCompositionStylesByClient =
+      {};
   final Map<int, Map<int, Map<String, dynamic>>> _latestCommunitiesByClient =
       {};
 
@@ -148,6 +151,8 @@ class TdClient {
       _latestChatFoldersByClient[clientId];
   Map<String, dynamic>? get latestEmojiChatThemesUpdate =>
       _latestEmojiChatThemesByClient[_activeClientId];
+  Map<String, dynamic>? get latestTextCompositionStylesUpdate =>
+      _latestTextCompositionStylesByClient[_activeClientId];
   Iterable<Map<String, dynamic>> get latestCommunityUpdates =>
       _latestCommunitiesByClient[_activeClientId]?.values ?? const [];
 
@@ -949,6 +954,9 @@ class TdClient {
     if (object.type == 'updateEmojiChatThemes') {
       _latestEmojiChatThemesByClient[clientId] = object;
     }
+    if (object.type == 'updateTextCompositionStyles') {
+      _latestTextCompositionStylesByClient[clientId] = object;
+    }
     if (object.type == 'updateCommunity') {
       final community = object.obj('community');
       final communityId = community?.int64('id');
@@ -1170,13 +1178,33 @@ class TdClient {
   Future<Map<String, dynamic>> queryTo(
     Map<String, dynamic> request,
     int clientId,
-  ) {
+  ) async {
+    final requestType = request.type ?? 'unknown';
+    final stopwatch = Stopwatch()..start();
     final extra = _nextExtra();
     final tagged = {...request, '@extra': extra};
     final completer = Completer<Map<String, dynamic>>();
     _pending[extra] = completer;
     _bindings.send(clientId, jsonEncode(tagged));
-    return completer.future;
+    try {
+      final result = await completer.future;
+      stopwatch.stop();
+      DiagnosticBreadcrumbs.tdlibRequestFinished(
+        requestType: requestType,
+        elapsed: stopwatch.elapsed,
+        resultType: result.type,
+      );
+      return result;
+    } catch (error, stackTrace) {
+      stopwatch.stop();
+      DiagnosticBreadcrumbs.tdlibRequestFinished(
+        requestType: requestType,
+        elapsed: stopwatch.elapsed,
+        failed: true,
+        errorCode: error is TdError ? error.code : null,
+      );
+      Error.throwWithStackTrace(error, stackTrace);
+    }
   }
 
   /// Synchronous, network-free request (e.g. log level). Returns parsed JSON.

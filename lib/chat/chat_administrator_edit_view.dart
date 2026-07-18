@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
+import '../components/app_dialog.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../settings/edit_field_view.dart';
@@ -16,6 +17,7 @@ class ChatAdministratorEditView extends StatefulWidget {
     required this.name,
     required this.status,
     required this.canEdit,
+    this.canTransferOwnership = false,
   });
 
   final int chatId;
@@ -23,6 +25,7 @@ class ChatAdministratorEditView extends StatefulWidget {
   final String name;
   final Map<String, dynamic>? status;
   final bool canEdit;
+  final bool canTransferOwnership;
 
   @override
   State<ChatAdministratorEditView> createState() =>
@@ -46,11 +49,14 @@ class _ChatAdministratorEditViewState extends State<ChatAdministratorEditView> {
     'can_edit_stories',
     'can_delete_stories',
     'can_manage_direct_messages',
+    'can_manage_tags',
     'is_anonymous',
   ];
   static const _labels = <String, String>{
     'can_manage_chat': AppStringKeys.chatAdminManageChat,
     'can_change_info': AppStringKeys.groupManagementPermissionEditGroupInfo,
+    'can_post_messages': 'Post messages',
+    'can_edit_messages': 'Edit messages',
     'can_delete_messages': AppStringKeys.chatAdminDeleteMessages,
     'can_invite_users': AppStringKeys.addMembersInviteMembersTitle,
     'can_restrict_members': AppStringKeys.chatAdminRestrictMembers,
@@ -58,6 +64,11 @@ class _ChatAdministratorEditViewState extends State<ChatAdministratorEditView> {
     'can_manage_topics': AppStringKeys.groupManagementPermissionCreateTopics,
     'can_manage_video_chats': AppStringKeys.chatAdminManageVideoChats,
     'can_promote_members': AppStringKeys.chatAdminPromoteMembers,
+    'can_post_stories': 'Post stories',
+    'can_edit_stories': 'Edit stories',
+    'can_delete_stories': 'Delete stories',
+    'can_manage_direct_messages': 'Manage direct messages',
+    'can_manage_tags': 'Manage member tags',
     'is_anonymous': AppStringKeys.chatAdminAnonymous,
   };
 
@@ -85,7 +96,8 @@ class _ChatAdministratorEditViewState extends State<ChatAdministratorEditView> {
     'can_restrict_members' ||
     'can_pin_messages' ||
     'can_manage_topics' ||
-    'can_manage_video_chats' => true,
+    'can_manage_video_chats' ||
+    'can_manage_tags' => true,
     'can_post_messages' ||
     'can_edit_messages' ||
     'can_post_stories' ||
@@ -129,6 +141,59 @@ class _ChatAdministratorEditViewState extends State<ChatAdministratorEditView> {
       if (mounted) {
         setState(() => _saving = false);
         showToast(context, AppStringKeys.chatMembersUpdateFailed);
+      }
+    }
+  }
+
+  Future<String?> _requestOwnershipPassword() async {
+    final password = await showAppTextEntryDialog(
+      context,
+      title: 'Transfer ownership',
+      description:
+          '${widget.name} will become the owner. Enter your two-step verification password to continue.',
+      label: 'Password',
+      actionLabel: 'Transfer',
+      obscureText: true,
+      allowEmpty: false,
+    );
+    return password?.isEmpty == true ? null : password;
+  }
+
+  Future<void> _transferOwnership() async {
+    if (!widget.canTransferOwnership || _saving) return;
+    try {
+      final availability = await TdClient.shared.query({
+        '@type': 'canTransferOwnership',
+      });
+      if (!mounted) return;
+      if (availability.type != 'canTransferOwnershipResultOk') {
+        final retryAfter = availability.integer('retry_after');
+        final reason = switch (availability.type) {
+          'canTransferOwnershipResultPasswordNeeded' =>
+            'Set up two-step verification before transferring ownership.',
+          'canTransferOwnershipResultPasswordTooFresh' =>
+            'Your two-step verification password is too new.${retryAfter == null ? '' : ' Try again in $retryAfter seconds.'}',
+          'canTransferOwnershipResultSessionTooFresh' =>
+            'This session is too new.${retryAfter == null ? '' : ' Try again in $retryAfter seconds.'}',
+          _ => 'Ownership can’t be transferred from this session.',
+        };
+        showToast(context, reason);
+        return;
+      }
+      final password = await _requestOwnershipPassword();
+      if (!mounted || password == null) return;
+      setState(() => _saving = true);
+      await TdClient.shared.query({
+        '@type': 'transferChatOwnership',
+        'chat_id': widget.chatId,
+        'user_id': widget.userId,
+        'password': password,
+      });
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _saving = false);
+        showToast(context, 'Couldn’t transfer ownership. Check the password.');
       }
     }
   }
@@ -197,6 +262,16 @@ class _ChatAdministratorEditViewState extends State<ChatAdministratorEditView> {
                     ),
                   ],
                 ]),
+                if (widget.canTransferOwnership) ...[
+                  const SizedBox(height: 22),
+                  _section([
+                    SettingsRow(
+                      title: 'Transfer ownership',
+                      value: widget.name,
+                      onTap: _transferOwnership,
+                    ),
+                  ]),
+                ],
               ],
             ),
           ),

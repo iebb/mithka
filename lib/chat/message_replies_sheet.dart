@@ -2,20 +2,27 @@ import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
-import '../components/photo_avatar.dart';
-import '../profile/profile_detail_view.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
-import '../theme/date_text.dart';
-import 'telegram_rich_text.dart';
+import 'full_image_viewer.dart';
+import 'message_bubble.dart';
 
 Future<void> showMessageRepliesSheet({
   required BuildContext context,
   required int chatId,
   required ChatMessage message,
   required String peerTitle,
+  ValueChanged<ChatMessage>? onAvatarTap,
+  ValueChanged<int>? onOpenReply,
+  ValueChanged<ChatMessage>? onOpenImage,
+  ValueChanged<ChatMessage>? onOpenSticker,
+  ValueChanged<ChatMessage>? onPlayVideo,
+  ValueChanged<ChatMessage>? onPlayMusic,
+  void Function(ChatMessage message, MessageButton button)? onButtonTap,
+  ValueChanged<String>? onBotCommandTap,
+  ValueChanged<String>? onHashtagTap,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -26,6 +33,15 @@ Future<void> showMessageRepliesSheet({
       chatId: chatId,
       message: message,
       peerTitle: peerTitle,
+      onAvatarTap: onAvatarTap,
+      onOpenReply: onOpenReply,
+      onOpenImage: onOpenImage,
+      onOpenSticker: onOpenSticker,
+      onPlayVideo: onPlayVideo,
+      onPlayMusic: onPlayMusic,
+      onButtonTap: onButtonTap,
+      onBotCommandTap: onBotCommandTap,
+      onHashtagTap: onHashtagTap,
     ),
   );
 }
@@ -35,11 +51,29 @@ class _MessageRepliesSheet extends StatefulWidget {
     required this.chatId,
     required this.message,
     required this.peerTitle,
+    this.onAvatarTap,
+    this.onOpenReply,
+    this.onOpenImage,
+    this.onOpenSticker,
+    this.onPlayVideo,
+    this.onPlayMusic,
+    this.onButtonTap,
+    this.onBotCommandTap,
+    this.onHashtagTap,
   });
 
   final int chatId;
   final ChatMessage message;
   final String peerTitle;
+  final ValueChanged<ChatMessage>? onAvatarTap;
+  final ValueChanged<int>? onOpenReply;
+  final ValueChanged<ChatMessage>? onOpenImage;
+  final ValueChanged<ChatMessage>? onOpenSticker;
+  final ValueChanged<ChatMessage>? onPlayVideo;
+  final ValueChanged<ChatMessage>? onPlayMusic;
+  final void Function(ChatMessage message, MessageButton button)? onButtonTap;
+  final ValueChanged<String>? onBotCommandTap;
+  final ValueChanged<String>? onHashtagTap;
 
   @override
   State<_MessageRepliesSheet> createState() => _MessageRepliesSheetState();
@@ -94,9 +128,16 @@ class _MessageRepliesSheetState extends State<_MessageRepliesSheet> {
             ..sort((a, b) => a.date.compareTo(b.date));
       for (final message in loaded) {
         final senderId = message.senderId;
-        if (senderId == null || _senders.containsKey(senderId)) continue;
-        final sender = await _resolveSender(senderId);
-        if (sender != null) _senders[senderId] = sender;
+        if (senderId == null) continue;
+        var sender = _senders[senderId];
+        if (sender == null) {
+          sender = await _resolveSender(senderId);
+          if (sender != null) _senders[senderId] = sender;
+        }
+        if (sender != null) {
+          message.senderName ??= sender.name;
+          message.senderPhoto ??= sender.photo;
+        }
       }
       if (!mounted) return;
       setState(() {
@@ -234,9 +275,9 @@ class _MessageRepliesSheetState extends State<_MessageRepliesSheet> {
       return _emptyState(AppStringKeys.messageRepliesEmpty);
     }
     return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+      padding: const EdgeInsets.fromLTRB(4, 7, 4, 24),
       itemCount: _messages.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 12),
+      separatorBuilder: (_, _) => const SizedBox.shrink(),
       itemBuilder: (context, index) => _replyRow(_messages[index]),
     );
   }
@@ -261,88 +302,115 @@ class _MessageRepliesSheetState extends State<_MessageRepliesSheet> {
   }
 
   Widget _replyRow(ChatMessage message) {
-    final c = context.colors;
     final sender = message.senderId == null ? null : _senders[message.senderId];
     final senderName =
         sender?.name ??
         message.senderName ??
         message.senderTitle ??
         widget.peerTitle;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        PhotoAvatar(title: senderName, photo: sender?.photo, size: 36),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
-            decoration: BoxDecoration(
-              color: c.card,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: c.divider, width: 0.5),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        senderName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: c.linkBlue,
-                          decoration: TextDecoration.none,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      DateText.listLabel(message.date),
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: c.textTertiary,
-                        decoration: TextDecoration.none,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                TelegramRichText(
-                  text: _replyText(message),
-                  entities: message.textEntities,
-                  quoteBackgroundColor: c.divider.withValues(alpha: 0.32),
-                  style: TextStyle(
-                    fontSize: 15,
-                    height: 1.35,
-                    color: c.textPrimary,
-                    decoration: TextDecoration.none,
-                  ),
-                  onMentionTap: (userId, name) {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            ProfileDetailView(userId: userId, name: name),
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
+    message.senderName ??= senderName;
+    message.senderPhoto ??= sender?.photo;
+    return MessageReplySheetItem(
+      message: message,
+      peerTitle: widget.peerTitle,
+      senderName: senderName,
+      senderPhoto: sender?.photo ?? message.senderPhoto,
+      onAvatarTap: widget.onAvatarTap,
+      onOpenReply: widget.onOpenReply == null
+          ? null
+          : (messageId) {
+              Navigator.of(context).pop();
+              widget.onOpenReply!(messageId);
+            },
+      onOpenImage: _openImage,
+      onOpenSticker: widget.onOpenSticker,
+      onPlayVideo: widget.onPlayVideo,
+      onPlayMusic: widget.onPlayMusic,
+      onButtonTap: widget.onButtonTap,
+      onBotCommandTap: widget.onBotCommandTap,
+      onHashtagTap: widget.onHashtagTap,
     );
   }
 
-  String _replyText(ChatMessage message) {
-    final text = message.text.trim();
-    if (text.isNotEmpty) return text;
-    return AppStringKeys.chatSearchMessageResultLabel.l10n(context);
+  void _openImage(ChatMessage message) {
+    final selected = message.image;
+    if (selected == null) {
+      widget.onOpenImage?.call(message);
+      return;
+    }
+    final imageMessages = _messages
+        .where((candidate) => candidate.isPhoto && candidate.image != null)
+        .toList();
+    if (!imageMessages.any((candidate) => candidate.image?.id == selected.id)) {
+      imageMessages.add(message);
+    }
+    final images = imageMessages.map((candidate) => candidate.image!).toList();
+    final start = images.indexWhere((image) => image.id == selected.id);
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) =>
+            FullImageViewer(items: images, startIndex: start < 0 ? 0 : start),
+      ),
+    );
+  }
+}
+
+/// A reply-sheet row that deliberately reuses the transcript renderer so
+/// attachments, entities, link previews, and structured rich messages cannot
+/// degrade to their list-preview labels on this surface.
+class MessageReplySheetItem extends StatelessWidget {
+  const MessageReplySheetItem({
+    super.key,
+    required this.message,
+    required this.peerTitle,
+    required this.senderName,
+    this.senderPhoto,
+    this.onAvatarTap,
+    this.onOpenReply,
+    this.onOpenImage,
+    this.onOpenSticker,
+    this.onPlayVideo,
+    this.onPlayMusic,
+    this.onButtonTap,
+    this.onBotCommandTap,
+    this.onHashtagTap,
+  });
+
+  final ChatMessage message;
+  final String peerTitle;
+  final String senderName;
+  final TdFileRef? senderPhoto;
+  final ValueChanged<ChatMessage>? onAvatarTap;
+  final ValueChanged<int>? onOpenReply;
+  final ValueChanged<ChatMessage>? onOpenImage;
+  final ValueChanged<ChatMessage>? onOpenSticker;
+  final ValueChanged<ChatMessage>? onPlayVideo;
+  final ValueChanged<ChatMessage>? onPlayMusic;
+  final void Function(ChatMessage message, MessageButton button)? onButtonTap;
+  final ValueChanged<String>? onBotCommandTap;
+  final ValueChanged<String>? onHashtagTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return MessageBubble(
+      key: ValueKey('messageRepliesSheetMessage-${message.id}'),
+      message: message,
+      peerTitle: peerTitle,
+      isGroup: true,
+      meName: senderName,
+      mePhoto: senderPhoto,
+      forceShowTimestamp: true,
+      onAvatarTap: onAvatarTap,
+      onOpenReply: onOpenReply,
+      onOpenImage: onOpenImage,
+      onOpenSticker: onOpenSticker,
+      onPlayVideo: onPlayVideo,
+      onPlayMusic: onPlayMusic,
+      onButtonTap: onButtonTap,
+      onBotCommandTap: onBotCommandTap,
+      onHashtagTap: onHashtagTap,
+    );
   }
 }
 
