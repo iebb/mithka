@@ -67,9 +67,11 @@ class StoryViewerView extends StatefulWidget {
     super.key,
     required this.chatId,
     required this.storyIds,
+    this.initialIndex = 0,
   });
   final int chatId;
   final List<int> storyIds;
+  final int initialIndex;
 
   @override
   State<StoryViewerView> createState() => _StoryViewerViewState();
@@ -109,12 +111,15 @@ class _StoryViewerViewState extends State<StoryViewerView>
   @override
   void initState() {
     super.initState();
+    if (widget.storyIds.isNotEmpty) {
+      _index = widget.initialIndex.clamp(0, widget.storyIds.length - 1);
+    }
     _progress = AnimationController(vsync: this)
       ..addStatusListener(_handleProgressStatus);
     _replyFocus.addListener(_handleReplyFocus);
     _resolveSender();
     _updates = TdClient.shared.subscribe().listen(_handleUpdate);
-    _load(0);
+    if (widget.storyIds.isNotEmpty) _load(_index);
   }
 
   void _handleProgressStatus(AnimationStatus status) {

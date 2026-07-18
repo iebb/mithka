@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/auth/telegram_passkey_service.dart';
@@ -17,6 +18,18 @@ void main() {
       telegramPasskeyPlatformSupported(isAndroid: false, isIOS: false),
       isFalse,
     );
+  });
+
+  test('iOS does not claim Telegram-owned passkey domains', () {
+    final entitlements = File(
+      'ios/Runner/Runner.entitlements',
+    ).readAsStringSync();
+
+    expect(
+      entitlements,
+      isNot(contains('com.apple.developer.associated-domains')),
+    );
+    expect(entitlements, isNot(contains('webcredentials:telegram.org')));
   });
 
   test('extracts the WebAuthn publicKey object from TDLib text', () {

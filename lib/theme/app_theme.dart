@@ -184,7 +184,7 @@ abstract final class AppMetric {
   static const double settingsRowHeight = 56;
   static const double compactSettingsRowHeight = 52;
   static const double avatarSize = 48;
-  static const double headerAvatarSize = 40;
+  static const double headerAvatarSize = 36;
   static const double hitTarget = 36;
   static const double searchHeight = 36;
   static const double searchIcon = 16;
