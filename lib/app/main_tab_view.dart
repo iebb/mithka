@@ -370,6 +370,16 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
 
   Widget _classicTabs() {
     final theme = context.watch<ThemeController>();
+    if (!theme.communitiesEnabled && _selectedMessageCommunity != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted ||
+            context.read<ThemeController>().communitiesEnabled ||
+            _selectedMessageCommunity == null) {
+          return;
+        }
+        setState(() => _selectedMessageCommunity = null);
+      });
+    }
     final tabs = _visibleTabs(theme);
     if (!tabs.any((tab) => tab.index == _selection)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -501,40 +511,48 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
     );
   }
 
-  Widget _tabletSidebarRoot(int tabIndex) => switch (tabIndex) {
-    0 => ChatListView(
-      controller: _chatListController,
-      selectedChatId: _selectedMessageChat?.chatId,
-      selectedCommunityId: _selectedMessageCommunity?.community.id,
-      onChatSelected: (chat) {
-        setState(() {
-          _selectedMessageCommunity = null;
-          _selectedMessageChat = chat;
-        });
-      },
-      onCommunitySelected: (community) {
-        setState(() {
-          _selectedMessageChat = null;
-          _selectedMessageCommunity = community;
-        });
-      },
-    ),
-    1 => TopicChannelsView(
-      onOpenDetail: (detail) {
-        setState(() => _selectedChannelDetail = detail);
-      },
-    ),
-    2 => ContactsView(
-      onOpenDetail: (detail) {
-        setState(() => _selectedContactDetail = detail);
-      },
-    ),
-    _ => MomentsView(
-      onOpenDetail: (detail) {
-        setState(() => _selectedMomentDetail = detail);
-      },
-    ),
-  };
+  Widget _tabletSidebarRoot(int tabIndex) {
+    final communitiesEnabled = context
+        .watch<ThemeController>()
+        .communitiesEnabled;
+    return switch (tabIndex) {
+      0 => ChatListView(
+        controller: _chatListController,
+        selectedChatId: _selectedMessageChat?.chatId,
+        selectedCommunityId: communitiesEnabled
+            ? _selectedMessageCommunity?.community.id
+            : null,
+        onChatSelected: (chat) {
+          setState(() {
+            _selectedMessageCommunity = null;
+            _selectedMessageChat = chat;
+          });
+        },
+        onCommunitySelected: (community) {
+          if (!communitiesEnabled) return;
+          setState(() {
+            _selectedMessageChat = null;
+            _selectedMessageCommunity = community;
+          });
+        },
+      ),
+      1 => TopicChannelsView(
+        onOpenDetail: (detail) {
+          setState(() => _selectedChannelDetail = detail);
+        },
+      ),
+      2 => ContactsView(
+        onOpenDetail: (detail) {
+          setState(() => _selectedContactDetail = detail);
+        },
+      ),
+      _ => MomentsView(
+        onOpenDetail: (detail) {
+          setState(() => _selectedMomentDetail = detail);
+        },
+      ),
+    };
+  }
 
   Widget _tabletDetailPane(int activeTabIndex) => switch (activeTabIndex) {
     0 => _messageDetailPane(),
@@ -562,13 +580,20 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
   };
 
   Widget _messageDetailPane() {
-    final selectedCommunity = _selectedMessageCommunity;
+    final selectedCommunity =
+        context.watch<ThemeController>().communitiesEnabled
+        ? _selectedMessageCommunity
+        : null;
     if (selectedCommunity != null) {
       return KeyedSubtree(
         key: ValueKey('message-community-${selectedCommunity.community.id}'),
         child: CommunityView(
           community: selectedCommunity.community,
           chats: selectedCommunity.chats,
+          viewableChats: selectedCommunity.viewableChats,
+          updates: selectedCommunity.updates,
+          chatsProvider: selectedCommunity.chatsProvider,
+          viewableChatsProvider: selectedCommunity.viewableChatsProvider,
           onCollapsedChanged: selectedCommunity.onCollapsedChanged,
           showBackButton: false,
           onChatSelected: (chat) {

@@ -647,6 +647,7 @@ const enMessages = <String, String>{
   'communityChatCount': "{value1} chats",
   'communityChatRemovedService': "This chat was removed from its community",
   'communityChatsYouAreIn': "CHATS YOU’RE IN",
+  'communityChatsYouCanView': "CHATS YOU CAN VIEW",
   'communityNoChats': "No community chats match your search",
   'communityShowAsOneChat': "Show as One Chat",
   'communityShowAsOneChatDescription':
@@ -793,6 +794,7 @@ const enMessages = <String, String>{
       "Failed to set status (Premium required)",
   'emojiStatusSetTitle': "Set status",
   'featureBottomTabs': "Bottom tabs",
+  'featureCommunitiesEnabled': "Enable Communities",
   'featureDisableSafetyNotice': "Disable safety notice popup",
   'featureSafety': "Safety",
   'featureTitle': "Features",

@@ -660,6 +660,7 @@ const deMessages = <String, String>{
   'communityChatRemovedService':
       "Dieser Chat wurde aus seiner Community entfernt",
   'communityChatsYouAreIn': "CHATS, IN DENEN DU BIST",
+  'communityChatsYouCanView': "CHATS, DIE DU ANSEHEN KANNST",
   'communityNoChats': "Keine passenden Community-Chats gefunden",
   'communityShowAsOneChat': "Als einen Chat anzeigen",
   'communityShowAsOneChatDescription':
@@ -812,6 +813,7 @@ const deMessages = <String, String>{
       "Status konnte nicht gesetzt werden (Premium erforderlich)",
   'emojiStatusSetTitle': "Status festlegen",
   'featureBottomTabs': "Untere Tabs",
+  'featureCommunitiesEnabled': "Communities aktivieren",
   'featureDisableSafetyNotice': "Sicherheitshinweis deaktivieren",
   'featureSafety': "Sicherheit",
   'featureTitle': "Funktionen",

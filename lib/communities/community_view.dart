@@ -195,6 +195,10 @@ class CommunityView extends StatefulWidget {
     super.key,
     required this.community,
     required this.chats,
+    this.viewableChats = const [],
+    this.updates,
+    this.chatsProvider,
+    this.viewableChatsProvider,
     required this.onCollapsedChanged,
     this.onChatSelected,
     this.showBackButton = true,
@@ -203,6 +207,10 @@ class CommunityView extends StatefulWidget {
 
   final CommunitySummary community;
   final List<ChatSummary> chats;
+  final List<ChatSummary> viewableChats;
+  final Listenable? updates;
+  final List<ChatSummary> Function()? chatsProvider;
+  final List<ChatSummary> Function()? viewableChatsProvider;
   final ValueChanged<bool> onCollapsedChanged;
   final ValueChanged<ChatSummary>? onChatSelected;
   final bool showBackButton;
@@ -219,34 +227,48 @@ class _CommunityViewState extends State<CommunityView> {
   bool _searching = false;
   String _query = '';
 
+  List<ChatSummary> get _currentChats =>
+      widget.chatsProvider?.call() ?? widget.chats;
+  List<ChatSummary> get _currentViewableChats =>
+      widget.viewableChatsProvider?.call() ?? widget.viewableChats;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.updates?.addListener(_handleUpdates);
+  }
+
   @override
   void didUpdateWidget(covariant CommunityView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.community.collapsed != widget.community.collapsed) {
       _collapsed = widget.community.collapsed;
     }
+    if (oldWidget.updates != widget.updates) {
+      oldWidget.updates?.removeListener(_handleUpdates);
+      widget.updates?.addListener(_handleUpdates);
+    }
   }
 
   @override
   void dispose() {
+    widget.updates?.removeListener(_handleUpdates);
     _searchController.dispose();
     _searchFocus.dispose();
     super.dispose();
+  }
+
+  void _handleUpdates() {
+    if (mounted) setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
     final query = _query.trim().toLowerCase();
-    final chats = query.isEmpty
-        ? widget.chats
-        : widget.chats
-              .where(
-                (chat) =>
-                    chat.title.toLowerCase().contains(query) ||
-                    chat.lastMessage.toLowerCase().contains(query),
-              )
-              .toList();
+    final chats = _filtered(_currentChats, query);
+    final viewableChats = _filtered(_currentViewableChats, query);
+    final hasResults = chats.isNotEmpty || viewableChats.isNotEmpty;
     return Scaffold(
       backgroundColor: c.groupedBackground,
       body: Column(
@@ -281,20 +303,22 @@ class _CommunityViewState extends State<CommunityView> {
                 const SizedBox(height: 14),
                 _collapseCard(),
                 const SizedBox(height: 20),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
-                  child: Text(
-                    AppStringKeys.communityChatsYouAreIn.l10n(context),
-                    style: TextStyle(
-                      fontSize: AppTextSize.caption,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.5,
-                      color: c.textTertiary,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                _chatCard(chats),
+                if (!hasResults)
+                  _chatCard(const [])
+                else ...[
+                  if (chats.isNotEmpty) ...[
+                    _sectionHeader(AppStringKeys.communityChatsYouAreIn),
+                    const SizedBox(height: 8),
+                    _chatCard(chats),
+                  ],
+                  if (chats.isNotEmpty && viewableChats.isNotEmpty)
+                    const SizedBox(height: 20),
+                  if (viewableChats.isNotEmpty) ...[
+                    _sectionHeader(AppStringKeys.communityChatsYouCanView),
+                    const SizedBox(height: 8),
+                    _chatCard(viewableChats),
+                  ],
+                ],
               ],
             ),
           ),
@@ -302,6 +326,30 @@ class _CommunityViewState extends State<CommunityView> {
       ),
     );
   }
+
+  List<ChatSummary> _filtered(List<ChatSummary> chats, String query) {
+    if (query.isEmpty) return chats;
+    return chats
+        .where(
+          (chat) =>
+              chat.title.toLowerCase().contains(query) ||
+              chat.lastMessage.toLowerCase().contains(query),
+        )
+        .toList();
+  }
+
+  Widget _sectionHeader(String title) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 6),
+    child: Text(
+      title.l10n(context),
+      style: TextStyle(
+        fontSize: AppTextSize.caption,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0.5,
+        color: context.colors.textTertiary,
+      ),
+    ),
+  );
 
   Widget _communityHeader() {
     final c = context.colors;
@@ -332,7 +380,10 @@ class _CommunityViewState extends State<CommunityView> {
           const SizedBox(height: 5),
           Text(
             AppStrings.t(AppStringKeys.communityChatCount, {
-              'value1': widget.chats.length,
+              'value1': {
+                ..._currentChats.map((chat) => chat.id),
+                ..._currentViewableChats.map((chat) => chat.id),
+              }.length,
             }),
             style: TextStyle(
               fontSize: AppTextSize.callout,
@@ -499,8 +550,10 @@ class _CommunityViewState extends State<CommunityView> {
           pushAppChatRoute(
             context,
             MaterialPageRoute(
-              builder: (_) =>
-                  ForumTopicBrowserView(chats: widget.chats, initialChat: chat),
+              builder: (_) => ForumTopicBrowserView(
+                chats: [..._currentChats, ..._currentViewableChats],
+                initialChat: chat,
+              ),
             ),
           ),
         );

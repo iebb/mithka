@@ -13,7 +13,7 @@
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEST="$REPO_ROOT/ios/tdjson"
-TDJSON_RELEASE_TAG="tdlib-1.8.66-1b08c83bc078"
+TDJSON_RELEASE_TAG="tdlib-1.8.66-1b08c83bc078-rebuild-29623073124-1"
 TDJSON_URL="${TDJSON_XCFRAMEWORK_URL:-https://github.com/iebb/mithka-tdjson/releases/download/${TDJSON_RELEASE_TAG}/tdjson-ios.xcframework.zip}"
 
 download_tdjson() {
@@ -27,7 +27,10 @@ download_tdjson() {
 }
 
 echo "→ Expected: $DEST/tdjson.xcframework"
-if [[ -d "$DEST/tdjson.xcframework" ]]; then
+if [[ -n "${TDJSON_XCFRAMEWORK_URL:-}" ]]; then
+  echo "  → replacing the installed framework with the requested override"
+  download_tdjson
+elif [[ -d "$DEST/tdjson.xcframework" ]]; then
   echo "  ✓ tdjson.xcframework present"
   if ! "$REPO_ROOT/scripts/check-tdjson-session-symbols.sh" "$DEST/tdjson.xcframework"; then
     echo "  → existing tdjson.xcframework is stale; replacing it"

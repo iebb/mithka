@@ -66,6 +66,22 @@ class FeatureSettingsView extends StatelessWidget {
                 const SizedBox(height: AppSpacing.section),
                 _sectionHeader(
                   context,
+                  AppStrings.t(AppStringKeys.communityTitle),
+                ),
+                SettingsCard(
+                  children: [
+                    SettingsSwitchRow(
+                      title: AppStrings.t(
+                        AppStringKeys.featureCommunitiesEnabled,
+                      ),
+                      value: theme.communitiesEnabled,
+                      onChanged: (value) => theme.communitiesEnabled = value,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.section),
+                _sectionHeader(
+                  context,
                   AppStrings.t(AppStringKeys.featureSafety),
                 ),
                 SettingsCard(

@@ -653,6 +653,7 @@ const esMessages = <String, String>{
   'communityChatCount': "{value1} chats",
   'communityChatRemovedService': "Este chat se eliminó de su comunidad",
   'communityChatsYouAreIn': "CHATS EN LOS QUE ESTÁS",
+  'communityChatsYouCanView': "CHATS QUE PUEDES VER",
   'communityNoChats': "No hay chats de la comunidad que coincidan",
   'communityShowAsOneChat': "Mostrar como un chat",
   'communityShowAsOneChatDescription':
@@ -803,6 +804,7 @@ const esMessages = <String, String>{
       "No se pudo definir el estado (requiere Premium)",
   'emojiStatusSetTitle': "Definir estado",
   'featureBottomTabs': "Pestañas inferiores",
+  'featureCommunitiesEnabled': "Activar comunidades",
   'featureDisableSafetyNotice': "Desactivar aviso de seguridad",
   'featureSafety': "Seguridad",
   'featureTitle': "Funciones",

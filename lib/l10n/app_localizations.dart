@@ -793,6 +793,7 @@ abstract final class AppStringKeys {
   static const communityChatCount = 'communityChatCount';
   static const communityChatRemovedService = 'communityChatRemovedService';
   static const communityChatsYouAreIn = 'communityChatsYouAreIn';
+  static const communityChatsYouCanView = 'communityChatsYouCanView';
   static const communityNoChats = 'communityNoChats';
   static const communityShowAsOneChat = 'communityShowAsOneChat';
   static const communityShowAsOneChatDescription =
@@ -1115,6 +1116,7 @@ abstract final class AppStringKeys {
       'emojiStatusSetRequiresPremiumFailed';
   static const emojiStatusSetTitle = 'emojiStatusSetTitle';
   static const featureBottomTabs = 'featureBottomTabs';
+  static const featureCommunitiesEnabled = 'featureCommunitiesEnabled';
   static const featureDisableSafetyNotice = 'featureDisableSafetyNotice';
   static const featureSafety = 'featureSafety';
   static const featureTitle = 'featureTitle';

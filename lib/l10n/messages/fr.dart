@@ -661,6 +661,7 @@ const frMessages = <String, String>{
   'communityChatRemovedService':
       "Cette discussion a été retirée de sa communauté",
   'communityChatsYouAreIn': "DISCUSSIONS QUE VOUS AVEZ REJOINTES",
+  'communityChatsYouCanView': "DISCUSSIONS QUE VOUS POUVEZ VOIR",
   'communityNoChats': "Aucune discussion de la communauté ne correspond",
   'communityShowAsOneChat': "Afficher comme une discussion",
   'communityShowAsOneChatDescription':
@@ -810,6 +811,7 @@ const frMessages = <String, String>{
       "Échec de la définition du statut (Premium requis)",
   'emojiStatusSetTitle': "Définir le statut",
   'featureBottomTabs': "Onglets inférieurs",
+  'featureCommunitiesEnabled': "Activer les communautés",
   'featureDisableSafetyNotice': "Désactiver l’avertissement de sécurité",
   'featureSafety': "Sécurité",
   'featureTitle': "Fonctionnalités",
