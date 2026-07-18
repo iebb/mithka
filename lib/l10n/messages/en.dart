@@ -706,7 +706,7 @@ const enMessages = <String, String>{
   'composerSend': "Send",
   'composerSendAsFile': "Send as file",
   'composerSendAsFileDescription':
-      "Choose from your library and send the original files",
+      "Send original files without media edits or compression",
   'composerSendAsMedia': "Send as photo or video",
   'composerSendAsRichText': "Send as rich text",
   'composerSendPaidMessageQuestion': "Send paid message?",

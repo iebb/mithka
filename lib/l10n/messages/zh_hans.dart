@@ -647,7 +647,7 @@ const zhHansMessages = <String, String>{
   'composerRichTextSendFailed': "富文本消息发送失败",
   'composerSend': "发送",
   'composerSendAsFile': "作为文件发送",
-  'composerSendAsFileDescription': "从相册选择并发送原始文件",
+  'composerSendAsFileDescription': "不编辑或压缩媒体，发送原始文件",
   'composerSendAsMedia': "作为图片或视频发送",
   'composerSendAsRichText': "作为富文本发送",
   'composerSendPaidMessageQuestion': "发送付费消息？",

@@ -40,6 +40,7 @@ class OutgoingAttachment {
     this.title = '',
     this.performer = '',
     this.fileName,
+    this.originalPath,
     this.coverPath,
     this.startTimestamp = 0,
   });
@@ -56,6 +57,7 @@ class OutgoingAttachment {
   final String title;
   final String performer;
   final String? fileName;
+  final String? originalPath;
   final String? coverPath;
   final int startTimestamp;
 
@@ -84,6 +86,8 @@ class OutgoingAttachment {
     String? title,
     String? performer,
     String? fileName,
+    String? originalPath,
+    bool clearOriginalPath = false,
     String? coverPath,
     bool clearCoverPath = false,
     int? startTimestamp,
@@ -103,6 +107,9 @@ class OutgoingAttachment {
       title: title ?? this.title,
       performer: performer ?? this.performer,
       fileName: fileName ?? this.fileName,
+      originalPath: clearOriginalPath
+          ? null
+          : originalPath ?? this.originalPath,
       coverPath: clearCoverPath ? null : coverPath ?? this.coverPath,
       startTimestamp: startTimestamp ?? this.startTimestamp,
     );
@@ -111,10 +118,18 @@ class OutgoingAttachment {
 
 Map<String, dynamic> attachmentInputFile(OutgoingAttachment attachment) {
   final fileId = attachment.fileId;
-  if (fileId != null && fileId > 0) {
+  final originalPath = attachment.originalPath?.trim();
+  final usesOriginalDocument =
+      attachment.kind == OutgoingAttachmentKind.document &&
+      originalPath != null &&
+      originalPath.isNotEmpty;
+  if (!usesOriginalDocument && fileId != null && fileId > 0) {
     return {'@type': 'inputFileId', 'id': fileId};
   }
-  return {'@type': 'inputFileLocal', 'path': attachment.path};
+  return {
+    '@type': 'inputFileLocal',
+    'path': usesOriginalDocument ? originalPath : attachment.path,
+  };
 }
 
 Future<OutgoingAttachment> resolveAttachmentDimensions(

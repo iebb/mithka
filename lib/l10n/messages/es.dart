@@ -714,7 +714,7 @@ const esMessages = <String, String>{
   'composerSend': "Enviar",
   'composerSendAsFile': "Enviar como archivo",
   'composerSendAsFileDescription':
-      "Elegir de la galería y enviar los archivos originales",
+      "Enviar archivos originales sin editar ni comprimir",
   'composerSendAsMedia': "Enviar como foto o vídeo",
   'composerSendAsRichText': "Enviar como texto enriquecido",
   'composerSendPaidMessageQuestion': "¿Enviar mensaje de pago?",

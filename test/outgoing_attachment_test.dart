@@ -69,6 +69,18 @@ void main() {
       ((document['document'] as Map)['document'] as Map)['path'],
       '/tmp/IMG_1234.HEIC',
     );
+
+    final originalDocument = attachmentInputMessageContent(
+      const OutgoingAttachment(
+        path: '/tmp/prepared.jpg',
+        originalPath: '/tmp/IMG_5678.HEIC',
+        kind: OutgoingAttachmentKind.document,
+      ),
+    );
+    expect(
+      ((originalDocument['document'] as Map)['document'] as Map)['path'],
+      '/tmp/IMG_5678.HEIC',
+    );
   });
 
   test('groups compatible attachments without reordering', () {

@@ -648,7 +648,7 @@ const zhHantMessages = <String, String>{
   'composerRichTextSendFailed': "富文字訊息傳送失敗",
   'composerSend': "傳送",
   'composerSendAsFile': "作為檔案傳送",
-  'composerSendAsFileDescription': "從相簿選擇並傳送原始檔案",
+  'composerSendAsFileDescription': "不編輯或壓縮媒體，傳送原始檔案",
   'composerSendAsMedia': "作為圖片或影片傳送",
   'composerSendAsRichText': "以富文字傳送",
   'composerSendPaidMessageQuestion': "要傳送付費訊息嗎？",

@@ -662,7 +662,7 @@ const jaMessages = <String, String>{
   'composerRichTextSendFailed': "リッチメッセージを送信できませんでした",
   'composerSend': "送信",
   'composerSendAsFile': "ファイルとして送信",
-  'composerSendAsFileDescription': "ライブラリから選択して元のファイルを送信",
+  'composerSendAsFileDescription': "メディア編集や圧縮をせずに元のファイルを送信",
   'composerSendAsMedia': "写真または動画として送信",
   'composerSendAsRichText': "リッチテキストで送信",
   'composerSendPaidMessageQuestion': "有料メッセージを送信しますか？",

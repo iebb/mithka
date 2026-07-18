@@ -723,7 +723,7 @@ const deMessages = <String, String>{
   'composerSend': "Senden",
   'composerSendAsFile': "Als Datei senden",
   'composerSendAsFileDescription':
-      "Aus der Galerie wählen und die Originaldateien senden",
+      "Originaldateien ohne Medienbearbeitung oder Komprimierung senden",
   'composerSendAsMedia': "Als Foto oder Video senden",
   'composerSendAsRichText': "Als Rich Text senden",
   'composerSendPaidMessageQuestion': "Kostenpflichtige Nachricht senden?",

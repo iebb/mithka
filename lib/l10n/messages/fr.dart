@@ -721,7 +721,7 @@ const frMessages = <String, String>{
   'composerSend': "Envoyer",
   'composerSendAsFile': "Envoyer comme fichier",
   'composerSendAsFileDescription':
-      "Choisir dans la photothèque et envoyer les fichiers originaux",
+      "Envoyer les fichiers originaux sans modification ni compression",
   'composerSendAsMedia': "Envoyer comme photo ou vidéo",
   'composerSendAsRichText': "Envoyer en texte enrichi",
   'composerSendPaidMessageQuestion': "Envoyer le message payant ?",

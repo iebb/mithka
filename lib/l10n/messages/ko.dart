@@ -664,7 +664,7 @@ const koMessages = <String, String>{
   'composerRichTextSendFailed': "서식 있는 메시지를 보낼 수 없습니다",
   'composerSend': "보내기",
   'composerSendAsFile': "파일로 보내기",
-  'composerSendAsFileDescription': "갤러리에서 선택해 원본 파일로 보내기",
+  'composerSendAsFileDescription': "미디어 편집이나 압축 없이 원본 파일로 보내기",
   'composerSendAsMedia': "사진 또는 동영상으로 보내기",
   'composerSendAsRichText': "서식 있는 텍스트로 보내기",
   'composerSendPaidMessageQuestion': "유료 메시지를 보내시겠습니까?",
