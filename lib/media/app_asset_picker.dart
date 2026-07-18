@@ -74,39 +74,92 @@ abstract final class AppAssetPicker {
     if (maxAssets <= 0) {
       return const AppAssetPickerSelection(assets: [], failedCount: 0);
     }
-    final assets = await AssetPicker.pickAssets(
-      context,
-      pickerConfig: buildConfig(
+    try {
+      final assets = await AssetPicker.pickAssets(
         context,
-        type: type,
-        maxAssets: maxAssets,
-        maxVideoDuration: maxVideoDuration,
-      ),
-    );
-    if (assets == null || assets.isEmpty) {
-      return const AppAssetPickerSelection(assets: [], failedCount: 0);
-    }
+        pickerConfig: buildConfig(
+          context,
+          type: type,
+          maxAssets: maxAssets,
+          maxVideoDuration: maxVideoDuration,
+        ),
+      );
+      if (assets == null || assets.isEmpty) {
+        return const AppAssetPickerSelection(assets: [], failedCount: 0);
+      }
 
-    final resolved = <AppPickedAsset>[];
-    var failedCount = 0;
-    for (final asset in assets) {
-      try {
-        resolved.add(
-          await _materialize(
-            asset,
-            preferLivePhotoVideo: preferLivePhotoVideo,
-            preserveOriginalFiles: preserveOriginalFiles,
-            photoMaxDimension: photoMaxDimension,
+      final resolved = <AppPickedAsset>[];
+      var failedCount = 0;
+      for (final asset in assets) {
+        try {
+          resolved.add(
+            await _materialize(
+              asset,
+              preferLivePhotoVideo: preferLivePhotoVideo,
+              preserveOriginalFiles: preserveOriginalFiles,
+              photoMaxDimension: photoMaxDimension,
+            ),
+          );
+        } catch (_) {
+          failedCount++;
+        }
+      }
+      return AppAssetPickerSelection(
+        assets: List.unmodifiable(resolved),
+        failedCount: failedCount,
+      );
+    } on StateError {
+      // Permission denied — request it and retry.
+      final requestType = switch (type) {
+        AppAssetPickerType.image => RequestType.image,
+        AppAssetPickerType.video => RequestType.video,
+        AppAssetPickerType.imageAndVideo => RequestType.common,
+      };
+      final state = await PhotoManager.requestPermissionExtend(
+        requestOption: PermissionRequestOption(
+          androidPermission: AndroidPermission(
+            type: requestType,
+            mediaLocation: false,
+          ),
+        ),
+      );
+      if (state == PermissionState.authorized ||
+          state == PermissionState.limited) {
+        final assets = await AssetPicker.pickAssets(
+          context,
+          pickerConfig: buildConfig(
+            context,
+            type: type,
+            maxAssets: maxAssets,
+            maxVideoDuration: maxVideoDuration,
           ),
         );
-      } catch (_) {
-        failedCount++;
+        if (assets == null || assets.isEmpty) {
+          return const AppAssetPickerSelection(assets: [], failedCount: 0);
+        }
+        final resolved = <AppPickedAsset>[];
+        var failedCount = 0;
+        for (final asset in assets) {
+          try {
+            resolved.add(
+              await _materialize(
+                asset,
+                preferLivePhotoVideo: preferLivePhotoVideo,
+                preserveOriginalFiles: preserveOriginalFiles,
+                photoMaxDimension: photoMaxDimension,
+              ),
+            );
+          } catch (_) {
+            failedCount++;
+          }
+        }
+        return AppAssetPickerSelection(
+          assets: List.unmodifiable(resolved),
+          failedCount: failedCount,
+        );
       }
+      return const AppAssetPickerSelection(assets: [], failedCount: 0);
     }
-    return AppAssetPickerSelection(
-      assets: List.unmodifiable(resolved),
-      failedCount: failedCount,
-    );
   }
 
   static AssetPickerConfig buildConfig(
