@@ -537,6 +537,7 @@ class ChannelDirectMessageTopicController extends ChangeNotifier {
   bool sending = false;
   bool hasOlder = true;
   String? error;
+  int? meId;
   String meName = '';
   TdFileRef? mePhoto;
 
@@ -552,6 +553,7 @@ class ChannelDirectMessageTopicController extends ChangeNotifier {
   Future<void> _loadMe() async {
     try {
       final me = await _client.query({'@type': 'getMe'});
+      meId = me.int64('id');
       meName = TDParse.userName(me);
       mePhoto = TDParse.smallPhoto(me.obj('profile_photo'));
       notifyListeners();

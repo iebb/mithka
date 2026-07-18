@@ -52,6 +52,7 @@ class _SavedMessagesViewState extends State<SavedMessagesView> {
   bool _topicsExhausted = false;
   String _meName = '';
   TdFileRef? _mePhoto;
+  int? _meId;
 
   @override
   void initState() {
@@ -109,6 +110,7 @@ class _SavedMessagesViewState extends State<SavedMessagesView> {
       final me = await _service.currentUser();
       if (!mounted) return;
       setState(() {
+        _meId = me.int64('id');
         _meName = TDParse.userName(me);
         _mePhoto = TDParse.smallPhoto(me.obj('profile_photo'));
       });
@@ -701,6 +703,7 @@ class _SavedMessagesViewState extends State<SavedMessagesView> {
             isGroup: false,
             meName: _meName.isEmpty ? AppStringKeys.chatMeLabel : _meName,
             mePhoto: _mePhoto,
+            meId: _meId,
             forceShowTimestamp: true,
           ),
         ],

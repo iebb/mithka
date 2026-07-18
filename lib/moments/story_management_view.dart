@@ -44,6 +44,7 @@ class _StoryManagementViewState extends State<StoryManagementView> {
   Map<int, List<Map<String, dynamic>>> _albumStories = {};
   Set<int> _pinned = {};
   bool _loading = true;
+  bool _canPublish = false;
   int _tab = 0;
 
   @override
@@ -66,10 +67,18 @@ class _StoryManagementViewState extends State<StoryManagementView> {
         _service
             .albums(widget.chatId)
             .catchError((_) => <String, dynamic>{'albums': const []}),
+        _service
+            .canPost(widget.chatId)
+            .catchError(
+              (_) => <String, dynamic>{
+                '@type': 'canPostStoryResultPremiumNeeded',
+              },
+            ),
       ]);
       final profile = results[0] as StoryCollectionResult;
       final archive = results[1] as StoryCollectionResult;
       final albums = results[2] as Map<String, dynamic>;
+      final capability = results[3] as Map<String, dynamic>;
       final albumRows = albums.objects('albums') ?? const [];
       final albumStories = <int, List<Map<String, dynamic>>>{};
       await Future.wait(
@@ -90,6 +99,7 @@ class _StoryManagementViewState extends State<StoryManagementView> {
       _pinned = profile.pinnedStoryIds.toSet();
       _albums = albumRows;
       _albumStories = albumStories;
+      _canPublish = capability.type == 'canPostStoryResultOk';
     } catch (error) {
       if (mounted) {
         showToast(
@@ -112,7 +122,8 @@ class _StoryManagementViewState extends State<StoryManagementView> {
       .toList(growable: false);
 
   Future<void> _newStory() async {
-    final changed = await Navigator.of(context).push<bool>(
+    if (!_canPublish) return;
+    final changed = await Navigator.of(context, rootNavigator: true).push<bool>(
       MaterialPageRoute(
         fullscreenDialog: true,
         builder: (_) => StoryAuthoringView(initialChatId: widget.chatId),
@@ -750,12 +761,13 @@ class _StoryManagementViewState extends State<StoryManagementView> {
               HeroAppIcons.arrowsRotate,
               'refresh',
             ),
-            _actionRow(
-              sheetContext,
-              sheetContext.l10n.t(AppStringKeys.storyManagementLive),
-              HeroAppIcons.towerBroadcast,
-              'live',
-            ),
+            if (_canPublish)
+              _actionRow(
+                sheetContext,
+                sheetContext.l10n.t(AppStringKeys.storyManagementLive),
+                HeroAppIcons.towerBroadcast,
+                'live',
+              ),
           ],
         ),
       ),
@@ -832,13 +844,16 @@ class _StoryManagementViewState extends State<StoryManagementView> {
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _headerButton(
-                  HeroAppIcons.plus,
-                  _newStory,
-                  label: context.l10n.t(AppStringKeys.storiesCreate),
-                  prominent: true,
-                ),
-                const SizedBox(width: 8),
+                if (_canPublish) ...[
+                  _headerButton(
+                    HeroAppIcons.plus,
+                    _newStory,
+                    key: const ValueKey('story-management-publish-action'),
+                    label: context.l10n.t(AppStringKeys.storiesCreate),
+                    prominent: true,
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 _headerButton(
                   HeroAppIcons.ellipsis,
                   _showPageActions,
@@ -872,9 +887,11 @@ class _StoryManagementViewState extends State<StoryManagementView> {
   Widget _headerButton(
     AppIconData icon,
     VoidCallback onTap, {
+    Key? key,
     required String label,
     bool prominent = false,
   }) => Semantics(
+    key: key,
     button: true,
     label: label,
     child: GestureDetector(
@@ -1295,7 +1312,7 @@ class _StoryManagementViewState extends State<StoryManagementView> {
               height: 1.35,
             ),
           ),
-          if (active) ...[
+          if (active && _canPublish) ...[
             const SizedBox(height: 16),
             Semantics(
               button: true,

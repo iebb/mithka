@@ -56,6 +56,7 @@ class MessageBubble extends StatefulWidget {
     required this.isGroup,
     this.meName = AppStringKeys.chatMeLabel,
     this.mePhoto,
+    this.meId,
     this.showRepeat = false,
     this.forceShowTimestamp = false,
     this.onRepeat,
@@ -100,6 +101,7 @@ class MessageBubble extends StatefulWidget {
   final bool isGroup;
   final String meName;
   final TdFileRef? mePhoto;
+  final int? meId;
   final bool showRepeat;
   final bool forceShowTimestamp;
   final VoidCallback? onRepeat;
@@ -325,7 +327,7 @@ class _MessageBubbleState extends State<MessageBubble>
             ),
             Transform.translate(
               offset: Offset(_swipeX, 0),
-              child: _row(message.isOutgoing),
+              child: _row(widget.meId != null ? message.senderId == widget.meId : message.isOutgoing),
             ),
           ],
         );

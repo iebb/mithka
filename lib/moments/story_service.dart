@@ -382,6 +382,37 @@ class StoryService {
   Future<Map<String, dynamic>> canPost(int chatId) =>
       _query({'@type': 'canPostStory', 'chat_id': chatId});
 
+  Future<List<int>> postableChatIds({int? savedMessagesId}) async {
+    final candidates = <int>{};
+    if (savedMessagesId != null) {
+      candidates.add(savedMessagesId);
+    } else {
+      try {
+        candidates.add(await savedMessagesChatId());
+      } catch (_) {}
+    }
+    try {
+      candidates.addAll(await chatsToPost());
+    } catch (_) {}
+
+    final orderedCandidates = candidates.toList(growable: false);
+    final allowed = await Future.wait(
+      orderedCandidates.map((chatId) async {
+        try {
+          final result = await canPost(chatId);
+          return result.type == 'canPostStoryResultOk';
+        } catch (_) {}
+        return false;
+      }),
+    );
+    return List.unmodifiable([
+      for (var i = 0; i < orderedCandidates.length; i++)
+        if (allowed[i]) orderedCandidates[i],
+    ]);
+  }
+
+  Future<bool> canPostAnyStory() async => (await postableChatIds()).isNotEmpty;
+
   Future<StoryCollectionResult> loadStoryCollection(
     int chatId, {
     required bool archived,
