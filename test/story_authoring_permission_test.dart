@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/moments/story_authoring_view.dart';
+import 'package:mithka/moments/story_camera_view.dart';
 import 'package:mithka/moments/story_service.dart';
 import 'package:mithka/theme/app_theme.dart';
 import 'package:mithka/theme/theme_controller.dart';
@@ -31,11 +32,26 @@ void main() {
     expect(find.text('下一步'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('camera opens only after the user selects it', (tester) async {
+    await _pumpAuthoring(tester, canPost: true, initialMediaPath: null);
+
+    expect(find.text('选择照片或视频'), findsOneWidget);
+    expect(find.byType(StoryCameraView), findsNothing);
+
+    await tester.tap(find.text('相机'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(find.byType(StoryCameraView), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 Future<void> _pumpAuthoring(
   WidgetTester tester, {
   required bool canPost,
+  String? initialMediaPath = '/tmp/story-permission-test.mp4',
 }) async {
   tester.view.devicePixelRatio = 3;
   tester.view.physicalSize = const Size(1170, 2532);
@@ -67,9 +83,8 @@ Future<void> _pumpAuthoring(
           extensions: [AppColors.light],
         ),
         home: StoryAuthoringView(
-          initialMediaPath: '/tmp/story-permission-test.mp4',
+          initialMediaPath: initialMediaPath,
           service: _PermissionStoryService(allowed: canPost),
-          openCameraOnLaunch: false,
         ),
       ),
     ),

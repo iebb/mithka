@@ -1047,6 +1047,22 @@ abstract final class AppStringKeys {
   static const developerModePiPBoundsOverlay = 'developerModePiPBoundsOverlay';
   static const developerModePiPBoundsOverlayDescription =
       'developerModePiPBoundsOverlayDescription';
+  static const developerPerformanceFrameWork = 'developerPerformanceFrameWork';
+  static const developerPerformanceImageCache =
+      'developerPerformanceImageCache';
+  static const developerPerformanceProcessMemory =
+      'developerPerformanceProcessMemory';
+  static const developerPerformanceProfiler = 'developerPerformanceProfiler';
+  static const developerPerformanceProfilerDescription =
+      'developerPerformanceProfilerDescription';
+  static const developerPerformanceResetSamples =
+      'developerPerformanceResetSamples';
+  static const developerPerformanceSlowFrames =
+      'developerPerformanceSlowFrames';
+  static const developerPerformanceTrimCaches =
+      'developerPerformanceTrimCaches';
+  static const developerPerformanceWaitingForFrames =
+      'developerPerformanceWaitingForFrames';
   static const developerModeTitle = 'developerModeTitle';
   static const developerModeUnlocked = 'developerModeUnlocked';
   static const editProfileAnimatedAvatar = 'editProfileAnimatedAvatar';

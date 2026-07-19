@@ -107,6 +107,10 @@ double chatListItemScrollOffset({
   double leadingExtent = 0,
 }) => math.min(leadingExtent + itemIndex * rowHeight, maxScrollExtent);
 
+/// Keeps the pull-down archive slot after the search row when search is shown.
+int chatListPullDownArchiveItemIndex({required bool showSearch}) =>
+    showSearch ? 1 : 0;
+
 class CommunityListSelection {
   const CommunityListSelection({
     required this.community,
@@ -638,13 +642,17 @@ class _ChatListViewState extends State<ChatListView>
     final archiveMode = context
         .read<ThemeController>()
         .archivedChatsDisplayMode;
+    final pullDownArchiveVisible =
+        archiveMode == ArchivedChatsDisplayMode.pullDown && _archiveRevealed;
     if (_model.isAllFilter &&
         _model.archived.isNotEmpty &&
-        archiveMode.isInline) {
-      final archiveIndex = archiveMode.insertionIndex(
-        chatCount: entries.length,
-        visibleRows: _lastVisibleRows,
-      );
+        (archiveMode.isInline || pullDownArchiveVisible)) {
+      final archiveIndex = pullDownArchiveVisible
+          ? 0
+          : archiveMode.insertionIndex(
+              chatCount: entries.length,
+              visibleRows: _lastVisibleRows,
+            );
       if (archiveIndex <= entryIndex) itemIndex++;
     }
     return chatListItemScrollOffset(
@@ -1078,6 +1086,8 @@ class _ChatListViewState extends State<ChatListView>
               hasArchive &&
               archiveMode == ArchivedChatsDisplayMode.pullDown &&
               _archiveRevealed;
+          final hasPullDownArchiveSlot =
+              hasArchive && archiveMode == ArchivedChatsDisplayMode.pullDown;
           final archiveIndex = archiveMode.insertionIndex(
             chatCount: entries.length,
             visibleRows: visibleRows,
@@ -1095,9 +1105,24 @@ class _ChatListViewState extends State<ChatListView>
                 parent: BouncingScrollPhysics(),
               ),
               padding: EdgeInsets.zero,
-              itemCount: visibleRows + (showSearch ? 1 : 0),
+              itemCount:
+                  visibleRows +
+                  (showSearch ? 1 : 0) +
+                  (hasPullDownArchiveSlot ? 1 : 0),
               itemBuilder: (context, index) {
-                if (showSearch && index == 0) return _searchPill();
+                if (showSearch && index == 0) {
+                  return _archivePullSearchPill(hasPullDownArchiveSlot);
+                }
+                if (hasPullDownArchiveSlot &&
+                    index ==
+                        chatListPullDownArchiveItemIndex(
+                          showSearch: showSearch,
+                        )) {
+                  return _pullDownArchiveSlot(
+                    rowHeight: rowH,
+                    visible: showPulledDownArchive,
+                  );
+                }
                 return const _ChatRowPlaceholder();
               },
             );
@@ -1109,9 +1134,19 @@ class _ChatListViewState extends State<ChatListView>
               ),
               padding: EdgeInsets.zero,
               children: [
-                if (showSearch) _searchPill(),
+                if (showSearch) _archivePullSearchPill(hasPullDownArchiveSlot),
+                if (hasPullDownArchiveSlot)
+                  _pullDownArchiveSlot(
+                    rowHeight: rowH,
+                    visible: showPulledDownArchive,
+                  ),
                 SizedBox(
-                  height: math.max(180, geo.maxHeight - searchHeight - rowH),
+                  height: math.max(
+                    180,
+                    geo.maxHeight -
+                        searchHeight -
+                        (showPulledDownArchive ? rowH : 0),
+                  ),
                   child: _emptyChatList(),
                 ),
               ],
@@ -1126,15 +1161,28 @@ class _ChatListViewState extends State<ChatListView>
               itemCount:
                   (showSearch ? 1 : 0) +
                   entries.length +
+                  (hasPullDownArchiveSlot ? 1 : 0) +
                   (showInlineArchive ? 1 : 0) +
                   (hasFiltered ? 1 : 0),
               itemBuilder: (context, index) {
-                if (showSearch && index == 0) return _searchPill();
+                if (showSearch && index == 0) {
+                  return _archivePullSearchPill(hasPullDownArchiveSlot);
+                }
                 final contentIndex = showSearch ? index - 1 : index;
-                if (hasFiltered && contentIndex == 0) {
+                if (hasPullDownArchiveSlot && contentIndex == 0) {
+                  return _pullDownArchiveSlot(
+                    rowHeight: rowH,
+                    visible: showPulledDownArchive,
+                  );
+                }
+                final contentAfterPullDownArchive =
+                    contentIndex - (hasPullDownArchiveSlot ? 1 : 0);
+                if (hasFiltered && contentAfterPullDownArchive == 0) {
                   return _filteredChatsRow();
                 }
-                final listIndex = hasFiltered ? contentIndex - 1 : contentIndex;
+                final listIndex = hasFiltered
+                    ? contentAfterPullDownArchive - 1
+                    : contentAfterPullDownArchive;
                 if (showInlineArchive && listIndex == archiveIndex) {
                   return _assistantRow();
                 }
@@ -1173,27 +1221,32 @@ class _ChatListViewState extends State<ChatListView>
           }
           list = _folderSwitchTransition(list);
 
-          return Column(
-            children: [
-              if (hasArchive &&
-                  archiveMode == ArchivedChatsDisplayMode.pullDown)
-                AnimatedSize(
-                  duration: const Duration(milliseconds: 180),
-                  curve: Curves.easeOutCubic,
-                  alignment: Alignment.topCenter,
-                  clipBehavior: Clip.none,
-                  child: showPulledDownArchive
-                      ? Transform.translate(
-                          offset: Offset(0, _archiveDragOffset),
-                          child: SizedBox(height: rowH, child: _assistantRow()),
-                        )
-                      : const SizedBox(width: double.infinity),
-                ),
-              Expanded(child: list),
-            ],
-          );
+          return list;
         },
       ),
+    );
+  }
+
+  Widget _archivePullSearchPill(bool pinDuringArchivePull) {
+    final offset = pinDuringArchivePull ? -_archiveDragOffset : 0.0;
+    return Transform.translate(offset: Offset(0, offset), child: _searchPill());
+  }
+
+  Widget _pullDownArchiveSlot({
+    required double rowHeight,
+    required bool visible,
+  }) {
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.topCenter,
+      clipBehavior: Clip.none,
+      child: visible
+          ? Transform.translate(
+              offset: Offset(0, -_archiveDragOffset),
+              child: SizedBox(height: rowHeight, child: _assistantRow()),
+            )
+          : const SizedBox(width: double.infinity),
     );
   }
 

@@ -711,6 +711,13 @@ class ChatView extends StatefulWidget {
   State<ChatView> createState() => _ChatViewState();
 }
 
+/// Drops reusable transcript and scroll snapshots after an OS memory warning.
+/// The active chat owns its own view model and is not affected.
+void clearChatMemoryCaches() {
+  _ChatViewState._sessionCache.clear();
+  _ChatViewState._sessionScrollSnapshots.clear();
+}
+
 class _TranscriptEntry {
   _TranscriptEntry(this.messages, this.startIndex);
 

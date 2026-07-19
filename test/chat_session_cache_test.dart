@@ -43,4 +43,15 @@ void main() {
     expect(cache.read(2), isNull);
     expect(cache.read(3), isNotNull);
   });
+
+  test('clear releases every reusable transcript snapshot', () {
+    final cache = ChatSessionCache(capacity: 2);
+    cache.store(chatId: 1, messages: [_message(1)], anchoredHistory: false);
+    cache.store(chatId: 2, messages: [_message(2)], anchoredHistory: false);
+
+    cache.clear();
+
+    expect(cache.read(1), isNull);
+    expect(cache.read(2), isNull);
+  });
 }
