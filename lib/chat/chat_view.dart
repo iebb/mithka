@@ -822,6 +822,8 @@ class _ChatViewState extends State<ChatView> {
       ? _entryUnreadCount
       : _unreadProgress.remaining(initialUnreadCount: _vm.unreadCount);
   int _entryUnreadCount = 0;
+  int _entryLastReadInboxId = 0;
+  int? _entryFirstUnreadMessageId;
   bool _showEntryUnreadBanner = false;
   double _keyboardInset = 0;
   bool _shortTranscriptFillScheduled = false;
@@ -1592,43 +1594,57 @@ class _ChatViewState extends State<ChatView> {
     _onComposerMessageSent();
   }
 
-  /// Jump to the first unread incoming message (where the "以下为新消息" divider
-  /// sits); fall back to the bottom if none is loaded.
-  void _jumpToFirstUnread() {
+  int? _firstLoadedEntryUnreadMessageId() => firstUnreadMessageIdAfterBoundary(
+    incomingMessageIds: _vm.messages
+        .where((message) => !message.isOutgoing && !message.isService)
+        .map((message) => message.id),
+    lastReadInboxId: _entryLastReadInboxId,
+  );
+
+  /// Jump to the unread boundary captured when the chat opened. The live TDLib
+  /// boundary may already point at the newest message after the chat is marked
+  /// read, so it cannot be used to resolve this button later.
+  Future<void> _jumpToFirstUnread() async {
+    var targetMessageId = _entryFirstUnreadMessageId;
+    final entryBoundaryId = _entryLastReadInboxId;
     _cancelSessionScrollAnchorMaintenance();
     _cancelBottomFollow();
-    _autoScrollPolicy.returnToBottom();
+    _autoScrollPolicy.noteUserScroll(
+      towardOlderMessages: true,
+      isAtBottom: false,
+    );
     setState(() {
       _unreadProgress.clearLiveMessages();
       _showEntryUnreadBanner = false;
       _bannerDismissed = true;
     });
-    final i = _vm.messages.indexWhere(
-      (m) => !m.isOutgoing && !m.isService && m.id > _vm.lastReadInboxId,
-    );
-    if (i < 0 || !_scroll.hasClients) {
-      _scheduleScrollToBottom();
+
+    if (targetMessageId == null && entryBoundaryId > 0) {
+      setState(() => _setScrollTarget(entryBoundaryId));
+      await _vm.loadAroundMessage(entryBoundaryId, scrollToTarget: false);
+      if (!mounted) return;
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
+      targetMessageId = _firstLoadedEntryUnreadMessageId();
+      if (targetMessageId == null &&
+          _vm.messages.any((message) => message.id == entryBoundaryId)) {
+        targetMessageId = entryBoundaryId;
+      }
+    }
+
+    // With a zero boundary (for example, a never-opened channel), TDLib has no
+    // concrete message to page around. Moving to the oldest loaded unread
+    // message still gives the control a useful, deterministic upward action.
+    targetMessageId ??= _firstLoadedEntryUnreadMessageId();
+    if (targetMessageId == null) {
+      if (_scrollTargetId != null) setState(() => _setScrollTarget(null));
       return;
     }
-    final target = _estimateMessageOffset(
-      _vm.messages[i].id,
-      _initialUnreadAlignment,
-      beforeUnreadDivider: true,
-    );
-    if (target == null) return;
-    unawaited(
-      _scroll
-          .animateTo(
-            target,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOut,
-          )
-          .whenComplete(() {
-            if (!mounted) return;
-            unawaited(
-              _ensureKeyVisible(_unreadKey, alignment: _initialUnreadAlignment),
-            );
-          }),
+    _entryFirstUnreadMessageId = targetMessageId;
+    await _scrollToMessage(
+      targetMessageId,
+      alignment: _initialUnreadAlignment,
+      forceAlignment: true,
     );
   }
 
@@ -1770,6 +1786,27 @@ class _ChatViewState extends State<ChatView> {
     // bottom when caught up. Runs exactly once per chat open.
     if (!_didInitialScroll && _vm.initialLoaded) {
       _entryUnreadCount = _vm.unreadCount;
+      _entryLastReadInboxId = _vm.lastReadInboxId;
+      final firstEntryUnreadMessageId = _firstLoadedEntryUnreadMessageId();
+      final loadedIncomingUnreadCount = _vm.messages
+          .where(
+            (message) =>
+                !message.isOutgoing &&
+                !message.isService &&
+                message.id > _entryLastReadInboxId,
+          )
+          .length;
+      final entryBoundaryIsLoaded =
+          _entryLastReadInboxId > 0 &&
+          _vm.messages.isNotEmpty &&
+          _vm.messages.first.id <= _entryLastReadInboxId;
+      final entireUnreadRangeIsLoaded =
+          _entryUnreadCount > 0 &&
+          loadedIncomingUnreadCount >= _entryUnreadCount;
+      _entryFirstUnreadMessageId =
+          entryBoundaryIsLoaded || entireUnreadRangeIsLoaded
+          ? firstEntryUnreadMessageId
+          : null;
       _showEntryUnreadBanner = _openAtLatest && _entryUnreadCount > 0;
       _didInitialScroll = true;
       if (_vm.messages.isEmpty) {
@@ -4760,7 +4797,9 @@ class _ChatViewState extends State<ChatView> {
     final count = _remainingUnreadCount;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: pointsDown ? _returnToLatest : _jumpToFirstUnread,
+      onTap: pointsDown
+          ? _returnToLatest
+          : () => unawaited(_jumpToFirstUnread()),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
@@ -5888,6 +5927,8 @@ class _ChatViewState extends State<ChatView> {
   Future<void> _scrollToMessage(
     int messageId, {
     bool pinnedJump = false,
+    double? alignment,
+    bool forceAlignment = false,
   }) async {
     if (mounted) {
       setState(() => _setScrollTarget(messageId));
@@ -5895,7 +5936,12 @@ class _ChatViewState extends State<ChatView> {
       _setScrollTarget(messageId);
     }
     if (_vm.messages.any((m) => m.id == messageId)) {
-      await _ensureMessageVisible(messageId, pinnedJump: pinnedJump);
+      await _ensureMessageVisible(
+        messageId,
+        pinnedJump: pinnedJump,
+        alignment: alignment,
+        forceAlignment: forceAlignment,
+      );
       return;
     }
     final loaded = await _vm.loadAroundMessage(
@@ -5905,7 +5951,12 @@ class _ChatViewState extends State<ChatView> {
     if (!loaded || !mounted) return;
     await WidgetsBinding.instance.endOfFrame;
     if (!mounted) return;
-    await _ensureMessageVisible(messageId, pinnedJump: pinnedJump);
+    await _ensureMessageVisible(
+      messageId,
+      pinnedJump: pinnedJump,
+      alignment: alignment,
+      forceAlignment: forceAlignment,
+    );
   }
 
   Future<void> _openHashtagSearch(String hashtag) async {
@@ -5928,7 +5979,10 @@ class _ChatViewState extends State<ChatView> {
     int messageId, {
     bool pinnedJump = false,
     bool instant = false,
+    double? alignment,
+    bool forceAlignment = false,
   }) async {
+    final targetAlignment = alignment ?? (pinnedJump ? 0.08 : 0.3);
     for (var tries = 0; tries < 6; tries++) {
       final activeKey = _scrollTargetId == messageId ? _targetKey : _pinnedKey;
       final ctx = activeKey.currentContext;
@@ -5936,7 +5990,7 @@ class _ChatViewState extends State<ChatView> {
         // Do not realign a message that is already on screen. Reply, search,
         // and other linked-message jumps used to always force the row to 30%
         // of the viewport, which made an already-visible target bounce.
-        if (_isKeyMostlyVisible(activeKey)) {
+        if (!forceAlignment && _isKeyMostlyVisible(activeKey)) {
           if (mounted && _scrollTargetId == messageId) {
             setState(() => _setScrollTarget(null));
           }
@@ -5944,14 +5998,14 @@ class _ChatViewState extends State<ChatView> {
         }
         await Scrollable.ensureVisible(
           ctx,
-          alignment: pinnedJump ? 0.08 : 0.3,
+          alignment: targetAlignment,
           duration: instant
               ? Duration.zero
               : pinnedJump
               ? const Duration(milliseconds: 140)
               : const Duration(milliseconds: 220),
           curve: Curves.easeOutCubic,
-          alignmentPolicy: pinnedJump
+          alignmentPolicy: pinnedJump && alignment == null
               ? ScrollPositionAlignmentPolicy.keepVisibleAtStart
               : ScrollPositionAlignmentPolicy.explicit,
         );
@@ -5961,10 +6015,7 @@ class _ChatViewState extends State<ChatView> {
         return;
       }
       if (!_scroll.hasClients) return;
-      final estimate = _estimateMessageOffset(
-        messageId,
-        pinnedJump ? 0.08 : 0.3,
-      );
+      final estimate = _estimateMessageOffset(messageId, targetAlignment);
       if (estimate != null) _scroll.jumpTo(estimate);
       await Future<void>.delayed(const Duration(milliseconds: 120));
       if (!mounted) return;

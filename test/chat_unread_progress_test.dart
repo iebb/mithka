@@ -71,6 +71,28 @@ void main() {
     );
   });
 
+  test(
+    'entry read boundary still resolves after the live boundary advances',
+    () {
+      const incomingIds = [103, 101, 102];
+
+      expect(
+        firstUnreadMessageIdAfterBoundary(
+          incomingMessageIds: incomingIds,
+          lastReadInboxId: 100,
+        ),
+        101,
+      );
+      expect(
+        firstUnreadMessageIdAfterBoundary(
+          incomingMessageIds: incomingIds,
+          lastReadInboxId: 103,
+        ),
+        isNull,
+      );
+    },
+  );
+
   test('initial unread count decreases as messages become visible', () {
     final progress = ChatUnreadProgress();
 

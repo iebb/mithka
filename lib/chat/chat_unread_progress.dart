@@ -59,6 +59,21 @@ List<int> appendedLiveIncomingMessageIds({
       .toList(growable: false);
 }
 
+/// Returns the earliest loaded incoming message beyond a captured read
+/// boundary. The boundary must be the value from when the chat opened: TDLib
+/// advances its live boundary as soon as the latest messages are marked read.
+int? firstUnreadMessageIdAfterBoundary({
+  required Iterable<int> incomingMessageIds,
+  required int lastReadInboxId,
+}) {
+  int? earliest;
+  for (final messageId in incomingMessageIds) {
+    if (messageId <= lastReadInboxId) continue;
+    if (earliest == null || messageId < earliest) earliest = messageId;
+  }
+  return earliest;
+}
+
 class ChatUnreadProgress {
   final Set<int> _seenInitialMessageIds = <int>{};
   final Set<int> _liveMessageIds = <int>{};
