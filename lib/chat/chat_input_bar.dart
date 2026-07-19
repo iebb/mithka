@@ -559,18 +559,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
       'query': query,
       'offset': offset,
     });
-    final items = <GifItem>[];
-    final seen = <int>{};
-    for (final result
-        in response.objects('results') ?? const <Map<String, dynamic>>[]) {
-      if (result.type != 'inlineQueryResultAnimation') continue;
-      final animation = result.obj('animation');
-      if (animation == null) continue;
-      final parsed = parseSavedAnimations([animation]);
-      if (parsed.isEmpty || !seen.add(parsed.first.id)) continue;
-      items.add(parsed.first);
-    }
-    return (items, response.str('next_offset') ?? '');
+    final page = parseInlineGifSearchPage(response);
+    return (page.items, page.nextOffset);
   }
 
   Future<void> _loadMoreGifSearch() async {
@@ -3658,6 +3648,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
   Widget _panelSearchField() {
     final c = context.colors;
     return Container(
+      key: const ValueKey('stickerPanelSearch'),
       height: 42,
       margin: const EdgeInsets.fromLTRB(10, 8, 10, 2),
       padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -4024,9 +4015,9 @@ class _ChatInputBarState extends State<ChatInputBar> {
       color: c.panelBackground,
       child: Column(
         children: [
+          _stickerTabStrip(),
           _panelSearchField(),
           Expanded(child: _stickerContent()),
-          _stickerTabStrip(),
         ],
       ),
     );
@@ -4202,9 +4193,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
         (packs.isNotEmpty ? packs.first.id : StickerStore.recentPackId);
     final installed = packs.where((p) => p.id != StickerStore.recentPackId);
     return Container(
+      key: const ValueKey('stickerPanelTabs'),
       decoration: BoxDecoration(
         color: c.inputBarBackground,
-        border: Border(top: BorderSide(color: c.divider, width: 0.5)),
+        border: Border(bottom: BorderSide(color: c.divider, width: 0.5)),
       ),
       child: SizedBox(
         height: 50,

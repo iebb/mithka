@@ -258,10 +258,13 @@ Map<String, dynamic> attachmentInputMessageContent(
     },
     OutgoingAttachmentKind.animation => {
       '@type': 'inputMessageAnimation',
-      'animation': inputFile,
-      'duration': attachment.duration,
-      'width': attachment.width ?? 0,
-      'height': attachment.height ?? 0,
+      'animation': {
+        '@type': 'inputAnimation',
+        'animation': inputFile,
+        'duration': attachment.duration,
+        'width': attachment.width ?? 0,
+        'height': attachment.height ?? 0,
+      },
       'caption': ?formattedCaption,
       'show_caption_above_media': sendConfiguration.showCaptionAboveMedia,
       'has_spoiler': sendConfiguration.hasSpoiler,
