@@ -33,6 +33,8 @@ import '../media/app_asset_picker.dart';
 import '../moments/story_viewer_view.dart';
 import '../notifications/notification_controller.dart';
 import '../profile/profile_detail_view.dart';
+import '../settings/ai_settings_controller.dart';
+import '../settings/apple_pcc_api.dart';
 import '../settings/blocked_user_service.dart';
 import '../settings/business_tools_views.dart';
 import '../settings/developer_mode_controller.dart';
@@ -50,6 +52,7 @@ import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
 import '../theme/telegram_cloud_theme.dart';
 import '../theme/theme_controller.dart';
+import 'apple_pcc_unread_summary_provider.dart';
 import 'blocked_message_runs.dart';
 import 'channel_direct_messages_service.dart';
 import 'channel_direct_messages_view.dart';
@@ -82,6 +85,7 @@ import 'message_action_menu.dart';
 import 'message_bubble.dart';
 import 'message_replies_sheet.dart';
 import 'music_player_controller.dart';
+import 'openai_compatible_unread_summary_provider.dart';
 import 'outgoing_attachment.dart';
 import 'poll_results_view.dart';
 import 'quick_reaction_choice.dart';
@@ -91,6 +95,9 @@ import 'sticker_set_detail_view.dart';
 import 'sticker_viewer.dart';
 import 'telegram_mini_app_view.dart';
 import 'transcript_pivot_partition.dart';
+import 'unread_chat_summary_models.dart';
+import 'unread_chat_summary_service.dart';
+import 'unread_chat_summary_view.dart';
 import 'video_playback_queue.dart';
 import 'video_player_view.dart';
 
@@ -836,6 +843,7 @@ class _ChatViewState extends State<ChatView> {
   bool _maintainRestoredBottom = false;
   final _restoredBottomCorrection = ChatBottomCorrectionCoordinator();
   bool _openingUnreadMention = false;
+  bool _openingUnreadSummary = false;
   bool _exitStatePrepared = false;
   bool _notificationVisibilityRegistered = false;
 
@@ -4499,6 +4507,7 @@ class _ChatViewState extends State<ChatView> {
   }
 
   Widget _transcriptLayer() {
+    final aiSettings = context.watch<AiSettingsController?>();
     final transcriptReady = _initialTranscriptReady;
     final bottomIndicator = chatBottomIndicator(
       isScrolledUp: _showJumpDown,
@@ -4566,7 +4575,7 @@ class _ChatViewState extends State<ChatView> {
           Positioned(
             right: 16,
             bottom: 12,
-            child: _newMessagesBanner(pointsDown: true),
+            child: _newMessagesControl(aiSettings, pointsDown: true),
           ),
         if (transcriptReady && _vm.unreadMentionCount > 0)
           Positioned(
@@ -4745,6 +4754,150 @@ class _ChatViewState extends State<ChatView> {
         ),
       ),
     );
+  }
+
+  Widget _newMessagesControl(
+    AiSettingsController? settings, {
+    required bool pointsDown,
+  }) {
+    final banner = _newMessagesBanner(pointsDown: pointsDown);
+    if (!_canOfferUnreadSummary(settings)) return banner;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _unreadSummaryButton(),
+        const SizedBox(width: 6),
+        banner,
+      ],
+    );
+  }
+
+  bool _canOfferUnreadSummary(AiSettingsController? settings) =>
+      settings?.initialized == true &&
+      settings?.enabled == true &&
+      settings?.isConfiguredForCurrentProvider == true &&
+      _vm.unreadSummarySnapshot != null &&
+      !_vm.isSecretChat &&
+      !_vm.hasProtectedContent;
+
+  Widget _unreadSummaryButton() {
+    return Semantics(
+      button: true,
+      label: AppStringKeys.aiSummaryButton.l10n(context),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _openingUnreadSummary ? null : _openUnreadSummary,
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 140),
+          opacity: _openingUnreadSummary ? 0.62 : 1,
+          child: Container(
+            width: 40,
+            height: 40,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: AppTheme.brand,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: const Color(0xFFFFFFFF).withValues(alpha: 0.24),
+                width: 0.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.16),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: const Text(
+              'AI',
+              style: TextStyle(
+                color: Color(0xFFFFFFFF),
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.2,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openUnreadSummary() async {
+    final snapshot = _vm.unreadSummarySnapshot;
+    final settings = context.read<AiSettingsController?>();
+    if (snapshot == null || !_canOfferUnreadSummary(settings)) return;
+    setState(() => _openingUnreadSummary = true);
+
+    final providerMode = settings!.provider;
+    final endpoint = settings.openAiChatCompletionsUri;
+    final model = settings.model;
+    final apiKey = settings.apiKey;
+    final messageId = await Navigator.of(context).push<int>(
+      MaterialPageRoute<int>(
+        builder: (_) => UnreadChatSummaryView(
+          snapshot: snapshot,
+          summarize: () => _summarizeUnreadRange(
+            snapshot,
+            providerMode: providerMode,
+            endpoint: endpoint,
+            model: model,
+            apiKey: apiKey,
+          ),
+        ),
+      ),
+    );
+    if (!mounted) return;
+    setState(() => _openingUnreadSummary = false);
+    if (messageId != null) await _scrollToMessage(messageId);
+  }
+
+  Future<UnreadChatSummary> _summarizeUnreadRange(
+    UnreadChatRangeSnapshot snapshot, {
+    required AiProviderMode providerMode,
+    required Uri? endpoint,
+    required String model,
+    required String apiKey,
+  }) async {
+    final loader = UnreadChatHistoryLoader(
+      query: (accountSlot, request) {
+        final clientId = TdClient.shared.clientId(accountSlot);
+        if (clientId == null) {
+          throw StateError('The account used for this chat is unavailable.');
+        }
+        return TdClient.shared.queryTo(request, clientId);
+      },
+    );
+
+    switch (providerMode) {
+      case AiProviderMode.applePcc:
+        return UnreadChatSummaryService(
+          historyLoader: loader,
+          provider: ApplePccUnreadSummaryProvider(
+            api: ApplePccApi(),
+            reasoningLevel: ApplePccReasoningLevel.light,
+            maximumResponseTokens: 1600,
+          ),
+        ).summarize(snapshot);
+      case AiProviderMode.openAiCompatible:
+        if (endpoint == null || model.trim().isEmpty) {
+          throw StateError('The summary server is not configured.');
+        }
+        final provider = OpenAiCompatibleUnreadSummaryProvider(
+          serverBaseUri: endpoint,
+          model: model.trim(),
+          apiKey: apiKey,
+        );
+        try {
+          return await UnreadChatSummaryService(
+            historyLoader: loader,
+            provider: provider,
+          ).summarize(snapshot);
+        } finally {
+          provider.close();
+        }
+    }
   }
 
   Widget _unreadMentionIndicator() {

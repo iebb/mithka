@@ -27,6 +27,7 @@ import UserNotifications
   private var telegramPasskeyBridge: TelegramPasskeyBridge?
   private var premiumAuthPurchaseBridge: PremiumAuthPurchaseBridge?
   private var mithkaProBridge: MithkaProBridge?
+  private var applePCCBridge: ApplePCCBridge?
 
   override func application(
     _ application: UIApplication,
@@ -416,6 +417,9 @@ import UserNotifications
       messenger: engineBridge.applicationRegistrar.messenger()
     )
     mithkaProBridge = MithkaProBridge(
+      messenger: engineBridge.applicationRegistrar.messenger()
+    )
+    applePCCBridge = ApplePCCBridge(
       messenger: engineBridge.applicationRegistrar.messenger()
     )
 

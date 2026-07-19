@@ -39,6 +39,7 @@ import 'secret_chat_service.dart';
 import 'sponsored_messages_cache.dart';
 import 'sticker_item.dart';
 import 'telegram_ai_service.dart';
+import 'unread_chat_summary_models.dart';
 
 class _SenderInfo {
   _SenderInfo(
@@ -229,6 +230,8 @@ class ChatViewModel extends ChangeNotifier {
   int lastReadOutboxId = 0; // outgoing messages with id <= this are read
   int lastReadInboxId = 0; // incoming messages with id <= this are read
   int unreadCount = 0; // unread incoming messages on entry (for the divider)
+  UnreadChatRangeSnapshot? unreadSummarySnapshot;
+  bool _didCaptureUnreadSummaryRange = false;
   int unreadMentionCount = 0;
   bool isMarkedUnread = false; // manual unread marker on the chat row
   bool initialLoaded = false; // first history page (+ unread boundary) is in
@@ -2446,6 +2449,23 @@ class ChatViewModel extends ChangeNotifier {
     final kind = TDParse.chatKind(chat);
     isGroup = kind == ChatKind.group || kind == ChatKind.channel;
     isSecretChat = kind == ChatKind.secret;
+    final entryUpperMessageId = chat.obj('last_message')?.int64('id') ?? 0;
+    if (!_didCaptureUnreadSummaryRange) {
+      _didCaptureUnreadSummaryRange = true;
+      if (unreadCount > 0 &&
+          entryUpperMessageId > lastReadInboxId &&
+          !isSecretChat &&
+          !hasProtectedContent) {
+        unreadSummarySnapshot = UnreadChatRangeSnapshot(
+          chatId: chatId,
+          accountSlot: _client.activeSlot,
+          lastReadInboxId: lastReadInboxId,
+          unreadCount: unreadCount,
+          upperMessageId: entryUpperMessageId,
+          capturedAt: DateTime.now(),
+        );
+      }
+    }
     _primeLastMessage(chat);
     // Chat-wide default send permission + permissive membership defaults
     // (refined per type below).
