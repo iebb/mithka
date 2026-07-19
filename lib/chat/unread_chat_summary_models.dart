@@ -123,10 +123,47 @@ class UnreadChatSummaryItem {
 }
 
 @immutable
+class UnreadChatSummaryTopic {
+  UnreadChatSummaryTopic({
+    required this.title,
+    required this.summary,
+    required Iterable<String> evidenceIds,
+    this.firstDate,
+    this.lastDate,
+  }) : evidenceIds = List.unmodifiable(evidenceIds);
+
+  final String title;
+  final String summary;
+  final List<String> evidenceIds;
+  final int? firstDate;
+  final int? lastDate;
+
+  UnreadChatSummaryTopic copyWith({int? firstDate, int? lastDate}) =>
+      UnreadChatSummaryTopic(
+        title: title,
+        summary: summary,
+        evidenceIds: evidenceIds,
+        firstDate: firstDate ?? this.firstDate,
+        lastDate: lastDate ?? this.lastDate,
+      );
+
+  Map<String, Object?> toJson() => {
+    'title': title,
+    'summary': summary,
+    'evidence_ids': evidenceIds,
+    'start_date_unix': ?firstDate,
+    'end_date_unix': ?lastDate,
+  };
+}
+
+@immutable
 class UnreadChatSummaryContent {
   UnreadChatSummaryContent({
+    this.title = '',
     required this.overview,
     required Iterable<String> overviewEvidenceIds,
+    Iterable<UnreadChatSummaryTopic> topics = const [],
+    this.rant,
     required Iterable<UnreadChatSummaryItem> highlights,
     required Iterable<UnreadChatSummaryItem> needsReply,
     required Iterable<UnreadChatSummaryItem> decisions,
@@ -134,6 +171,7 @@ class UnreadChatSummaryContent {
     required Iterable<UnreadChatSummaryItem> questions,
     required Iterable<UnreadChatSummaryItem> uncertainties,
   }) : overviewEvidenceIds = List.unmodifiable(overviewEvidenceIds),
+       topics = List.unmodifiable(topics),
        highlights = List.unmodifiable(highlights),
        needsReply = List.unmodifiable(needsReply),
        decisions = List.unmodifiable(decisions),
@@ -185,9 +223,28 @@ class UnreadChatSummaryContent {
       field: 'overview',
     );
 
+    final title = value['title'] is String
+        ? (value['title'] as String).trim()
+        : '';
+    _requireGrounding(
+      text: title,
+      evidenceIds: overviewEvidenceIds,
+      field: 'title',
+    );
+
     return UnreadChatSummaryContent(
+      title: title,
       overview: overview,
       overviewEvidenceIds: overviewEvidenceIds,
+      topics: _parseTopics(
+        value['topics'],
+        allowedEvidenceIds: allowedEvidenceIds,
+      ),
+      rant: _parseOptionalItem(
+        value['rant'],
+        field: 'rant',
+        allowedEvidenceIds: allowedEvidenceIds,
+      ),
       highlights: _parseItems(
         value['highlights'],
         field: 'highlights',
@@ -221,8 +278,11 @@ class UnreadChatSummaryContent {
     );
   }
 
+  final String title;
   final String overview;
   final List<String> overviewEvidenceIds;
+  final List<UnreadChatSummaryTopic> topics;
+  final UnreadChatSummaryItem? rant;
   final List<UnreadChatSummaryItem> highlights;
   final List<UnreadChatSummaryItem> needsReply;
   final List<UnreadChatSummaryItem> decisions;
@@ -231,8 +291,11 @@ class UnreadChatSummaryContent {
   final List<UnreadChatSummaryItem> uncertainties;
 
   Map<String, Object?> toJson() => {
+    'title': title,
     'overview': overview,
     'overview_evidence_ids': overviewEvidenceIds,
+    'topics': topics.map((topic) => topic.toJson()).toList(),
+    'rant': rant?.toJson(),
     'highlights': highlights.map((item) => item.toJson()).toList(),
     'needs_reply': needsReply.map((item) => item.toJson()).toList(),
     'decisions': decisions.map((item) => item.toJson()).toList(),
@@ -240,6 +303,33 @@ class UnreadChatSummaryContent {
     'questions': questions.map((item) => item.toJson()).toList(),
     'uncertainties': uncertainties.map((item) => item.toJson()).toList(),
   };
+
+  UnreadChatSummaryContent copyWith({
+    String? title,
+    String? overview,
+    Iterable<String>? overviewEvidenceIds,
+    Iterable<UnreadChatSummaryTopic>? topics,
+    UnreadChatSummaryItem? rant,
+    bool clearRant = false,
+    Iterable<UnreadChatSummaryItem>? highlights,
+    Iterable<UnreadChatSummaryItem>? needsReply,
+    Iterable<UnreadChatSummaryItem>? decisions,
+    Iterable<UnreadChatSummaryItem>? actions,
+    Iterable<UnreadChatSummaryItem>? questions,
+    Iterable<UnreadChatSummaryItem>? uncertainties,
+  }) => UnreadChatSummaryContent(
+    title: title ?? this.title,
+    overview: overview ?? this.overview,
+    overviewEvidenceIds: overviewEvidenceIds ?? this.overviewEvidenceIds,
+    topics: topics ?? this.topics,
+    rant: clearRant ? null : rant ?? this.rant,
+    highlights: highlights ?? this.highlights,
+    needsReply: needsReply ?? this.needsReply,
+    decisions: decisions ?? this.decisions,
+    actions: actions ?? this.actions,
+    questions: questions ?? this.questions,
+    uncertainties: uncertainties ?? this.uncertainties,
+  );
 }
 
 @immutable
@@ -254,6 +344,7 @@ class UnreadChatSummaryCoverage {
     required this.historyCapped,
     required this.processingCapped,
     required this.historyStalled,
+    this.failedRequestCount = 0,
   });
 
   final int expectedUnreadCount;
@@ -265,6 +356,7 @@ class UnreadChatSummaryCoverage {
   final bool historyCapped;
   final bool processingCapped;
   final bool historyStalled;
+  final int failedRequestCount;
 
   bool get countMismatch => fetchedUnreadMessageCount < expectedUnreadCount;
 
@@ -273,6 +365,7 @@ class UnreadChatSummaryCoverage {
       !historyCapped &&
       !processingCapped &&
       !historyStalled &&
+      failedRequestCount == 0 &&
       !countMismatch;
 
   List<String> get limitations => [
@@ -280,6 +373,7 @@ class UnreadChatSummaryCoverage {
     if (historyCapped) 'history_message_cap_reached',
     if (processingCapped) 'summary_chunk_cap_reached',
     if (historyStalled) 'history_pagination_stalled',
+    if (failedRequestCount > 0) 'summary_partial_failure',
     if (countMismatch) 'unread_count_mismatch',
   ];
 
@@ -293,6 +387,7 @@ class UnreadChatSummaryCoverage {
     'history_capped': historyCapped,
     'processing_capped': processingCapped,
     'history_stalled': historyStalled,
+    'failed_request_count': failedRequestCount,
     'complete': complete,
     'limitations': limitations,
   };
@@ -305,8 +400,11 @@ class UnreadChatSummary {
   final UnreadChatSummaryContent content;
   final UnreadChatSummaryCoverage coverage;
 
+  String get title => content.title;
   String get overview => content.overview;
   List<String> get overviewEvidenceIds => content.overviewEvidenceIds;
+  List<UnreadChatSummaryTopic> get topics => content.topics;
+  UnreadChatSummaryItem? get rant => content.rant;
   List<UnreadChatSummaryItem> get highlights => content.highlights;
   List<UnreadChatSummaryItem> get needsReply => content.needsReply;
   List<UnreadChatSummaryItem> get decisions => content.decisions;
@@ -318,6 +416,72 @@ class UnreadChatSummary {
     ...content.toJson(),
     'coverage': coverage.toJson(),
   };
+}
+
+List<UnreadChatSummaryTopic> _parseTopics(
+  Object? raw, {
+  required Set<String> allowedEvidenceIds,
+}) {
+  if (raw == null) return const [];
+  if (raw is! List) {
+    throw const UnreadChatSummaryFormatException('topics must be an array');
+  }
+  return [
+    for (var index = 0; index < raw.length; index++)
+      _parseTopic(
+        raw[index],
+        field: 'topics[$index]',
+        allowedEvidenceIds: allowedEvidenceIds,
+      ),
+  ];
+}
+
+UnreadChatSummaryTopic _parseTopic(
+  Object? raw, {
+  required String field,
+  required Set<String> allowedEvidenceIds,
+}) {
+  if (raw is! Map) {
+    throw UnreadChatSummaryFormatException('$field must be an object');
+  }
+  final value = Map<String, dynamic>.from(raw);
+  final title = value['title'];
+  if (title is! String || title.trim().isEmpty) {
+    throw UnreadChatSummaryFormatException('$field has no title');
+  }
+  final summary = _requiredText(value, field);
+  final evidenceIds = _parseEvidenceIds(
+    value['evidence_ids'] ?? value['evidenceIds'],
+    field: '$field.evidence_ids',
+    allowedEvidenceIds: allowedEvidenceIds,
+  );
+  _requireGrounding(
+    text: '${title.trim()} $summary',
+    evidenceIds: evidenceIds,
+    field: field,
+  );
+  return UnreadChatSummaryTopic(
+    title: title.trim(),
+    summary: summary,
+    evidenceIds: evidenceIds,
+    firstDate: _optionalUnixDate(value['start_date_unix']),
+    lastDate: _optionalUnixDate(value['end_date_unix']),
+  );
+}
+
+UnreadChatSummaryItem? _parseOptionalItem(
+  Object? raw, {
+  required String field,
+  required Set<String> allowedEvidenceIds,
+}) {
+  if (raw == null) return null;
+  return _parseItem(raw, field: field, allowedEvidenceIds: allowedEvidenceIds);
+}
+
+int? _optionalUnixDate(Object? raw) {
+  if (raw is int && raw >= 0) return raw;
+  if (raw is num && raw >= 0) return raw.toInt();
+  return null;
 }
 
 String _requiredText(Map<String, dynamic> value, String field) {

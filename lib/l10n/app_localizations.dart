@@ -251,12 +251,10 @@ abstract final class AppStringKeys {
   static const aiPccAvailable = 'aiPccAvailable';
   static const aiPccPrivacy = 'aiPccPrivacy';
   static const aiPccUnavailable = 'aiPccUnavailable';
-  static const aiPccUnavailableDescription =
-      'aiPccUnavailableDescription';
+  static const aiPccUnavailableDescription = 'aiPccUnavailableDescription';
   static const aiProcessingMode = 'aiProcessingMode';
   static const aiProviderApplePcc = 'aiProviderApplePcc';
-  static const aiProviderOpenAiCompatible =
-      'aiProviderOpenAiCompatible';
+  static const aiProviderOpenAiCompatible = 'aiProviderOpenAiCompatible';
   static const aiSave = 'aiSave';
   static const aiSaved = 'aiSaved';
   static const aiServerApiKey = 'aiServerApiKey';
@@ -272,6 +270,7 @@ abstract final class AppStringKeys {
   static const aiSummaryButton = 'aiSummaryButton';
   static const aiSummaryChunkProgress = 'aiSummaryChunkProgress';
   static const aiSummaryDecisions = 'aiSummaryDecisions';
+  static const aiSummaryDisclaimer = 'aiSummaryDisclaimer';
   static const aiSummaryFailed = 'aiSummaryFailed';
   static const aiSummaryFoundCount = 'aiSummaryFoundCount';
   static const aiSummaryHighlights = 'aiSummaryHighlights';
@@ -281,14 +280,18 @@ abstract final class AppStringKeys {
   static const aiSummaryNoUnread = 'aiSummaryNoUnread';
   static const aiSummaryOpenSettings = 'aiSummaryOpenSettings';
   static const aiSummaryOverview = 'aiSummaryOverview';
+  static const aiSummaryProcessedCount = 'aiSummaryProcessedCount';
   static const aiSummaryPrivate = 'aiSummaryPrivate';
   static const aiSummaryQuestions = 'aiSummaryQuestions';
   static const aiSummaryReading = 'aiSummaryReading';
   static const aiSummaryReadingCount = 'aiSummaryReadingCount';
   static const aiSummaryRetry = 'aiSummaryRetry';
+  static const aiSummaryRant = 'aiSummaryRant';
   static const aiSummaryRunningCount = 'aiSummaryRunningCount';
   static const aiSummaryThinking = 'aiSummaryThinking';
   static const aiSummaryTitle = 'aiSummaryTitle';
+  static const aiSummaryTopics = 'aiSummaryTopics';
+  static const aiSummaryTopicTime = 'aiSummaryTopicTime';
   static const aiSummaryUnavailable = 'aiSummaryUnavailable';
   static const aiSummaryUncertainties = 'aiSummaryUncertainties';
   static const aiUnreadSummary = 'aiUnreadSummary';

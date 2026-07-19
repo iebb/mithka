@@ -10,8 +10,8 @@ class ApplePccUnreadSummaryProvider implements UnreadChatSummaryProvider {
     required this.api,
     this.reasoningLevel = ApplePccReasoningLevel.moderate,
     this.maximumResponseTokens,
-    this.chunkMaximumResponseTokens = 800,
-    this.mergeMaximumResponseTokens = 1400,
+    this.chunkMaximumResponseTokens = 1100,
+    this.mergeMaximumResponseTokens = 1800,
     this.transientRetryDelays = const [
       Duration(milliseconds: 350),
       Duration(milliseconds: 900),

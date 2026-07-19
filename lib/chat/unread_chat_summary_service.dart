@@ -114,6 +114,8 @@ LANGUAGE
 SELECTION
 - A row may inline a short same-sender burst and therefore contain multiple evidence_ids.
 - When selection.strategy is frequency_recency_signal_sample, the input is a representative sample, not the complete range.
+- Exact repeats and low-information standalone replies may already be omitted from INPUT_DATA.
+- Large gaps between message timestamps are strong topic boundaries. Keep topics in chronological order and do not blend unrelated periods merely because they share a keyword.
 - Do not claim the sampled input is exhaustive. Prefer recent messages, active periods, replies, questions, links, and non-text events that are actually present.
 
 GROUNDING
@@ -126,8 +128,11 @@ GROUNDING
 OUTPUT
 Return only one JSON object with this exact shape:
 {
+  "title": "short headline in the chat language",
   "overview": "string",
   "overview_evidence_ids": ["m123"],
+  "topics": [{"title": "string", "summary": "string", "start_date_unix": 0, "end_date_unix": 0, "evidence_ids": ["m123"]}],
+  "rant": {"text": "string", "evidence_ids": ["m123"]},
   "highlights": [{"text": "string", "evidence_ids": ["m123"]}],
   "needs_reply": [{"text": "string", "evidence_ids": ["m123"]}],
   "decisions": [{"text": "string", "evidence_ids": ["m123"]}],
@@ -135,11 +140,17 @@ Return only one JSON object with this exact shape:
   "questions": [{"text": "string", "evidence_ids": ["m123"]}],
   "uncertainties": [{"text": "string", "evidence_ids": ["m123"]}]
 }
-Use empty arrays when a category has no supported item. Keep the overview to at
-most two short sentences. For summarize_chunk, return at most 4 highlights and
-at most 3 items in every other category. For merge_chunk_summaries, remove
-duplicates and return at most 6 highlights and at most 5 items per other
-category, prioritizing unanswered questions, decisions, and concrete actions.
+Use null for rant when no grounded observation is possible and empty arrays
+when a category has no supported item. Keep the overview to at most two short
+sentences. Topics should capture distinct substantial discussions, with concise
+titles and summaries, rather than simple acknowledgements or repeated messages.
+The rant is a witty one- or two-sentence editorial observation grounded in the
+chat. It may be playful, but must not insult people, sexualize them, stereotype
+identities, or make unsupported accusations. For summarize_chunk, return at
+most 4 topics, 3 highlights, and 2 items in every other category. For
+merge_chunk_summaries, remove duplicates and return at most 8 topics, 5
+highlights, and 4 items per other category, prioritizing unanswered questions,
+decisions, and concrete actions.
 ''';
 
 /// Conservative token estimate for JSON sent to unknown model tokenizers.
@@ -303,6 +314,7 @@ class UnreadChatSummaryService {
     this.maxInlineBurstMessages = 8,
     this.maxInlineTextCharacters = 48,
     this.maxInlineGapSeconds = 120,
+    this.maxChunkTimeGapSeconds = 20 * 60,
     this.mergeChunkSummariesLocally = false,
   }) : assert(maxChunkMessages > 0),
        assert(maxChunkTokenEstimate > 0),
@@ -312,7 +324,8 @@ class UnreadChatSummaryService {
        assert(maxConcurrentRequests > 0),
        assert(maxInlineBurstMessages > 0),
        assert(maxInlineTextCharacters > 0),
-       assert(maxInlineGapSeconds >= 0);
+       assert(maxInlineGapSeconds >= 0),
+       assert(maxChunkTimeGapSeconds >= 0);
 
   final UnreadChatHistoryLoader historyLoader;
   final UnreadChatSummaryProvider provider;
@@ -325,6 +338,7 @@ class UnreadChatSummaryService {
   final int maxInlineBurstMessages;
   final int maxInlineTextCharacters;
   final int maxInlineGapSeconds;
+  final int maxChunkTimeGapSeconds;
   final bool mergeChunkSummariesLocally;
   String? _transcriptKey;
   Future<UnreadChatTranscript>? _transcriptFuture;
@@ -382,12 +396,12 @@ class UnreadChatSummaryService {
       );
     }
 
-    final promptUnits = _promptUnits(transcript.messages);
+    final promptMessages = _messagesForPrompt(transcript.messages);
+    final promptUnits = _promptUnits(promptMessages);
     final selection = _selectPromptUnits(promptUnits);
-    final processingCapped = selection.sampled;
     final selectedChunks = _chunks(selection.units);
     final summaryScope = jsonEncode(transcript.snapshot.toJson());
-    final summarizedMessages = selectedChunks
+    final selectedMessages = selectedChunks
         .expand((chunk) => chunk)
         .expand((unit) => unit.messages)
         .toList(growable: false);
@@ -397,58 +411,85 @@ class UnreadChatSummaryService {
         stage: UnreadChatSummaryProgressStage.summarizingChunks,
         completed: completedChunks,
         total: selectedChunks.length,
-        messageCount: summarizedMessages.length,
+        messageCount: selectedMessages.length,
       ),
     );
 
     reportChunkProgress();
-    final chunkContents = await _parallelMapOrdered(selectedChunks, (
+    final chunkAttempts = await _parallelMapOrdered(selectedChunks, (
       chunk,
       index,
     ) async {
       final allowedEvidenceIds = {
         for (final unit in chunk) ...unit.evidenceIds,
       };
-      final content = await _completeGrounded(
-        UnreadChatSummaryProviderRequest(
-          stage: UnreadChatSummaryStage.chunk,
-          trustedInstructions: unreadChatSummaryTrustedInstructions,
-          allowedEvidenceIds: allowedEvidenceIds,
-          payload: {
-            'stage': 'summarize_chunk',
-            'output_language': 'same_as_chat',
-            'chunk_index': index + 1,
-            'chunk_count': selectedChunks.length,
-            'range': transcript.snapshot.toJson(),
-            'selection': {
-              'strategy': processingCapped
-                  ? 'frequency_recency_signal_sample'
-                  : 'complete',
-              'source_message_count': transcript.messages.length,
-              'selected_message_count': summarizedMessages.length,
+      try {
+        final content = await _completeGrounded(
+          UnreadChatSummaryProviderRequest(
+            stage: UnreadChatSummaryStage.chunk,
+            trustedInstructions: unreadChatSummaryTrustedInstructions,
+            allowedEvidenceIds: allowedEvidenceIds,
+            payload: {
+              'stage': 'summarize_chunk',
+              'output_language': 'same_as_chat',
+              'chunk_index': index + 1,
+              'chunk_count': selectedChunks.length,
+              'range': transcript.snapshot.toJson(),
+              'selection': {
+                'strategy': selection.sampled
+                    ? 'frequency_recency_signal_sample'
+                    : 'complete',
+                'source_message_count': transcript.messages.length,
+                'selected_message_count': selectedMessages.length,
+                'ignored_duplicate_or_low_signal_count':
+                    transcript.messages.length - promptMessages.length,
+              },
+              'message_schema': const [
+                'evidence_ids',
+                'first_date_unix',
+                'last_date_unix',
+                'sender_key',
+                'direction',
+                'is_service',
+                'content_types',
+                'reply_to_evidence_ids',
+                'text',
+              ],
+              'messages': chunk.map(_promptUnitRow).toList(),
             },
-            'message_schema': const [
-              'evidence_ids',
-              'first_date_unix',
-              'last_date_unix',
-              'sender_key',
-              'direction',
-              'is_service',
-              'content_types',
-              'reply_to_evidence_ids',
-              'text',
-            ],
-            'messages': chunk.map(_promptUnitRow).toList(),
-          },
-        ),
-        scopeKey: summaryScope,
-      );
-      completedChunks++;
-      reportChunkProgress();
-      return content;
+          ),
+          scopeKey: summaryScope,
+        );
+        return _ChunkSummaryAttempt.success(chunk: chunk, summary: content);
+      } catch (error, stackTrace) {
+        return _ChunkSummaryAttempt.failure(
+          chunk: chunk,
+          error: error,
+          stackTrace: stackTrace,
+        );
+      } finally {
+        completedChunks++;
+        reportChunkProgress();
+      }
     });
 
-    final UnreadChatSummaryContent content;
+    final successfulAttempts = chunkAttempts
+        .where((attempt) => attempt.summary != null)
+        .toList(growable: false);
+    if (successfulAttempts.isEmpty) {
+      final failure = chunkAttempts.first;
+      Error.throwWithStackTrace(failure.error!, failure.stackTrace!);
+    }
+    final chunkContents = successfulAttempts
+        .map((attempt) => attempt.summary!)
+        .toList(growable: false);
+    final summarizedMessages = successfulAttempts
+        .expand((attempt) => attempt.chunk)
+        .expand((unit) => unit.messages)
+        .toList(growable: false);
+    var failedRequestCount = chunkAttempts.length - successfulAttempts.length;
+
+    late UnreadChatSummaryContent content;
     if (chunkContents.length == 1) {
       content = chunkContents.single.content;
     } else {
@@ -457,30 +498,125 @@ class UnreadChatSummaryService {
           stage: UnreadChatSummaryProgressStage.assemblingSummary,
           completed: completedChunks,
           total: selectedChunks.length,
-          messageCount: summarizedMessages.length,
+          messageCount: selectedMessages.length,
         ),
       );
-      content = mergeChunkSummariesLocally
-          ? _mergeChunkContentsLocally(chunkContents)
-          : await _mergeChunkContents(
-              chunkContents,
-              scopeKey: summaryScope,
-              coverageIsIncomplete:
-                  transcript.historyCapped ||
-                  transcript.historyStalled ||
-                  !transcript.reachedReadBoundary ||
-                  processingCapped,
-            );
+      if (mergeChunkSummariesLocally) {
+        content = _mergeChunkContentsLocally(chunkContents);
+      } else {
+        try {
+          content = await _mergeChunkContents(
+            chunkContents,
+            scopeKey: summaryScope,
+            coverageIsIncomplete:
+                transcript.historyCapped ||
+                transcript.historyStalled ||
+                !transcript.reachedReadBoundary ||
+                selection.sampled ||
+                failedRequestCount > 0,
+          );
+        } catch (_) {
+          failedRequestCount++;
+          content = _mergeChunkContentsLocally(chunkContents);
+        }
+      }
     }
+    content = _withGroundedTopicDates(content, transcript.messages);
 
     return UnreadChatSummary(
       content: content,
       coverage: _coverage(
         transcript,
         summarizedMessages: summarizedMessages,
-        processingCapped: processingCapped,
+        processingCapped: selection.sampled,
+        failedRequestCount: failedRequestCount,
       ),
     );
+  }
+
+  List<UnreadChatMessage> _messagesForPrompt(List<UnreadChatMessage> messages) {
+    if (messages.length <= 2) return messages;
+    final result = <UnreadChatMessage>[];
+    final lastBySenderAndText = <String, UnreadChatMessage>{};
+    final lastLongDuplicate = <String, UnreadChatMessage>{};
+
+    for (var index = 0; index < messages.length; index++) {
+      final message = messages[index];
+      final isRangeEdge = index == 0 || index == messages.length - 1;
+      final normalized = _normalizedMessageText(message.text);
+      final senderDuplicateKey = '${message.senderKey}\u0000$normalized';
+      final previousBySender = lastBySenderAndText[senderDuplicateKey];
+      final previousLong = lastLongDuplicate[normalized];
+      final isSameSenderDuplicate =
+          normalized.isNotEmpty &&
+          previousBySender != null &&
+          message.date - previousBySender.date <= 30 * 60;
+      final isLongCrossSenderDuplicate =
+          normalized.length >= 48 &&
+          previousLong != null &&
+          message.date - previousLong.date <= 24 * 60 * 60;
+      final isLowSignal = _isLowSignalStandaloneReply(message, normalized);
+
+      if (!isRangeEdge &&
+          (isSameSenderDuplicate ||
+              isLongCrossSenderDuplicate ||
+              isLowSignal)) {
+        continue;
+      }
+      result.add(message);
+      if (normalized.isNotEmpty) {
+        lastBySenderAndText[senderDuplicateKey] = message;
+        if (normalized.length >= 48) lastLongDuplicate[normalized] = message;
+      }
+    }
+    return result.isEmpty ? [messages.last] : result;
+  }
+
+  String _normalizedMessageText(String text) => text
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .replaceAll(RegExp(r'[。！？!?.,，…]+$'), '');
+
+  bool _isLowSignalStandaloneReply(
+    UnreadChatMessage message,
+    String normalized,
+  ) {
+    if (message.isOutgoing ||
+        message.isService ||
+        message.contentType != 'messageText' ||
+        message.replyToMessageId != null ||
+        normalized.isEmpty ||
+        RegExp(r'https?://|@\w|[?？]').hasMatch(normalized)) {
+      return false;
+    }
+    if (const {
+      'ok',
+      'okay',
+      'k',
+      'yes',
+      'no',
+      'lol',
+      'lmao',
+      '好',
+      '好的',
+      '行',
+      '可以',
+      '嗯',
+      '哦',
+      '是',
+      '不是',
+      '收到',
+      '谢谢',
+      '哈哈',
+      '哈哈哈',
+    }.contains(normalized)) {
+      return true;
+    }
+    return normalized.length <= 8 &&
+        !RegExp(
+          r'[a-z0-9\u3400-\u9fff\u3040-\u30ff\uac00-\ud7af]',
+        ).hasMatch(normalized);
   }
 
   List<_PromptUnit> _promptUnits(List<UnreadChatMessage> messages) {
@@ -661,7 +797,11 @@ class UnreadChatSummaryService {
       final exceedsTokenLimit =
           current.isNotEmpty &&
           currentTokens + messageTokens > maxChunkTokenEstimate;
-      if (exceedsMessageLimit || exceedsTokenLimit) {
+      final crossesTimeGap =
+          current.isNotEmpty &&
+          maxChunkTimeGapSeconds > 0 &&
+          unit.firstDate - current.last.lastDate > maxChunkTimeGapSeconds;
+      if (exceedsMessageLimit || exceedsTokenLimit || crossesTimeGap) {
         chunks.add(current);
         current = <_PromptUnit>[];
         currentTokens = 0;
@@ -724,11 +864,28 @@ class UnreadChatSummaryService {
   UnreadChatSummaryContent _mergeChunkContentsLocally(
     List<_GroundedSummary> summaries,
   ) {
+    final chronological = summaries.toList(growable: false);
     final newestFirst = summaries.reversed.toList(growable: false);
     final overviewSource = newestFirst.firstWhere(
       (summary) => summary.content.overview.trim().isNotEmpty,
       orElse: () => newestFirst.first,
     );
+    final overviewParts = <String>[];
+    final overviewEvidenceIds = <String>{};
+    for (final summary in chronological) {
+      final overview = summary.content.overview.trim();
+      if (overview.isEmpty || overviewParts.contains(overview)) continue;
+      overviewParts.add(overview);
+      overviewEvidenceIds.addAll(summary.content.overviewEvidenceIds);
+    }
+    final topics = _mergeLocalTopics(
+      chronological.map((summary) => summary.content.topics),
+    );
+    final title = topics.isNotEmpty
+        ? topics.take(2).map((topic) => topic.title).join(' · ')
+        : newestFirst
+              .map((summary) => summary.content.title.trim())
+              .firstWhere((value) => value.isNotEmpty, orElse: () => '');
 
     final highlightGroups = [
       for (final summary in newestFirst)
@@ -744,8 +901,13 @@ class UnreadChatSummaryService {
     ];
 
     return UnreadChatSummaryContent(
-      overview: overviewSource.content.overview,
-      overviewEvidenceIds: overviewSource.content.overviewEvidenceIds,
+      title: title,
+      overview: overviewParts.join(' '),
+      overviewEvidenceIds: overviewEvidenceIds,
+      topics: topics,
+      rant: _mergeLocalRant(
+        chronological.map((summary) => summary.content.rant),
+      ),
       highlights: _mergeLocalItems(highlightGroups, limit: 6),
       needsReply: _mergeLocalItems(
         newestFirst.map((summary) => summary.content.needsReply),
@@ -768,6 +930,66 @@ class UnreadChatSummaryService {
         limit: 5,
       ),
     );
+  }
+
+  List<UnreadChatSummaryTopic> _mergeLocalTopics(
+    Iterable<List<UnreadChatSummaryTopic>> groups,
+  ) {
+    final result = <UnreadChatSummaryTopic>[];
+    final seen = <String>{};
+    for (final group in groups) {
+      for (final topic in group) {
+        if (result.length >= 8) return result;
+        final key = _normalizedMessageText('${topic.title} ${topic.summary}');
+        if (key.isEmpty || !seen.add(key)) continue;
+        result.add(topic);
+      }
+    }
+    return result;
+  }
+
+  UnreadChatSummaryItem? _mergeLocalRant(
+    Iterable<UnreadChatSummaryItem?> candidates,
+  ) {
+    final texts = <String>[];
+    final evidenceIds = <String>{};
+    for (final candidate in candidates.whereType<UnreadChatSummaryItem>()) {
+      final text = candidate.text.trim();
+      if (text.isEmpty || texts.contains(text)) continue;
+      texts.add(text);
+      evidenceIds.addAll(candidate.evidenceIds);
+      if (texts.length >= 2) break;
+    }
+    if (texts.isEmpty) return null;
+    return UnreadChatSummaryItem(
+      text: texts.join(' '),
+      evidenceIds: evidenceIds,
+    );
+  }
+
+  UnreadChatSummaryContent _withGroundedTopicDates(
+    UnreadChatSummaryContent content,
+    List<UnreadChatMessage> messages,
+  ) {
+    if (content.topics.isEmpty) return content;
+    final datesByEvidenceId = {
+      for (final message in messages) message.evidenceId: message.date,
+    };
+    final topics = [
+      for (final topic in content.topics)
+        () {
+          final dates = topic.evidenceIds
+              .map((evidenceId) => datesByEvidenceId[evidenceId])
+              .whereType<int>()
+              .toList(growable: false);
+          if (dates.isEmpty) return topic;
+          return topic.copyWith(
+            firstDate: dates.reduce(math.min),
+            lastDate: dates.reduce(math.max),
+          );
+        }(),
+    ];
+    return content.copyWith(topics: topics);
   }
 
   List<UnreadChatSummaryItem> _mergeLocalItems(
@@ -915,6 +1137,7 @@ class UnreadChatSummaryService {
     UnreadChatTranscript transcript, {
     required List<UnreadChatMessage> summarizedMessages,
     required bool processingCapped,
+    int failedRequestCount = 0,
   }) => UnreadChatSummaryCoverage(
     expectedUnreadCount: transcript.snapshot.unreadCount,
     fetchedMessageCount: transcript.messages.length,
@@ -927,7 +1150,37 @@ class UnreadChatSummaryService {
     historyCapped: transcript.historyCapped,
     processingCapped: processingCapped,
     historyStalled: transcript.historyStalled,
+    failedRequestCount: failedRequestCount,
   );
+}
+
+class _ChunkSummaryAttempt {
+  const _ChunkSummaryAttempt._({
+    required this.chunk,
+    this.summary,
+    this.error,
+    this.stackTrace,
+  });
+
+  factory _ChunkSummaryAttempt.success({
+    required List<_PromptUnit> chunk,
+    required _GroundedSummary summary,
+  }) => _ChunkSummaryAttempt._(chunk: chunk, summary: summary);
+
+  factory _ChunkSummaryAttempt.failure({
+    required List<_PromptUnit> chunk,
+    required Object error,
+    required StackTrace stackTrace,
+  }) => _ChunkSummaryAttempt._(
+    chunk: chunk,
+    error: error,
+    stackTrace: stackTrace,
+  );
+
+  final List<_PromptUnit> chunk;
+  final _GroundedSummary? summary;
+  final Object? error;
+  final StackTrace? stackTrace;
 }
 
 class _GroundedSummary {

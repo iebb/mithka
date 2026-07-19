@@ -90,9 +90,7 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
               padding: const EdgeInsets.fromLTRB(20, 28, 20, 36),
               children: [
                 Text(
-                  AppStrings.t(AppStringKeys.aiSummaryRunningCount, {
-                    'value1': widget.snapshot.unreadCount,
-                  }),
+                  _pageHeading(context),
                   style: TextStyle(
                     color: c.textPrimary,
                     fontSize: 30,
@@ -120,6 +118,16 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
         ],
       ),
     );
+  }
+
+  String _pageHeading(BuildContext context) {
+    final summary = _summary;
+    if (!_loading && summary != null && summary.title.trim().isNotEmpty) {
+      return summary.title.trim();
+    }
+    return AppStrings.t(AppStringKeys.aiSummaryRunningCount, {
+      'value1': widget.snapshot.unreadCount,
+    });
   }
 
   Widget _loadingContent(BuildContext context) {
@@ -243,7 +251,10 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
 
   Widget _summaryContent(BuildContext context, UnreadChatSummary summary) {
     final hasContent =
+        summary.title.trim().isNotEmpty ||
         summary.overview.trim().isNotEmpty ||
+        summary.topics.isNotEmpty ||
+        summary.rant != null ||
         summary.highlights.isNotEmpty ||
         summary.needsReply.isNotEmpty ||
         summary.decisions.isNotEmpty ||
@@ -262,6 +273,13 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        Text(
+          AppStrings.t(AppStringKeys.aiSummaryProcessedCount, {
+            'value1': summary.coverage.summarizedMessageCount,
+          }),
+          style: AppTextStyle.body(context.colors.textSecondary),
+        ),
+        const SizedBox(height: 22),
         if (!summary.coverage.complete) ...[
           Container(
             padding: const EdgeInsets.all(12),
@@ -280,6 +298,7 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
         ],
         if (summary.overview.trim().isNotEmpty)
           _overviewSection(context, summary),
+        if (summary.topics.isNotEmpty) _topicSection(context, summary.topics),
         _itemSection(
           context,
           title: AppStringKeys.aiSummaryHighlights.l10n(context),
@@ -310,6 +329,17 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
           title: AppStringKeys.aiSummaryUncertainties.l10n(context),
           items: summary.uncertainties,
         ),
+        if (summary.rant case final rant?) _rantSection(context, rant),
+        const SizedBox(height: 24),
+        Text(
+          AppStringKeys.aiSummaryDisclaimer.l10n(context),
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: context.colors.textTertiary,
+            fontSize: 12,
+            height: 1.4,
+          ),
+        ),
       ],
     );
   }
@@ -317,40 +347,159 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
   Widget _overviewSection(BuildContext context, UnreadChatSummary summary) {
     final c = context.colors;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 18),
+      padding: const EdgeInsets.only(bottom: 26),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: summary.overviewEvidenceIds.isEmpty
             ? null
             : () => _openEvidence(summary.overviewEvidenceIds.first),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: c.card,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: c.divider, width: 0.5),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _sectionHeading(
-                context,
-                AppStringKeys.aiSummaryOverview.l10n(context),
-              ),
-              const SizedBox(height: 9),
-              Text(
-                summary.overview,
-                style: TextStyle(
-                  color: c.textPrimary,
-                  fontSize: 16,
-                  height: 1.48,
-                ),
-              ),
-            ],
-          ),
+        child: Text(
+          summary.overview,
+          style: TextStyle(color: c.textSecondary, fontSize: 17, height: 1.58),
         ),
       ),
     );
+  }
+
+  Widget _topicSection(
+    BuildContext context,
+    List<UnreadChatSummaryTopic> topics,
+  ) => Padding(
+    padding: const EdgeInsets.only(bottom: 22),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionHeading(context, AppStringKeys.aiSummaryTopics.l10n(context)),
+        const SizedBox(height: 12),
+        for (var index = 0; index < topics.length; index++) ...[
+          _topic(context, index + 1, topics[index]),
+          if (index + 1 < topics.length) const SizedBox(height: 24),
+        ],
+      ],
+    ),
+  );
+
+  Widget _topic(BuildContext context, int index, UnreadChatSummaryTopic topic) {
+    final c = context.colors;
+    final timeRange = _topicTimeRange(context, topic);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '$index. ${topic.title}',
+          style: TextStyle(
+            color: c.textPrimary,
+            fontSize: 18,
+            height: 1.35,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        if (timeRange != null) ...[
+          const SizedBox(height: 10),
+          Text(
+            '• ${AppStringKeys.aiSummaryTopicTime.l10n(context)} · $timeRange',
+            style: TextStyle(color: c.textSecondary, fontSize: 14, height: 1.4),
+          ),
+        ],
+        const SizedBox(height: 10),
+        Text(
+          topic.summary,
+          style: TextStyle(color: c.textSecondary, fontSize: 16, height: 1.55),
+        ),
+        if (topic.evidenceIds.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 7,
+            runSpacing: 7,
+            children: [
+              for (
+                var evidenceIndex = 0;
+                evidenceIndex < topic.evidenceIds.length && evidenceIndex < 5;
+                evidenceIndex++
+              )
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _openEvidence(topic.evidenceIds[evidenceIndex]),
+                  child: Container(
+                    constraints: const BoxConstraints(minWidth: 28),
+                    height: 28,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: c.searchFill,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Text(
+                      '${evidenceIndex + 1}',
+                      style: TextStyle(
+                        color: c.textSecondary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _rantSection(BuildContext context, UnreadChatSummaryItem rant) {
+    final c = context.colors;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: rant.evidenceIds.isEmpty
+          ? null
+          : () => _openEvidence(rant.evidenceIds.first),
+      child: Container(
+        margin: const EdgeInsets.only(top: 6),
+        padding: const EdgeInsets.only(top: 22),
+        decoration: BoxDecoration(
+          border: Border(top: BorderSide(color: c.divider, width: 0.5)),
+        ),
+        child: Text.rich(
+          TextSpan(
+            children: [
+              TextSpan(
+                text: '${AppStringKeys.aiSummaryRant.l10n(context)}：',
+                style: const TextStyle(
+                  color: Color(0xFF2EBF75),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              TextSpan(text: rant.text),
+            ],
+          ),
+          style: TextStyle(color: c.textSecondary, fontSize: 16, height: 1.58),
+        ),
+      ),
+    );
+  }
+
+  String? _topicTimeRange(BuildContext context, UnreadChatSummaryTopic topic) {
+    final first = topic.firstDate;
+    final last = topic.lastDate;
+    if (first == null || last == null || first <= 0 || last <= 0) return null;
+    final start = DateTime.fromMillisecondsSinceEpoch(first * 1000).toLocal();
+    final end = DateTime.fromMillisecondsSinceEpoch(last * 1000).toLocal();
+    final material = MaterialLocalizations.of(context);
+    final startDate = material.formatMediumDate(start);
+    final startTime = material.formatTimeOfDay(
+      TimeOfDay.fromDateTime(start),
+      alwaysUse24HourFormat: MediaQuery.alwaysUse24HourFormatOf(context),
+    );
+    final endTime = material.formatTimeOfDay(
+      TimeOfDay.fromDateTime(end),
+      alwaysUse24HourFormat: MediaQuery.alwaysUse24HourFormatOf(context),
+    );
+    final sameDay =
+        start.year == end.year &&
+        start.month == end.month &&
+        start.day == end.day;
+    if (sameDay) return '$startDate  $startTime–$endTime';
+    return '$startDate  $startTime – ${material.formatMediumDate(end)}  $endTime';
   }
 
   Widget _itemSection(

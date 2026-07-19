@@ -90,8 +90,22 @@ void main() {
     completion.complete(
       UnreadChatSummary(
         content: UnreadChatSummaryContent(
+          title: '发布安排与群聊近况',
           overview: '这是未读消息的中文总结。',
           overviewEvidenceIds: const ['m200'],
+          topics: [
+            UnreadChatSummaryTopic(
+              title: '发布时间讨论',
+              summary: '成员讨论了发布时间。',
+              evidenceIds: const ['m200', 'm201'],
+              firstDate: 1752969600,
+              lastDate: 1752971400,
+            ),
+          ],
+          rant: UnreadChatSummaryItem(
+            text: '消息很多，真正要拍板的只有发布时间。',
+            evidenceIds: const ['m201'],
+          ),
           highlights: [
             UnreadChatSummaryItem(
               text: '需要确认发布时间。',
@@ -120,6 +134,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('这是未读消息的中文总结。'), findsOneWidget);
+    expect(find.text('发布安排与群聊近况'), findsOneWidget);
+    expect(find.textContaining('发布时间讨论'), findsOneWidget);
+    expect(find.text('成员讨论了发布时间。'), findsOneWidget);
+    expect(find.textContaining('Processed 1972 messages'), findsOneWidget);
+    expect(find.textContaining('AI take'), findsOneWidget);
+    expect(find.textContaining('消息很多，真正要拍板的只有发布时间。'), findsOneWidget);
     expect(find.text('需要确认发布时间。'), findsOneWidget);
     expect(find.text('Assembling the summary…'), findsNothing);
   });

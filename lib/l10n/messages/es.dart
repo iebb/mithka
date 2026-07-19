@@ -153,6 +153,8 @@ const esMessages = <String, String>{
   'aiSummaryChunkProgress':
       "Resumiendo bloques en paralelo · {value1}/{value2}",
   'aiSummaryDecisions': "Decisiones",
+  'aiSummaryDisclaimer':
+      "Este resumen fue generado por IA y puede estar incompleto o contener errores. Úsalo solo como referencia.",
   'aiSummaryFailed': "No se pudieron resumir estos mensajes.",
   'aiSummaryFoundCount': "Se encontraron {value1} mensajes no leídos",
   'aiSummaryHighlights': "Puntos destacados",
@@ -164,14 +166,18 @@ const esMessages = <String, String>{
       "No se capturaron mensajes no leídos al abrir este chat.",
   'aiSummaryOpenSettings': "Ajustes de IA",
   'aiSummaryOverview': "Resumen general",
+  'aiSummaryProcessedCount': "Se procesaron {value1} mensajes",
   'aiSummaryPrivate': "Solo visible para ti",
   'aiSummaryQuestions': "Preguntas abiertas",
   'aiSummaryReading': "Leyendo mensajes no leídos…",
   'aiSummaryReadingCount': "Leyendo mensajes no leídos… {value1} encontrados",
   'aiSummaryRetry': "Reintentar",
+  'aiSummaryRant': "Comentario de la IA",
   'aiSummaryRunningCount': "Resumiendo {value1} mensajes no leídos",
   'aiSummaryThinking': "Pensando…",
   'aiSummaryTitle': "Resumen de IA",
+  'aiSummaryTopics': "Temas",
+  'aiSummaryTopicTime': "Hora",
   'aiSummaryUnavailable':
       "La solicitud de IA falló. Inténtalo de nuevo o revisa los ajustes de IA si el problema continúa.",
   'aiSummaryUncertainties': "Incertidumbres",

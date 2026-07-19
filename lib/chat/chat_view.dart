@@ -4970,13 +4970,14 @@ class _ChatViewState extends State<ChatView> {
           UnreadChatSummaryService(
             historyLoader: loader,
             maxChunkMessages: 520,
-            maxChunks: 2,
+            maxChunks: 3,
+            maxConcurrentRequests: 3,
             maxChunkTokenEstimate: unreadSummaryChunkTokenBudget(
               pccContextSize,
             ),
             mergeChunkSummariesLocally: true,
             provider: ApplePccUnreadSummaryProvider(
-              api: ApplePccApi(summaryTimeout: const Duration(seconds: 75)),
+              api: ApplePccApi(summaryTimeout: const Duration(seconds: 50)),
               reasoningLevel: ApplePccReasoningLevel.light,
             ),
           ),
@@ -4989,6 +4990,7 @@ class _ChatViewState extends State<ChatView> {
           serverBaseUri: endpoint,
           model: model.trim(),
           apiKey: apiKey,
+          requestTimeout: const Duration(seconds: 60),
         );
         return _UnreadSummarySession(
           UnreadChatSummaryService(

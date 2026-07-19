@@ -152,6 +152,8 @@ const deMessages = <String, String>{
   'aiSummaryChunkProgress':
       "Abschnitte werden parallel zusammengefasst · {value1}/{value2}",
   'aiSummaryDecisions': "Entscheidungen",
+  'aiSummaryDisclaimer':
+      "Diese Zusammenfassung wurde von KI erstellt und kann unvollständig oder ungenau sein. Nur zur Orientierung.",
   'aiSummaryFailed': "Diese Nachrichten konnten nicht zusammengefasst werden.",
   'aiSummaryFoundCount': "{value1} ungelesene Nachrichten gefunden",
   'aiSummaryHighlights': "Wichtigste Punkte",
@@ -164,16 +166,20 @@ const deMessages = <String, String>{
       "Beim Öffnen dieses Chats wurden keine ungelesenen Nachrichten erfasst.",
   'aiSummaryOpenSettings': "KI-Einstellungen",
   'aiSummaryOverview': "Übersicht",
+  'aiSummaryProcessedCount': "{value1} Nachrichten verarbeitet",
   'aiSummaryPrivate': "Nur für dich sichtbar",
   'aiSummaryQuestions': "Offene Fragen",
   'aiSummaryReading': "Ungelesene Nachrichten werden geladen…",
   'aiSummaryReadingCount':
       "Ungelesene Nachrichten werden geladen… {value1} gefunden",
   'aiSummaryRetry': "Erneut versuchen",
+  'aiSummaryRant': "KI-Kommentar",
   'aiSummaryRunningCount':
       "{value1} ungelesene Nachrichten werden zusammengefasst",
   'aiSummaryThinking': "Wird erstellt…",
   'aiSummaryTitle': "KI-Zusammenfassung",
+  'aiSummaryTopics': "Themen",
+  'aiSummaryTopicTime': "Zeit",
   'aiSummaryUnavailable':
       "Die KI-Anfrage ist fehlgeschlagen. Versuche es erneut oder prüfe bei wiederholten Fehlern die KI-Einstellungen.",
   'aiSummaryUncertainties': "Unsicherheiten",
