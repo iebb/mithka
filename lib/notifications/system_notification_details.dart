@@ -41,14 +41,6 @@ NotificationDetails systemNotificationDetailsForChatIcon(
       presentAlert: true,
       presentBadge: true,
       presentSound: playSound,
-      attachments: hasChatIcon
-          ? [
-              DarwinNotificationAttachment(
-                chatIconPath,
-                identifier: 'chat-icon',
-              ),
-            ]
-          : null,
     ),
   );
 }

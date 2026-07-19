@@ -24,8 +24,9 @@ void main() {
       messagingStyle.messages!.single.person?.icon,
       isA<BitmapFilePathAndroidIcon>(),
     );
-    expect(details.iOS?.attachments, hasLength(1));
-    expect(details.iOS?.attachments?.single.filePath, '/tmp/chat.jpg');
+    // iOS conversation avatars are supplied through INSendMessageIntent by
+    // the native bridge. A Darwin attachment is only expanded rich media.
+    expect(details.iOS?.attachments, isNull);
   });
 
   test('system notification details identify group conversations', () {

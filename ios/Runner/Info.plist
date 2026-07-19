@@ -49,6 +49,10 @@
 	<string>Mithka needs photo access to send and save images and videos.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Mithka needs permission to save images and videos to Photos.</string>
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>INSendMessageIntent</string>
+	</array>
 	<key>SentryDSNEncoded</key>
 	<string>$(SENTRY_DSN_ENCODED)</string>
 	<key>SentryEnvironment</key>
