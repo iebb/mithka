@@ -29,6 +29,7 @@ concurrency:
 
 permissions:
   contents: write
+  models: read
 
 env:
   # Keep each Mithka release reproducible by pinning an immutable TDLib build.
@@ -353,6 +354,89 @@ jobs:
           git tag -f "$RELEASE_TAG" "$GITHUB_SHA"
           git push --force origin "$RELEASE_TAG"
 
+      - name: Generate nightly release notes
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+        run: |
+          : > release-notes.md
+          if [ "$PRERELEASE" != "true" ]; then
+            exit 0
+          fi
+
+          previous_tag="$(
+            git tag --list 'v*-nightly.*' --sort=-creatordate \
+              | awk -v current="$RELEASE_TAG" \
+                '$0 != current && !found { print; found=1 }'
+          )"
+          if [ -n "$previous_tag" ] && \
+            git merge-base --is-ancestor "$previous_tag" "$GITHUB_SHA"; then
+            change_range="$previous_tag..$GITHUB_SHA"
+            compare_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/compare/${previous_tag}...${RELEASE_TAG}"
+            compare_label="$previous_tag...$RELEASE_TAG"
+          else
+            change_range="$GITHUB_SHA^1..$GITHUB_SHA"
+            compare_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commits/${RELEASE_TAG}"
+            compare_label="$RELEASE_TAG commits"
+          fi
+
+          git log --reverse --no-merges --max-count=100 \
+            --format='Commit: %H%nSubject: %s%nDetails: %b' \
+            --stat=100,80 "$change_range" \
+            | awk '!/^Subject: chore: sync nightly /' \
+            > changes.txt
+
+          git log --reverse --no-merges \
+            --format='- %s ([%h]('"$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"'/commit/%H))' \
+            "$change_range" \
+            | grep -v '^- chore: sync nightly ' \
+            > fallback-items.txt \
+            || true
+          {
+            echo "## Changes"
+            if [ -s fallback-items.txt ]; then
+              cat fallback-items.txt
+            else
+              echo "- Maintenance and reliability improvements."
+            fi
+            echo
+            echo "**Full changelog:** [$compare_label]($compare_url)"
+          } > release-notes.md
+
+          jq -n --rawfile changes changes.txt '{
+            model: "openai/gpt-4.1-mini",
+            messages: [
+              {
+                role: "system",
+                content: "Write concise Markdown release notes for app users. Use only facts in the supplied git history. Start with exactly: ## Changes. Then write 1 to 6 bullet points, combining related commits. Prefer one bullet when the history covers one feature or fix, and make every bullet a distinct user-visible change. Focus on features, fixes, reliability, privacy, and performance. Do not invent or repeat changes. Omit tests, implementation details, commit hashes, generated version bumps, and CI-only changes. If there are no user-visible changes, write one bullet: Maintenance and reliability improvements. Do not add an introduction or conclusion."
+              },
+              { role: "user", content: $changes }
+            ],
+            temperature: 0.2,
+            max_tokens: 500
+          }' > model-request.json
+
+          if model_response="$(
+            curl -fsS --retry 1 --retry-all-errors \
+              --connect-timeout 10 --max-time 30 \
+              https://models.github.ai/inference/chat/completions \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -H 'Content-Type: application/json' \
+              --data-binary @model-request.json
+          )" && model_notes="$(
+            jq -er '.choices[0].message.content | select(startswith("## Changes"))' \
+              <<< "$model_response"
+          )"; then
+            {
+              printf '%s\n\n' "$model_notes"
+              echo "**Full changelog:** [$compare_label]($compare_url)"
+            } > release-notes.md
+            echo "Generated nightly release notes with GitHub Models"
+          else
+            echo "GitHub Models unavailable; using commit-list release notes" >&2
+          fi
+
       - name: Remove old APK assets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -375,6 +459,7 @@ jobs:
           target_commitish: ${{ github.sha }}
           prerelease: ${{ needs.prepare.outputs.prerelease }}
           make_latest: ${{ needs.prepare.outputs.make_latest }}
+          body_path: release-notes.md
           files: apks/*.apk
           fail_on_unmatched_files: true
 

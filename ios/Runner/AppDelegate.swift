@@ -16,6 +16,7 @@ import UserNotifications
   private var nativeTranslationBridge: AnyObject?
   private var pushChannel: FlutterMethodChannel?
   private var notificationTapChannel: FlutterMethodChannel?
+  private var communicationNotificationBridge: CommunicationNotificationBridge?
   private var pendingNotificationTap: [String: Any]?
   private var apnsDeviceToken: String?
   private var didRegisterFlutterPlugins = false
@@ -446,6 +447,9 @@ import UserNotifications
       self?.pendingNotificationTap = nil
       result(pending)
     }
+    communicationNotificationBridge = CommunicationNotificationBridge(
+      messenger: engineBridge.applicationRegistrar.messenger()
+    )
 
     let systemPiPBridge = SystemPictureInPictureBridge(
       messenger: engineBridge.applicationRegistrar.messenger()

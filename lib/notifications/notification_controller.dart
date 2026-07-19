@@ -25,6 +25,7 @@ import '../tdlib/chat_membership.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
+import 'ios_communication_notification.dart';
 import 'notification_preferences.dart';
 import 'notification_target.dart';
 import 'scope_notification_settings.dart';
@@ -100,6 +101,8 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
 
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
+  final IOSCommunicationNotificationBridge _iosCommunicationNotifications =
+      const IOSCommunicationNotificationBridge();
   final TdClient _client = TdClient.shared;
   final NotificationPreferences _notificationPreferences =
       NotificationPreferences.shared;
@@ -373,9 +376,31 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
       'account_slot': _client.slotForClient(clientId),
     });
     final chatIconPath = await _notificationChatIconPath(latestChat, clientId);
+    final groupConversation = switch (TDParse.chatKind(latestChat)) {
+      ChatKind.group || ChatKind.channel => true,
+      _ => false,
+    };
+    final senderName =
+        groupConversation && _notificationPreferences.namesOnLockScreen
+        ? await _senderLabel(raw, latestChat, clientId) ?? title
+        : title;
 
     _notificationSeed = (_notificationSeed + 1) & 0x7fffffff;
     try {
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
+        await _iosCommunicationNotifications.show(
+          id: _notificationSeed,
+          title: title,
+          body: body,
+          conversationIdentifier: '${_client.slotForClient(clientId)}:$chatId',
+          senderName: senderName,
+          payload: payload,
+          groupConversation: groupConversation,
+          playSound: latestEffective.soundEnabled,
+          chatIconPath: chatIconPath,
+        );
+        return;
+      }
       await _plugin.show(
         id: _notificationSeed,
         title: title,
@@ -384,11 +409,65 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
           chatIconPath,
           conversationTitle: title,
           messageBody: body,
-          groupConversation: switch (TDParse.chatKind(latestChat)) {
-            ChatKind.group || ChatKind.channel => true,
-            _ => false,
-          },
+          groupConversation: groupConversation,
           playSound: latestEffective.soundEnabled,
+          showOnLockScreen: _notificationPreferences.namesOnLockScreen,
+        ),
+        payload: payload,
+      );
+    } on MissingPluginException catch (error) {
+      debugPrint(
+        'Native communication notification bridge unavailable: $error',
+      );
+      await _showFallbackSystemNotification(
+        id: _notificationSeed,
+        title: title,
+        body: body,
+        payload: payload,
+        chatIconPath: chatIconPath,
+        groupConversation: groupConversation,
+        playSound: latestEffective.soundEnabled,
+      );
+    } on PlatformException catch (error) {
+      if (_isNotificationAuthorizationError(error)) {
+        _notificationsAvailable = false;
+      }
+      debugPrint('Local notification display failed: $error');
+      if (defaultTargetPlatform == TargetPlatform.iOS &&
+          !_isNotificationAuthorizationError(error)) {
+        await _showFallbackSystemNotification(
+          id: _notificationSeed,
+          title: title,
+          body: body,
+          payload: payload,
+          chatIconPath: chatIconPath,
+          groupConversation: groupConversation,
+          playSound: latestEffective.soundEnabled,
+        );
+      }
+    }
+  }
+
+  Future<void> _showFallbackSystemNotification({
+    required int id,
+    required String title,
+    required String body,
+    required String payload,
+    required bool groupConversation,
+    required bool playSound,
+    String? chatIconPath,
+  }) async {
+    try {
+      await _plugin.show(
+        id: id,
+        title: title,
+        body: body,
+        notificationDetails: systemNotificationDetailsForChatIcon(
+          chatIconPath,
+          conversationTitle: title,
+          messageBody: body,
+          groupConversation: groupConversation,
+          playSound: playSound,
           showOnLockScreen: _notificationPreferences.namesOnLockScreen,
         ),
         payload: payload,
@@ -397,7 +476,7 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
       if (_isNotificationAuthorizationError(error)) {
         _notificationsAvailable = false;
       }
-      debugPrint('Local notification display failed: $error');
+      debugPrint('Fallback local notification display failed: $error');
     }
   }
 
