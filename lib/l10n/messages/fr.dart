@@ -721,7 +721,7 @@ const frMessages = <String, String>{
   'composerSend': "Envoyer",
   'composerSendAsFile': "Envoyer comme fichier",
   'composerSendAsFileDescription':
-      "Choisir dans la photothèque et envoyer les fichiers originaux",
+      "Envoyer les fichiers originaux sans modification ni compression",
   'composerSendAsMedia': "Envoyer comme photo ou vidéo",
   'composerSendAsRichText': "Envoyer en texte enrichi",
   'composerSendPaidMessageQuestion': "Envoyer le message payant ?",
@@ -748,6 +748,16 @@ const frMessages = <String, String>{
   'developerModePiPBoundsOverlay': "Contour PiP",
   'developerModePiPBoundsOverlayDescription':
       "Affiche le cadre PiP de l’app et la taille de la fenêtre pour diagnostiquer une rotation, un recadrage ou une superposition.",
+  'developerPerformanceFrameWork': "Trame (construction / rendu)",
+  'developerPerformanceImageCache': "Images décodées (cache / actives)",
+  'developerPerformanceProcessMemory': "Mémoire du processus",
+  'developerPerformanceProfiler': "Profileur de trames et de mémoire",
+  'developerPerformanceProfilerDescription':
+      "Collecte toutes les 2 secondes la mémoire du processus et du cache d’images, avec une fenêtre limitée à 240 trames. Pour des temps CPU représentatifs, reproduisez le parcours avec flutter run --profile, puis revenez ici. L’échantillonnage s’arrête en arrière-plan, mais le nettoyage sous pression mémoire reste actif.",
+  'developerPerformanceResetSamples': "Réinitialiser les échantillons",
+  'developerPerformanceSlowFrames': "Trames dépassant 16,7 ms",
+  'developerPerformanceTrimCaches': "Vider les caches mémoire",
+  'developerPerformanceWaitingForFrames': "En attente d’échantillons",
   'developerModeTitle': "Mode développeur",
   'developerModeUnlocked': "Mode développeur activé",
   'editProfileAnimatedAvatar': "Avatar animé",

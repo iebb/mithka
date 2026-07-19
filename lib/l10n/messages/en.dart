@@ -706,7 +706,7 @@ const enMessages = <String, String>{
   'composerSend': "Send",
   'composerSendAsFile': "Send as file",
   'composerSendAsFileDescription':
-      "Choose from your library and send the original files",
+      "Send original files without media edits or compression",
   'composerSendAsMedia': "Send as photo or video",
   'composerSendAsRichText': "Send as rich text",
   'composerSendPaidMessageQuestion': "Send paid message?",
@@ -733,6 +733,16 @@ const enMessages = <String, String>{
   'developerModePiPBoundsOverlay': "PiP bounds overlay",
   'developerModePiPBoundsOverlayDescription':
       "Shows the app-level PiP frame and viewport size to diagnose rotation, clipping, or overlay coverage.",
+  'developerPerformanceFrameWork': "Frame work (build / raster)",
+  'developerPerformanceImageCache': "Decoded images (cached / live)",
+  'developerPerformanceProcessMemory': "Process memory",
+  'developerPerformanceProfiler': "Frame and memory profiler",
+  'developerPerformanceProfilerDescription':
+      "Collects a bounded 240-frame window plus process and image-cache memory every 2 seconds. For representative CPU timings, reproduce the flow with flutter run --profile, then return here. Sampling stops in the background; memory-pressure trimming remains active.",
+  'developerPerformanceResetSamples': "Reset frame samples",
+  'developerPerformanceSlowFrames': "Frames over 16.7 ms",
+  'developerPerformanceTrimCaches': "Trim memory caches now",
+  'developerPerformanceWaitingForFrames': "Waiting for frame samples",
   'developerModeTitle': "Developer Mode",
   'developerModeUnlocked': "Developer Mode unlocked",
   'editProfileAnimatedAvatar': "Animated avatar",

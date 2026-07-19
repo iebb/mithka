@@ -111,4 +111,67 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('My Story and its add badge have separate destinations', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final theme = ThemeController(prefs);
+    final model = MomentsViewModel()..selfName = 'Natu';
+    addTearDown(theme.dispose);
+    addTearDown(model.dispose);
+    var createCount = 0;
+    var manageCount = 0;
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<ThemeController>.value(
+        value: theme,
+        child: MaterialApp(
+          supportedLocales: AppLocalizations.supportedLocales,
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          theme: ThemeData(extensions: [AppColors.light]),
+          home: Material(
+            child: StoryShelf(
+              model: model,
+              canPublish: true,
+              onCreate: () => createCount++,
+              onManage: () => manageCount++,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('story-create-badge')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('my-story-action')));
+    await tester.pump();
+    expect(manageCount, 1);
+    expect(createCount, 0);
+
+    await tester.tap(find.byKey(const ValueKey('story-create-badge')));
+    await tester.pump();
+    expect(manageCount, 1);
+    expect(createCount, 1);
+
+    model.ownGroup = StoryGroup(
+      chatId: 10,
+      name: 'Natu',
+      storyIds: const [7],
+      hasUnread: false,
+      order: 1,
+      date: 1,
+    );
+    model.notifyListeners();
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('story-create-badge')), findsOneWidget);
+  });
 }

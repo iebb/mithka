@@ -50,4 +50,6 @@ class ChatSessionCache {
       _states.remove(_states.keys.first);
     }
   }
+
+  void clear() => _states.clear();
 }

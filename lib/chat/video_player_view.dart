@@ -2301,32 +2301,22 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
               ),
             ),
           ),
-          SliderTheme(
-            data: SliderTheme.of(context).copyWith(
-              trackHeight: compact ? 2.5 : 4,
-              thumbShape: RoundSliderThumbShape(
-                enabledThumbRadius: compact ? 5 : 8,
-              ),
-              overlayShape: RoundSliderOverlayShape(
-                overlayRadius: compact ? 10 : 16,
-              ),
-              activeTrackColor: Colors.white,
-              inactiveTrackColor: Colors.transparent,
-              disabledInactiveTrackColor: Colors.transparent,
-              thumbColor: Colors.white,
-              overlayColor: Colors.white.withValues(alpha: 0.14),
-            ),
-            child: Slider(
-              max: duration <= 0 ? 1 : duration.toDouble(),
-              value: duration <= 0 ? 0 : position.toDouble(),
-              onChangeStart: duration <= 0
-                  ? null
-                  : (v) => _beginScrub(c, v, compact: compact),
-              onChanged: duration <= 0 ? null : (v) => _updateScrub(c, v),
-              onChangeEnd: duration <= 0
-                  ? null
-                  : (v) => unawaited(_finishScrub(c, v)),
-            ),
+          _OwnedVideoSlider(
+            value: duration <= 0 ? 0 : position / duration,
+            trackHeight: compact ? 2.5 : 4,
+            thumbRadius: compact ? 5 : 8,
+            activeColor: Colors.white,
+            inactiveColor: Colors.transparent,
+            onChangeStart: duration <= 0
+                ? null
+                : (fraction) =>
+                      _beginScrub(c, fraction * duration, compact: compact),
+            onChanged: duration <= 0
+                ? null
+                : (fraction) => _updateScrub(c, fraction * duration),
+            onChangeEnd: duration <= 0
+                ? null
+                : (fraction) => unawaited(_finishScrub(c, fraction * duration)),
           ),
         ],
       ),
@@ -2717,26 +2707,15 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
           ),
           SizedBox(width: compact ? 0 : 7),
           Expanded(
-            child: SliderTheme(
-              data: SliderTheme.of(context).copyWith(
-                trackHeight: compact ? 2.5 : 3,
-                thumbShape: RoundSliderThumbShape(
-                  enabledThumbRadius: compact ? 5 : 7,
-                ),
-                overlayShape: RoundSliderOverlayShape(
-                  overlayRadius: compact ? 10 : 14,
-                ),
-                activeTrackColor: Colors.white,
-                inactiveTrackColor: Colors.white.withValues(alpha: 0.22),
-                thumbColor: Colors.white,
-                overlayColor: Colors.white.withValues(alpha: 0.14),
-              ),
-              child: Slider(
-                value: _volume,
-                onChangeStart: (_) => _hideTimer?.cancel(),
-                onChanged: _setVolume,
-                onChangeEnd: (_) => _scheduleHide(),
-              ),
+            child: _OwnedVideoSlider(
+              value: _volume,
+              trackHeight: compact ? 2.5 : 3,
+              thumbRadius: compact ? 5 : 7,
+              activeColor: Colors.white,
+              inactiveColor: Colors.white.withValues(alpha: 0.22),
+              onChangeStart: (_) => _hideTimer?.cancel(),
+              onChanged: _setVolume,
+              onChangeEnd: (_) => _scheduleHide(),
             ),
           ),
         ],
@@ -2994,4 +2973,172 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     if (bytesPerSecond <= 0) return '0 KB';
     return _byteString(bytesPerSecond.round());
   }
+}
+
+class _OwnedVideoSlider extends StatefulWidget {
+  const _OwnedVideoSlider({
+    required this.value,
+    required this.trackHeight,
+    required this.thumbRadius,
+    required this.activeColor,
+    required this.inactiveColor,
+    required this.onChanged,
+    this.onChangeStart,
+    this.onChangeEnd,
+  });
+
+  final double value;
+  final double trackHeight;
+  final double thumbRadius;
+  final Color activeColor;
+  final Color inactiveColor;
+  final ValueChanged<double>? onChangeStart;
+  final ValueChanged<double>? onChanged;
+  final ValueChanged<double>? onChangeEnd;
+
+  @override
+  State<_OwnedVideoSlider> createState() => _OwnedVideoSliderState();
+}
+
+class _OwnedVideoSliderState extends State<_OwnedVideoSlider> {
+  double? _interactionValue;
+
+  double _valueAt(double dx, double width) {
+    final usableWidth = math.max(1.0, width - widget.thumbRadius * 2);
+    return ((dx - widget.thumbRadius) / usableWidth).clamp(0.0, 1.0);
+  }
+
+  void _begin(double dx, double width) {
+    final value = _valueAt(dx, width);
+    setState(() => _interactionValue = value);
+    widget.onChangeStart?.call(value);
+    widget.onChanged?.call(value);
+  }
+
+  void _update(double dx, double width) {
+    final value = _valueAt(dx, width);
+    setState(() => _interactionValue = value);
+    widget.onChanged?.call(value);
+  }
+
+  void _end() {
+    final value = _interactionValue ?? widget.value;
+    widget.onChangeEnd?.call(value);
+    setState(() => _interactionValue = null);
+  }
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final enabled = widget.onChanged != null;
+      final value = (_interactionValue ?? widget.value).clamp(0.0, 1.0);
+      return Semantics(
+        slider: true,
+        enabled: enabled,
+        value: '${(value * 100).round()}%',
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapUp: enabled
+              ? (details) {
+                  final next = _valueAt(
+                    details.localPosition.dx,
+                    constraints.maxWidth,
+                  );
+                  widget.onChangeStart?.call(next);
+                  widget.onChanged?.call(next);
+                  widget.onChangeEnd?.call(next);
+                }
+              : null,
+          onHorizontalDragStart: enabled
+              ? (details) =>
+                    _begin(details.localPosition.dx, constraints.maxWidth)
+              : null,
+          onHorizontalDragUpdate: enabled
+              ? (details) =>
+                    _update(details.localPosition.dx, constraints.maxWidth)
+              : null,
+          onHorizontalDragEnd: enabled ? (_) => _end() : null,
+          onHorizontalDragCancel: enabled ? _end : null,
+          child: CustomPaint(
+            painter: _OwnedVideoSliderPainter(
+              value: value,
+              trackHeight: widget.trackHeight,
+              thumbRadius: widget.thumbRadius,
+              activeColor: widget.activeColor,
+              inactiveColor: widget.inactiveColor,
+              enabled: enabled,
+            ),
+            child: const SizedBox.expand(),
+          ),
+        ),
+      );
+    },
+  );
+}
+
+class _OwnedVideoSliderPainter extends CustomPainter {
+  const _OwnedVideoSliderPainter({
+    required this.value,
+    required this.trackHeight,
+    required this.thumbRadius,
+    required this.activeColor,
+    required this.inactiveColor,
+    required this.enabled,
+  });
+
+  final double value;
+  final double trackHeight;
+  final double thumbRadius;
+  final Color activeColor;
+  final Color inactiveColor;
+  final bool enabled;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final left = thumbRadius;
+    final right = math.max(left, size.width - thumbRadius);
+    final centerY = size.height / 2;
+    final thumbX = left + (right - left) * value;
+    final trackRect = RRect.fromRectAndRadius(
+      Rect.fromLTRB(
+        left,
+        centerY - trackHeight / 2,
+        right,
+        centerY + trackHeight / 2,
+      ),
+      Radius.circular(trackHeight / 2),
+    );
+    if (inactiveColor.a > 0) {
+      canvas.drawRRect(trackRect, Paint()..color = inactiveColor);
+    }
+    if (thumbX > left) {
+      canvas.save();
+      canvas.clipRRect(trackRect);
+      canvas.drawRect(
+        Rect.fromLTRB(
+          left,
+          centerY - trackHeight / 2,
+          thumbX,
+          centerY + trackHeight / 2,
+        ),
+        Paint()..color = activeColor,
+      );
+      canvas.restore();
+    }
+    canvas.drawCircle(
+      Offset(thumbX, centerY),
+      thumbRadius,
+      Paint()
+        ..color = enabled ? activeColor : activeColor.withValues(alpha: 0.7),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_OwnedVideoSliderPainter oldDelegate) =>
+      oldDelegate.value != value ||
+      oldDelegate.trackHeight != trackHeight ||
+      oldDelegate.thumbRadius != thumbRadius ||
+      oldDelegate.activeColor != activeColor ||
+      oldDelegate.inactiveColor != inactiveColor ||
+      oldDelegate.enabled != enabled;
 }

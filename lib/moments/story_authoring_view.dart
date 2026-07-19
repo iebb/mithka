@@ -31,7 +31,6 @@ class StoryAuthoringView extends StatefulWidget {
     this.initialLinkUrl,
     this.service,
     this.mediaPreparer = const StoryMediaPreparer(),
-    this.openCameraOnLaunch = true,
   });
 
   final int? initialChatId;
@@ -40,7 +39,6 @@ class StoryAuthoringView extends StatefulWidget {
   final String? initialLinkUrl;
   final StoryService? service;
   final StoryMediaPreparer mediaPreparer;
-  final bool openCameraOnLaunch;
 
   @override
   State<StoryAuthoringView> createState() => _StoryAuthoringViewState();
@@ -63,7 +61,6 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
   bool _loading = true;
   bool _isPremium = false;
   bool _publishing = false;
-  bool _initialCameraOpened = false;
   String _progress = '';
 
   @override
@@ -107,16 +104,6 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
     } finally {
       if (mounted) {
         setState(() => _loading = false);
-        if (widget.openCameraOnLaunch &&
-            !_initialCameraOpened &&
-            _targets.isNotEmpty &&
-            _media.isEmpty &&
-            (widget.initialMediaPath?.trim().isEmpty ?? true)) {
-          _initialCameraOpened = true;
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) unawaited(_openCamera());
-          });
-        }
       }
     }
   }

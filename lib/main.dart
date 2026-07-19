@@ -23,6 +23,7 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app/app_navigator.dart';
+import 'app/app_performance_controller.dart';
 import 'app/app_version.dart';
 import 'app/chat_deep_link_controller.dart';
 import 'app/content_view.dart';
@@ -32,6 +33,8 @@ import 'auth/account_store.dart';
 import 'auth/auth_manager.dart';
 import 'call/call_manager.dart';
 import 'call/call_overlay_host.dart';
+import 'chat/animated_sticker_view.dart';
+import 'chat/chat_view.dart';
 import 'chat/music_player_controller.dart';
 import 'components/drawer_controller.dart' as dc;
 import 'components/keyboard_dismiss_on_tap.dart';
@@ -60,21 +63,22 @@ import 'theme/app_theme.dart';
 import 'theme/theme_controller.dart';
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  _configureAndroidImageCache();
   if (!sentryEnabled) {
+    WidgetsFlutterBinding.ensureInitialized();
+    configureAppImageCache();
     await _bootstrapAndRunApp();
     return;
   }
 
-  await SentryFlutter.init(_configureSentry, appRunner: _bootstrapAndRunApp);
-}
-
-void _configureAndroidImageCache() {
-  if (defaultTargetPlatform != TargetPlatform.android) return;
-  final cache = PaintingBinding.instance.imageCache;
-  cache.maximumSize = 420;
-  cache.maximumSizeBytes = 80 << 20;
+  // Let Sentry install its frame-aware WidgetsBinding before app code creates
+  // the ordinary binding. This is required for slow/frozen-frame measurements.
+  await SentryFlutter.init(
+    _configureSentry,
+    appRunner: () async {
+      configureAppImageCache();
+      await _bootstrapAndRunApp();
+    },
+  );
 }
 
 Future<void> _bootstrapAndRunApp() async {
@@ -169,7 +173,7 @@ void _configureSentry(SentryFlutterOptions options) {
   // same release as native iOS crash reports. The git SHA remains a tag.
   options.navigatorKey = appNavigatorKey;
   options.sendDefaultPii = false;
-  options.tracesSampleRate = 0;
+  options.tracesSampleRate = sentryTracesSampleRate;
   options.maxBreadcrumbs = 200;
   options.beforeSend = (event, hint) =>
       _isGoogleFontLoadFailure(event) ? null : event;
@@ -256,6 +260,10 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
   late final DeveloperModeController _developer = DeveloperModeController(
     widget.prefs,
   );
+  late final AppPerformanceController _performance = AppPerformanceController(
+    widget.prefs,
+    memoryTrimmers: [clearChatMemoryCaches, clearAnimatedStickerMemoryCache],
+  );
   late final SafetyNoticeController _safetyNotice = SafetyNoticeController(
     widget.prefs,
   );
@@ -268,6 +276,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _performance.start();
     _accounts.addListener(_handleActiveAccountChange);
     _theme.loadSelectedEmojiFontIfAvailable();
     _autoDownload.initialize(widget.prefs);
@@ -283,6 +292,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _performance.dispose();
     _accounts.removeListener(_handleActiveAccountChange);
     _calls.dispose();
     super.dispose();
@@ -364,6 +374,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
         ChangeNotifierProvider.value(value: _appIcons),
         ChangeNotifierProvider.value(value: _autoDownload),
         ChangeNotifierProvider.value(value: _developer),
+        ChangeNotifierProvider.value(value: _performance),
         ChangeNotifierProvider.value(value: _safetyNotice),
         ChangeNotifierProvider.value(value: _sensitiveContent),
         ChangeNotifierProvider.value(value: _appLock),
@@ -472,9 +483,8 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
   }
 }
 
-NavigatorObserver? _buildSentryNavigatorObserver() => sentryEnabled
-    ? SentryNavigatorObserver(enableAutoTransactions: false)
-    : null;
+NavigatorObserver? _buildSentryNavigatorObserver() =>
+    sentryEnabled ? SentryNavigatorObserver() : null;
 
 final NavigatorObserver? _sentryNavigatorObserver =
     _buildSentryNavigatorObserver();

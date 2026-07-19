@@ -4214,12 +4214,11 @@ class StoryShelf extends StatelessWidget {
                   icon: HeroAppIcons.inbox,
                   photo: model.selfPhoto,
                   photoTitle: model.selfName,
-                  count: model.ownGroup?.storyIds.length,
                   onTap: model.ownGroup == null
-                      ? (canPublish ? onCreate : onManage)
+                      ? onManage
                       : () => _openStory(context, model.ownGroup!),
                   onBadgeTap: canPublish ? onCreate : null,
-                  showBadge: canPublish || model.ownGroup != null,
+                  showBadge: canPublish,
                   prominent: model.ownGroup == null && canPublish,
                 ),
                 for (final group in model.groups)
@@ -4260,7 +4259,6 @@ class _StoryActionTile extends StatelessWidget {
     this.prominent = false,
     this.photo,
     this.photoTitle = '',
-    this.count,
     this.onBadgeTap,
     this.showBadge = true,
   });
@@ -4271,7 +4269,6 @@ class _StoryActionTile extends StatelessWidget {
   final bool prominent;
   final TdFileRef? photo;
   final String photoTitle;
-  final int? count;
   final VoidCallback? onBadgeTap;
   final bool showBadge;
 
@@ -4334,6 +4331,7 @@ class _StoryActionTile extends StatelessWidget {
                         right: -1,
                         bottom: -1,
                         child: GestureDetector(
+                          key: const ValueKey('story-create-badge'),
                           behavior: HitTestBehavior.opaque,
                           onTap: onBadgeTap,
                           child: Container(
@@ -4342,28 +4340,16 @@ class _StoryActionTile extends StatelessWidget {
                               minHeight: 21,
                             ),
                             alignment: Alignment.center,
-                            padding: count != null
-                                ? const EdgeInsets.symmetric(horizontal: 5)
-                                : EdgeInsets.zero,
                             decoration: BoxDecoration(
                               color: AppTheme.brand,
                               borderRadius: BorderRadius.circular(11),
                               border: Border.all(color: c.background, width: 2),
                             ),
-                            child: count != null
-                                ? Text(
-                                    '$count',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  )
-                                : const AppIcon(
-                                    HeroAppIcons.plus,
-                                    size: 12,
-                                    color: Colors.white,
-                                  ),
+                            child: const AppIcon(
+                              HeroAppIcons.plus,
+                              size: 12,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
                       ),

@@ -6,7 +6,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/theme/app_theme.dart';
 
 void main() {
-  testWidgets('gallery sheet offers media and original file modes', (
+  testWidgets('gallery sheet keeps only media quality choices before picking', (
     tester,
   ) async {
     GallerySendMode? selected;
@@ -43,11 +43,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('作为图片或视频发送'), findsOneWidget);
-    expect(find.text('作为文件发送'), findsOneWidget);
-    expect(find.text('从相册选择并发送原始文件'), findsOneWidget);
+    expect(find.text('高清画质'), findsOneWidget);
+    expect(find.text('实况或动态照片'), findsOneWidget);
+    expect(find.text('作为文件发送'), findsNothing);
 
-    await tester.tap(find.byKey(const ValueKey('gallerySendAsFile')));
+    await tester.tap(find.byKey(const ValueKey('gallerySendAsHd')));
     await tester.pumpAndSettle();
-    expect(selected, GallerySendMode.file);
+    expect(selected, GallerySendMode.highDefinition);
   });
 }

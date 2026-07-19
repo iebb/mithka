@@ -723,7 +723,7 @@ const deMessages = <String, String>{
   'composerSend': "Senden",
   'composerSendAsFile': "Als Datei senden",
   'composerSendAsFileDescription':
-      "Aus der Galerie wählen und die Originaldateien senden",
+      "Originaldateien ohne Medienbearbeitung oder Komprimierung senden",
   'composerSendAsMedia': "Als Foto oder Video senden",
   'composerSendAsRichText': "Als Rich Text senden",
   'composerSendPaidMessageQuestion': "Kostenpflichtige Nachricht senden?",
@@ -748,6 +748,16 @@ const deMessages = <String, String>{
   'developerModePiPBoundsOverlay': "PiP-Rahmen einblenden",
   'developerModePiPBoundsOverlayDescription':
       "Zeigt den App-PiP-Rahmen und die Fenstergröße, um Rotation, Zuschnitt oder überdeckende Ebenen zu prüfen.",
+  'developerPerformanceFrameWork': "Frame (Build / Raster)",
+  'developerPerformanceImageCache': "Dekodierte Bilder (Cache / aktiv)",
+  'developerPerformanceProcessMemory': "Prozessspeicher",
+  'developerPerformanceProfiler': "Frame- und Speicherprofiler",
+  'developerPerformanceProfilerDescription':
+      "Erfasst alle 2 Sekunden den Prozess- und Bildcache-Speicher in einem begrenzten Fenster von 240 Frames. Für aussagekräftige CPU-Zeiten den Ablauf mit flutter run --profile wiederholen und hierher zurückkehren. Im Hintergrund stoppt die Messung; die Bereinigung bei Speicherdruck bleibt aktiv.",
+  'developerPerformanceResetSamples': "Frame-Messwerte zurücksetzen",
+  'developerPerformanceSlowFrames': "Frames über 16,7 ms",
+  'developerPerformanceTrimCaches': "Speichercaches jetzt leeren",
+  'developerPerformanceWaitingForFrames': "Warte auf Frame-Messwerte",
   'developerModeTitle': "Entwicklermodus",
   'developerModeUnlocked': "Entwicklermodus aktiviert",
   'editProfileAnimatedAvatar': "Animierter Avatar",

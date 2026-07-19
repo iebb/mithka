@@ -714,7 +714,7 @@ const esMessages = <String, String>{
   'composerSend': "Enviar",
   'composerSendAsFile': "Enviar como archivo",
   'composerSendAsFileDescription':
-      "Elegir de la galería y enviar los archivos originales",
+      "Enviar archivos originales sin editar ni comprimir",
   'composerSendAsMedia': "Enviar como foto o vídeo",
   'composerSendAsRichText': "Enviar como texto enriquecido",
   'composerSendPaidMessageQuestion': "¿Enviar mensaje de pago?",
@@ -741,6 +741,16 @@ const esMessages = <String, String>{
   'developerModePiPBoundsOverlay': "Contorno PiP",
   'developerModePiPBoundsOverlayDescription':
       "Muestra el marco PiP de la app y el tamaño de la vista para diagnosticar rotación, recorte o superposiciones.",
+  'developerPerformanceFrameWork': "Fotograma (compilación / rasterizado)",
+  'developerPerformanceImageCache': "Imágenes decodificadas (caché / activas)",
+  'developerPerformanceProcessMemory': "Memoria del proceso",
+  'developerPerformanceProfiler': "Perfilador de fotogramas y memoria",
+  'developerPerformanceProfilerDescription':
+      "Registra cada 2 segundos la memoria del proceso y de la caché de imágenes, con una ventana limitada a 240 fotogramas. Para obtener tiempos de CPU representativos, reproduce el flujo con flutter run --profile y vuelve aquí. El muestreo se detiene en segundo plano, pero la limpieza por presión de memoria sigue activa.",
+  'developerPerformanceResetSamples': "Restablecer muestras",
+  'developerPerformanceSlowFrames': "Fotogramas de más de 16,7 ms",
+  'developerPerformanceTrimCaches': "Liberar cachés de memoria",
+  'developerPerformanceWaitingForFrames': "Esperando muestras",
   'developerModeTitle': "Modo de desarrollador",
   'developerModeUnlocked': "Modo de desarrollador activado",
   'editProfileAnimatedAvatar': "Avatar animado",

@@ -24,6 +24,11 @@ Uint8List _inflateTgsSticker(Uint8List bytes) {
 
 final Map<String, Future<Uint8List?>> _inflatedTgsCache = {};
 
+/// Releases inflated sticker JSON after an OS memory warning. Visible stickers
+/// retain their own bytes and continue rendering; reopened stickers inflate on
+/// demand away from the UI isolate.
+void clearAnimatedStickerMemoryCache() => _inflatedTgsCache.clear();
+
 int get _maxInflatedTgsCacheEntries =>
     defaultTargetPlatform == TargetPlatform.android ? 32 : 80;
 

@@ -38,4 +38,9 @@ void main() {
       );
     },
   );
+
+  test('pull-down archive slot always follows the search row', () {
+    expect(chatListPullDownArchiveItemIndex(showSearch: true), 1);
+    expect(chatListPullDownArchiveItemIndex(showSearch: false), 0);
+  });
 }

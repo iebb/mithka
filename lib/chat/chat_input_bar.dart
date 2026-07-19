@@ -2531,7 +2531,6 @@ class _ChatInputBarState extends State<ChatInputBar> {
     try {
       final sendMode = await showGallerySendModeSheet(context);
       if (!mounted || sendMode == null) return;
-      final sendAsFile = sendMode == GallerySendMode.file;
       final sendLivePhoto = sendMode == GallerySendMode.livePhoto;
       final maxDimension = switch (sendMode) {
         GallerySendMode.media => 1280,
@@ -2542,7 +2541,6 @@ class _ChatInputBarState extends State<ChatInputBar> {
         context,
         type: AppAssetPickerType.imageAndVideo,
         maxAssets: 10,
-        preserveOriginalFiles: sendAsFile,
         preferLivePhotoVideo: sendLivePhoto,
         photoMaxDimension: maxDimension,
       );
@@ -2559,14 +2557,15 @@ class _ChatInputBarState extends State<ChatInputBar> {
           .map((asset) {
             final file = asset.file;
             final kind = galleryAttachmentKind(
-              sendAsFile: sendAsFile,
+              sendAsFile: false,
               isVideo: isPickedAssetVideo(file),
               isAnimation: isPickedAssetGif(file),
             );
             return OutgoingAttachment(
               path: file.path,
               kind: kind,
-              fileName: file.name,
+              fileName: asset.originalFile?.name ?? file.name,
+              originalPath: asset.originalFile?.path,
               previewBytes: asset.thumbnailBytes,
               width: asset.width,
               height: asset.height,
