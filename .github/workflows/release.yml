@@ -5,6 +5,9 @@ name: 🚀 Android Releases
 # the latest prebuilt native TDLib (tdjson) asset from iebb/mithka-tdjson. A
 # final job creates the version tag from pubspec.yaml and publishes all the APKs:
 # nightly creates a dated pre-release, release creates a dated stable release.
+# Through 2026-08-01 UTC (inclusive), each ABI also gets a compatibility APK
+# whose version code is the normal YYMMDDHH code plus 2000. APK filenames carry
+# their exact version code so users can choose the correct upgrade path.
 #
 # master never builds APKs. The twice-daily sync workflow merges new master
 # commits into nightly, increments the patch version once, and dispatches this
@@ -43,6 +46,8 @@ jobs:
       app_version: ${{ steps.version.outputs.app_version }}
       version_code: ${{ steps.version.outputs.version_code }}
       build_stamp: ${{ steps.version.outputs.build_stamp }}
+      compat_build_stamp: ${{ steps.version.outputs.compat_build_stamp }}
+      produce_compat_apk: ${{ steps.version.outputs.produce_compat_apk }}
       release_date: ${{ steps.version.outputs.release_date }}
       artifact_label: ${{ steps.version.outputs.artifact_label }}
       release_tag: ${{ steps.version.outputs.release_tag }}
@@ -65,9 +70,15 @@ jobs:
           case "$version_code" in
             ''|*[!0-9]*) echo "Invalid Android version code: $version_code" >&2; exit 1 ;;
           esac
-          build_stamp="$(date -u '+%y%m%d%H')"
-          release_date="$(date -u '+%Y%m%d')"
-          release_title_date="$(date -u '+%Y-%m-%d')"
+          read -r build_stamp build_day release_date release_title_date <<< "$(
+            date -u '+%y%m%d%H %y%m%d %Y%m%d %Y-%m-%d'
+          )"
+          compat_build_stamp="$((10#$build_stamp + 2000))"
+          if [ "$((10#$build_day))" -le 260801 ]; then
+            produce_compat_apk="true"
+          else
+            produce_compat_apk="false"
+          fi
           short_sha="${GITHUB_SHA::7}"
           branch_name="${GITHUB_REF_NAME:-${GITHUB_REF#refs/heads/}}"
           case "$branch_name" in
@@ -95,6 +106,8 @@ jobs:
           echo "app_version=$app_version" >> "$GITHUB_OUTPUT"
           echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
           echo "build_stamp=$build_stamp" >> "$GITHUB_OUTPUT"
+          echo "compat_build_stamp=$compat_build_stamp" >> "$GITHUB_OUTPUT"
+          echo "produce_compat_apk=$produce_compat_apk" >> "$GITHUB_OUTPUT"
           echo "release_date=$release_date" >> "$GITHUB_OUTPUT"
           echo "artifact_label=$artifact_label" >> "$GITHUB_OUTPUT"
           echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
@@ -107,6 +120,11 @@ jobs:
           echo "Release channel: $release_channel"
           echo "Android version code: $version_code"
           echo "GMT build stamp: $build_stamp"
+          if [ "$produce_compat_apk" = "true" ]; then
+            echo "Compatibility APK version code: $compat_build_stamp"
+          else
+            echo "Compatibility APK disabled after 2026-08-01 UTC"
+          fi
           echo "Release date: $release_date"
 
   build:
@@ -318,13 +336,57 @@ jobs:
         run: |
           mkdir -p dist
           cp "build/app/outputs/flutter-apk/app-${{ matrix.abi }}-release.apk" \
-            "dist/mithka-${{ needs.prepare.outputs.artifact_label }}-${{ matrix.abi }}-release.apk"
+            "dist/mithka-${{ needs.prepare.outputs.artifact_label }}-${{ matrix.abi }}-vc${{ needs.prepare.outputs.build_stamp }}-release.apk"
+
+      - name: Build ${{ matrix.abi }} compatibility APK (+2000 version code)
+        if: needs.prepare.outputs.produce_compat_apk == 'true'
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        run: |
+          flutter build apk --release --split-per-abi \
+            --target-platform ${{ matrix.target }} \
+            --build-name="${{ needs.prepare.outputs.app_version }}" \
+            --build-number="${{ needs.prepare.outputs.compat_build_stamp }}" \
+            --dart-define="GIT_COMMIT=${{ needs.prepare.outputs.short_sha }}" \
+            --dart-define="CI_BUILD_STAMP=${{ needs.prepare.outputs.compat_build_stamp }}" \
+            --dart-define="SENTRY_DSN=$SENTRY_DSN"
+
+      - name: Verify and rename ${{ matrix.abi }} compatibility APK
+        if: needs.prepare.outputs.produce_compat_apk == 'true'
+        run: |
+          apk="build/app/outputs/flutter-apk/app-${{ matrix.abi }}-release.apk"
+          analyzer="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
+          if [ ! -x "$analyzer" ]; then
+            analyzer="$(command -v apkanalyzer)"
+          fi
+          actual_version_code="$("$analyzer" manifest version-code "$apk")"
+          expected_version_code="${{ needs.prepare.outputs.compat_build_stamp }}"
+          if [ "$actual_version_code" != "$expected_version_code" ]; then
+            echo "Expected compatibility APK version code $expected_version_code, got $actual_version_code" >&2
+            exit 1
+          fi
+
+          bad_entries="$(
+            zipinfo -1 "$apk" \
+              | grep '^lib/' \
+              | grep -v "^lib/${{ matrix.abi }}/" \
+              || true
+          )"
+          if [ -n "$bad_entries" ]; then
+            echo "Compatibility APK contains native libraries outside ${{ matrix.abi }}:" >&2
+            echo "$bad_entries" >&2
+            exit 1
+          fi
+
+          cp "$apk" \
+            "dist/mithka-${{ needs.prepare.outputs.artifact_label }}-${{ matrix.abi }}-vc${{ needs.prepare.outputs.compat_build_stamp }}-compat-release.apk"
+          echo "Compatibility APK version code: $actual_version_code"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: apk-${{ matrix.abi }}-${{ needs.prepare.outputs.release_date }}-${{ needs.prepare.outputs.build_stamp }}
-          path: dist/mithka-${{ needs.prepare.outputs.artifact_label }}-${{ matrix.abi }}-release.apk
+          path: dist/*.apk
           if-no-files-found: error
 
   release:
@@ -355,92 +417,113 @@ jobs:
           git tag -f "$RELEASE_TAG" "$GITHUB_SHA"
           git push --force origin "$RELEASE_TAG"
 
-      - name: Generate nightly release notes
+      - name: Generate release notes
         env:
           GITHUB_TOKEN: ${{ github.token }}
           PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          BUILD_STAMP: ${{ needs.prepare.outputs.build_stamp }}
+          COMPAT_BUILD_STAMP: ${{ needs.prepare.outputs.compat_build_stamp }}
+          PRODUCE_COMPAT_APK: ${{ needs.prepare.outputs.produce_compat_apk }}
         run: |
-          : > release-notes.md
-          if [ "$PRERELEASE" != "true" ]; then
-            exit 0
-          fi
-
-          previous_tag="$(
-            git tag --list 'v*-nightly.*' --sort=-creatordate \
-              | awk -v current="$RELEASE_TAG" \
-                '$0 != current && !found { print; found=1 }'
-          )"
-          if [ -n "$previous_tag" ] && \
-            git merge-base --is-ancestor "$previous_tag" "$GITHUB_SHA"; then
-            change_range="$previous_tag..$GITHUB_SHA"
-            compare_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/compare/${previous_tag}...${RELEASE_TAG}"
-            compare_label="$previous_tag...$RELEASE_TAG"
-          else
-            change_range="$GITHUB_SHA^1..$GITHUB_SHA"
-            compare_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commits/${RELEASE_TAG}"
-            compare_label="$RELEASE_TAG commits"
-          fi
-
-          git log --reverse --no-merges --max-count=100 \
-            --format='Commit: %H%nSubject: %s%nDetails: %b' \
-            --stat=100,80 "$change_range" -- . \
-            ':(exclude).github/**' \
-            ':(exclude)test/**' \
-            ':(exclude)integration_test/**' \
-            ':(exclude)ios/RunnerTests/**' \
-            | awk '!/^Subject: chore: sync nightly /' \
-            > changes.txt
-
-          git log --reverse --no-merges \
-            --format='- %s ([%h]('"$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"'/commit/%H))' \
-            "$change_range" -- . ':(exclude).github/**' \
-            | grep -v '^- chore: sync nightly ' \
-            > fallback-items.txt \
-            || true
-          {
-            echo "## Changes"
-            if [ -s fallback-items.txt ]; then
-              cat fallback-items.txt
+          : > change-summary.md
+          if [ "$PRERELEASE" = "true" ]; then
+            previous_tag="$(
+              git tag --list 'v*-nightly.*' --sort=-creatordate \
+                | awk -v current="$RELEASE_TAG" \
+                  '$0 != current && !found { print; found=1 }'
+            )"
+            if [ -n "$previous_tag" ] && \
+              git merge-base --is-ancestor "$previous_tag" "$GITHUB_SHA"; then
+              change_range="$previous_tag..$GITHUB_SHA"
+              compare_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/compare/${previous_tag}...${RELEASE_TAG}"
+              compare_label="$previous_tag...$RELEASE_TAG"
             else
-              echo "- Maintenance and reliability improvements."
+              change_range="$GITHUB_SHA^1..$GITHUB_SHA"
+              compare_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commits/${RELEASE_TAG}"
+              compare_label="$RELEASE_TAG commits"
             fi
-            echo
-            echo "**Full changelog:** [$compare_label]($compare_url)"
-          } > release-notes.md
 
-          jq -n --rawfile changes changes.txt '{
-            model: "openai/gpt-4.1",
-            messages: [
-              {
-                role: "system",
-                content: "Write concise Markdown release notes for app users. Use only facts in the supplied git history. Start with exactly: ## Changes. Then write 1 to 6 bullet points, combining related commits. Prefer one bullet when the history covers one feature or fix, and make every bullet a distinct user-visible change. Focus on features, fixes, reliability, privacy, and performance. Do not invent or repeat changes. Omit tests, implementation details, commit hashes, generated version bumps, and CI-only changes. If there are no user-visible changes, write one bullet: Maintenance and reliability improvements. Do not add an introduction or conclusion."
-              },
-              { role: "user", content: $changes }
-            ],
-            temperature: 0,
-            max_tokens: 500
-          }' > model-request.json
+            git log --reverse --no-merges --max-count=100 \
+              --format='Commit: %H%nSubject: %s%nDetails: %b' \
+              --stat=100,80 "$change_range" -- . \
+              ':(exclude).github/**' \
+              ':(exclude)test/**' \
+              ':(exclude)integration_test/**' \
+              ':(exclude)ios/RunnerTests/**' \
+              | awk '!/^Subject: chore: sync nightly /' \
+              > changes.txt
 
-          if model_response="$(
-            curl -fsS --retry 1 --retry-all-errors \
-              --connect-timeout 10 --max-time 30 \
-              https://models.github.ai/inference/chat/completions \
-              -H "Authorization: Bearer $GITHUB_TOKEN" \
-              -H 'Content-Type: application/json' \
-              --data-binary @model-request.json
-          )" && model_notes="$(
-            jq -er '.choices[0].message.content | select(startswith("## Changes"))' \
-              <<< "$model_response"
-          )"; then
+            git log --reverse --no-merges \
+              --format='- %s ([%h]('"$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"'/commit/%H))' \
+              "$change_range" -- . ':(exclude).github/**' \
+              | grep -v '^- chore: sync nightly ' \
+              > fallback-items.txt \
+              || true
             {
-              printf '%s\n\n' "$model_notes"
-              echo "**Full changelog:** [$compare_label]($compare_url)"
-            } > release-notes.md
-            echo "Generated nightly release notes with GitHub Models"
-          else
-            echo "GitHub Models unavailable; using commit-list release notes" >&2
+              echo "## Changes"
+              echo "### English"
+              if [ -s fallback-items.txt ]; then
+                cat fallback-items.txt
+              else
+                echo "- Maintenance and reliability improvements."
+              fi
+              echo
+              echo "### 中文"
+              echo "- 维护和可靠性改进；详细内容请参阅完整变更记录。"
+            } > change-summary.md
+
+            jq -n --rawfile changes changes.txt '{
+              model: "openai/gpt-4.1",
+              messages: [
+                {
+                  role: "system",
+                  content: "Write concise bilingual Markdown release notes for app users using only facts in the supplied git history. Use exactly this structure: ## Changes, then ### English with 1 to 6 English bullet points, then ### 中文 with faithful Simplified Chinese translations of the same bullet points in the same order. Combine related commits and make every bullet a distinct user-visible change. Focus on features, fixes, reliability, privacy, and performance. Do not invent or repeat changes. Omit tests, implementation details, commit hashes, generated version bumps, and CI-only changes. If there are no user-visible changes, use one maintenance and reliability bullet in each language. Do not add an introduction or conclusion."
+                },
+                { role: "user", content: $changes }
+              ],
+              temperature: 0,
+              max_tokens: 900
+            }' > model-request.json
+
+            if model_response="$(
+              curl -fsS --retry 1 --retry-all-errors \
+                --connect-timeout 10 --max-time 30 \
+                https://models.github.ai/inference/chat/completions \
+                -H "Authorization: Bearer $GITHUB_TOKEN" \
+                -H 'Content-Type: application/json' \
+                --data-binary @model-request.json
+            )" && model_notes="$(
+              jq -er '.choices[0].message.content | select(startswith("## Changes") and contains("### English") and contains("### 中文"))' \
+                <<< "$model_response"
+            )"; then
+              printf '%s\n' "$model_notes" > change-summary.md
+              echo "Generated bilingual nightly release notes with GitHub Models"
+            else
+              echo "GitHub Models unavailable; using bilingual fallback release notes" >&2
+            fi
           fi
+
+          : > release-notes.md
+          if [ -s change-summary.md ]; then
+            cat change-summary.md >> release-notes.md
+            echo >> release-notes.md
+          fi
+
+          {
+            echo "## Android APK version selection / Android APK 版本选择"
+            if [ "$PRODUCE_COMPAT_APK" = "true" ]; then
+              echo "- **English:** Choose the standard APK whose filename contains \`vc$BUILD_STAMP\` for new installs and normal updates. Use the \`+2000\` compatibility APK containing \`vc$COMPAT_BUILD_STAMP\` only if Android rejects the standard APK as a version downgrade from an older offset build. Both APKs contain the same app build. Do not choose the compatibility APK when the standard one installs successfully, because its higher code can delay later standard updates. The compatibility APK is produced through 2026-08-01 UTC, inclusive."
+              echo "- **中文：** 新安装和常规更新请选择文件名包含 \`vc$BUILD_STAMP\` 的标准 APK。仅当旧的 \`+2000\` 偏移构建导致 Android 将标准 APK 判定为降级时，才使用包含 \`vc$COMPAT_BUILD_STAMP\` 的兼容 APK。两个 APK 的应用内容相同。如果标准 APK 可以正常安装，请勿选择兼容 APK，因为较高的版本代码可能延迟后续标准版更新。兼容 APK 生成至 2026-08-01 UTC（含当天）。"
+            else
+              echo "- **English:** Only the standard APK is produced. The temporary \`+2000\` compatibility APK is no longer generated after 2026-08-01 UTC. Choose the APK matching your device ABI."
+              echo "- **中文：** 现在仅生成标准 APK；临时的 \`+2000\` 兼容 APK 在 2026-08-01 UTC 之后不再生成。请选择与设备 ABI 匹配的 APK。"
+            fi
+            if [ "$PRERELEASE" = "true" ]; then
+              echo
+              echo "**Full changelog:** [$compare_label]($compare_url)"
+            fi
+          } >> release-notes.md
 
       - name: Remove old APK assets
         env:
@@ -479,11 +562,50 @@ jobs:
         run: |
           test -n "$TELEGRAM_BOT_TOKEN"
           test -n "$TELEGRAM_CI_CHANNEL"
-          response="$(curl -fsS \
-            -F "chat_id=$TELEGRAM_CI_CHANNEL" \
-            -F "text=🚀 Mithka $RELEASE_CHANNEL $RELEASE_TAG · $RELEASE_DATE
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
 
-          APKs: $RELEASE_URL" \
+          notes = Path("release-notes.md").read_text(encoding="utf-8")
+          summary_lines = []
+          for raw_line in notes.splitlines():
+              line = raw_line.strip()
+              if not line or line == "## Changes":
+                  continue
+              if line.startswith("**Full changelog:**"):
+                  break
+              if line.startswith("### "):
+                  line = f"{line[4:]}:"
+              elif line.startswith("## "):
+                  line = line[3:]
+              elif line.startswith("- "):
+                  line = f"• {line[2:]}"
+              line = re.sub(r"\[([^]]+)]\([^)]+\)", r"\1", line)
+              line = line.replace("**", "").replace("`", "")
+              summary_lines.append(line)
+
+          header = (
+              f"🚀 Mithka {os.environ['RELEASE_CHANNEL']} "
+              f"{os.environ['RELEASE_TAG']} · {os.environ['RELEASE_DATE']}"
+          )
+          footer = f"APKs: {os.environ['RELEASE_URL']}"
+          summary = "\n".join(summary_lines)
+          if summary:
+              # Telegram accepts at most 4096 characters. Leave extra room for
+              # UTF-16 counting differences around emoji and future labels.
+              available = 3800 - len(header) - len(footer) - len("\n\nSummary:\n\n")
+              if len(summary) > available:
+                  summary = summary[: max(0, available - 1)].rstrip() + "…"
+              message = f"{header}\n\nSummary:\n{summary}\n\n{footer}"
+          else:
+              message = f"{header}\n\n{footer}"
+
+          Path("telegram-message.txt").write_text(message, encoding="utf-8")
+          PY
+          response="$(curl -fsS \
+            --data-urlencode "chat_id=$TELEGRAM_CI_CHANNEL" \
+            --data-urlencode "text@telegram-message.txt" \
             "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage")"
           # Release CI announcements should stay in the channel history but not
           # become pinned. If another automation or Telegram-side behavior pins
