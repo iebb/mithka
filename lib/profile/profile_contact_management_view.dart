@@ -162,9 +162,9 @@ class _ProfileContactManagementViewState
   Future<void> _removeContact() async {
     final confirmed = await confirmDialog(
       context,
-      title: 'Remove contact?',
+      title: AppStrings.t(AppStringKeys.profileContactManagementRemoveContact),
       message: 'This person will be removed from your contact list.',
-      confirmText: 'Remove',
+      confirmText: AppStrings.t(AppStringKeys.chatInfoRemove),
       destructive: true,
     );
     if (!confirmed || !mounted) return;
@@ -177,10 +177,12 @@ class _ProfileContactManagementViewState
   Future<void> _sharePhone() async {
     final confirmed = await confirmDialog(
       context,
-      title: 'Share your phone number?',
+      title: AppStrings.t(
+        AppStringKeys.profileContactManagementShareYourPhoneNumber,
+      ),
       message:
           'This shares your current number with this mutual contact and updates the matching privacy exception.',
-      confirmText: 'Share',
+      confirmText: AppStrings.t(AppStringKeys.topicChatShare),
     );
     if (!confirmed || !mounted) return;
     await _run(
@@ -193,7 +195,9 @@ class _ProfileContactManagementViewState
     final value = await Navigator.of(context).push<String>(
       MaterialPageRoute(
         builder: (_) => EditFieldView(
-          title: 'Contact note',
+          title: AppStrings.t(
+            AppStringKeys.profileContactManagementContactNote,
+          ),
           initial: _snapshot.note,
           hint: 'Only you can see this note',
           multiline: true,
@@ -807,7 +811,7 @@ class _ContactEditDialogState extends State<_ContactEditDialog> {
   Widget build(BuildContext context) {
     final colors = context.colors;
     return AppDialogSurface(
-      title: 'Contact details',
+      title: AppStrings.t(AppStringKeys.profileContactManagementContactDetails),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -841,11 +845,11 @@ class _ContactEditDialogState extends State<_ContactEditDialog> {
       ),
       actions: [
         AppDialogAction(
-          label: 'Cancel',
+          label: AppStrings.t(AppStringKeys.confirmCancel),
           onTap: () => Navigator.of(context).pop(),
         ),
         AppDialogAction(
-          label: 'Save',
+          label: AppStrings.t(AppStringKeys.accentColorPickerSave),
           primary: true,
           onTap: () {
             if (_first.text.trim().isEmpty) return;
@@ -949,7 +953,7 @@ class _BirthdateDialogState extends State<_BirthdateDialog> {
 
   @override
   Widget build(BuildContext context) => AppDialogSurface(
-    title: 'Suggest birthdate',
+    title: AppStrings.t(AppStringKeys.profileContactManagementSuggestBirthdate),
     content: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -962,11 +966,11 @@ class _BirthdateDialogState extends State<_BirthdateDialog> {
     ),
     actions: [
       AppDialogAction(
-        label: 'Cancel',
+        label: AppStrings.t(AppStringKeys.confirmCancel),
         onTap: () => Navigator.of(context).pop(),
       ),
       AppDialogAction(
-        label: 'Suggest',
+        label: AppStrings.t(AppStringKeys.stickerStudioShortNameSuggest),
         primary: true,
         onTap: () {
           final day = int.tryParse(_day.text) ?? 0;

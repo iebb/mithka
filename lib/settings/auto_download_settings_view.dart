@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
 import '../components/toast.dart';
@@ -68,7 +69,9 @@ class _AutoDownloadSettingsViewState extends State<AutoDownloadSettingsView> {
       body: Column(
         children: [
           NavHeader(
-            title: 'Automatic Media Download',
+            title: AppStrings.t(
+              AppStringKeys.autoDownloadSettingsAutomaticMediaDownload,
+            ),
             onBack: () => Navigator.of(context).pop(),
           ),
           Expanded(
@@ -79,7 +82,9 @@ class _AutoDownloadSettingsViewState extends State<AutoDownloadSettingsView> {
                 const SizedBox(height: 14),
                 _card([
                   SettingsRow(
-                    title: 'Automatic download',
+                    title: AppStrings.t(
+                      AppStringKeys.autoDownloadSettingsAutomaticDownload,
+                    ),
                     value: _networkLabel(_network),
                     showChevron: false,
                     onTap: _controller.isApplying
@@ -97,7 +102,9 @@ class _AutoDownloadSettingsViewState extends State<AutoDownloadSettingsView> {
                 ]),
                 const SizedBox(height: 14),
                 Text(
-                  'File size limits',
+                  AppStrings.t(
+                    AppStringKeys.autoDownloadSettingsFileSizeLimits,
+                  ),
                   style: TextStyle(fontSize: 13, color: c.textTertiary),
                 ),
                 const SizedBox(height: 6),
@@ -125,7 +132,9 @@ class _AutoDownloadSettingsViewState extends State<AutoDownloadSettingsView> {
                 ]),
                 const SizedBox(height: 14),
                 Text(
-                  'Preloading and calls',
+                  AppStrings.t(
+                    AppStringKeys.autoDownloadSettingsPreloadingAndCalls,
+                  ),
                   style: TextStyle(fontSize: 13, color: c.textTertiary),
                 ),
                 const SizedBox(height: 6),
@@ -158,9 +167,10 @@ class _AutoDownloadSettingsViewState extends State<AutoDownloadSettingsView> {
                 ]),
                 const SizedBox(height: 10),
                 Text(
-                  'These settings are applied directly to TDLib for Wi-Fi, '
-                  'mobile data and roaming. Video playback can still stream '
-                  'downloaded prefixes when full automatic download is off.',
+                  AppStrings.t(
+                    AppStringKeys
+                        .autoDownloadSettingsTheseSettingsAreAppliedDirectlyToTDLibFor,
+                  ),
                   style: TextStyle(
                     fontSize: 12,
                     height: 1.35,

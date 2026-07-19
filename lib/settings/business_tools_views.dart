@@ -163,7 +163,7 @@ class _BusinessIntroStickerPickerViewState
       body: Column(
         children: [
           NavHeader(
-            title: 'Greeting Sticker',
+            title: AppStrings.t(AppStringKeys.businessToolsGreetingSticker),
             onBack: () => Navigator.of(context).pop(),
           ),
           if (_store.packs.isNotEmpty)
@@ -215,8 +215,12 @@ class _BusinessIntroStickerPickerViewState
                 : stickers.isEmpty
                 ? _emptyState(
                     context,
-                    title: 'No stickers in this set',
-                    detail: 'Choose another installed sticker set.',
+                    title: AppStrings.t(
+                      AppStringKeys.businessToolsNoStickersInThisSet,
+                    ),
+                    detail: AppStrings.t(
+                      AppStringKeys.businessToolsChooseAnotherStickerSet,
+                    ),
                   )
                 : GridView.builder(
                     padding: const EdgeInsets.all(12),
@@ -268,7 +272,15 @@ class _BusinessQuickRepliesViewState extends State<BusinessQuickRepliesView> {
     try {
       await _service.loadShortcuts();
     } catch (error) {
-      if (mounted) showToast(context, 'Could not load quick replies: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.businessToolsCouldNotLoadQuickRepliesValue1,
+            {'value1': error},
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -293,7 +305,13 @@ class _BusinessQuickRepliesViewState extends State<BusinessQuickRepliesView> {
       await _load();
     } catch (error) {
       if (mounted) {
-        showToast(context, 'Could not reorder quick replies: $error');
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.businessToolsCouldNotReorderQuickRepliesValue1,
+            {'value1': error},
+          ),
+        );
       }
     }
   }
@@ -307,7 +325,7 @@ class _BusinessQuickRepliesViewState extends State<BusinessQuickRepliesView> {
       body: Column(
         children: [
           NavHeader(
-            title: 'Quick Replies',
+            title: AppStrings.t(AppStringKeys.businessToolsQuickReplies),
             onBack: () => Navigator.of(context).pop(),
             trailing: GestureDetector(
               behavior: HitTestBehavior.opaque,
@@ -328,11 +346,17 @@ class _BusinessQuickRepliesViewState extends State<BusinessQuickRepliesView> {
                 : shortcuts.isEmpty
                 ? _emptyState(
                     context,
-                    title: 'No quick replies',
-                    detail:
-                        'Create reusable replies, then send them from any private chat.',
+                    title: AppStrings.t(
+                      AppStringKeys.businessToolsNoQuickReplies,
+                    ),
+                    detail: AppStrings.t(
+                      AppStringKeys
+                          .businessToolsCreateReusableRepliesDescription,
+                    ),
                     onTap: () => _edit(null),
-                    action: 'Create Quick Reply',
+                    action: AppStrings.t(
+                      AppStringKeys.businessToolsCreateQuickReply,
+                    ),
                   )
                 : ReorderableListView.builder(
                     padding: const EdgeInsets.fromLTRB(12, 16, 12, 24),
@@ -383,7 +407,14 @@ class _BusinessQuickRepliesViewState extends State<BusinessQuickRepliesView> {
                                           const SizedBox(height: 2),
                                           Text(
                                             shortcut.preview.isEmpty
-                                                ? '${shortcut.messageCount} messages'
+                                                ? AppStrings.t(
+                                                    AppStringKeys
+                                                        .businessToolsMessageCount,
+                                                    {
+                                                      'value1':
+                                                          shortcut.messageCount,
+                                                    },
+                                                  )
                                                 : shortcut.preview,
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
@@ -462,7 +493,14 @@ class _BusinessQuickReplyEditorViewState
       final values = await _service.loadMessages(widget.shortcut!.id);
       if (mounted) setState(() => _messages = values);
     } catch (error) {
-      if (mounted) showToast(context, 'Could not load messages: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(AppStringKeys.businessToolsCouldNotLoadMessagesValue1, {
+            'value1': error,
+          }),
+        );
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -473,7 +511,10 @@ class _BusinessQuickReplyEditorViewState
     final name = _name.text.trim();
     final first = _firstMessage.text.trim();
     if (name.isEmpty || (widget.shortcut == null && first.isEmpty)) {
-      showToast(context, 'Enter a shortcut name and message');
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.businessToolsEnterAShortcutNameAndMessage),
+      );
       return;
     }
     setState(() => _saving = true);
@@ -486,7 +527,15 @@ class _BusinessQuickReplyEditorViewState
       }
       if (mounted) Navigator.of(context).pop();
     } catch (error) {
-      if (mounted) showToast(context, 'Could not save quick reply: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.businessToolsCouldNotSaveQuickReplyValue1,
+            {'value1': error},
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -497,10 +546,15 @@ class _BusinessQuickReplyEditorViewState
     if (shortcut == null) return;
     final currentName = _name.text.trim();
     if (currentName.isEmpty) {
-      showToast(context, 'Enter a shortcut name first');
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.businessToolsEnterAShortcutNameFirst),
+      );
       return;
     }
-    final text = await _textEditor(title: 'Add Message');
+    final text = await _textEditor(
+      title: AppStrings.t(AppStringKeys.businessToolsAddMessage),
+    );
     if (text == null || text.trim().isEmpty) return;
     try {
       if (currentName != shortcut.name) {
@@ -510,7 +564,14 @@ class _BusinessQuickReplyEditorViewState
       await _service.addText(shortcutName: currentName, text: text.trim());
       await _loadMessages();
     } catch (error) {
-      if (mounted) showToast(context, 'Could not add message: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(AppStringKeys.businessToolsCouldNotAddMessageValue1, {
+            'value1': error,
+          }),
+        );
+      }
     }
   }
 
@@ -519,12 +580,14 @@ class _BusinessQuickReplyEditorViewState
     if (message.contentType != 'messageText') {
       showToast(
         context,
-        'This media reply keeps its original media type. Replace it from a media composer.',
+        AppStrings.t(
+          AppStringKeys.businessToolsThisMediaReplyKeepsItsOriginalMediaType,
+        ),
       );
       return;
     }
     final text = await _textEditor(
-      title: 'Edit Message',
+      title: AppStrings.t(AppStringKeys.chatEditMessageTitle),
       initial: message.preview,
     );
     if (text == null || text.trim().isEmpty) return;
@@ -536,15 +599,24 @@ class _BusinessQuickReplyEditorViewState
       );
       await _loadMessages();
     } catch (error) {
-      if (mounted) showToast(context, 'Could not edit message: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(AppStringKeys.businessToolsCouldNotEditMessageValue1, {
+            'value1': error,
+          }),
+        );
+      }
     }
   }
 
   Future<void> _deleteMessage(BusinessQuickReplyMessage message) async {
     final confirmed = await confirmDialog(
       context,
-      title: 'Delete Message?',
-      message: 'This message will be removed from the quick reply.',
+      title: AppStrings.t(AppStringKeys.businessToolsDeleteMessage),
+      message: AppStrings.t(
+        AppStringKeys.businessToolsDeleteMessageDescription,
+      ),
       confirmText: AppStringKeys.chatDelete,
       destructive: true,
     );
@@ -553,7 +625,14 @@ class _BusinessQuickReplyEditorViewState
       await _service.deleteMessages(widget.shortcut!.id, [message.id]);
       await _loadMessages();
     } catch (error) {
-      if (mounted) showToast(context, 'Could not delete message: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(AppStringKeys.businessToolsCouldNotDeleteMessageValue1, {
+            'value1': error,
+          }),
+        );
+      }
     }
   }
 
@@ -562,8 +641,11 @@ class _BusinessQuickReplyEditorViewState
     if (shortcut == null) return;
     final confirmed = await confirmDialog(
       context,
-      title: 'Delete Quick Reply?',
-      message: '/${shortcut.name} and all of its messages will be deleted.',
+      title: AppStrings.t(AppStringKeys.businessToolsDeleteQuickReplyVariant2),
+      message: AppStrings.t(
+        AppStringKeys.businessToolsDeleteQuickReplyDescription,
+        {'value1': '/${shortcut.name}'},
+      ),
       confirmText: AppStringKeys.chatDelete,
       destructive: true,
     );
@@ -572,7 +654,15 @@ class _BusinessQuickReplyEditorViewState
       await _service.deleteShortcut(shortcut.id);
       if (mounted) Navigator.of(context).pop();
     } catch (error) {
-      if (mounted) showToast(context, 'Could not delete quick reply: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.businessToolsCouldNotDeleteQuickReplyValue1,
+            {'value1': error},
+          ),
+        );
+      }
     }
   }
 
@@ -598,7 +688,11 @@ class _BusinessQuickReplyEditorViewState
       body: Column(
         children: [
           NavHeader(
-            title: existing ? 'Edit Quick Reply' : 'New Quick Reply',
+            title: AppStrings.t(
+              existing
+                  ? AppStringKeys.businessToolsEditQuickReply
+                  : AppStringKeys.businessToolsNewQuickReply,
+            ),
             onBack: () => Navigator.of(context).pop(),
             trailing: GestureDetector(
               behavior: HitTestBehavior.opaque,
@@ -621,7 +715,7 @@ class _BusinessQuickReplyEditorViewState
             child: ListView(
               padding: const EdgeInsets.fromLTRB(12, 18, 12, 24),
               children: [
-                _label(context, 'Shortcut'),
+                _label(context, AppStringKeys.businessToolsShortcut),
                 _surface(
                   context,
                   child: CupertinoTextField(
@@ -634,7 +728,9 @@ class _BusinessQuickReplyEditorViewState
                       ),
                     ),
                     maxLength: 32,
-                    placeholder: 'shortcut',
+                    placeholder: AppStrings.t(
+                      AppStringKeys.businessToolsShortcut,
+                    ),
                     padding: const EdgeInsets.all(14),
                     style: TextStyle(fontSize: 16, color: c.textPrimary),
                     placeholderStyle: TextStyle(color: c.textTertiary),
@@ -643,7 +739,7 @@ class _BusinessQuickReplyEditorViewState
                 ),
                 if (!existing) ...[
                   const SizedBox(height: 16),
-                  _label(context, 'Message'),
+                  _label(context, AppStringKeys.businessToolsMessage),
                   _surface(
                     context,
                     child: CupertinoTextField(
@@ -651,7 +747,9 @@ class _BusinessQuickReplyEditorViewState
                       maxLength: 4096,
                       minLines: 5,
                       maxLines: 10,
-                      placeholder: 'Reusable response',
+                      placeholder: AppStrings.t(
+                        AppStringKeys.businessToolsReusableResponse,
+                      ),
                       padding: const EdgeInsets.all(14),
                       style: TextStyle(fontSize: 16, color: c.textPrimary),
                       placeholderStyle: TextStyle(color: c.textTertiary),
@@ -662,14 +760,19 @@ class _BusinessQuickReplyEditorViewState
                   const SizedBox(height: 20),
                   Row(
                     children: [
-                      Expanded(child: _label(context, 'Messages')),
+                      Expanded(
+                        child: _label(
+                          context,
+                          AppStringKeys.businessToolsMessages,
+                        ),
+                      ),
                       GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         onTap: _addMessage,
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(10, 4, 4, 8),
                           child: Text(
-                            'Add Message',
+                            AppStrings.t(AppStringKeys.businessToolsAddMessage),
                             style: TextStyle(
                               fontSize: 14,
                               color: AppTheme.brand,
@@ -707,7 +810,9 @@ class _BusinessQuickReplyEditorViewState
                     onTap: _deleteShortcut,
                     child: Center(
                       child: Text(
-                        'Delete Quick Reply',
+                        AppStrings.t(
+                          AppStringKeys.businessToolsDeleteQuickReply,
+                        ),
                         style: TextStyle(fontSize: 15, color: AppTheme.tagRed),
                       ),
                     ),
@@ -797,18 +902,28 @@ class _BusinessQuickReplyPickerViewState
     try {
       final capabilities = await BusinessService().capabilities();
       if (!capabilities.supports('businessFeatureQuickReplies')) {
-        _unavailableReason =
-            'Quick replies are unavailable in this version of Telegram.';
+        _unavailableReason = AppStrings.t(
+          AppStringKeys.businessToolsQuickRepliesUnavailableDescription,
+        );
         return;
       }
       if (!capabilities.isPremium) {
-        _unavailableReason =
-            'Telegram Premium is required to send Business quick replies.';
+        _unavailableReason = AppStrings.t(
+          AppStringKeys.businessToolsQuickRepliesPremiumRequired,
+        );
         return;
       }
       await _service.loadShortcuts();
     } catch (error) {
-      if (mounted) showToast(context, 'Could not load quick replies: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.businessToolsCouldNotLoadQuickRepliesValue1,
+            {'value1': error},
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -821,7 +936,15 @@ class _BusinessQuickReplyPickerViewState
       await _service.send(widget.chatId, shortcut.id);
       if (mounted) Navigator.of(context).pop(true);
     } catch (error) {
-      if (mounted) showToast(context, 'Could not send quick reply: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.businessToolsCouldNotSendQuickReplyValue1,
+            {'value1': error},
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _sendingId = null);
     }
@@ -837,8 +960,10 @@ class _BusinessQuickReplyPickerViewState
         children: [
           NavHeader(
             title: widget.chatTitle.isEmpty
-                ? 'Quick Replies'
-                : 'Reply to ${widget.chatTitle}',
+                ? AppStrings.t(AppStringKeys.businessToolsQuickReplies)
+                : AppStrings.t(AppStringKeys.businessToolsReplyToChat, {
+                    'value1': widget.chatTitle,
+                  }),
             onBack: () => Navigator.of(context).pop(),
           ),
           Expanded(
@@ -847,14 +972,20 @@ class _BusinessQuickReplyPickerViewState
                 : _unavailableReason.isNotEmpty
                 ? _emptyState(
                     context,
-                    title: 'Quick Replies Unavailable',
+                    title: AppStrings.t(
+                      AppStringKeys.businessToolsQuickRepliesUnavailable,
+                    ),
                     detail: _unavailableReason,
                   )
                 : shortcuts.isEmpty
                 ? _emptyState(
                     context,
-                    title: 'No quick replies',
-                    detail: 'Create one in Settings → Edit Profile → Business.',
+                    title: AppStrings.t(
+                      AppStringKeys.businessToolsNoQuickReplies,
+                    ),
+                    detail: AppStrings.t(
+                      AppStringKeys.businessToolsCreateQuickReplyLocation,
+                    ),
                   )
                 : ListView.separated(
                     padding: const EdgeInsets.fromLTRB(12, 16, 12, 24),
@@ -944,7 +1075,15 @@ class _BusinessAutomationViewState extends State<BusinessAutomationView> {
       final info = await _service.currentBusinessInfo();
       if (mounted) setState(() => _businessInfo = info);
     } catch (error) {
-      if (mounted) showToast(context, 'Could not load automation: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.businessToolsCouldNotLoadAutomationValue1,
+            {'value1': error},
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -967,7 +1106,7 @@ class _BusinessAutomationViewState extends State<BusinessAutomationView> {
       body: Column(
         children: [
           NavHeader(
-            title: 'Automated Messages',
+            title: AppStrings.t(AppStringKeys.businessToolsAutomatedMessages),
             onBack: () => Navigator.of(context).pop(),
           ),
           Expanded(
@@ -984,10 +1123,22 @@ class _BusinessAutomationViewState extends State<BusinessAutomationView> {
                               context,
                               icon: HeroAppIcons.thumbsUp,
                               color: const Color(0xFF19A874),
-                              title: 'Greeting Message',
+                              title: AppStrings.t(
+                                AppStringKeys.businessToolsGreetingMessage,
+                              ),
                               subtitle: greeting == null
-                                  ? 'Off'
-                                  : 'After ${greeting.integer('inactivity_days') ?? 7} inactive days',
+                                  ? AppStrings.t(AppStringKeys.groupAdminOff)
+                                  : AppStrings.t(
+                                      AppStringKeys
+                                          .businessToolsAfterInactiveDays,
+                                      {
+                                        'value1':
+                                            greeting.integer(
+                                              'inactivity_days',
+                                            ) ??
+                                            7,
+                                      },
+                                    ),
                               onTap: () => _open(
                                 BusinessGreetingMessageView(initial: greeting),
                               ),
@@ -997,8 +1148,14 @@ class _BusinessAutomationViewState extends State<BusinessAutomationView> {
                               context,
                               icon: HeroAppIcons.moon,
                               color: const Color(0xFF675CE8),
-                              title: 'Away Message',
-                              subtitle: away == null ? 'Off' : 'On',
+                              title: AppStrings.t(
+                                AppStringKeys.businessToolsAwayMessage,
+                              ),
+                              subtitle: AppStrings.t(
+                                away == null
+                                    ? AppStringKeys.groupAdminOff
+                                    : AppStringKeys.privacyEnabled,
+                              ),
                               onTap: () =>
                                   _open(BusinessAwayMessageView(initial: away)),
                             ),
@@ -1007,7 +1164,10 @@ class _BusinessAutomationViewState extends State<BusinessAutomationView> {
                       ),
                       const SizedBox(height: 10),
                       Text(
-                        'Automated messages use one of your quick-reply shortcuts and are delivered only to the recipient groups you choose.',
+                        AppStrings.t(
+                          AppStringKeys
+                              .businessToolsAutomatedMessagesUseOneOfYourQuickReply,
+                        ),
                         style: TextStyle(
                           fontSize: 13,
                           height: 1.35,
@@ -1057,7 +1217,15 @@ class _BusinessGreetingMessageViewState
       final values = await _replies.loadShortcuts();
       if (_shortcutId == 0 && values.isNotEmpty) _shortcutId = values.first.id;
     } catch (error) {
-      if (mounted) showToast(context, 'Could not load quick replies: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.businessToolsCouldNotLoadQuickRepliesValue1,
+            {'value1': error},
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -1066,7 +1234,12 @@ class _BusinessGreetingMessageViewState
   Future<void> _save() async {
     if (_saving || (_enabled && _shortcutId == 0)) {
       if (_enabled && _shortcutId == 0) {
-        showToast(context, 'Create and select a quick reply first');
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.businessToolsCreateAndSelectAQuickReplyFirst,
+          ),
+        );
       }
       return;
     }
@@ -1080,7 +1253,14 @@ class _BusinessGreetingMessageViewState
       );
       if (mounted) Navigator.of(context).pop();
     } catch (error) {
-      if (mounted) showToast(context, 'Could not save greeting: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(AppStringKeys.businessToolsCouldNotSaveGreetingValue1, {
+            'value1': error,
+          }),
+        );
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -1089,7 +1269,7 @@ class _BusinessGreetingMessageViewState
   @override
   Widget build(BuildContext context) {
     return _BusinessToolScaffold(
-      title: 'Greeting Message',
+      title: AppStrings.t(AppStringKeys.businessToolsGreetingMessage),
       saving: _saving,
       onSave: _save,
       child: _loading
@@ -1101,14 +1281,16 @@ class _BusinessGreetingMessageViewState
                   context,
                   child: _switchRow(
                     context,
-                    title: 'Send Greeting Message',
+                    title: AppStrings.t(
+                      AppStringKeys.businessToolsSendGreetingMessage,
+                    ),
                     value: _enabled,
                     onChanged: (value) => setState(() => _enabled = value),
                   ),
                 ),
                 if (_enabled) ...[
                   const SizedBox(height: 18),
-                  _label(context, 'Quick Reply'),
+                  _label(context, AppStringKeys.businessToolsQuickReply),
                   _shortcutPicker(
                     context,
                     service: _replies,
@@ -1116,20 +1298,33 @@ class _BusinessGreetingMessageViewState
                     onChanged: (value) => setState(() => _shortcutId = value),
                   ),
                   const SizedBox(height: 18),
-                  _label(context, 'Send after no activity for'),
+                  _label(
+                    context,
+                    AppStringKeys.businessToolsSendAfterNoActivityFor,
+                  ),
                   _surface(
                     context,
                     child: _businessChoiceRow(
                       context,
-                      label: '$_days days',
+                      label: AppStrings.t(AppStringKeys.tdMessageDaysDuration, {
+                        'value1': _days,
+                      }),
                       onTap: () async {
                         final value = await _businessChoiceSheet<int>(
                           context,
-                          title: 'Send after no activity for',
+                          title: AppStrings.t(
+                            AppStringKeys.businessToolsSendAfterNoActivityFor,
+                          ),
                           selected: _days,
                           choices: [
                             for (final days in const [7, 14, 21, 28])
-                              (days, '$days days'),
+                              (
+                                days,
+                                AppStrings.t(
+                                  AppStringKeys.tdMessageDaysDuration,
+                                  {'value1': days},
+                                ),
+                              ),
                           ],
                         );
                         if (value != null && mounted) {
@@ -1139,7 +1334,7 @@ class _BusinessGreetingMessageViewState
                     ),
                   ),
                   const SizedBox(height: 18),
-                  _label(context, 'Recipients'),
+                  _label(context, AppStringKeys.businessToolsRecipients),
                   BusinessRecipientsEditor(
                     value: _recipients,
                     onChanged: (value) => setState(() => _recipients = value),
@@ -1200,7 +1395,15 @@ class _BusinessAwayMessageViewState extends State<BusinessAwayMessageView> {
       final values = await _replies.loadShortcuts();
       if (_shortcutId == 0 && values.isNotEmpty) _shortcutId = values.first.id;
     } catch (error) {
-      if (mounted) showToast(context, 'Could not load quick replies: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.businessToolsCouldNotLoadQuickRepliesValue1,
+            {'value1': error},
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -1220,13 +1423,21 @@ class _BusinessAwayMessageViewState extends State<BusinessAwayMessageView> {
   Future<void> _save() async {
     if (_saving || (_enabled && _shortcutId == 0)) {
       if (_enabled && _shortcutId == 0) {
-        showToast(context, 'Create and select a quick reply first');
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.businessToolsCreateAndSelectAQuickReplyFirst,
+          ),
+        );
       }
       return;
     }
     if (_scheduleType == 'businessAwayMessageScheduleCustom' &&
         !_end.isAfter(_start)) {
-      showToast(context, 'The end time must be after the start time');
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.businessToolsTheEndTimeMustBeAfterTheStart),
+      );
       return;
     }
     setState(() => _saving = true);
@@ -1240,7 +1451,15 @@ class _BusinessAwayMessageViewState extends State<BusinessAwayMessageView> {
       );
       if (mounted) Navigator.of(context).pop();
     } catch (error) {
-      if (mounted) showToast(context, 'Could not save away message: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.businessToolsCouldNotSaveAwayMessageValue1,
+            {'value1': error},
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -1265,7 +1484,7 @@ class _BusinessAwayMessageViewState extends State<BusinessAwayMessageView> {
   @override
   Widget build(BuildContext context) {
     return _BusinessToolScaffold(
-      title: 'Away Message',
+      title: AppStrings.t(AppStringKeys.businessToolsAwayMessage),
       saving: _saving,
       onSave: _save,
       child: _loading
@@ -1277,14 +1496,16 @@ class _BusinessAwayMessageViewState extends State<BusinessAwayMessageView> {
                   context,
                   child: _switchRow(
                     context,
-                    title: 'Send Away Message',
+                    title: AppStrings.t(
+                      AppStringKeys.businessToolsSendAwayMessage,
+                    ),
                     value: _enabled,
                     onChanged: (value) => setState(() => _enabled = value),
                   ),
                 ),
                 if (_enabled) ...[
                   const SizedBox(height: 18),
-                  _label(context, 'Quick Reply'),
+                  _label(context, AppStringKeys.businessToolsQuickReply),
                   _shortcutPicker(
                     context,
                     service: _replies,
@@ -1292,14 +1513,16 @@ class _BusinessAwayMessageViewState extends State<BusinessAwayMessageView> {
                     onChanged: (value) => setState(() => _shortcutId = value),
                   ),
                   const SizedBox(height: 18),
-                  _label(context, 'Schedule'),
+                  _label(context, AppStringKeys.businessToolsSchedule),
                   _surface(
                     context,
                     child: Column(
                       children: [
                         _radioRow(
                           context,
-                          title: 'Always',
+                          title: AppStrings.t(
+                            AppStringKeys.businessToolsAlways,
+                          ),
                           selected:
                               _scheduleType ==
                               'businessAwayMessageScheduleAlways',
@@ -1311,7 +1534,9 @@ class _BusinessAwayMessageViewState extends State<BusinessAwayMessageView> {
                         const InsetDivider(leadingInset: 14),
                         _radioRow(
                           context,
-                          title: 'Outside opening hours',
+                          title: AppStrings.t(
+                            AppStringKeys.businessToolsOutsideOpeningHours,
+                          ),
                           selected:
                               _scheduleType ==
                               'businessAwayMessageScheduleOutsideOfOpeningHours',
@@ -1323,7 +1548,9 @@ class _BusinessAwayMessageViewState extends State<BusinessAwayMessageView> {
                         const InsetDivider(leadingInset: 14),
                         _radioRow(
                           context,
-                          title: 'Custom schedule',
+                          title: AppStrings.t(
+                            AppStringKeys.businessToolsCustomSchedule,
+                          ),
                           selected:
                               _scheduleType ==
                               'businessAwayMessageScheduleCustom',
@@ -1343,14 +1570,18 @@ class _BusinessAwayMessageViewState extends State<BusinessAwayMessageView> {
                         children: [
                           _dateRow(
                             context,
-                            title: 'Starts',
+                            title: AppStrings.t(
+                              AppStringKeys.businessToolsStarts,
+                            ),
                             value: _start,
                             onTap: () => _pickDate(true),
                           ),
                           const InsetDivider(leadingInset: 14),
                           _dateRow(
                             context,
-                            title: 'Ends',
+                            title: AppStrings.t(
+                              AppStringKeys.businessToolsEnds,
+                            ),
                             value: _end,
                             onTap: () => _pickDate(false),
                           ),
@@ -1363,14 +1594,16 @@ class _BusinessAwayMessageViewState extends State<BusinessAwayMessageView> {
                     context,
                     child: _switchRow(
                       context,
-                      title: 'Send only while offline',
+                      title: AppStrings.t(
+                        AppStringKeys.businessToolsSendOnlyWhileOffline,
+                      ),
                       value: _offlineOnly,
                       onChanged: (value) =>
                           setState(() => _offlineOnly = value),
                     ),
                   ),
                   const SizedBox(height: 18),
-                  _label(context, 'Recipients'),
+                  _label(context, AppStringKeys.businessToolsRecipients),
                   BusinessRecipientsEditor(
                     value: _recipients,
                     onChanged: (value) => setState(() => _recipients = value),
@@ -1438,7 +1671,15 @@ class _BusinessConnectedBotViewState extends State<BusinessConnectedBotView> {
         ].where((value) => value.isNotEmpty).join(' · ');
       });
     } catch (error) {
-      if (mounted) showToast(context, 'Could not load connected bot: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.businessToolsCouldNotLoadConnectedBotValue1,
+            {'value1': error},
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -1463,7 +1704,14 @@ class _BusinessConnectedBotViewState extends State<BusinessConnectedBotView> {
         _botName = TDParse.userName(user);
       });
     } catch (error) {
-      if (mounted) showToast(context, 'Bot not found: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(AppStringKeys.businessToolsBotNotFoundValue1, {
+            'value1': error,
+          }),
+        );
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -1484,7 +1732,14 @@ class _BusinessConnectedBotViewState extends State<BusinessConnectedBotView> {
       );
       if (mounted) Navigator.of(context).pop();
     } catch (error) {
-      if (mounted) showToast(context, 'Could not connect bot: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(AppStringKeys.businessToolsCouldNotConnectBotValue1, {
+            'value1': error,
+          }),
+        );
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -1494,9 +1749,11 @@ class _BusinessConnectedBotViewState extends State<BusinessConnectedBotView> {
     if (_botUserId == 0) return;
     final confirmed = await confirmDialog(
       context,
-      title: 'Disconnect Bot?',
-      message: 'The bot will lose access to the selected business chats.',
-      confirmText: 'Disconnect',
+      title: AppStrings.t(AppStringKeys.businessToolsDisconnectBotVariant2),
+      message: AppStrings.t(
+        AppStringKeys.businessToolsDisconnectBotDescription,
+      ),
+      confirmText: AppStrings.t(AppStringKeys.businessToolsDisconnect),
       destructive: true,
     );
     if (!confirmed || !mounted) return;
@@ -1505,7 +1762,14 @@ class _BusinessConnectedBotViewState extends State<BusinessConnectedBotView> {
       await _service.deleteConnectedBot(_botUserId);
       if (mounted) Navigator.of(context).pop();
     } catch (error) {
-      if (mounted) showToast(context, 'Could not disconnect bot: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(AppStringKeys.businessToolsCouldNotDisconnectBotValue1, {
+            'value1': error,
+          }),
+        );
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -1515,7 +1779,7 @@ class _BusinessConnectedBotViewState extends State<BusinessConnectedBotView> {
   Widget build(BuildContext context) {
     final c = context.colors;
     return _BusinessToolScaffold(
-      title: 'Connected Bot',
+      title: AppStrings.t(AppStringKeys.businessToolsConnectedBot),
       saving: _saving,
       onSave: _save,
       child: _loading
@@ -1523,7 +1787,7 @@ class _BusinessConnectedBotViewState extends State<BusinessConnectedBotView> {
           : ListView(
               padding: const EdgeInsets.fromLTRB(12, 18, 12, 24),
               children: [
-                _label(context, 'Bot Username'),
+                _label(context, AppStringKeys.businessToolsBotUsername),
                 _surface(
                   context,
                   child: Row(
@@ -1554,7 +1818,7 @@ class _BusinessConnectedBotViewState extends State<BusinessConnectedBotView> {
                         child: Padding(
                           padding: const EdgeInsets.all(14),
                           child: Text(
-                            'Check',
+                            AppStrings.t(AppStringKeys.businessToolsCheck),
                             style: TextStyle(
                               fontSize: 15,
                               color: AppTheme.brand,
@@ -1569,20 +1833,22 @@ class _BusinessConnectedBotViewState extends State<BusinessConnectedBotView> {
                   const SizedBox(height: 8),
                   Text(
                     _connectionDetail.isEmpty
-                        ? 'Selected: $_botName'
+                        ? AppStrings.t(AppStringKeys.businessToolsSelectedBot, {
+                            'value1': _botName,
+                          })
                         : '$_botName · $_connectionDetail',
                     style: TextStyle(fontSize: 13, color: c.textSecondary),
                   ),
                 ],
                 const SizedBox(height: 18),
-                _label(context, 'Chat Access'),
+                _label(context, AppStringKeys.businessToolsChatAccess),
                 BusinessRecipientsEditor(
                   value: _recipients,
                   allowExcludedChats: true,
                   onChanged: (value) => setState(() => _recipients = value),
                 ),
                 const SizedBox(height: 18),
-                _label(context, 'Bot Rights'),
+                _label(context, AppStringKeys.businessToolsBotRights),
                 _surface(
                   context,
                   child: Column(
@@ -1594,7 +1860,7 @@ class _BusinessConnectedBotViewState extends State<BusinessConnectedBotView> {
                       ) ...[
                         _switchRow(
                           context,
-                          title: _botRightEntries[index].label,
+                          title: AppStrings.t(_botRightEntries[index].label),
                           value: _botRightEntries[index].read(_rights),
                           onChanged: (value) => setState(
                             () => _rights = _botRightEntries[index].write(
@@ -1616,7 +1882,7 @@ class _BusinessConnectedBotViewState extends State<BusinessConnectedBotView> {
                     onTap: _delete,
                     child: Center(
                       child: Text(
-                        'Disconnect Bot',
+                        AppStrings.t(AppStringKeys.businessToolsDisconnectBot),
                         style: TextStyle(fontSize: 15, color: AppTheme.tagRed),
                       ),
                     ),
@@ -1643,15 +1909,18 @@ class BusinessRecipientsEditor extends StatelessWidget {
   Future<void> _addChat(BuildContext context, {required bool excluded}) async {
     final chat = await Navigator.of(context).push<ChatSummary>(
       MaterialPageRoute(
-        builder: (_) => const ChatPickerView(
-          title: 'Choose Private Chat',
+        builder: (_) => ChatPickerView(
+          title: AppStrings.t(AppStringKeys.businessToolsChoosePrivateChat),
           allowChannels: false,
         ),
       ),
     );
     if (chat == null || !context.mounted) return;
     if (chat.peerUserId == null) {
-      showToast(context, 'Choose a private chat');
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.businessToolsChooseAPrivateChat),
+      );
       return;
     }
     if (excluded) {
@@ -1673,7 +1942,7 @@ class BusinessRecipientsEditor extends StatelessWidget {
         children: [
           _switchRow(
             context,
-            title: 'Existing chats',
+            title: AppStrings.t(AppStringKeys.businessToolsExistingChats),
             value: value.selectExistingChats,
             onChanged: (enabled) =>
                 onChanged(value.copyWith(selectExistingChats: enabled)),
@@ -1681,7 +1950,7 @@ class BusinessRecipientsEditor extends StatelessWidget {
           const InsetDivider(leadingInset: 14),
           _switchRow(
             context,
-            title: 'New chats',
+            title: AppStrings.t(AppStringKeys.businessToolsNewChats),
             value: value.selectNewChats,
             onChanged: (enabled) =>
                 onChanged(value.copyWith(selectNewChats: enabled)),
@@ -1689,7 +1958,7 @@ class BusinessRecipientsEditor extends StatelessWidget {
           const InsetDivider(leadingInset: 14),
           _switchRow(
             context,
-            title: 'Contacts',
+            title: AppStrings.t(AppStringKeys.tabContacts),
             value: value.selectContacts,
             onChanged: (enabled) =>
                 onChanged(value.copyWith(selectContacts: enabled)),
@@ -1697,7 +1966,7 @@ class BusinessRecipientsEditor extends StatelessWidget {
           const InsetDivider(leadingInset: 14),
           _switchRow(
             context,
-            title: 'Non-contacts',
+            title: AppStrings.t(AppStringKeys.businessToolsNonContacts),
             value: value.selectNonContacts,
             onChanged: (enabled) =>
                 onChanged(value.copyWith(selectNonContacts: enabled)),
@@ -1705,7 +1974,7 @@ class BusinessRecipientsEditor extends StatelessWidget {
           const InsetDivider(leadingInset: 14),
           _switchRow(
             context,
-            title: 'Invert selected chats',
+            title: AppStrings.t(AppStringKeys.businessToolsInvertSelectedChats),
             value: value.excludeSelected,
             onChanged: (enabled) =>
                 onChanged(value.copyWith(excludeSelected: enabled)),
@@ -1714,8 +1983,10 @@ class BusinessRecipientsEditor extends StatelessWidget {
           _actionRow(
             context,
             title: value.chatIds.isEmpty
-                ? 'Add selected chat'
-                : '${value.chatIds.length} selected chats',
+                ? AppStrings.t(AppStringKeys.businessToolsAddSelectedChat)
+                : AppStrings.t(AppStringKeys.businessToolsSelectedChatCount, {
+                    'value1': value.chatIds.length,
+                  }),
             onTap: () => _addChat(context, excluded: false),
           ),
           if (value.chatIds.isNotEmpty)
@@ -1733,8 +2004,10 @@ class BusinessRecipientsEditor extends StatelessWidget {
             _actionRow(
               context,
               title: value.excludedChatIds.isEmpty
-                  ? 'Add excluded chat'
-                  : '${value.excludedChatIds.length} excluded chats',
+                  ? AppStrings.t(AppStringKeys.businessToolsAddExcludedChat)
+                  : AppStrings.t(AppStringKeys.businessToolsExcludedChatCount, {
+                      'value1': value.excludedChatIds.length,
+                    }),
               onTap: () => _addChat(context, excluded: true),
             ),
             if (value.excludedChatIds.isNotEmpty)
@@ -1833,7 +2106,12 @@ class _BusinessBotChatControlSheetState
     } catch (error) {
       if (!mounted) return;
       setState(() => _paused = !value);
-      showToast(context, 'Could not update bot: $error');
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.businessToolsCouldNotUpdateBotValue1, {
+          'value1': error,
+        }),
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -1845,7 +2123,14 @@ class _BusinessBotChatControlSheetState
       await _service.removeBotFromChat(widget.chatId);
       if (mounted) Navigator.of(context).pop(true);
     } catch (error) {
-      if (mounted) showToast(context, 'Could not remove bot: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(AppStringKeys.businessToolsCouldNotRemoveBotValue1, {
+            'value1': error,
+          }),
+        );
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -1878,7 +2163,9 @@ class _BusinessBotChatControlSheetState
             const SizedBox(height: 12),
             _switchRow(
               context,
-              title: 'Pause bot in this chat',
+              title: AppStrings.t(
+                AppStringKeys.businessToolsPauseBotInThisChat,
+              ),
               value: _paused,
               onChanged: _saving ? (_) {} : _toggle,
             ),
@@ -1894,7 +2181,7 @@ class _BusinessBotChatControlSheetState
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  'Remove from this chat',
+                  AppStrings.t(AppStringKeys.businessToolsRemoveFromThisChat),
                   style: TextStyle(fontSize: 15, color: AppTheme.tagRed),
                 ),
               ),
@@ -2106,7 +2393,7 @@ Widget _surface(BuildContext context, {required Widget child}) => Container(
 Widget _label(BuildContext context, String value) => Padding(
   padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
   child: Text(
-    value,
+    AppStrings.t(value),
     style: TextStyle(fontSize: 13, color: context.colors.textSecondary),
   ),
 );
@@ -2360,7 +2647,7 @@ Widget _shortcutPicker(
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Text(
-          'No quick replies available',
+          AppStrings.t(AppStringKeys.businessToolsNoQuickRepliesAvailable),
           style: TextStyle(fontSize: 15, color: c.textSecondary),
         ),
       ),
@@ -2378,7 +2665,7 @@ Widget _shortcutPicker(
       onTap: () async {
         final next = await _businessChoiceSheet<int>(
           context,
-          title: 'Quick Reply',
+          title: AppStrings.t(AppStringKeys.businessToolsQuickReply),
           selected: selected,
           choices: [
             for (final shortcut in shortcuts)
@@ -2405,72 +2692,72 @@ class _BusinessBotRightEntry {
 
 final _botRightEntries = <_BusinessBotRightEntry>[
   _BusinessBotRightEntry(
-    'Reply to messages',
+    AppStringKeys.businessToolsRightReplyToMessages,
     (v) => v.canReply,
     (v, enabled) => v.copyWith(canReply: enabled),
   ),
   _BusinessBotRightEntry(
-    'Read messages',
+    AppStringKeys.businessToolsRightReadMessages,
     (v) => v.canReadMessages,
     (v, enabled) => v.copyWith(canReadMessages: enabled),
   ),
   _BusinessBotRightEntry(
-    'Delete sent messages',
+    AppStringKeys.businessToolsRightDeleteSentMessages,
     (v) => v.canDeleteSentMessages,
     (v, enabled) => v.copyWith(canDeleteSentMessages: enabled),
   ),
   _BusinessBotRightEntry(
-    'Delete all messages',
+    AppStringKeys.businessToolsRightDeleteAllMessages,
     (v) => v.canDeleteAllMessages,
     (v, enabled) => v.copyWith(canDeleteAllMessages: enabled),
   ),
   _BusinessBotRightEntry(
-    'Edit account name',
+    AppStringKeys.businessToolsRightEditAccountName,
     (v) => v.canEditName,
     (v, enabled) => v.copyWith(canEditName: enabled),
   ),
   _BusinessBotRightEntry(
-    'Edit account bio',
+    AppStringKeys.businessToolsRightEditAccountBio,
     (v) => v.canEditBio,
     (v, enabled) => v.copyWith(canEditBio: enabled),
   ),
   _BusinessBotRightEntry(
-    'Edit profile photo',
+    AppStringKeys.businessToolsRightEditProfilePhoto,
     (v) => v.canEditProfilePhoto,
     (v, enabled) => v.copyWith(canEditProfilePhoto: enabled),
   ),
   _BusinessBotRightEntry(
-    'Edit username',
+    AppStringKeys.businessToolsRightEditUsername,
     (v) => v.canEditUsername,
     (v, enabled) => v.copyWith(canEditUsername: enabled),
   ),
   _BusinessBotRightEntry(
-    'View gifts and Stars',
+    AppStringKeys.businessToolsRightViewGiftsAndStars,
     (v) => v.canViewGiftsAndStars,
     (v, enabled) => v.copyWith(canViewGiftsAndStars: enabled),
   ),
   _BusinessBotRightEntry(
-    'Sell gifts',
+    AppStringKeys.businessToolsRightSellGifts,
     (v) => v.canSellGifts,
     (v, enabled) => v.copyWith(canSellGifts: enabled),
   ),
   _BusinessBotRightEntry(
-    'Change gift settings',
+    AppStringKeys.businessToolsRightChangeGiftSettings,
     (v) => v.canChangeGiftSettings,
     (v, enabled) => v.copyWith(canChangeGiftSettings: enabled),
   ),
   _BusinessBotRightEntry(
-    'Transfer or upgrade gifts',
+    AppStringKeys.businessToolsRightTransferOrUpgradeGifts,
     (v) => v.canTransferAndUpgradeGifts,
     (v, enabled) => v.copyWith(canTransferAndUpgradeGifts: enabled),
   ),
   _BusinessBotRightEntry(
-    'Transfer Stars',
+    AppStringKeys.businessToolsRightTransferStars,
     (v) => v.canTransferStars,
     (v, enabled) => v.copyWith(canTransferStars: enabled),
   ),
   _BusinessBotRightEntry(
-    'Manage stories',
+    AppStringKeys.businessToolsRightManageStories,
     (v) => v.canManageStories,
     (v, enabled) => v.copyWith(canManageStories: enabled),
   ),

@@ -278,7 +278,7 @@ class _SavedMessagesViewState extends State<SavedMessagesView> {
   Future<void> _renameTag(SavedMessagesTagRecord tag) async {
     final label = await showAppTextEntryDialog(
       context,
-      title: 'Tag label',
+      title: AppStrings.t(AppStringKeys.savedMessagesTagLabel),
       hint: 'Optional label',
       initial: tag.label,
       maxLength: 12,
@@ -290,7 +290,14 @@ class _SavedMessagesViewState extends State<SavedMessagesView> {
       await _service.setTagLabel(tag, label);
       await _loadTags();
     } catch (error) {
-      if (mounted) showToast(context, 'Couldn’t rename tag: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(AppStringKeys.savedMessagesCouldnTRenameTagValue1, {
+            'value1': error,
+          }),
+        );
+      }
     }
   }
 
@@ -298,7 +305,15 @@ class _SavedMessagesViewState extends State<SavedMessagesView> {
     try {
       await _service.setTopicPinned(topic.id, !topic.isPinned);
     } catch (error) {
-      if (mounted) showToast(context, 'Couldn’t change pinned topic: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.savedMessagesCouldnTChangePinnedTopicValue1,
+            {'value1': error},
+          ),
+        );
+      }
     }
   }
 
@@ -371,7 +386,7 @@ class _SavedMessagesViewState extends State<SavedMessagesView> {
         : _loadingTopics;
     return Semantics(
       button: true,
-      label: 'Refresh saved messages',
+      label: AppStrings.t(AppStringKeys.savedMessagesRefreshSavedMessages),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: loading ? null : () => unawaited(_refreshCurrent()),
@@ -470,9 +485,11 @@ class _SavedMessagesViewState extends State<SavedMessagesView> {
               controller: _search,
               onChanged: _onSearchChanged,
               style: AppTextStyle.body(c.textPrimary),
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 border: InputBorder.none,
-                hintText: 'Search saved messages',
+                hintText: AppStrings.t(
+                  AppStringKeys.savedMessagesSearchSavedMessages,
+                ),
                 isDense: true,
               ),
             ),
@@ -579,7 +596,7 @@ class _SavedMessagesViewState extends State<SavedMessagesView> {
           children: [
             if (tag == null)
               Text(
-                'All',
+                AppStrings.t(AppStringKeys.sharedMediaFilterAll),
                 style: AppTextStyle.footnote(
                   selected ? Colors.white : c.textPrimary,
                 ),
@@ -686,7 +703,16 @@ class _SavedMessagesViewState extends State<SavedMessagesView> {
                     const SizedBox(width: 7),
                     Expanded(
                       child: Text(
-                        'Open original in ${_chatTitles[originalChatId] ?? 'source chat'}',
+                        AppStrings.t(
+                          AppStringKeys.savedMessagesOpenOriginalIn,
+                          {
+                            'value1':
+                                _chatTitles[originalChatId] ??
+                                AppStrings.t(
+                                  AppStringKeys.savedMessagesSourceChat,
+                                ),
+                          },
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: AppTextStyle.footnote(c.linkBlue),
@@ -855,7 +881,10 @@ class _SavedMessagesViewState extends State<SavedMessagesView> {
               ),
               if (action != null) ...[
                 const SizedBox(height: 8),
-                Text('Tap to retry', style: AppTextStyle.body(c.linkBlue)),
+                Text(
+                  AppStrings.t(AppStringKeys.savedMessagesTapToRetry),
+                  style: AppTextStyle.body(c.linkBlue),
+                ),
               ],
             ],
           ),

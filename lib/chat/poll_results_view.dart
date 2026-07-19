@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
@@ -155,7 +156,7 @@ class _PollResultsViewState extends State<PollResultsView> {
       body: Column(
         children: [
           NavHeader(
-            title: 'Poll results',
+            title: AppStrings.t(AppStringKeys.pollResultsPollResults),
             onBack: () => Navigator.of(context).pop(),
           ),
           Expanded(
@@ -178,7 +179,13 @@ class _PollResultsViewState extends State<PollResultsView> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${_poll.totalVoterCount} votes${_statistics == null ? '' : ' · detailed statistics available'}',
+                        AppStrings.t(
+                          _statistics == null
+                              ? AppStringKeys.messagePollVotes
+                              : AppStringKeys
+                                    .pollResultsVotesWithDetailedStatistics,
+                          {'value1': _poll.totalVoterCount},
+                        ),
                         style: TextStyle(
                           color: colors.textSecondary,
                           fontSize: 13,
@@ -256,8 +263,10 @@ class _PollResultsViewState extends State<PollResultsView> {
                           Expanded(
                             child: TextField(
                               controller: _search,
-                              decoration: const InputDecoration.collapsed(
-                                hintText: 'Filter voters',
+                              decoration: InputDecoration.collapsed(
+                                hintText: AppStrings.t(
+                                  AppStringKeys.pollResultsFilterVoters,
+                                ),
                               ),
                               style: TextStyle(
                                 color: colors.textPrimary,

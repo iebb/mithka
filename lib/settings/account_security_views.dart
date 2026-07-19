@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
 import '../components/confirm_dialog.dart';
@@ -71,11 +72,17 @@ class _TwoStepPasswordViewState extends State<TwoStepPasswordView> {
     if (_working) return;
     final next = _newPassword.text;
     if (next != _confirmPassword.text) {
-      showToast(context, 'The new passwords do not match.');
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.accountSecurityTheNewPasswordsDoNotMatch),
+      );
       return;
     }
     if (!_hasPassword && next.isEmpty) {
-      showToast(context, 'Enter a new password.');
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.accountSecurityEnterANewPassword),
+      );
       return;
     }
     setState(() => _working = true);
@@ -117,9 +124,9 @@ class _TwoStepPasswordViewState extends State<TwoStepPasswordView> {
   Future<void> _remove() async {
     final confirmed = await confirmDialog(
       context,
-      title: 'Remove two-step password?',
+      title: AppStrings.t(AppStringKeys.accountSecurityRemoveTwoStepPassword),
       message: 'Your account will no longer require this extra password.',
-      confirmText: 'Remove',
+      confirmText: AppStrings.t(AppStringKeys.chatInfoRemove),
       destructive: true,
     );
     if (!confirmed || !mounted) return;
@@ -136,7 +143,9 @@ class _TwoStepPasswordViewState extends State<TwoStepPasswordView> {
       body: Column(
         children: [
           NavHeader(
-            title: 'Two-Step Verification',
+            title: AppStrings.t(
+              AppStringKeys.accountSecurityTwoStepVerification,
+            ),
             onBack: () => Navigator.of(context).pop(),
           ),
           Expanded(
@@ -150,7 +159,9 @@ class _TwoStepPasswordViewState extends State<TwoStepPasswordView> {
                           if (_hasPassword)
                             _SecurityField(
                               controller: _oldPassword,
-                              label: 'Current password',
+                              label: AppStrings.t(
+                                AppStringKeys.accountSecurityCurrentPassword,
+                              ),
                               icon: HeroAppIcons.lock,
                               obscureText: true,
                             ),
@@ -164,19 +175,26 @@ class _TwoStepPasswordViewState extends State<TwoStepPasswordView> {
                           ),
                           _SecurityField(
                             controller: _confirmPassword,
-                            label: 'Confirm new password',
+                            label: AppStrings.t(
+                              AppStringKeys.accountSecurityConfirmNewPassword,
+                            ),
                             icon: HeroAppIcons.circleCheck,
                             obscureText: true,
                           ),
                           _SecurityField(
                             controller: _hint,
-                            label: 'Password hint',
+                            label: AppStrings.t(
+                              AppStringKeys.accountSecurityPasswordHint,
+                            ),
                             icon: HeroAppIcons.circleInfo,
                           ),
                           if (!_hasRecoveryEmail)
                             _SecurityField(
                               controller: _recoveryEmail,
-                              label: 'Recovery email (recommended)',
+                              label: AppStrings.t(
+                                AppStringKeys
+                                    .accountSecurityRecoveryEmailRecommended,
+                              ),
                               icon: HeroAppIcons.at,
                               keyboardType: TextInputType.emailAddress,
                             ),
@@ -211,7 +229,10 @@ class _TwoStepPasswordViewState extends State<TwoStepPasswordView> {
                             if (_hasRecoveryEmail)
                               _SecurityActionRow(
                                 icon: HeroAppIcons.restore,
-                                title: 'Recover or reset password',
+                                title: AppStrings.t(
+                                  AppStringKeys
+                                      .accountSecurityRecoverOrResetPassword,
+                                ),
                                 onTap: () => Navigator.of(context).push<void>(
                                   MaterialPageRoute(
                                     builder: (_) =>
@@ -221,7 +242,9 @@ class _TwoStepPasswordViewState extends State<TwoStepPasswordView> {
                               ),
                             _SecurityActionRow(
                               icon: HeroAppIcons.trash,
-                              title: 'Remove password',
+                              title: AppStrings.t(
+                                AppStringKeys.accountSecurityRemovePassword,
+                              ),
                               destructive: true,
                               onTap: _remove,
                             ),
@@ -286,19 +309,19 @@ class _RecoveryEmailViewState extends State<RecoveryEmailView> {
 
   @override
   Widget build(BuildContext context) => _SecurityFormPage(
-    title: 'Recovery Email',
+    title: AppStrings.t(AppStringKeys.accountSecurityRecoveryEmail),
     children: [
       _SecurityCard(
         children: [
           _SecurityField(
             controller: _password,
-            label: 'Two-step password',
+            label: AppStrings.t(AppStringKeys.accountSecurityTwoStepPassword),
             icon: HeroAppIcons.lock,
             obscureText: true,
           ),
           _SecurityField(
             controller: _email,
-            label: 'New recovery email',
+            label: AppStrings.t(AppStringKeys.accountSecurityNewRecoveryEmail),
             icon: HeroAppIcons.at,
             keyboardType: TextInputType.emailAddress,
           ),
@@ -306,7 +329,7 @@ class _RecoveryEmailViewState extends State<RecoveryEmailView> {
       ),
       const SizedBox(height: 14),
       _PrimarySecurityButton(
-        label: 'Send verification code',
+        label: AppStrings.t(AppStringKeys.accountSecuritySendVerificationCode),
         working: _working,
         onTap: _save,
       ),
@@ -340,7 +363,10 @@ class _RecoveryEmailCodeViewState extends State<RecoveryEmailCodeView> {
     try {
       await _service.checkRecoveryEmailCode(_code.text.trim());
       if (!mounted) return;
-      showToast(context, 'Recovery email verified.');
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.accountSecurityRecoveryEmailVerified),
+      );
       Navigator.of(context).pop(true);
     } catch (error) {
       if (mounted) showToast(context, error.toString());
@@ -351,7 +377,7 @@ class _RecoveryEmailCodeViewState extends State<RecoveryEmailCodeView> {
 
   @override
   Widget build(BuildContext context) => _SecurityFormPage(
-    title: 'Verify Recovery Email',
+    title: AppStrings.t(AppStringKeys.accountSecurityVerifyRecoveryEmail),
     description: widget.emailPattern.isEmpty
         ? 'Enter the code sent to your recovery email.'
         : 'Enter the code sent to ${widget.emailPattern}.',
@@ -360,7 +386,7 @@ class _RecoveryEmailCodeViewState extends State<RecoveryEmailCodeView> {
         children: [
           _SecurityField(
             controller: _code,
-            label: 'Verification code',
+            label: AppStrings.t(AppStringKeys.loginVerificationCode),
             icon: HeroAppIcons.checkDouble,
             keyboardType: TextInputType.number,
           ),
@@ -368,7 +394,7 @@ class _RecoveryEmailCodeViewState extends State<RecoveryEmailCodeView> {
       ),
       const SizedBox(height: 14),
       _PrimarySecurityButton(
-        label: 'Verify',
+        label: AppStrings.t(AppStringKeys.loginVerify),
         working: _working,
         onTap: _verify,
       ),
@@ -377,11 +403,16 @@ class _RecoveryEmailCodeViewState extends State<RecoveryEmailCodeView> {
         children: [
           _SecurityActionRow(
             icon: HeroAppIcons.restore,
-            title: 'Resend code',
+            title: AppStrings.t(AppStringKeys.loginResendVerificationCode),
             onTap: () async {
               try {
                 await _service.resendRecoveryEmailCode();
-                if (context.mounted) showToast(context, 'A new code was sent.');
+                if (context.mounted) {
+                  showToast(
+                    context,
+                    AppStrings.t(AppStringKeys.accountSecurityANewCodeWasSent),
+                  );
+                }
               } catch (error) {
                 if (context.mounted) showToast(context, error.toString());
               }
@@ -389,7 +420,7 @@ class _RecoveryEmailCodeViewState extends State<RecoveryEmailCodeView> {
           ),
           _SecurityActionRow(
             icon: HeroAppIcons.xmark,
-            title: 'Cancel email change',
+            title: AppStrings.t(AppStringKeys.accountSecurityCancelEmailChange),
             destructive: true,
             onTap: () async {
               await _service.cancelRecoveryEmailVerification();
@@ -447,7 +478,10 @@ class _PasswordRecoveryViewState extends State<PasswordRecoveryView> {
   Future<void> _recover() async {
     if (_working || _code.text.trim().isEmpty) return;
     if (_password.text != _confirm.text) {
-      showToast(context, 'The new passwords do not match.');
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.accountSecurityTheNewPasswordsDoNotMatch),
+      );
       return;
     }
     setState(() => _working = true);
@@ -458,7 +492,10 @@ class _PasswordRecoveryViewState extends State<PasswordRecoveryView> {
         hint: _hint.text.trim(),
       );
       if (!mounted) return;
-      showToast(context, 'Password recovered.');
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.accountSecurityPasswordRecovered),
+      );
       Navigator.of(context).pop(true);
     } catch (error) {
       if (mounted) showToast(context, error.toString());
@@ -469,14 +506,14 @@ class _PasswordRecoveryViewState extends State<PasswordRecoveryView> {
 
   @override
   Widget build(BuildContext context) => _SecurityFormPage(
-    title: 'Password Recovery',
+    title: AppStrings.t(AppStringKeys.accountSecurityPasswordRecovery),
     description: _sent
         ? 'A recovery code was sent to $_emailPattern.'
         : 'Telegram will send a code to your recovery email.',
     children: [
       if (!_sent)
         _PrimarySecurityButton(
-          label: 'Send recovery code',
+          label: AppStrings.t(AppStringKeys.accountSecuritySendRecoveryCode),
           working: _working,
           onTap: _send,
         )
@@ -485,32 +522,34 @@ class _PasswordRecoveryViewState extends State<PasswordRecoveryView> {
           children: [
             _SecurityField(
               controller: _code,
-              label: 'Recovery code',
+              label: AppStrings.t(AppStringKeys.accountSecurityRecoveryCode),
               icon: HeroAppIcons.checkDouble,
               keyboardType: TextInputType.number,
             ),
             _SecurityField(
               controller: _password,
-              label: 'New password',
+              label: AppStrings.t(AppStringKeys.accountSecurityNewPassword),
               icon: HeroAppIcons.key,
               obscureText: true,
             ),
             _SecurityField(
               controller: _confirm,
-              label: 'Confirm new password',
+              label: AppStrings.t(
+                AppStringKeys.accountSecurityConfirmNewPassword,
+              ),
               icon: HeroAppIcons.circleCheck,
               obscureText: true,
             ),
             _SecurityField(
               controller: _hint,
-              label: 'Password hint',
+              label: AppStrings.t(AppStringKeys.accountSecurityPasswordHint),
               icon: HeroAppIcons.circleInfo,
             ),
           ],
         ),
         const SizedBox(height: 14),
         _PrimarySecurityButton(
-          label: 'Recover password',
+          label: AppStrings.t(AppStringKeys.accountSecurityRecoverPassword),
           working: _working,
           onTap: _recover,
         ),
@@ -565,7 +604,10 @@ class _ChangePhoneNumberViewState extends State<ChangePhoneNumberView> {
     try {
       await _service.checkChangePhoneCode(_code.text.trim());
       if (!mounted) return;
-      showToast(context, 'Phone number changed.');
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.accountSecurityPhoneNumberChanged),
+      );
       Navigator.of(context).pop(true);
     } catch (error) {
       if (mounted) showToast(context, error.toString());
@@ -576,7 +618,7 @@ class _ChangePhoneNumberViewState extends State<ChangePhoneNumberView> {
 
   @override
   Widget build(BuildContext context) => _SecurityFormPage(
-    title: 'Change Phone Number',
+    title: AppStrings.t(AppStringKeys.accountSecurityChangePhoneNumber),
     description: _sent
         ? 'Enter the code sent to $_destination.'
         : 'Your Telegram account and contacts will move to the new number.',
@@ -586,14 +628,14 @@ class _ChangePhoneNumberViewState extends State<ChangePhoneNumberView> {
           if (!_sent)
             _SecurityField(
               controller: _phone,
-              label: 'New phone number',
+              label: AppStrings.t(AppStringKeys.accountSecurityNewPhoneNumber),
               icon: HeroAppIcons.phone,
               keyboardType: TextInputType.phone,
             )
           else
             _SecurityField(
               controller: _code,
-              label: 'Verification code',
+              label: AppStrings.t(AppStringKeys.loginVerificationCode),
               icon: HeroAppIcons.checkDouble,
               keyboardType: TextInputType.number,
             ),
@@ -611,12 +653,17 @@ class _ChangePhoneNumberViewState extends State<ChangePhoneNumberView> {
           children: [
             _SecurityActionRow(
               icon: HeroAppIcons.restore,
-              title: 'Resend code',
+              title: AppStrings.t(AppStringKeys.loginResendVerificationCode),
               onTap: () async {
                 try {
                   await _service.resendChangePhoneCode();
                   if (context.mounted) {
-                    showToast(context, 'A new code was sent.');
+                    showToast(
+                      context,
+                      AppStrings.t(
+                        AppStringKeys.accountSecurityANewCodeWasSent,
+                      ),
+                    );
                   }
                 } catch (error) {
                   if (context.mounted) showToast(context, error.toString());
@@ -683,7 +730,7 @@ class _AccountInactivityViewState extends State<AccountInactivityView> {
 
   @override
   Widget build(BuildContext context) => _SecurityFormPage(
-    title: 'Account Inactivity',
+    title: AppStrings.t(AppStringKeys.accountSecurityAccountInactivity),
     description:
         'If you do not come online during this period, Telegram will delete your account and cloud data.',
     children: [
@@ -728,10 +775,14 @@ class _DeleteTelegramAccountViewState extends State<DeleteTelegramAccountView> {
     if (_working) return;
     final confirmed = await confirmDialog(
       context,
-      title: 'Permanently delete Telegram account?',
+      title: AppStrings.t(
+        AppStringKeys.accountSecurityPermanentlyDeleteTelegramAccount,
+      ),
       message:
           'This deletes your cloud messages, contacts, media, and account data. This cannot be undone.',
-      confirmText: 'Delete account',
+      confirmText: AppStrings.t(
+        AppStringKeys.accountSecurityDeleteAccountVariant2,
+      ),
       destructive: true,
     );
     if (!confirmed || !mounted) return;
@@ -750,7 +801,7 @@ class _DeleteTelegramAccountViewState extends State<DeleteTelegramAccountView> {
 
   @override
   Widget build(BuildContext context) => _SecurityFormPage(
-    title: 'Delete Account',
+    title: AppStrings.t(AppStringKeys.accountSecurityDeleteAccount),
     description:
         'Deletion happens through Telegram directly. Enter your two-step password if one is enabled.',
     children: [
@@ -758,20 +809,22 @@ class _DeleteTelegramAccountViewState extends State<DeleteTelegramAccountView> {
         children: [
           _SecurityField(
             controller: _password,
-            label: 'Two-step password (if enabled)',
+            label: AppStrings.t(
+              AppStringKeys.accountSecurityTwoStepPasswordIfEnabled,
+            ),
             icon: HeroAppIcons.lock,
             obscureText: true,
           ),
           _SecurityField(
             controller: _reason,
-            label: 'Reason (optional)',
+            label: AppStrings.t(AppStringKeys.accountSecurityReasonOptional),
             icon: HeroAppIcons.comment,
           ),
         ],
       ),
       const SizedBox(height: 14),
       _PrimarySecurityButton(
-        label: 'Delete Telegram account',
+        label: AppStrings.t(AppStringKeys.privacyDeleteTelegramAccount),
         working: _working,
         destructive: true,
         onTap: _delete,

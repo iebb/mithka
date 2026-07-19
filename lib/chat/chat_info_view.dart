@@ -492,7 +492,9 @@ class _ChatInfoViewState extends State<ChatInfoView> {
                 MaterialPageRoute(
                   builder: (_) => StoryManagementView(
                     chatId: widget.chatId,
-                    title: '${_vm.title} Stories',
+                    title: AppStrings.t(AppStringKeys.chatInfoValue1Stories, {
+                      'value1': _vm.title,
+                    }),
                   ),
                 ),
               ),

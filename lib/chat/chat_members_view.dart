@@ -332,7 +332,7 @@ class _ChatMembersViewState extends State<ChatMembersView> {
     final value = await Navigator.of(context).push<String>(
       MaterialPageRoute(
         builder: (_) => EditFieldView(
-          title: 'Member tag',
+          title: AppStrings.t(AppStringKeys.chatMembersMemberTag),
           initial: member.title ?? '',
           maxLength: 16,
         ),
@@ -427,7 +427,9 @@ class _ChatMembersViewState extends State<ChatMembersView> {
                           ),
                         if (_canManageTags && m.role == MemberRole.member)
                           _MemberSwipeAction(
-                            title: 'Member tag',
+                            title: AppStrings.t(
+                              AppStringKeys.chatMembersMemberTag,
+                            ),
                             color: const Color(0xFF16A085),
                             onTap: () => _editMemberTag(m),
                           ),

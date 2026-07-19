@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
 import '../components/confirm_dialog.dart';
@@ -49,10 +50,10 @@ class _NetworkUsageViewState extends State<NetworkUsageView> {
   Future<void> _reset() async {
     final confirmed = await confirmDialog(
       context,
-      title: 'Reset network statistics?',
+      title: AppStrings.t(AppStringKeys.networkUsageResetNetworkStatistics),
       message:
           'Sent, received and call-duration counters will restart at zero.',
-      confirmText: 'Reset',
+      confirmText: AppStrings.t(AppStringKeys.networkUsageReset),
       destructive: true,
     );
     if (!confirmed || !mounted) return;
@@ -89,7 +90,7 @@ class _NetworkUsageViewState extends State<NetworkUsageView> {
       body: Column(
         children: [
           NavHeader(
-            title: 'Network Usage',
+            title: AppStrings.t(AppStringKeys.networkUsageNetworkUsage),
             onBack: () => Navigator.of(context).pop(),
             trailing: GestureDetector(
               behavior: HitTestBehavior.opaque,
@@ -100,7 +101,7 @@ class _NetworkUsageViewState extends State<NetworkUsageView> {
                   vertical: 8,
                 ),
                 child: Text(
-                  'Reset',
+                  AppStrings.t(AppStringKeys.networkUsageReset),
                   style: TextStyle(
                     color: _loading ? c.textTertiary : AppTheme.brand,
                     fontSize: 15,
@@ -137,7 +138,9 @@ class _NetworkUsageViewState extends State<NetworkUsageView> {
                       if (_sinceDate > 0) ...[
                         const SizedBox(height: 8),
                         Text(
-                          'Since ${DateText.messageDetailLabel(_sinceDate)}',
+                          AppStrings.t(AppStringKeys.networkUsageSinceValue1, {
+                            'value1': DateText.messageDetailLabel(_sinceDate),
+                          }),
                           textAlign: TextAlign.center,
                           style: TextStyle(fontSize: 12, color: c.textTertiary),
                         ),
@@ -153,7 +156,7 @@ class _NetworkUsageViewState extends State<NetworkUsageView> {
                         const SizedBox(height: 14),
                       ],
                       Text(
-                        'By media type',
+                        AppStrings.t(AppStringKeys.networkUsageByMediaType),
                         style: TextStyle(fontSize: 13, color: c.textTertiary),
                       ),
                       const SizedBox(height: 6),
@@ -197,20 +200,20 @@ class _NetworkUsageViewState extends State<NetworkUsageView> {
       child: Column(
         children: [
           SettingsRow(
-            title: 'Sent',
+            title: AppStrings.t(AppStringKeys.messageInfoSent),
             value: _bytes(value.$1),
             showChevron: false,
           ),
           const Divider(height: 1),
           SettingsRow(
-            title: 'Received',
+            title: AppStrings.t(AppStringKeys.networkUsageReceived),
             value: _bytes(value.$2),
             showChevron: false,
           ),
           if (value.$3 > 0) ...[
             const Divider(height: 1),
             SettingsRow(
-              title: 'Call duration',
+              title: AppStrings.t(AppStringKeys.networkUsageCallDuration),
               value: _duration(value.$3.round()),
               showChevron: false,
             ),
@@ -243,7 +246,7 @@ class _NetworkUsageViewState extends State<NetworkUsageView> {
           ? Padding(
               padding: const EdgeInsets.all(18),
               child: Text(
-                'No network usage recorded.',
+                AppStrings.t(AppStringKeys.networkUsageNoNetworkUsageRecorded),
                 style: TextStyle(color: c.textSecondary),
               ),
             )

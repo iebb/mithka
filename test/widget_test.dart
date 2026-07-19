@@ -823,11 +823,59 @@ void main() {
       });
       expect(request['input_message_content'], {
         '@type': 'inputMessageSticker',
-        'sticker': {'@type': 'inputFileRemote', 'id': 'remote-sticker'},
-        'width': 512,
-        'height': 384,
+        'sticker': {
+          '@type': 'inputSticker',
+          'sticker': {'@type': 'inputFileRemote', 'id': 'remote-sticker'},
+          'width': 512,
+          'height': 384,
+        },
         'emoji': '🙂',
       });
+    });
+
+    testWidgets('places sticker tabs above the media search field', (
+      tester,
+    ) async {
+      final vm = ChatViewModel(
+        chatId: 1,
+        title: 'Test chat',
+        markReadOnOpen: false,
+      );
+      addTearDown(vm.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.bottomCenter,
+              child: ChatInputBar(
+                vm: vm,
+                onStartCall: (_) {},
+                onMessageSent: () {},
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byIcon(HeroAppIcons.grip.data));
+      await tester.pump();
+
+      final tabs = find.byKey(const ValueKey('stickerPanelTabs'));
+      final search = find.byKey(const ValueKey('stickerPanelSearch'));
+      expect(tabs, findsOneWidget);
+      expect(search, findsOneWidget);
+      expect(
+        tester.getTopLeft(tabs).dy,
+        lessThan(tester.getTopLeft(search).dy),
+      );
     });
 
     testWidgets('more panel paints the bottom safe area with its background', (

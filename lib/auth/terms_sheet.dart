@@ -213,9 +213,7 @@ class _TermsAcceptButtonState extends State<_TermsAcceptButton> {
                     height: 20,
                     child: CircularProgressIndicator(
                       strokeWidth: 2.2,
-                      valueColor: AlwaysStoppedAnimation(
-                        Color(0xFFFFFFFF),
-                      ),
+                      valueColor: AlwaysStoppedAnimation(Color(0xFFFFFFFF)),
                     ),
                   )
                 : Text(

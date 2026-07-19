@@ -30,10 +30,16 @@ VISIBLE_NAMED_ARGS = {
 ALLOWED_VISIBLE_VALUES = {
     "",
     "A",
+    "AI",
     "GitHub",
     "LaTeX",
+    "MM/YY",
     "Mini App",
     "Mithka",
+    "RTMP URL",
+    "Smart Glocal",
+    "TEST",
+    "business_bot",
     "· · ·",
     "\\u00B7 \\u00B7 \\u00B7",
     "github.com/iebb/mithka",
@@ -66,7 +72,7 @@ CONTENT_RENDER_EXPRESSIONS = {
 def has_localized_script(text: str) -> bool:
     return any(
         has_han(ch)
-        or "\u00c0" <= ch <= "\u024f"
+        or ("\u00c0" <= ch <= "\u024f" and ch.isalpha())
         or "\u3040" <= ch <= "\u30ff"
         or "\u0400" <= ch <= "\u04ff"
         or "\u0600" <= ch <= "\u06ff"
@@ -82,8 +88,10 @@ def line_for(text: str, offset: int) -> int:
 
 
 def is_visible_ui_literal(text: str, offset: int) -> bool:
-    prefix = text[max(0, offset - 80) : offset]
+    prefix = text[max(0, offset - 240) : offset]
     if re.search(r"\bText\s*\(\s*$", prefix):
+        return True
+    if re.search(r"\bshowToast\s*\(\s*[^,\n]+,\s*$", prefix):
         return True
     named_arg = re.search(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*:\s*$", prefix)
     return named_arg is not None and named_arg.group(1) in VISIBLE_NAMED_ARGS
@@ -92,7 +100,18 @@ def is_visible_ui_literal(text: str, offset: int) -> bool:
 def is_nonlocalized_token(value: str) -> bool:
     if value in ALLOWED_VISIBLE_VALUES:
         return True
-    if "$" in value:
+    # The lightweight literal scanner sees nested quoted expressions inside a
+    # Dart interpolation as separate fragments. The enclosing visible string
+    # is checked at its complete call site; an unmatched fragment is not copy.
+    if value.count("${") > value.count("}"):
+        return True
+    visible_value = re.sub(
+        r"\$\{[^{}]*\}|\$[A-Za-z_][A-Za-z0-9_]*",
+        "",
+        value,
+    )
+    semantic_value = visible_value.replace("x", "").replace("X", "")
+    if "$" in value and not any(ch.isalpha() for ch in semantic_value):
         return True
     if value.startswith(("http://", "https://", "@", "/", "#")):
         return True

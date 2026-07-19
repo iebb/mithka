@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
 import '../theme/app_theme.dart';
@@ -91,12 +92,12 @@ Future<String?> showStoryTextEntry(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           StoryDialogAction(
-                            label: 'Cancel',
+                            label: AppStrings.t(AppStringKeys.confirmCancel),
                             onTap: () => Navigator.of(dialogContext).pop(),
                           ),
                           const SizedBox(width: 10),
                           StoryDialogAction(
-                            label: 'Done',
+                            label: AppStrings.t(AppStringKeys.addMembersDone),
                             primary: true,
                             onTap: () => Navigator.of(
                               dialogContext,
@@ -191,7 +192,7 @@ class _StoryActivityIndicatorState extends State<StoryActivityIndicator>
 
   @override
   Widget build(BuildContext context) => Semantics(
-    label: 'Loading',
+    label: AppStrings.t(AppStringKeys.topicChatLoading),
     child: AnimatedBuilder(
       animation: _controller,
       builder: (context, child) => Transform.rotate(
@@ -229,7 +230,7 @@ class _StoryProgressBarState extends State<StoryProgressBar>
 
   @override
   Widget build(BuildContext context) => Semantics(
-    label: 'Working',
+    label: AppStrings.t(AppStringKeys.storyUiComponentsWorking),
     child: ClipRRect(
       borderRadius: BorderRadius.circular(2),
       child: SizedBox(

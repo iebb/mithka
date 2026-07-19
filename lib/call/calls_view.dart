@@ -219,7 +219,7 @@ class _CallsViewState extends State<CallsView> {
 
   Widget _refreshAction() => Semantics(
     button: true,
-    label: 'Refresh calls',
+    label: AppStrings.t(AppStringKeys.callsRefreshCalls),
     child: GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: _loading ? null : () => unawaited(_refreshCalls()),

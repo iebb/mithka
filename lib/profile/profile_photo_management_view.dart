@@ -7,6 +7,7 @@ import '../components/confirm_dialog.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
+import '../l10n/app_localizations.dart';
 import '../media/app_asset_picker.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -64,7 +65,15 @@ class _ProfilePhotoManagementViewState
         _photos = photos;
       });
     } catch (error) {
-      if (mounted) showToast(context, 'Could not load profile photos: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.profilePhotoManagementCouldNotLoadProfilePhotosValue1,
+            {'value1': error},
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -91,7 +100,15 @@ class _ProfilePhotoManagementViewState
       );
       await _load();
     } catch (error) {
-      if (mounted) showToast(context, 'Could not update photo: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.profilePhotoManagementCouldNotUpdatePhotoValue1,
+            {'value1': error},
+          ),
+        );
+      }
     }
   }
 
@@ -113,16 +130,24 @@ class _ProfilePhotoManagementViewState
       );
       await _load();
     } catch (error) {
-      if (mounted) showToast(context, 'Could not update photo: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.profilePhotoManagementCouldNotUpdatePhotoValue1,
+            {'value1': error},
+          ),
+        );
+      }
     }
   }
 
   Future<void> _delete(_ProfilePhotoEntry entry) async {
     final confirmed = await confirmDialog(
       context,
-      title: 'Delete profile photo?',
+      title: AppStrings.t(AppStringKeys.profilePhotoDeleteTitle),
       message: 'This removes the photo from your profile history.',
-      confirmText: 'Delete',
+      confirmText: AppStrings.t(AppStringKeys.chatDelete),
       destructive: true,
     );
     if (!confirmed || !mounted) return;
@@ -131,7 +156,15 @@ class _ProfilePhotoManagementViewState
       if (!mounted) return;
       setState(() => _photos = _photos.where((p) => p.id != entry.id).toList());
     } catch (error) {
-      if (mounted) showToast(context, 'Could not delete photo: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.profilePhotoManagementCouldNotDeletePhotoValue1,
+            {'value1': error},
+          ),
+        );
+      }
     }
   }
 
@@ -163,7 +196,9 @@ class _ProfilePhotoManagementViewState
       body: Column(
         children: [
           NavHeader(
-            title: 'Profile photos',
+            title: AppStrings.t(
+              AppStringKeys.profilePhotoManagementProfilePhotos,
+            ),
             onBack: () => Navigator.of(context).pop(),
             trailing: _refreshAction(),
           ),
@@ -176,7 +211,9 @@ class _ProfilePhotoManagementViewState
                       _actionCard(),
                       const SizedBox(height: 18),
                       Text(
-                        'PHOTO HISTORY',
+                        AppStrings.t(
+                          AppStringKeys.profilePhotoManagementPhotoHistory,
+                        ).toUpperCase(),
                         style: AppTextStyle.caption(colors.textSecondary),
                       ),
                       const SizedBox(height: 8),
@@ -206,7 +243,9 @@ class _ProfilePhotoManagementViewState
 
   Widget _refreshAction() => Semantics(
     button: true,
-    label: 'Refresh profile photos',
+    label: AppStrings.t(
+      AppStringKeys.profilePhotoManagementRefreshProfilePhotos,
+    ),
     child: GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: _loading ? null : () => unawaited(_load()),
@@ -297,7 +336,7 @@ class _ProfilePhotoManagementViewState
       borderRadius: BorderRadius.circular(14),
     ),
     child: Text(
-      'No profile photos yet',
+      AppStrings.t(AppStringKeys.profilePhotoManagementNoProfilePhotosYet),
       textAlign: TextAlign.center,
       style: AppTextStyle.body(context.colors.textSecondary),
     ),

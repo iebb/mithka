@@ -613,7 +613,7 @@ class _LoginViewState extends State<LoginView> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          'Confirm your email address',
+          AppStrings.t(AppStringKeys.loginConfirmYourEmailAddress),
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 22,
@@ -623,7 +623,9 @@ class _LoginViewState extends State<LoginView> {
         ),
         const SizedBox(height: 10),
         Text(
-          'Telegram requires an email address to finish signing in.',
+          AppStrings.t(
+            AppStringKeys.loginTelegramRequiresAnEmailAddressToFinishSigning,
+          ),
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 14, color: c.textSecondary),
         ),
@@ -645,9 +647,9 @@ class _LoginViewState extends State<LoginView> {
                   keyboardType: TextInputType.emailAddress,
                   autocorrect: false,
                   style: TextStyle(fontSize: 17, color: c.textPrimary),
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     border: InputBorder.none,
-                    hintText: 'Email address',
+                    hintText: AppStrings.t(AppStringKeys.loginEmailAddress),
                   ),
                   onChanged: (_) => setState(() {}),
                 ),
@@ -674,7 +676,7 @@ class _LoginViewState extends State<LoginView> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          'Enter the email code',
+          AppStrings.t(AppStringKeys.loginEnterTheEmailCode),
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 22,
@@ -712,9 +714,11 @@ class _LoginViewState extends State<LoginView> {
                   keyboardType: TextInputType.text,
                   autocorrect: false,
                   style: TextStyle(fontSize: 20, color: c.textPrimary),
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     border: InputBorder.none,
-                    hintText: 'Email verification code',
+                    hintText: AppStrings.t(
+                      AppStringKeys.loginEmailVerificationCode,
+                    ),
                   ),
                   onChanged: (_) => setState(() {}),
                   onSubmitted: (_) {
@@ -743,7 +747,7 @@ class _LoginViewState extends State<LoginView> {
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 10),
             child: Text(
-              'Resend email code',
+              AppStrings.t(AppStringKeys.loginResendEmailCode),
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 14,
@@ -782,7 +786,7 @@ class _LoginViewState extends State<LoginView> {
         AppIcon(HeroAppIcons.solidStar, size: 54, color: AppTheme.brand),
         const SizedBox(height: 16),
         Text(
-          'Telegram Premium is required',
+          AppStrings.t(AppStringKeys.loginTelegramPremiumIsRequired),
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 22,
@@ -815,7 +819,7 @@ class _LoginViewState extends State<LoginView> {
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 10),
               child: Text(
-                'Restore App Store purchase',
+                AppStrings.t(AppStringKeys.loginRestoreAppStorePurchase),
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 14,
@@ -829,7 +833,9 @@ class _LoginViewState extends State<LoginView> {
         if (step.supportEmail.isNotEmpty) ...[
           const SizedBox(height: 16),
           Text(
-            'Purchase support: ${step.supportEmail}',
+            AppStrings.t(AppStringKeys.loginPurchaseSupportValue1, {
+              'value1': step.supportEmail,
+            }),
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 12, color: c.textTertiary),
           ),

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
 import '../components/toast.dart';
@@ -270,7 +271,13 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
   Future<void> _generate() async {
     if (_working) return;
     if (widget.service.capabilitiesSnapshot?.compositionSupported != true) {
-      showToast(context, 'Telegram AI Editor is unavailable for this account.');
+      showToast(
+        context,
+        AppStrings.t(
+          AppStringKeys
+              .telegramAiEditorTelegramAIEditorIsUnavailableForThisAccount,
+        ),
+      );
       return;
     }
     setState(() => _working = true);
@@ -298,11 +305,11 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
       body: Column(
         children: [
           NavHeader(
-            title: 'Telegram AI Editor',
+            title: AppStrings.t(AppStringKeys.telegramAiEditorTelegramAIEditor),
             onBack: () => Navigator.of(context).pop(),
             trailing: _aiTapLabel(
               context,
-              label: 'Apply',
+              label: AppStrings.t(AppStringKeys.composerFormatApply),
               onTap: _result == null
                   ? null
                   : () => Navigator.of(context).pop(_result),
@@ -322,15 +329,19 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
                   if (_result != null) const SizedBox(height: 12),
                   _aiPrimaryButton(
                     context,
-                    label: 'Generate privately with Telegram',
+                    label: AppStrings.t(
+                      AppStringKeys
+                          .telegramAiEditorGeneratePrivatelyWithTelegram,
+                    ),
                     onTap: _working ? null : _generate,
                     working: _working,
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    'Telegram processes AI Editor requests through Cocoon. '
-                    'The AI action is unavailable in Secret Chats and Telegram '
-                    'may require Premium after the free allowance.',
+                    AppStrings.t(
+                      AppStringKeys
+                          .telegramAiEditorTelegramProcessesAIEditorRequestsThroughCocoon,
+                    ),
                     style: TextStyle(
                       fontSize: 12,
                       height: 1.35,
@@ -392,21 +403,23 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
         children: [
           _aiToggleRow(
             context,
-            title: 'Proofread and fix mistakes',
+            title: AppStrings.t(
+              AppStringKeys.telegramAiEditorProofreadAndFixMistakes,
+            ),
             value: _proofread,
             onChanged: (value) => setState(() => _proofread = value),
           ),
           Divider(height: 1, color: c.divider),
           _aiToggleRow(
             context,
-            title: 'Add emoji',
+            title: AppStrings.t(AppStringKeys.telegramAiEditorAddEmoji),
             value: _addEmojis,
             onChanged: (value) => setState(() => _addEmojis = value),
           ),
           Divider(height: 1, color: c.divider),
           _aiRow(
             context,
-            title: 'Translate',
+            title: AppStrings.t(AppStringKeys.messageActionTranslate),
             subtitle: _languages[_language],
             trailing: const AppIcon(HeroAppIcons.chevronRight, size: 18),
             onTap: _chooseLanguage,
@@ -414,7 +427,7 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
           Divider(height: 1, color: c.divider),
           _aiRow(
             context,
-            title: 'Writing style',
+            title: AppStrings.t(AppStringKeys.telegramAiEditorWritingStyle),
             subtitle: _style.isEmpty
                 ? 'Keep current style'
                 : styles
@@ -430,7 +443,9 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
             _aiRow(
               context,
               leading: const AppIcon(HeroAppIcons.wandMagicSparkles, size: 20),
-              title: 'Manage custom styles',
+              title: AppStrings.t(
+                AppStringKeys.telegramAiEditorManageCustomStyles,
+              ),
               trailing: const AppIcon(HeroAppIcons.chevronRight, size: 18),
               onTap: () => Navigator.of(context).push<void>(
                 MaterialPageRoute(
@@ -447,7 +462,7 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
   Future<void> _chooseLanguage() async {
     final value = await _aiChoiceSheet<String>(
       context,
-      title: 'Translate',
+      title: AppStrings.t(AppStringKeys.messageActionTranslate),
       choices: [
         for (final entry in _languages.entries) (entry.key, entry.value, null),
       ],
@@ -459,7 +474,7 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
   Future<void> _chooseStyle(List<TelegramAiStyle> styles) async {
     final value = await _aiChoiceSheet<String>(
       context,
-      title: 'Writing style',
+      title: AppStrings.t(AppStringKeys.telegramAiEditorWritingStyle),
       choices: [
         ('', 'Keep current style', null),
         for (final style in styles)
@@ -532,21 +547,29 @@ class _TelegramAiStylesViewState extends State<TelegramAiStylesView> {
                       TextField(
                         controller: title,
                         autofocus: true,
-                        decoration: const InputDecoration(labelText: 'Title'),
+                        decoration: InputDecoration(
+                          labelText: AppStrings.t(
+                            AppStringKeys.businessSettingsStartPageTitle,
+                          ),
+                        ),
                       ),
                       const SizedBox(height: 10),
                       TextField(
                         controller: prompt,
                         minLines: 3,
                         maxLines: 8,
-                        decoration: const InputDecoration(
-                          labelText: 'Style prompt',
+                        decoration: InputDecoration(
+                          labelText: AppStrings.t(
+                            AppStringKeys.telegramAiEditorStylePrompt,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 8),
                       _aiToggleRow(
                         context,
-                        title: 'Show me as creator',
+                        title: AppStrings.t(
+                          AppStringKeys.telegramAiEditorShowMeAsCreator,
+                        ),
                         value: showCreator,
                         onChanged: (value) =>
                             setSheetState(() => showCreator = value),
@@ -557,13 +580,15 @@ class _TelegramAiStylesViewState extends State<TelegramAiStylesView> {
                         children: [
                           _aiTapLabel(
                             context,
-                            label: 'Cancel',
+                            label: AppStrings.t(AppStringKeys.confirmCancel),
                             onTap: () => Navigator.of(sheetContext).pop(),
                           ),
                           const SizedBox(width: 6),
                           _aiTapLabel(
                             context,
-                            label: 'Save',
+                            label: AppStrings.t(
+                              AppStringKeys.accentColorPickerSave,
+                            ),
                             onTap: () => Navigator.of(sheetContext).pop((
                               title.text.trim(),
                               prompt.text.trim(),
@@ -619,7 +644,9 @@ class _TelegramAiStylesViewState extends State<TelegramAiStylesView> {
   Future<void> _delete(TelegramAiStyle style) async {
     final confirmed = await _aiChoiceSheet<bool>(
       context,
-      title: 'Delete “${style.title}”?',
+      title: AppStrings.t(AppStringKeys.passkeysDeleteMessage, {
+        'value1': style.title,
+      }),
       choices: const [
         (false, 'Keep style', null),
         (true, 'Delete style', 'This cannot be undone.'),
@@ -654,11 +681,11 @@ class _TelegramAiStylesViewState extends State<TelegramAiStylesView> {
       body: Column(
         children: [
           NavHeader(
-            title: 'AI Writing Styles',
+            title: AppStrings.t(AppStringKeys.telegramAiEditorAIWritingStyles),
             onBack: () => Navigator.of(context).pop(),
             trailing: _aiTapLabel(
               context,
-              label: 'Create',
+              label: AppStrings.t(AppStringKeys.chatInfoCreate),
               onTap: _working ? null : _createOrEdit,
             ),
           ),
@@ -669,15 +696,17 @@ class _TelegramAiStylesViewState extends State<TelegramAiStylesView> {
                 Expanded(
                   child: TextField(
                     controller: _search,
-                    decoration: const InputDecoration(
-                      hintText: 'Paste a style name from a link',
+                    decoration: InputDecoration(
+                      hintText: AppStrings.t(
+                        AppStringKeys.telegramAiEditorPasteAStyleNameFromALink,
+                      ),
                     ),
                   ),
                 ),
                 const SizedBox(width: 8),
                 _aiTapLabel(
                   context,
-                  label: 'Add',
+                  label: AppStrings.t(AppStringKeys.imageEditAdd),
                   onTap: _working ? null : _install,
                 ),
               ],
@@ -691,7 +720,10 @@ class _TelegramAiStylesViewState extends State<TelegramAiStylesView> {
                 if (styles.isEmpty) {
                   return Center(
                     child: Text(
-                      'No AI writing styles are currently available.',
+                      AppStrings.t(
+                        AppStringKeys
+                            .telegramAiEditorNoAIWritingStylesAreCurrentlyAvailable,
+                      ),
                       style: TextStyle(color: c.textSecondary),
                     ),
                   );

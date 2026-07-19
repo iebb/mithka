@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
 import '../components/ui_components.dart';
@@ -82,7 +83,7 @@ class _StoryAreaEditorViewState extends State<StoryAreaEditorView> {
       child: Column(
         children: [
           NavHeader(
-            title: 'Arrange story areas',
+            title: AppStrings.t(AppStringKeys.storyAreaEditorArrangeStoryAreas),
             onBack: () => Navigator.of(context).pop(),
             trailing: GestureDetector(
               behavior: HitTestBehavior.opaque,
@@ -90,7 +91,7 @@ class _StoryAreaEditorViewState extends State<StoryAreaEditorView> {
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
                 child: Text(
-                  'Done',
+                  AppStrings.t(AppStringKeys.addMembersDone),
                   style: TextStyle(
                     color: AppTheme.brand,
                     fontSize: 16,
@@ -146,7 +147,9 @@ class _StoryAreaEditorViewState extends State<StoryAreaEditorView> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'Drag to move. Pinch to resize. Twist to rotate.',
+                  AppStrings.t(
+                    AppStringKeys.storyAreaEditorDragToMovePinchToResizeTwistTo,
+                  ),
                   style: TextStyle(color: c.textSecondary, fontSize: 13),
                 ),
                 const SizedBox(height: 9),

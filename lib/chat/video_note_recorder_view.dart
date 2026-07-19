@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
 import '../components/ui_components.dart';
@@ -288,7 +289,7 @@ class _VideoNoteRecorderViewState extends State<VideoNoteRecorderView>
               top: 8,
               child: _roundButton(
                 icon: HeroAppIcons.xmark,
-                label: 'Close camera',
+                label: AppStrings.t(AppStringKeys.videoNoteRecorderCloseCamera),
                 onTap: _recording
                     ? () => unawaited(_cancelRecording())
                     : () => Navigator.of(context).pop(),
@@ -334,7 +335,7 @@ class _VideoNoteRecorderViewState extends State<VideoNoteRecorderView>
         children: [
           _roundButton(
             icon: HeroAppIcons.trash,
-            label: 'Cancel recording',
+            label: AppStrings.t(AppStringKeys.videoNoteRecorderCancelRecording),
             onTap: () => unawaited(_cancelRecording()),
           ),
           _roundButton(
@@ -383,7 +384,7 @@ class _VideoNoteRecorderViewState extends State<VideoNoteRecorderView>
         ),
         _roundButton(
           icon: HeroAppIcons.arrowsRotate,
-          label: 'Switch camera',
+          label: AppStrings.t(AppStringKeys.videoNoteRecorderSwitchCamera),
           onTap: _cameras.length > 1 ? () => unawaited(_switchCamera()) : null,
         ),
       ],

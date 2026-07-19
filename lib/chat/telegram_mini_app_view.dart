@@ -327,8 +327,14 @@ Future<bool> _ensureAttachmentMenuBot(
     final name = bot.str('name')?.trim();
     final accepted = await showAppConfirmDialog(
       context,
-      title:
-          '${name == null || name.isEmpty ? 'This Mini App' : name} is provided by a third-party bot. Add it to the attachment menu?',
+      title: AppStrings.t(
+        AppStringKeys.telegramMiniAppThirdPartyAttachmentPrompt,
+        {
+          'value1': name == null || name.isEmpty
+              ? AppStrings.t(AppStringKeys.telegramMiniAppThisMiniApp)
+              : name,
+        },
+      ),
       confirmText: AppStringKeys.chatInfoCreate,
     );
     if (!accepted) return false;
@@ -1083,8 +1089,11 @@ class _TelegramMiniAppViewState extends State<TelegramMiniAppView>
       if (!allowed && mounted) {
         allowed = await showAppConfirmDialog(
           context,
-          title:
-              '${widget.launch.title} wants permission to manage your emoji status.',
+          title: AppStrings.t(
+            AppStringKeys
+                .telegramMiniAppValue1WantsPermissionToManageYourEmojiStatus,
+            {'value1': widget.launch.title},
+          ),
           confirmText: AppStringKeys.confirmContinue,
         );
         if (allowed) {
@@ -1220,7 +1229,10 @@ class _TelegramMiniAppViewState extends State<TelegramMiniAppView>
       }
       final accepted = await showAppConfirmDialog(
         context,
-        title: '${widget.launch.title} wants to download “$fileName”.',
+        title: AppStrings.t(
+          AppStringKeys.telegramMiniAppValue1WantsToDownloadValue2,
+          {'value1': widget.launch.title, 'value2': fileName},
+        ),
         confirmText: AppStringKeys.confirmContinue,
       );
       if (!accepted) {
@@ -1229,7 +1241,14 @@ class _TelegramMiniAppViewState extends State<TelegramMiniAppView>
       }
       await _emitEvent('file_download_requested', {'status': 'downloading'});
       final file = await _platform.download(fileName: fileName, url: url);
-      if (mounted) showToast(context, 'Downloaded to ${file.path}');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(AppStringKeys.telegramMiniAppDownloadedToValue1, {
+            'value1': file.path,
+          }),
+        );
+      }
     } catch (_) {
       await _emitEvent('file_download_requested', {'status': 'cancelled'});
     } finally {
@@ -1399,7 +1418,10 @@ class _TelegramMiniAppViewState extends State<TelegramMiniAppView>
     if (!mounted) return;
     final granted = await showAppConfirmDialog(
       context,
-      title: 'Allow ${widget.launch.title} to use biometrics?',
+      title: AppStrings.t(
+        AppStringKeys.telegramMiniAppAllowValue1ToUseBiometrics,
+        {'value1': widget.launch.title},
+      ),
       confirmText: AppStringKeys.confirmContinue,
     );
     await _biometry.setAccess(granted: granted);
@@ -1468,7 +1490,10 @@ class _TelegramMiniAppViewState extends State<TelegramMiniAppView>
     if (!allowed && mounted) {
       allowed = await showAppConfirmDialog(
         context,
-        title: '${widget.launch.title} wants permission to send you messages.',
+        title: AppStrings.t(
+          AppStringKeys.telegramMiniAppValue1WantsPermissionToSendYouMessages,
+          {'value1': widget.launch.title},
+        ),
         confirmText: AppStringKeys.confirmContinue,
       );
       if (allowed) {
@@ -1489,7 +1514,10 @@ class _TelegramMiniAppViewState extends State<TelegramMiniAppView>
     if (mounted) {
       final accepted = await showAppConfirmDialog(
         context,
-        title: '${widget.launch.title} wants your phone number.',
+        title: AppStrings.t(
+          AppStringKeys.telegramMiniAppValue1WantsYourPhoneNumber,
+          {'value1': widget.launch.title},
+        ),
         confirmText: AppStringKeys.confirmContinue,
       );
       if (accepted) {
@@ -1665,7 +1693,9 @@ class _TelegramMiniAppViewState extends State<TelegramMiniAppView>
     if (_needClosingConfirmation && mounted) {
       final close = await showAppConfirmDialog(
         context,
-        title: 'Changes that you made may not be saved.',
+        title: AppStrings.t(
+          AppStringKeys.telegramMiniAppChangesThatYouMadeMayNotBeSaved,
+        ),
         confirmText: AppStringKeys.miniAppClose,
       );
       if (!close) return;
@@ -2004,7 +2034,9 @@ class _MiniAppToolbar extends StatelessWidget {
             ),
             if (onSettings != null)
               _MiniAppToolbarAction(
-                label: 'Mini App settings',
+                label: AppStrings.t(
+                  AppStringKeys.telegramMiniAppMiniAppSettings,
+                ),
                 icon: HeroAppIcons.gear,
                 onPressed: onSettings!,
               ),

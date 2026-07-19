@@ -983,13 +983,13 @@ class _StoryViewerViewState extends State<StoryViewerView>
               if (_current?.canBeForwarded ?? false)
                 _storyMenuRow(
                   context,
-                  value: 'share',
+                  value: AppStrings.t(AppStringKeys.storyViewerShare),
                   icon: HeroAppIcons.share,
                   label: AppStringKeys.storyShare,
                 ),
               _storyMenuRow(
                 context,
-                value: 'mute',
+                value: AppStrings.t(AppStringKeys.storyViewerMute),
                 icon: _storyMuted ? HeroAppIcons.bell : HeroAppIcons.bellSlash,
                 label: _storyMuted
                     ? 'Enable story notifications'
@@ -997,7 +997,7 @@ class _StoryViewerViewState extends State<StoryViewerView>
               ),
               _storyMenuRow(
                 context,
-                value: 'stealth',
+                value: AppStrings.t(AppStringKeys.storyViewerStealth),
                 icon: HeroAppIcons.eyeSlash,
                 label:
                     _stealthActiveUntil >
@@ -1009,13 +1009,15 @@ class _StoryViewerViewState extends State<StoryViewerView>
                   (_current?.viewCount ?? 0) > 0)
                 _storyMenuRow(
                   context,
-                  value: 'viewers',
+                  value: AppStrings.t(AppStringKeys.storyViewerViewers),
                   icon: HeroAppIcons.users,
-                  label: 'Viewers and interactions',
+                  label: AppStrings.t(
+                    AppStringKeys.storyViewerViewersAndInteractions,
+                  ),
                 ),
               _storyMenuRow(
                 context,
-                value: 'report',
+                value: AppStrings.t(AppStringKeys.storyViewerReport),
                 icon: HeroAppIcons.triangleExclamation,
                 label: AppStringKeys.storyReport,
                 destructive: true,
@@ -1052,14 +1054,26 @@ class _StoryViewerViewState extends State<StoryViewerView>
       });
       if (mounted) setState(() => _storyMuted = !_storyMuted);
     } catch (_) {
-      if (mounted) showToast(context, 'Unable to update story notifications');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.storyViewerUnableToUpdateStoryNotifications,
+          ),
+        );
+      }
     }
   }
 
   Future<void> _activateStealthMode() async {
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     if (_stealthActiveUntil > now) {
-      if (mounted) showToast(context, 'Stealth mode is already active');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(AppStringKeys.storyViewerStealthModeIsAlreadyActive),
+        );
+      }
       return;
     }
     try {
@@ -1074,10 +1088,18 @@ class _StoryViewerViewState extends State<StoryViewerView>
       } catch (_) {}
       if (!mounted) return;
       setState(() => _stealthActiveUntil = now + seconds);
-      showToast(context, 'Stealth mode activated');
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.storyViewerStealthModeActivated),
+      );
     } catch (_) {
       if (mounted) {
-        showToast(context, 'Stealth mode requires Telegram Premium');
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.storyViewerStealthModeRequiresTelegramPremium,
+          ),
+        );
       }
     }
   }
@@ -1146,7 +1168,15 @@ class _StoryViewerViewState extends State<StoryViewerView>
                 Padding(
                   padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
                   child: Text(
-                    '${story.viewCount} views · ${story.reactionCount} reactions · ${story.forwardCount} forwards',
+                    AppStrings.t(
+                      AppStringKeys
+                          .storyViewerValue1ViewsValue2ReactionsValue3Forwards,
+                      {
+                        'value1': story.viewCount,
+                        'value2': story.reactionCount,
+                        'value3': story.forwardCount,
+                      },
+                    ),
                     style: TextStyle(
                       color: colors.textPrimary,
                       fontSize: 15,
@@ -1160,7 +1190,10 @@ class _StoryViewerViewState extends State<StoryViewerView>
                       ? Padding(
                           padding: const EdgeInsets.all(30),
                           child: Text(
-                            'No viewer identities are available',
+                            AppStrings.t(
+                              AppStringKeys
+                                  .storyViewerNoViewerIdentitiesAreAvailable,
+                            ),
                             style: TextStyle(color: colors.textSecondary),
                           ),
                         )
@@ -1193,7 +1226,9 @@ class _StoryViewerViewState extends State<StoryViewerView>
                                       ),
                                     ),
                                     Text(
-                                      'Viewed',
+                                      AppStrings.t(
+                                        AppStringKeys.storyViewerViewed,
+                                      ),
                                       style: TextStyle(
                                         color: colors.textSecondary,
                                         fontSize: 12,

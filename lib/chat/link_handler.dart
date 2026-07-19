@@ -1047,7 +1047,7 @@ Future<void> _openChatBoost(
         trailing: Builder(
           builder: (context) => Semantics(
             button: true,
-            label: 'Open chat',
+            label: AppStrings.t(AppStringKeys.linkHandlerOpenChat),
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: () {
@@ -1062,9 +1062,9 @@ Future<void> _openChatBoost(
                   color: AppTheme.brand,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Text(
-                  'Open chat',
-                  style: TextStyle(
+                child: Text(
+                  AppStrings.t(AppStringKeys.linkHandlerOpenChat),
+                  style: const TextStyle(
                     color: Color(0xFFFFFFFF),
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
@@ -1118,8 +1118,8 @@ Future<void> _processOauthLink(
   if (info.boolean('match_code_first') == true) {
     final value = await nav.push<String>(
       MaterialPageRoute(
-        builder: (_) => const EditFieldView(
-          title: 'Authorization code',
+        builder: (_) => EditFieldView(
+          title: AppStrings.t(AppStringKeys.linkHandlerAuthorizationCode),
           initial: '',
           hint: 'Enter the matching code',
           maxLength: 64,
@@ -1142,17 +1142,23 @@ Future<void> _processOauthLink(
   final location = info.str('location') ?? '';
   final asksWrite = info.boolean('request_write_access') ?? false;
   final asksPhone = info.boolean('request_phone_number_access') ?? false;
-  final permissions = [
-    if (asksWrite) 'send messages',
-    if (asksPhone) 'access your phone number',
-  ];
+  final additionalPermission = asksWrite && asksPhone
+      ? AppStrings.t(AppStringKeys.linkHandlerAlsoSendMessagesAndAccessPhone)
+      : asksWrite
+      ? AppStrings.t(AppStringKeys.linkHandlerAlsoSendMessages)
+      : asksPhone
+      ? AppStrings.t(AppStringKeys.linkHandlerAlsoAccessPhone)
+      : '';
   final accepted = await showAppConfirmDialog(
     context,
-    title: 'Authorize ${domain.isEmpty ? 'Telegram login' : domain}?',
+    title: AppStrings.t(AppStringKeys.linkHandlerAuthorizeDomain, {
+      'value1': domain.isEmpty
+          ? AppStrings.t(AppStringKeys.linkHandlerTelegramLogin)
+          : domain,
+    }),
     message: [
       if (location.isNotEmpty) location,
-      if (permissions.isNotEmpty)
-        'This request also asks to ${permissions.join(' and ')}.',
+      if (additionalPermission.isNotEmpty) additionalPermission,
     ].join('\n'),
     confirmText: AppStrings.t(AppStringKeys.confirmContinue),
   );
@@ -1189,7 +1195,7 @@ Future<void> _openPassportRequest(
   await nav.push(
     MaterialPageRoute<void>(
       builder: (_) => TelegramLinkDetailsView(
-        title: 'Telegram Passport request',
+        title: AppStrings.t(AppStringKeys.linkHandlerTelegramPassportRequest),
         icon: HeroAppIcons.idBadge,
         subtitle:
             'Review the requested identity data. Mithka will not share any '
@@ -1217,7 +1223,7 @@ Future<void> _confirmPhoneOwnership(
   if (phone.isEmpty || hash.isEmpty) return;
   final accepted = await showAppConfirmDialog(
     context,
-    title: 'Confirm phone ownership',
+    title: AppStrings.t(AppStringKeys.linkHandlerConfirmPhoneOwnership),
     message: phone,
     confirmText: AppStrings.t(AppStringKeys.confirmContinue),
   );
@@ -1271,7 +1277,7 @@ Future<void> _createManagedBotFromLink(
   final name = suggestedName.isEmpty ? username : suggestedName;
   final accepted = await showAppConfirmDialog(
     context,
-    title: 'Create managed bot?',
+    title: AppStrings.t(AppStringKeys.linkHandlerCreateManagedBot),
     message: '$name (@$username) will be managed by @$managerUsername.',
     confirmText: AppStrings.t(AppStringKeys.confirmContinue),
   );
@@ -1433,8 +1439,8 @@ Future<void> _openPremiumGiftPurchase(
 ) async {
   final picked = await nav.push<ChatSummary>(
     MaterialPageRoute(
-      builder: (_) => const ChatPickerView(
-        title: 'Choose a Premium recipient',
+      builder: (_) => ChatPickerView(
+        title: AppStrings.t(AppStringKeys.linkHandlerChooseAPremiumRecipient),
         allowedKinds: {ChatKind.privateChat},
       ),
     ),
@@ -1447,7 +1453,12 @@ Future<void> _openPremiumGiftPurchase(
   });
   if (user.obj('type')?.type != 'userTypeRegular') {
     if (context.mounted) {
-      showToast(context, 'Premium gifts can be sent only to people.');
+      showToast(
+        context,
+        AppStrings.t(
+          AppStringKeys.linkHandlerPremiumGiftsCanBeSentOnlyToPeople,
+        ),
+      );
     }
     return;
   }
@@ -1471,7 +1482,7 @@ Future<void> _openPremiumGiftPurchase(
   final product = await nav.push<TelegramStoreProduct>(
     MaterialPageRoute(
       builder: (_) => TelegramStoreProductPickerView(
-        title: 'Gift Telegram Premium',
+        title: AppStrings.t(AppStringKeys.linkHandlerGiftTelegramPremium),
         subtitle:
             'Choose a subscription for ${TDParse.userName(user)}. The purchase is completed by the App Store and assigned to this Telegram account.',
         products: products,
@@ -1484,7 +1495,7 @@ Future<void> _openPremiumGiftPurchase(
     if (nav.mounted) {
       await _showStoreDependency(
         nav,
-        title: 'Premium gift unavailable',
+        title: AppStrings.t(AppStringKeys.linkHandlerPremiumGiftUnavailable),
         operation: 'Premium gift purchase',
       );
     }
@@ -1499,7 +1510,7 @@ Future<void> _openPremiumGiftPurchase(
     nav,
     service: service,
     purpose: storePurpose,
-    title: 'Premium gift unavailable',
+    title: AppStrings.t(AppStringKeys.linkHandlerPremiumGiftUnavailable),
     operation: 'Premium gift purchase',
   )) {
     return;
@@ -1507,17 +1518,17 @@ Future<void> _openPremiumGiftPurchase(
   if (!context.mounted) return;
   final confirmed = await showAppConfirmDialog(
     context,
-    title: 'Confirm Premium gift',
+    title: AppStrings.t(AppStringKeys.linkHandlerConfirmPremiumGift),
     message:
         '${product.label} will be assigned to ${TDParse.userName(user)} after the App Store verifies the purchase.',
-    confirmText: 'Continue',
+    confirmText: AppStrings.t(AppStringKeys.confirmContinue),
   );
   if (!confirmed || !nav.mounted) return;
   await nav.push<bool>(
     MaterialPageRoute(
       fullscreenDialog: true,
       builder: (_) => TelegramStorePurchaseProgressView(
-        title: 'Premium gift',
+        title: AppStrings.t(AppStringKeys.linkHandlerPremiumGift),
         subtitle: product.label,
         purchase: () => service.purchaseAndAssign(
           productId: product.productId,
@@ -1537,7 +1548,7 @@ Future<void> _restoreStorePurchases(
     if (nav.mounted) {
       await _showStoreDependency(
         nav,
-        title: 'Restore unavailable',
+        title: AppStrings.t(AppStringKeys.linkHandlerRestoreUnavailable),
         operation: 'App Store purchase restore',
       );
     }
@@ -1550,7 +1561,7 @@ Future<void> _restoreStorePurchases(
     nav,
     service: service,
     purpose: storePurpose,
-    title: 'Restore unavailable',
+    title: AppStrings.t(AppStringKeys.linkHandlerRestoreUnavailable),
     operation: 'App Store purchase restore',
   )) {
     return;
@@ -1558,17 +1569,17 @@ Future<void> _restoreStorePurchases(
   if (!context.mounted) return;
   final confirmed = await showAppConfirmDialog(
     context,
-    title: 'Restore App Store purchases?',
+    title: AppStrings.t(AppStringKeys.linkHandlerRestoreAppStorePurchases),
     message:
         'The App Store will refresh this app’s receipt. Telegram will verify the receipt and restore eligible Premium purchases.',
-    confirmText: 'Restore',
+    confirmText: AppStrings.t(AppStringKeys.accountBackupRestore),
   );
   if (!confirmed || !nav.mounted) return;
   await nav.push<bool>(
     MaterialPageRoute(
       fullscreenDialog: true,
       builder: (_) => TelegramStorePurchaseProgressView(
-        title: 'Restore purchases',
+        title: AppStrings.t(AppStringKeys.mithkaProRestore),
         subtitle: 'Telegram Premium',
         purchase: service.restorePremiumPurchases,
       ),
@@ -1595,14 +1606,16 @@ Future<void> _openStarPurchase(
           currency: option.str('currency') ?? '',
           amount: option.int64('amount') ?? 0,
           starCount: option.int64('star_count') ?? 0,
-          label: '${option.int64('star_count') ?? 0} Telegram Stars',
+          label: AppStrings.t(AppStringKeys.linkHandlerTelegramStarsCount, {
+            'value1': option.int64('star_count') ?? 0,
+          }),
         ),
   ]..sort((a, b) => a.starCount.compareTo(b.starCount));
   if (!nav.mounted) return;
   final product = await nav.push<TelegramStoreProduct>(
     MaterialPageRoute(
       builder: (_) => TelegramStoreProductPickerView(
-        title: 'Buy Telegram Stars',
+        title: AppStrings.t(AppStringKeys.linkHandlerBuyTelegramStars),
         subtitle: requested > 0
             ? 'Choose a package containing at least $requested Stars${purposeLabel.isEmpty ? '.' : ' for $purposeLabel.'}'
             : 'Choose a Telegram Stars package to purchase through the App Store.',
@@ -1617,7 +1630,7 @@ Future<void> _openStarPurchase(
     if (nav.mounted) {
       await _showStoreDependency(
         nav,
-        title: 'Stars purchase unavailable',
+        title: AppStrings.t(AppStringKeys.linkHandlerStarsPurchaseUnavailable),
         operation: 'Telegram Stars purchase',
       );
     }
@@ -1632,7 +1645,7 @@ Future<void> _openStarPurchase(
     nav,
     service: service,
     purpose: storePurpose,
-    title: 'Stars purchase unavailable',
+    title: AppStrings.t(AppStringKeys.linkHandlerStarsPurchaseUnavailable),
     operation: 'Telegram Stars purchase',
   )) {
     return;
@@ -1640,17 +1653,17 @@ Future<void> _openStarPurchase(
   if (!context.mounted) return;
   final confirmed = await showAppConfirmDialog(
     context,
-    title: 'Confirm Stars purchase',
+    title: AppStrings.t(AppStringKeys.linkHandlerConfirmStarsPurchase),
     message:
         '${product.starCount} Stars will be credited after the App Store verifies the purchase.',
-    confirmText: 'Continue',
+    confirmText: AppStrings.t(AppStringKeys.confirmContinue),
   );
   if (!confirmed || !nav.mounted) return;
   await nav.push<bool>(
     MaterialPageRoute(
       fullscreenDialog: true,
       builder: (_) => TelegramStorePurchaseProgressView(
-        title: 'Buy Telegram Stars',
+        title: AppStrings.t(AppStringKeys.linkHandlerBuyTelegramStars),
         subtitle: '${product.starCount} Stars',
         purchase: () => service.purchaseAndAssign(
           productId: product.productId,
@@ -1767,7 +1780,7 @@ Future<void> _openUnboundGroupCall(
           trailing: Builder(
             builder: (pageContext) => Semantics(
               button: true,
-              label: 'Join call',
+              label: AppStrings.t(AppStringKeys.linkHandlerJoinCall),
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () async {
@@ -1791,9 +1804,9 @@ Future<void> _openUnboundGroupCall(
                     color: AppTheme.brand,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Text(
-                    'Join call',
-                    style: TextStyle(
+                  child: Text(
+                    AppStrings.t(AppStringKeys.linkHandlerJoinCall),
+                    style: const TextStyle(
                       color: Color(0xFFFFFFFF),
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
@@ -1919,7 +1932,7 @@ Future<void> _openGiftAuction(NavigatorState nav, String auctionId) async {
   await nav.push(
     MaterialPageRoute<void>(
       builder: (_) => TelegramLinkDetailsView(
-        title: 'Gift auction',
+        title: AppStrings.t(AppStringKeys.linkHandlerGiftAuction),
         icon: HeroAppIcons.solidStar,
         subtitle: auctionId,
         details: [
@@ -1950,7 +1963,7 @@ Future<void> _openPremiumFeatures(NavigatorState nav, String referrer) async {
   await nav.push(
     MaterialPageRoute<void>(
       builder: (_) => TelegramLinkDetailsView(
-        title: 'Telegram Premium',
+        title: AppStrings.t(AppStringKeys.linkHandlerTelegramPremium),
         icon: HeroAppIcons.solidStar,
         subtitle: 'Features available for this account',
         details: [
@@ -1978,7 +1991,7 @@ Future<void> _applyPremiumGiftCode(BuildContext context, String code) async {
   final days = info.integer('day_count') ?? 0;
   final accepted = await showAppConfirmDialog(
     context,
-    title: 'Telegram Premium gift',
+    title: AppStrings.t(AppStringKeys.linkHandlerTelegramPremiumGift),
     message: months > 0
         ? '$months month${months == 1 ? '' : 's'}'
         : '$days day${days == 1 ? '' : 's'}',

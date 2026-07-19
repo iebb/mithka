@@ -296,11 +296,16 @@ class _PollComposerViewState extends State<PollComposerView> {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                   child: Text(
-                    '${_quiz
-                        ? 'Quiz'
-                        : _multiple
-                        ? 'Multiple answers'
-                        : 'Single choice'} · Up to $_maxOptions options',
+                    AppStrings.t(AppStringKeys.pollComposerModeAndOptionLimit, {
+                      'value1': AppStrings.t(
+                        _quiz
+                            ? AppStringKeys.pollComposerQuiz
+                            : _multiple
+                            ? AppStringKeys.pollComposerMultipleAnswers
+                            : AppStringKeys.pollComposerSingleChoice,
+                      ),
+                      'value2': _maxOptions,
+                    }),
                     style: TextStyle(fontSize: 13, color: c.textSecondary),
                   ),
                 ),
@@ -583,7 +588,7 @@ class _PollComposerViewState extends State<PollComposerView> {
         children: [
           Expanded(
             child: Text(
-              'Close poll automatically',
+              AppStrings.t(AppStringKeys.pollComposerClosePollAutomatically),
               style: TextStyle(fontSize: 15, color: c.textPrimary),
             ),
           ),
@@ -654,7 +659,9 @@ class _PollComposerViewState extends State<PollComposerView> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(8, 2, 8, 10),
                     child: Text(
-                      'Close poll automatically',
+                      AppStrings.t(
+                        AppStringKeys.pollComposerClosePollAutomatically,
+                      ),
                       style: TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.w700,

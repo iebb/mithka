@@ -175,7 +175,9 @@ class _ChecklistComposerViewState extends State<ChecklistComposerView> {
                 const SizedBox(height: 14),
                 _card([
                   _permissionRow(
-                    title: 'Allow others to add tasks',
+                    title: AppStrings.t(
+                      AppStringKeys.checklistComposerAllowOthersToAddTasks,
+                    ),
                     subtitle:
                         'Members can append new tasks after the checklist is sent.',
                     value: _othersCanAddTasks,
@@ -184,7 +186,9 @@ class _ChecklistComposerViewState extends State<ChecklistComposerView> {
                   ),
                   const InsetDivider(leadingInset: 16),
                   _permissionRow(
-                    title: 'Allow others to mark tasks',
+                    title: AppStrings.t(
+                      AppStringKeys.checklistComposerAllowOthersToMarkTasks,
+                    ),
                     subtitle:
                         'Members can complete tasks or mark them as not done.',
                     value: _othersCanMarkTasksAsDone,

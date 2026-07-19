@@ -327,7 +327,11 @@ class _MessageBubbleState extends State<MessageBubble>
             ),
             Transform.translate(
               offset: Offset(_swipeX, 0),
-              child: _row(widget.meId != null ? message.senderId == widget.meId : message.isOutgoing),
+              child: _row(
+                widget.meId != null
+                    ? message.senderId == widget.meId
+                    : message.isOutgoing,
+              ),
             ),
           ],
         );
@@ -1297,7 +1301,7 @@ class _MessageBubbleState extends State<MessageBubble>
                     ),
                     const SizedBox(width: 6),
                     Text(
-                      'Summarize',
+                      AppStrings.t(AppStringKeys.messageBubbleSummarize),
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
@@ -2256,7 +2260,9 @@ class _MessageBubbleState extends State<MessageBubble>
                 AppActivityIndicator(size: 13, color: secondary),
                 const SizedBox(width: 8),
                 Text(
-                  'Summarizing privately with Telegram…',
+                  AppStrings.t(
+                    AppStringKeys.messageBubbleSummarizingPrivatelyWithTelegram,
+                  ),
                   style: TextStyle(fontSize: 13, color: secondary),
                 ),
               ],
@@ -2275,7 +2281,7 @@ class _MessageBubbleState extends State<MessageBubble>
                     ),
                     const SizedBox(width: 5),
                     Text(
-                      'AI Summary',
+                      AppStrings.t(AppStringKeys.messageBubbleAISummary),
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,

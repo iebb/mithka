@@ -76,7 +76,13 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
     } catch (error) {
       if (!mounted || generation != _generation) return;
       setState(() => _loading = false);
-      showToast(context, 'Couldn’t load chat folders: $error');
+      showToast(
+        context,
+        AppStrings.t(
+          AppStringKeys.chatFolderManagementCouldnTLoadChatFoldersValue1,
+          {'value1': error},
+        ),
+      );
     }
   }
 
@@ -101,7 +107,15 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
       await _service.create(result);
       await _refresh();
     } catch (error) {
-      if (mounted) showToast(context, 'Couldn’t create folder: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.chatFolderManagementCouldnTCreateFolderValue1,
+            {'value1': error},
+          ),
+        );
+      }
     }
   }
 
@@ -121,14 +135,24 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
       await _service.edit(folder.id, result);
       await _refresh();
     } catch (error) {
-      if (mounted) showToast(context, 'Couldn’t update folder: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.chatFolderManagementCouldnTUpdateFolderValue1,
+            {'value1': error},
+          ),
+        );
+      }
     }
   }
 
   Future<void> _delete(ChatFolderRecord folder) async {
     final confirmed = await showAppConfirmDialog(
       context,
-      title: 'Delete “${folder.title}”?',
+      title: AppStrings.t(AppStringKeys.passkeysDeleteMessage, {
+        'value1': folder.title,
+      }),
       confirmText: AppStringKeys.chatInfoRemove,
     );
     if (!confirmed) return;
@@ -139,10 +163,16 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
         if (suggested.isNotEmpty && mounted) {
           final leave = await showAppConfirmDialog(
             context,
-            title:
-                'Also leave ${suggested.length} chat${suggested.length == 1 ? '' : 's'} from this shared folder?',
+            title: AppStrings.t(
+              suggested.length == 1
+                  ? AppStringKeys.chatFolderManagementAlsoLeaveOneChat
+                  : AppStringKeys.chatFolderManagementAlsoLeaveChats,
+              {'value1': suggested.length},
+            ),
             confirmText: AppStringKeys.chatInfoLeaveGroup,
-            cancelText: 'Keep chats',
+            cancelText: AppStrings.t(
+              AppStringKeys.chatFolderManagementKeepChats,
+            ),
           );
           if (leave) leaveChatIds = suggested;
         }
@@ -152,7 +182,15 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
       await _service.delete(folder.id, leaveChatIds: leaveChatIds);
       await _refresh();
     } catch (error) {
-      if (mounted) showToast(context, 'Couldn’t delete folder: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.chatFolderManagementCouldnTDeleteFolderValue1,
+            {'value1': error},
+          ),
+        );
+      }
     }
   }
 
@@ -178,7 +216,13 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
         _folders = previous;
         _mainListPosition = previousMainPosition;
       });
-      showToast(context, 'Couldn’t reorder folders: $error');
+      showToast(
+        context,
+        AppStrings.t(
+          AppStringKeys.chatFolderManagementCouldnTReorderFoldersValue1,
+          {'value1': error},
+        ),
+      );
     }
   }
 
@@ -196,7 +240,13 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _tagsEnabled = previous);
-      showToast(context, 'Couldn’t change folder tags: $error');
+      showToast(
+        context,
+        AppStrings.t(
+          AppStringKeys.chatFolderManagementCouldnTChangeFolderTagsValue1,
+          {'value1': error},
+        ),
+      );
     }
   }
 
@@ -339,7 +389,7 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
           const SizedBox(width: AppSpacing.md),
           Expanded(
             child: Text(
-              'All chats',
+              AppStrings.t(AppStringKeys.chatFolderManagementAllChats),
               style: AppTextStyle.bodyLarge(c.textPrimary),
             ),
           ),
@@ -579,7 +629,12 @@ class _ChatFolderEditorViewState extends State<ChatFolderEditorView> {
   void _save() {
     final title = _title.text.trim();
     if (title.isEmpty || title.characters.length > 12) {
-      showToast(context, 'Folder names must contain 1–12 characters');
+      showToast(
+        context,
+        AppStrings.t(
+          AppStringKeys.chatFolderManagementFolderNamesMustContain112Characters,
+        ),
+      );
       return;
     }
     Navigator.of(context).pop(_draft.copyWith(title: title));
@@ -645,7 +700,13 @@ class _ChatFolderEditorViewState extends State<ChatFolderEditorView> {
 
   void _setColor(int colorId) {
     if (!widget.tagsEnabled && colorId >= 0) {
-      showToast(context, 'Enable folder tags before choosing a folder color');
+      showToast(
+        context,
+        AppStrings.t(
+          AppStringKeys
+              .chatFolderManagementEnableFolderTagsBeforeChoosingAFolderColor,
+        ),
+      );
       return;
     }
     setState(() => _draft = _draft.copyWith(colorId: colorId));
@@ -712,9 +773,11 @@ class _ChatFolderEditorViewState extends State<ChatFolderEditorView> {
                     controller: _title,
                     maxLength: 12,
                     style: AppTextStyle.bodyLarge(c.textPrimary),
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       border: InputBorder.none,
-                      hintText: 'Folder name',
+                      hintText: AppStrings.t(
+                        AppStringKeys.chatInfoFolderNameLabel,
+                      ),
                       counterText: '',
                     ),
                   ),
@@ -1040,7 +1103,13 @@ class _ChatFolderInviteLinksViewState extends State<ChatFolderInviteLinksView> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _loading = false);
-      showToast(context, 'Couldn’t load invite links: $error');
+      showToast(
+        context,
+        AppStrings.t(
+          AppStringKeys.groupAdministrationCouldnTLoadInviteLinksValue1,
+          {'value1': error},
+        ),
+      );
     }
   }
 
@@ -1079,7 +1148,9 @@ class _ChatFolderInviteLinksViewState extends State<ChatFolderInviteLinksView> {
     if (link == null) return;
     final confirmed = await showAppConfirmDialog(
       context,
-      title: 'Delete this invite link?',
+      title: AppStrings.t(
+        AppStringKeys.chatFolderManagementDeleteThisInviteLink,
+      ),
       confirmText: AppStringKeys.chatInfoRemove,
     );
     if (!confirmed) return;
@@ -1090,13 +1161,26 @@ class _ChatFolderInviteLinksViewState extends State<ChatFolderInviteLinksView> {
       );
       await _load();
     } catch (error) {
-      if (mounted) showToast(context, 'Couldn’t delete invite link: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.chatFolderManagementCouldnTDeleteInviteLinkValue1,
+            {'value1': error},
+          ),
+        );
+      }
     }
   }
 
   Future<void> _copy(String link) async {
     await Clipboard.setData(ClipboardData(text: link));
-    if (mounted) showToast(context, 'Invite link copied');
+    if (mounted) {
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.groupAdministrationInviteLinkCopied),
+      );
+    }
   }
 
   @override
@@ -1107,7 +1191,9 @@ class _ChatFolderInviteLinksViewState extends State<ChatFolderInviteLinksView> {
       body: Column(
         children: [
           NavHeader(
-            title: 'Folder invite links',
+            title: AppStrings.t(
+              AppStringKeys.chatFolderManagementFolderInviteLinks,
+            ),
             onBack: () => Navigator.of(context).pop(),
             trailing: GestureDetector(
               behavior: HitTestBehavior.opaque,
@@ -1128,7 +1214,9 @@ class _ChatFolderInviteLinksViewState extends State<ChatFolderInviteLinksView> {
                 : _links.isEmpty
                 ? Center(
                     child: Text(
-                      'No invite links yet',
+                      AppStrings.t(
+                        AppStringKeys.chatFolderManagementNoInviteLinksYet,
+                      ),
                       style: AppTextStyle.body(c.textSecondary),
                     ),
                   )
@@ -1175,7 +1263,10 @@ class _ChatFolderInviteLinksViewState extends State<ChatFolderInviteLinksView> {
                   ),
                   const SizedBox(height: AppSpacing.xs),
                   Text(
-                    '$count chats · tap to copy',
+                    AppStrings.t(
+                      AppStringKeys.chatFolderManagementValue1ChatsTapToCopy,
+                      {'value1': count},
+                    ),
                     style: AppTextStyle.footnote(c.textSecondary),
                   ),
                 ],
@@ -1292,7 +1383,13 @@ class _ChatFolderInviteLinkEditorViewState
     } catch (error) {
       if (!mounted) return;
       setState(() => _loading = false);
-      showToast(context, 'Couldn’t load shareable chats: $error');
+      showToast(
+        context,
+        AppStrings.t(
+          AppStringKeys.chatFolderManagementCouldnTLoadShareableChatsValue1,
+          {'value1': error},
+        ),
+      );
     }
   }
 
@@ -1305,11 +1402,21 @@ class _ChatFolderInviteLinkEditorViewState
   Future<void> _save() async {
     if (_saving) return;
     if (_name.text.characters.length > 32) {
-      showToast(context, 'Invite link names can contain up to 32 characters');
+      showToast(
+        context,
+        AppStrings.t(
+          AppStringKeys.chatFolderManagementInviteLinkNamesCanContainUpTo32,
+        ),
+      );
       return;
     }
     if (_selected.isEmpty) {
-      showToast(context, 'Select at least one group or channel');
+      showToast(
+        context,
+        AppStrings.t(
+          AppStringKeys.chatFolderManagementSelectAtLeastOneGroupOrChannel,
+        ),
+      );
       return;
     }
     setState(() => _saving = true);
@@ -1334,7 +1441,13 @@ class _ChatFolderInviteLinkEditorViewState
     } catch (error) {
       if (!mounted) return;
       setState(() => _saving = false);
-      showToast(context, 'Couldn’t save invite link: $error');
+      showToast(
+        context,
+        AppStrings.t(
+          AppStringKeys.groupAdministrationCouldnTSaveInviteLinkValue1,
+          {'value1': error},
+        ),
+      );
     }
   }
 
@@ -1384,9 +1497,12 @@ class _ChatFolderInviteLinkEditorViewState
                           controller: _name,
                           maxLength: 32,
                           style: AppTextStyle.bodyLarge(c.textPrimary),
-                          decoration: const InputDecoration(
+                          decoration: InputDecoration(
                             border: InputBorder.none,
-                            hintText: 'Optional link name',
+                            hintText: AppStrings.t(
+                              AppStringKeys
+                                  .chatFolderManagementOptionalLinkName,
+                            ),
                             counterText: '',
                           ),
                         ),
@@ -1401,7 +1517,10 @@ class _ChatFolderInviteLinkEditorViewState
                                     vertical: AppSpacing.xl,
                                   ),
                                   child: Text(
-                                    'This folder has no chats that can be shared',
+                                    AppStrings.t(
+                                      AppStringKeys
+                                          .chatFolderManagementThisFolderHasNoChatsThatCanBe,
+                                    ),
                                     textAlign: TextAlign.center,
                                     style: AppTextStyle.body(c.textSecondary),
                                   ),

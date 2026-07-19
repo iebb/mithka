@@ -124,7 +124,9 @@ class _ChannelDirectMessagesViewState extends State<ChannelDirectMessagesView> {
     final loading = _service.loading || _refreshing;
     return Semantics(
       button: true,
-      label: 'Refresh direct messages',
+      label: AppStrings.t(
+        AppStringKeys.channelDirectMessagesRefreshDirectMessages,
+      ),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: loading ? null : () => unawaited(_refreshTopics()),

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 import 'package:video_player/video_player.dart';
 
 import '../components/app_icons.dart';
@@ -133,7 +134,7 @@ class _VideoNotePreviewViewState extends State<VideoNotePreviewView> {
       body: Column(
         children: [
           NavHeader(
-            title: 'Video message',
+            title: AppStrings.t(AppStringKeys.videoNotePreviewVideoMessage),
             onBack: () => Navigator.of(context).pop(),
             trailing: GestureDetector(
               behavior: HitTestBehavior.opaque,
@@ -240,7 +241,7 @@ class _VideoNotePreviewViewState extends State<VideoNotePreviewView> {
                     Row(
                       children: [
                         Text(
-                          'Trim',
+                          AppStrings.t(AppStringKeys.videoNotePreviewTrim),
                           style: TextStyle(
                             color: colors.textPrimary,
                             fontSize: 13,

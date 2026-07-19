@@ -246,7 +246,9 @@ class _StoryCameraViewState extends State<StoryCameraView>
                           top: 14,
                           child: _roundButton(
                             icon: HeroAppIcons.xmark,
-                            label: 'Close camera',
+                            label: AppStrings.t(
+                              AppStringKeys.videoNoteRecorderCloseCamera,
+                            ),
                             onTap: () => Navigator.of(context).pop(),
                           ),
                         ),
@@ -255,7 +257,9 @@ class _StoryCameraViewState extends State<StoryCameraView>
                           top: 14,
                           child: _roundButton(
                             icon: HeroAppIcons.flash,
-                            label: 'Automatic flash',
+                            label: AppStrings.t(
+                              AppStringKeys.storyCameraAutomaticFlash,
+                            ),
                             active: _flashEnabled,
                             onTap: _toggleFlash,
                           ),
@@ -299,7 +303,7 @@ class _StoryCameraViewState extends State<StoryCameraView>
                 children: [
                   _roundButton(
                     icon: HeroAppIcons.images,
-                    label: 'Open gallery',
+                    label: AppStrings.t(AppStringKeys.storyCameraOpenGallery),
                     onTap: () => Navigator.of(
                       context,
                     ).pop(const StoryCameraResult.gallery()),
@@ -335,7 +339,9 @@ class _StoryCameraViewState extends State<StoryCameraView>
                   ),
                   _roundButton(
                     icon: HeroAppIcons.arrowsRotate,
-                    label: 'Switch camera',
+                    label: AppStrings.t(
+                      AppStringKeys.videoNoteRecorderSwitchCamera,
+                    ),
                     onTap: _cameras.length > 1 ? _switchCamera : null,
                   ),
                 ],

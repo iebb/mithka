@@ -375,7 +375,7 @@ class _MomentsViewState extends State<MomentsView> {
                     child: _menuRow(
                       icon: HeroAppIcons.solidFileVideo.data,
                       iconColor: const Color(0xFFFF4D67),
-                      title: '短视频',
+                      title: AppStrings.t(AppStringKeys.momentsShortVideos),
                       onTap: () => ShortVideoLauncher.open(context),
                     ),
                   ),

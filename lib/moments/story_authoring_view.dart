@@ -152,7 +152,12 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
       if (!mounted) return;
     }
     if (selection.failedCount > 0 && mounted) {
-      showToast(context, '${selection.failedCount} items could not be opened');
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.storyAuthoringValue1ItemsCouldNotBeOpened, {
+          'value1': selection.failedCount,
+        }),
+      );
     }
   }
 
@@ -224,7 +229,7 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
     final item = _media[index];
     if (item.isVideo) {
       final value = await _numberDialog(
-        title: 'Cover frame',
+        title: AppStrings.t(AppStringKeys.storyAuthoringCoverFrame),
         hint: 'Seconds from the start',
         initial: item.coverFrameTimestamp.toStringAsFixed(1),
       );
@@ -249,8 +254,8 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
   Future<void> _addPrivacyUser() async {
     final chat = await Navigator.of(context).push<ChatSummary>(
       MaterialPageRoute(
-        builder: (_) => const ChatPickerView(
-          title: 'Choose viewer',
+        builder: (_) => ChatPickerView(
+          title: AppStrings.t(AppStringKeys.storyAuthoringChooseViewer),
           allowChannels: false,
           allowedKinds: {ChatKind.privateChat, ChatKind.bot},
         ),
@@ -298,7 +303,7 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
     switch (type) {
       case 'link':
         final value = await _numberDialog(
-          title: 'Story link',
+          title: AppStrings.t(AppStringKeys.storyAuthoringStoryLink),
           hint: 'https://',
         );
         if (value != null && Uri.tryParse(value)?.hasScheme == true) {
@@ -376,8 +381,10 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
   ) async {
     final chat = await Navigator.of(context).push<ChatSummary>(
       MaterialPageRoute(
-        builder: (_) => const ChatPickerView(
-          title: 'Choose a group or channel',
+        builder: (_) => ChatPickerView(
+          title: AppStrings.t(
+            AppStringKeys.storyAuthoringChooseAGroupOrChannel,
+          ),
           allowedKinds: {ChatKind.group, ChatKind.channel},
         ),
       ),
@@ -405,7 +412,10 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Text(
-                  'Choose a recent message from ${chat.title}',
+                  AppStrings.t(
+                    AppStringKeys.storyAuthoringChooseARecentMessageFromValue1,
+                    {'value1': chat.title},
+                  ),
                   style: TextStyle(
                     color: context.colors.textPrimary,
                     fontSize: 16,
@@ -415,7 +425,13 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
               ),
               Expanded(
                 child: messages.isEmpty
-                    ? const Center(child: Text('No recent messages'))
+                    ? Center(
+                        child: Text(
+                          AppStrings.t(
+                            AppStringKeys.storyAuthoringNoRecentMessages,
+                          ),
+                        ),
+                      )
                     : ListView.separated(
                         itemCount: messages.length,
                         separatorBuilder: (_, _) =>
@@ -455,7 +471,12 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
     });
     if (!(properties.boolean('can_be_shared_in_story') ?? false)) {
       if (mounted) {
-        showToast(context, 'This message cannot be shared in a story');
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.storyAuthoringThisMessageCannotBeSharedInAStory,
+          ),
+        );
       }
       return null;
     }
@@ -563,7 +584,10 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
       }
       if (!mounted) return null;
       if (gifts.isEmpty) {
-        showToast(context, 'No upgraded gifts are available');
+        showToast(
+          context,
+          AppStrings.t(AppStringKeys.storyAuthoringNoUpgradedGiftsAreAvailable),
+        );
         return null;
       }
       return showModalBottomSheet<String>(
@@ -599,7 +623,15 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
         ),
       );
     } catch (error) {
-      if (mounted) showToast(context, 'Gifts could not be loaded: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.storyAuthoringGiftsCouldNotBeLoadedValue1,
+            {'value1': error},
+          ),
+        );
+      }
       return null;
     }
   }

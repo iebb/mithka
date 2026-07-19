@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_dialog.dart';
 import '../components/app_icons.dart';
@@ -101,7 +102,7 @@ class _ScheduledMessagesViewState extends State<ScheduledMessagesView> {
   Future<void> _edit(_ScheduledMessage entry) async {
     final text = await showAppTextEntryDialog(
       context,
-      title: 'Edit scheduled message',
+      title: AppStrings.t(AppStringKeys.scheduledMessagesEditScheduledMessage),
       hint: 'Message',
       initial: entry.message.text,
       minLines: 2,
@@ -181,9 +182,11 @@ class _ScheduledMessagesViewState extends State<ScheduledMessagesView> {
   Future<void> _delete(_ScheduledMessage entry) async {
     final confirmed = await confirmDialog(
       context,
-      title: 'Delete scheduled message?',
+      title: AppStrings.t(
+        AppStringKeys.scheduledMessagesDeleteScheduledMessage,
+      ),
       message: 'This scheduled message will not be sent.',
-      confirmText: 'Delete',
+      confirmText: AppStrings.t(AppStringKeys.chatDelete),
       destructive: true,
     );
     if (!confirmed || !mounted) return;
@@ -247,7 +250,9 @@ class _ScheduledMessagesViewState extends State<ScheduledMessagesView> {
 
   Widget _refreshAction() => Semantics(
     button: true,
-    label: 'Refresh scheduled messages',
+    label: AppStrings.t(
+      AppStringKeys.scheduledMessagesRefreshScheduledMessages,
+    ),
     child: GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: _loading ? null : () => unawaited(_load()),
@@ -384,7 +389,7 @@ class _ScheduledMessagesViewState extends State<ScheduledMessagesView> {
           ),
           const SizedBox(height: 12),
           Text(
-            'No scheduled messages',
+            AppStrings.t(AppStringKeys.scheduledMessagesNoScheduledMessages),
             style: TextStyle(
               color: context.colors.textPrimary,
               fontSize: 17,
@@ -393,7 +398,9 @@ class _ScheduledMessagesViewState extends State<ScheduledMessagesView> {
           ),
           const SizedBox(height: 5),
           Text(
-            'Long-press the send button to schedule a message.',
+            AppStrings.t(
+              AppStringKeys.scheduledMessagesLongPressTheSendButtonToScheduleA,
+            ),
             textAlign: TextAlign.center,
             style: TextStyle(color: context.colors.textSecondary, fontSize: 13),
           ),

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../components/app_icons.dart';
@@ -112,11 +113,11 @@ class _StorageUsageViewState extends State<StorageUsageView> {
   Future<void> _clearAll() async {
     final confirmed = await confirmDialog(
       context,
-      title: 'Clear cached media?',
+      title: AppStrings.t(AppStringKeys.storageUsageClearCachedMedia),
       message:
           'Downloaded media can be fetched from Telegram again. Messages and '
           'local account data are kept.',
-      confirmText: 'Clear cache',
+      confirmText: AppStrings.t(AppStringKeys.generalClearCache),
       destructive: true,
     );
     if (!confirmed || !mounted) return;
@@ -137,10 +138,12 @@ class _StorageUsageViewState extends State<StorageUsageView> {
         _chatTitles[chatId] ?? (chatId == 0 ? 'Other files' : '$chatId');
     final confirmed = await confirmDialog(
       context,
-      title: 'Clear cache for $title?',
+      title: AppStrings.t(AppStringKeys.storageUsageClearCacheForValue1, {
+        'value1': title,
+      }),
       message:
           'Cached files from this chat will be downloaded again on demand.',
-      confirmText: 'Clear',
+      confirmText: AppStrings.t(AppStringKeys.emojiStatusClear),
       destructive: true,
     );
     if (!confirmed || !mounted) return;
@@ -163,7 +166,7 @@ class _StorageUsageViewState extends State<StorageUsageView> {
       body: Column(
         children: [
           NavHeader(
-            title: 'Storage Usage',
+            title: AppStrings.t(AppStringKeys.storageUsageStorageUsage),
             onBack: () => Navigator.of(context).pop(),
             trailing: GestureDetector(
               behavior: HitTestBehavior.opaque,
@@ -185,7 +188,7 @@ class _StorageUsageViewState extends State<StorageUsageView> {
                       _policyCard(),
                       const SizedBox(height: 14),
                       Text(
-                        'Storage by chat',
+                        AppStrings.t(AppStringKeys.storageUsageStorageByChat),
                         style: TextStyle(fontSize: 13, color: c.textTertiary),
                       ),
                       const SizedBox(height: 7),
@@ -219,7 +222,9 @@ class _StorageUsageViewState extends State<StorageUsageView> {
             ),
           ),
           Text(
-            '$_fileCount cached files',
+            AppStrings.t(AppStringKeys.storageUsageValue1CachedFiles, {
+              'value1': _fileCount,
+            }),
             style: TextStyle(fontSize: 13, color: c.textSecondary),
           ),
           const SizedBox(height: 14),
@@ -259,13 +264,13 @@ class _StorageUsageViewState extends State<StorageUsageView> {
       child: Column(
         children: [
           SettingsRow(
-            title: 'Keep media',
+            title: AppStrings.t(AppStringKeys.storageUsageKeepMedia),
             value: _retentionOptions[_retention] ?? '',
             onTap: _working
                 ? null
                 : () => unawaited(
                     _choosePolicy(
-                      title: 'Keep media',
+                      title: AppStrings.t(AppStringKeys.storageUsageKeepMedia),
                       options: _retentionOptions,
                       selected: _retention,
                       onSelected: (value) => _savePolicy(retention: value),
@@ -274,13 +279,15 @@ class _StorageUsageViewState extends State<StorageUsageView> {
           ),
           const Divider(height: 1),
           SettingsRow(
-            title: 'Maximum cache size',
+            title: AppStrings.t(AppStringKeys.storageUsageMaximumCacheSize),
             value: _limitOptions[_limit] ?? '',
             onTap: _working
                 ? null
                 : () => unawaited(
                     _choosePolicy(
-                      title: 'Maximum cache size',
+                      title: AppStrings.t(
+                        AppStringKeys.storageUsageMaximumCacheSize,
+                      ),
                       options: _limitOptions,
                       selected: _limit,
                       onSelected: (value) => _savePolicy(limit: value),
@@ -302,7 +309,7 @@ class _StorageUsageViewState extends State<StorageUsageView> {
           borderRadius: BorderRadius.circular(14),
         ),
         child: Text(
-          'No cached chat media.',
+          AppStrings.t(AppStringKeys.storageUsageNoCachedChatMedia),
           style: TextStyle(color: c.textSecondary),
         ),
       );
@@ -443,7 +450,9 @@ class _StorageUsageViewState extends State<StorageUsageView> {
                     borderRadius: BorderRadius.circular(11),
                   ),
                   child: Text(
-                    'Clear cache for this chat',
+                    AppStrings.t(
+                      AppStringKeys.storageUsageClearCacheForThisChat,
+                    ),
                     style: TextStyle(
                       color: AppTheme.tagRed,
                       fontSize: 15,

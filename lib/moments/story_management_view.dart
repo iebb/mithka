@@ -230,15 +230,22 @@ class _StoryManagementViewState extends State<StoryManagementView> {
         case 'delete':
           final confirmed = await confirmDialog(
             context,
-            title: 'Delete this story?',
-            confirmText: 'Delete',
+            title: AppStrings.t(AppStringKeys.storyManagementDeleteThisStory),
+            confirmText: AppStrings.t(AppStringKeys.chatDelete),
             destructive: true,
           );
           if (confirmed) await _service.delete(widget.chatId, id);
       }
       await _load();
     } catch (error) {
-      if (mounted) showToast(context, 'Story update failed: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(AppStringKeys.storyManagementStoryUpdateFailedValue1, {
+            'value1': error,
+          }),
+        );
+      }
     }
   }
 
@@ -404,7 +411,10 @@ class _StoryManagementViewState extends State<StoryManagementView> {
                     child: stories.isEmpty
                         ? Center(
                             child: Text(
-                              'No manageable stories',
+                              AppStrings.t(
+                                AppStringKeys
+                                    .storyManagementNoManageableStories,
+                              ),
                               style: TextStyle(
                                 color: context.colors.textSecondary,
                               ),
@@ -453,12 +463,12 @@ class _StoryManagementViewState extends State<StoryManagementView> {
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
                       StoryDialogAction(
-                        label: 'Cancel',
+                        label: AppStrings.t(AppStringKeys.confirmCancel),
                         onTap: () => Navigator.of(sheetContext).pop(),
                       ),
                       const SizedBox(width: 10),
                       StoryDialogAction(
-                        label: 'Done',
+                        label: AppStrings.t(AppStringKeys.addMembersDone),
                         primary: true,
                         onTap: () =>
                             Navigator.of(sheetContext).pop(selected.toList()),
@@ -592,12 +602,14 @@ class _StoryManagementViewState extends State<StoryManagementView> {
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
                       StoryDialogAction(
-                        label: 'Cancel',
+                        label: AppStrings.t(AppStringKeys.confirmCancel),
                         onTap: () => Navigator.of(sheetContext).pop(),
                       ),
                       const SizedBox(width: 10),
                       StoryDialogAction(
-                        label: 'Save order',
+                        label: AppStrings.t(
+                          AppStringKeys.storyManagementSaveOrder,
+                        ),
                         primary: true,
                         onTap: () => Navigator.of(sheetContext).pop(order),
                       ),
@@ -724,15 +736,24 @@ class _StoryManagementViewState extends State<StoryManagementView> {
           if (!mounted) return;
           final confirmed = await confirmDialog(
             context,
-            title: 'Delete this story album?',
-            confirmText: 'Delete',
+            title: AppStrings.t(
+              AppStringKeys.storyManagementDeleteThisStoryAlbum,
+            ),
+            confirmText: AppStrings.t(AppStringKeys.chatDelete),
             destructive: true,
           );
           if (confirmed) await _service.deleteAlbum(widget.chatId, id);
       }
       await _load();
     } catch (error) {
-      if (mounted) showToast(context, 'Album update failed: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(AppStringKeys.storyManagementAlbumUpdateFailedValue1, {
+            'value1': error,
+          }),
+        );
+      }
     }
   }
 
@@ -1661,7 +1682,15 @@ class _LiveStorySetupViewState extends State<LiveStorySetupView> {
       _streamKey = url.str('stream_key');
       if (mounted) setState(() {});
     } catch (error) {
-      if (mounted) showToast(context, 'Live story could not start: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.storyManagementLiveStoryCouldNotStartValue1,
+            {'value1': error},
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _starting = false);
     }
@@ -1678,7 +1707,12 @@ class _LiveStorySetupViewState extends State<LiveStorySetupView> {
     final url = _rtmpUrl;
     if (url == null) return;
     await Clipboard.setData(ClipboardData(text: '$url\n${_streamKey ?? ''}'));
-    if (mounted) showToast(context, 'RTMP URL and stream key copied');
+    if (mounted) {
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.storyManagementRTMPURLAndStreamKeyCopied),
+      );
+    }
   }
 
   @override
@@ -1687,7 +1721,7 @@ class _LiveStorySetupViewState extends State<LiveStorySetupView> {
     child: Column(
       children: [
         NavHeader(
-          title: 'Live Story',
+          title: AppStrings.t(AppStringKeys.storyManagementLiveStory),
           onBack: () => Navigator.of(context).pop(),
         ),
         Expanded(
@@ -1711,9 +1745,10 @@ class _LiveStorySetupViewState extends State<LiveStorySetupView> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        'Live Stories use RTMP in this build. Start the story, '
-                        'then connect a streaming app with the generated URL '
-                        'and stream key.',
+                        AppStrings.t(
+                          AppStringKeys
+                              .storyManagementLiveStoriesUseRTMPInThisBuildStart,
+                        ),
                         style: TextStyle(
                           color: context.colors.textSecondary,
                           fontSize: 13,
@@ -1728,7 +1763,9 @@ class _LiveStorySetupViewState extends State<LiveStorySetupView> {
               SettingsCard(
                 children: [
                   SettingsSwitchRow(
-                    title: 'Allow viewer messages',
+                    title: AppStrings.t(
+                      AppStringKeys.storyManagementAllowViewerMessages,
+                    ),
                     value: _messages,
                     onChanged: _storyId == null
                         ? (value) => setState(() => _messages = value)
@@ -1736,7 +1773,9 @@ class _LiveStorySetupViewState extends State<LiveStorySetupView> {
                   ),
                   const InsetDivider(leadingInset: 16),
                   SettingsSwitchRow(
-                    title: 'Protect from screenshots',
+                    title: AppStrings.t(
+                      AppStringKeys.storyManagementProtectFromScreenshots,
+                    ),
                     value: _protect,
                     onChanged: _storyId == null
                         ? (value) => setState(() => _protect = value)
@@ -1744,13 +1783,17 @@ class _LiveStorySetupViewState extends State<LiveStorySetupView> {
                   ),
                   const InsetDivider(leadingInset: 16),
                   SettingsRow(
-                    title: 'Stars per viewer message',
+                    title: AppStrings.t(
+                      AppStringKeys.storyManagementStarsPerViewerMessage,
+                    ),
                     value: _stars.toString(),
                     onTap: _storyId == null
                         ? () async {
                             final value = await showStoryTextEntry(
                               context,
-                              title: 'Stars per message',
+                              title: AppStrings.t(
+                                AppStringKeys.storyManagementStarsPerMessage,
+                              ),
                               hint: '0',
                               initial: _stars.toString(),
                               keyboardType: TextInputType.number,
@@ -1774,13 +1817,17 @@ class _LiveStorySetupViewState extends State<LiveStorySetupView> {
                     ),
                     const InsetDivider(leadingInset: 16),
                     SettingsRow(
-                      title: 'Stream key',
+                      title: AppStrings.t(
+                        AppStringKeys.storyManagementStreamKey,
+                      ),
                       value: _streamKey ?? '',
                       onTap: _copyRtmp,
                     ),
                     const InsetDivider(leadingInset: 16),
                     SettingsRow(
-                      title: 'Replace stream key',
+                      title: AppStrings.t(
+                        AppStringKeys.storyManagementReplaceStreamKey,
+                      ),
                       onTap: () async {
                         final value = await widget.service.rtmpUrl(
                           widget.chatId,

@@ -84,12 +84,14 @@ class _FeedbackReportViewState extends State<FeedbackReportView> {
               ),
               children: [
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.xs,
+                  ),
                   child: Text(
                     AppStrings.t(AppStringKeys.feedbackReportDescription),
-                    style: AppTextStyle.callout(colors.textSecondary).copyWith(
-                      height: 1.4,
-                    ),
+                    style: AppTextStyle.callout(
+                      colors.textSecondary,
+                    ).copyWith(height: 1.4),
                   ),
                 ),
                 const SizedBox(height: AppSpacing.lg),
@@ -108,18 +110,18 @@ class _FeedbackReportViewState extends State<FeedbackReportView> {
                     maxLines: 12,
                     maxLength: 4096,
                     onChanged: (_) => setState(() {}),
-                    style: AppTextStyle.body(colors.textPrimary).copyWith(
-                      height: 1.4,
-                    ),
+                    style: AppTextStyle.body(
+                      colors.textPrimary,
+                    ).copyWith(height: 1.4),
                     decoration: InputDecoration(
                       border: InputBorder.none,
                       counterStyle: AppTextStyle.caption(colors.textTertiary),
                       hintText: AppStrings.t(
                         AppStringKeys.feedbackReportPlaceholder,
                       ),
-                      hintStyle: AppTextStyle.body(colors.textTertiary).copyWith(
-                        height: 1.4,
-                      ),
+                      hintStyle: AppTextStyle.body(
+                        colors.textTertiary,
+                      ).copyWith(height: 1.4),
                     ),
                   ),
                 ),
@@ -146,7 +148,9 @@ class _FeedbackReportViewState extends State<FeedbackReportView> {
                               height: 18,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation(Colors.white),
+                                valueColor: AlwaysStoppedAnimation(
+                                  Colors.white,
+                                ),
                               ),
                             )
                           else
@@ -174,13 +178,15 @@ class _FeedbackReportViewState extends State<FeedbackReportView> {
                 ),
                 const SizedBox(height: AppSpacing.lg),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.xs,
+                  ),
                   child: Text(
                     AppStrings.t(AppStringKeys.feedbackReportPrivacy),
                     textAlign: TextAlign.center,
-                    style: AppTextStyle.caption(colors.textTertiary).copyWith(
-                      height: 1.35,
-                    ),
+                    style: AppTextStyle.caption(
+                      colors.textTertiary,
+                    ).copyWith(height: 1.35),
                   ),
                 ),
               ],

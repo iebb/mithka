@@ -136,7 +136,12 @@ class _MediaSendPreviewViewState extends State<MediaSendPreviewView> {
       await video.initialize();
     } catch (_) {
       await video.dispose();
-      if (mounted) showToast(context, 'Unable to open this video.');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(AppStringKeys.mediaSendPreviewUnableToOpenThisVideo),
+        );
+      }
       return;
     }
     if (!mounted) {
@@ -167,7 +172,9 @@ class _MediaSendPreviewViewState extends State<MediaSendPreviewView> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Video presentation',
+                    AppStrings.t(
+                      AppStringKeys.mediaSendPreviewVideoPresentation,
+                    ),
                     style: TextStyle(
                       color: c.textPrimary,
                       fontSize: 18,
@@ -244,7 +251,9 @@ class _MediaSendPreviewViewState extends State<MediaSendPreviewView> {
                     decoration: InputDecoration(
                       filled: true,
                       fillColor: c.card,
-                      labelText: 'Start timestamp (seconds)',
+                      labelText: AppStrings.t(
+                        AppStringKeys.mediaSendPreviewStartTimestampSeconds,
+                      ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide.none,
@@ -256,7 +265,7 @@ class _MediaSendPreviewViewState extends State<MediaSendPreviewView> {
                     Row(
                       children: [
                         Text(
-                          'Trim video',
+                          AppStrings.t(AppStringKeys.mediaSendPreviewTrimVideo),
                           style: TextStyle(
                             color: c.textPrimary,
                             fontSize: 14,
@@ -298,9 +307,9 @@ class _MediaSendPreviewViewState extends State<MediaSendPreviewView> {
                         color: AppTheme.brand,
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Text(
-                        'Apply',
-                        style: TextStyle(
+                      child: Text(
+                        AppStrings.t(AppStringKeys.composerFormatApply),
+                        style: const TextStyle(
                           color: Colors.white,
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
@@ -820,8 +829,11 @@ class _MediaRangeSelectorState extends State<_MediaRangeSelector> {
       final start = widget.values.start / widget.max;
       final end = widget.values.end / widget.max;
       return Semantics(
-        label: 'Video trim range',
-        value: '${(start * 100).round()}% to ${(end * 100).round()}%',
+        label: AppStrings.t(AppStringKeys.mediaSendPreviewVideoTrimRange),
+        value: AppStrings.t(AppStringKeys.mediaSendPreviewValue1ToValue2, {
+          'value1': (start * 100).round(),
+          'value2': (end * 100).round(),
+        }),
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTapDown: (details) {

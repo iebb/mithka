@@ -2574,7 +2574,7 @@ class _ChatViewState extends State<ChatView> {
 
   Future<void> _addPollOption(ChatMessage message) async {
     final value = await _promptChecklistTask(
-      title: 'Add poll option',
+      title: AppStrings.t(AppStringKeys.chatAddPollOption),
       hint: 'New option',
     );
     if (value == null || value.trim().isEmpty || !mounted) return;
@@ -4736,7 +4736,7 @@ class _ChatViewState extends State<ChatView> {
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 child: Text(
-                  'Manage',
+                  AppStrings.t(AppStringKeys.appearanceManage),
                   style: TextStyle(fontSize: 14, color: AppTheme.brand),
                 ),
               ),

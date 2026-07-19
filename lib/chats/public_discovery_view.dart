@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 
 import '../app/app_navigator.dart';
 import '../chat/chat_view.dart';
@@ -251,9 +252,12 @@ class _PublicDiscoveryViewState extends State<PublicDiscoveryView> {
     if (count <= 0) return;
     final confirmed = await confirmDialog(
       context,
-      title: 'Paid public search',
+      title: AppStrings.t(AppStringKeys.publicDiscoveryPaidPublicSearch),
       message: 'Telegram requires $count Stars for this search.',
-      confirmText: 'Search for $count Stars',
+      confirmText: AppStrings.t(
+        AppStringKeys.publicDiscoverySearchForValue1Stars,
+        {'value1': count},
+      ),
     );
     if (!mounted || !confirmed) return;
     _agreedStarCount = count;
@@ -310,7 +314,10 @@ class _PublicDiscoveryViewState extends State<PublicDiscoveryView> {
             photo: TDParse.smallPhoto(chat.obj('photo')),
           );
         } catch (_) {
-          source = const _DiscoverySource(title: 'Public channel', photo: null);
+          source = _DiscoverySource(
+            title: AppStrings.t(AppStringKeys.publicDiscoveryPublicChannel),
+            photo: null,
+          );
         }
         chatCache[chatId] = source;
       }
@@ -380,7 +387,7 @@ class _PublicDiscoveryViewState extends State<PublicDiscoveryView> {
       body: Column(
         children: [
           NavHeader(
-            title: 'Discover',
+            title: AppStrings.t(AppStringKeys.publicDiscoveryDiscover),
             onBack: () => Navigator.of(context).pop(),
           ),
           _tabs(),
@@ -705,7 +712,11 @@ class _PublicDiscoveryViewState extends State<PublicDiscoveryView> {
               const AppIcon(HeroAppIcons.solidStar, size: 38),
               const SizedBox(height: 12),
               Text(
-                'This search costs $_requiredStarCount Telegram Stars.',
+                AppStrings.t(
+                  AppStringKeys
+                      .publicDiscoveryThisSearchCostsValue1TelegramStars,
+                  {'value1': _requiredStarCount},
+                ),
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 15,
@@ -724,9 +735,9 @@ class _PublicDiscoveryViewState extends State<PublicDiscoveryView> {
                     color: AppTheme.brand,
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: const Text(
-                    'Continue',
-                    style: TextStyle(
+                  child: Text(
+                    AppStrings.t(AppStringKeys.confirmContinue),
+                    style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
                       color: Colors.white,
@@ -849,7 +860,7 @@ class _PublicDiscoveryViewState extends State<PublicDiscoveryView> {
         child: _loading
             ? const AppActivityIndicator(size: 20)
             : Text(
-                'Load more',
+                AppStrings.t(AppStringKeys.publicDiscoveryLoadMore),
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,

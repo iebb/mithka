@@ -116,10 +116,9 @@ class ReviewLoginCodeService {
 
   final http.Client _client;
 
-  static _ReviewRelayConfig? get _config =>
-      _ReviewRelayConfig.parse(
-        _relay.isEmpty ? _decode(_defaultRelayUrlBytes) : _relay,
-      );
+  static _ReviewRelayConfig? get _config => _ReviewRelayConfig.parse(
+    _relay.isEmpty ? _decode(_defaultRelayUrlBytes) : _relay,
+  );
 
   static bool isReviewPhone(String phone) {
     final config = _config;

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
 import '../components/ui_components.dart';
@@ -203,7 +204,9 @@ class _MessageSendOptionsSheetState extends State<_MessageSendOptionsSheet> {
               _title('Send options'),
               _toggle(
                 icon: HeroAppIcons.bellSlash,
-                title: 'Send silently',
+                title: AppStrings.t(
+                  AppStringKeys.messageSendOptionsSendSilently,
+                ),
                 value: _value.disableNotification,
                 onChanged: (value) => setState(
                   () => _value = _value.copyWith(disableNotification: value),
@@ -281,7 +284,9 @@ class _MessageSendOptionsSheetState extends State<_MessageSendOptionsSheet> {
                 _section('Media'),
                 _toggle(
                   icon: HeroAppIcons.alignTop,
-                  title: 'Caption above media',
+                  title: AppStrings.t(
+                    AppStringKeys.messageSendOptionsCaptionAboveMedia,
+                  ),
                   value: _value.showCaptionAboveMedia,
                   onChanged: (value) => setState(
                     () =>
@@ -290,7 +295,9 @@ class _MessageSendOptionsSheetState extends State<_MessageSendOptionsSheet> {
                 ),
                 _toggle(
                   icon: HeroAppIcons.eyeSlash,
-                  title: 'Hide with spoiler',
+                  title: AppStrings.t(
+                    AppStringKeys.messageSendOptionsHideWithSpoiler,
+                  ),
                   value: _value.hasSpoiler,
                   onChanged: (value) => setState(
                     () => _value = _value.copyWith(hasSpoiler: value),
@@ -298,7 +305,7 @@ class _MessageSendOptionsSheetState extends State<_MessageSendOptionsSheet> {
                 ),
                 _toggle(
                   icon: HeroAppIcons.eye,
-                  title: 'View once',
+                  title: AppStrings.t(AppStringKeys.messageSendOptionsViewOnce),
                   value: _value.viewOnce,
                   onChanged: (value) => setState(
                     () => _value = _value.copyWith(
@@ -396,7 +403,9 @@ class _MessageSendOptionsSheetState extends State<_MessageSendOptionsSheet> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      'Scheduled messages',
+                      AppStrings.t(
+                        AppStringKeys.messageSendOptionsScheduledMessages,
+                      ),
                       style: TextStyle(
                         color: AppTheme.brand,
                         fontSize: 15,

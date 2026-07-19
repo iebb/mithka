@@ -137,9 +137,7 @@ class _AboutViewState extends State<AboutView> {
                       if (sentryEnabled) ...[
                         _AboutLinkRow(
                           icon: HeroAppIcons.comments.data,
-                          title: AppStrings.t(
-                            AppStringKeys.aboutReportProblem,
-                          ),
+                          title: AppStrings.t(AppStringKeys.aboutReportProblem),
                           value: AppStrings.t(
                             AppStringKeys.aboutReportProblemDetail,
                           ),

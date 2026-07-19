@@ -663,7 +663,9 @@ class _GroupAppearanceViewState extends State<GroupAppearanceView> {
               ),
               if (locked && requiredLevel > 0) ...[
                 Text(
-                  'Level $requiredLevel',
+                  AppStrings.t(AppStringKeys.chatWallpaperBoostLevel, {
+                    'value1': requiredLevel,
+                  }),
                   style: TextStyle(fontSize: 12, color: c.textTertiary),
                 ),
                 const SizedBox(width: 8),

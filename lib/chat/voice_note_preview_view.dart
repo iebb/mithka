@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_sound/flutter_sound.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
 import '../components/toast.dart';
@@ -241,7 +242,7 @@ class _VoiceNotePreviewViewState extends State<VoiceNotePreviewView> {
       body: Column(
         children: [
           NavHeader(
-            title: 'Voice message',
+            title: AppStrings.t(AppStringKeys.voiceNotePreviewVoiceMessage),
             onBack: () => Navigator.of(context).pop(),
             trailing: GestureDetector(
               behavior: HitTestBehavior.opaque,
@@ -330,7 +331,7 @@ class _VoiceNotePreviewViewState extends State<VoiceNotePreviewView> {
                   Row(
                     children: [
                       Text(
-                        'Trim',
+                        AppStrings.t(AppStringKeys.videoNotePreviewTrim),
                         style: TextStyle(
                           color: c.textPrimary,
                           fontSize: 14,
@@ -364,8 +365,10 @@ class _VoiceNotePreviewViewState extends State<VoiceNotePreviewView> {
             child: Padding(
               padding: const EdgeInsets.fromLTRB(24, 8, 24, 18),
               child: Text(
-                'Review the recording before sending. Send options include '
-                'silent delivery, scheduling, effects and view-once.',
+                AppStrings.t(
+                  AppStringKeys
+                      .voiceNotePreviewReviewTheRecordingBeforeSendingSendOptionsInclude,
+                ),
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 12,

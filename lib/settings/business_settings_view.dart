@@ -91,11 +91,23 @@ class _BusinessSettingsViewState extends State<BusinessSettingsView> {
   Future<void> _open(Widget view, {required String feature}) async {
     final capabilities = _capabilities;
     if (capabilities == null || !capabilities.supports(feature)) {
-      showToast(context, 'This Business feature is unavailable in this build');
+      showToast(
+        context,
+        AppStrings.t(
+          AppStringKeys
+              .businessSettingsThisBusinessFeatureIsUnavailableInThisBuild,
+        ),
+      );
       return;
     }
     if (!capabilities.isPremium) {
-      showToast(context, 'Telegram Premium is required for Business tools');
+      showToast(
+        context,
+        AppStrings.t(
+          AppStringKeys
+              .businessSettingsTelegramPremiumIsRequiredForBusinessTools,
+        ),
+      );
       return;
     }
     final changed = await Navigator.of(
@@ -177,7 +189,10 @@ class _BusinessSettingsViewState extends State<BusinessSettingsView> {
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Text(
-                                  'Telegram Business tools require Telegram Premium. Your profile details remain visible, but editing is locked.',
+                                  AppStrings.t(
+                                    AppStringKeys
+                                        .businessSettingsTelegramBusinessToolsRequireTelegramPremiumYourProfile,
+                                  ),
                                   style: TextStyle(
                                     fontSize: 13,
                                     height: 1.35,
@@ -240,8 +255,13 @@ class _BusinessSettingsViewState extends State<BusinessSettingsView> {
                           _literalRow(
                             HeroAppIcons.solidMessage,
                             const Color(0xFF2FA96B),
-                            'Quick Replies',
-                            'Create, edit, reorder, and send reusable replies',
+                            AppStrings.t(
+                              AppStringKeys.businessToolsQuickReplies,
+                            ),
+                            AppStrings.t(
+                              AppStringKeys
+                                  .businessSettingsQuickRepliesDescription,
+                            ),
                             () => _open(
                               const BusinessQuickRepliesView(),
                               feature: 'businessFeatureQuickReplies',
@@ -256,8 +276,14 @@ class _BusinessSettingsViewState extends State<BusinessSettingsView> {
                           _literalRow(
                             HeroAppIcons.thumbsUp,
                             const Color(0xFF19A874),
-                            'Greeting Message',
-                            _greetingMessage == null ? 'Off' : 'On',
+                            AppStrings.t(
+                              AppStringKeys.businessToolsGreetingMessage,
+                            ),
+                            AppStrings.t(
+                              _greetingMessage == null
+                                  ? AppStringKeys.groupAdminOff
+                                  : AppStringKeys.privacyEnabled,
+                            ),
                             () => _open(
                               BusinessGreetingMessageView(
                                 initial: _greetingMessage,
@@ -273,8 +299,14 @@ class _BusinessSettingsViewState extends State<BusinessSettingsView> {
                           _literalRow(
                             HeroAppIcons.solidMoon,
                             const Color(0xFF675CE8),
-                            'Away Message',
-                            _awayMessage == null ? 'Off' : 'On',
+                            AppStrings.t(
+                              AppStringKeys.businessToolsAwayMessage,
+                            ),
+                            AppStrings.t(
+                              _awayMessage == null
+                                  ? AppStringKeys.groupAdminOff
+                                  : AppStringKeys.privacyEnabled,
+                            ),
                             () => _open(
                               BusinessAwayMessageView(initial: _awayMessage),
                               feature: 'businessFeatureAwayMessage',
@@ -309,8 +341,13 @@ class _BusinessSettingsViewState extends State<BusinessSettingsView> {
                           _literalRow(
                             HeroAppIcons.code,
                             const Color(0xFF3288D6),
-                            'Connected Bot',
-                            'Automate selected private chats with granular rights',
+                            AppStrings.t(
+                              AppStringKeys.businessToolsConnectedBot,
+                            ),
+                            AppStrings.t(
+                              AppStringKeys
+                                  .businessSettingsConnectedBotDescription,
+                            ),
                             () => _open(
                               const BusinessConnectedBotView(),
                               feature: 'businessFeatureBots',
@@ -344,7 +381,10 @@ class _BusinessSettingsViewState extends State<BusinessSettingsView> {
                                   true) {
                                 showToast(
                                   context,
-                                  'Telegram Premium is required for Business tools',
+                                  AppStrings.t(
+                                    AppStringKeys
+                                        .businessSettingsTelegramPremiumIsRequiredForBusinessTools,
+                                  ),
                                 );
                                 return;
                               }
@@ -359,7 +399,10 @@ class _BusinessSettingsViewState extends State<BusinessSettingsView> {
                       if ((_capabilities?.features.isEmpty ?? true)) ...[
                         const SizedBox(height: 14),
                         Text(
-                          'Business capabilities could not be loaded for this account.',
+                          AppStrings.t(
+                            AppStringKeys
+                                .businessSettingsBusinessCapabilitiesCouldNotBeLoadedForThis,
+                          ),
                           style: TextStyle(
                             fontSize: 13,
                             color: c.textSecondary,
@@ -852,7 +895,13 @@ class _BusinessOpeningHoursViewState extends State<_BusinessOpeningHoursView> {
           final range = ranges[index];
           if (range.end <= range.start ||
               (index > 0 && ranges[index - 1].end > range.start)) {
-            showToast(context, 'Business-hour intervals cannot overlap');
+            showToast(
+              context,
+              AppStrings.t(
+                AppStringKeys
+                    .businessSettingsBusinessHourIntervalsCannotOverlap,
+              ),
+            );
             return;
           }
           intervals.add({
@@ -1070,7 +1119,7 @@ class _BusinessOpeningHoursViewState extends State<_BusinessOpeningHoursView> {
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(12, 6, 8, 3),
                   child: Text(
-                    'Add interval',
+                    AppStrings.t(AppStringKeys.businessSettingsAddInterval),
                     style: TextStyle(fontSize: 13, color: AppTheme.brand),
                   ),
                 ),
@@ -1216,7 +1265,7 @@ class _BusinessStartPageViewState extends State<_BusinessStartPageView> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                _fieldLabel('Greeting sticker'),
+                _fieldLabel(AppStringKeys.businessSettingsGreetingSticker),
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: _chooseSticker,
@@ -1234,8 +1283,14 @@ class _BusinessStartPageViewState extends State<_BusinessStartPageView> {
                           Expanded(
                             child: Text(
                               _stickerFileId == null
-                                  ? 'Choose an optional greeting sticker'
-                                  : 'Greeting sticker selected',
+                                  ? AppStrings.t(
+                                      AppStringKeys
+                                          .businessSettingsChooseOptionalGreetingSticker,
+                                    )
+                                  : AppStrings.t(
+                                      AppStringKeys
+                                          .businessSettingsGreetingStickerSelected,
+                                    ),
                               style: TextStyle(
                                 fontSize: 15,
                                 color: c.textPrimary,
@@ -1422,7 +1477,14 @@ class _BusinessChatLinksViewState extends State<_BusinessChatLinksView> {
                                       ),
                                       const SizedBox(height: 2),
                                       Text(
-                                        '${link.integer('view_count') ?? 0} opens',
+                                        AppStrings.t(
+                                          AppStringKeys
+                                              .businessSettingsLinkOpenCount,
+                                          {
+                                            'value1':
+                                                link.integer('view_count') ?? 0,
+                                          },
+                                        ),
                                         style: TextStyle(
                                           fontSize: 12,
                                           color: c.textTertiary,

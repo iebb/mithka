@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
 import '../components/ui_components.dart';
@@ -159,11 +160,16 @@ class _TelegramStorePurchaseProgressViewState
                         if (_state != _StoreProgressState.processing) ...[
                           const SizedBox(height: 22),
                           if (_state == _StoreProgressState.failed) ...[
-                            _OwnedStoreAction(label: 'Retry', onTap: _run),
+                            _OwnedStoreAction(
+                              label: AppStrings.t(
+                                AppStringKeys.telegramStorePurchaseRetry,
+                              ),
+                              onTap: _run,
+                            ),
                             const SizedBox(height: 9),
                           ],
                           _OwnedStoreAction(
-                            label: 'Done',
+                            label: AppStrings.t(AppStringKeys.addMembersDone),
                             secondary: _state == _StoreProgressState.failed,
                             onTap: () => Navigator.of(
                               context,
@@ -338,7 +344,10 @@ class TelegramStoreProductPickerView extends StatelessWidget {
                         ),
                         const SizedBox(height: 10),
                         Text(
-                          'Telegram did not return an App Store product for this purchase.',
+                          AppStrings.t(
+                            AppStringKeys
+                                .telegramStorePurchaseTelegramDidNotReturnAnAppStoreProduct,
+                          ),
                           textAlign: TextAlign.center,
                           style: AppTextStyle.body(
                             c.textSecondary,
@@ -415,7 +424,11 @@ class _StoreProductRow extends StatelessWidget {
                     ),
                     if (product.starCount > 0 && !meetsRequest)
                       Text(
-                        'Below the requested $requestedStarCount Stars',
+                        AppStrings.t(
+                          AppStringKeys
+                              .telegramStorePurchaseBelowTheRequestedValue1Stars,
+                          {'value1': requestedStarCount},
+                        ),
                         style: AppTextStyle.caption(c.textTertiary),
                       ),
                   ],

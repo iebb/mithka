@@ -148,10 +148,10 @@ class _ChatAdministratorEditViewState extends State<ChatAdministratorEditView> {
   Future<String?> _requestOwnershipPassword() async {
     final password = await showAppTextEntryDialog(
       context,
-      title: 'Transfer ownership',
+      title: AppStrings.t(AppStringKeys.chatAdministratorEditTransferOwnership),
       description:
           '${widget.name} will become the owner. Enter your two-step verification password to continue.',
-      label: 'Password',
+      label: AppStrings.t(AppStringKeys.proxyPassword),
       actionLabel: 'Transfer',
       obscureText: true,
       allowEmpty: false,
@@ -193,7 +193,13 @@ class _ChatAdministratorEditViewState extends State<ChatAdministratorEditView> {
     } catch (_) {
       if (mounted) {
         setState(() => _saving = false);
-        showToast(context, 'Couldn’t transfer ownership. Check the password.');
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys
+                .chatAdministratorEditCouldnTTransferOwnershipCheckThePassword,
+          ),
+        );
       }
     }
   }
@@ -266,7 +272,9 @@ class _ChatAdministratorEditViewState extends State<ChatAdministratorEditView> {
                   const SizedBox(height: 22),
                   _section([
                     SettingsRow(
-                      title: 'Transfer ownership',
+                      title: AppStrings.t(
+                        AppStringKeys.chatAdministratorEditTransferOwnership,
+                      ),
                       value: widget.name,
                       onTap: _transferOwnership,
                     ),

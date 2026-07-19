@@ -736,7 +736,7 @@ class _AppActivityIndicatorState extends State<AppActivityIndicator>
 
   @override
   Widget build(BuildContext context) => Semantics(
-    label: 'Loading',
+    label: AppStrings.t(AppStringKeys.topicChatLoading),
     child: AnimatedBuilder(
       animation: _controller,
       builder: (context, child) => Transform.rotate(

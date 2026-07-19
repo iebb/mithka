@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -193,7 +194,9 @@ class _TelegramInvoiceCheckoutViewState
         body: Column(
           children: [
             NavHeader(
-              title: 'Checkout',
+              title: AppStrings.t(
+                AppStringKeys.telegramInvoiceCheckoutCheckout,
+              ),
               onBack: _busy ? null : () => Navigator.of(context).pop(),
             ),
             Expanded(
@@ -212,7 +215,10 @@ class _TelegramInvoiceCheckoutViewState
                     _CheckoutCard(children: _orderFields()),
                     const SizedBox(height: 8),
                     _ToggleRow(
-                      label: 'Save order information',
+                      label: AppStrings.t(
+                        AppStringKeys
+                            .telegramInvoiceCheckoutSaveOrderInformation,
+                      ),
                       value: _savingOrder,
                       onTap: () => setState(() => _savingOrder = !_savingOrder),
                     ),
@@ -276,7 +282,10 @@ class _TelegramInvoiceCheckoutViewState
                       Padding(
                         padding: const EdgeInsets.only(top: 8),
                         child: _ToggleRow(
-                          label: 'Save this payment method',
+                          label: AppStrings.t(
+                            AppStringKeys
+                                .telegramInvoiceCheckoutSaveThisPaymentMethod,
+                          ),
                           value: _allowSaveCredentials,
                           onTap: (_formType?.boolean('need_password') ?? false)
                               ? null
@@ -292,7 +301,10 @@ class _TelegramInvoiceCheckoutViewState
                   ],
                   if ((invoice?.str('terms_of_service_url') ?? '').isNotEmpty)
                     _termsRow(
-                      label: 'I accept the payment terms',
+                      label: AppStrings.t(
+                        AppStringKeys
+                            .telegramInvoiceCheckoutIAcceptThePaymentTerms,
+                      ),
                       url: invoice!.str('terms_of_service_url')!,
                       value: _termsAccepted,
                       onTap: () =>
@@ -302,7 +314,10 @@ class _TelegramInvoiceCheckoutViewState
                           '')
                       .isNotEmpty)
                     _termsRow(
-                      label: 'I accept recurring payment terms',
+                      label: AppStrings.t(
+                        AppStringKeys
+                            .telegramInvoiceCheckoutIAcceptRecurringPaymentTerms,
+                      ),
                       url: invoice!.str(
                         'recurring_payment_terms_of_service_url',
                       )!,
@@ -324,7 +339,10 @@ class _TelegramInvoiceCheckoutViewState
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    'Payment details are sent directly to the selected provider. Telegram receives only the resulting credential token.',
+                    AppStrings.t(
+                      AppStringKeys
+                          .telegramInvoiceCheckoutPaymentDetailsAreSentDirectlyToTheSelected,
+                    ),
                     textAlign: TextAlign.center,
                     style: AppTextStyle.caption(
                       c.textTertiary,
@@ -352,37 +370,63 @@ class _TelegramInvoiceCheckoutViewState
     final invoice = _invoice;
     return [
       if (invoice?.boolean('need_name') ?? false)
-        _PaymentField(controller: _name, label: 'Name'),
+        _PaymentField(
+          controller: _name,
+          label: AppStrings.t(AppStringKeys.groupAdministrationName),
+        ),
       if (invoice?.boolean('need_phone_number') ?? false)
         _PaymentField(
           controller: _phone,
-          label: 'Phone number',
+          label: AppStrings.t(AppStringKeys.chatFirstContactPhoneCountry),
           keyboardType: TextInputType.phone,
         ),
       if (invoice?.boolean('need_email_address') ?? false)
         _PaymentField(
           controller: _email,
-          label: 'Email',
+          label: AppStrings.t(AppStringKeys.telegramInvoiceCheckoutEmail),
           keyboardType: TextInputType.emailAddress,
         ),
       if (invoice?.boolean('need_shipping_address') ?? false) ...[
         _PaymentField(
           controller: _country,
-          label: 'Country code',
+          label: AppStrings.t(AppStringKeys.telegramInvoiceCheckoutCountryCode),
           capitalization: TextCapitalization.characters,
         ),
-        _PaymentField(controller: _state, label: 'State or region'),
-        _PaymentField(controller: _city, label: 'City'),
-        _PaymentField(controller: _street1, label: 'Street address'),
-        _PaymentField(controller: _street2, label: 'Address line 2'),
-        _PaymentField(controller: _postalCode, label: 'Postal code'),
+        _PaymentField(
+          controller: _state,
+          label: AppStrings.t(
+            AppStringKeys.telegramInvoiceCheckoutStateOrRegion,
+          ),
+        ),
+        _PaymentField(
+          controller: _city,
+          label: AppStrings.t(AppStringKeys.telegramInvoiceCheckoutCity),
+        ),
+        _PaymentField(
+          controller: _street1,
+          label: AppStrings.t(
+            AppStringKeys.telegramInvoiceCheckoutStreetAddress,
+          ),
+        ),
+        _PaymentField(
+          controller: _street2,
+          label: AppStrings.t(
+            AppStringKeys.telegramInvoiceCheckoutAddressLine2,
+          ),
+        ),
+        _PaymentField(
+          controller: _postalCode,
+          label: AppStrings.t(AppStringKeys.telegramInvoiceCheckoutPostalCode),
+        ),
       ],
     ];
   }
 
   Widget _tipField(String currency) => _PaymentField(
     controller: _tip,
-    label: 'Tip ($currency)',
+    label: AppStrings.t(AppStringKeys.telegramInvoiceCheckoutTipValue1, {
+      'value1': currency,
+    }),
     keyboardType: const TextInputType.numberWithOptions(decimal: true),
   );
 
@@ -402,14 +446,18 @@ class _TelegramInvoiceCheckoutViewState
         ),
       if (provider?.type == 'paymentProviderStripe')
         _ChoiceRow(
-          title: 'Credit or debit card',
+          title: AppStrings.t(
+            AppStringKeys.telegramInvoiceCheckoutCreditOrDebitCard,
+          ),
           subtitle: 'Tokenized securely by Stripe',
           selected: _paymentMethod == 'stripe',
           onTap: () => setState(() => _paymentMethod = 'stripe'),
         ),
       if (provider?.type == 'paymentProviderOther')
         _ChoiceRow(
-          title: 'Payment provider',
+          title: AppStrings.t(
+            AppStringKeys.telegramInvoiceCheckoutPaymentProvider,
+          ),
           subtitle: Uri.tryParse(provider?.str('url') ?? '')?.host ?? '',
           selected: _paymentMethod == 'web:${provider?.str('url') ?? ''}',
           onTap: () => setState(
@@ -517,9 +565,11 @@ class _TelegramInvoiceCheckoutViewState
       if (!mounted) return;
       final accepted = await showAppConfirmDialog(
         context,
-        title: 'Confirm payment',
+        title: AppStrings.t(
+          AppStringKeys.telegramInvoiceCheckoutConfirmPayment,
+        ),
         message: 'Pay ${_displayTotal(tipAmount: tipAmount)}?',
-        confirmText: 'Pay',
+        confirmText: AppStrings.t(AppStringKeys.telegramInvoiceCheckoutPay),
       );
       if (!accepted) {
         if (mounted) setState(() => _busy = false);
@@ -553,7 +603,9 @@ class _TelegramInvoiceCheckoutViewState
           MaterialPageRoute(
             fullscreenDialog: true,
             builder: (_) => TelegramPaymentWebView(
-              title: 'Verify payment',
+              title: AppStrings.t(
+                AppStringKeys.telegramInvoiceCheckoutVerifyPayment,
+              ),
               url: verificationUrl,
             ),
           ),
@@ -630,7 +682,9 @@ class _TelegramInvoiceCheckoutViewState
         MaterialPageRoute(
           fullscreenDialog: true,
           builder: (_) => TelegramPaymentWebView(
-            title: 'Payment details',
+            title: AppStrings.t(
+              AppStringKeys.telegramInvoiceCheckoutPaymentDetails,
+            ),
             url: url,
             capturePaymentSubmission: true,
           ),
@@ -837,7 +891,9 @@ class _StripeCardEntryViewState extends State<StripeCardEntryView> {
       body: Column(
         children: [
           NavHeader(
-            title: 'Card details',
+            title: AppStrings.t(
+              AppStringKeys.telegramInvoiceCheckoutCardDetails,
+            ),
             onBack: _busy ? null : () => Navigator.of(context).pop(),
           ),
           Expanded(
@@ -854,7 +910,9 @@ class _StripeCardEntryViewState extends State<StripeCardEntryView> {
                   children: [
                     _PaymentField(
                       controller: _number,
-                      label: 'Card number',
+                      label: AppStrings.t(
+                        AppStringKeys.telegramInvoiceCheckoutCardNumber,
+                      ),
                       keyboardType: TextInputType.number,
                       autofillHints: const [AutofillHints.creditCardNumber],
                     ),
@@ -873,7 +931,9 @@ class _StripeCardEntryViewState extends State<StripeCardEntryView> {
                         Expanded(
                           child: _PaymentField(
                             controller: _cvc,
-                            label: 'Security code',
+                            label: AppStrings.t(
+                              AppStringKeys.telegramInvoiceCheckoutSecurityCode,
+                            ),
                             keyboardType: TextInputType.number,
                             obscureText: true,
                             autofillHints: const [
@@ -887,19 +947,27 @@ class _StripeCardEntryViewState extends State<StripeCardEntryView> {
                         false)
                       _PaymentField(
                         controller: _name,
-                        label: 'Cardholder name',
+                        label: AppStrings.t(
+                          AppStringKeys.telegramInvoiceCheckoutCardholderName,
+                        ),
                         autofillHints: const [AutofillHints.creditCardName],
                       ),
                     if (widget.provider.boolean('need_country') ?? false)
                       _PaymentField(
                         controller: _country,
-                        label: 'Billing country code',
+                        label: AppStrings.t(
+                          AppStringKeys
+                              .telegramInvoiceCheckoutBillingCountryCode,
+                        ),
                         capitalization: TextCapitalization.characters,
                       ),
                     if (widget.provider.boolean('need_postal_code') ?? false)
                       _PaymentField(
                         controller: _postal,
-                        label: 'Billing postal code',
+                        label: AppStrings.t(
+                          AppStringKeys
+                              .telegramInvoiceCheckoutBillingPostalCode,
+                        ),
                         autofillHints: const [AutofillHints.postalCode],
                       ),
                   ],
@@ -1016,7 +1084,7 @@ class _PaymentPasswordDialog extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Two-step verification',
+                AppStrings.t(AppStringKeys.privacyTwoStepVerification),
                 style: AppTextStyle.title(
                   c.textPrimary,
                   weight: AppTextWeight.bold,
@@ -1024,7 +1092,10 @@ class _PaymentPasswordDialog extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                'Enter your Telegram password to use the saved payment method.',
+                AppStrings.t(
+                  AppStringKeys
+                      .telegramInvoiceCheckoutEnterYourTelegramPasswordToUseTheSaved,
+                ),
                 style: AppTextStyle.body(
                   c.textSecondary,
                 ).copyWith(height: 1.35),
@@ -1032,7 +1103,7 @@ class _PaymentPasswordDialog extends StatelessWidget {
               const SizedBox(height: 14),
               _PaymentField(
                 controller: controller,
-                label: 'Password',
+                label: AppStrings.t(AppStringKeys.proxyPassword),
                 obscureText: true,
                 autofocus: true,
                 onSubmitted: (_) => onSubmit(),
@@ -1042,12 +1113,12 @@ class _PaymentPasswordDialog extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   _DialogAction(
-                    label: 'Cancel',
+                    label: AppStrings.t(AppStringKeys.confirmCancel),
                     onTap: () => Navigator.of(context).pop(),
                   ),
                   const SizedBox(width: 8),
                   _DialogAction(
-                    label: 'Continue',
+                    label: AppStrings.t(AppStringKeys.confirmContinue),
                     fill: c.linkBlue,
                     foreground: c.onAccent,
                     onTap: onSubmit,

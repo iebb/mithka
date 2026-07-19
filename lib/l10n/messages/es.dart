@@ -2162,4 +2162,665 @@ const esMessages = <String, String>{
   'groupAdminSeconds': "{value1} seconds",
   'groupAdminRefresh': "Refresh",
   'stickerStudioRefresh': "Refresh",
+  'accountSecurityAccountInactivity': "Inactividad de la cuenta",
+  'accountSecurityCancelEmailChange': "Cancelar cambio de correo electrónico",
+  'accountSecurityChangePhoneNumber': "Cambiar el número de teléfono",
+  'accountSecurityConfirmNewPassword': "Confirmar nueva contraseña",
+  'accountSecurityCurrentPassword': "Contraseña actual",
+  'accountSecurityDeleteAccount': "Eliminar cuenta",
+  'accountSecurityDeleteAccountVariant2': "Eliminar cuenta",
+  'accountSecurityNewPassword': "Nueva contraseña",
+  'accountSecurityNewPhoneNumber': "Nuevo número de teléfono",
+  'accountSecurityNewRecoveryEmail': "Nuevo correo electrónico de recuperación",
+  'accountSecurityPasswordHint': "Pista para la contraseña",
+  'accountSecurityPasswordRecovery': "Recuperar contraseña",
+  'accountSecurityPermanentlyDeleteTelegramAccount':
+      "¿Eliminar permanentemente la cuenta de Telegram?",
+  'accountSecurityReasonOptional': "Razón (opcional)",
+  'accountSecurityRecoverOrResetPassword': "Recuperar o restablecer contraseña",
+  'accountSecurityRecoverPassword': "recuperar contraseña",
+  'accountSecurityRecoveryCode': "Código de recuperación",
+  'accountSecurityRecoveryEmail': "Correo de recuperación",
+  'accountSecurityRecoveryEmailRecommended':
+      "Correo electrónico de recuperación (recomendado)",
+  'accountSecurityRemovePassword': "Quitar contraseña",
+  'accountSecurityRemoveTwoStepPassword': "¿Quitar la contraseña de dos pasos?",
+  'accountSecuritySendRecoveryCode': "Enviar código de recuperación",
+  'accountSecuritySendVerificationCode': "Enviar código de verificación",
+  'accountSecurityTwoStepPassword': "Contraseña de dos pasos",
+  'accountSecurityTwoStepPasswordIfEnabled':
+      "Contraseña de dos pasos (si está habilitada)",
+  'accountSecurityTwoStepVerification': "Verificación en dos pasos",
+  'accountSecurityVerifyRecoveryEmail':
+      "Verificar correo electrónico de recuperación",
+  'autoDownloadSettingsAutomaticDownload': "Descarga automática",
+  'autoDownloadSettingsAutomaticMediaDownload': "Autodescarga de multimedia",
+  'autoDownloadSettingsFileSizeLimits': "Límites de tamaño de archivo",
+  'autoDownloadSettingsPreloadingAndCalls': "Precarga y llamadas",
+  'autoDownloadSettingsTheseSettingsAreAppliedDirectlyToTDLibFor':
+      "Estas configuraciones se aplican directamente a TDLib para Wi-Fi, datos móviles y roaming. La reproducción de video aún puede transmitir prefijos descargados cuando la descarga automática completa está desactivada.",
+  'businessSettingsAddInterval': "Agregar intervalo",
+  'businessSettingsBusinessCapabilitiesCouldNotBeLoadedForThis':
+      "No se pudieron cargar capacidades comerciales para esta cuenta.",
+  'businessSettingsTelegramBusinessToolsRequireTelegramPremiumYourProfile':
+      "Las herramientas de Telegram Business requieren Telegram Premium. Los detalles de tu perfil permanecen visibles, pero la edición está bloqueada.",
+  'businessToolsAddMessage': "Agregar mensaje",
+  'businessToolsAlways': "Siempre",
+  'businessToolsAutomatedMessages': "Mensajes automatizados",
+  'businessToolsAutomatedMessagesUseOneOfYourQuickReply':
+      "Los mensajes automáticos utilizan uno de sus atajos de respuesta rápida y se entregan únicamente a los grupos de destinatarios que elija.",
+  'businessToolsAwayMessage': "Mensaje de ausencia",
+  'businessToolsCheck': "Marcar",
+  'businessToolsChoosePrivateChat': "Elija chat privado",
+  'businessToolsConnectedBot': "Bot conectado",
+  'businessToolsCustomSchedule': "Horario personalizado",
+  'businessToolsDeleteMessage': "Eliminar mensaje",
+  'businessToolsDeleteQuickReply': "Eliminar respuesta rápida",
+  'businessToolsDeleteQuickReplyVariant2': "¿Eliminar respuesta rápida?",
+  'businessToolsDisconnect': "Desconectar",
+  'businessToolsDisconnectBot': "Desconectar robot",
+  'businessToolsDisconnectBotVariant2': "¿Desconectar el robot?",
+  'businessToolsEnds': "Finaliza",
+  'businessToolsExistingChats': "Chats existentes",
+  'businessToolsGreetingMessage': "Mensaje de bienvenida",
+  'businessToolsGreetingSticker': "Saludo Pegatina",
+  'businessToolsInvertSelectedChats': "Invertir chats seleccionados",
+  'businessToolsNewChats': "Chats nuevos",
+  'businessToolsNoQuickReplies': "Sin respuestas rápidas",
+  'businessToolsNoQuickRepliesAvailable':
+      "No hay respuestas rápidas disponibles",
+  'businessToolsNoStickersInThisSet': "No hay pegatinas en este conjunto.",
+  'businessToolsNonContacts': "No contactos",
+  'businessToolsOutsideOpeningHours': "Fuera del horario de apertura",
+  'businessToolsPauseBotInThisChat': "Pausar bot en este chat",
+  'businessToolsQuickReplies': "Respuestas rápidas",
+  'businessToolsQuickRepliesUnavailable': "Respuestas rápidas no disponibles",
+  'businessToolsQuickReply': "Respuesta rápida",
+  'businessToolsRemoveFromThisChat': "Eliminar de este chat",
+  'businessToolsReusableResponse': "Respuesta reutilizable",
+  'businessToolsSendAfterNoActivityFor':
+      "Enviar después de no haber actividad durante",
+  'businessToolsSendAwayMessage': "Enviar mensaje de ausencia",
+  'businessToolsSendGreetingMessage': "Enviar mensaje de bienvenida",
+  'businessToolsSendOnlyWhileOffline': "Enviar solo sin conexión",
+  'businessToolsShortcut': "Atajo",
+  'businessToolsStarts': "Comienza",
+  'callsRefreshCalls': "Actualizar llamadas",
+  'channelDirectMessagesRefreshDirectMessages': "Actualizar mensajes directos",
+  'chatAddPollOption': "Agregar opción de encuesta",
+  'chatAdministratorEditTransferOwnership': "Transferir propiedad",
+  'chatFolderManagementAllChats': "Todos",
+  'chatFolderManagementDeleteThisInviteLink':
+      "¿Eliminar este enlace de invitación?",
+  'chatFolderManagementFolderInviteLinks': "Enlaces de invitación a carpetas",
+  'chatFolderManagementKeepChats': "Mantener chats",
+  'chatFolderManagementNoInviteLinksYet': "Aún no hay enlaces de invitación",
+  'chatFolderManagementOptionalLinkName': "Nombre del enlace opcional",
+  'chatFolderManagementThisFolderHasNoChatsThatCanBe':
+      "Esta carpeta no tiene chats que se puedan compartir.",
+  'chatInputBarAnswerGuestQuery': "Responder consulta de huésped",
+  'chatInputBarAutomationStatus': "Estado de automatización",
+  'chatInputBarBotName': "Nombre del bot",
+  'chatInputBarBotTools': "herramientas de robots",
+  'chatInputBarCreateBotTopic': "Crear tema de bot",
+  'chatInputBarCreateManagedBot': "Crear bot administrado",
+  'chatInputBarErrorMessageOptional': "Mensaje de error (opcional)",
+  'chatInputBarGuestQueries': "Consultas de invitados",
+  'chatInputBarLoadMoreGIFResults': "Cargar más resultados GIF",
+  'chatInputBarNoAdditionalToolsAreAvailableForThisBot':
+      "No hay herramientas adicionales disponibles para este bot.",
+  'chatInputBarNoInlineResults': "No hay resultados en línea",
+  'chatInputBarOpenBotMenu': "Abrir menú de bots",
+  'chatInputBarPendingUpdateCount': "Recuento de actualizaciones pendientes",
+  'chatInputBarReply': "Responder",
+  'chatInputBarSearchingInlineResults': "Buscando resultados en línea...",
+  'chatInputBarTopicName': "Nombre del tema",
+  'chatInputBarUseInlineMode': "Usar el modo en línea",
+  'chatMembersMemberTag': "Etiqueta de miembro",
+  'checklistComposerAllowOthersToAddTasks': "Permitir a otros añadir tareas",
+  'checklistComposerAllowOthersToMarkTasks':
+      "Permitir que otros marquen tareas",
+  'diagnosticBreadcrumbsUnknown': "Desconocido",
+  'downloadsClearActiveDownloads': "Borrar descargas activas",
+  'downloadsClearCompletedDownloads': "Borrar descargas completadas",
+  'downloadsKeepTheCachedFileOrDeleteItFrom':
+      "Guarde el archivo en caché o elimínelo de este dispositivo.",
+  'downloadsNoDownloadsFound': "No se encontraron descargas.",
+  'downloadsRefreshDownloads': "Actualizar descargas",
+  'downloadsRemoveAndDeleteFile': "Quitar y eliminar archivo",
+  'downloadsRemoveAndKeepCachedFile': "Eliminar y mantener el archivo en caché",
+  'downloadsRemoveFromDownloads': "¿Eliminar de las descargas?",
+  'downloadsSearchDownloads': "Buscar descargas",
+  'groupAdministrationAddCustomReaction': "Agregar reacción personalizada",
+  'groupAdministrationAllowAllReactions': "Permitir todas las reacciones",
+  'groupAdministrationAllowedEmoji': "emojis permitidos",
+  'groupAdministrationApproveAll': "Aprobar todo",
+  'groupAdministrationBoostStatus': "Estado de impulso",
+  'groupAdministrationBoosts': "Impulsos",
+  'groupAdministrationBoostsAndGiveaways': "Impulsos y obsequios",
+  'groupAdministrationCopyBoostLink': "Copiar enlace de impulso",
+  'groupAdministrationCustomEmojiIcon': "Icono de emoji personalizado",
+  'groupAdministrationCustomReactions': "Reacciones personalizadas",
+  'groupAdministrationDeclineAll': "Rechazar todo",
+  'groupAdministrationDetailedGraphDataIsLoadedFromTelegramAnd':
+      "Los datos gráficos detallados se cargan desde Telegram y se resumen aquí.",
+  'groupAdministrationExpiration': "Caducidad",
+  'groupAdministrationForumTopics': "Temas del foro",
+  'groupAdministrationGiveawayEntryPoints': "Puntos de entrada al sorteo",
+  'groupAdministrationIconColor': "Color del icono",
+  'groupAdministrationInviteLinkAnalytics': "Análisis de enlaces de invitación",
+  'groupAdministrationInviteLinks': "Enlaces de invitación",
+  'groupAdministrationJoinRequests': "Solicitudes de unión",
+  'groupAdministrationLevel': "Nivel",
+  'groupAdministrationLinkSettings': "Configuración de enlace",
+  'groupAdministrationLinkedGroup': "grupo vinculado",
+  'groupAdministrationMemberLimit0IsUnlimited':
+      "Límite de miembros (0 es ilimitado)",
+  'groupAdministrationName': "Nombre",
+  'groupAdministrationNeverExpires': "Nunca caduca",
+  'groupAdministrationNextLevel': "Siguiente nivel",
+  'groupAdministrationOverview': "Resumen",
+  'groupAdministrationPerMessageLimit': "Límite por mensaje",
+  'groupAdministrationPinnedTopicsDragToReorder':
+      "Temas fijados · arrastrar para reordenar",
+  'groupAdministrationPremiumGiveaways': "obsequios premium",
+  'groupAdministrationPrepaidGiveaways': "Sorteos prepagados",
+  'groupAdministrationPurchasesAreCompletedByThePlatformPaymentFlow':
+      "Las compras se completan mediante el flujo de pago de la plataforma. Los obsequios prepagos existentes se pueden lanzar después de seleccionar su registro de pago de Telegram.",
+  'groupAdministrationRequestAdministratorApproval':
+      "Solicitar aprobación del administrador",
+  'groupAdministrationRevoke': "Anular",
+  'groupAdministrationRevokeThisInviteLink':
+      "¿Revocar este enlace de invitación?",
+  'groupAdministrationRevoked': "Anulado",
+  'groupAdministrationStarGiveaways': "Sorteos de estrellas",
+  'groupAdministrationStatistics': "Estadísticas",
+  'groupAdministrationStatisticsAreUnavailableForThisChat':
+      "Las estadísticas no están disponibles para este chat.",
+  'groupAdministrationTopicIcon': "Icono de tema",
+  'linkHandlerAuthorizationCode': "código de autorización",
+  'linkHandlerBuyTelegramStars': "Comprar estrellas de Telegram",
+  'linkHandlerChooseAPremiumRecipient': "Elige un destinatario Premium",
+  'linkHandlerConfirmPhoneOwnership': "Confirmar la propiedad del teléfono",
+  'linkHandlerConfirmPremiumGift': "Confirmar regalo Premium",
+  'linkHandlerConfirmStarsPurchase': "Confirmar compra de estrellas",
+  'linkHandlerCreateManagedBot': "¿Crear un bot administrado?",
+  'linkHandlerGiftAuction': "Subasta del regalo",
+  'linkHandlerGiftTelegramPremium': "Regala Telegram Premium",
+  'linkHandlerJoinCall': "Unirme a la llamada",
+  'linkHandlerOpenChat': "Abrir chat",
+  'linkHandlerPremiumGift': "Regalo premium",
+  'linkHandlerPremiumGiftUnavailable': "Regalo premium no disponible",
+  'linkHandlerRestoreAppStorePurchases':
+      "¿Restaurar las compras de la App Store?",
+  'linkHandlerRestoreUnavailable': "Restaurar no disponible",
+  'linkHandlerStarsPurchaseUnavailable': "Compra de estrellas no disponible",
+  'linkHandlerTelegramPassportRequest': "Solicitud de pasaporte de Telegram",
+  'linkHandlerTelegramPremium': "Telegrama Premium",
+  'linkHandlerTelegramPremiumGift': "Regalo Telegrama Premium",
+  'loginConfirmYourEmailAddress': "Confirma tu dirección de correo electrónico",
+  'loginEmailAddress': "Dirección de correo",
+  'loginEmailVerificationCode': "Código de verificación de correo electrónico",
+  'loginEnterTheEmailCode': "Introduce el código de correo electrónico",
+  'loginResendEmailCode': "Reenviar código de correo electrónico",
+  'loginRestoreAppStorePurchase': "Restaurar la compra de la App Store",
+  'loginTelegramPremiumIsRequired': "Se requiere Telegram Premium",
+  'loginTelegramRequiresAnEmailAddressToFinishSigning':
+      "Telegram requiere una dirección de correo electrónico para finalizar el inicio de sesión.",
+  'mediaSendPreviewStartTimestampSeconds':
+      "Marca de tiempo de inicio (segundos)",
+  'mediaSendPreviewTrimVideo': "Recortar vídeo",
+  'mediaSendPreviewVideoPresentation': "Presentación en vídeo",
+  'mediaSendPreviewVideoTrimRange': "Rango de recorte de vídeo",
+  'messageBubbleAISummary': "Resumen con IA",
+  'messageBubbleSummarize': "resumir",
+  'messageBubbleSummarizingPrivatelyWithTelegram':
+      "Resumiendo en privado con Telegram…",
+  'messageSendOptionsCaptionAboveMedia': "Título encima de los medios",
+  'messageSendOptionsHideWithSpoiler': "Ocultar con spoiler",
+  'messageSendOptionsScheduledMessages': "Mensajes programados",
+  'messageSendOptionsSendSilently': "Enviar silenciosamente",
+  'messageSendOptionsViewOnce': "Ver una vez",
+  'messageSpecialContentViewResults': "Ver resultados",
+  'momentsShortVideos': "Vídeos cortos",
+  'networkUsageByMediaType': "Por tipo de medio",
+  'networkUsageCallDuration': "Duración de la llamada",
+  'networkUsageNetworkUsage': "Uso de la red",
+  'networkUsageNoNetworkUsageRecorded': "No se registró ningún uso de la red.",
+  'networkUsageReceived': "Recibidos",
+  'networkUsageReset': "Restablecer",
+  'networkUsageResetNetworkStatistics': "¿Restablecer estadísticas de red?",
+  'pollComposerClosePollAutomatically': "Cerrar encuesta automáticamente",
+  'pollResultsFilterVoters': "Filtrar votantes",
+  'pollResultsPollResults': "Resultados de la encuesta",
+  'profileContactManagementContactDetails': "Detalles de contacto",
+  'profileContactManagementContactNote': "Nota de contacto",
+  'profileContactManagementRemoveContact': "¿Quitar contacto?",
+  'profileContactManagementShareYourPhoneNumber': "¿Compartir tu número?",
+  'profileContactManagementSuggestBirthdate': "Sugerir fecha de nacimiento",
+  'profilePhotoManagementNoProfilePhotosYet': "Aún no hay fotos de perfil",
+  'profilePhotoManagementProfilePhotos': "Fotos del perfil",
+  'profilePhotoManagementRefreshProfilePhotos': "Actualizar fotos de perfil",
+  'publicDiscoveryDiscover': "Descubrir",
+  'publicDiscoveryLoadMore': "Cargar más",
+  'publicDiscoveryPaidPublicSearch': "Búsqueda pública pagada",
+  'publicDiscoveryPublicChannel': "Canal público",
+  'savedMessagesRefreshSavedMessages': "Actualizar mensajes guardados",
+  'savedMessagesSearchSavedMessages': "Buscar mensajes guardados",
+  'savedMessagesTagLabel': "Etiqueta de etiqueta",
+  'savedMessagesTapToRetry': "Toca para volver a intentarlo",
+  'scheduledMessagesDeleteScheduledMessage': "¿Eliminar mensaje programado?",
+  'scheduledMessagesEditScheduledMessage': "Editar mensaje programado",
+  'scheduledMessagesLongPressTheSendButtonToScheduleA':
+      "Mantenga presionado el botón enviar para programar un mensaje.",
+  'scheduledMessagesNoScheduledMessages': "No hay mensajes programados",
+  'scheduledMessagesRefreshScheduledMessages':
+      "Actualizar mensajes programados",
+  'shortVideoAdjustDuration': "Ajustar duración",
+  'shortVideoChooseAShortVideoChat': "Elija un chat de vídeo corto",
+  'shortVideoMaximumShortVideoDuration': "Duración máxima de vídeo corto",
+  'shortVideoNoShortVideosMatchTheDuration':
+      "Ningún vídeo corto coincide con la duración.",
+  'storageUsageClearCacheForThisChat': "Borrar caché para este chat",
+  'storageUsageClearCachedMedia': "¿Borrar medios almacenados en caché?",
+  'storageUsageKeepMedia': "Conservar multimedia",
+  'storageUsageMaximumCacheSize': "Tamaño máximo de caché",
+  'storageUsageNoCachedChatMedia': "Sin medios de chat en caché.",
+  'storageUsageStorageByChat': "Almacenamiento por chat",
+  'storageUsageStorageUsage': "Uso de almacenamiento",
+  'storyAreaEditorArrangeStoryAreas': "Organizar áreas de historia",
+  'storyAreaEditorDragToMovePinchToResizeTwistTo':
+      "Arrastra para moverte. Pellizca para cambiar el tamaño. Gire para girar.",
+  'storyAuthoringChooseAGroupOrChannel': "Elige un grupo o canal",
+  'storyAuthoringChooseViewer': "Elige visor",
+  'storyAuthoringCoverFrame': "Marco de cubierta",
+  'storyAuthoringNoRecentMessages': "No hay mensajes recientes",
+  'storyAuthoringStoryLink': "Enlace de la historia",
+  'storyCameraAutomaticFlash': "flash automático",
+  'storyCameraOpenGallery': "Abrir galería",
+  'storyManagementAllowViewerMessages': "Permitir mensajes del espectador",
+  'storyManagementDeleteThisStory': "¿Eliminar esta historia?",
+  'storyManagementDeleteThisStoryAlbum': "¿Eliminar este álbum de historias?",
+  'storyManagementLiveStoriesUseRTMPInThisBuildStart':
+      "Live Stories usa RTMP en esta compilación. Inicie la historia, luego conecte una aplicación de transmisión con la URL generada y la clave de transmisión.",
+  'storyManagementLiveStory': "Historia en vivo",
+  'storyManagementNoManageableStories': "No hay historias manejables",
+  'storyManagementProtectFromScreenshots': "Proteger de capturas de pantalla",
+  'storyManagementReplaceStreamKey': "Reemplazar clave de transmisión",
+  'storyManagementSaveOrder': "Guardar pedido",
+  'storyManagementStarsPerMessage': "Estrellas por mensaje",
+  'storyManagementStarsPerViewerMessage': "Estrellas por mensaje de espectador",
+  'storyManagementStreamKey': "Clave de transmisión",
+  'storyUiComponentsWorking': "trabajando",
+  'storyViewerMute': "Silenciar",
+  'storyViewerNoViewerIdentitiesAreAvailable':
+      "No hay identidades de espectadores disponibles.",
+  'storyViewerReport': "Reportar",
+  'storyViewerShare': "Compartir",
+  'storyViewerStealth': "sigilo",
+  'storyViewerViewed': "Visto",
+  'storyViewerViewers': "Vistas",
+  'storyViewerViewersAndInteractions': "Espectadores e interacciones",
+  'telegramAiEditorAIWritingStyles': "Estilos de escritura de IA",
+  'telegramAiEditorAddEmoji': "Añadir emoji",
+  'telegramAiEditorGeneratePrivatelyWithTelegram':
+      "Generar de forma privada con Telegram",
+  'telegramAiEditorManageCustomStyles': "Administrar estilos personalizados",
+  'telegramAiEditorNoAIWritingStylesAreCurrentlyAvailable':
+      "Actualmente no hay estilos de escritura de IA disponibles.",
+  'telegramAiEditorPasteAStyleNameFromALink':
+      "Pegar un nombre de estilo desde un enlace",
+  'telegramAiEditorProofreadAndFixMistakes': "Revisar y corregir errores",
+  'telegramAiEditorShowMeAsCreator': "Muéstrame como creador",
+  'telegramAiEditorStylePrompt': "Mensaje de estilo",
+  'telegramAiEditorTelegramAIEditor': "Editor de IA de Telegram",
+  'telegramAiEditorTelegramProcessesAIEditorRequestsThroughCocoon':
+      "Telegram procesa las solicitudes del AI Editor a través de Cocoon. La acción de IA no está disponible en Secret Chats y Telegram puede requerir Premium después de la asignación gratuita.",
+  'telegramAiEditorWritingStyle': "Estilo de escritura",
+  'telegramInvoiceCheckoutAddressLine2': "Línea de dirección 2",
+  'telegramInvoiceCheckoutBillingCountryCode': "Código de país de facturación",
+  'telegramInvoiceCheckoutBillingPostalCode': "código postal de facturación",
+  'telegramInvoiceCheckoutCardDetails': "Detalles de la tarjeta",
+  'telegramInvoiceCheckoutCardNumber': "Número de tarjeta",
+  'telegramInvoiceCheckoutCardholderName': "Nombre del titular de la tarjeta",
+  'telegramInvoiceCheckoutCheckout': "Caja",
+  'telegramInvoiceCheckoutCity': "Ciudad",
+  'telegramInvoiceCheckoutConfirmPayment': "Confirmar pago",
+  'telegramInvoiceCheckoutCountryCode': "Código de país",
+  'telegramInvoiceCheckoutCreditOrDebitCard': "Tarjeta de crédito o débito",
+  'telegramInvoiceCheckoutEmail': "Correo electrónico",
+  'telegramInvoiceCheckoutEnterYourTelegramPasswordToUseTheSaved':
+      "Ingrese su contraseña de Telegram para usar el método de pago guardado.",
+  'telegramInvoiceCheckoutIAcceptRecurringPaymentTerms':
+      "Acepto condiciones de pago recurrentes",
+  'telegramInvoiceCheckoutIAcceptThePaymentTerms':
+      "Acepto las condiciones de pago",
+  'telegramInvoiceCheckoutPay': "pagar",
+  'telegramInvoiceCheckoutPaymentDetails': "Detalles de pago",
+  'telegramInvoiceCheckoutPaymentDetailsAreSentDirectlyToTheSelected':
+      "Los detalles de pago se envían directamente al proveedor seleccionado. Telegram recibe solo el token de credencial resultante.",
+  'telegramInvoiceCheckoutPaymentProvider': "Proveedor de pago",
+  'telegramInvoiceCheckoutPostalCode': "código postal",
+  'telegramInvoiceCheckoutSaveOrderInformation':
+      "Guardar información del pedido",
+  'telegramInvoiceCheckoutSaveThisPaymentMethod': "Guarde este método de pago",
+  'telegramInvoiceCheckoutSecurityCode': "código de seguridad",
+  'telegramInvoiceCheckoutStateOrRegion': "Estado o región",
+  'telegramInvoiceCheckoutStreetAddress': "dirección postal",
+  'telegramInvoiceCheckoutVerifyPayment': "Verificar pago",
+  'telegramMiniAppChangesThatYouMadeMayNotBeSaved':
+      "Es posible que los cambios realizados no se guarden.",
+  'telegramMiniAppMiniAppSettings': "Configuración de la miniaplicación",
+  'telegramStorePurchaseRetry': "Reintentar",
+  'telegramStorePurchaseTelegramDidNotReturnAnAppStoreProduct':
+      "Telegram no devolvió ningún producto de la App Store por esta compra.",
+  'videoNotePreviewTrim': "Recortar",
+  'videoNotePreviewVideoMessage': "Videomensaje",
+  'videoNoteRecorderCancelRecording': "Cancelar grabación",
+  'videoNoteRecorderCloseCamera': "Cerrar cámara",
+  'videoNoteRecorderSwitchCamera': "Cambiar cámara",
+  'voiceNotePreviewReviewTheRecordingBeforeSendingSendOptionsInclude':
+      "Revise la grabación antes de enviarla. Las opciones de envío incluyen entrega silenciosa, programación, efectos y visualización única.",
+  'voiceNotePreviewVoiceMessage': "Mensaje de voz",
+  'profilePhotoManagementPhotoHistory': "Historia de la foto",
+  'shortVideoMaximumAcceptedDuration':
+      "Actualmente se aceptan vídeos hasta {value1}.",
+  'shortVideoMinutesSeconds': "{value1} min {value2} seg",
+  'shortVideoNoChatsMatchingDuration':
+      "Ningún chat contiene videos cortos que coincidan con la duración seleccionada.",
+  'accountSecurityANewCodeWasSent': "Se envió un nuevo código.",
+  'accountSecurityEnterANewPassword': "Ingrese una nueva contraseña.",
+  'accountSecurityPasswordRecovered': "Contraseña recuperada.",
+  'accountSecurityPhoneNumberChanged': "El número de teléfono cambió.",
+  'accountSecurityRecoveryEmailVerified':
+      "Correo electrónico de recuperación verificado.",
+  'accountSecurityTheNewPasswordsDoNotMatch':
+      "Las nuevas contraseñas no coinciden.",
+  'businessSettingsBusinessHourIntervalsCannotOverlap':
+      "Los intervalos de horas hábiles no pueden superponerse",
+  'businessSettingsTelegramPremiumIsRequiredForBusinessTools':
+      "Se requiere Telegram Premium para herramientas comerciales",
+  'businessSettingsThisBusinessFeatureIsUnavailableInThisBuild':
+      "Esta función empresarial no está disponible en esta compilación",
+  'businessToolsBotNotFoundValue1': "Bot no encontrado: {value1}",
+  'businessToolsChooseAPrivateChat': "Elige un chat privado",
+  'businessToolsCouldNotAddMessageValue1':
+      "No se pudo agregar el mensaje: {value1}",
+  'businessToolsCouldNotConnectBotValue1':
+      "No se pudo conectar el bot: {value1}",
+  'businessToolsCouldNotDeleteMessageValue1':
+      "No se pudo eliminar el mensaje: {value1}",
+  'businessToolsCouldNotDeleteQuickReplyValue1':
+      "No se pudo eliminar la respuesta rápida: {value1}",
+  'businessToolsCouldNotDisconnectBotValue1':
+      "No se pudo desconectar el bot: {value1}",
+  'businessToolsCouldNotEditMessageValue1':
+      "No se pudo editar el mensaje: {value1}",
+  'businessToolsCouldNotLoadAutomationValue1':
+      "No se pudo cargar la automatización: {value1}",
+  'businessToolsCouldNotLoadConnectedBotValue1':
+      "No se pudo cargar el bot conectado: {value1}",
+  'businessToolsCouldNotLoadMessagesValue1':
+      "No se pudieron cargar mensajes: {value1}",
+  'businessToolsCouldNotLoadQuickRepliesValue1':
+      "No se pudieron cargar respuestas rápidas: {value1}",
+  'businessToolsCouldNotRemoveBotValue1':
+      "No se pudo eliminar el bot: {value1}",
+  'businessToolsCouldNotReorderQuickRepliesValue1':
+      "No se pudieron reordenar las respuestas rápidas: {value1}",
+  'businessToolsCouldNotSaveAwayMessageValue1':
+      "No se pudo guardar el mensaje: {value1}",
+  'businessToolsCouldNotSaveGreetingValue1':
+      "No se pudo guardar el saludo: {value1}",
+  'businessToolsCouldNotSaveQuickReplyValue1':
+      "No se pudo guardar la respuesta rápida: {value1}",
+  'businessToolsCouldNotSendQuickReplyValue1':
+      "No se pudo enviar una respuesta rápida: {value1}",
+  'businessToolsCouldNotUpdateBotValue1':
+      "No se pudo actualizar el bot: {value1}",
+  'businessToolsCreateAndSelectAQuickReplyFirst':
+      "Crea y selecciona una respuesta rápida primero",
+  'businessToolsEnterAShortcutNameAndMessage':
+      "Ingrese un nombre de acceso directo y un mensaje",
+  'businessToolsEnterAShortcutNameFirst':
+      "Introduzca primero un nombre de acceso directo",
+  'businessToolsTheEndTimeMustBeAfterTheStart':
+      "La hora de finalización debe ser posterior a la hora de inicio.",
+  'businessToolsThisMediaReplyKeepsItsOriginalMediaType':
+      "Esta respuesta de medios mantiene su tipo de medio original. Reemplácelo desde un compositor de medios.",
+  'chatAdministratorEditCouldnTTransferOwnershipCheckThePassword':
+      "No se pudo transferir la propiedad. Verifique la contraseña.",
+  'chatFolderManagementCouldnTChangeFolderTagsValue1':
+      "No se pudieron cambiar las etiquetas de la carpeta: {value1}",
+  'chatFolderManagementCouldnTCreateFolderValue1':
+      "No se pudo crear la carpeta: {value1}",
+  'chatFolderManagementCouldnTDeleteFolderValue1':
+      "No se pudo eliminar la carpeta: {value1}",
+  'chatFolderManagementCouldnTDeleteInviteLinkValue1':
+      "No se pudo eliminar el enlace de invitación: {value1}",
+  'chatFolderManagementCouldnTLoadChatFoldersValue1':
+      "No se pudieron cargar las carpetas de chat: {value1}",
+  'chatFolderManagementCouldnTLoadShareableChatsValue1':
+      "No se pudieron cargar chats para compartir: {value1}",
+  'chatFolderManagementCouldnTReorderFoldersValue1':
+      "No se pudieron reordenar las carpetas: {value1}",
+  'chatFolderManagementCouldnTUpdateFolderValue1':
+      "No se pudo actualizar la carpeta: {value1}",
+  'chatFolderManagementEnableFolderTagsBeforeChoosingAFolderColor':
+      "Habilite las etiquetas de carpeta antes de elegir un color de carpeta",
+  'chatFolderManagementFolderNamesMustContain112Characters':
+      "Los nombres de las carpetas deben contener entre 1 y 12 caracteres.",
+  'chatFolderManagementInviteLinkNamesCanContainUpTo32':
+      "Los nombres de los enlaces de invitación pueden contener hasta 32 caracteres.",
+  'chatFolderManagementSelectAtLeastOneGroupOrChannel':
+      "Seleccione al menos un grupo o canal",
+  'chatInputBarAutomationStatusUpdated': "Estado de automatización actualizado",
+  'chatInputBarBotTopicCreated': "Tema de bot creado",
+  'chatInputBarEnterANonNegativeUpdateCount':
+      "Ingrese un recuento de actualizaciones no negativo",
+  'chatInputBarGuestQueryAnswered': "Consulta del huésped respondida",
+  'chatInputBarManagedBotCreated': "Bot administrado creado",
+  'groupAdministrationBoostLinkCopied': "Enlace de impulso copiado",
+  'groupAdministrationCouldnTCreateTopicValue1':
+      "No se pudo crear el tema: {value1}",
+  'groupAdministrationCouldnTDeleteTopicValue1':
+      "No se pudo eliminar el tema: {value1}",
+  'groupAdministrationCouldnTEditTopicValue1':
+      "No se pudo editar el tema: {value1}",
+  'groupAdministrationCouldnTLinkDiscussionGroupValue1':
+      "No se pudo vincular el grupo de discusión: {value1}",
+  'groupAdministrationCouldnTLoadBoostsValue1':
+      "No se pudieron cargar los aumentos: {value1}",
+  'groupAdministrationCouldnTLoadDiscussionGroupsValue1':
+      "No se pudieron cargar los grupos de discusión: {value1}",
+  'groupAdministrationCouldnTLoadForumTopicsValue1':
+      "No se pudieron cargar los temas del foro: {value1}",
+  'groupAdministrationCouldnTLoadInviteAnalyticsValue1':
+      "No se pudieron cargar los análisis de invitación: {value1}",
+  'groupAdministrationCouldnTLoadInviteLinksValue1':
+      "No se pudieron cargar los enlaces de invitación: {value1}",
+  'groupAdministrationCouldnTLoadJoinRequestsValue1':
+      "No se pudieron cargar las solicitudes de unión: {value1}",
+  'groupAdministrationCouldnTPinTopicValue1':
+      "No se pudo fijar el tema: {value1}",
+  'groupAdministrationCouldnTProcessJoinRequestValue1':
+      "No se pudo procesar la solicitud de unión: {value1}",
+  'groupAdministrationCouldnTProcessJoinRequestsValue1':
+      "No se pudieron procesar las solicitudes de unión: {value1}",
+  'groupAdministrationCouldnTReorderPinnedTopicsValue1':
+      "No se pudieron reordenar los temas fijados: {value1}",
+  'groupAdministrationCouldnTRevokeInviteLinkValue1':
+      "No se pudo revocar el enlace de invitación: {value1}",
+  'groupAdministrationCouldnTSaveInviteLinkValue1':
+      "No se pudo guardar el enlace de invitación: {value1}",
+  'groupAdministrationCouldnTSaveReactionsValue1':
+      "No se pudieron guardar las reacciones: {value1}",
+  'groupAdministrationInviteLinkCopied': "Enlace de invitación copiado",
+  'groupAdministrationMemberLimitMustBeBetween0And99999':
+      "El límite de miembros debe estar entre 0 y 99999",
+  'groupAdministrationStatisticsArenTAvailableValue1':
+      "Las estadísticas no están disponibles: {value1}",
+  'linkHandlerPremiumGiftsCanBeSentOnlyToPeople':
+      "Los obsequios premium solo se pueden enviar a personas.",
+  'mediaSendPreviewUnableToOpenThisVideo': "No se puede abrir este vídeo.",
+  'profilePhotoManagementCouldNotDeletePhotoValue1':
+      "No se pudo eliminar la foto: {value1}",
+  'profilePhotoManagementCouldNotLoadProfilePhotosValue1':
+      "No se pudieron cargar las fotos de perfil: {value1}",
+  'profilePhotoManagementCouldNotUpdatePhotoValue1':
+      "No se pudo actualizar la foto: {value1}",
+  'savedMessagesCouldnTChangePinnedTopicValue1':
+      "No se pudo cambiar el tema fijado: {value1}",
+  'savedMessagesCouldnTRenameTagValue1':
+      "No se pudo cambiar el nombre de la etiqueta: {value1}",
+  'storyAuthoringGiftsCouldNotBeLoadedValue1':
+      "No se pudieron cargar los regalos: {value1}",
+  'storyAuthoringNoUpgradedGiftsAreAvailable':
+      "No hay obsequios mejorados disponibles",
+  'storyAuthoringThisMessageCannotBeSharedInAStory':
+      "Este mensaje no se puede compartir en una historia.",
+  'storyAuthoringValue1ItemsCouldNotBeOpened':
+      "{value1} elementos no se pudieron abrir",
+  'storyManagementAlbumUpdateFailedValue1':
+      "Error al actualizar el álbum: {value1}",
+  'storyManagementLiveStoryCouldNotStartValue1':
+      "La historia en vivo no pudo comenzar: {value1}",
+  'storyManagementRTMPURLAndStreamKeyCopied':
+      "URL RTMP y clave de transmisión copiadas",
+  'storyManagementStoryUpdateFailedValue1':
+      "Error al actualizar la historia: {value1}",
+  'storyViewerStealthModeActivated': "Modo sigiloso activado",
+  'storyViewerStealthModeIsAlreadyActive': "El modo sigiloso ya está activo",
+  'storyViewerStealthModeRequiresTelegramPremium':
+      "El modo oculto requiere Telegram Premium",
+  'storyViewerUnableToUpdateStoryNotifications':
+      "No se pueden actualizar las notificaciones de historias",
+  'telegramAiEditorTelegramAIEditorIsUnavailableForThisAccount':
+      "Telegram AI Editor no está disponible para esta cuenta.",
+  'telegramMiniAppDownloadedToValue1': "Descargado a {value1}",
+  'businessToolsMessage': "Mensaje",
+  'businessToolsMessages': "Mensajes",
+  'businessToolsNewQuickReply': "Nueva respuesta rápida",
+  'businessToolsRecipients': "Destinatarios",
+  'businessToolsRightDeleteAllMessages': "Eliminar todos los mensajes",
+  'businessToolsRightReadMessages': "Leer mensajes",
+  'businessToolsRightTransferStars': "Transferir estrellas",
+  'businessToolsSchedule': "Programar",
+  'businessSettingsChooseOptionalGreetingSticker':
+      "Elija una pegatina de saludo opcional",
+  'businessSettingsConnectedBotDescription':
+      "Elige un bot para que gestione tus chats automáticamente.",
+  'businessSettingsGreetingSticker': "pegatina de saludo",
+  'businessSettingsGreetingStickerSelected': "Etiqueta de saludo seleccionada",
+  'businessSettingsLinkOpenCount': "{value1} se abre",
+  'businessSettingsQuickRepliesDescription':
+      "Cree, edite, reordene y envíe respuestas reutilizables",
+  'businessToolsAddExcludedChat': "Agregar chat excluido",
+  'businessToolsAddSelectedChat': "Agregar chat seleccionado",
+  'businessToolsAfterInactiveDays': "Después de {value1} días inactivos",
+  'businessToolsBotRights': "Permisos del bot",
+  'businessToolsBotUsername': "Nombre de usuario del bot",
+  'businessToolsChatAccess': "Chats accesibles para el bot",
+  'businessToolsChooseAnotherStickerSet':
+      "Elija otro conjunto de pegatinas instalado.",
+  'businessToolsCreateQuickReply': "Crear respuesta rápida",
+  'businessToolsCreateQuickReplyLocation':
+      "Cree uno en Configuración → Editar perfil → Negocio.",
+  'businessToolsCreateReusableRepliesDescription':
+      "Cree respuestas reutilizables y luego envíelas desde cualquier chat privado.",
+  'businessToolsDeleteMessageDescription':
+      "Este mensaje se eliminará de la respuesta rápida.",
+  'businessToolsDeleteQuickReplyDescription':
+      "{value1} y todos sus mensajes se eliminarán.",
+  'businessToolsDisconnectBotDescription':
+      "El bot perderá el acceso a los chats comerciales seleccionados.",
+  'businessToolsEditQuickReply': "Editar respuesta rápida",
+  'businessToolsExcludedChatCount': "{value1} chats excluidos",
+  'businessToolsMessageCount': "{value1} mensajes",
+  'businessToolsQuickRepliesPremiumRequired':
+      "Se requiere Telegram Premium para enviar respuestas rápidas a empresas.",
+  'businessToolsQuickRepliesUnavailableDescription':
+      "Las respuestas rápidas no están disponibles en esta versión de Telegram.",
+  'businessToolsReplyToChat': "Responder a {value1}",
+  'businessToolsRightChangeGiftSettings': "Cambiar ajustes de regalos",
+  'businessToolsRightDeleteSentMessages': "Eliminar mensajes enviados",
+  'businessToolsRightEditAccountBio': "Editar biografía",
+  'businessToolsRightEditAccountName': "Editar nombre",
+  'businessToolsRightEditProfilePhoto': "Editar foto del perfil",
+  'businessToolsRightEditUsername': "Editar nombre de usuario",
+  'businessToolsRightManageStories': "Gestionar historias",
+  'businessToolsRightReplyToMessages': "Responder mensajes",
+  'businessToolsRightSellGifts': "Convertir regalos en estrellas",
+  'businessToolsRightTransferOrUpgradeGifts': "Transferir y mejorar regalos",
+  'businessToolsRightViewGiftsAndStars': "Ver regalos y estrellas",
+  'businessToolsSelectedBot': "Seleccionado: {value1}",
+  'businessToolsSelectedChatCount': "{value1} chats seleccionados",
+  'chatFolderManagementValue1ChatsTapToCopy':
+      "{value1} chats · toque para copiar",
+  'chatInfoValue1Stories': "{value1} Historias",
+  'groupAdministrationPeopleCanAddUpToValue1DifferentReactions':
+      "Las personas pueden agregar hasta {value1} reacciones diferentes a un mensaje.",
+  'groupAdministrationValue1JoinedMembers': "{value1} miembros unidos",
+  'groupAdministrationValue1Pending': "{value1} pendiente",
+  'groupAdministrationValue1PurchaseOptions': "{value1} opciones de compra",
+  'loginPurchaseSupportValue1': "Soporte de compra: {value1}",
+  'mediaSendPreviewValue1ToValue2': "{value1}% a {value2}%",
+  'networkUsageSinceValue1': "Desde {value1}",
+  'publicDiscoverySearchForValue1Stars': "Buscar {value1} Estrellas",
+  'publicDiscoveryThisSearchCostsValue1TelegramStars':
+      "Esta búsqueda cuesta {value1} Telegram Stars.",
+  'storageUsageClearCacheForValue1': "¿Borrar caché para {value1}?",
+  'storageUsageValue1CachedFiles': "{value1} archivos en caché",
+  'storyAuthoringChooseARecentMessageFromValue1':
+      "Elija un mensaje reciente de {value1}",
+  'storyViewerValue1ViewsValue2ReactionsValue3Forwards':
+      "{value1} vistas · {value2} reacciones · {value3} reenvíos",
+  'telegramInvoiceCheckoutTipValue1': "Sugerencia ({value1})",
+  'telegramMiniAppAllowValue1ToUseBiometrics':
+      "¿Permitir que {value1} utilice datos biométricos?",
+  'telegramMiniAppValue1WantsPermissionToManageYourEmojiStatus':
+      "{value1} quiere permiso para administrar el estado de tus emojis.",
+  'telegramMiniAppValue1WantsPermissionToSendYouMessages':
+      "{value1} quiere permiso para enviarle mensajes.",
+  'telegramMiniAppValue1WantsToDownloadValue2':
+      "{value1} quiere descargar “{value2}”.",
+  'telegramMiniAppValue1WantsYourPhoneNumber':
+      "{value1} quiere tu número de teléfono.",
+  'telegramStorePurchaseBelowTheRequestedValue1Stars':
+      "Debajo de las {value1} estrellas solicitadas",
+  'pollComposerQuiz': "Cuestionario",
+  'chatFolderManagementAlsoLeaveChats':
+      "¿También dejar {value1} chats de esta carpeta compartida?",
+  'chatFolderManagementAlsoLeaveOneChat':
+      "¿También abandonar este chat desde la carpeta compartida?",
+  'groupAdministrationDeleteTopicAndMessages':
+      "¿Eliminar “{value1}” y todos los mensajes?",
+  'groupAdministrationJoinedAndPending': "{value1} unido · {value2} pendiente",
+  'groupAdministrationJoinedCount': "{value1} se unió",
+  'groupAdministrationNoActiveInviteLinks':
+      "No hay enlaces de invitación activos",
+  'groupAdministrationNoMembersJoinedThroughLink':
+      "Ningún miembro se unió a través de este enlace",
+  'groupAdministrationNoOtherTopics': "Ningún otro tema",
+  'groupAdministrationNoPendingJoinRequests':
+      "No hay solicitudes de unión pendientes",
+  'linkHandlerAlsoAccessPhone':
+      "Esta solicitud también solicita acceder a su número de teléfono.",
+  'linkHandlerAlsoSendMessages':
+      "Esta solicitud también solicita enviar mensajes.",
+  'linkHandlerAlsoSendMessagesAndAccessPhone':
+      "Esta solicitud también solicita enviar mensajes y acceder a su número de teléfono.",
+  'linkHandlerAuthorizeDomain': "¿Autorizar {value1}?",
+  'linkHandlerTelegramLogin': "iniciar sesión en telegrama",
+  'linkHandlerTelegramStarsCount': "{value1} Estrellas de Telegrama",
+  'pollComposerModeAndOptionLimit': "{value1} · Hasta {value2} opciones",
+  'pollComposerMultipleAnswers': "Múltiples respuestas",
+  'pollComposerSingleChoice': "elección única",
+  'pollResultsVotesWithDetailedStatistics':
+      "{value1} votos · estadísticas detalladas disponibles",
+  'savedMessagesOpenOriginalIn': "Abrir original en {value1}",
+  'savedMessagesSourceChat': "chat fuente",
+  'telegramMiniAppThirdPartyAttachmentPrompt':
+      "{value1} lo proporciona un bot de terceros. ¿Agregarlo al menú de archivos adjuntos?",
+  'telegramMiniAppThisMiniApp': "Esta miniaplicación",
 };

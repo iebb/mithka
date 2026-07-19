@@ -48,6 +48,29 @@ void main() {
     );
   });
 
+  test('uses Telegram Business bot permission wording', () {
+    final controller = TelegramLanguageController.test(
+      strings: const {
+        'BusinessBotPermissionsMessagesReply': 'official reply permission',
+        'BusinessBotPermissionsGiftsSell': 'official gift conversion',
+        'BusinessBotPermissionsStories': 'official story permission',
+      },
+    );
+
+    expect(
+      controller.text(AppStringKeys.businessToolsRightReplyToMessages),
+      'official reply permission',
+    );
+    expect(
+      controller.text(AppStringKeys.businessToolsRightSellGifts),
+      'official gift conversion',
+    );
+    expect(
+      controller.text(AppStringKeys.businessToolsRightManageStories),
+      'official story permission',
+    );
+  });
+
   test('uses Telegram Android presence keys on every platform', () {
     final controller = TelegramLanguageController.test(
       strings: const {

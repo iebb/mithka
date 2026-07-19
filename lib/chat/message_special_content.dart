@@ -232,7 +232,9 @@ class MessagePollContent extends StatelessWidget {
                       if (poll.canAddOption)
                         _PollTextAction(
                           key: const ValueKey('messagePollAddOption'),
-                          label: 'Add option',
+                          label: AppStrings.t(
+                            AppStringKeys.pollComposerAddOption,
+                          ),
                           onTap: onAddOption,
                         ),
                       if (poll.canAddOption && poll.canGetVoters)
@@ -240,7 +242,9 @@ class MessagePollContent extends StatelessWidget {
                       if (poll.canGetVoters)
                         _PollTextAction(
                           key: const ValueKey('messagePollViewResults'),
-                          label: 'View results',
+                          label: AppStrings.t(
+                            AppStringKeys.messageSpecialContentViewResults,
+                          ),
                           onTap: onShowResults,
                         ),
                     ],

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app/app_navigator.dart';
@@ -119,10 +120,10 @@ class _ShortVideoChatPickerState extends State<_ShortVideoChatPicker> {
       );
     }
     return ChatPickerView(
-      title: '选择短视频聊天',
+      title: AppStrings.t(AppStringKeys.shortVideoChooseAShortVideoChat),
       allowedChatIds: eligible,
       allowContacts: false,
-      emptyText: '没有找到包含符合时长短视频的聊天',
+      emptyText: AppStrings.t(AppStringKeys.shortVideoNoChatsMatchingDuration),
     );
   }
 }
@@ -218,9 +219,11 @@ class _ShortVideoViewState extends State<ShortVideoView> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
-                  '最长短视频时长',
-                  style: TextStyle(
+                Text(
+                  AppStrings.t(
+                    AppStringKeys.shortVideoMaximumShortVideoDuration,
+                  ),
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
@@ -253,7 +256,9 @@ class _ShortVideoViewState extends State<ShortVideoView> {
                     ),
                     onPressed: () =>
                         Navigator.of(sheetContext).pop(draft.round()),
-                    child: const Text('应用'),
+                    child: Text(
+                      AppStrings.t(AppStringKeys.composerFormatApply),
+                    ),
                   ),
                 ),
               ],
@@ -273,9 +278,20 @@ class _ShortVideoViewState extends State<ShortVideoView> {
   String _durationLabel(int seconds) {
     final minutes = seconds ~/ 60;
     final remainder = seconds % 60;
-    if (minutes == 0) return '$remainder 秒';
-    if (remainder == 0) return '$minutes 分钟';
-    return '$minutes 分 ${remainder.toString().padLeft(2, '0')} 秒';
+    if (minutes == 0) {
+      return AppStrings.t(AppStringKeys.tdMessageSecondsDuration, {
+        'value1': remainder,
+      });
+    }
+    if (remainder == 0) {
+      return AppStrings.t(AppStringKeys.tdMessageMinutesDuration, {
+        'value1': minutes,
+      });
+    }
+    return AppStrings.t(AppStringKeys.shortVideoMinutesSeconds, {
+      'value1': minutes,
+      'value2': remainder.toString().padLeft(2, '0'),
+    });
   }
 
   @override
@@ -575,10 +591,12 @@ class _ShortVideoViewState extends State<ShortVideoView> {
           children: [
             const AppIcon(HeroAppIcons.video, size: 48, color: Colors.white54),
             const SizedBox(height: 16),
-            const Text(
-              '没有符合时长的短视频',
+            Text(
+              AppStrings.t(
+                AppStringKeys.shortVideoNoShortVideosMatchTheDuration,
+              ),
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
@@ -586,7 +604,9 @@ class _ShortVideoViewState extends State<ShortVideoView> {
             ),
             const SizedBox(height: 8),
             Text(
-              '当前最多接受 ${_durationLabel(_maxSeconds)}的视频',
+              AppStrings.t(AppStringKeys.shortVideoMaximumAcceptedDuration, {
+                'value1': _durationLabel(_maxSeconds),
+              }),
               textAlign: TextAlign.center,
               style: const TextStyle(color: Colors.white60, fontSize: 14),
             ),
@@ -597,7 +617,7 @@ class _ShortVideoViewState extends State<ShortVideoView> {
                 side: const BorderSide(color: Colors.white38),
               ),
               onPressed: _configureDuration,
-              child: const Text('调整时长'),
+              child: Text(AppStrings.t(AppStringKeys.shortVideoAdjustDuration)),
             ),
           ],
         ),

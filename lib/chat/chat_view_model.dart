@@ -1294,10 +1294,13 @@ class ChatViewModel extends ChangeNotifier {
         'chat_id': chatId,
         'input_message_content': {
           '@type': 'inputMessageAnimation',
-          'animation': {'@type': 'inputFileLocal', 'path': path},
-          'duration': 0,
-          'width': 0,
-          'height': 0,
+          'animation': {
+            '@type': 'inputAnimation',
+            'animation': {'@type': 'inputFileLocal', 'path': path},
+            'duration': 0,
+            'width': 0,
+            'height': 0,
+          },
           if (captionText.trim().isNotEmpty)
             'caption': {
               '@type': 'formattedText',
@@ -1310,16 +1313,19 @@ class ChatViewModel extends ChangeNotifier {
   }
 
   Future<bool> sendGif(GifItem gif) async {
+    if (!canSendMessages) return false;
     try {
-      await _client.query(
-        _withPaidMessageOptions({
-          '@type': 'sendMessage',
-          'chat_id': chatId,
-          'input_message_content': gifMessageContent(gif),
-        }),
+      final pendingMessage = await _client.query(
+        _withPaidMessageOptions(gifSendRequest(chatId: chatId, gif: gif)),
       );
+      final pendingMessageId = pendingMessage.int64('id');
+      if (pendingMessageId != null &&
+          pendingMessage.obj('sending_state') != null) {
+        await _waitForMessageSend(pendingMessageId);
+      }
       return true;
-    } catch (_) {
+    } catch (error) {
+      debugPrint('Failed to send GIF: $error');
       return false;
     }
   }
@@ -1344,17 +1350,23 @@ class ChatViewModel extends ChangeNotifier {
 
   @visibleForTesting
   Map<String, dynamic> stickerMessageRequest(StickerItem sticker) {
-    final input = sticker.remoteId != null
-        ? {'@type': 'inputFileRemote', 'id': sticker.remoteId}
+    final remoteId = sticker.remoteId?.trim();
+    final inputFile = remoteId != null && remoteId.isNotEmpty
+        ? {'@type': 'inputFileRemote', 'id': remoteId}
         : {'@type': 'inputFileId', 'id': sticker.id};
     return _withPaidMessageOptions({
       '@type': 'sendMessage',
       'chat_id': chatId,
       'input_message_content': {
         '@type': 'inputMessageSticker',
-        'sticker': input,
-        'width': sticker.width,
-        'height': sticker.height,
+        // The bundled TDLib schema carries sticker file metadata in an
+        // inputSticker object rather than directly on inputMessageSticker.
+        'sticker': {
+          '@type': 'inputSticker',
+          'sticker': inputFile,
+          'width': sticker.width,
+          'height': sticker.height,
+        },
         'emoji': sticker.emoji,
       },
     });

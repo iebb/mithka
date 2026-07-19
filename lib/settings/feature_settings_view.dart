@@ -57,7 +57,7 @@ class FeatureSettingsView extends StatelessWidget {
                     ),
                     const InsetDivider(leadingInset: 16),
                     SettingsSwitchRow(
-                      title: '短视频',
+                      title: AppStrings.t(AppStringKeys.momentsShortVideos),
                       value: theme.showShortVideos,
                       onChanged: (value) => theme.showShortVideos = value,
                     ),

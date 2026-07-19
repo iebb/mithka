@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:mithka/l10n/app_localizations.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 import 'telemetry_config.dart';
@@ -73,6 +74,7 @@ abstract final class DiagnosticBreadcrumbs {
     );
   }
 
-  static String _cleanType(String value) =>
-      _safeType.hasMatch(value) ? value : 'unknown';
+  static String _cleanType(String value) => _safeType.hasMatch(value)
+      ? value
+      : AppStrings.t(AppStringKeys.diagnosticBreadcrumbsUnknown);
 }

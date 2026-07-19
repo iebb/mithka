@@ -668,9 +668,11 @@ class _ReactionConfigurationViewState extends State<ReactionConfigurationView> {
   Future<void> _addCustomReaction() async {
     final id = await Navigator.of(context).push<int>(
       MaterialPageRoute(
-        builder: (_) => const ProfileIconPickerView(
+        builder: (_) => ProfileIconPickerView(
           selectedId: 0,
-          title: 'Add custom reaction',
+          title: AppStrings.t(
+            AppStringKeys.groupAdministrationAddCustomReaction,
+          ),
           source: ProfileIconSource.status,
         ),
       ),
@@ -704,22 +706,30 @@ class _ReactionConfigurationViewState extends State<ReactionConfigurationView> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _saving = false);
-      showToast(context, 'Couldn’t save reactions: $error');
+      showToast(
+        context,
+        AppStrings.t(
+          AppStringKeys.groupAdministrationCouldnTSaveReactionsValue1,
+          {'value1': error},
+        ),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) => _AdminPage(
-    title: 'Available reactions',
+    title: AppStrings.t(AppStringKeys.groupAdminAvailableReactions),
     trailing: _AdminSaveButton(onTap: _save, saving: _saving),
     child: ListView(
       padding: const EdgeInsets.all(16),
       children: [
         _AdminSection(
-          title: 'Mode',
+          title: AppStrings.t(AppStringKeys.appearanceMode),
           children: [
             _AdminSwitchRow(
-              title: 'Allow all reactions',
+              title: AppStrings.t(
+                AppStringKeys.groupAdministrationAllowAllReactions,
+              ),
               value: _all,
               onChanged: (value) => setState(() => _all = value),
             ),
@@ -727,14 +737,18 @@ class _ReactionConfigurationViewState extends State<ReactionConfigurationView> {
         ),
         const SizedBox(height: 20),
         _AdminSection(
-          title: 'Per-message limit',
+          title: AppStrings.t(AppStringKeys.groupAdministrationPerMessageLimit),
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
               child: Column(
                 children: [
                   Text(
-                    'People can add up to $_maxReactionCount different reactions to one message.',
+                    AppStrings.t(
+                      AppStringKeys
+                          .groupAdministrationPeopleCanAddUpToValue1DifferentReactions,
+                      {'value1': _maxReactionCount},
+                    ),
                     style: AppTextStyle.body(context.colors.textSecondary),
                   ),
                   _AdminDiscreteSlider(
@@ -752,7 +766,7 @@ class _ReactionConfigurationViewState extends State<ReactionConfigurationView> {
         if (!_all) ...[
           const SizedBox(height: 20),
           _AdminSection(
-            title: 'Allowed emoji',
+            title: AppStrings.t(AppStringKeys.groupAdministrationAllowedEmoji),
             children: [
               Padding(
                 padding: const EdgeInsets.all(14),
@@ -793,7 +807,9 @@ class _ReactionConfigurationViewState extends State<ReactionConfigurationView> {
           ),
           const SizedBox(height: 20),
           _AdminSection(
-            title: 'Custom reactions',
+            title: AppStrings.t(
+              AppStringKeys.groupAdministrationCustomReactions,
+            ),
             children: [
               Padding(
                 padding: const EdgeInsets.all(14),
@@ -895,7 +911,13 @@ class _DiscussionGroupPickerViewState extends State<DiscussionGroupPickerView> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _loading = false);
-      showToast(context, 'Couldn’t load discussion groups: $error');
+      showToast(
+        context,
+        AppStrings.t(
+          AppStringKeys.groupAdministrationCouldnTLoadDiscussionGroupsValue1,
+          {'value1': error},
+        ),
+      );
     }
   }
 
@@ -904,23 +926,33 @@ class _DiscussionGroupPickerViewState extends State<DiscussionGroupPickerView> {
       await widget.service.setDiscussionGroup(widget.chatId, id);
       if (mounted) Navigator.of(context).pop(id);
     } catch (error) {
-      if (mounted) showToast(context, 'Couldn’t link discussion group: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.groupAdministrationCouldnTLinkDiscussionGroupValue1,
+            {'value1': error},
+          ),
+        );
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) => _AdminPage(
-    title: 'Discussion group',
+    title: AppStrings.t(AppStringKeys.groupAdminDiscussionGroup),
     child: _loading
         ? const Center(child: AppActivityIndicator())
         : ListView(
             padding: const EdgeInsets.all(14),
             children: [
               _AdminSection(
-                title: 'Linked group',
+                title: AppStrings.t(
+                  AppStringKeys.groupAdministrationLinkedGroup,
+                ),
                 children: [
                   _AdminChoiceRow(
-                    title: 'None',
+                    title: AppStrings.t(AppStringKeys.groupAppearanceNone),
                     selected: widget.selectedChatId == 0,
                     onTap: () => _select(0),
                   ),
@@ -1003,7 +1035,13 @@ class _ChatInviteLinksAdministrationViewState
     } catch (error) {
       if (!mounted) return;
       setState(() => _loading = false);
-      showToast(context, 'Couldn’t load invite links: $error');
+      showToast(
+        context,
+        AppStrings.t(
+          AppStringKeys.groupAdministrationCouldnTLoadInviteLinksValue1,
+          {'value1': error},
+        ),
+      );
     }
   }
 
@@ -1035,15 +1073,25 @@ class _ChatInviteLinksAdministrationViewState
     if (value == null) return;
     final ok = await showAppConfirmDialog(
       context,
-      title: 'Revoke this invite link?',
-      confirmText: 'Revoke',
+      title: AppStrings.t(
+        AppStringKeys.groupAdministrationRevokeThisInviteLink,
+      ),
+      confirmText: AppStrings.t(AppStringKeys.groupAdministrationRevoke),
     );
     if (!ok) return;
     try {
       await _service.revokeInviteLink(widget.chatId, value);
       await _load();
     } catch (error) {
-      if (mounted) showToast(context, 'Couldn’t revoke invite link: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.groupAdministrationCouldnTRevokeInviteLinkValue1,
+            {'value1': error},
+          ),
+        );
+      }
     }
   }
 
@@ -1063,12 +1111,17 @@ class _ChatInviteLinksAdministrationViewState
 
   Future<void> _copy(String value) async {
     await Clipboard.setData(ClipboardData(text: value));
-    if (mounted) showToast(context, 'Invite link copied');
+    if (mounted) {
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.groupAdministrationInviteLinkCopied),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) => _AdminPage(
-    title: 'Invite links',
+    title: AppStrings.t(AppStringKeys.groupAdministrationInviteLinks),
     trailing: GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: _loading ? null : _create,
@@ -1102,15 +1155,22 @@ class _ChatInviteLinksAdministrationViewState
               ),
               const SizedBox(height: 20),
               _AdminSection(
-                title: 'Active',
+                title: AppStrings.t(AppStringKeys.storyManagementActive),
                 children: _active.isEmpty
-                    ? const [_AdminEmptyRow('No active invite links')]
+                    ? [
+                        _AdminEmptyRow(
+                          AppStrings.t(
+                            AppStringKeys
+                                .groupAdministrationNoActiveInviteLinks,
+                          ),
+                        ),
+                      ]
                     : [for (final link in _active) _inviteRow(link)],
               ),
               if (_revoked.isNotEmpty) ...[
                 const SizedBox(height: 20),
                 _AdminSection(
-                  title: 'Revoked',
+                  title: AppStrings.t(AppStringKeys.groupAdministrationRevoked),
                   children: [
                     for (final link in _revoked)
                       _inviteRow(link, revoked: true),
@@ -1128,7 +1188,14 @@ class _ChatInviteLinksAdministrationViewState
     final pending = link.integer('pending_join_request_count') ?? 0;
     return _AdminNavRow(
       title: name.isEmpty ? value : name,
-      value: '$count joined${pending > 0 ? ' · $pending pending' : ''}',
+      value: pending > 0
+          ? AppStrings.t(AppStringKeys.groupAdministrationJoinedAndPending, {
+              'value1': count,
+              'value2': pending,
+            })
+          : AppStrings.t(AppStringKeys.groupAdministrationJoinedCount, {
+              'value1': count,
+            }),
       onTap: revoked ? () => _copy(value) : () => _edit(link),
       leading: GestureDetector(
         onTap: () => _copy(value),
@@ -1213,7 +1280,9 @@ class _ChatInviteLinkEditorViewState extends State<ChatInviteLinkEditorView> {
           mainAxisSize: MainAxisSize.min,
           children: [
             _AdminNavRow(
-              title: 'Never expires',
+              title: AppStrings.t(
+                AppStringKeys.groupAdministrationNeverExpires,
+              ),
               onTap: () => Navigator.of(sheetContext).pop(0),
             ),
             for (final option in const [
@@ -1236,7 +1305,12 @@ class _ChatInviteLinkEditorViewState extends State<ChatInviteLinkEditorView> {
     if (_saving || _name.text.characters.length > 32) return;
     final limit = int.tryParse(_limit.text) ?? 0;
     if (limit < 0 || limit > 99999) {
-      showToast(context, 'Member limit must be between 0 and 99999');
+      showToast(
+        context,
+        AppStrings.t(
+          AppStringKeys.groupAdministrationMemberLimitMustBeBetween0And99999,
+        ),
+      );
       return;
     }
     setState(() => _saving = true);
@@ -1264,7 +1338,13 @@ class _ChatInviteLinkEditorViewState extends State<ChatInviteLinkEditorView> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _saving = false);
-      showToast(context, 'Couldn’t save invite link: $error');
+      showToast(
+        context,
+        AppStrings.t(
+          AppStringKeys.groupAdministrationCouldnTSaveInviteLinkValue1,
+          {'value1': error},
+        ),
+      );
     }
   }
 
@@ -1276,22 +1356,24 @@ class _ChatInviteLinkEditorViewState extends State<ChatInviteLinkEditorView> {
       padding: const EdgeInsets.all(14),
       children: [
         _AdminSection(
-          title: 'Link settings',
+          title: AppStrings.t(AppStringKeys.groupAdministrationLinkSettings),
           children: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 14),
               child: TextField(
                 controller: _name,
                 maxLength: 32,
-                decoration: const InputDecoration(
-                  labelText: 'Name',
+                decoration: InputDecoration(
+                  labelText: AppStrings.t(
+                    AppStringKeys.groupAdministrationName,
+                  ),
                   counterText: '',
                   border: InputBorder.none,
                 ),
               ),
             ),
             _AdminNavRow(
-              title: 'Expiration',
+              title: AppStrings.t(AppStringKeys.groupAdministrationExpiration),
               value: _expiration == 0
                   ? 'Never'
                   : DateTime.fromMillisecondsSinceEpoch(
@@ -1306,14 +1388,18 @@ class _ChatInviteLinkEditorViewState extends State<ChatInviteLinkEditorView> {
                 enabled: !_approval,
                 keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                decoration: const InputDecoration(
-                  labelText: 'Member limit (0 is unlimited)',
+                decoration: InputDecoration(
+                  labelText: AppStrings.t(
+                    AppStringKeys.groupAdministrationMemberLimit0IsUnlimited,
+                  ),
                   border: InputBorder.none,
                 ),
               ),
             ),
             _AdminSwitchRow(
-              title: 'Request administrator approval',
+              title: AppStrings.t(
+                AppStringKeys.groupAdministrationRequestAdministratorApproval,
+              ),
               value: _approval,
               onChanged: (value) => setState(() => _approval = value),
             ),
@@ -1377,23 +1463,37 @@ class _InviteLinkAnalyticsViewState extends State<InviteLinkAnalyticsView> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _loading = false);
-      showToast(context, 'Couldn’t load invite analytics: $error');
+      showToast(
+        context,
+        AppStrings.t(
+          AppStringKeys.groupAdministrationCouldnTLoadInviteAnalyticsValue1,
+          {'value1': error},
+        ),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) => _AdminPage(
-    title: 'Invite link analytics',
+    title: AppStrings.t(AppStringKeys.groupAdministrationInviteLinkAnalytics),
     child: _loading
         ? const Center(child: AppActivityIndicator())
         : ListView(
             padding: const EdgeInsets.all(14),
             children: [
               _AdminSection(
-                title: '${_members.length} joined members',
+                title: AppStrings.t(
+                  AppStringKeys.groupAdministrationValue1JoinedMembers,
+                  {'value1': _members.length},
+                ),
                 children: _members.isEmpty
-                    ? const [
-                        _AdminEmptyRow('No members joined through this link'),
+                    ? [
+                        _AdminEmptyRow(
+                          AppStrings.t(
+                            AppStringKeys
+                                .groupAdministrationNoMembersJoinedThroughLink,
+                          ),
+                        ),
                       ]
                     : [
                         for (final member in _members)
@@ -1461,7 +1561,13 @@ class _ChatJoinRequestsAdministrationViewState
     } catch (error) {
       if (!mounted) return;
       setState(() => _loading = false);
-      showToast(context, 'Couldn’t load join requests: $error');
+      showToast(
+        context,
+        AppStrings.t(
+          AppStringKeys.groupAdministrationCouldnTLoadJoinRequestsValue1,
+          {'value1': error},
+        ),
+      );
     }
   }
 
@@ -1478,7 +1584,15 @@ class _ChatJoinRequestsAdministrationViewState
         );
       }
     } catch (error) {
-      if (mounted) showToast(context, 'Couldn’t process join request: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.groupAdministrationCouldnTProcessJoinRequestValue1,
+            {'value1': error},
+          ),
+        );
+      }
     }
   }
 
@@ -1488,13 +1602,21 @@ class _ChatJoinRequestsAdministrationViewState
       await _service.processAllJoinRequests(widget.chatId, approve: approve);
       if (mounted) setState(() => _requests = const []);
     } catch (error) {
-      if (mounted) showToast(context, 'Couldn’t process join requests: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.groupAdministrationCouldnTProcessJoinRequestsValue1,
+            {'value1': error},
+          ),
+        );
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) => _AdminPage(
-    title: 'Join requests',
+    title: AppStrings.t(AppStringKeys.groupAdministrationJoinRequests),
     child: _loading
         ? const Center(child: AppActivityIndicator())
         : ListView(
@@ -1505,14 +1627,18 @@ class _ChatJoinRequestsAdministrationViewState
                   children: [
                     Expanded(
                       child: _AdminActionButton(
-                        label: 'Approve all',
+                        label: AppStrings.t(
+                          AppStringKeys.groupAdministrationApproveAll,
+                        ),
                         onTap: () => _processAll(true),
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: _AdminActionButton(
-                        label: 'Decline all',
+                        label: AppStrings.t(
+                          AppStringKeys.groupAdministrationDeclineAll,
+                        ),
                         destructive: true,
                         onTap: () => _processAll(false),
                       ),
@@ -1522,9 +1648,19 @@ class _ChatJoinRequestsAdministrationViewState
                 const SizedBox(height: 16),
               ],
               _AdminSection(
-                title: '${_requests.length} pending',
+                title: AppStrings.t(
+                  AppStringKeys.groupAdministrationValue1Pending,
+                  {'value1': _requests.length},
+                ),
                 children: _requests.isEmpty
-                    ? const [_AdminEmptyRow('No pending join requests')]
+                    ? [
+                        _AdminEmptyRow(
+                          AppStrings.t(
+                            AppStringKeys
+                                .groupAdministrationNoPendingJoinRequests,
+                          ),
+                        ),
+                      ]
                     : [
                         for (final request in _requests)
                           _joinRequestRow(request),
@@ -1628,7 +1764,13 @@ class _ForumTopicsAdministrationViewState
     } catch (error) {
       if (!mounted) return;
       setState(() => _loading = false);
-      showToast(context, 'Couldn’t load forum topics: $error');
+      showToast(
+        context,
+        AppStrings.t(
+          AppStringKeys.groupAdministrationCouldnTLoadForumTopicsValue1,
+          {'value1': error},
+        ),
+      );
     }
   }
 
@@ -1658,11 +1800,13 @@ class _ForumTopicsAdministrationViewState
                 controller: controller,
                 autofocus: true,
                 maxLength: 128,
-                decoration: const InputDecoration(hintText: 'Topic name'),
+                decoration: InputDecoration(
+                  hintText: AppStrings.t(AppStringKeys.chatInputBarTopicName),
+                ),
               ),
               const SizedBox(height: 8),
               if (canChangeColor) ...[
-                const Text('Icon color'),
+                Text(AppStrings.t(AppStringKeys.groupAdministrationIconColor)),
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 10,
@@ -1693,7 +1837,9 @@ class _ForumTopicsAdministrationViewState
                     MaterialPageRoute(
                       builder: (_) => ProfileIconPickerView(
                         selectedId: customEmojiId,
-                        title: 'Topic icon',
+                        title: AppStrings.t(
+                          AppStringKeys.groupAdministrationTopicIcon,
+                        ),
                         source: ProfileIconSource.status,
                       ),
                     ),
@@ -1704,9 +1850,15 @@ class _ForumTopicsAdministrationViewState
                 },
                 child: Row(
                   children: [
-                    const Expanded(child: Text('Custom emoji icon')),
+                    Expanded(
+                      child: Text(
+                        AppStrings.t(
+                          AppStringKeys.groupAdministrationCustomEmojiIcon,
+                        ),
+                      ),
+                    ),
                     if (customEmojiId == 0)
-                      const Text('None')
+                      Text(AppStrings.t(AppStringKeys.groupAppearanceNone))
                     else
                       CustomEmojiView(id: customEmojiId, size: 28),
                     const SizedBox(width: 8),
@@ -1718,11 +1870,11 @@ class _ForumTopicsAdministrationViewState
           ),
           actions: [
             _AdminDialogAction(
-              label: 'Cancel',
+              label: AppStrings.t(AppStringKeys.confirmCancel),
               onTap: () => Navigator.of(dialogContext).pop(),
             ),
             _AdminDialogAction(
-              label: 'Save',
+              label: AppStrings.t(AppStringKeys.accentColorPickerSave),
               color: AppTheme.brand,
               onTap: () => Navigator.of(dialogContext).pop(
                 _ForumTopicDraft(
@@ -1758,7 +1910,15 @@ class _ForumTopicsAdministrationViewState
       );
       await _load();
     } catch (error) {
-      if (mounted) showToast(context, 'Couldn’t create topic: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.groupAdministrationCouldnTCreateTopicValue1,
+            {'value1': error},
+          ),
+        );
+      }
     }
   }
 
@@ -1784,7 +1944,15 @@ class _ForumTopicsAdministrationViewState
       );
       await _load();
     } catch (error) {
-      if (mounted) showToast(context, 'Couldn’t edit topic: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.groupAdministrationCouldnTEditTopicValue1,
+            {'value1': error},
+          ),
+        );
+      }
     }
   }
 
@@ -1794,15 +1962,30 @@ class _ForumTopicsAdministrationViewState
     if (id == null || info?.boolean('is_general') == true) return;
     final ok = await showAppConfirmDialog(
       context,
-      title: 'Delete “${info?.str('name') ?? 'topic'}” and all messages?',
-      confirmText: 'Delete',
+      title: AppStrings.t(
+        AppStringKeys.groupAdministrationDeleteTopicAndMessages,
+        {
+          'value1':
+              info?.str('name') ??
+              AppStrings.t(AppStringKeys.topicChatTopicTitle),
+        },
+      ),
+      confirmText: AppStrings.t(AppStringKeys.chatDelete),
     );
     if (!ok) return;
     try {
       await _service.deleteForumTopic(widget.chatId, id);
       await _load();
     } catch (error) {
-      if (mounted) showToast(context, 'Couldn’t delete topic: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.groupAdministrationCouldnTDeleteTopicValue1,
+            {'value1': error},
+          ),
+        );
+      }
     }
   }
 
@@ -1817,7 +2000,14 @@ class _ForumTopicsAdministrationViewState
       );
       await _load();
     } catch (error) {
-      if (mounted) showToast(context, 'Couldn’t pin topic: $error');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(AppStringKeys.groupAdministrationCouldnTPinTopicValue1, {
+            'value1': error,
+          }),
+        );
+      }
     }
   }
 
@@ -1841,7 +2031,13 @@ class _ForumTopicsAdministrationViewState
     } catch (error) {
       if (!mounted) return;
       setState(() => _topics = previous);
-      showToast(context, 'Couldn’t reorder pinned topics: $error');
+      showToast(
+        context,
+        AppStrings.t(
+          AppStringKeys.groupAdministrationCouldnTReorderPinnedTopicsValue1,
+          {'value1': error},
+        ),
+      );
     }
   }
 
@@ -1854,7 +2050,7 @@ class _ForumTopicsAdministrationViewState
         .where((topic) => topic.boolean('is_pinned') != true)
         .toList();
     return _AdminPage(
-      title: 'Forum topics',
+      title: AppStrings.t(AppStringKeys.groupAdministrationForumTopics),
       trailing: GestureDetector(
         onTap: _create,
         child: Padding(
@@ -1869,7 +2065,10 @@ class _ForumTopicsAdministrationViewState
               children: [
                 if (pinned.isNotEmpty) ...[
                   Text(
-                    'Pinned topics · drag to reorder',
+                    AppStrings.t(
+                      AppStringKeys
+                          .groupAdministrationPinnedTopicsDragToReorder,
+                    ),
                     style: AppTextStyle.footnote(context.colors.textTertiary),
                   ),
                   const SizedBox(height: 8),
@@ -1892,9 +2091,15 @@ class _ForumTopicsAdministrationViewState
                   const SizedBox(height: 20),
                 ],
                 _AdminSection(
-                  title: 'All topics',
+                  title: AppStrings.t(AppStringKeys.topicChatAllTopics),
                   children: others.isEmpty
-                      ? const [_AdminEmptyRow('No other topics')]
+                      ? [
+                          _AdminEmptyRow(
+                            AppStrings.t(
+                              AppStringKeys.groupAdministrationNoOtherTopics,
+                            ),
+                          ),
+                        ]
                       : [for (final topic in others) _topicRow(topic)],
                 ),
               ],
@@ -2017,22 +2222,35 @@ class _ChatStatisticsAdministrationViewState
     } catch (error) {
       if (!mounted) return;
       setState(() => _loading = false);
-      showToast(context, 'Statistics aren’t available: $error');
+      showToast(
+        context,
+        AppStrings.t(
+          AppStringKeys.groupAdministrationStatisticsArenTAvailableValue1,
+          {'value1': error},
+        ),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) => _AdminPage(
-    title: 'Statistics',
+    title: AppStrings.t(AppStringKeys.groupAdministrationStatistics),
     child: _loading
         ? const Center(child: AppActivityIndicator())
         : _statistics == null
-        ? const Center(child: Text('Statistics are unavailable for this chat'))
+        ? Center(
+            child: Text(
+              AppStrings.t(
+                AppStringKeys
+                    .groupAdministrationStatisticsAreUnavailableForThisChat,
+              ),
+            ),
+          )
         : ListView(
             padding: const EdgeInsets.all(14),
             children: [
               _AdminSection(
-                title: 'Overview',
+                title: AppStrings.t(AppStringKeys.groupAdministrationOverview),
                 children: [
                   for (final entry in _statRows(_statistics!))
                     _AdminNavRow(title: entry.$1, value: entry.$2),
@@ -2040,7 +2258,10 @@ class _ChatStatisticsAdministrationViewState
               ),
               const SizedBox(height: 12),
               Text(
-                'Detailed graph data is loaded from Telegram and summarized here.',
+                AppStrings.t(
+                  AppStringKeys
+                      .groupAdministrationDetailedGraphDataIsLoadedFromTelegramAnd,
+                ),
                 style: AppTextStyle.footnote(context.colors.textTertiary),
               ),
             ],
@@ -2122,46 +2343,66 @@ class _ChatBoostsAdministrationViewState
     } catch (error) {
       if (!mounted) return;
       setState(() => _loading = false);
-      showToast(context, 'Couldn’t load boosts: $error');
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.groupAdministrationCouldnTLoadBoostsValue1, {
+          'value1': error,
+        }),
+      );
     }
   }
 
   Future<void> _copyLink() async {
     if (_link.isEmpty) return;
     await Clipboard.setData(ClipboardData(text: _link));
-    if (mounted) showToast(context, 'Boost link copied');
+    if (mounted) {
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.groupAdministrationBoostLinkCopied),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final status = _status;
     return _AdminPage(
-      title: 'Boosts and giveaways',
+      title: AppStrings.t(AppStringKeys.groupAdministrationBoostsAndGiveaways),
       child: _loading
           ? const Center(child: AppActivityIndicator())
           : ListView(
               padding: const EdgeInsets.all(14),
               children: [
                 _AdminSection(
-                  title: 'Boost status',
+                  title: AppStrings.t(
+                    AppStringKeys.groupAdministrationBoostStatus,
+                  ),
                   children: [
                     _AdminNavRow(
-                      title: 'Level',
+                      title: AppStrings.t(
+                        AppStringKeys.groupAdministrationLevel,
+                      ),
                       value: '${status?.integer('level') ?? 0}',
                     ),
                     _AdminNavRow(
-                      title: 'Boosts',
+                      title: AppStrings.t(
+                        AppStringKeys.groupAdministrationBoosts,
+                      ),
                       value:
                           '${status?.integer('boost_count') ?? _boosts.length}',
                     ),
                     _AdminNavRow(
-                      title: 'Next level',
+                      title: AppStrings.t(
+                        AppStringKeys.groupAdministrationNextLevel,
+                      ),
                       value:
                           '${status?.integer('next_level_boost_count') ?? 0}',
                     ),
                     if (_link.isNotEmpty)
                       _AdminNavRow(
-                        title: 'Copy boost link',
+                        title: AppStrings.t(
+                          AppStringKeys.groupAdministrationCopyBoostLink,
+                        ),
                         value: _link,
                         onTap: _copyLink,
                       ),
@@ -2169,20 +2410,34 @@ class _ChatBoostsAdministrationViewState
                 ),
                 const SizedBox(height: 20),
                 _AdminSection(
-                  title: 'Giveaway entry points',
+                  title: AppStrings.t(
+                    AppStringKeys.groupAdministrationGiveawayEntryPoints,
+                  ),
                   children: [
                     _AdminNavRow(
-                      title: 'Premium giveaways',
-                      value: '${_premiumOptions.length} purchase options',
+                      title: AppStrings.t(
+                        AppStringKeys.groupAdministrationPremiumGiveaways,
+                      ),
+                      value: AppStrings.t(
+                        AppStringKeys.groupAdministrationValue1PurchaseOptions,
+                        {'value1': _premiumOptions.length},
+                      ),
                     ),
                     _AdminNavRow(
-                      title: 'Star giveaways',
-                      value: '${_starOptions.length} purchase options',
+                      title: AppStrings.t(
+                        AppStringKeys.groupAdministrationStarGiveaways,
+                      ),
+                      value: AppStrings.t(
+                        AppStringKeys.groupAdministrationValue1PurchaseOptions,
+                        {'value1': _starOptions.length},
+                      ),
                     ),
                     if ((status?.objects('prepaid_giveaways') ?? const [])
                         .isNotEmpty)
                       _AdminNavRow(
-                        title: 'Prepaid giveaways',
+                        title: AppStrings.t(
+                          AppStringKeys.groupAdministrationPrepaidGiveaways,
+                        ),
                         value:
                             '${status?.objects('prepaid_giveaways')?.length ?? 0} ready to launch',
                       ),
@@ -2190,7 +2445,10 @@ class _ChatBoostsAdministrationViewState
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  'Purchases are completed by the platform payment flow. Existing prepaid giveaways can be launched after selecting their Telegram payment record.',
+                  AppStrings.t(
+                    AppStringKeys
+                        .groupAdministrationPurchasesAreCompletedByThePlatformPaymentFlow,
+                  ),
                   style: AppTextStyle.footnote(context.colors.textTertiary),
                 ),
               ],
@@ -2596,7 +2854,7 @@ class _AdminSaveButton extends StatelessWidget {
       child: saving
           ? const AppActivityIndicator(size: 19)
           : Text(
-              'Save',
+              AppStrings.t(AppStringKeys.accentColorPickerSave),
               style: AppTextStyle.bodyLarge(
                 AppTheme.brand,
                 weight: AppTextWeight.semibold,

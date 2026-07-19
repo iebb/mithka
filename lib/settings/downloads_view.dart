@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 import 'package:open_filex/open_filex.dart';
 
 import '../components/app_icons.dart';
@@ -241,7 +242,9 @@ class _DownloadsViewState extends State<DownloadsView> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Remove from downloads?',
+                        AppStrings.t(
+                          AppStringKeys.downloadsRemoveFromDownloads,
+                        ),
                         style: TextStyle(
                           color: c.textPrimary,
                           fontSize: 17,
@@ -250,7 +253,10 @@ class _DownloadsViewState extends State<DownloadsView> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Keep the cached file or delete it from this device.',
+                        AppStrings.t(
+                          AppStringKeys
+                              .downloadsKeepTheCachedFileOrDeleteItFrom,
+                        ),
                         style: TextStyle(color: c.textSecondary, fontSize: 13),
                       ),
                     ],
@@ -259,7 +265,9 @@ class _DownloadsViewState extends State<DownloadsView> {
                 Divider(height: 1, color: c.divider),
                 SettingsRow(
                   leading: const AppIcon(HeroAppIcons.circleMinus),
-                  title: 'Remove and keep cached file',
+                  title: AppStrings.t(
+                    AppStringKeys.downloadsRemoveAndKeepCachedFile,
+                  ),
                   onTap: () => Navigator.of(
                     sheetContext,
                   ).pop(_RemoveDownloadAction.keepFile),
@@ -267,7 +275,9 @@ class _DownloadsViewState extends State<DownloadsView> {
                 Divider(height: 1, color: c.divider),
                 SettingsRow(
                   leading: const AppIcon(HeroAppIcons.trash),
-                  title: 'Remove and delete file',
+                  title: AppStrings.t(
+                    AppStringKeys.downloadsRemoveAndDeleteFile,
+                  ),
                   onTap: () => Navigator.of(
                     sheetContext,
                   ).pop(_RemoveDownloadAction.deleteFile),
@@ -321,7 +331,7 @@ class _DownloadsViewState extends State<DownloadsView> {
               children: [
                 SettingsRow(
                   leading: const AppIcon(HeroAppIcons.arrowsRotate),
-                  title: 'Refresh downloads',
+                  title: AppStrings.t(AppStringKeys.downloadsRefreshDownloads),
                   onTap: () {
                     Navigator.of(sheetContext).pop();
                     unawaited(_load(reset: true));
@@ -344,13 +354,17 @@ class _DownloadsViewState extends State<DownloadsView> {
                 Divider(height: 1, color: c.divider),
                 SettingsRow(
                   leading: const AppIcon(HeroAppIcons.trash),
-                  title: 'Clear active downloads',
+                  title: AppStrings.t(
+                    AppStringKeys.downloadsClearActiveDownloads,
+                  ),
                   onTap: () => _clear(true, false),
                 ),
                 Divider(height: 1, color: c.divider),
                 SettingsRow(
                   leading: const AppIcon(HeroAppIcons.trash),
-                  title: 'Clear completed downloads',
+                  title: AppStrings.t(
+                    AppStringKeys.downloadsClearCompletedDownloads,
+                  ),
                   onTap: () => _clear(false, true),
                 ),
               ],
@@ -377,7 +391,7 @@ class _DownloadsViewState extends State<DownloadsView> {
       body: Column(
         children: [
           NavHeader(
-            title: 'Downloads',
+            title: AppStrings.t(AppStringKeys.generalDownloads),
             onBack: () => Navigator.of(context).pop(),
             trailing: GestureDetector(
               behavior: HitTestBehavior.opaque,
@@ -393,7 +407,7 @@ class _DownloadsViewState extends State<DownloadsView> {
             child: TextField(
               controller: _search,
               decoration: InputDecoration(
-                hintText: 'Search downloads',
+                hintText: AppStrings.t(AppStringKeys.downloadsSearchDownloads),
                 prefixIcon: const Padding(
                   padding: EdgeInsets.all(12),
                   child: AppIcon(HeroAppIcons.magnifyingGlass, size: 19),
@@ -417,7 +431,7 @@ class _DownloadsViewState extends State<DownloadsView> {
                       const SizedBox(height: 160),
                       Center(
                         child: Text(
-                          'No downloads found.',
+                          AppStrings.t(AppStringKeys.downloadsNoDownloadsFound),
                           style: TextStyle(color: c.textSecondary),
                         ),
                       ),
@@ -439,7 +453,9 @@ class _DownloadsViewState extends State<DownloadsView> {
                             child: _loadingMore
                                 ? const AppActivityIndicator(size: 20)
                                 : Text(
-                                    'Load more',
+                                    AppStrings.t(
+                                      AppStringKeys.publicDiscoveryLoadMore,
+                                    ),
                                     style: TextStyle(
                                       color: AppTheme.brand,
                                       fontSize: 14,
