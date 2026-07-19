@@ -67,6 +67,13 @@ class AppearanceView extends StatelessWidget {
                     theme.themingEnabled,
                     (value) => theme.themingEnabled = value,
                   ),
+                  _toggleRow(
+                    context,
+                    HeroAppIcons.users.data,
+                    AppStrings.t(AppStringKeys.appearancePerAccountTheming),
+                    theme.usePerAccountTheming,
+                    (value) => theme.usePerAccountTheming = value,
+                  ),
                   if (theme.themingEnabled) ...[
                     _navigationRow(
                       context,
@@ -105,13 +112,6 @@ class AppearanceView extends StatelessWidget {
                       theme.hasCloudTheme
                           ? (value) => theme.useTelegramThemeForUi = value
                           : null,
-                    ),
-                    _toggleRow(
-                      context,
-                      HeroAppIcons.users.data,
-                      AppStrings.t(AppStringKeys.appearancePerAccountTheming),
-                      theme.usePerAccountTheming,
-                      (value) => theme.usePerAccountTheming = value,
                     ),
                   ],
                 ]),

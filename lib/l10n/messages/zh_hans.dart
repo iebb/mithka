@@ -1513,6 +1513,7 @@ const zhHansMessages = <String, String>{
   'tdMessageForwardedStory': "[转发的故事]",
   'tdMessageGame': "[游戏]",
   'tdMessageGift': "[礼物]",
+  'tdMessageGif': "[GIF]",
   'tdMessageGiveaway': "[抽奖]",
   'tdMessageGroupCreated': "群聊已创建",
   'tdMessageGroupNameChanged': "群名称已修改为 {value1}",

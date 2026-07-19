@@ -25,6 +25,9 @@ class ChatAutoScrollPolicy {
 
   bool shouldFollowAppendedMessage({required bool wasNearBottom}) =>
       !_preserveViewport && wasNearBottom;
+
+  bool shouldFollowComposerPanelChange({required bool wasNearBottom}) =>
+      !_preserveViewport && wasNearBottom;
 }
 
 class ChatInitialScrollPlan {

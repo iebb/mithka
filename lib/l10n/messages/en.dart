@@ -1806,6 +1806,7 @@ const enMessages = <String, String>{
   'tdMessageForwardedStory': "[Forwarded Story]",
   'tdMessageGame': "[Game]",
   'tdMessageGift': "[Gift]",
+  'tdMessageGif': "[GIF]",
   'tdMessageGiveaway': "[Giveaway]",
   'tdMessageGroupCreated': "Group chat created",
   'tdMessageGroupNameChanged': "Group name changed to {value1}",

@@ -1448,6 +1448,29 @@ class _ChatViewState extends State<ChatView> {
     _scheduleScrollToBottom();
   }
 
+  void _onComposerPanelGeometryChanged() {
+    final wasNearBottom = _isNearBottom(260);
+    if (!_autoScrollPolicy.shouldFollowComposerPanelChange(
+      wasNearBottom: wasNearBottom,
+    )) {
+      return;
+    }
+    _setScrollTarget(null);
+    _scheduleScrollToBottom(animated: false);
+  }
+
+  void _onComposerMediaSendTapped() {
+    _cancelSessionScrollAnchorMaintenance();
+    _maintainRestoredBottom = false;
+    _autoScrollPolicy.returnToBottom();
+    _setScrollTarget(null);
+    if (_vm.anchoredHistory) {
+      unawaited(_returnToLatest());
+      return;
+    }
+    _scheduleScrollToBottom(animated: false);
+  }
+
   void _playMusicMessage(ChatMessage message) {
     unawaited(
       MusicPlayerController.shared.playChat(
@@ -3939,6 +3962,7 @@ class _ChatViewState extends State<ChatView> {
       telegramText(AppStringKeys.composerImagePreview),
       telegramText(AppStringKeys.chatVideoPlaceholder),
       telegramText(AppStringKeys.composerAnimatedEmojiPreview),
+      telegramText(AppStringKeys.tdMessageGif),
       telegramText(AppStringKeys.tdMessageMusic),
       telegramText(AppStringKeys.channelsFileAttachment),
       if (message.document != null)
@@ -3952,9 +3976,7 @@ class _ChatViewState extends State<ChatView> {
   String _mediaLabel(ChatMessage message) => switch (message.contentType) {
     'messagePhoto' => telegramText(AppStringKeys.composerImagePreview),
     'messageVideo' => telegramText(AppStringKeys.chatVideoPlaceholder),
-    'messageAnimation' => telegramText(
-      AppStringKeys.composerAnimatedEmojiPreview,
-    ),
+    'messageAnimation' => telegramText(AppStringKeys.tdMessageGif),
     'messageAudio' => telegramText(AppStringKeys.tdMessageMusic),
     _ => telegramText(AppStringKeys.topicPostContentFile),
   };
@@ -4684,6 +4706,8 @@ class _ChatViewState extends State<ChatView> {
             vm: _vm,
             onStartCall: _startCall,
             onMessageSent: _onComposerMessageSent,
+            onPanelGeometryChanged: _onComposerPanelGeometryChanged,
+            onMediaSendTapped: _onComposerMediaSendTapped,
           ),
         ],
       );

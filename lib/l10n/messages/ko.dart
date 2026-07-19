@@ -1540,6 +1540,7 @@ const koMessages = <String, String>{
   'tdMessageForwardedStory': "[전달된 스토리]",
   'tdMessageGame': "[게임]",
   'tdMessageGift': "[선물]",
+  'tdMessageGif': "[GIF]",
   'tdMessageGiveaway': "[추첨]",
   'tdMessageGroupCreated': "그룹 채팅이 생성됨",
   'tdMessageGroupNameChanged': "그룹 이름이 {value1}(으)로 변경됨",

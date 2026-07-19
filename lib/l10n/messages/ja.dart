@@ -1539,6 +1539,7 @@ const jaMessages = <String, String>{
   'tdMessageForwardedStory': "[転送されたストーリー]",
   'tdMessageGame': "[ゲーム]",
   'tdMessageGift': "[ギフト]",
+  'tdMessageGif': "[GIF]",
   'tdMessageGiveaway': "[抽選]",
   'tdMessageGroupCreated': "グループチャットが作成されました",
   'tdMessageGroupNameChanged': "グループ名が {value1} に変更されました",

@@ -1674,6 +1674,7 @@ const frMessages = <String, String>{
   'tdMessageForwardedStory': "[Story transférée]",
   'tdMessageGame': "[Jeu]",
   'tdMessageGift': "[Cadeau]",
+  'tdMessageGif': "[GIF]",
   'tdMessageGiveaway': "[Tirage au sort]",
   'tdMessageGroupCreated': "Groupe créé",
   'tdMessageGroupNameChanged': "Nom du groupe modifié en {value1}",

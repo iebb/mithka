@@ -9,20 +9,14 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test(
-    'login backup consent starts unchecked and changes only explicitly',
+    'login backup consent accepts its computed default and explicit changes',
     () async {
       SharedPreferences.setMockInitialValues({
         'mithka.accountBackup.explicitConsentMigration.v1': true,
       });
       const slot = 8042;
 
-      await AccountBackupService.shared.beginLoginConsent(slot: slot);
-      expect(
-        await AccountBackupService.shared.pendingLoginConsent(slot: slot),
-        isFalse,
-      );
-
-      await AccountBackupService.shared.setPendingLoginConsent(
+      await AccountBackupService.shared.beginLoginConsent(
         slot: slot,
         enabled: true,
       );
@@ -30,8 +24,62 @@ void main() {
         await AccountBackupService.shared.pendingLoginConsent(slot: slot),
         isTrue,
       );
+
+      await AccountBackupService.shared.setPendingLoginConsent(
+        slot: slot,
+        enabled: false,
+      );
+      expect(
+        await AccountBackupService.shared.pendingLoginConsent(slot: slot),
+        isFalse,
+      );
     },
   );
+
+  test('login backup defaults on only below four accounts', () {
+    for (var accountCount = 0; accountCount < 4; accountCount += 1) {
+      expect(
+        AccountBackupService.shouldSelectLoginBackupByDefault(
+          accountCount: accountCount,
+          isIOS: true,
+          isSupported: true,
+        ),
+        isTrue,
+      );
+    }
+    expect(
+      AccountBackupService.shouldSelectLoginBackupByDefault(
+        accountCount: 4,
+        isIOS: true,
+        isSupported: true,
+      ),
+      isFalse,
+    );
+    expect(
+      AccountBackupService.shouldSelectLoginBackupByDefault(
+        accountCount: 8,
+        isIOS: true,
+        isSupported: true,
+      ),
+      isFalse,
+    );
+    expect(
+      AccountBackupService.shouldSelectLoginBackupByDefault(
+        accountCount: 3,
+        isIOS: false,
+        isSupported: true,
+      ),
+      isFalse,
+    );
+    expect(
+      AccountBackupService.shouldSelectLoginBackupByDefault(
+        accountCount: 3,
+        isIOS: true,
+        isSupported: false,
+      ),
+      isFalse,
+    );
+  });
 
   test('backup decision requires pending or previously stored consent', () {
     expect(

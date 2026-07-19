@@ -599,18 +599,36 @@ msgOutBg: #f3b4bd;
 
       final controller = ThemeController(prefs, initialAccountSlot: 1)
         ..installCloudTheme(firstTheme, brightness: Brightness.dark);
+      controller.mode = AppearanceMode.dark;
+      controller.brandColor = const Color(0xFF112233);
       controller.usePerAccountTheming = true;
       controller.setActiveAccountSlot(2);
       expect(controller.darkCloudTheme, isNull);
+      expect(controller.mode, AppearanceMode.system);
+      expect(controller.brandColor.toARGB32(), 0xFF0099FF);
       controller.installCloudTheme(secondTheme, brightness: Brightness.dark);
+      controller.mode = AppearanceMode.light;
+      controller.brandColor = const Color(0xFF556677);
+
+      final restoredSecond = ThemeController(prefs, initialAccountSlot: 2);
+      expect(restoredSecond.usePerAccountTheming, isTrue);
+      expect(restoredSecond.darkCloudTheme?.slug, 'SecondAccount');
+      expect(restoredSecond.mode, AppearanceMode.light);
+      expect(restoredSecond.brandColor.toARGB32(), 0xFF556677);
 
       controller.setActiveAccountSlot(1);
       expect(controller.darkCloudTheme?.slug, 'FirstAccount');
+      expect(controller.mode, AppearanceMode.dark);
+      expect(controller.brandColor.toARGB32(), 0xFF112233);
       controller.setActiveAccountSlot(2);
       expect(controller.darkCloudTheme?.slug, 'SecondAccount');
+      expect(controller.mode, AppearanceMode.light);
+      expect(controller.brandColor.toARGB32(), 0xFF556677);
 
       controller.usePerAccountTheming = false;
       expect(controller.darkCloudTheme?.slug, 'FirstAccount');
+      expect(controller.mode, AppearanceMode.dark);
+      expect(controller.brandColor.toARGB32(), 0xFF112233);
       controller.setActiveAccountSlot(1);
       expect(controller.darkCloudTheme?.slug, 'FirstAccount');
     },

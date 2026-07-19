@@ -1053,7 +1053,10 @@ class ChatViewModel extends ChangeNotifier {
     return id;
   }
 
-  Future<void> _waitForMessageSend(int pendingMessageId) {
+  Future<void> _waitForMessageSend(
+    int pendingMessageId, {
+    Duration timeout = const Duration(seconds: 15),
+  }) {
     final recent = _recentMessageSendResults.remove(pendingMessageId);
     if (recent != null) {
       final error = recent.error;
@@ -1063,10 +1066,16 @@ class ChatViewModel extends ChangeNotifier {
     _messageSendWaiters[pendingMessageId] = waiter;
     return waiter.future
         .timeout(
-          const Duration(seconds: 15),
+          timeout,
           onTimeout: () {
-            _discardPendingMessage(pendingMessageId);
-            throw TimeoutException('Rich message send timed out');
+            // A timeout means TDLib has not reported the final state yet. It
+            // does not mean the accepted message failed. In particular, do
+            // not mark it discarded: a late updateMessageSendSucceeded would
+            // otherwise delete the newly assigned server message id.
+            debugPrint(
+              'Message $pendingMessageId is still pending; keeping it until '
+              'TDLib reports success or failure',
+            );
           },
         )
         .whenComplete(() {
@@ -1075,6 +1084,16 @@ class ChatViewModel extends ChangeNotifier {
           }
         });
   }
+
+  @visibleForTesting
+  Future<void> waitForMessageSendTimeoutForTest(
+    int pendingMessageId, {
+    required Duration timeout,
+  }) => _waitForMessageSend(pendingMessageId, timeout: timeout);
+
+  @visibleForTesting
+  bool isPendingMessageDiscardedForTest(int pendingMessageId) =>
+      _discardedPendingMessageIds.contains(pendingMessageId);
 
   void _discardPendingMessage(int pendingMessageId) {
     _discardedPendingMessageIds.add(pendingMessageId);
@@ -4156,9 +4175,7 @@ class ChatViewModel extends ChangeNotifier {
       final placeholder = switch (q.contentType) {
         'messagePhoto' => telegramText(AppStringKeys.composerImagePreview),
         'messageVideo' => telegramText(AppStringKeys.chatVideoPlaceholder),
-        'messageAnimation' => telegramText(
-          AppStringKeys.composerAnimatedEmojiPreview,
-        ),
+        'messageAnimation' => telegramText(AppStringKeys.tdMessageGif),
         _ => null,
       };
       return q.text == placeholder ? '' : q.text;

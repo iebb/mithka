@@ -15,6 +15,8 @@ import 'package:mithka/chat/chat_message_merge.dart';
 import 'package:mithka/chat/chat_view_model.dart';
 import 'package:mithka/chat/emoji_catalog.dart';
 import 'package:mithka/chat/emoji_text_controller.dart';
+import 'package:mithka/chat/gif_item.dart';
+import 'package:mithka/chat/gif_store.dart';
 import 'package:mithka/chat/group_management_log_view.dart';
 import 'package:mithka/chat/media_album_layout.dart';
 import 'package:mithka/chat/message_bubble.dart';
@@ -23,6 +25,7 @@ import 'package:mithka/chat/rich_text_composer_view.dart';
 import 'package:mithka/chat/secret_chat_service.dart';
 import 'package:mithka/chat/sponsored_messages_cache.dart';
 import 'package:mithka/chat/sticker_item.dart';
+import 'package:mithka/chat/sticker_store.dart';
 import 'package:mithka/components/app_icons.dart';
 import 'package:mithka/components/keyboard_dismiss_on_tap.dart';
 import 'package:mithka/components/photo_avatar.dart';
@@ -105,6 +108,20 @@ class _FocusTestChatViewModel extends ChatViewModel {
   }) {
     draft = value;
   }
+}
+
+class _ControlledMediaChatViewModel extends ChatViewModel {
+  _ControlledMediaChatViewModel()
+    : super(chatId: 1, title: 'Test', markReadOnOpen: false);
+
+  final stickerSend = Completer<bool>();
+  final gifSend = Completer<bool>();
+
+  @override
+  Future<bool> sendSticker(StickerItem sticker) => stickerSend.future;
+
+  @override
+  Future<bool> sendGif(GifItem gif) => gifSend.future;
 }
 
 void main() {
@@ -833,7 +850,7 @@ void main() {
       });
     });
 
-    testWidgets('places sticker tabs above the media search field', (
+    testWidgets('uses top tabs and dedicated search for stickers and emoji', (
       tester,
     ) async {
       final vm = ChatViewModel(
@@ -842,6 +859,7 @@ void main() {
         markReadOnOpen: false,
       );
       addTearDown(vm.dispose);
+      var panelGeometryChanges = 0;
 
       await tester.pumpWidget(
         MaterialApp(
@@ -859,6 +877,7 @@ void main() {
                 vm: vm,
                 onStartCall: (_) {},
                 onMessageSent: () {},
+                onPanelGeometryChanged: () => panelGeometryChanges++,
               ),
             ),
           ),
@@ -868,14 +887,145 @@ void main() {
       await tester.tap(find.byIcon(HeroAppIcons.grip.data));
       await tester.pump();
 
-      final tabs = find.byKey(const ValueKey('stickerPanelTabs'));
-      final search = find.byKey(const ValueKey('stickerPanelSearch'));
-      expect(tabs, findsOneWidget);
+      final stickerTabs = find.byKey(const ValueKey('stickerPanelTabs'));
+      final search = find.byKey(const ValueKey('composerMediaSearch'));
+      expect(stickerTabs, findsOneWidget);
+      expect(search, findsNothing);
+      expect(panelGeometryChanges, 1);
+      expect(find.byIcon(HeroAppIcons.palette.data), findsNothing);
+
+      await tester.tap(find.byKey(const ValueKey('stickerSearchTab')));
+      await tester.pump();
+
       expect(search, findsOneWidget);
       expect(
-        tester.getTopLeft(tabs).dy,
+        tester.getTopLeft(stickerTabs).dy,
         lessThan(tester.getTopLeft(search).dy),
       );
+
+      await tester.tap(find.byIcon(HeroAppIcons.solidFaceSmile.data).first);
+      await tester.pump();
+
+      final emojiTabs = find.byKey(const ValueKey('emojiPanelTabs'));
+      expect(emojiTabs, findsOneWidget);
+      expect(search, findsNothing);
+      expect(panelGeometryChanges, 2);
+
+      await tester.tap(find.byKey(const ValueKey('emojiSearchTab')));
+      await tester.pump();
+
+      expect(search, findsOneWidget);
+      expect(
+        tester.getTopLeft(emojiTabs).dy,
+        lessThan(tester.getTopLeft(search).dy),
+      );
+
+      await tester.tap(find.byIcon(HeroAppIcons.solidFaceSmile.data).first);
+      await tester.pump();
+      expect(panelGeometryChanges, 3);
+    });
+
+    testWidgets('media taps request bottom scroll before send completion', (
+      tester,
+    ) async {
+      final vm = _ControlledMediaChatViewModel();
+      addTearDown(vm.dispose);
+      final store = StickerStore.shared;
+      store.replacePacksForTest([
+        StickerPack(
+          id: StickerStore.recentPackId,
+          title: 'Recent',
+          loaded: true,
+          stickers: const [
+            StickerItem(id: 100, width: 128, height: 128, emoji: '🙂'),
+          ],
+        ),
+      ]);
+      addTearDown(store.reset);
+      final gifStore = GifStore.shared;
+      final originalGifs = gifStore.items;
+      gifStore.replaceItemsForTest([
+        GifItem(
+          id: 200,
+          duration: 2,
+          width: 320,
+          height: 180,
+          mimeType: 'video/mp4',
+          file: TdFileRef(id: 200),
+        ),
+      ]);
+      addTearDown(() => gifStore.replaceItemsForTest(originalGifs));
+      var mediaSendTaps = 0;
+      var messageSentCallbacks = 0;
+      var everySentCallbackSawClosedPanel = true;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.bottomCenter,
+              child: ChatInputBar(
+                vm: vm,
+                onStartCall: (_) {},
+                gifPreviewBuilder: (_) => const SizedBox.expand(),
+                onMediaSendTapped: () => mediaSendTaps++,
+                onMessageSent: () {
+                  messageSentCallbacks++;
+                  everySentCallbackSawClosedPanel =
+                      everySentCallbackSawClosedPanel &&
+                      find
+                          .byKey(const ValueKey('stickerPanelTabs'))
+                          .evaluate()
+                          .isEmpty;
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byIcon(HeroAppIcons.grip.data));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('sticker-100')), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('sticker-100')));
+      await tester.pump();
+
+      expect(mediaSendTaps, 1);
+      expect(messageSentCallbacks, 0);
+      expect(find.byKey(const ValueKey('stickerPanelTabs')), findsOneWidget);
+
+      vm.stickerSend.complete(true);
+      await tester.pump();
+      await tester.pump();
+      expect(messageSentCallbacks, 1);
+      expect(everySentCallbackSawClosedPanel, isTrue);
+
+      await tester.tap(find.byIcon(HeroAppIcons.grip.data));
+      await tester.pump();
+      await tester.tap(find.byIcon(HeroAppIcons.gif.data));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('gif-200')), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('gif-200')));
+      await tester.pump();
+
+      expect(mediaSendTaps, 2);
+      expect(messageSentCallbacks, 1);
+      expect(find.byKey(const ValueKey('stickerPanelTabs')), findsOneWidget);
+
+      vm.gifSend.complete(true);
+      await tester.pump();
+      await tester.pump();
+      expect(messageSentCallbacks, 2);
+      expect(everySentCallbackSawClosedPanel, isTrue);
     });
 
     testWidgets('more panel paints the bottom safe area with its background', (
@@ -1353,6 +1503,52 @@ void main() {
         find.byKey(const ValueKey('rich-message-map-caption')),
         findsOneWidget,
       );
+    });
+
+    testWidgets('does not render the GIF preview label as a caption', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final theme = ThemeController(prefs);
+      addTearDown(theme.dispose);
+      final gifPreview = TDParse.messageText({
+        '@type': 'messageAnimation',
+        'caption': {'@type': 'formattedText', 'text': ''},
+      });
+      final message = ChatMessage(
+        id: 8,
+        isOutgoing: true,
+        text: gifPreview,
+        date: 1,
+        contentType: 'messageAnimation',
+        video: TdFileRef(id: 81),
+        videoDuration: 25,
+        imageWidth: 320,
+        imageHeight: 240,
+      );
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<ThemeController>.value(
+          value: theme,
+          child: MaterialApp(
+            locale: const Locale('en'),
+            localizationsDelegates: const [AppLocalizations.delegate],
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: MessageBubble(
+                message: message,
+                peerTitle: 'Test',
+                isGroup: false,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(gifPreview, '[GIF]');
+      expect(find.text(gifPreview), findsNothing);
+      expect(find.text('0:25'), findsOneWidget);
     });
 
     testWidgets('long press reveals retained restricted message content', (
@@ -2437,6 +2633,15 @@ void main() {
         'text': {'@type': 'formattedText', 'text': 'hello'},
       };
       expect(TDParse.messageText(content), 'hello');
+    });
+
+    test('GIF without a caption uses a GIF placeholder', () {
+      final content = <String, dynamic>{
+        '@type': 'messageAnimation',
+        'caption': {'@type': 'formattedText', 'text': ''},
+      };
+
+      expect(TDParse.messageText(content), '[GIF]');
     });
 
     test('redacts only a message carrying restriction info', () {

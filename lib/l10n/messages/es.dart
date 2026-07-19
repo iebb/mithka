@@ -1660,6 +1660,7 @@ const esMessages = <String, String>{
   'tdMessageForwardedStory': "[Historia reenviada]",
   'tdMessageGame': "[Juego]",
   'tdMessageGift': "[Regalo]",
+  'tdMessageGif': "[GIF]",
   'tdMessageGiveaway': "[Sorteo]",
   'tdMessageGroupCreated': "Grupo creado",
   'tdMessageGroupNameChanged': "El nombre del grupo cambió a {value1}",

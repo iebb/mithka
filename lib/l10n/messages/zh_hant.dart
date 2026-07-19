@@ -1514,6 +1514,7 @@ const zhHantMessages = <String, String>{
   'tdMessageForwardedStory': "[轉傳的限時動態]",
   'tdMessageGame': "[遊戲]",
   'tdMessageGift': "[禮物]",
+  'tdMessageGif': "[GIF]",
   'tdMessageGiveaway': "[抽獎]",
   'tdMessageGroupCreated': "群組已建立",
   'tdMessageGroupNameChanged': "群組名稱已改為 {value1}",

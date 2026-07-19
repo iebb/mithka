@@ -3933,6 +3933,10 @@ class _MessageBubbleState extends State<MessageBubble>
   String? _caption() {
     final t = _activeMessageText;
     if (t.isEmpty) return null;
+    if (message.contentType == 'messageAnimation' &&
+        t == telegramText(AppStringKeys.tdMessageGif)) {
+      return null;
+    }
     if (t.startsWith('[') && t.endsWith(']')) return null;
     return t;
   }

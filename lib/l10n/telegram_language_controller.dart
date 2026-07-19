@@ -1012,6 +1012,7 @@ const _telegramKeyForAppKey = <String, String>{
   AppStringKeys.tdMessageForwardedStory: 'ForwardedStory',
   AppStringKeys.tdMessageGame: 'AttachGame',
   AppStringKeys.tdMessageGift: 'ActionGift',
+  AppStringKeys.tdMessageGif: 'AttachGif',
   AppStringKeys.tdMessageGiveaway: 'BoostingGiveaway',
   AppStringKeys.tdMessageGroupCreated: 'ActionCreateGroup',
   AppStringKeys.tdMessageGroupNameChanged: 'ActionChangedTitle',

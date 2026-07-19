@@ -1670,6 +1670,7 @@ const deMessages = <String, String>{
   'tdMessageForwardedStory': "[Weitergeleitete Story]",
   'tdMessageGame': "[Spiel]",
   'tdMessageGift': "[Geschenk]",
+  'tdMessageGif': "[GIF]",
   'tdMessageGiveaway': "[Verlosung]",
   'tdMessageGroupCreated': "Gruppenchat erstellt",
   'tdMessageGroupNameChanged': "Gruppenname geändert in {value1}",
