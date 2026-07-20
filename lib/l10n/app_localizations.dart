@@ -246,6 +246,9 @@ abstract final class AppStringKeys {
   static const apiCredentialsDescription = 'apiCredentialsDescription';
   static const apiCredentialsTitle = 'apiCredentialsTitle';
   static const aiInvalidEndpoint = 'aiInvalidEndpoint';
+  static const aiOnDevicePrivacy = 'aiOnDevicePrivacy';
+  static const aiOnDeviceUnavailableDescription =
+      'aiOnDeviceUnavailableDescription';
   static const aiOutputLanguage = 'aiOutputLanguage';
   static const aiOutputSameLanguage = 'aiOutputSameLanguage';
   static const aiPccAvailable = 'aiPccAvailable';
@@ -254,6 +257,7 @@ abstract final class AppStringKeys {
   static const aiPccUnavailableDescription = 'aiPccUnavailableDescription';
   static const aiProcessingMode = 'aiProcessingMode';
   static const aiProviderApplePcc = 'aiProviderApplePcc';
+  static const aiProviderAppleOnDevice = 'aiProviderAppleOnDevice';
   static const aiProviderOpenAiCompatible = 'aiProviderOpenAiCompatible';
   static const aiSave = 'aiSave';
   static const aiSaved = 'aiSaved';
@@ -289,6 +293,7 @@ abstract final class AppStringKeys {
   static const aiSummaryRant = 'aiSummaryRant';
   static const aiSummaryRunningCount = 'aiSummaryRunningCount';
   static const aiSummaryThinking = 'aiSummaryThinking';
+  static const aiSummaryTechnicalDetails = 'aiSummaryTechnicalDetails';
   static const aiSummaryTitle = 'aiSummaryTitle';
   static const aiSummaryTopics = 'aiSummaryTopics';
   static const aiSummaryTopicTime = 'aiSummaryTopicTime';
@@ -296,6 +301,7 @@ abstract final class AppStringKeys {
   static const aiSummaryUncertainties = 'aiSummaryUncertainties';
   static const aiUnreadSummary = 'aiUnreadSummary';
   static const aiUnreadSummaryDescription = 'aiUnreadSummaryDescription';
+  static const aiTokenContext = 'aiTokenContext';
   static const appearanceAddFont = 'appearanceAddFont';
   static const appearanceAddTextFont = 'appearanceAddTextFont';
   static const appearanceAlwaysShowMessageTime =

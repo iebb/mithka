@@ -278,6 +278,98 @@ class UnreadChatSummaryContent {
     );
   }
 
+  /// Keeps independently grounded sections when a model returns one malformed
+  /// or ungrounded field. Invalid evidence is never repaired or reassigned; the
+  /// affected statement is discarded instead.
+  factory UnreadChatSummaryContent.fromJsonBestEffort(
+    Map<String, dynamic> value, {
+    required Set<String> allowedEvidenceIds,
+  }) {
+    final overviewValue = value['overview'];
+    final overview = switch (overviewValue) {
+      final String text => text.trim(),
+      final Map map => _optionalText(Map<String, dynamic>.from(map)),
+      _ => '',
+    };
+    final rawOverviewEvidence = overviewValue is Map
+        ? overviewValue['evidence_ids'] ?? overviewValue['evidenceIds']
+        : value['overview_evidence_ids'] ?? value['overviewEvidenceIds'];
+    final overviewEvidenceIds = _filterEvidenceIds(
+      rawOverviewEvidence,
+      allowedEvidenceIds: allowedEvidenceIds,
+    );
+    final groundedOverview = overviewEvidenceIds.isEmpty ? '' : overview;
+    final rawTitle = value['title'];
+    final title = groundedOverview.isNotEmpty && rawTitle is String
+        ? rawTitle.trim()
+        : '';
+    final topics = _parseTopicsBestEffort(
+      value['topics'],
+      allowedEvidenceIds: allowedEvidenceIds,
+    );
+    final rant = _parseOptionalItemBestEffort(
+      value['rant'],
+      field: 'rant',
+      allowedEvidenceIds: allowedEvidenceIds,
+    );
+    final highlights = _parseItemsBestEffort(
+      value['highlights'],
+      field: 'highlights',
+      allowedEvidenceIds: allowedEvidenceIds,
+    );
+    final needsReply = _parseItemsBestEffort(
+      value['needs_reply'] ?? value['needsReply'],
+      field: 'needs_reply',
+      allowedEvidenceIds: allowedEvidenceIds,
+    );
+    final decisions = _parseItemsBestEffort(
+      value['decisions'],
+      field: 'decisions',
+      allowedEvidenceIds: allowedEvidenceIds,
+    );
+    final actions = _parseItemsBestEffort(
+      value['actions'],
+      field: 'actions',
+      allowedEvidenceIds: allowedEvidenceIds,
+    );
+    final questions = _parseItemsBestEffort(
+      value['questions'],
+      field: 'questions',
+      allowedEvidenceIds: allowedEvidenceIds,
+    );
+    final uncertainties = _parseItemsBestEffort(
+      value['uncertainties'],
+      field: 'uncertainties',
+      allowedEvidenceIds: allowedEvidenceIds,
+    );
+    if (groundedOverview.isEmpty &&
+        topics.isEmpty &&
+        rant == null &&
+        highlights.isEmpty &&
+        needsReply.isEmpty &&
+        decisions.isEmpty &&
+        actions.isEmpty &&
+        questions.isEmpty &&
+        uncertainties.isEmpty) {
+      throw const UnreadChatSummaryFormatException(
+        'model response contained no grounded summary sections',
+      );
+    }
+    return UnreadChatSummaryContent(
+      title: title,
+      overview: groundedOverview,
+      overviewEvidenceIds: overviewEvidenceIds,
+      topics: topics,
+      rant: rant,
+      highlights: highlights,
+      needsReply: needsReply,
+      decisions: decisions,
+      actions: actions,
+      questions: questions,
+      uncertainties: uncertainties,
+    );
+  }
+
   final String title;
   final String overview;
   final List<String> overviewEvidenceIds;
@@ -330,6 +422,96 @@ class UnreadChatSummaryContent {
     questions: questions ?? this.questions,
     uncertainties: uncertainties ?? this.uncertainties,
   );
+}
+
+String _optionalText(Map<String, dynamic> value) {
+  for (final key in const ['text', 'summary']) {
+    final candidate = value[key];
+    if (candidate is String && candidate.trim().isNotEmpty) {
+      return candidate.trim();
+    }
+  }
+  return '';
+}
+
+List<String> _filterEvidenceIds(
+  Object? raw, {
+  required Set<String> allowedEvidenceIds,
+}) {
+  if (raw is! List) return const [];
+  final result = <String>[];
+  final seen = <String>{};
+  for (final value in raw) {
+    final id = switch (value) {
+      final String stringValue => stringValue.trim(),
+      final int intValue => 'm$intValue',
+      _ => '',
+    };
+    if (allowedEvidenceIds.contains(id) && seen.add(id)) result.add(id);
+  }
+  return result;
+}
+
+List<UnreadChatSummaryTopic> _parseTopicsBestEffort(
+  Object? raw, {
+  required Set<String> allowedEvidenceIds,
+}) {
+  if (raw is! List) return const [];
+  final result = <UnreadChatSummaryTopic>[];
+  for (var index = 0; index < raw.length; index++) {
+    try {
+      result.add(
+        _parseTopic(
+          raw[index],
+          field: 'topics[$index]',
+          allowedEvidenceIds: allowedEvidenceIds,
+        ),
+      );
+    } on UnreadChatSummaryFormatException {
+      // Keep other independently grounded topics.
+    }
+  }
+  return result;
+}
+
+UnreadChatSummaryItem? _parseOptionalItemBestEffort(
+  Object? raw, {
+  required String field,
+  required Set<String> allowedEvidenceIds,
+}) {
+  if (raw == null) return null;
+  try {
+    return _parseItem(
+      raw,
+      field: field,
+      allowedEvidenceIds: allowedEvidenceIds,
+    );
+  } on UnreadChatSummaryFormatException {
+    return null;
+  }
+}
+
+List<UnreadChatSummaryItem> _parseItemsBestEffort(
+  Object? raw, {
+  required String field,
+  required Set<String> allowedEvidenceIds,
+}) {
+  if (raw is! List) return const [];
+  final result = <UnreadChatSummaryItem>[];
+  for (var index = 0; index < raw.length; index++) {
+    try {
+      result.add(
+        _parseItem(
+          raw[index],
+          field: '$field[$index]',
+          allowedEvidenceIds: allowedEvidenceIds,
+        ),
+      );
+    } on UnreadChatSummaryFormatException {
+      // Keep other independently grounded items.
+    }
+  }
+  return result;
 }
 
 @immutable

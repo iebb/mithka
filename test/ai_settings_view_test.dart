@@ -24,6 +24,10 @@ void main() {
           'sdkAvailable': false,
           'available': false,
           'reason': 'requires_xcode_27',
+          'onDeviceSdkAvailable': true,
+          'onDeviceAvailable': true,
+          'onDeviceReason': 'available',
+          'onDeviceContextSize': 4096,
         },
       ),
       secureRead: (_) async => null,
@@ -68,6 +72,14 @@ void main() {
     );
 
     await tester.tap(find.text('Apple Private Cloud Compute').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Apple On-Device Model'), findsOneWidget);
+    await tester.tap(find.text('Apple On-Device Model'));
+    await tester.pumpAndSettle();
+    expect(settings.provider, AiProviderMode.appleOnDevice);
+    expect(find.text('4K-token context window'), findsOneWidget);
+
+    await tester.tap(find.text('Apple On-Device Model').first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('OpenAI-compatible Server').last);
     await tester.pumpAndSettle();

@@ -113,6 +113,35 @@ void main() {
       expect(controller.isConfiguredForCurrentProvider, isTrue);
     });
 
+    test('on-device configuration uses its independent availability', () async {
+      SharedPreferences.setMockInitialValues({
+        AiSettingsController.providerPreferenceKey: 'apple_on_device',
+      });
+      final controller = AiSettingsController(
+        await SharedPreferences.getInstance(),
+        pccApi: ApplePccApi(
+          invokeMethod: (_, _) async => const {
+            'sdkAvailable': true,
+            'available': false,
+            'reason': 'requires_ios_27',
+            'contextSize': 0,
+            'onDeviceSdkAvailable': true,
+            'onDeviceAvailable': true,
+            'onDeviceReason': 'available',
+            'onDeviceContextSize': 4096,
+          },
+        ),
+        secureRead: (_) async => null,
+        secureWrite: (_, _) async {},
+      );
+
+      await controller.initialize();
+
+      expect(controller.provider, AiProviderMode.appleOnDevice);
+      expect(controller.pccCapabilities?.onDeviceContextSize, 4096);
+      expect(controller.isConfiguredForCurrentProvider, isTrue);
+    });
+
     test(
       'PCC configuration follows refreshed availability and quota',
       () async {

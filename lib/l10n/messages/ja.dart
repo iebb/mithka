@@ -115,6 +115,10 @@ const jaMessages = <String, String>{
   'apiCredentialsTitle': "カスタム API 認証情報",
   'aiInvalidEndpoint':
       "/v1/chat/completions で終わる HTTPS URL を使用してください。HTTP は localhost でのみ使用できます。",
+  'aiOnDevicePrivacy':
+      "未読メッセージはこのデバイス上の Apple Intelligence だけで処理され、サーバーには送信されません。",
+  'aiOnDeviceUnavailableDescription':
+      "オンデバイスモデルには、Apple Intelligence 対応デバイス、iOS 26 以降、ダウンロード済みモデルが必要です。",
   'aiOutputLanguage': "出力言語",
   'aiOutputSameLanguage': "未読メッセージと同じ言語",
   'aiPccAvailable': "このデバイスで利用可能",
@@ -125,6 +129,7 @@ const jaMessages = <String, String>{
       "Private Cloud Compute には、対応する Apple デバイス、ソフトウェア、Apple Intelligence が必要です。",
   'aiProcessingMode': "処理モード",
   'aiProviderApplePcc': "Apple Private Cloud Compute",
+  'aiProviderAppleOnDevice': "Apple オンデバイスモデル",
   'aiProviderOpenAiCompatible': "OpenAI 互換サーバー",
   'aiSave': "設定を保存",
   'aiSaved': "AI 設定を保存しました",
@@ -161,6 +166,7 @@ const jaMessages = <String, String>{
   'aiSummaryRant': "AI のひとこと",
   'aiSummaryRunningCount': "{value1} 件の未読メッセージを要約中",
   'aiSummaryThinking': "考えています…",
+  'aiSummaryTechnicalDetails': "技術的な詳細",
   'aiSummaryTitle': "AI 要約",
   'aiSummaryTopics': "話題",
   'aiSummaryTopicTime': "時間",
@@ -168,6 +174,7 @@ const jaMessages = <String, String>{
   'aiSummaryUncertainties': "不確かな点",
   'aiUnreadSummary': "未読チャットの要約",
   'aiUnreadSummaryDescription': "未読件数の横に連結された円形 AI ボタンを表示します。",
+  'aiTokenContext': "{value1}K トークンのコンテキストウインドウ",
   'appearanceAddFont': "フォントを追加",
   'appearanceAddTextFont': "テキストフォントを追加",
   'appearanceAlwaysShowMessageTime': "メッセージ時刻を常に表示",

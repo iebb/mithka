@@ -386,9 +386,17 @@ void main() {
     );
 
     test('derives a conservative prompt budget from the PCC context size', () {
-      expect(unreadSummaryChunkTokenBudget(null), 8000);
-      expect(unreadSummaryChunkTokenBudget(4096), 1200);
+      expect(unreadSummaryChunkTokenBudget(null), 20000);
+      expect(unreadSummaryChunkTokenBudget(4096), 1400);
       expect(unreadSummaryChunkTokenBudget(32768), 20000);
+      expect(unreadSummaryChunkTokenBudget(65536), 20000);
+      expect(
+        unreadSummaryChunkTokenBudget(
+          32768,
+          maximumContextSize: appleOnDeviceContextTokenLimit,
+        ),
+        1400,
+      );
       expect(
         estimateUnreadSummaryPromptTokens({
           'text': List.filled(100, '未读消息').join(),
@@ -829,8 +837,44 @@ void main() {
 
       expect(
         () => service.summarizeTranscript(transcript),
-        throwsA(isA<UnreadChatSummaryFormatException>()),
+        throwsA(
+          isA<UnreadChatSummaryFailure>()
+              .having((failure) => failure.stage, 'stage', 'summarizing_chunks')
+              .having(
+                (failure) => failure.causes.single.code,
+                'cause code',
+                'invalid_grounded_summary',
+              ),
+        ),
       );
+    });
+
+    test('keeps grounded sections when a sibling section is malformed', () {
+      final content = UnreadChatSummaryContent.fromJsonBestEffort(
+        {
+          'title': 'Grounded title',
+          'overview': 'Grounded overview',
+          'overview_evidence_ids': ['m1'],
+          'topics': [
+            {
+              'title': 'Bad topic',
+              'summary': 'Uses unknown evidence',
+              'evidence_ids': ['m999'],
+            },
+          ],
+          'questions': [
+            {
+              'text': 'A valid open question',
+              'evidence_ids': ['m2'],
+            },
+          ],
+        },
+        allowedEvidenceIds: {'m1', 'm2'},
+      );
+
+      expect(content.overview, 'Grounded overview');
+      expect(content.topics, isEmpty);
+      expect(content.questions.single.text, 'A valid open question');
     });
   });
 }

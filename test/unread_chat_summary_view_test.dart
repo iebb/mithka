@@ -143,4 +143,62 @@ void main() {
     expect(find.text('需要确认发布时间。'), findsOneWidget);
     expect(find.text('Assembling the summary…'), findsNothing);
   });
+
+  testWidgets('failure surface shows actionable request diagnostics', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final theme = ThemeController(await SharedPreferences.getInstance());
+    addTearDown(theme.dispose);
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: theme,
+        child: MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: UnreadChatSummaryView(
+            snapshot: UnreadChatRangeSnapshot(
+              chatId: 1,
+              accountSlot: 0,
+              lastReadInboxId: 1,
+              unreadCount: 2685,
+              upperMessageId: 3000,
+              capturedAt: DateTime(2026, 7, 20),
+            ),
+            summarize: (_) async => throw UnreadChatSummaryFailure(
+              providerCode: 'apple_pcc',
+              stage: 'summarizing_chunks',
+              causes: const [
+                UnreadChatSummaryFailureCause(
+                  code: 'pcc_busy/request_in_progress',
+                  message: 'The Apple model is busy.',
+                ),
+              ],
+              sourceMessageCount: 2685,
+              selectedMessageCount: 640,
+              chunkCount: 5,
+              successfulChunkCount: 0,
+              contextWindowTokens: 32768,
+              chunkTokenBudget: 7000,
+              largestChunkTokenEstimate: 6880,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('Technical details'), findsOneWidget);
+    expect(find.textContaining('provider: apple_pcc'), findsOneWidget);
+    expect(find.textContaining('chunks_succeeded: 0/5'), findsOneWidget);
+    expect(find.textContaining('context_window_tokens: 32768'), findsOneWidget);
+    expect(find.textContaining('pcc_busy/request_in_progress'), findsOneWidget);
+  });
 }

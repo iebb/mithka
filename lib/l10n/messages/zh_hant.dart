@@ -106,6 +106,9 @@ const zhHantMessages = <String, String>{
   'apiCredentialsTitle': "自訂 API 憑證",
   'aiInvalidEndpoint':
       "請使用以 /v1/chat/completions 結尾的 HTTPS 網址。只有 localhost 可使用 HTTP。",
+  'aiOnDevicePrivacy': "未讀訊息完全由裝置上的 Apple 智慧處理，不會傳送到伺服器。",
+  'aiOnDeviceUnavailableDescription':
+      "裝置端模型需要支援 Apple 智慧的裝置、iOS 26 或以上版本，以及已下載的模型。",
   'aiOutputLanguage': "輸出語言",
   'aiOutputSameLanguage': "與未讀訊息使用相同語言",
   'aiPccAvailable': "此裝置可用",
@@ -115,6 +118,7 @@ const zhHantMessages = <String, String>{
       "私密雲端運算需要受支援的 Apple 裝置、系統版本及可用的 Apple Intelligence。",
   'aiProcessingMode': "處理方式",
   'aiProviderApplePcc': "Apple 私密雲端運算",
+  'aiProviderAppleOnDevice': "Apple 裝置端模型",
   'aiProviderOpenAiCompatible': "OpenAI 相容伺服器",
   'aiSave': "儲存設定",
   'aiSaved': "AI 設定已儲存",
@@ -150,6 +154,7 @@ const zhHantMessages = <String, String>{
   'aiSummaryRant': "銳評",
   'aiSummaryRunningCount': "正在摘要 {value1} 則未讀訊息",
   'aiSummaryThinking': "思考中…",
+  'aiSummaryTechnicalDetails': "技術詳情",
   'aiSummaryTitle': "AI 摘要",
   'aiSummaryTopics': "熱門話題",
   'aiSummaryTopicTime': "時間",
@@ -157,6 +162,7 @@ const zhHantMessages = <String, String>{
   'aiSummaryUncertainties': "不確定資訊",
   'aiUnreadSummary': "未讀聊天摘要",
   'aiUnreadSummaryDescription': "在未讀訊息數量旁顯示相連的圓形 AI 按鈕。",
+  'aiTokenContext': "{value1}K Token 上下文視窗",
   'appearanceAddFont': "新增字型",
   'appearanceAddTextFont': "新增文字字型",
   'appearanceAlwaysShowMessageTime': "一律顯示訊息時間",

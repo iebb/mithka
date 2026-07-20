@@ -4921,12 +4921,14 @@ class _ChatViewState extends State<ChatView> {
     final model = settings.model;
     final apiKey = settings.apiKey;
     final pccContextSize = settings.pccCapabilities?.contextSize;
+    final onDeviceContextSize = settings.pccCapabilities?.onDeviceContextSize;
     final session = _createUnreadSummarySession(
       providerMode: providerMode,
       endpoint: endpoint,
       model: model,
       apiKey: apiKey,
       pccContextSize: pccContextSize,
+      onDeviceContextSize: onDeviceContextSize,
     );
     int? messageId;
     try {
@@ -4953,6 +4955,7 @@ class _ChatViewState extends State<ChatView> {
     required String model,
     required String apiKey,
     required int? pccContextSize,
+    required int? onDeviceContextSize,
   }) {
     final loader = UnreadChatHistoryLoader(
       query: (accountSlot, request) {
@@ -4966,19 +4969,53 @@ class _ChatViewState extends State<ChatView> {
 
     switch (providerMode) {
       case AiProviderMode.applePcc:
+        final contextWindow = math.min(
+          pccContextSize ?? applePccContextTokenLimit,
+          applePccContextTokenLimit,
+        );
         return _UnreadSummarySession(
           UnreadChatSummaryService(
             historyLoader: loader,
-            maxChunkMessages: 520,
-            maxChunks: 3,
-            maxConcurrentRequests: 3,
-            maxChunkTokenEstimate: unreadSummaryChunkTokenBudget(
-              pccContextSize,
+            maxChunkMessages: 180,
+            maxChunks: 5,
+            maxChunkTokenEstimate: math.min(
+              7000,
+              unreadSummaryChunkTokenBudget(contextWindow),
             ),
             mergeChunkSummariesLocally: true,
+            providerCode: 'apple_pcc',
+            contextWindowTokens: contextWindow,
             provider: ApplePccUnreadSummaryProvider(
               api: ApplePccApi(summaryTimeout: const Duration(seconds: 50)),
               reasoningLevel: ApplePccReasoningLevel.light,
+              chunkMaximumResponseTokens: 1300,
+            ),
+          ),
+        );
+      case AiProviderMode.appleOnDevice:
+        final contextWindow = math.min(
+          onDeviceContextSize ?? appleOnDeviceContextTokenLimit,
+          appleOnDeviceContextTokenLimit,
+        );
+        return _UnreadSummarySession(
+          UnreadChatSummaryService(
+            historyLoader: loader,
+            maxChunkMessages: 70,
+            maxChunks: 4,
+            maxConcurrentRequests: 1,
+            maxChunkTokenEstimate: unreadSummaryChunkTokenBudget(
+              contextWindow,
+              maximumContextSize: appleOnDeviceContextTokenLimit,
+            ),
+            mergeChunkSummariesLocally: true,
+            providerCode: 'apple_on_device',
+            contextWindowTokens: contextWindow,
+            provider: ApplePccUnreadSummaryProvider(
+              api: ApplePccApi(summaryTimeout: const Duration(seconds: 40)),
+              model: AppleAiModel.onDevice,
+              reasoningLevel: ApplePccReasoningLevel.light,
+              chunkMaximumResponseTokens: 650,
+              mergeMaximumResponseTokens: 650,
             ),
           ),
         );
@@ -4999,6 +5036,7 @@ class _ChatViewState extends State<ChatView> {
             maxChunks: 3,
             maxConcurrentRequests: 3,
             mergeChunkSummariesLocally: true,
+            providerCode: 'openai_compatible/$model',
           ),
           onDispose: provider.close,
         );

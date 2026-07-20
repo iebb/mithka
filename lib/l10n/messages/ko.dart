@@ -116,6 +116,10 @@ const koMessages = <String, String>{
   'apiCredentialsTitle': "사용자 지정 API 인증 정보",
   'aiInvalidEndpoint':
       "/v1/chat/completions로 끝나는 HTTPS URL을 사용하세요. HTTP는 localhost에서만 허용됩니다.",
+  'aiOnDevicePrivacy':
+      "읽지 않은 메시지는 이 기기의 Apple Intelligence에서만 처리되며 서버로 전송되지 않습니다.",
+  'aiOnDeviceUnavailableDescription':
+      "온디바이스 모델에는 Apple Intelligence 지원 기기, iOS 26 이상 및 다운로드된 모델이 필요합니다.",
   'aiOutputLanguage': "출력 언어",
   'aiOutputSameLanguage': "읽지 않은 메시지와 같은 언어",
   'aiPccAvailable': "이 기기에서 사용 가능",
@@ -126,6 +130,7 @@ const koMessages = <String, String>{
       "Private Cloud Compute를 사용하려면 지원되는 Apple 기기, 소프트웨어 및 Apple Intelligence가 필요합니다.",
   'aiProcessingMode': "처리 모드",
   'aiProviderApplePcc': "Apple Private Cloud Compute",
+  'aiProviderAppleOnDevice': "Apple 온디바이스 모델",
   'aiProviderOpenAiCompatible': "OpenAI 호환 서버",
   'aiSave': "설정 저장",
   'aiSaved': "AI 설정을 저장했습니다",
@@ -163,6 +168,7 @@ const koMessages = <String, String>{
   'aiSummaryRant': "AI 한마디",
   'aiSummaryRunningCount': "읽지 않은 메시지 {value1}개 요약 중",
   'aiSummaryThinking': "생각하는 중…",
+  'aiSummaryTechnicalDetails': "기술 세부 정보",
   'aiSummaryTitle': "AI 요약",
   'aiSummaryTopics': "주요 주제",
   'aiSummaryTopicTime': "시간",
@@ -170,6 +176,7 @@ const koMessages = <String, String>{
   'aiSummaryUncertainties': "불확실한 내용",
   'aiUnreadSummary': "읽지 않은 채팅 요약",
   'aiUnreadSummaryDescription': "읽지 않은 메시지 수 옆에 연결된 원형 AI 버튼을 표시합니다.",
+  'aiTokenContext': "{value1}K 토큰 컨텍스트 창",
   'appearanceAddFont': "글꼴 추가",
   'appearanceAddTextFont': "텍스트 글꼴 추가",
   'appearanceAlwaysShowMessageTime': "메시지 시간 항상 표시",

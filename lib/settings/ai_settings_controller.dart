@@ -8,6 +8,7 @@ import 'apple_pcc_api.dart';
 
 enum AiProviderMode {
   applePcc('apple_pcc'),
+  appleOnDevice('apple_on_device'),
   openAiCompatible('open_ai_compatible');
 
   const AiProviderMode(this.storageValue);
@@ -15,6 +16,7 @@ enum AiProviderMode {
   final String storageValue;
 
   static AiProviderMode fromStorage(String? value) => switch (value) {
+    'apple_on_device' || 'appleOnDevice' => appleOnDevice,
     'open_ai_compatible' || 'openAiCompatible' => openAiCompatible,
     _ => applePcc,
   };
@@ -73,6 +75,7 @@ class AiSettingsController extends ChangeNotifier {
     AiProviderMode.applePcc =>
       _pccCapabilities?.available == true &&
           _pccCapabilities?.quotaLimitReached != true,
+    AiProviderMode.appleOnDevice => _pccCapabilities?.onDeviceAvailable == true,
     AiProviderMode.openAiCompatible =>
       _model.isNotEmpty && isValidOpenAiCompatibleEndpoint(_endpoint),
   };

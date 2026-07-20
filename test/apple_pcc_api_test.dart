@@ -19,6 +19,10 @@ void main() {
           'quotaLimitReached': false,
           'quotaApproachingLimit': true,
           'quotaResetDateMillis': reset,
+          'onDeviceSdkAvailable': true,
+          'onDeviceAvailable': true,
+          'onDeviceReason': 'available',
+          'onDeviceContextSize': 4096,
         };
       },
     );
@@ -32,6 +36,11 @@ void main() {
     expect(capabilities.quotaLimitReached, isFalse);
     expect(capabilities.quotaApproachingLimit, isTrue);
     expect(capabilities.quotaResetDate?.millisecondsSinceEpoch, reset);
+    expect(capabilities.onDeviceSdkAvailable, isTrue);
+    expect(capabilities.onDeviceAvailable, isTrue);
+    expect(capabilities.onDeviceReason, 'available');
+    expect(capabilities.onDeviceContextSize, 4096);
+    expect(capabilities.contextSizeFor(AppleAiModel.onDevice), 4096);
   });
 
   test(
@@ -86,6 +95,7 @@ void main() {
         expect(values, {
           'prompt': 'Summarize these messages',
           'instructions': 'Reply in the same language',
+          'modelMode': 'private_cloud_compute',
           'reasoningLevel': 'deep',
           'maximumResponseTokens': 500,
         });
@@ -103,6 +113,35 @@ void main() {
     expect(result.text, 'Summary text');
     expect(result.provider, 'apple_pcc');
   });
+
+  test(
+    'summarize selects the on-device model in the native contract',
+    () async {
+      final api = ApplePccApi(
+        invokeMethod: (method, arguments) async {
+          expect(method, 'summarize');
+          expect((arguments! as Map)['modelMode'], 'on_device');
+          return {
+            'text': '本机总结',
+            'provider': 'apple_on_device',
+            'contextSize': 4096,
+            'inputTokenCount': 512,
+            'responseTokenCount': 40,
+          };
+        },
+      );
+
+      final result = await api.summarize(
+        prompt: '总结',
+        model: AppleAiModel.onDevice,
+      );
+
+      expect(result.provider, 'apple_on_device');
+      expect(result.contextSize, 4096);
+      expect(result.inputTokenCount, 512);
+      expect(result.responseTokenCount, 40);
+    },
+  );
 
   test('summarize rejects empty input and malformed responses', () async {
     final api = ApplePccApi(invokeMethod: (_, _) async => {'provider': 'x'});

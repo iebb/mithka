@@ -104,6 +104,9 @@ const zhHansMessages = <String, String>{
   'apiCredentialsTitle': "自定义 API 凭据",
   'aiInvalidEndpoint':
       "请使用以 /v1/chat/completions 结尾的 HTTPS 地址。只有 localhost 可使用 HTTP。",
+  'aiOnDevicePrivacy': "未读消息完全由本机 Apple 智能处理，不会发送到服务器。",
+  'aiOnDeviceUnavailableDescription':
+      "本机模型需要支持 Apple 智能的设备、iOS 26 或更高版本，以及已下载的模型。",
   'aiOutputLanguage': "输出语言",
   'aiOutputSameLanguage': "与未读消息使用相同语言",
   'aiPccAvailable': "此设备可用",
@@ -112,6 +115,7 @@ const zhHansMessages = <String, String>{
   'aiPccUnavailableDescription': "私有云计算需要受支持的 Apple 设备、系统版本以及可用的 Apple 智能。",
   'aiProcessingMode': "处理方式",
   'aiProviderApplePcc': "Apple 私有云计算",
+  'aiProviderAppleOnDevice': "Apple 本机模型",
   'aiProviderOpenAiCompatible': "OpenAI 兼容服务器",
   'aiSave': "保存配置",
   'aiSaved': "AI 设置已保存",
@@ -147,6 +151,7 @@ const zhHansMessages = <String, String>{
   'aiSummaryRant': "锐评",
   'aiSummaryRunningCount': "正在总结 {value1} 条未读消息",
   'aiSummaryThinking': "思考中…",
+  'aiSummaryTechnicalDetails': "技术详情",
   'aiSummaryTitle': "AI 总结",
   'aiSummaryTopics': "热聊话题",
   'aiSummaryTopicTime': "时间",
@@ -154,6 +159,7 @@ const zhHansMessages = <String, String>{
   'aiSummaryUncertainties': "不确定信息",
   'aiUnreadSummary': "未读聊天总结",
   'aiUnreadSummaryDescription': "在未读消息数量旁显示相连的圆形 AI 按钮。",
+  'aiTokenContext': "{value1}K Token 上下文窗口",
   'appearanceAddFont': "添加字体",
   'appearanceAddTextFont': "添加文本字体",
   'appearanceAlwaysShowMessageTime': "始终显示消息时间",

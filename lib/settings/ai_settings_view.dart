@@ -122,10 +122,10 @@ class _AiSettingsViewState extends State<AiSettingsView> {
                         ],
                       ),
                       const SizedBox(height: AppSpacing.section),
-                      if (settings.provider == AiProviderMode.applePcc)
-                        _pccConfiguration(context, settings)
-                      else
+                      if (settings.provider == AiProviderMode.openAiCompatible)
                         _serverConfiguration(context),
+                      if (settings.provider != AiProviderMode.openAiCompatible)
+                        _appleConfiguration(context, settings),
                     ],
                   ),
           ),
@@ -134,21 +134,26 @@ class _AiSettingsViewState extends State<AiSettingsView> {
     );
   }
 
-  Widget _pccConfiguration(
+  Widget _appleConfiguration(
     BuildContext context,
     AiSettingsController settings,
   ) {
     final capabilities = settings.pccCapabilities;
-    final available =
-        capabilities?.available == true &&
-        capabilities?.quotaLimitReached != true;
+    final isPcc = settings.provider == AiProviderMode.applePcc;
+    final available = isPcc
+        ? capabilities?.available == true &&
+              capabilities?.quotaLimitReached != true
+        : capabilities?.onDeviceAvailable == true;
+    final contextSize = isPcc
+        ? capabilities?.contextSize
+        : capabilities?.onDeviceContextSize;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SettingsCard(
           children: [
             SettingsRow(
-              title: AppStringKeys.aiProviderApplePcc.l10n(context),
+              title: _providerLabel(context, settings.provider),
               value:
                   (available
                           ? AppStringKeys.aiPccAvailable
@@ -156,7 +161,9 @@ class _AiSettingsViewState extends State<AiSettingsView> {
                       .l10n(context),
               leading: SettingsIconTile(
                 icon: available
-                    ? HeroAppIcons.cloudArrowDown
+                    ? (isPcc
+                          ? HeroAppIcons.cloudArrowDown
+                          : HeroAppIcons.mobileScreenButton)
                     : HeroAppIcons.triangleExclamation,
                 backgroundColor: available
                     ? const Color(0xFF20A45B)
@@ -169,9 +176,22 @@ class _AiSettingsViewState extends State<AiSettingsView> {
         _note(
           context,
           available
-              ? AppStringKeys.aiPccPrivacy.l10n(context)
-              : AppStringKeys.aiPccUnavailableDescription.l10n(context),
+              ? (isPcc
+                        ? AppStringKeys.aiPccPrivacy
+                        : AppStringKeys.aiOnDevicePrivacy)
+                    .l10n(context)
+              : (isPcc
+                        ? AppStringKeys.aiPccUnavailableDescription
+                        : AppStringKeys.aiOnDeviceUnavailableDescription)
+                    .l10n(context),
         ),
+        if (contextSize != null)
+          _note(
+            context,
+            AppStrings.t(AppStringKeys.aiTokenContext, {
+              'value1': contextSize ~/ 1024,
+            }),
+          ),
       ],
     );
   }
@@ -370,6 +390,13 @@ class _AiSettingsViewState extends State<AiSettingsView> {
                 _providerOption(
                   sheetContext,
                   settings: settings,
+                  provider: AiProviderMode.appleOnDevice,
+                  icon: HeroAppIcons.mobileScreenButton,
+                ),
+                const InsetDivider(leadingInset: 56),
+                _providerOption(
+                  sheetContext,
+                  settings: settings,
                   provider: AiProviderMode.openAiCompatible,
                   icon: HeroAppIcons.networkWired,
                 ),
@@ -403,9 +430,11 @@ class _AiSettingsViewState extends State<AiSettingsView> {
             children: [
               SettingsIconTile(
                 icon: icon,
-                backgroundColor: provider == AiProviderMode.applePcc
-                    ? const Color(0xFF7467F0)
-                    : const Color(0xFF3478F6),
+                backgroundColor: switch (provider) {
+                  AiProviderMode.applePcc => const Color(0xFF7467F0),
+                  AiProviderMode.appleOnDevice => const Color(0xFF16A085),
+                  AiProviderMode.openAiCompatible => const Color(0xFF3478F6),
+                },
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -428,6 +457,8 @@ class _AiSettingsViewState extends State<AiSettingsView> {
         AiProviderMode.applePcc => AppStringKeys.aiProviderApplePcc.l10n(
           context,
         ),
+        AiProviderMode.appleOnDevice =>
+          AppStringKeys.aiProviderAppleOnDevice.l10n(context),
         AiProviderMode.openAiCompatible =>
           AppStringKeys.aiProviderOpenAiCompatible.l10n(context),
       };

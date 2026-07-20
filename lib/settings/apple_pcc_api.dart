@@ -8,12 +8,30 @@ typedef ApplePccMethodInvoker =
 
 enum ApplePccReasoningLevel { light, moderate, deep }
 
+enum AppleAiModel {
+  privateCloudCompute('private_cloud_compute'),
+  onDevice('on_device');
+
+  const AppleAiModel(this.bridgeValue);
+
+  final String bridgeValue;
+}
+
 @immutable
 class ApplePccSummaryResult {
-  const ApplePccSummaryResult({required this.text, required this.provider});
+  const ApplePccSummaryResult({
+    required this.text,
+    required this.provider,
+    this.contextSize,
+    this.inputTokenCount,
+    this.responseTokenCount,
+  });
 
   final String text;
   final String provider;
+  final int? contextSize;
+  final int? inputTokenCount;
+  final int? responseTokenCount;
 }
 
 @immutable
@@ -26,6 +44,10 @@ class ApplePccCapabilities {
     this.quotaLimitReached = false,
     this.quotaApproachingLimit = false,
     this.quotaResetDate,
+    this.onDeviceSdkAvailable = false,
+    this.onDeviceAvailable = false,
+    this.onDeviceReason = 'unavailable',
+    this.onDeviceContextSize,
   });
 
   const ApplePccCapabilities.unavailable([this.reason = 'unavailable'])
@@ -34,7 +56,11 @@ class ApplePccCapabilities {
       contextSize = null,
       quotaLimitReached = false,
       quotaApproachingLimit = false,
-      quotaResetDate = null;
+      quotaResetDate = null,
+      onDeviceSdkAvailable = false,
+      onDeviceAvailable = false,
+      onDeviceReason = 'unavailable',
+      onDeviceContextSize = null;
 
   final bool sdkAvailable;
   final bool available;
@@ -43,6 +69,20 @@ class ApplePccCapabilities {
   final bool quotaLimitReached;
   final bool quotaApproachingLimit;
   final DateTime? quotaResetDate;
+  final bool onDeviceSdkAvailable;
+  final bool onDeviceAvailable;
+  final String onDeviceReason;
+  final int? onDeviceContextSize;
+
+  bool availableFor(AppleAiModel model) => switch (model) {
+    AppleAiModel.privateCloudCompute => available && !quotaLimitReached,
+    AppleAiModel.onDevice => onDeviceAvailable,
+  };
+
+  int? contextSizeFor(AppleAiModel model) => switch (model) {
+    AppleAiModel.privateCloudCompute => contextSize,
+    AppleAiModel.onDevice => onDeviceContextSize,
+  };
 
   static ApplePccCapabilities? tryParse(Object? value) {
     if (value is bool) {
@@ -94,6 +134,23 @@ class ApplePccCapabilities {
       quotaResetDate: resetMillis == null
           ? null
           : DateTime.fromMillisecondsSinceEpoch(resetMillis),
+      onDeviceSdkAvailable:
+          _bool(values['onDeviceSdkAvailable']) ??
+          _bool(values['on_device_sdk_available']) ??
+          false,
+      onDeviceAvailable:
+          _bool(values['onDeviceAvailable']) ??
+          _bool(values['on_device_available']) ??
+          false,
+      onDeviceReason:
+          values['onDeviceReason']?.toString() ??
+          values['on_device_reason']?.toString() ??
+          'unavailable',
+      onDeviceContextSize: switch (_int(values['onDeviceContextSize']) ??
+          _int(values['on_device_context_size'])) {
+        final value? when value > 0 => value,
+        _ => null,
+      },
     );
   }
 
@@ -155,6 +212,7 @@ class ApplePccApi {
   Future<ApplePccSummaryResult> summarize({
     required String prompt,
     String instructions = '',
+    AppleAiModel model = AppleAiModel.privateCloudCompute,
     ApplePccReasoningLevel reasoningLevel = ApplePccReasoningLevel.moderate,
     int? maximumResponseTokens,
   }) async {
@@ -176,6 +234,7 @@ class ApplePccApi {
       'requestId': requestId,
       'prompt': normalizedPrompt,
       if (instructions.trim().isNotEmpty) 'instructions': instructions.trim(),
+      'modelMode': model.bridgeValue,
       'reasoningLevel': reasoningLevel.name,
       'maximumResponseTokens': ?maximumResponseTokens,
     };
@@ -184,8 +243,16 @@ class ApplePccApi {
       onTimeout: () {
         unawaited(_cancelSummary(requestId));
         throw PlatformException(
-          code: 'pcc_timeout',
-          message: 'Private Cloud Compute summarization timed out.',
+          code: model == AppleAiModel.privateCloudCompute
+              ? 'pcc_timeout'
+              : 'on_device_timeout',
+          message: model == AppleAiModel.privateCloudCompute
+              ? 'Private Cloud Compute summarization timed out.'
+              : 'The on-device model summarization timed out.',
+          details: {
+            'reason': 'request_timeout',
+            'model_mode': model.bridgeValue,
+          },
         );
       },
     );
@@ -208,6 +275,11 @@ class ApplePccApi {
     return ApplePccSummaryResult(
       text: text,
       provider: values['provider']?.toString() ?? 'apple_pcc',
+      contextSize: ApplePccCapabilities._int(values['contextSize']),
+      inputTokenCount: ApplePccCapabilities._int(values['inputTokenCount']),
+      responseTokenCount: ApplePccCapabilities._int(
+        values['responseTokenCount'],
+      ),
     );
   }
 

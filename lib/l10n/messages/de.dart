@@ -124,6 +124,11 @@ const deMessages = <String, String>{
   'apiCredentialsTitle': "Eigene API-Zugangsdaten",
   'aiInvalidEndpoint':
       "Verwende eine HTTPS-URL, die mit /v1/chat/completions endet. HTTP ist nur für localhost erlaubt.",
+  'aiOnDevicePrivacy':
+      "Ungelesene Nachrichten werden vollständig auf diesem Gerät mit Apple Intelligence verarbeitet und nicht an einen Server gesendet.",
+  'aiOnDeviceUnavailableDescription':
+      "Das On-Device-Modell erfordert ein unterstütztes Apple-Intelligence-Gerät, iOS 26 oder neuer und ein geladenes Modell.",
+  'aiTokenContext': "{value1}K-Token-Kontextfenster",
   'aiOutputLanguage': "Ausgabesprache",
   'aiOutputSameLanguage': "Gleiche Sprache wie die ungelesenen Nachrichten",
   'aiPccAvailable': "Auf diesem Gerät verfügbar",
@@ -134,6 +139,7 @@ const deMessages = <String, String>{
       "Private Cloud Compute erfordert ein unterstütztes Apple-Gerät, eine kompatible Softwareversion und verfügbares Apple Intelligence.",
   'aiProcessingMode': "Verarbeitungsmodus",
   'aiProviderApplePcc': "Apple Private Cloud Compute",
+  'aiProviderAppleOnDevice': "Apple On-Device-Modell",
   'aiProviderOpenAiCompatible': "OpenAI-kompatibler Server",
   'aiSave': "Konfiguration speichern",
   'aiSaved': "KI-Einstellungen gespeichert",
@@ -177,6 +183,7 @@ const deMessages = <String, String>{
   'aiSummaryRunningCount':
       "{value1} ungelesene Nachrichten werden zusammengefasst",
   'aiSummaryThinking': "Wird erstellt…",
+  'aiSummaryTechnicalDetails': "Technische Details",
   'aiSummaryTitle': "KI-Zusammenfassung",
   'aiSummaryTopics': "Themen",
   'aiSummaryTopicTime': "Zeit",

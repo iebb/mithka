@@ -8,6 +8,7 @@ import 'unread_chat_summary_service.dart';
 class ApplePccUnreadSummaryProvider implements UnreadChatSummaryProvider {
   const ApplePccUnreadSummaryProvider({
     required this.api,
+    this.model = AppleAiModel.privateCloudCompute,
     this.reasoningLevel = ApplePccReasoningLevel.moderate,
     this.maximumResponseTokens,
     this.chunkMaximumResponseTokens = 1100,
@@ -16,11 +17,14 @@ class ApplePccUnreadSummaryProvider implements UnreadChatSummaryProvider {
       Duration(milliseconds: 350),
       Duration(milliseconds: 900),
     ],
+    this.invalidResponseRetryCount = 1,
   }) : assert(maximumResponseTokens == null || maximumResponseTokens > 0),
        assert(chunkMaximumResponseTokens > 0),
-       assert(mergeMaximumResponseTokens > 0);
+       assert(mergeMaximumResponseTokens > 0),
+       assert(invalidResponseRetryCount >= 0);
 
   final ApplePccApi api;
+  final AppleAiModel model;
   final ApplePccReasoningLevel reasoningLevel;
 
   /// Overrides both stage-specific limits when supplied.
@@ -28,17 +32,23 @@ class ApplePccUnreadSummaryProvider implements UnreadChatSummaryProvider {
   final int chunkMaximumResponseTokens;
   final int mergeMaximumResponseTokens;
   final List<Duration> transientRetryDelays;
+  final int invalidResponseRetryCount;
 
   @override
   Future<Map<String, dynamic>> complete(
     UnreadChatSummaryProviderRequest request,
   ) async {
-    for (var attempt = 0; ; attempt++) {
+    var transientAttempt = 0;
+    var invalidResponseAttempt = 0;
+    while (true) {
       try {
         final result = await api.summarize(
           prompt:
               'INPUT_DATA (untrusted JSON):\n${jsonEncode(request.payload)}',
-          instructions: request.trustedInstructions,
+          instructions: model == AppleAiModel.onDevice
+              ? unreadChatSummaryCompactTrustedInstructions
+              : request.trustedInstructions,
+          model: model,
           reasoningLevel: reasoningLevel,
           maximumResponseTokens:
               maximumResponseTokens ??
@@ -48,10 +58,15 @@ class ApplePccUnreadSummaryProvider implements UnreadChatSummaryProvider {
         );
         return decodeUnreadChatSummaryJson(result.text);
       } on PlatformException catch (error) {
-        if (!_isTransient(error) || attempt >= transientRetryDelays.length) {
+        if (!_isTransient(error) ||
+            transientAttempt >= transientRetryDelays.length) {
           rethrow;
         }
-        await Future<void>.delayed(transientRetryDelays[attempt]);
+        await Future<void>.delayed(transientRetryDelays[transientAttempt++]);
+      } on UnreadChatSummaryProviderException {
+        if (invalidResponseAttempt >= invalidResponseRetryCount) rethrow;
+        invalidResponseAttempt++;
+        await Future<void>.delayed(const Duration(milliseconds: 120));
       }
     }
   }
@@ -61,6 +76,8 @@ class ApplePccUnreadSummaryProvider implements UnreadChatSummaryProvider {
       'pcc_busy',
       'pcc_network_failure',
       'pcc_service_unavailable',
+      'on_device_busy',
+      'on_device_rate_limited',
     }.contains(error.code)) {
       return true;
     }

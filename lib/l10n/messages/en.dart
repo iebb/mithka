@@ -121,6 +121,10 @@ const enMessages = <String, String>{
   'apiCredentialsTitle': "Custom API Credentials",
   'aiInvalidEndpoint':
       "Use an HTTPS URL ending in /v1/chat/completions. HTTP is allowed only for localhost.",
+  'aiOnDevicePrivacy':
+      "Unread messages are processed entirely on this device with Apple Intelligence and are not sent to a server.",
+  'aiOnDeviceUnavailableDescription':
+      "The on-device model requires a supported Apple Intelligence device, iOS 26 or newer, and a downloaded model.",
   'aiOutputLanguage': "Output Language",
   'aiOutputSameLanguage': "Same language as the unread messages",
   'aiPccAvailable': "Available on this device",
@@ -131,6 +135,7 @@ const enMessages = <String, String>{
       "Private Cloud Compute requires a supported Apple device, software version, and Apple Intelligence availability.",
   'aiProcessingMode': "Processing Mode",
   'aiProviderApplePcc': "Apple Private Cloud Compute",
+  'aiProviderAppleOnDevice': "Apple On-Device Model",
   'aiProviderOpenAiCompatible': "OpenAI-compatible Server",
   'aiSave': "Save Configuration",
   'aiSaved': "AI settings saved",
@@ -171,6 +176,7 @@ const enMessages = <String, String>{
   'aiSummaryRant': "AI take",
   'aiSummaryRunningCount': "Summarizing {value1} unread messages",
   'aiSummaryThinking': "Thinking…",
+  'aiSummaryTechnicalDetails': "Technical details",
   'aiSummaryTitle': "AI Summary",
   'aiSummaryTopics': "Topics",
   'aiSummaryTopicTime': "Time",
@@ -180,6 +186,7 @@ const enMessages = <String, String>{
   'aiUnreadSummary': "Unread Chat Summary",
   'aiUnreadSummaryDescription':
       "Show an attached AI button beside unread-message counts.",
+  'aiTokenContext': "{value1}K-token context window",
   'appearanceAddFont': "Add Font",
   'appearanceAddTextFont': "Add Text Font",
   'appearanceAlwaysShowMessageTime': "Always show message time",

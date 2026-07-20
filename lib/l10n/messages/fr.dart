@@ -126,6 +126,11 @@ const frMessages = <String, String>{
   'apiCredentialsTitle': "Identifiants d’API personnalisés",
   'aiInvalidEndpoint':
       "Utilisez une URL HTTPS se terminant par /v1/chat/completions. HTTP n’est autorisé que pour localhost.",
+  'aiOnDevicePrivacy':
+      "Les messages non lus sont traités entièrement sur cet appareil avec Apple Intelligence et ne sont pas envoyés à un serveur.",
+  'aiOnDeviceUnavailableDescription':
+      "Le modèle local nécessite un appareil compatible Apple Intelligence, iOS 26 ou ultérieur et un modèle téléchargé.",
+  'aiTokenContext': "Fenêtre de contexte de {value1}K jetons",
   'aiOutputLanguage': "Langue de sortie",
   'aiOutputSameLanguage': "Même langue que les messages non lus",
   'aiPccAvailable': "Disponible sur cet appareil",
@@ -136,6 +141,7 @@ const frMessages = <String, String>{
       "Private Cloud Compute nécessite un appareil Apple et une version logicielle compatibles, ainsi que la disponibilité d’Apple Intelligence.",
   'aiProcessingMode': "Mode de traitement",
   'aiProviderApplePcc': "Apple Private Cloud Compute",
+  'aiProviderAppleOnDevice': "Modèle Apple sur l’appareil",
   'aiProviderOpenAiCompatible': "Serveur compatible OpenAI",
   'aiSave': "Enregistrer la configuration",
   'aiSaved': "Réglages IA enregistrés",
@@ -175,6 +181,7 @@ const frMessages = <String, String>{
   'aiSummaryRant': "Avis de l’IA",
   'aiSummaryRunningCount': "Résumé de {value1} messages non lus",
   'aiSummaryThinking': "Réflexion en cours…",
+  'aiSummaryTechnicalDetails': "Détails techniques",
   'aiSummaryTitle': "Résumé IA",
   'aiSummaryTopics': "Sujets",
   'aiSummaryTopicTime': "Heure",

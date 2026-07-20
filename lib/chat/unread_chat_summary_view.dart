@@ -218,6 +218,30 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
             AppStringKeys.aiSummaryUnavailable.l10n(context),
             style: AppTextStyle.footnote(c.textSecondary),
           ),
+          const SizedBox(height: 16),
+          Text(
+            AppStringKeys.aiSummaryTechnicalDetails.l10n(context),
+            style: AppTextStyle.caption(c.textTertiary),
+          ),
+          const SizedBox(height: 6),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: c.groupedBackground,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: c.divider, width: 0.5),
+            ),
+            child: SelectableText(
+              _technicalErrorDetails(),
+              style: TextStyle(
+                color: c.textSecondary,
+                fontSize: 12,
+                height: 1.45,
+                fontFamily: 'monospace',
+              ),
+            ),
+          ),
           const SizedBox(height: 18),
           Row(
             children: [
@@ -247,6 +271,16 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
         ],
       ),
     );
+  }
+
+  String _technicalErrorDetails() {
+    final error = _error;
+    if (error is UnreadChatSummaryFailure) return error.technicalDetails;
+    final value = error?.toString().trim() ?? 'unknown_error';
+    final normalized = value.replaceAll(RegExp(r'\s+'), ' ');
+    return normalized.length <= 1000
+        ? normalized
+        : '${normalized.substring(0, 997)}...';
   }
 
   Widget _summaryContent(BuildContext context, UnreadChatSummary summary) {
