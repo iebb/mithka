@@ -185,6 +185,8 @@ void main() {
               chunkCount: 5,
               successfulChunkCount: 0,
               contextWindowTokens: 32768,
+              initialPromptTokenEstimate: 1180,
+              reservedNonPayloadTokenEstimate: 3760,
               chunkTokenBudget: 7000,
               largestChunkTokenEstimate: 6880,
             ),
@@ -199,6 +201,14 @@ void main() {
     expect(find.textContaining('provider: apple_pcc'), findsOneWidget);
     expect(find.textContaining('chunks_succeeded: 0/5'), findsOneWidget);
     expect(find.textContaining('context_window_tokens: 32768'), findsOneWidget);
+    expect(
+      find.textContaining('initial_prompt_token_estimate: 1180'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('reserved_non_payload_tokens: 3760'),
+      findsOneWidget,
+    );
     expect(find.textContaining('pcc_busy/request_in_progress'), findsOneWidget);
   });
 }

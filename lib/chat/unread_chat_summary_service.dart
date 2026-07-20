@@ -118,6 +118,8 @@ class UnreadChatSummaryFailure implements Exception {
     this.contextWindowTokens,
     this.chunkTokenBudget,
     this.largestChunkTokenEstimate,
+    this.initialPromptTokenEstimate,
+    this.reservedNonPayloadTokenEstimate,
   });
 
   final String providerCode;
@@ -130,6 +132,8 @@ class UnreadChatSummaryFailure implements Exception {
   final int? contextWindowTokens;
   final int? chunkTokenBudget;
   final int? largestChunkTokenEstimate;
+  final int? initialPromptTokenEstimate;
+  final int? reservedNonPayloadTokenEstimate;
 
   String get technicalDetails {
     final lines = <String>[
@@ -142,6 +146,10 @@ class UnreadChatSummaryFailure implements Exception {
         'chunks_succeeded: ${successfulChunkCount ?? 0}/$chunkCount',
       if (contextWindowTokens != null)
         'context_window_tokens: $contextWindowTokens',
+      if (initialPromptTokenEstimate != null)
+        'initial_prompt_token_estimate: $initialPromptTokenEstimate',
+      if (reservedNonPayloadTokenEstimate != null)
+        'reserved_non_payload_tokens: $reservedNonPayloadTokenEstimate',
       if (chunkTokenBudget != null)
         'configured_chunk_token_budget: $chunkTokenBudget',
       if (largestChunkTokenEstimate != null)
@@ -279,13 +287,50 @@ when absent. Keep the overview and rant short and return at most 3 topics.
 int estimateUnreadSummaryPromptTokens(Object? value) =>
     (utf8.encode(jsonEncode(value)).length + 2) ~/ 3;
 
-/// Leaves room for instructions, a structured response, and tokenizer drift.
+int estimateUnreadSummaryTextTokens(String value) =>
+    (utf8.encode(value).length + 2) ~/ 3;
+
 const applePccContextTokenLimit = 32 * 1024;
 const appleOnDeviceContextTokenLimit = 4096;
+const unreadChatSummaryPromptPrefix = 'INPUT_DATA (untrusted JSON):\n';
 
-int unreadSummaryChunkTokenBudget(
+class UnreadSummaryTokenBudget {
+  const UnreadSummaryTokenBudget({
+    required this.contextTokens,
+    required this.initialPromptTokens,
+    required this.requestEnvelopeTokens,
+    required this.frameworkOverheadTokens,
+    required this.responseTokens,
+    required this.payloadTokens,
+  });
+
+  final int contextTokens;
+  final int initialPromptTokens;
+  final int requestEnvelopeTokens;
+  final int frameworkOverheadTokens;
+  final int responseTokens;
+  final int payloadTokens;
+
+  int get reservedNonPayloadTokens =>
+      initialPromptTokens +
+      requestEnvelopeTokens +
+      frameworkOverheadTokens +
+      responseTokens;
+
+  int get totalPlannedTokens => reservedNonPayloadTokens + payloadTokens;
+}
+
+/// Calculates the JSON payload allowance after explicitly deducting the
+/// initial instructions, prompt prefix, response allowance, request metadata,
+/// and model/session framing from the complete context window.
+UnreadSummaryTokenBudget unreadSummaryTokenBudget(
   int? contextSize, {
   int maximumContextSize = applePccContextTokenLimit,
+  String? trustedInstructions,
+  int? maximumResponseTokens,
+  int? requestEnvelopeTokens,
+  int? frameworkOverheadTokens,
+  int? maximumPayloadTokens,
 }) {
   assert(maximumContextSize > 0);
   final reported = contextSize == null || contextSize <= 0
@@ -293,12 +338,47 @@ int unreadSummaryChunkTokenBudget(
       : contextSize;
   final effectiveContext = math.min(reported, maximumContextSize);
   final isSmallContext = effectiveContext <= appleOnDeviceContextTokenLimit;
-  final reservedTokens = isSmallContext ? 2200 : 4800;
-  final maximumPayloadTokens = isSmallContext ? 1400 : 20000;
-  return (effectiveContext - reservedTokens)
-      .clamp(600, maximumPayloadTokens)
-      .toInt();
+  final instructions =
+      trustedInstructions ??
+      (isSmallContext
+          ? unreadChatSummaryCompactTrustedInstructions
+          : unreadChatSummaryTrustedInstructions);
+  final initialPromptTokens =
+      estimateUnreadSummaryTextTokens(instructions) +
+      estimateUnreadSummaryTextTokens(unreadChatSummaryPromptPrefix);
+  final envelopeTokens = requestEnvelopeTokens ?? (isSmallContext ? 384 : 768);
+  final framingTokens = frameworkOverheadTokens ?? (isSmallContext ? 256 : 512);
+  final outputTokens = maximumResponseTokens ?? (isSmallContext ? 650 : 1300);
+  final payloadCap = maximumPayloadTokens ?? (isSmallContext ? 1400 : 20000);
+  final availablePayload = math.max(
+    0,
+    effectiveContext -
+        initialPromptTokens -
+        envelopeTokens -
+        framingTokens -
+        outputTokens,
+  );
+  return UnreadSummaryTokenBudget(
+    contextTokens: effectiveContext,
+    initialPromptTokens: initialPromptTokens,
+    requestEnvelopeTokens: envelopeTokens,
+    frameworkOverheadTokens: framingTokens,
+    responseTokens: outputTokens,
+    payloadTokens: math.min(availablePayload, payloadCap),
+  );
 }
+
+int unreadSummaryChunkTokenBudget(
+  int? contextSize, {
+  int maximumContextSize = applePccContextTokenLimit,
+  String? trustedInstructions,
+  int? maximumResponseTokens,
+}) => unreadSummaryTokenBudget(
+  contextSize,
+  maximumContextSize: maximumContextSize,
+  trustedInstructions: trustedInstructions,
+  maximumResponseTokens: maximumResponseTokens,
+).payloadTokens;
 
 class UnreadChatHistoryLoader {
   const UnreadChatHistoryLoader({
@@ -452,6 +532,8 @@ class UnreadChatSummaryService {
     this.mergeChunkSummariesLocally = false,
     this.providerCode = 'ai_provider',
     this.contextWindowTokens,
+    this.initialPromptTokenEstimate,
+    this.reservedNonPayloadTokenEstimate,
   }) : assert(maxChunkMessages > 0),
        assert(maxChunkTokenEstimate > 0),
        assert(maxChunks > 0),
@@ -478,6 +560,8 @@ class UnreadChatSummaryService {
   final bool mergeChunkSummariesLocally;
   final String providerCode;
   final int? contextWindowTokens;
+  final int? initialPromptTokenEstimate;
+  final int? reservedNonPayloadTokenEstimate;
   String? _transcriptKey;
   Future<UnreadChatTranscript>? _transcriptFuture;
   final Map<String, _GroundedSummary> _completionCache = {};
@@ -521,6 +605,8 @@ class UnreadChatSummaryService {
           causes: [UnreadChatSummaryFailureCause.fromError(error)],
           contextWindowTokens: contextWindowTokens,
           chunkTokenBudget: maxChunkTokenEstimate,
+          initialPromptTokenEstimate: initialPromptTokenEstimate,
+          reservedNonPayloadTokenEstimate: reservedNonPayloadTokenEstimate,
         ),
         stackTrace,
       );
@@ -652,6 +738,8 @@ class UnreadChatSummaryService {
           largestChunkTokenEstimate: chunkTokenEstimates.isEmpty
               ? 0
               : chunkTokenEstimates.reduce(math.max),
+          initialPromptTokenEstimate: initialPromptTokenEstimate,
+          reservedNonPayloadTokenEstimate: reservedNonPayloadTokenEstimate,
         ),
         failure.stackTrace!,
       );

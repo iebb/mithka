@@ -125,7 +125,10 @@ void main() {
             'text': '本机总结',
             'provider': 'apple_on_device',
             'contextSize': 4096,
-            'inputTokenCount': 512,
+            'inputTokenCount': 768,
+            'initialPromptTokenCount': 180,
+            'userPromptTokenCount': 332,
+            'frameworkOverheadTokenCount': 256,
             'responseTokenCount': 40,
           };
         },
@@ -138,7 +141,10 @@ void main() {
 
       expect(result.provider, 'apple_on_device');
       expect(result.contextSize, 4096);
-      expect(result.inputTokenCount, 512);
+      expect(result.inputTokenCount, 768);
+      expect(result.initialPromptTokenCount, 180);
+      expect(result.userPromptTokenCount, 332);
+      expect(result.frameworkOverheadTokenCount, 256);
       expect(result.responseTokenCount, 40);
     },
   );

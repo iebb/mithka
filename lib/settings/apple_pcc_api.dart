@@ -24,6 +24,9 @@ class ApplePccSummaryResult {
     required this.provider,
     this.contextSize,
     this.inputTokenCount,
+    this.initialPromptTokenCount,
+    this.userPromptTokenCount,
+    this.frameworkOverheadTokenCount,
     this.responseTokenCount,
   });
 
@@ -31,6 +34,9 @@ class ApplePccSummaryResult {
   final String provider;
   final int? contextSize;
   final int? inputTokenCount;
+  final int? initialPromptTokenCount;
+  final int? userPromptTokenCount;
+  final int? frameworkOverheadTokenCount;
   final int? responseTokenCount;
 }
 
@@ -277,6 +283,15 @@ class ApplePccApi {
       provider: values['provider']?.toString() ?? 'apple_pcc',
       contextSize: ApplePccCapabilities._int(values['contextSize']),
       inputTokenCount: ApplePccCapabilities._int(values['inputTokenCount']),
+      initialPromptTokenCount: ApplePccCapabilities._int(
+        values['initialPromptTokenCount'],
+      ),
+      userPromptTokenCount: ApplePccCapabilities._int(
+        values['userPromptTokenCount'],
+      ),
+      frameworkOverheadTokenCount: ApplePccCapabilities._int(
+        values['frameworkOverheadTokenCount'],
+      ),
       responseTokenCount: ApplePccCapabilities._int(
         values['responseTokenCount'],
       ),

@@ -385,7 +385,7 @@ void main() {
       },
     );
 
-    test('derives a conservative prompt budget from the PCC context size', () {
+    test('derives a conservative prompt budget from the full context', () {
       expect(unreadSummaryChunkTokenBudget(null), 20000);
       expect(unreadSummaryChunkTokenBudget(4096), 1400);
       expect(unreadSummaryChunkTokenBudget(32768), 20000);
@@ -403,7 +403,96 @@ void main() {
         }),
         greaterThanOrEqualTo(100),
       );
+
+      final onDeviceBudget = unreadSummaryTokenBudget(
+        4096,
+        maximumContextSize: appleOnDeviceContextTokenLimit,
+        trustedInstructions: unreadChatSummaryCompactTrustedInstructions,
+        maximumResponseTokens: 650,
+      );
+      expect(onDeviceBudget.initialPromptTokens, greaterThan(0));
+      expect(onDeviceBudget.responseTokens, 650);
+      expect(onDeviceBudget.payloadTokens, 1400);
+      expect(onDeviceBudget.totalPlannedTokens, lessThanOrEqualTo(4096));
+
+      final longerInitialPrompt = unreadSummaryTokenBudget(
+        4096,
+        maximumContextSize: appleOnDeviceContextTokenLimit,
+        trustedInstructions: List.filled(
+          200,
+          'additional trusted instruction',
+        ).join(' '),
+        maximumResponseTokens: 650,
+      );
+      expect(
+        longerInitialPrompt.initialPromptTokens,
+        greaterThan(onDeviceBudget.initialPromptTokens),
+      );
+      expect(
+        longerInitialPrompt.payloadTokens,
+        lessThan(onDeviceBudget.payloadTokens),
+      );
+      expect(longerInitialPrompt.totalPlannedTokens, lessThanOrEqualTo(4096));
     });
+
+    test(
+      'keeps every complete on-device request inside the 4K window',
+      () async {
+        final tokenBudget = unreadSummaryTokenBudget(
+          4096,
+          maximumContextSize: appleOnDeviceContextTokenLimit,
+          trustedInstructions: unreadChatSummaryCompactTrustedInstructions,
+          maximumResponseTokens: 650,
+        );
+        final provider = _RecordingProvider();
+        final service = UnreadChatSummaryService(
+          historyLoader: UnreadChatHistoryLoader(
+            query: (_, _) async => const {'@type': 'messages', 'messages': []},
+          ),
+          provider: provider,
+          maxChunkMessages: 70,
+          maxChunkTokenEstimate: tokenBudget.payloadTokens,
+          maxChunks: 4,
+          maxConcurrentRequests: 1,
+          mergeChunkSummariesLocally: true,
+        );
+        final transcript = UnreadChatTranscript(
+          snapshot: _snapshot(
+            lastReadInboxId: 0,
+            unreadCount: 70,
+            upperMessageId: 70,
+          ),
+          messages: [
+            for (var id = 1; id <= 70; id++)
+              UnreadChatMessage(
+                id: id,
+                date: id,
+                senderKey: 'user:${id % 3}',
+                isOutgoing: false,
+                isService: false,
+                contentType: 'messageText',
+                text: '未读消息 $id ${List.filled(40, '内容').join()}',
+              ),
+          ],
+          historyRequestCount: 1,
+          reachedReadBoundary: true,
+          historyCapped: false,
+          historyStalled: false,
+        );
+
+        await service.summarizeTranscript(transcript);
+
+        expect(provider.requests, isNotEmpty);
+        for (final request in provider.requests) {
+          final plannedTokens =
+              tokenBudget.initialPromptTokens +
+              estimateUnreadSummaryPromptTokens(request.payload) +
+              tokenBudget.frameworkOverheadTokens +
+              tokenBudget.responseTokens;
+          expect(plannedTokens, lessThanOrEqualTo(4096));
+        }
+      },
+    );
 
     test('inlines a 1600-message same-sender burst into one chunk', () async {
       final provider = _RecordingProvider();

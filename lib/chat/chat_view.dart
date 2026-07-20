@@ -4973,18 +4973,23 @@ class _ChatViewState extends State<ChatView> {
           pccContextSize ?? applePccContextTokenLimit,
           applePccContextTokenLimit,
         );
+        final tokenBudget = unreadSummaryTokenBudget(
+          contextWindow,
+          trustedInstructions: unreadChatSummaryTrustedInstructions,
+          maximumResponseTokens: 1300,
+        );
         return _UnreadSummarySession(
           UnreadChatSummaryService(
             historyLoader: loader,
             maxChunkMessages: 180,
             maxChunks: 5,
-            maxChunkTokenEstimate: math.min(
-              7000,
-              unreadSummaryChunkTokenBudget(contextWindow),
-            ),
+            maxChunkTokenEstimate: math.min(7000, tokenBudget.payloadTokens),
             mergeChunkSummariesLocally: true,
             providerCode: 'apple_pcc',
             contextWindowTokens: contextWindow,
+            initialPromptTokenEstimate: tokenBudget.initialPromptTokens,
+            reservedNonPayloadTokenEstimate:
+                tokenBudget.reservedNonPayloadTokens,
             provider: ApplePccUnreadSummaryProvider(
               api: ApplePccApi(summaryTimeout: const Duration(seconds: 50)),
               reasoningLevel: ApplePccReasoningLevel.light,
@@ -4997,19 +5002,25 @@ class _ChatViewState extends State<ChatView> {
           onDeviceContextSize ?? appleOnDeviceContextTokenLimit,
           appleOnDeviceContextTokenLimit,
         );
+        final tokenBudget = unreadSummaryTokenBudget(
+          contextWindow,
+          maximumContextSize: appleOnDeviceContextTokenLimit,
+          trustedInstructions: unreadChatSummaryCompactTrustedInstructions,
+          maximumResponseTokens: 650,
+        );
         return _UnreadSummarySession(
           UnreadChatSummaryService(
             historyLoader: loader,
             maxChunkMessages: 70,
             maxChunks: 4,
             maxConcurrentRequests: 1,
-            maxChunkTokenEstimate: unreadSummaryChunkTokenBudget(
-              contextWindow,
-              maximumContextSize: appleOnDeviceContextTokenLimit,
-            ),
+            maxChunkTokenEstimate: tokenBudget.payloadTokens,
             mergeChunkSummariesLocally: true,
             providerCode: 'apple_on_device',
             contextWindowTokens: contextWindow,
+            initialPromptTokenEstimate: tokenBudget.initialPromptTokens,
+            reservedNonPayloadTokenEstimate:
+                tokenBudget.reservedNonPayloadTokens,
             provider: ApplePccUnreadSummaryProvider(
               api: ApplePccApi(summaryTimeout: const Duration(seconds: 40)),
               model: AppleAiModel.onDevice,

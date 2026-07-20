@@ -16,6 +16,8 @@ final class ApplePCCBridge {
 
   private let channel: FlutterMethodChannel
   private static let maximumConcurrentRequests = 2
+  private static let onDeviceContextFramingTokenReserve = 256
+  private static let pccContextFramingTokenReserve = 512
   private var activeRequests: [String: Task<Void, Never>] = [:]
 
   init(messenger: FlutterBinaryMessenger) {
@@ -337,27 +339,37 @@ final class ApplePCCBridge {
       let contextSize = min(model.contextSize, 4_096)
       let requestedMaximum = (arguments["maximumResponseTokens"] as? NSNumber)?.intValue ?? 650
       let maximumResponseTokens = min(max(requestedMaximum, 128), 768)
-      var inputTokenCount = Self.estimatedTokenCount(prompt + instructions)
+      let session = LanguageModelSession(model: model, instructions: instructions)
+      var initialPromptTokenCount = Self.estimatedTokenCount(instructions)
+      var userPromptTokenCount = Self.estimatedTokenCount(prompt)
       if #available(iOS 26.4, *) {
         do {
-          let promptTokens = try await model.tokenCount(for: Prompt(prompt))
-          let instructionTokens = try await model.tokenCount(
-            for: Instructions(instructions)
+          // Counting the session transcript includes the initial instruction
+          // entry and its model framing, which a plain string estimate misses.
+          initialPromptTokenCount = try await model.tokenCount(
+            for: session.transcript
           )
-          inputTokenCount = promptTokens + instructionTokens
+          userPromptTokenCount = try await model.tokenCount(for: Prompt(prompt))
         } catch {
           // The conservative estimate still enforces the 4K hard ceiling.
         }
       }
+      let inputTokenCount =
+        initialPromptTokenCount +
+        userPromptTokenCount +
+        Self.onDeviceContextFramingTokenReserve
       guard inputTokenCount + maximumResponseTokens <= contextSize else {
         result(
           Self.flutterError(
             code: "on_device_context_limit",
-            message: "The prompt and requested response exceed the on-device 4K context window.",
+            message: "The initial instructions, prompt, framework overhead, and requested response exceed the on-device 4K context window.",
             reason: "context_size_exceeded",
             extraDetails: [
               "contextSize": contextSize,
               "inputTokenCount": inputTokenCount,
+              "initialPromptTokenCount": initialPromptTokenCount,
+              "userPromptTokenCount": userPromptTokenCount,
+              "frameworkOverheadTokenCount": Self.onDeviceContextFramingTokenReserve,
               "maximumResponseTokens": maximumResponseTokens,
             ]
           ))
@@ -365,7 +377,6 @@ final class ApplePCCBridge {
       }
 
       do {
-        let session = LanguageModelSession(model: model, instructions: instructions)
         let response = try await session.respond(
           to: prompt,
           options: GenerationOptions(
@@ -378,6 +389,9 @@ final class ApplePCCBridge {
           "provider": "apple_on_device",
           "contextSize": contextSize,
           "inputTokenCount": inputTokenCount,
+          "initialPromptTokenCount": initialPromptTokenCount,
+          "userPromptTokenCount": userPromptTokenCount,
+          "frameworkOverheadTokenCount": Self.onDeviceContextFramingTokenReserve,
           "responseTokenCount": Self.estimatedTokenCount(response.content),
         ])
       } catch is CancellationError {
@@ -398,6 +412,9 @@ final class ApplePCCBridge {
             extraDetails: [
               "contextSize": contextSize,
               "inputTokenCount": inputTokenCount,
+              "initialPromptTokenCount": initialPromptTokenCount,
+              "userPromptTokenCount": userPromptTokenCount,
+              "frameworkOverheadTokenCount": Self.onDeviceContextFramingTokenReserve,
               "maximumResponseTokens": maximumResponseTokens,
             ]
           ))
@@ -533,16 +550,24 @@ final class ApplePCCBridge {
       let maximumResponseTokens = min(max(requestedMaximum, 128), 2_048)
       let reportedContextSize = (try? await model.contextSize) ?? 32_768
       let contextSize = min(reportedContextSize, 32_768)
-      let inputTokenCount = Self.estimatedTokenCount(prompt + instructions)
+      let initialPromptTokenCount = Self.estimatedTokenCount(instructions)
+      let userPromptTokenCount = Self.estimatedTokenCount(prompt)
+      let inputTokenCount =
+        initialPromptTokenCount +
+        userPromptTokenCount +
+        Self.pccContextFramingTokenReserve
       guard inputTokenCount + maximumResponseTokens <= contextSize else {
         result(
           Self.flutterError(
             code: "pcc_context_limit",
-            message: "The prompt and requested response exceed the Private Cloud Compute 32K context window.",
+            message: "The initial instructions, prompt, framework overhead, and requested response exceed the Private Cloud Compute 32K context window.",
             reason: "context_size_exceeded",
             extraDetails: [
               "contextSize": contextSize,
               "inputTokenCount": inputTokenCount,
+              "initialPromptTokenCount": initialPromptTokenCount,
+              "userPromptTokenCount": userPromptTokenCount,
+              "frameworkOverheadTokenCount": Self.pccContextFramingTokenReserve,
               "maximumResponseTokens": maximumResponseTokens,
             ]
           ))
@@ -567,6 +592,9 @@ final class ApplePCCBridge {
           "provider": "apple_pcc",
           "contextSize": contextSize,
           "inputTokenCount": inputTokenCount,
+          "initialPromptTokenCount": initialPromptTokenCount,
+          "userPromptTokenCount": userPromptTokenCount,
+          "frameworkOverheadTokenCount": Self.pccContextFramingTokenReserve,
           "responseTokenCount": Self.estimatedTokenCount(response.content),
         ])
       } catch is CancellationError {
