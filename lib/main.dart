@@ -49,6 +49,7 @@ import 'platform/system_ui.dart';
 import 'pro/mithka_pro_service.dart';
 import 'security/local_app_lock_controller.dart';
 import 'security/local_app_lock_views.dart';
+import 'settings/ai_settings_controller.dart';
 import 'settings/app_icon_controller.dart';
 import 'settings/auto_download_media_controller.dart';
 import 'settings/blocked_user_service.dart';
@@ -248,6 +249,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
   late final TranslationController _translation = TranslationController(
     widget.prefs,
   );
+  late final AiSettingsController _ai = AiSettingsController(widget.prefs);
   late final AppLocaleController _locale = AppLocaleController(widget.prefs);
   late final TelegramLanguageController _telegramLanguage =
       TelegramLanguageController.shared;
@@ -281,6 +283,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
     _theme.loadSelectedEmojiFontIfAvailable();
     _autoDownload.initialize(widget.prefs);
     _auth.start();
+    unawaited(_ai.initialize());
     unawaited(_mithkaPro.initialize());
     unawaited(_telegramLanguage.initialize(widget.prefs));
     unawaited(_appIcons.initialize());
@@ -356,6 +359,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
         ChangeNotifierProvider.value(value: _auth),
         ChangeNotifierProvider.value(value: _theme),
         ChangeNotifierProvider.value(value: _translation),
+        ChangeNotifierProvider.value(value: _ai),
         ChangeNotifierProvider.value(value: _locale),
         ChangeNotifierProxyProvider<
           AppLocaleController,

@@ -13,7 +13,6 @@ import 'dart:async';
 import 'dart:io' show Platform;
 import 'dart:ui';
 
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mithka/l10n/app_localizations.dart';
@@ -329,48 +328,17 @@ class _CallScreenState extends State<CallScreen> {
     );
   }
 
-  /// 摄像头 toggle: turning the camera ON first asks which lens to use;
-  /// turning it OFF is immediate.
-  void _onCameraToggle({bool selectCamera = true}) {
+  /// Transform the current call between voice and video without reconnecting.
+  /// Re-enabling video keeps the lens the user last selected; the adjacent
+  /// rotate control remains available while video is active.
+  void _onCameraToggle() {
     _keepOverlayVisible();
     final m = widget.manager;
     if (m.isVideoEnabled) {
       m.disableVideo();
-    } else if (!selectCamera) {
-      m.enableVideo(true);
     } else {
-      _showCameraSelector();
+      m.enableVideo(m.useFrontCamera);
     }
-  }
-
-  void _showCameraSelector() {
-    showCupertinoModalPopup<void>(
-      context: context,
-      builder: (sheet) => CupertinoActionSheet(
-        title: Text(AppStrings.t(AppStringKeys.callSelectCamera)),
-        actions: [
-          CupertinoActionSheetAction(
-            onPressed: () {
-              Navigator.of(sheet).pop();
-              widget.manager.enableVideo(true);
-            },
-            child: Text(AppStrings.t(AppStringKeys.callFrontCamera)),
-          ),
-          CupertinoActionSheetAction(
-            onPressed: () {
-              Navigator.of(sheet).pop();
-              widget.manager.enableVideo(false);
-            },
-            child: Text(AppStrings.t(AppStringKeys.callRearCamera)),
-          ),
-        ],
-        cancelButton: CupertinoActionSheetAction(
-          isDefaultAction: true,
-          onPressed: () => Navigator.of(sheet).pop(),
-          child: Text(AppStrings.t(AppStringKeys.countryPickerCancel)),
-        ),
-      ),
-    );
   }
 
   Widget _header(ActiveCall call, {required bool compact}) {
@@ -515,18 +483,21 @@ class _CallScreenState extends State<CallScreen> {
             },
           ),
         ),
-        if (call.phase == CallPhase.active || call.isVideo)
-          _CallControlSlot(
-            key: const Key('callControlCamera'),
-            width: slotWidth,
-            child: _CallToggle(
-              icon: HeroAppIcons.video.data,
-              label: AppStrings.t(AppStringKeys.callCamera),
-              isOn: m.isVideoEnabled,
-              compact: compact,
-              onTap: () => _onCameraToggle(selectCamera: !horizontal),
+        _CallControlSlot(
+          key: const Key('callControlCamera'),
+          width: slotWidth,
+          child: _CallToggle(
+            icon: HeroAppIcons.video.data,
+            label: AppStrings.t(
+              m.isVideoEnabled
+                  ? AppStringKeys.callDisableVideo
+                  : AppStringKeys.callEnableVideo,
             ),
+            isOn: m.isVideoEnabled,
+            compact: compact,
+            onTap: _onCameraToggle,
           ),
+        ),
         _CallControlSlot(
           key: const Key('callControlSpeaker'),
           width: slotWidth,
@@ -555,9 +526,7 @@ class _CallScreenState extends State<CallScreen> {
     );
 
     if (horizontal) {
-      final itemCount = (call.phase == CallPhase.active || call.isVideo)
-          ? 4
-          : 3;
+      const itemCount = 4;
       return LayoutBuilder(
         builder: (context, constraints) {
           final availableWidth = constraints.maxWidth.isFinite

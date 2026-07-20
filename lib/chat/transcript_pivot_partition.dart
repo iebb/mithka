@@ -48,6 +48,92 @@ bool shouldRebaseForHydratedOlderPage({
     latestArmWasShort &&
     (historyFillInFlight || revealRequested);
 
+/// Whether the after-center arm is still too thin to treat as a filled
+/// transcript.
+///
+/// [maxScrollExtent] alone is not enough: a single tall media bubble can push
+/// extent past [extentThreshold] while older history remains off-screen in the
+/// before-center sliver. A low [afterCenterEntryCount] keeps short-fill and
+/// pivot rebase alive in that case.
+bool isLatestTranscriptArmShort({
+  required double maxScrollExtent,
+  required int afterCenterEntryCount,
+  double extentThreshold = 24,
+  int entryThreshold = 3,
+}) {
+  if (afterCenterEntryCount < entryThreshold) return true;
+  return maxScrollExtent <= extentThreshold;
+}
+
+/// Freeze only once the latest arm fills the viewport (or older history is
+/// exhausted). Freezing a one-message after-center arm parks older pages above
+/// the center forever.
+bool shouldFreezeTranscriptPivot({
+  required bool latestArmIsShort,
+  required bool canLoadOlder,
+}) => !latestArmIsShort || !canLoadOlder;
+
+/// A restored pivot pinned to the newest known message leaves only that
+/// bubble in the after-center arm. When reopening at the latest edge, discard
+/// it so short-fill can rebuild a fuller cutoff.
+bool shouldDiscardRestoredTranscriptPivot({
+  required int? pivotMessageId,
+  required int? newestMessageId,
+  required bool openAtBottom,
+}) =>
+    openAtBottom &&
+    pivotMessageId != null &&
+    newestMessageId != null &&
+    pivotMessageId == newestMessageId;
+
+/// Whether a scroll-snapshot pivot may be applied when opening a chat.
+///
+/// Orphan snapshots (pivot without a matching session transcript) must not be
+/// restored: the view-model then starts from a single seed message, freezes the
+/// newest cutoff, and parks every later hydrate in the before-center sliver.
+bool shouldRestoreTranscriptPivot({
+  required int? pivotMessageId,
+  required bool hasSessionTranscript,
+  required int? newestMessageId,
+  required bool openAtBottom,
+}) {
+  if (pivotMessageId == null || !hasSessionTranscript) return false;
+  return !shouldDiscardRestoredTranscriptPivot(
+    pivotMessageId: pivotMessageId,
+    newestMessageId: newestMessageId,
+    openAtBottom: openAtBottom,
+  );
+}
+
+/// Force a pivot reset when the after-center arm is thin but older messages
+/// are already present below the cutoff.
+///
+/// This is the open-chat failure mode where history is loaded yet invisible
+/// until the user scrolls toward [ScrollPosition.minScrollExtent]. It must not
+/// wait for another network page: `loadOlder` may already be exhausted.
+bool shouldRebaseParkedShortTranscriptPivot({
+  required int? pivotCutoffMessageId,
+  required bool latestArmIsShort,
+  required bool hasMessageOlderThanPivot,
+  required bool followingLatest,
+}) {
+  if (!followingLatest || pivotCutoffMessageId == null) return false;
+  return latestArmIsShort && hasMessageOlderThanPivot;
+}
+
+/// First window expansion after a seed/restored pivot: message identity changed
+/// while the latest arm is still short and older IDs already exist.
+bool shouldRebaseForExpandedInitialWindow({
+  required bool transcriptChanged,
+  required bool latestArmIsShort,
+  required bool hasMessageOlderThanPivot,
+  required bool followingLatest,
+}) =>
+    transcriptChanged &&
+    latestArmIsShort &&
+    hasMessageOlderThanPivot &&
+    followingLatest;
+
 /// Keeps the first-contact card at the absolute start of non-empty history.
 ///
 /// An empty centered transcript is the only exception: placing the card after

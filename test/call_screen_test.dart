@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/call/call_manager.dart';
@@ -201,7 +200,6 @@ void main() {
     await tester.tap(find.byKey(const Key('callControlCamera')));
     await tester.pump();
     expect(manager.isVideoEnabled, isTrue);
-    expect(find.byType(CupertinoActionSheet), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -237,11 +235,7 @@ void main() {
     expect(find.byType(PhotoAvatar), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('callControlCamera')));
-    await tester.pumpAndSettle();
-    expect(find.byType(CupertinoActionSheet), findsOneWidget);
-
-    await tester.tap(find.byType(CupertinoActionSheetAction).first);
-    await tester.pumpAndSettle();
+    await tester.pump();
     expect(manager.isVideoEnabled, isTrue);
     expect(engine.videoChanges, [true]);
     expect(find.byType(PhotoAvatar), findsNothing);
@@ -252,6 +246,42 @@ void main() {
     expect(engine.videoChanges, [true, false]);
     expect(find.byType(PhotoAvatar), findsOneWidget);
     expect(find.byKey(const Key('callControlCamera')), findsOneWidget);
+  });
+
+  testWidgets('outgoing voice call can enable video before it is answered', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final engine = _RecordingCallMediaEngine();
+    final manager = CallManager(engine: engine);
+    addTearDown(manager.dispose);
+    manager.call = ActiveCall(
+      callId: 47,
+      peerUserId: 12,
+      peerName: 'Ringing voice contact',
+      isOutgoing: true,
+      isVideo: false,
+      phase: CallPhase.ringingOutgoing,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AnimatedBuilder(
+          animation: manager,
+          builder: (context, child) => CallScreen(manager: manager),
+        ),
+      ),
+    );
+
+    expect(find.byKey(const Key('callControlCamera')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('callControlCamera')));
+    await tester.pump();
+
+    expect(manager.isVideoEnabled, isTrue);
+    expect(engine.videoChanges, [true]);
+    expect(find.byKey(const Key('callLocalPreview')), findsOneWidget);
   });
 }
 

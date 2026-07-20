@@ -74,7 +74,7 @@ class SenderNameReadabilityPlate extends StatelessWidget {
     required this.enabled,
     required this.bubbleColor,
     required this.child,
-    this.padding = const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+    this.padding = const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
     this.connectedToLeading = false,
   });
 
@@ -157,7 +157,7 @@ BoxDecoration senderNameReadabilityDecoration(
   Color bubbleColor, {
   bool connectedToLeading = false,
 }) => BoxDecoration(
-  color: bubbleColor.withValues(alpha: 0.94),
+  color: bubbleColor,
   borderRadius: connectedToLeading
       ? const BorderRadiusDirectional.only(
           topEnd: Radius.circular(8),

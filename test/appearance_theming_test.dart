@@ -131,6 +131,7 @@ void main() {
     await tester.pump();
 
     for (final icon in const [
+      HeroAppIcons.flash,
       HeroAppIcons.eyeSlash,
       HeroAppIcons.listCheck,
       HeroAppIcons.idBadge,
@@ -141,6 +142,7 @@ void main() {
     ]) {
       expect(find.byIcon(icon.data), findsOneWidget, reason: '$icon is reused');
     }
+    expect(find.text('Play Animated Status Emoji'), findsOneWidget);
   });
 
   testWidgets('theme-link prompt only enables theming after confirmation', (

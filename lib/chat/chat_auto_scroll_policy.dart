@@ -44,11 +44,16 @@ ChatInitialScrollPlan chatInitialScrollPlan({
   required bool hasCachedTranscript,
   required double? savedPixels,
   required bool savedAtBottom,
+  bool openAtBottom = false,
 }) {
   final finiteSavedPixels = savedPixels?.isFinite == true ? savedPixels! : 0.0;
+  // A cached latest window without a "was at bottom" snapshot still opens at
+  // the latest edge. Without a post-layout correction, center-keyed transcripts
+  // paint from offset zero and leave a one-bubble gap above empty space.
   return ChatInitialScrollPlan(
     initialOffset: hasCachedTranscript ? finiteSavedPixels : 0.0,
-    correctToBottomAfterLayout: hasCachedTranscript && savedAtBottom,
+    correctToBottomAfterLayout:
+        hasCachedTranscript && (savedAtBottom || openAtBottom),
   );
 }
 

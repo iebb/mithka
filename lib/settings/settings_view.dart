@@ -22,6 +22,7 @@ import '../pro/mithka_pro_view.dart';
 import '../theme/app_theme.dart';
 import 'about_view.dart';
 import 'advanced_settings_view.dart';
+import 'ai_settings_view.dart';
 import 'appearance_view.dart';
 import 'blocking_settings_view.dart';
 import 'developer_mode_controller.dart';
@@ -133,6 +134,14 @@ class _SettingsViewState extends State<SettingsView> {
                     AppStrings.t(AppStringKeys.featureTitle),
                     const Color(0xFF3C8CF0),
                     () => const FeatureSettingsView(),
+                  ),
+                  const InsetDivider(leadingInset: 56),
+                  _navRow(
+                    context,
+                    HeroAppIcons.wandMagicSparkles,
+                    AppStrings.t(AppStringKeys.aiSettingsTitle),
+                    const Color(0xFF7467F0),
+                    () => const AiSettingsView(),
                   ),
                   const InsetDivider(leadingInset: 56),
                   _navRow(

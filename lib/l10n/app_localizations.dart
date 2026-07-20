@@ -245,11 +245,85 @@ abstract final class AppStringKeys {
   static const apiCredentialsCustomClientApi = 'apiCredentialsCustomClientApi';
   static const apiCredentialsDescription = 'apiCredentialsDescription';
   static const apiCredentialsTitle = 'apiCredentialsTitle';
+  static const aiInvalidEndpoint = 'aiInvalidEndpoint';
+  static const aiAddProvider = 'aiAddProvider';
+  static const aiContextWindow = 'aiContextWindow';
+  static const aiContextDetected = 'aiContextDetected';
+  static const aiContextManual = 'aiContextManual';
+  static const aiDeleteProvider = 'aiDeleteProvider';
+  static const aiModelsFailed = 'aiModelsFailed';
+  static const aiModelsLoaded = 'aiModelsLoaded';
+  static const aiNoProvider = 'aiNoProvider';
+  static const aiOnDevicePrivacy = 'aiOnDevicePrivacy';
+  static const aiOnDeviceUnavailableDescription =
+      'aiOnDeviceUnavailableDescription';
+  static const aiOutputLanguage = 'aiOutputLanguage';
+  static const aiOutputSameLanguage = 'aiOutputSameLanguage';
+  static const aiPccAvailable = 'aiPccAvailable';
+  static const aiPccPrivacy = 'aiPccPrivacy';
+  static const aiPccUnavailable = 'aiPccUnavailable';
+  static const aiPccUnavailableDescription = 'aiPccUnavailableDescription';
+  static const aiProcessingMode = 'aiProcessingMode';
+  static const aiProviderApplePcc = 'aiProviderApplePcc';
+  static const aiProviderAppleOnDevice = 'aiProviderAppleOnDevice';
+  static const aiProviderOpenAiCompatible = 'aiProviderOpenAiCompatible';
+  static const aiProviderName = 'aiProviderName';
+  static const aiProviderNameHint = 'aiProviderNameHint';
+  static const aiProviders = 'aiProviders';
+  static const aiRefreshModels = 'aiRefreshModels';
+  static const aiSave = 'aiSave';
+  static const aiSaved = 'aiSaved';
+  static const aiServerApiKey = 'aiServerApiKey';
+  static const aiServerApiKeyOptional = 'aiServerApiKeyOptional';
+  static const aiServerEndpoint = 'aiServerEndpoint';
+  static const aiServerEndpointHint = 'aiServerEndpointHint';
+  static const aiServerModel = 'aiServerModel';
+  static const aiServerModelHint = 'aiServerModelHint';
+  static const aiServerPrivacy = 'aiServerPrivacy';
+  static const aiSettingsTitle = 'aiSettingsTitle';
+  static const aiSummaryActions = 'aiSummaryActions';
+  static const aiSummaryAssembling = 'aiSummaryAssembling';
+  static const aiSummaryButton = 'aiSummaryButton';
+  static const aiSummaryChunkProgress = 'aiSummaryChunkProgress';
+  static const aiSummaryDecisions = 'aiSummaryDecisions';
+  static const aiSummaryDisclaimer = 'aiSummaryDisclaimer';
+  static const aiSummaryFailed = 'aiSummaryFailed';
+  static const aiSummaryFoundCount = 'aiSummaryFoundCount';
+  static const aiSummaryHighlights = 'aiSummaryHighlights';
+  static const aiSummaryHistoryIncomplete = 'aiSummaryHistoryIncomplete';
+  static const aiSummaryIncomplete = 'aiSummaryIncomplete';
+  static const aiSummaryLocalFallback = 'aiSummaryLocalFallback';
+  static const aiSummaryNeedsReply = 'aiSummaryNeedsReply';
+  static const aiSummaryNoContent = 'aiSummaryNoContent';
+  static const aiSummaryNoUnread = 'aiSummaryNoUnread';
+  static const aiSummaryOpenSettings = 'aiSummaryOpenSettings';
+  static const aiSummaryOverview = 'aiSummaryOverview';
+  static const aiSummaryPartialFailure = 'aiSummaryPartialFailure';
+  static const aiSummaryProcessedCount = 'aiSummaryProcessedCount';
+  static const aiSummaryPrivate = 'aiSummaryPrivate';
+  static const aiSummaryQuestions = 'aiSummaryQuestions';
+  static const aiSummaryReading = 'aiSummaryReading';
+  static const aiSummaryReadingCount = 'aiSummaryReadingCount';
+  static const aiSummaryRetry = 'aiSummaryRetry';
+  static const aiSummaryRant = 'aiSummaryRant';
+  static const aiSummaryRunningCount = 'aiSummaryRunningCount';
+  static const aiSummarySampled = 'aiSummarySampled';
+  static const aiSummaryThinking = 'aiSummaryThinking';
+  static const aiSummaryTechnicalDetails = 'aiSummaryTechnicalDetails';
+  static const aiSummaryTitle = 'aiSummaryTitle';
+  static const aiSummaryTopics = 'aiSummaryTopics';
+  static const aiSummaryTopicTime = 'aiSummaryTopicTime';
+  static const aiSummaryUnavailable = 'aiSummaryUnavailable';
+  static const aiSummaryUncertainties = 'aiSummaryUncertainties';
+  static const aiUnreadSummary = 'aiUnreadSummary';
+  static const aiUnreadSummaryDescription = 'aiUnreadSummaryDescription';
+  static const aiTokenContext = 'aiTokenContext';
   static const appearanceAddFont = 'appearanceAddFont';
   static const appearanceAddTextFont = 'appearanceAddTextFont';
   static const appearanceAlwaysShowMessageTime =
       'appearanceAlwaysShowMessageTime';
   static const appearanceAnimateAvatars = 'appearanceAnimateAvatars';
+  static const appearanceAnimateStatusEmoji = 'appearanceAnimateStatusEmoji';
   static const appearanceArchivedChats = 'appearanceArchivedChats';
   static const appearanceArchivedChatsHidden = 'appearanceArchivedChatsHidden';
   static const appearanceArchivedChatsPullDown =
@@ -500,7 +574,9 @@ abstract final class AppStringKeys {
   static const callCamera = 'callCamera';
   static const callConnecting = 'callConnecting';
   static const callDecline = 'callDecline';
+  static const callDisableVideo = 'callDisableVideo';
   static const callEnded = 'callEnded';
+  static const callEnableVideo = 'callEnableVideo';
   static const callEndToEndEncrypted = 'callEndToEndEncrypted';
   static const callFrontCamera = 'callFrontCamera';
   static const callHangUp = 'callHangUp';
@@ -683,6 +759,7 @@ abstract final class AppStringKeys {
   static const chatMoreActionsUnsupported = 'chatMoreActionsUnsupported';
   static const chatNewMessagesCount = 'chatNewMessagesCount';
   static const chatNewMessagesDivider = 'chatNewMessagesDivider';
+  static const chatUnreadMessagesCount = 'chatUnreadMessagesCount';
   static const chatNoTopics = 'chatNoTopics';
   static const chatPeopleDoingAction = 'chatPeopleDoingAction';
   static const chatPeopleTyping = 'chatPeopleTyping';
@@ -2909,13 +2986,37 @@ abstract final class AppStringKeys {
       'messageBubbleSummarizingPrivatelyWithTelegram';
   static const messageSendOptionsCaptionAboveMedia =
       'messageSendOptionsCaptionAboveMedia';
+  static const messageSendOptionsChooseDate = 'messageSendOptionsChooseDate';
+  static const messageSendOptionsDaily = 'messageSendOptionsDaily';
+  static const messageSendOptionsDeliveryTime =
+      'messageSendOptionsDeliveryTime';
   static const messageSendOptionsHideWithSpoiler =
       'messageSendOptionsHideWithSpoiler';
+  static const messageSendOptionsInOneHour = 'messageSendOptionsInOneHour';
+  static const messageSendOptionsMedia = 'messageSendOptionsMedia';
+  static const messageSendOptionsMessageEffect =
+      'messageSendOptionsMessageEffect';
+  static const messageSendOptionsMonthly = 'messageSendOptionsMonthly';
+  static const messageSendOptionsNow = 'messageSendOptionsNow';
+  static const messageSendOptionsOff = 'messageSendOptionsOff';
+  static const messageSendOptionsOnce = 'messageSendOptionsOnce';
+  static const messageSendOptionsRepeat = 'messageSendOptionsRepeat';
   static const messageSendOptionsScheduledMessages =
       'messageSendOptionsScheduledMessages';
+  static const messageSendOptionsSchedule = 'messageSendOptionsSchedule';
+  static const messageSendOptionsSeconds = 'messageSendOptionsSeconds';
+  static const messageSendOptionsSelectDateAndTime =
+      'messageSendOptionsSelectDateAndTime';
+  static const messageSendOptionsSelfDestruct =
+      'messageSendOptionsSelfDestruct';
   static const messageSendOptionsSendSilently =
       'messageSendOptionsSendSilently';
+  static const messageSendOptionsTime = 'messageSendOptionsTime';
+  static const messageSendOptionsTitle = 'messageSendOptionsTitle';
+  static const messageSendOptionsTomorrow = 'messageSendOptionsTomorrow';
   static const messageSendOptionsViewOnce = 'messageSendOptionsViewOnce';
+  static const messageSendOptionsWeekly = 'messageSendOptionsWeekly';
+  static const messageSendOptionsWhenOnline = 'messageSendOptionsWhenOnline';
   static const messageSpecialContentViewResults =
       'messageSpecialContentViewResults';
   static const momentsShortVideos = 'momentsShortVideos';

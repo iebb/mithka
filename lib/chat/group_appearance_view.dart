@@ -586,7 +586,7 @@ class _GroupAppearanceViewState extends State<GroupAppearanceView> {
                 ),
               ),
               if (emojiId != 0) ...[
-                CustomEmojiView(id: emojiId, size: 24, color: c.textPrimary),
+                StatusEmojiView(id: emojiId, size: 24, color: c.textPrimary),
                 const SizedBox(width: 8),
               ],
               if (locked && requiredLevel > 0) ...[

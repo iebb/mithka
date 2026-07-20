@@ -112,7 +112,7 @@ class _VenueComposerViewState extends State<VenueComposerView> {
                     borderRadius: BorderRadius.circular(13),
                   ),
                   child: AppIcon(
-                    HeroAppIcons.locationPin,
+                    HeroAppIcons.venue,
                     size: 24,
                     color: AppTheme.brand,
                   ),

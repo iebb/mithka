@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mithka/theme/app_theme.dart';
 import 'package:mithka/theme/message_name_colors.dart';
 import 'package:mithka/theme/telegram_cloud_theme.dart';
 
@@ -32,19 +33,14 @@ void main() {
     () {
       final colors = messageNameColorsForTheme(null);
 
-      expect(colors.map((color) => color.toARGB32()), <int>[
-        0xFFE2B4B4,
-        0xFFE5EAA8,
-        0xFFB39DC8,
-        0xFFBAE2B4,
-        0xFFA5E1DE,
-        0xFFB4C4E2,
-        0xFFD59EBB,
-      ]);
+      expect(
+        colors.map((color) => color.toARGB32()),
+        AppTheme.avatarPalette.take(7).map((color) => color.toARGB32()),
+      );
     },
   );
 
-  test('non-premium senders always use their assigned name color', () {
+  test('senders always use their assigned theme-palette color', () {
     final color = messageNameColorForSender(
       theme: null,
       accentColorId: 5,
@@ -53,6 +49,56 @@ void main() {
       premiumColorsDisabledFallback: const Color(0xFF010101),
     );
 
-    expect(color.toARGB32(), 0xFFB4C4E2);
+    expect(color, AppTheme.avatarPalette[5]);
+  });
+
+  test('extended accent IDs wrap through the active theme palette', () {
+    const theme = TelegramCloudTheme(
+      slug: 'test',
+      rawTitle: 'Test',
+      baseTheme: 'builtInThemeNight',
+      accentColorValue: 0,
+      outgoingColors: [],
+      palette: {
+        'avatar_nameInMessageRed': 0x110000,
+        'avatar_nameInMessageOrange': 0x220000,
+        'avatar_nameInMessageViolet': 0x330000,
+        'avatar_nameInMessageGreen': 0x440000,
+        'avatar_nameInMessageCyan': 0x550000,
+        'avatar_nameInMessageBlue': 0x660000,
+        'avatar_nameInMessagePink': 0x770000,
+      },
+    );
+
+    final color = messageNameColorForSender(
+      theme: theme,
+      accentColorId: 9,
+      isPremium: false,
+      showPremiumColors: true,
+      premiumColorsDisabledFallback: const Color(0xFF010101),
+    );
+
+    expect(color.toARGB32(), 0xFF330000);
+  });
+
+  test('premium-color opt-out uses the theme sender-name color', () {
+    const theme = TelegramCloudTheme(
+      slug: 'test',
+      rawTitle: 'Test',
+      baseTheme: 'builtInThemeNight',
+      accentColorValue: 0x123456,
+      outgoingColors: [],
+      palette: {},
+    );
+
+    final color = messageNameColorForSender(
+      theme: theme,
+      accentColorId: 5,
+      isPremium: true,
+      showPremiumColors: false,
+      premiumColorsDisabledFallback: theme.senderNameColor,
+    );
+
+    expect(color, theme.senderNameColor);
   });
 }

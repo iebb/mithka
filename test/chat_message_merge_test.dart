@@ -156,4 +156,38 @@ void main() {
     expect(confirmsOlderHistoryExhausted(onlyLocal: false), isTrue);
     expect(confirmsOlderHistoryExhausted(onlyLocal: false), isTrue);
   });
+
+  test('caught-up chats skip around-last-read on open', () {
+    expect(
+      shouldLoadInitialHistoryAroundLastRead(
+        openAtLatest: false,
+        lastReadInboxId: 900,
+        unreadCount: 0,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldLoadInitialHistoryAroundLastRead(
+        openAtLatest: false,
+        lastReadInboxId: 900,
+        unreadCount: 3,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldLoadInitialHistoryAroundLastRead(
+        openAtLatest: true,
+        lastReadInboxId: 900,
+        unreadCount: 3,
+      ),
+      isFalse,
+    );
+  });
+
+  test('preview-sized windows are treated as thin initial history', () {
+    expect(isThinInitialHistoryWindow(1), isTrue);
+    expect(isThinInitialHistoryWindow(11), isTrue);
+    expect(isThinInitialHistoryWindow(12), isFalse);
+    expect(isThinInitialHistoryWindow(0), isFalse);
+  });
 }

@@ -1,6 +1,8 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/call/group_call_controller.dart';
 import 'package:mithka/call/group_call_media_engine.dart';
+import 'package:mithka/call/group_call_screen.dart';
 
 void main() {
   test('parses Telegram group-call participant video sources', () {
@@ -111,5 +113,28 @@ void main() {
         },
       },
     );
+  });
+
+  testWidgets('voice group calls expose the video transform toggle', (
+    tester,
+  ) async {
+    final controller =
+        GroupCallController(engine: UnsupportedGroupCallMediaEngine())
+          ..session = ActiveGroupCall(
+            chatId: 1,
+            groupCallId: 2,
+            title: 'Voice group',
+            isVideo: false,
+            phase: GroupCallPhase.active,
+            systemUuid: 'group-test',
+            startedAt: DateTime.now(),
+          );
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(home: GroupCallScreen(controller: controller)),
+    );
+
+    expect(find.byKey(const ValueKey('groupCallVideoToggle')), findsOneWidget);
   });
 }

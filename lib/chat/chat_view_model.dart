@@ -39,6 +39,7 @@ import 'secret_chat_service.dart';
 import 'sponsored_messages_cache.dart';
 import 'sticker_item.dart';
 import 'telegram_ai_service.dart';
+import 'unread_chat_summary_models.dart';
 
 class _SenderInfo {
   _SenderInfo(
@@ -229,6 +230,8 @@ class ChatViewModel extends ChangeNotifier {
   int lastReadOutboxId = 0; // outgoing messages with id <= this are read
   int lastReadInboxId = 0; // incoming messages with id <= this are read
   int unreadCount = 0; // unread incoming messages on entry (for the divider)
+  UnreadChatRangeSnapshot? unreadSummarySnapshot;
+  bool _didCaptureUnreadSummaryRange = false;
   int unreadMentionCount = 0;
   bool isMarkedUnread = false; // manual unread marker on the chat row
   bool initialLoaded = false; // first history page (+ unread boundary) is in
@@ -2446,6 +2449,23 @@ class ChatViewModel extends ChangeNotifier {
     final kind = TDParse.chatKind(chat);
     isGroup = kind == ChatKind.group || kind == ChatKind.channel;
     isSecretChat = kind == ChatKind.secret;
+    final entryUpperMessageId = chat.obj('last_message')?.int64('id') ?? 0;
+    if (!_didCaptureUnreadSummaryRange) {
+      _didCaptureUnreadSummaryRange = true;
+      if (unreadCount > 0 &&
+          entryUpperMessageId > lastReadInboxId &&
+          !isSecretChat &&
+          !hasProtectedContent) {
+        unreadSummarySnapshot = UnreadChatRangeSnapshot(
+          chatId: chatId,
+          accountSlot: _client.activeSlot,
+          lastReadInboxId: lastReadInboxId,
+          unreadCount: unreadCount,
+          upperMessageId: entryUpperMessageId,
+          capturedAt: DateTime.now(),
+        );
+      }
+    }
     _primeLastMessage(chat);
     // Chat-wide default send permission + permissive membership defaults
     // (refined per type below).
@@ -3040,9 +3060,16 @@ class ChatViewModel extends ChangeNotifier {
   // MARK: - History
 
   Future<void> _loadInitialHistory({required bool openAtLatest}) async {
-    if (!openAtLatest && lastReadInboxId > 0) {
+    if (shouldLoadInitialHistoryAroundLastRead(
+      openAtLatest: openAtLatest,
+      lastReadInboxId: lastReadInboxId,
+      unreadCount: unreadCount,
+    )) {
       final loaded = await _loadInitialAroundLastRead();
-      if (loaded) return;
+      // A chat-list preview hit can satisfy around-last-read with one local
+      // bubble. Fall through to latest hydration so the open path does not
+      // settle until the user scrolls.
+      if (loaded && !isThinInitialHistoryWindow(messages.length)) return;
     }
     await _loadInitialLatestHistory();
   }
@@ -3053,6 +3080,13 @@ class ChatViewModel extends ChangeNotifier {
       onlyLocal: true,
     );
     if (loadedLocal) {
+      if (isThinInitialHistoryWindow(messages.length)) {
+        return loadAroundMessage(
+          lastReadInboxId,
+          scrollToTarget: false,
+          replaceCurrentWindow: false,
+        );
+      }
       unawaited(
         loadAroundMessage(
           lastReadInboxId,
@@ -3066,8 +3100,13 @@ class ChatViewModel extends ChangeNotifier {
   }
 
   Future<void> _loadInitialLatestHistory() async {
+    anchoredHistory = false;
     final localLoaded = await _fetchHistory(0, 0, 40, onlyLocal: true);
     if (!localLoaded) {
+      await _fetchHistory(0, 0, 40);
+    } else if (isThinInitialHistoryWindow(messages.length)) {
+      // Await the remote page for preview-sized local caches. Fire-and-forget
+      // left the UI on a single bubble until a scroll triggered loadOlder.
       await _fetchHistory(0, 0, 40);
     } else {
       unawaited(_fetchHistory(0, 0, 40));
@@ -3076,8 +3115,8 @@ class ChatViewModel extends ChangeNotifier {
     // Render the first page immediately. Older unread-boundary paging used to
     // happen here and could block a large media channel for seconds on cold
     // cache before any UI appeared.
-    if (messages.length < 12) {
-      unawaited(_fetchHistory(_allMessages.first.id, 0, 40));
+    if (isThinInitialHistoryWindow(messages.length)) {
+      await _fetchHistory(_allMessages.first.id, 0, 40);
     }
   }
 

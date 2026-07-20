@@ -223,6 +223,43 @@ void main() {
       );
     });
 
+    test(
+      'cached transcript without snapshot still corrects to bottom when opening at bottom',
+      () {
+        final plan = chatInitialScrollPlan(
+          hasCachedTranscript: true,
+          savedPixels: null,
+          savedAtBottom: false,
+          openAtBottom: true,
+        );
+
+        expect(plan.initialOffset, 0);
+        expect(plan.correctToBottomAfterLayout, isTrue);
+      },
+    );
+
+    test('cached scrolled-up snapshot does not force a bottom correction', () {
+      final plan = chatInitialScrollPlan(
+        hasCachedTranscript: true,
+        savedPixels: 640,
+        savedAtBottom: false,
+      );
+
+      expect(plan.initialOffset, 640);
+      expect(plan.correctToBottomAfterLayout, isFalse);
+    });
+
+    test('openAtBottom alone is enough to correct a cached bottom reopen', () {
+      final plan = chatInitialScrollPlan(
+        hasCachedTranscript: true,
+        savedPixels: 0,
+        savedAtBottom: false,
+        openAtBottom: true,
+      );
+
+      expect(plan.correctToBottomAfterLayout, isTrue);
+    });
+
     test('restores the anchor to the same viewport y position', () {
       expect(
         correctedChatSessionScrollOffset(

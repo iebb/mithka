@@ -13,11 +13,13 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:lottie/lottie.dart' show FrameRate;
+import 'package:provider/provider.dart';
 
 import '../components/photo_avatar.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
+import '../theme/theme_controller.dart';
 import 'animated_sticker_view.dart';
 import 'sticker_item.dart';
 import 'video_sticker_view.dart';
@@ -67,6 +69,24 @@ class CustomEmojiSticker {
   final bool isTgs; // Lottie (animate)
   final bool isWebm; // video — render its static thumbnail, not the file
   final bool needsRepainting; // monochrome — tint to the surrounding text color
+}
+
+enum CustomEmojiPresentation { staticThumbnail, tgs, webm, image }
+
+CustomEmojiPresentation customEmojiPresentation(
+  CustomEmojiSticker sticker, {
+  required bool animate,
+}) {
+  if (!animate && (sticker.isTgs || sticker.isWebm) && sticker.thumb != null) {
+    return CustomEmojiPresentation.staticThumbnail;
+  }
+  if (sticker.isTgs && sticker.file != null) {
+    return CustomEmojiPresentation.tgs;
+  }
+  if (sticker.isWebm && sticker.file != null && animate) {
+    return CustomEmojiPresentation.webm;
+  }
+  return CustomEmojiPresentation.image;
 }
 
 /// Resolves custom_emoji_ids → sticker files, batched + cached, so many inline
@@ -140,10 +160,12 @@ class CustomEmojiView extends StatefulWidget {
     required this.id,
     this.size = 20,
     this.color,
+    this.animate = true,
   });
   final int id;
   final double size;
   final Color? color; // tint for monochrome (needs_repainting) emoji
+  final bool animate;
 
   @override
   State<CustomEmojiView> createState() => _CustomEmojiViewState();
@@ -194,19 +216,31 @@ class _CustomEmojiViewState extends State<CustomEmojiView> {
     // tgs → animate via Lottie. webm is a video Image.file can't decode, so use
     // its static thumbnail. webp/other → the sticker file (falls back to thumb).
     Widget child;
-    if (s.isTgs && s.file != null) {
-      // Inline emoji render at text size; 30 fps is indistinguishable there
-      // and halves the repaint cost of emoji-heavy messages.
-      child = AnimatedStickerView(
-        file: s.file!,
-        frameRate: const FrameRate(30),
-      );
-    } else if (s.isWebm && s.file != null) {
-      child = VideoStickerView(file: s.file!, fallback: s.thumb);
-    } else {
-      final img = s.file ?? s.thumb;
-      if (img == null) return SizedBox(width: widget.size, height: widget.size);
-      child = TDImage(photo: img, cornerRadius: 0, fit: BoxFit.contain);
+    switch (customEmojiPresentation(s, animate: widget.animate)) {
+      case CustomEmojiPresentation.staticThumbnail:
+        // Status emoji can stay entirely on their static TDLib thumbnail when
+        // animation is disabled, avoiding Lottie work and video decoders.
+        child = TDImage(photo: s.thumb!, cornerRadius: 0, fit: BoxFit.contain);
+        break;
+      case CustomEmojiPresentation.tgs:
+        // Inline emoji render at text size; 30 fps is indistinguishable there
+        // and halves the repaint cost of emoji-heavy messages.
+        child = AnimatedStickerView(
+          file: s.file!,
+          frameRate: const FrameRate(30),
+          animate: widget.animate,
+        );
+        break;
+      case CustomEmojiPresentation.webm:
+        child = VideoStickerView(file: s.file!, fallback: s.thumb);
+        break;
+      case CustomEmojiPresentation.image:
+        final img = s.file ?? s.thumb;
+        if (img == null) {
+          return SizedBox(width: widget.size, height: widget.size);
+        }
+        child = TDImage(photo: img, cornerRadius: 0, fit: BoxFit.contain);
+        break;
     }
     // Monochrome (needs_repainting) emoji are white glyphs — tint to the
     // surrounding text color so they're visible on light bubbles.
@@ -217,5 +251,32 @@ class _CustomEmojiViewState extends State<CustomEmojiView> {
       );
     }
     return SizedBox(width: widget.size, height: widget.size, child: child);
+  }
+}
+
+/// A custom emoji used specifically as an account or chat status. Status
+/// surfaces honor the battery-saving animation preference while other custom
+/// emoji, such as reactions and message entities, keep their normal behavior.
+class StatusEmojiView extends StatelessWidget {
+  const StatusEmojiView({
+    super.key,
+    required this.id,
+    this.size = 20,
+    this.color,
+  });
+
+  final int id;
+  final double size;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    var animate = true;
+    try {
+      animate = context.watch<ThemeController>().animateStatusEmoji;
+    } on ProviderNotFoundException catch (_) {
+      // Standalone previews without the app provider keep normal playback.
+    }
+    return CustomEmojiView(id: id, size: size, color: color, animate: animate);
   }
 }

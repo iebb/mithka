@@ -454,6 +454,8 @@ class TelegramCloudTheme {
               'groupPeerName${names[index]}',
               if (index == 5) 'groupPeerNameLightBlue',
               'historyPeer${index + 1}NameFg',
+              'avatar_background${names[index]}',
+              'avatar_backgroundInProfile${names[index]}',
             ]) ??
             fallback[index],
     ];
@@ -461,10 +463,8 @@ class TelegramCloudTheme {
 
   Color senderNameColorForAccentId(int accentColorId) {
     final colors = senderNameColors;
-    if (accentColorId >= 0 && accentColorId < colors.length) {
-      return colors[accentColorId];
-    }
-    return colors.first;
+    final paletteIndex = accentColorId < 0 ? 0 : accentColorId % colors.length;
+    return colors[paletteIndex];
   }
 
   /// Semantic UI variables derived from Telegram's platform-specific keys.

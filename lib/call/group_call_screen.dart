@@ -53,11 +53,7 @@ class _GroupCallScreenState extends State<GroupCallScreen> {
             SafeArea(
               child: Column(
                 children: [
-                  _topBar(
-                    session.title,
-                    participants.length,
-                    supportsVideo: session.isVideo,
-                  ),
+                  _topBar(session.title, participants.length),
                   Expanded(
                     child: participants.isEmpty
                         ? _joiningState(session)
@@ -115,11 +111,7 @@ class _GroupCallScreenState extends State<GroupCallScreen> {
     );
   }
 
-  Widget _topBar(
-    String title,
-    int participantCount, {
-    required bool supportsVideo,
-  }) {
+  Widget _topBar(String title, int participantCount) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
       child: Row(
@@ -161,17 +153,20 @@ class _GroupCallScreenState extends State<GroupCallScreen> {
             tooltip: AppStrings.t(AppStringKeys.chatInfoGroupMembers),
             onTap: _showParticipants,
           ),
-          if (supportsVideo) ...[
-            const SizedBox(width: 10),
-            _GlassButton(
-              icon: HeroAppIcons.video,
-              tooltip: AppStrings.t(AppStringKeys.callCamera),
-              onTap: () => widget.controller.setVideoEnabled(
-                !widget.controller.isVideoEnabled,
-                front: widget.controller.useFrontCamera,
-              ),
+          const SizedBox(width: 10),
+          _GlassButton(
+            key: const ValueKey('groupCallVideoToggle'),
+            icon: HeroAppIcons.video,
+            tooltip: AppStrings.t(
+              widget.controller.isVideoEnabled
+                  ? AppStringKeys.callDisableVideo
+                  : AppStringKeys.callEnableVideo,
             ),
-          ],
+            onTap: () => widget.controller.setVideoEnabled(
+              !widget.controller.isVideoEnabled,
+              front: widget.controller.useFrontCamera,
+            ),
+          ),
           if (widget.controller.isVideoEnabled) ...[
             const SizedBox(width: 10),
             _GlassButton(
@@ -537,6 +532,7 @@ class _ParticipantTile extends StatelessWidget {
 
 class _GlassButton extends StatelessWidget {
   const _GlassButton({
+    super.key,
     required this.icon,
     required this.tooltip,
     required this.onTap,

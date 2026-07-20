@@ -386,7 +386,7 @@ class _ProfileViewState extends State<ProfileView> {
         behavior: HitTestBehavior.opaque,
         onTap: _openStatusPicker,
         child: hasStatus
-            ? CustomEmojiView(
+            ? StatusEmojiView(
                 id: user!.emojiStatusId,
                 size: 24,
                 color: foreground,

@@ -133,6 +133,207 @@ void main() {
     });
   });
 
+  group('isLatestTranscriptArmShort', () {
+    test('treats a tall single bubble as short when the arm has few entries', () {
+      expect(
+        isLatestTranscriptArmShort(
+          maxScrollExtent: 400,
+          afterCenterEntryCount: 1,
+        ),
+        isTrue,
+      );
+    });
+
+    test('treats a low max extent as short even with several entries', () {
+      expect(
+        isLatestTranscriptArmShort(
+          maxScrollExtent: 12,
+          afterCenterEntryCount: 5,
+        ),
+        isTrue,
+      );
+    });
+
+    test('treats a filled multi-entry arm as complete', () {
+      expect(
+        isLatestTranscriptArmShort(
+          maxScrollExtent: 800,
+          afterCenterEntryCount: 8,
+        ),
+        isFalse,
+      );
+    });
+  });
+
+  group('shouldFreezeTranscriptPivot', () {
+    test('refuses to freeze while older history can still fill a short arm', () {
+      expect(
+        shouldFreezeTranscriptPivot(
+          latestArmIsShort: true,
+          canLoadOlder: true,
+        ),
+        isFalse,
+      );
+    });
+
+    test('freezes once the latest arm is full', () {
+      expect(
+        shouldFreezeTranscriptPivot(
+          latestArmIsShort: false,
+          canLoadOlder: true,
+        ),
+        isTrue,
+      );
+    });
+
+    test('freezes when older history is exhausted', () {
+      expect(
+        shouldFreezeTranscriptPivot(
+          latestArmIsShort: true,
+          canLoadOlder: false,
+        ),
+        isTrue,
+      );
+    });
+  });
+
+  group('shouldDiscardRestoredTranscriptPivot', () {
+    test('discards a newest-only pivot when reopening at the bottom', () {
+      expect(
+        shouldDiscardRestoredTranscriptPivot(
+          pivotMessageId: 900,
+          newestMessageId: 900,
+          openAtBottom: true,
+        ),
+        isTrue,
+      );
+    });
+
+    test('keeps a newest pivot when restoring a scrolled-up viewport', () {
+      expect(
+        shouldDiscardRestoredTranscriptPivot(
+          pivotMessageId: 900,
+          newestMessageId: 900,
+          openAtBottom: false,
+        ),
+        isFalse,
+      );
+    });
+
+    test('keeps an older cutoff when reopening at the bottom', () {
+      expect(
+        shouldDiscardRestoredTranscriptPivot(
+          pivotMessageId: 100,
+          newestMessageId: 900,
+          openAtBottom: true,
+        ),
+        isFalse,
+      );
+    });
+  });
+
+  group('shouldRestoreTranscriptPivot', () {
+    test('refuses orphan pivots without a session transcript', () {
+      expect(
+        shouldRestoreTranscriptPivot(
+          pivotMessageId: 900,
+          hasSessionTranscript: false,
+          newestMessageId: null,
+          openAtBottom: true,
+        ),
+        isFalse,
+      );
+    });
+
+    test('refuses a newest pivot when opening at the bottom', () {
+      expect(
+        shouldRestoreTranscriptPivot(
+          pivotMessageId: 900,
+          hasSessionTranscript: true,
+          newestMessageId: 900,
+          openAtBottom: true,
+        ),
+        isFalse,
+      );
+    });
+
+    test('keeps an older pivot with a matching session transcript', () {
+      expect(
+        shouldRestoreTranscriptPivot(
+          pivotMessageId: 100,
+          hasSessionTranscript: true,
+          newestMessageId: 900,
+          openAtBottom: true,
+        ),
+        isTrue,
+      );
+    });
+  });
+
+  group('shouldRebaseParkedShortTranscriptPivot', () {
+    test('rebases a thin after-arm that already has older messages', () {
+      expect(
+        shouldRebaseParkedShortTranscriptPivot(
+          pivotCutoffMessageId: 900,
+          latestArmIsShort: true,
+          hasMessageOlderThanPivot: true,
+          followingLatest: true,
+        ),
+        isTrue,
+      );
+    });
+
+    test('keeps the pivot while the user preserves a scrolled-up viewport', () {
+      expect(
+        shouldRebaseParkedShortTranscriptPivot(
+          pivotCutoffMessageId: 900,
+          latestArmIsShort: true,
+          hasMessageOlderThanPivot: true,
+          followingLatest: false,
+        ),
+        isFalse,
+      );
+    });
+
+    test('keeps the pivot when the latest arm already fills the viewport', () {
+      expect(
+        shouldRebaseParkedShortTranscriptPivot(
+          pivotCutoffMessageId: 100,
+          latestArmIsShort: false,
+          hasMessageOlderThanPivot: true,
+          followingLatest: true,
+        ),
+        isFalse,
+      );
+    });
+  });
+
+  group('shouldRebaseForExpandedInitialWindow', () {
+    test('rebases when hydration grows past a short frozen cutoff', () {
+      expect(
+        shouldRebaseForExpandedInitialWindow(
+          transcriptChanged: true,
+          latestArmIsShort: true,
+          hasMessageOlderThanPivot: true,
+          followingLatest: true,
+        ),
+        isTrue,
+      );
+    });
+
+    test('ignores identical transcripts', () {
+      expect(
+        shouldRebaseForExpandedInitialWindow(
+          transcriptChanged: false,
+          latestArmIsShort: true,
+          hasMessageOlderThanPivot: true,
+          followingLatest: true,
+        ),
+        isFalse,
+      );
+    });
+  });
+
   group('shouldPlaceFirstContactCardAtCenter', () {
     test('uses center only for a completely empty transcript', () {
       expect(

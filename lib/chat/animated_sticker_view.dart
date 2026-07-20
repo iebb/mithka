@@ -60,9 +60,11 @@ class AnimatedStickerView extends StatefulWidget {
     required this.file,
     this.onReady,
     this.frameRate,
+    this.animate = true,
   });
   final TdFileRef file;
   final VoidCallback? onReady;
+  final bool animate;
 
   /// Playback frame rate; null keeps the composition's own rate. Inline
   /// custom emoji pass a reduced rate — at text size the difference is
@@ -114,7 +116,8 @@ class _AnimatedStickerViewState extends State<AnimatedStickerView> {
     return Lottie.memory(
       bytes,
       fit: BoxFit.contain,
-      repeat: true,
+      animate: widget.animate,
+      repeat: widget.animate,
       frameRate: widget.frameRate,
     );
   }
