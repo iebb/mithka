@@ -27,7 +27,7 @@ UnreadChatSummaryProviderRequest _request() => UnreadChatSummaryProviderRequest(
   trustedInstructions: unreadChatSummaryTrustedInstructions,
   payload: {
     'stage': 'summarize_chunk',
-    'output_language': 'same_as_chat',
+    'output_language': 'zh-Hans',
     'messages': [
       {'evidence_id': 'm1', 'text': '你好'},
     ],
@@ -72,12 +72,9 @@ void main() {
     expect(messages.first['role'], 'system');
     expect(
       messages.first['content'],
-      contains('same language or languages used by the chat messages'),
+      contains('UI language identified by INPUT_DATA.output_language'),
     );
-    expect(
-      messages.last['content'],
-      contains('"output_language":"same_as_chat"'),
-    );
+    expect(messages.last['content'], contains('"output_language":"zh-Hans"'));
     expect(result['overview'], '要点');
   });
 

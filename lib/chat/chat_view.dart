@@ -4922,6 +4922,7 @@ class _ChatViewState extends State<ChatView> {
     final apiKey = settings.apiKey;
     final pccContextSize = settings.pccCapabilities?.contextSize;
     final onDeviceContextSize = settings.pccCapabilities?.onDeviceContextSize;
+    final outputLanguage = Localizations.localeOf(context).toLanguageTag();
     final session = _createUnreadSummarySession(
       providerMode: providerMode,
       endpoint: endpoint,
@@ -4929,6 +4930,7 @@ class _ChatViewState extends State<ChatView> {
       apiKey: apiKey,
       pccContextSize: pccContextSize,
       onDeviceContextSize: onDeviceContextSize,
+      outputLanguage: outputLanguage,
     );
     int? messageId;
     try {
@@ -4956,6 +4958,7 @@ class _ChatViewState extends State<ChatView> {
     required String apiKey,
     required int? pccContextSize,
     required int? onDeviceContextSize,
+    required String outputLanguage,
   }) {
     final loader = UnreadChatHistoryLoader(
       query: (accountSlot, request) {
@@ -4987,6 +4990,7 @@ class _ChatViewState extends State<ChatView> {
             mergeChunkSummariesLocally: true,
             providerCode: 'apple_pcc',
             contextWindowTokens: contextWindow,
+            outputLanguage: outputLanguage,
             initialPromptTokenEstimate: tokenBudget.initialPromptTokens,
             reservedNonPayloadTokenEstimate:
                 tokenBudget.reservedNonPayloadTokens,
@@ -5018,6 +5022,7 @@ class _ChatViewState extends State<ChatView> {
             mergeChunkSummariesLocally: true,
             providerCode: 'apple_on_device',
             contextWindowTokens: contextWindow,
+            outputLanguage: outputLanguage,
             initialPromptTokenEstimate: tokenBudget.initialPromptTokens,
             reservedNonPayloadTokenEstimate:
                 tokenBudget.reservedNonPayloadTokens,
@@ -5048,6 +5053,7 @@ class _ChatViewState extends State<ChatView> {
             maxConcurrentRequests: 3,
             mergeChunkSummariesLocally: true,
             providerCode: 'openai_compatible/$model',
+            outputLanguage: outputLanguage,
           ),
           onDispose: provider.close,
         );

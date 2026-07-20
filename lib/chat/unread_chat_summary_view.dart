@@ -382,15 +382,11 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
     final c = context.colors;
     return Padding(
       padding: const EdgeInsets.only(bottom: 26),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: summary.overviewEvidenceIds.isEmpty
-            ? null
-            : () => _openEvidence(summary.overviewEvidenceIds.first),
-        child: Text(
-          summary.overview,
-          style: TextStyle(color: c.textSecondary, fontSize: 17, height: 1.58),
-        ),
+      child: _textWithEvidenceBadges(
+        context,
+        text: summary.overview,
+        evidenceIds: summary.overviewEvidenceIds,
+        style: TextStyle(color: c.textSecondary, fontSize: 17, height: 1.58),
       ),
     );
   }
@@ -436,78 +432,38 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
           ),
         ],
         const SizedBox(height: 10),
-        Text(
-          topic.summary,
+        _textWithEvidenceBadges(
+          context,
+          text: topic.summary,
+          evidenceIds: topic.evidenceIds,
           style: TextStyle(color: c.textSecondary, fontSize: 16, height: 1.55),
         ),
-        if (topic.evidenceIds.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 7,
-            runSpacing: 7,
-            children: [
-              for (
-                var evidenceIndex = 0;
-                evidenceIndex < topic.evidenceIds.length && evidenceIndex < 5;
-                evidenceIndex++
-              )
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => _openEvidence(topic.evidenceIds[evidenceIndex]),
-                  child: Container(
-                    constraints: const BoxConstraints(minWidth: 28),
-                    height: 28,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: c.searchFill,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Text(
-                      '${evidenceIndex + 1}',
-                      style: TextStyle(
-                        color: c.textSecondary,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ],
       ],
     );
   }
 
   Widget _rantSection(BuildContext context, UnreadChatSummaryItem rant) {
     final c = context.colors;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: rant.evidenceIds.isEmpty
-          ? null
-          : () => _openEvidence(rant.evidenceIds.first),
-      child: Container(
-        margin: const EdgeInsets.only(top: 6),
-        padding: const EdgeInsets.only(top: 22),
-        decoration: BoxDecoration(
-          border: Border(top: BorderSide(color: c.divider, width: 0.5)),
-        ),
-        child: Text.rich(
+    return Container(
+      margin: const EdgeInsets.only(top: 6),
+      padding: const EdgeInsets.only(top: 22),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: c.divider, width: 0.5)),
+      ),
+      child: _textWithEvidenceBadges(
+        context,
+        text: rant.text,
+        evidenceIds: rant.evidenceIds,
+        prefix: [
           TextSpan(
-            children: [
-              TextSpan(
-                text: '${AppStringKeys.aiSummaryRant.l10n(context)}：',
-                style: const TextStyle(
-                  color: Color(0xFF2EBF75),
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              TextSpan(text: rant.text),
-            ],
+            text: '${AppStringKeys.aiSummaryRant.l10n(context)}：',
+            style: const TextStyle(
+              color: Color(0xFF2EBF75),
+              fontWeight: FontWeight.w700,
+            ),
           ),
-          style: TextStyle(color: c.textSecondary, fontSize: 16, height: 1.58),
-        ),
+        ],
+        style: TextStyle(color: c.textSecondary, fontSize: 16, height: 1.58),
       ),
     );
   }
@@ -595,8 +551,10 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: Text(
-                item.text,
+              child: _textWithEvidenceBadges(
+                context,
+                text: item.text,
+                evidenceIds: item.evidenceIds,
                 style: TextStyle(
                   color: c.textPrimary,
                   fontSize: 15,
@@ -604,22 +562,61 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
                 ),
               ),
             ),
-            if (canOpen) ...[
-              const SizedBox(width: 8),
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: AppIcon(
-                  HeroAppIcons.chevronRight,
-                  size: 14,
-                  color: c.textTertiary,
-                ),
-              ),
-            ],
           ],
         ),
       ),
     );
   }
+
+  Widget _textWithEvidenceBadges(
+    BuildContext context, {
+    required String text,
+    required List<String> evidenceIds,
+    required TextStyle style,
+    List<InlineSpan> prefix = const [],
+  }) => Text.rich(
+    TextSpan(
+      children: [
+        ...prefix,
+        TextSpan(text: text),
+        for (
+          var evidenceIndex = 0;
+          evidenceIndex < evidenceIds.length && evidenceIndex < 5;
+          evidenceIndex++
+        )
+          WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 5, bottom: 1),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _openEvidence(evidenceIds[evidenceIndex]),
+                child: Container(
+                  constraints: const BoxConstraints(minWidth: 21),
+                  height: 21,
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: context.colors.searchFill,
+                    borderRadius: BorderRadius.circular(10.5),
+                  ),
+                  child: Text(
+                    '${evidenceIndex + 1}',
+                    style: TextStyle(
+                      color: context.colors.textSecondary,
+                      fontSize: 11,
+                      height: 1,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    ),
+    style: style,
+  );
 
   Widget _sectionHeading(BuildContext context, String title) => Text(
     title,

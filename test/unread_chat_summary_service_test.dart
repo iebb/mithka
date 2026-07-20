@@ -202,74 +202,73 @@ void main() {
   });
 
   group('UnreadChatSummaryService', () {
-    test(
-      'chunks then merges with grounded same-language instructions',
-      () async {
-        final provider = _RecordingProvider();
-        final service = UnreadChatSummaryService(
-          historyLoader: UnreadChatHistoryLoader(
-            query: (_, _) async => const {'@type': 'messages', 'messages': []},
+    test('chunks then merges with grounded UI-language instructions', () async {
+      final provider = _RecordingProvider();
+      final service = UnreadChatSummaryService(
+        historyLoader: UnreadChatHistoryLoader(
+          query: (_, _) async => const {'@type': 'messages', 'messages': []},
+        ),
+        provider: provider,
+        maxChunkMessages: 2,
+        maxChunkTokenEstimate: 100000,
+        maxChunks: 3,
+        maxInlineBurstMessages: 1,
+        outputLanguage: 'zh-Hans',
+      );
+      final messages = [
+        for (var id = 1; id <= 5; id++)
+          UnreadChatMessage(
+            id: id,
+            date: id,
+            senderKey: 'user:7',
+            isOutgoing: false,
+            isService: false,
+            contentType: 'messageText',
+            text: '消息 $id',
           ),
-          provider: provider,
-          maxChunkMessages: 2,
-          maxChunkTokenEstimate: 100000,
-          maxChunks: 3,
-          maxInlineBurstMessages: 1,
-        );
-        final messages = [
-          for (var id = 1; id <= 5; id++)
-            UnreadChatMessage(
-              id: id,
-              date: id,
-              senderKey: 'user:7',
-              isOutgoing: false,
-              isService: false,
-              contentType: 'messageText',
-              text: '消息 $id',
-            ),
-        ];
-        final transcript = UnreadChatTranscript(
-          snapshot: _snapshot(
-            lastReadInboxId: 0,
-            unreadCount: 5,
-            upperMessageId: 5,
-          ),
-          messages: messages,
-          historyRequestCount: 1,
-          reachedReadBoundary: true,
-          historyCapped: false,
-          historyStalled: false,
-        );
+      ];
+      final transcript = UnreadChatTranscript(
+        snapshot: _snapshot(
+          lastReadInboxId: 0,
+          unreadCount: 5,
+          upperMessageId: 5,
+        ),
+        messages: messages,
+        historyRequestCount: 1,
+        reachedReadBoundary: true,
+        historyCapped: false,
+        historyStalled: false,
+      );
 
-        final result = await service.summarizeTranscript(transcript);
+      final result = await service.summarizeTranscript(transcript);
 
-        expect(provider.requests, hasLength(4));
-        expect(provider.requests.map((request) => request.stage), [
-          UnreadChatSummaryStage.chunk,
-          UnreadChatSummaryStage.chunk,
-          UnreadChatSummaryStage.chunk,
-          UnreadChatSummaryStage.merge,
-        ]);
-        expect(
-          provider.requests.first.trustedInstructions,
-          contains('same language or languages used by the chat messages'),
-        );
-        expect(
-          provider.requests.first.payload['output_language'],
-          'same_as_chat',
-        );
-        expect(provider.requests.first.payload['message_schema'], isA<List>());
-        final promptMessages =
-            provider.requests.first.payload['messages'] as List<Object?>;
-        expect(promptMessages.first, isA<List<Object?>>());
-        expect((promptMessages.first as List<Object?>).first, [
-          provider.requests.first.allowedEvidenceIds.first,
-        ]);
-        expect(result.overview, 'Merged');
-        expect(result.coverage.complete, isTrue);
-        expect(result.coverage.summarizedMessageCount, 5);
-      },
-    );
+      expect(provider.requests, hasLength(4));
+      expect(provider.requests.map((request) => request.stage), [
+        UnreadChatSummaryStage.chunk,
+        UnreadChatSummaryStage.chunk,
+        UnreadChatSummaryStage.chunk,
+        UnreadChatSummaryStage.merge,
+      ]);
+      expect(
+        provider.requests.first.trustedInstructions,
+        contains('UI language identified by INPUT_DATA.output_language'),
+      );
+      expect(provider.requests.first.payload['output_language'], 'zh-Hans');
+      expect(
+        provider.requests.first.payload['output_language_source'],
+        'app_ui_locale',
+      );
+      expect(provider.requests.first.payload['message_schema'], isA<List>());
+      final promptMessages =
+          provider.requests.first.payload['messages'] as List<Object?>;
+      expect(promptMessages.first, isA<List<Object?>>());
+      expect((promptMessages.first as List<Object?>).first, [
+        provider.requests.first.allowedEvidenceIds.first,
+      ]);
+      expect(result.overview, 'Merged');
+      expect(result.coverage.complete, isTrue);
+      expect(result.coverage.summarizedMessageCount, 5);
+    });
 
     test('samples across the range when the chunk budget is capped', () async {
       final provider = _RecordingProvider();
@@ -323,6 +322,7 @@ void main() {
         'source_message_count': 5,
         'selected_message_count': 3,
         'ignored_duplicate_or_low_signal_count': 0,
+        'per_message_token_cap': 300,
       });
     });
 
@@ -601,7 +601,7 @@ void main() {
     );
 
     test(
-      'locally assembles parallel chunks without another model call',
+      'processes short forced chunks serially without another model call',
       () async {
         final provider = _ConcurrentRecordingProvider();
         final service = UnreadChatSummaryService(
@@ -652,7 +652,7 @@ void main() {
             ),
           ),
         );
-        expect(provider.maximumActiveRequests, 2);
+        expect(provider.maximumActiveRequests, 1);
         expect(result.overview, 'Chunk m1 Chunk m3');
         expect(
           result.highlights.map((item) => item.text),
@@ -667,7 +667,7 @@ void main() {
       },
     );
 
-    test('starts a new chunk after a meaningful chat time gap', () async {
+    test('does not split a short chat only because of a time gap', () async {
       final provider = _RecordingProvider();
       final service = UnreadChatSummaryService(
         historyLoader: UnreadChatHistoryLoader(
@@ -704,13 +704,64 @@ void main() {
       final chunks = provider.requests
           .where((request) => request.stage == UnreadChatSummaryStage.chunk)
           .toList();
-      expect(chunks, hasLength(2));
-      expect(chunks.first.allowedEvidenceIds, {'m1', 'm2'});
-      expect(chunks.last.allowedEvidenceIds, {'m3', 'm4'});
+      expect(chunks, hasLength(1));
+      expect(chunks.single.allowedEvidenceIds, {'m1', 'm2', 'm3', 'm4'});
     });
 
     test(
-      'omits close duplicates and low-information standalone replies',
+      'caps each source message at 300 tokens before building the prompt',
+      () async {
+        final provider = _RecordingProvider();
+        final service = UnreadChatSummaryService(
+          historyLoader: UnreadChatHistoryLoader(
+            query: (_, _) async => const {'@type': 'messages', 'messages': []},
+          ),
+          provider: provider,
+          maxChunkTokenEstimate: 100000,
+        );
+        final transcript = UnreadChatTranscript(
+          snapshot: _snapshot(
+            lastReadInboxId: 0,
+            unreadCount: 1,
+            upperMessageId: 1,
+          ),
+          messages: [
+            UnreadChatMessage(
+              id: 1,
+              date: 1,
+              senderKey: 'user:7',
+              isOutgoing: false,
+              isService: false,
+              contentType: 'messageText',
+              text: List.filled(1200, 'long-message-content').join(' '),
+            ),
+          ],
+          historyRequestCount: 1,
+          reachedReadBoundary: true,
+          historyCapped: false,
+          historyStalled: false,
+        );
+
+        await service.summarizeTranscript(transcript);
+
+        final request = provider.requests.single;
+        final rows = request.payload['messages']! as List<dynamic>;
+        final row = rows.single as List<dynamic>;
+        final promptText = row.last as String;
+        expect(
+          estimateUnreadSummaryTextTokens(promptText),
+          lessThanOrEqualTo(300),
+        );
+        expect(promptText, endsWith('…'));
+        expect(
+          request.payload['selection'],
+          containsPair('per_message_token_cap', 300),
+        );
+      },
+    );
+
+    test(
+      'omits same-sender and cross-sender repeats plus simple replies',
       () async {
         final provider = _RecordingProvider();
         final service = UnreadChatSummaryService(
@@ -724,8 +775,8 @@ void main() {
         final transcript = UnreadChatTranscript(
           snapshot: _snapshot(
             lastReadInboxId: 0,
-            unreadCount: 5,
-            upperMessageId: 5,
+            unreadCount: 6,
+            upperMessageId: 6,
           ),
           messages: [
             const UnreadChatMessage(
@@ -753,7 +804,7 @@ void main() {
               isOutgoing: false,
               isService: false,
               contentType: 'messageText',
-              text: 'ok',
+              text: 'Important launch detail',
             ),
             const UnreadChatMessage(
               id: 4,
@@ -762,11 +813,20 @@ void main() {
               isOutgoing: false,
               isService: false,
               contentType: 'messageText',
-              text: 'Another useful detail',
+              text: 'ok',
             ),
             const UnreadChatMessage(
               id: 5,
               date: 5,
+              senderKey: 'user:8',
+              isOutgoing: false,
+              isService: false,
+              contentType: 'messageText',
+              text: 'Another useful detail',
+            ),
+            const UnreadChatMessage(
+              id: 6,
+              date: 6,
               senderKey: 'user:9',
               isOutgoing: false,
               isService: false,
@@ -782,14 +842,65 @@ void main() {
 
         final result = await service.summarizeTranscript(transcript);
 
-        expect(provider.requests.single.allowedEvidenceIds, {'m1', 'm4', 'm5'});
+        expect(provider.requests.single.allowedEvidenceIds, {'m1', 'm5', 'm6'});
         expect(
           provider.requests.single.payload['selection'],
-          containsPair('ignored_duplicate_or_low_signal_count', 2),
+          containsPair('ignored_duplicate_or_low_signal_count', 3),
         );
         expect(result.coverage.complete, isTrue);
       },
     );
+
+    test('discards a copied final message sent by another user', () async {
+      final provider = _RecordingProvider();
+      final service = UnreadChatSummaryService(
+        historyLoader: UnreadChatHistoryLoader(
+          query: (_, _) async => const {'@type': 'messages', 'messages': []},
+        ),
+        provider: provider,
+        maxChunkTokenEstimate: 100000,
+        maxInlineBurstMessages: 1,
+      );
+      final transcript = UnreadChatTranscript(
+        snapshot: _snapshot(
+          lastReadInboxId: 0,
+          unreadCount: 2,
+          upperMessageId: 2,
+        ),
+        messages: const [
+          UnreadChatMessage(
+            id: 1,
+            date: 1,
+            senderKey: 'user:7',
+            isOutgoing: false,
+            isService: false,
+            contentType: 'messageText',
+            text: 'Copied announcement text',
+          ),
+          UnreadChatMessage(
+            id: 2,
+            date: 2,
+            senderKey: 'user:8',
+            isOutgoing: false,
+            isService: false,
+            contentType: 'messageText',
+            text: 'Copied announcement text',
+          ),
+        ],
+        historyRequestCount: 1,
+        reachedReadBoundary: true,
+        historyCapped: false,
+        historyStalled: false,
+      );
+
+      await service.summarizeTranscript(transcript);
+
+      expect(provider.requests.single.allowedEvidenceIds, {'m1'});
+      expect(
+        provider.requests.single.payload['selection'],
+        containsPair('ignored_duplicate_or_low_signal_count', 1),
+      );
+    });
 
     test('keeps successful chunks when one parallel request fails', () async {
       final provider = _FailOneChunkProvider();
