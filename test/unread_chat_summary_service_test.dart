@@ -415,6 +415,19 @@ void main() {
       expect(onDeviceBudget.payloadTokens, 1400);
       expect(onDeviceBudget.totalPlannedTokens, lessThanOrEqualTo(4096));
 
+      final hostedBudget = unreadSummaryTokenBudget(
+        131072,
+        maximumContextSize: 1048576,
+        trustedInstructions: unreadChatSummaryTrustedInstructions,
+        maximumResponseTokens: 4096,
+        maximumPayloadTokens: 24000,
+      );
+      expect(hostedBudget.contextTokens, 131072);
+      expect(hostedBudget.initialPromptTokens, greaterThan(0));
+      expect(hostedBudget.responseTokens, 4096);
+      expect(hostedBudget.payloadTokens, 24000);
+      expect(hostedBudget.totalPlannedTokens, lessThanOrEqualTo(131072));
+
       final longerInitialPrompt = unreadSummaryTokenBudget(
         4096,
         maximumContextSize: appleOnDeviceContextTokenLimit,

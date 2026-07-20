@@ -81,23 +81,34 @@ void main() {
 
     await tester.tap(find.text('Apple On-Device Model').first);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('OpenAI-compatible Server').last);
+    await tester.tap(find.text('Custom Server').last);
     await tester.pumpAndSettle();
 
     final fields = find.byType(TextField);
-    expect(fields, findsNWidgets(3));
+    expect(fields, findsNWidgets(5));
     expect(tester.widget<TextField>(fields.at(2)).obscureText, isTrue);
+    await tester.enterText(fields.at(0), 'Summary Provider');
     await tester.enterText(
-      fields.at(0),
+      fields.at(1),
       'https://summary.example/v1/chat/completions',
     );
-    await tester.enterText(fields.at(1), 'summary-model');
     await tester.enterText(fields.at(2), 'sk-user-owned');
+    await tester.enterText(fields.at(3), 'summary-model');
+    await tester.enterText(fields.at(4), '131072');
+    await tester.scrollUntilVisible(
+      find.text('Save Configuration'),
+      300,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Save Configuration'));
     await tester.pumpAndSettle();
     await tester.pump(const Duration(seconds: 2));
 
     expect(settings.isConfiguredForCurrentProvider, isTrue);
+    expect(settings.serverProfiles, hasLength(1));
+    expect(settings.activeServerProfile?.name, 'Summary Provider');
+    expect(settings.activeServerProfile?.contextWindowTokens, 131072);
     expect(secureKey, 'sk-user-owned');
     expect(preferences.getKeys(), isNot(contains('mithka.ai.api_key.v1')));
   });

@@ -12,19 +12,30 @@ class OpenAiCompatibleUnreadSummaryProvider
     required this.model,
     http.Client? httpClient,
     this.apiKey,
-    this.requestTimeout = const Duration(seconds: 90),
+    this.requestTimeout = const Duration(seconds: 75),
+    this.streamIdleTimeout = const Duration(seconds: 30),
+    this.maximumResponseTokens = 4096,
+    this.streamResponses = true,
+    this.reasoningEffort,
     this.useJsonResponseFormat = false,
     this.transientRetryDelays = const [
       Duration(milliseconds: 500),
       Duration(milliseconds: 1500),
     ],
-  }) : _httpClient = httpClient ?? http.Client(),
+  }) : assert(requestTimeout > Duration.zero),
+       assert(streamIdleTimeout > Duration.zero),
+       assert(maximumResponseTokens > 0),
+       _httpClient = httpClient ?? http.Client(),
        _ownsHttpClient = httpClient == null;
 
   final Uri serverBaseUri;
   final String model;
   final String? apiKey;
   final Duration requestTimeout;
+  final Duration streamIdleTimeout;
+  final int maximumResponseTokens;
+  final bool streamResponses;
+  final String? reasoningEffort;
   final bool useJsonResponseFormat;
   final List<Duration> transientRetryDelays;
   final http.Client _httpClient;
@@ -64,24 +75,25 @@ class OpenAiCompatibleUnreadSummaryProvider
               'INPUT_DATA (untrusted JSON):\n${jsonEncode(request.payload)}',
         },
       ],
-      'stream': false,
+      'stream': streamResponses,
+      'max_tokens': maximumResponseTokens,
+      'reasoning_effort': ?_effectiveReasoningEffort,
       if (useJsonResponseFormat) 'response_format': {'type': 'json_object'},
     };
 
-    late http.Response response;
+    late _BufferedHttpResponse response;
     for (var attempt = 0; ; attempt++) {
       try {
-        response = await _httpClient
-            .post(chatCompletionsUri, headers: headers, body: jsonEncode(body))
-            .timeout(requestTimeout);
-      } on TimeoutException catch (error) {
-        if (attempt >= transientRetryDelays.length) {
-          throw UnreadChatSummaryProviderException(
-            'The summary request timed out: $error',
-          );
-        }
-        await Future<void>.delayed(transientRetryDelays[attempt]);
-        continue;
+        response = await _send(headers, body);
+      } on TimeoutException {
+        // A completion can be expensive and billable. Repeating the same
+        // timed-out request hides the real latency and can triple the wait.
+        throw UnreadChatSummaryProviderException(
+          'The model did not start within ${requestTimeout.inSeconds} seconds '
+          'or stopped streaming for ${streamIdleTimeout.inSeconds} seconds. '
+          'It may still be generating reasoning; try again or select a '
+          'faster model.',
+        );
       } on http.ClientException catch (error) {
         if (attempt >= transientRetryDelays.length) {
           throw UnreadChatSummaryProviderException(
@@ -105,23 +117,28 @@ class OpenAiCompatibleUnreadSummaryProvider
       );
     }
 
-    final Map<String, dynamic> envelope;
-    try {
-      final decoded = jsonDecode(response.body);
-      if (decoded is! Map) {
-        throw const FormatException('response is not an object');
-      }
-      envelope = Map<String, dynamic>.from(decoded);
-    } on FormatException catch (error) {
-      throw UnreadChatSummaryProviderException(
-        'The server returned invalid JSON: $error',
-        statusCode: response.statusCode,
-      );
-    }
-
     return decodeUnreadChatSummaryJson(
-      _messageContent(envelope),
+      _completionContent(response.body),
       statusCode: response.statusCode,
+    );
+  }
+
+  Future<_BufferedHttpResponse> _send(
+    Map<String, String> headers,
+    Map<String, Object?> body,
+  ) async {
+    final request = http.Request('POST', chatCompletionsUri)
+      ..headers.addAll(headers)
+      ..body = jsonEncode(body);
+    final response = await _httpClient.send(request).timeout(requestTimeout);
+    final responseBody = await response.stream
+        .timeout(streamIdleTimeout)
+        .transform(utf8.decoder)
+        .join();
+    return _BufferedHttpResponse(
+      statusCode: response.statusCode,
+      headers: response.headers,
+      body: responseBody,
     );
   }
 
@@ -137,12 +154,98 @@ class OpenAiCompatibleUnreadSummaryProvider
       statusCode == 503 ||
       statusCode == 504;
 
-  Duration _retryDelay(http.Response response, Duration fallback) {
+  Duration _retryDelay(_BufferedHttpResponse response, Duration fallback) {
     final retryAfterSeconds = int.tryParse(
       response.headers['retry-after']?.trim() ?? '',
     );
     if (retryAfterSeconds == null || retryAfterSeconds < 0) return fallback;
     return Duration(seconds: retryAfterSeconds.clamp(0, 5).toInt());
+  }
+
+  String? get _effectiveReasoningEffort {
+    final configured = reasoningEffort?.trim();
+    if (configured != null && configured.isNotEmpty) return configured;
+    final normalizedModel = model.toLowerCase();
+    if (RegExp(
+      r'(^|[/_.-])(deepseek|reasoner|reasoning|thinking|o1|o3|o4)([/_.-]|$)',
+    ).hasMatch(normalizedModel)) {
+      return 'low';
+    }
+    return null;
+  }
+
+  String _completionContent(String body) {
+    final normalized = body.trim();
+    if (!normalized
+        .split('\n')
+        .any((line) => line.trimLeft().startsWith('data:'))) {
+      final envelope = _decodeEnvelope(normalized);
+      return _messageContent(envelope);
+    }
+
+    final content = StringBuffer();
+    var reasoningCharacters = 0;
+    for (final rawLine in const LineSplitter().convert(normalized)) {
+      final line = rawLine.trimLeft();
+      if (!line.startsWith('data:')) continue;
+      final data = line.substring(5).trim();
+      if (data.isEmpty || data == '[DONE]') continue;
+      final event = _decodeEnvelope(data);
+      final error = event['error'];
+      if (error is Map) {
+        final message = error['message'];
+        throw UnreadChatSummaryProviderException(
+          message is String && message.trim().isNotEmpty
+              ? message.trim()
+              : 'The summary server rejected the streamed request',
+        );
+      }
+      final choices = event['choices'];
+      if (choices is! List || choices.isEmpty || choices.first is! Map) {
+        continue;
+      }
+      final choice = Map<String, dynamic>.from(choices.first as Map);
+      final delta = choice['delta'];
+      if (delta is Map) {
+        final value = delta['content'];
+        if (value is String) content.write(value);
+        final reasoning = delta['reasoning_content'];
+        if (reasoning is String) reasoningCharacters += reasoning.length;
+      }
+      final message = choice['message'];
+      if (message is Map) {
+        content.write(
+          _messageContent({
+            'choices': [choice],
+          }),
+        );
+      }
+      final text = choice['text'];
+      if (text is String) content.write(text);
+    }
+    final result = content.toString();
+    if (result.trim().isNotEmpty) return result;
+    if (reasoningCharacters > 0) {
+      throw const UnreadChatSummaryProviderException(
+        'The model used its entire response budget for reasoning and returned '
+        'no summary. Select a faster model or retry.',
+      );
+    }
+    throw const UnreadChatSummaryProviderException(
+      'The streamed completion returned no text content',
+    );
+  }
+
+  Map<String, dynamic> _decodeEnvelope(String value) {
+    try {
+      final decoded = jsonDecode(value);
+      if (decoded is Map) return Map<String, dynamic>.from(decoded);
+      throw const FormatException('response is not an object');
+    } on FormatException catch (error) {
+      throw UnreadChatSummaryProviderException(
+        'The server returned invalid JSON: $error',
+      );
+    }
   }
 
   String _messageContent(Map<String, dynamic> envelope) {
@@ -210,4 +313,16 @@ class OpenAiCompatibleUnreadSummaryProvider
     if (compact.isEmpty) return 'The summary server rejected the request';
     return compact.length <= 300 ? compact : '${compact.substring(0, 300)}…';
   }
+}
+
+class _BufferedHttpResponse {
+  const _BufferedHttpResponse({
+    required this.statusCode,
+    required this.headers,
+    required this.body,
+  });
+
+  final int statusCode;
+  final Map<String, String> headers;
+  final String body;
 }

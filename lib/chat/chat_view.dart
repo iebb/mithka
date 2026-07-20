@@ -4920,6 +4920,7 @@ class _ChatViewState extends State<ChatView> {
     final endpoint = settings.openAiChatCompletionsUri;
     final model = settings.model;
     final apiKey = settings.apiKey;
+    final hostedContextSize = settings.activeServerProfile?.contextWindowTokens;
     final pccContextSize = settings.pccCapabilities?.contextSize;
     final onDeviceContextSize = settings.pccCapabilities?.onDeviceContextSize;
     final outputLanguage = Localizations.localeOf(context).toLanguageTag();
@@ -4928,6 +4929,7 @@ class _ChatViewState extends State<ChatView> {
       endpoint: endpoint,
       model: model,
       apiKey: apiKey,
+      hostedContextSize: hostedContextSize,
       pccContextSize: pccContextSize,
       onDeviceContextSize: onDeviceContextSize,
       outputLanguage: outputLanguage,
@@ -4956,6 +4958,7 @@ class _ChatViewState extends State<ChatView> {
     required Uri? endpoint,
     required String model,
     required String apiKey,
+    required int? hostedContextSize,
     required int? pccContextSize,
     required int? onDeviceContextSize,
     required String outputLanguage,
@@ -5039,21 +5042,35 @@ class _ChatViewState extends State<ChatView> {
         if (endpoint == null || model.trim().isEmpty) {
           throw StateError('The summary server is not configured.');
         }
+        final contextWindow =
+            hostedContextSize ?? AiServerProfile.defaultContextWindowTokens;
+        const maximumResponseTokens = 4096;
+        final tokenBudget = unreadSummaryTokenBudget(
+          contextWindow,
+          maximumContextSize: AiServerProfile.maximumContextWindowTokens,
+          trustedInstructions: unreadChatSummaryTrustedInstructions,
+          maximumResponseTokens: maximumResponseTokens,
+          maximumPayloadTokens: 24000,
+        );
         final provider = OpenAiCompatibleUnreadSummaryProvider(
           serverBaseUri: endpoint,
           model: model.trim(),
           apiKey: apiKey,
-          requestTimeout: const Duration(seconds: 60),
         );
         return _UnreadSummarySession(
           UnreadChatSummaryService(
             historyLoader: loader,
             provider: provider,
-            maxChunks: 3,
+            maxChunks: 4,
             maxConcurrentRequests: 3,
+            maxChunkTokenEstimate: tokenBudget.payloadTokens,
             mergeChunkSummariesLocally: true,
             providerCode: 'openai_compatible/$model',
+            contextWindowTokens: contextWindow,
             outputLanguage: outputLanguage,
+            initialPromptTokenEstimate: tokenBudget.initialPromptTokens,
+            reservedNonPayloadTokenEstimate:
+                tokenBudget.reservedNonPayloadTokens,
           ),
           onDispose: provider.close,
         );

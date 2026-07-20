@@ -246,6 +246,12 @@ abstract final class AppStringKeys {
   static const apiCredentialsDescription = 'apiCredentialsDescription';
   static const apiCredentialsTitle = 'apiCredentialsTitle';
   static const aiInvalidEndpoint = 'aiInvalidEndpoint';
+  static const aiAddProvider = 'aiAddProvider';
+  static const aiContextWindow = 'aiContextWindow';
+  static const aiDeleteProvider = 'aiDeleteProvider';
+  static const aiModelsFailed = 'aiModelsFailed';
+  static const aiModelsLoaded = 'aiModelsLoaded';
+  static const aiNoProvider = 'aiNoProvider';
   static const aiOnDevicePrivacy = 'aiOnDevicePrivacy';
   static const aiOnDeviceUnavailableDescription =
       'aiOnDeviceUnavailableDescription';
@@ -259,6 +265,10 @@ abstract final class AppStringKeys {
   static const aiProviderApplePcc = 'aiProviderApplePcc';
   static const aiProviderAppleOnDevice = 'aiProviderAppleOnDevice';
   static const aiProviderOpenAiCompatible = 'aiProviderOpenAiCompatible';
+  static const aiProviderName = 'aiProviderName';
+  static const aiProviderNameHint = 'aiProviderNameHint';
+  static const aiProviders = 'aiProviders';
+  static const aiRefreshModels = 'aiRefreshModels';
   static const aiSave = 'aiSave';
   static const aiSaved = 'aiSaved';
   static const aiServerApiKey = 'aiServerApiKey';

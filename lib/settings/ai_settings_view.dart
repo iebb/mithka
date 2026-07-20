@@ -9,6 +9,7 @@ import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 import 'ai_settings_controller.dart';
+import 'openai_compatible_models_api.dart';
 
 class AiSettingsView extends StatefulWidget {
   const AiSettingsView({super.key});
@@ -18,12 +19,17 @@ class AiSettingsView extends StatefulWidget {
 }
 
 class _AiSettingsViewState extends State<AiSettingsView> {
+  final _providerName = TextEditingController();
   final _endpoint = TextEditingController();
   final _model = TextEditingController();
   final _apiKey = TextEditingController();
+  final _contextWindow = TextEditingController();
+  List<OpenAiCompatibleModelInfo> _availableModels = const [];
+  String? _editingProfileId;
   bool _didLoadValues = false;
   bool _didRefreshPccCapabilities = false;
   bool _saving = false;
+  bool _refreshingModels = false;
   bool _obscureApiKey = true;
 
   @override
@@ -35,18 +41,18 @@ class _AiSettingsViewState extends State<AiSettingsView> {
       unawaited(settings.refreshPccCapabilities());
     }
     if (!_didLoadValues && settings.initialized) {
-      _endpoint.text = settings.endpoint;
-      _model.text = settings.model;
-      _apiKey.text = settings.apiKey;
+      _loadProfile(settings.activeServerProfile, settings.apiKey);
       _didLoadValues = true;
     }
   }
 
   @override
   void dispose() {
+    _providerName.dispose();
     _endpoint.dispose();
     _model.dispose();
     _apiKey.dispose();
+    _contextWindow.dispose();
     super.dispose();
   }
 
@@ -123,7 +129,7 @@ class _AiSettingsViewState extends State<AiSettingsView> {
                       ),
                       const SizedBox(height: AppSpacing.section),
                       if (settings.provider == AiProviderMode.openAiCompatible)
-                        _serverConfiguration(context),
+                        _serverConfiguration(context, settings),
                       if (settings.provider != AiProviderMode.openAiCompatible)
                         _appleConfiguration(context, settings),
                     ],
@@ -196,10 +202,49 @@ class _AiSettingsViewState extends State<AiSettingsView> {
     );
   }
 
-  Widget _serverConfiguration(BuildContext context) {
+  Widget _serverConfiguration(
+    BuildContext context,
+    AiSettingsController settings,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        _sectionTitle(context, AppStringKeys.aiProviders.l10n(context)),
+        SettingsCard(
+          children: [
+            if (settings.serverProfiles.isNotEmpty) ...[
+              SettingsRow(
+                title: AppStringKeys.aiProviders.l10n(context),
+                value:
+                    settings.activeServerProfile?.name ??
+                    AppStringKeys.aiNoProvider.l10n(context),
+                leading: const SettingsIconTile(
+                  icon: HeroAppIcons.networkWired,
+                  backgroundColor: Color(0xFF3478F6),
+                ),
+                onTap: () => _showServerProfilePicker(settings),
+              ),
+              const InsetDivider(leadingInset: 56),
+            ],
+            SettingsRow(
+              title: AppStringKeys.aiAddProvider.l10n(context),
+              leading: const SettingsIconTile(
+                icon: HeroAppIcons.circlePlus,
+                backgroundColor: Color(0xFF20A45B),
+              ),
+              onTap: _startNewProfile,
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.section),
+        _inputField(
+          context,
+          controller: _providerName,
+          icon: HeroAppIcons.networkWired,
+          label: AppStringKeys.aiProviderName.l10n(context),
+          hint: AppStringKeys.aiProviderNameHint.l10n(context),
+        ),
+        const SizedBox(height: AppSpacing.sm),
         _inputField(
           context,
           controller: _endpoint,
@@ -207,14 +252,6 @@ class _AiSettingsViewState extends State<AiSettingsView> {
           label: AppStringKeys.aiServerEndpoint.l10n(context),
           hint: AppStringKeys.aiServerEndpointHint.l10n(context),
           keyboardType: TextInputType.url,
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        _inputField(
-          context,
-          controller: _model,
-          icon: HeroAppIcons.wandMagicSparkles,
-          label: AppStringKeys.aiServerModel.l10n(context),
-          hint: AppStringKeys.aiServerModelHint.l10n(context),
         ),
         const SizedBox(height: AppSpacing.sm),
         _inputField(
@@ -237,14 +274,65 @@ class _AiSettingsViewState extends State<AiSettingsView> {
             ),
           ),
         ),
+        const SizedBox(height: AppSpacing.sm),
+        _inputField(
+          context,
+          controller: _model,
+          icon: HeroAppIcons.wandMagicSparkles,
+          label: AppStringKeys.aiServerModel.l10n(context),
+          hint: AppStringKeys.aiServerModelHint.l10n(context),
+          trailing: _availableModels.isEmpty
+              ? null
+              : GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _showModelPicker,
+                  child: Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: AppIcon(
+                      HeroAppIcons.chevronDown,
+                      size: 18,
+                      color: context.colors.textSecondary,
+                    ),
+                  ),
+                ),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        _inputField(
+          context,
+          controller: _contextWindow,
+          icon: HeroAppIcons.clock,
+          label: AppStringKeys.aiContextWindow.l10n(context),
+          hint: '${AiServerProfile.defaultContextWindowTokens}',
+          keyboardType: TextInputType.number,
+        ),
         _note(context, AppStringKeys.aiServerPrivacy.l10n(context)),
         const SizedBox(height: AppSpacing.lg),
+        _actionButton(
+          context,
+          label: AppStringKeys.aiRefreshModels.l10n(context),
+          saving: _refreshingModels,
+          onTap: _refreshModels,
+          backgroundColor: context.colors.card,
+          foregroundColor: AppTheme.brand,
+          borderColor: AppTheme.brand,
+        ),
+        const SizedBox(height: AppSpacing.sm),
         _actionButton(
           context,
           label: AppStringKeys.aiSave.l10n(context),
           saving: _saving,
           onTap: _saveServerConfiguration,
         ),
+        if (_editingProfileId != null) ...[
+          const SizedBox(height: AppSpacing.sm),
+          _actionButton(
+            context,
+            label: AppStringKeys.aiDeleteProvider.l10n(context),
+            saving: _saving,
+            onTap: _deleteServerConfiguration,
+            backgroundColor: const Color(0xFFDC3C3C),
+          ),
+        ],
       ],
     );
   }
@@ -312,6 +400,9 @@ class _AiSettingsViewState extends State<AiSettingsView> {
     required String label,
     required bool saving,
     required VoidCallback onTap,
+    Color? backgroundColor,
+    Color? foregroundColor,
+    Color? borderColor,
   }) {
     return Semantics(
       button: true,
@@ -326,15 +417,18 @@ class _AiSettingsViewState extends State<AiSettingsView> {
             height: 48,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: AppTheme.brand,
+              color: backgroundColor ?? AppTheme.brand,
               borderRadius: BorderRadius.circular(AppRadius.card),
+              border: borderColor == null
+                  ? null
+                  : Border.all(color: borderColor),
             ),
             child: saving
                 ? const AppActivityIndicator(size: 20, color: Color(0xFFFFFFFF))
                 : Text(
                     label,
-                    style: const TextStyle(
-                      color: Color(0xFFFFFFFF),
+                    style: TextStyle(
+                      color: foregroundColor ?? const Color(0xFFFFFFFF),
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                     ),
@@ -350,9 +444,20 @@ class _AiSettingsViewState extends State<AiSettingsView> {
     setState(() => _saving = true);
     final settings = context.read<AiSettingsController>();
     try {
-      await settings.setEndpoint(_endpoint.text);
-      await settings.setModel(_model.text);
-      await settings.setApiKey(_apiKey.text);
+      final contextWindow = int.tryParse(_contextWindow.text.trim());
+      if (contextWindow == null) {
+        throw const FormatException('A numeric context window is required.');
+      }
+      final saved = await settings.saveServerProfile(
+        id: _editingProfileId,
+        name: _providerName.text,
+        endpoint: _endpoint.text,
+        model: _model.text,
+        apiKey: _apiKey.text,
+        contextWindowTokens: contextWindow,
+        availableModels: _availableModels,
+      );
+      _editingProfileId = saved.id;
       if (mounted) showToast(context, AppStringKeys.aiSaved.l10n(context));
     } on FormatException {
       if (mounted) {
@@ -361,6 +466,243 @@ class _AiSettingsViewState extends State<AiSettingsView> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  Future<void> _refreshModels() async {
+    if (_refreshingModels) return;
+    setState(() => _refreshingModels = true);
+    try {
+      final settings = context.read<AiSettingsController>();
+      final models = await settings.discoverModels(
+        endpoint: _endpoint.text,
+        apiKey: _apiKey.text,
+      );
+      if (!mounted) return;
+      setState(() {
+        _availableModels = models;
+        if (_model.text.trim().isEmpty && models.isNotEmpty) {
+          _model.text = models.first.id;
+        }
+        final selected = models.where((item) => item.id == _model.text.trim());
+        if (selected.isNotEmpty && selected.first.contextWindowTokens != null) {
+          _contextWindow.text = '${selected.first.contextWindowTokens}';
+        }
+      });
+      showToast(
+        context,
+        context.l10n.t(AppStringKeys.aiModelsLoaded, {'value1': models.length}),
+      );
+      if (models.isNotEmpty) await _showModelPicker();
+    } on Object {
+      if (mounted) {
+        showToast(context, AppStringKeys.aiModelsFailed.l10n(context));
+      }
+    } finally {
+      if (mounted) setState(() => _refreshingModels = false);
+    }
+  }
+
+  Future<void> _deleteServerConfiguration() async {
+    final profileId = _editingProfileId;
+    if (profileId == null || _saving) return;
+    setState(() => _saving = true);
+    try {
+      final settings = context.read<AiSettingsController>();
+      await settings.deleteServerProfile(profileId);
+      if (!mounted) return;
+      _loadProfile(settings.activeServerProfile, settings.apiKey);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  void _startNewProfile() {
+    setState(() {
+      _editingProfileId = null;
+      _providerName.clear();
+      _endpoint.clear();
+      _model.clear();
+      _apiKey.clear();
+      _contextWindow.text = '${AiServerProfile.defaultContextWindowTokens}';
+      _availableModels = const [];
+    });
+  }
+
+  void _loadProfile(AiServerProfile? profile, String apiKey) {
+    _editingProfileId = profile?.id;
+    _providerName.text = profile?.name ?? '';
+    _endpoint.text = profile?.endpoint ?? '';
+    _model.text = profile?.model ?? '';
+    _apiKey.text = apiKey;
+    _contextWindow.text =
+        '${profile?.contextWindowTokens ?? AiServerProfile.defaultContextWindowTokens}';
+    _availableModels = profile?.availableModels ?? const [];
+  }
+
+  Future<void> _showServerProfilePicker(AiSettingsController settings) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        final c = sheetContext.colors;
+        return SafeArea(
+          child: Container(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.62,
+            ),
+            margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            decoration: BoxDecoration(
+              color: c.card,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: settings.serverProfiles.length,
+              separatorBuilder: (_, _) => const InsetDivider(leadingInset: 56),
+              itemBuilder: (_, index) {
+                final profile = settings.serverProfiles[index];
+                final selected = profile.id == settings.activeServerProfileId;
+                return GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () async {
+                    await settings.selectServerProfile(profile.id);
+                    if (!mounted || !sheetContext.mounted) return;
+                    setState(() {
+                      _loadProfile(
+                        profile,
+                        settings.apiKeyForServerProfile(profile.id),
+                      );
+                    });
+                    Navigator.of(sheetContext).pop();
+                  },
+                  child: SizedBox(
+                    height: 64,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(
+                        children: [
+                          const SettingsIconTile(
+                            icon: HeroAppIcons.networkWired,
+                            backgroundColor: Color(0xFF3478F6),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  profile.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTextStyle.body(c.textPrimary),
+                                ),
+                                Text(
+                                  profile.model,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTextStyle.caption(c.textSecondary),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (selected)
+                            AppIcon(
+                              HeroAppIcons.check,
+                              size: 18,
+                              color: AppTheme.brand,
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showModelPicker() async {
+    final models = _availableModels;
+    if (models.isEmpty || !mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        final c = sheetContext.colors;
+        return SafeArea(
+          child: Container(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.68,
+            ),
+            margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            decoration: BoxDecoration(
+              color: c.card,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: models.length,
+              separatorBuilder: (_, _) => const InsetDivider(leadingInset: 16),
+              itemBuilder: (_, index) {
+                final model = models[index];
+                final selected = model.id == _model.text.trim();
+                return GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    setState(() {
+                      _model.text = model.id;
+                      final contextTokens = model.contextWindowTokens;
+                      if (contextTokens != null) {
+                        _contextWindow.text = '$contextTokens';
+                      }
+                    });
+                    Navigator.of(sheetContext).pop();
+                  },
+                  child: SizedBox(
+                    height: 52,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              model.id,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTextStyle.body(c.textPrimary),
+                            ),
+                          ),
+                          if (model.contextWindowTokens case final tokens?)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 10),
+                              child: Text(
+                                '${tokens ~/ 1024}K',
+                                style: AppTextStyle.caption(c.textSecondary),
+                              ),
+                            ),
+                          if (selected)
+                            AppIcon(
+                              HeroAppIcons.check,
+                              size: 18,
+                              color: AppTheme.brand,
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _showProviderPicker(AiSettingsController settings) async {

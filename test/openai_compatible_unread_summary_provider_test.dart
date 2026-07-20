@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -36,7 +37,7 @@ UnreadChatSummaryProviderRequest _request() => UnreadChatSummaryProviderRequest(
 );
 
 void main() {
-  test('posts a nonstreaming authenticated chat completion', () async {
+  test('posts a streaming authenticated chat completion', () async {
     late http.Request captured;
     final client = MockClient((request) async {
       captured = request;
@@ -66,7 +67,9 @@ void main() {
     expect(captured.headers['content-type'], 'application/json');
     final body = jsonDecode(captured.body) as Map<String, dynamic>;
     expect(body['model'], 'test-model');
-    expect(body['stream'], isFalse);
+    expect(body['stream'], isTrue);
+    expect(body['max_tokens'], 4096);
+    expect(body, isNot(contains('reasoning_effort')));
     expect(body.containsKey('response_format'), isFalse);
     final messages = body['messages'] as List<dynamic>;
     expect(messages.first['role'], 'system');
@@ -77,6 +80,61 @@ void main() {
     expect(messages.last['content'], contains('"output_language":"zh-Hans"'));
     expect(result['overview'], '要点');
   });
+
+  test(
+    'assembles SSE content and limits reasoning for reasoning models',
+    () async {
+      late http.Request captured;
+      final summary = jsonEncode(_summaryJson());
+      final client = MockClient((request) async {
+        captured = request;
+        return http.Response.bytes(
+          utf8.encode(
+            [
+              'data: ${jsonEncode({
+                'choices': [
+                  {
+                    'delta': {'reasoning_content': 'internal reasoning'},
+                  },
+                ],
+              })}',
+              'data: ${jsonEncode({
+                'choices': [
+                  {
+                    'delta': {'content': summary.substring(0, 30)},
+                  },
+                ],
+              })}',
+              'data: ${jsonEncode({
+                'choices': [
+                  {
+                    'delta': {'content': summary.substring(30)},
+                  },
+                ],
+              })}',
+              'data: [DONE]',
+              '',
+            ].join('\n'),
+          ),
+          200,
+          headers: {'content-type': 'text/event-stream'},
+        );
+      });
+      final provider = OpenAiCompatibleUnreadSummaryProvider(
+        serverBaseUri: Uri.parse('https://example.test/v1/chat/completions'),
+        model: 'deepseek-v4-flash',
+        httpClient: client,
+      );
+
+      final result = await provider.complete(_request());
+
+      final body = jsonDecode(captured.body) as Map<String, dynamic>;
+      expect(body['stream'], isTrue);
+      expect(body['reasoning_effort'], 'low');
+      expect(body['max_tokens'], 4096);
+      expect(result['overview'], '要点');
+    },
+  );
 
   test(
     'parses fenced JSON assembled from content parts without a key',
@@ -189,4 +247,38 @@ void main() {
     expect(attempts, 2);
     expect(result['overview'], '要点');
   });
+
+  test('does not retry a timed-out completion', () async {
+    final client = _HangingClient();
+    final provider = OpenAiCompatibleUnreadSummaryProvider(
+      serverBaseUri: Uri.parse('https://example.test'),
+      model: 'slow-model',
+      httpClient: client,
+      requestTimeout: const Duration(milliseconds: 5),
+      transientRetryDelays: const [Duration.zero, Duration.zero],
+    );
+
+    await expectLater(
+      provider.complete(_request()),
+      throwsA(
+        isA<UnreadChatSummaryProviderException>().having(
+          (error) => error.message,
+          'message',
+          contains('did not start'),
+        ),
+      ),
+    );
+    expect(client.attempts, 1);
+  });
+}
+
+class _HangingClient extends http.BaseClient {
+  int attempts = 0;
+  final _response = Completer<http.StreamedResponse>();
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) {
+    attempts++;
+    return _response.future;
+  }
 }

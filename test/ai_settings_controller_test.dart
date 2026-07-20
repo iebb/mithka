@@ -53,11 +53,13 @@ void main() {
 
         await controller.setEnabled(true);
         await controller.setProvider(AiProviderMode.openAiCompatible);
-        await controller.setEndpoint(
-          ' https://ai.example.com/v1/chat/completions ',
+        final profile = await controller.saveServerProfile(
+          name: 'Example AI',
+          endpoint: ' https://ai.example.com/v1/chat/completions ',
+          model: ' example-model ',
+          apiKey: ' $secret ',
+          contextWindowTokens: 131072,
         );
-        await controller.setModel(' example-model ');
-        await controller.setApiKey(' $secret ');
 
         expect(controller.enabled, isTrue);
         expect(controller.provider, AiProviderMode.openAiCompatible);
@@ -67,11 +69,17 @@ void main() {
         );
         expect(controller.model, 'example-model');
         expect(controller.apiKey, secret);
+        expect(controller.activeServerProfile?.name, 'Example AI');
+        expect(controller.activeServerProfile?.contextWindowTokens, 131072);
         expect(controller.isConfiguredForCurrentProvider, isTrue);
-        expect(secureValues[AiSettingsController.apiKeyStorageKey], secret);
+        expect(secureValues.values, contains(secret));
+        expect(
+          secureValues,
+          isNot(contains(AiSettingsController.apiKeyStorageKey)),
+        );
         expect(preferences.getKeys(), isNot(contains(secret)));
         for (final key in preferences.getKeys()) {
-          expect(preferences.get(key), isNot(secret));
+          expect('${preferences.get(key)}', isNot(contains(secret)));
         }
 
         final restored = AiSettingsController(
@@ -87,9 +95,56 @@ void main() {
         expect(restored.apiKey, secret);
         expect(restored.isConfiguredForCurrentProvider, isTrue);
 
-        await controller.setApiKey('');
-        expect(controller.apiKey, isEmpty);
+        await controller.deleteServerProfile(profile.id);
+        expect(controller.serverProfiles, isEmpty);
         expect(secureValues, isEmpty);
+      },
+    );
+
+    test(
+      'stores, selects, and deletes multiple endpoint-key profiles',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final secureValues = <String, String>{};
+        final controller = AiSettingsController(
+          await SharedPreferences.getInstance(),
+          pccApi: _pccApi(available: false),
+          secureRead: (key) async => secureValues[key],
+          secureWrite: (key, value) async {
+            if (value == null) {
+              secureValues.remove(key);
+            } else {
+              secureValues[key] = value;
+            }
+          },
+        );
+        await controller.initialize();
+
+        final first = await controller.saveServerProfile(
+          name: 'First',
+          endpoint: 'https://first.example/v1/chat/completions',
+          model: 'first-model',
+          apiKey: 'first-key',
+          contextWindowTokens: 32768,
+        );
+        final second = await controller.saveServerProfile(
+          name: 'Second',
+          endpoint: 'https://second.example/v1/chat/completions',
+          model: 'second-model',
+          apiKey: 'second-key',
+          contextWindowTokens: 262144,
+        );
+
+        expect(controller.serverProfiles, hasLength(2));
+        expect(controller.activeServerProfileId, second.id);
+        expect(controller.apiKey, 'second-key');
+        await controller.selectServerProfile(first.id);
+        expect(controller.model, 'first-model');
+        expect(controller.apiKey, 'first-key');
+        await controller.deleteServerProfile(first.id);
+        expect(controller.activeServerProfileId, second.id);
+        expect(controller.apiKey, 'second-key');
+        expect(secureValues.values, isNot(contains('first-key')));
       },
     );
 
@@ -112,6 +167,56 @@ void main() {
       expect(controller.apiKey, isEmpty);
       expect(controller.isConfiguredForCurrentProvider, isTrue);
     });
+
+    test(
+      'migrates the legacy endpoint and key into a secure profile',
+      () async {
+        const secret = 'legacy-secret';
+        SharedPreferences.setMockInitialValues({
+          AiSettingsController.providerPreferenceKey: 'open_ai_compatible',
+          AiSettingsController.endpointPreferenceKey:
+              'https://legacy.example/v1/chat/completions',
+          AiSettingsController.modelPreferenceKey: 'legacy-model',
+        });
+        final secureValues = <String, String>{
+          AiSettingsController.apiKeyStorageKey: secret,
+        };
+        final preferences = await SharedPreferences.getInstance();
+        final controller = AiSettingsController(
+          preferences,
+          pccApi: _pccApi(available: false),
+          secureRead: (key) async => secureValues[key],
+          secureWrite: (key, value) async {
+            if (value == null) {
+              secureValues.remove(key);
+            } else {
+              secureValues[key] = value;
+            }
+          },
+        );
+
+        await controller.initialize();
+
+        expect(controller.serverProfiles, hasLength(1));
+        expect(controller.activeServerProfile?.id, 'legacy');
+        expect(
+          controller.activeServerProfile?.contextWindowTokens,
+          AiServerProfile.defaultContextWindowTokens,
+        );
+        expect(controller.apiKey, secret);
+        expect(
+          secureValues,
+          isNot(contains(AiSettingsController.apiKeyStorageKey)),
+        );
+        expect(secureValues.values, contains(secret));
+        expect(
+          preferences.getString(
+            AiSettingsController.serverProfilesPreferenceKey,
+          ),
+          isNot(contains(secret)),
+        );
+      },
+    );
 
     test('on-device configuration uses its independent availability', () async {
       SharedPreferences.setMockInitialValues({
@@ -206,6 +311,7 @@ void main() {
       const valid = [
         'https://api.openai.com/v1/chat/completions',
         'https://ai.example.com:8443/v1/chat/completions',
+        'https://ai.example.com/custom/v1/chat/completions',
         'http://localhost:11434/v1/chat/completions',
         'http://api.localhost/v1/chat/completions',
         'http://127.0.0.1:8080/v1/chat/completions',

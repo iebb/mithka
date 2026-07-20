@@ -125,6 +125,13 @@ const esMessages = <String, String>{
   'apiCredentialsTitle': "Credenciales de API personalizadas",
   'aiInvalidEndpoint':
       "Usa una URL HTTPS que termine en /v1/chat/completions. HTTP solo se permite para localhost.",
+  'aiAddProvider': "Añadir proveedor",
+  'aiContextWindow': "Tokens de contexto",
+  'aiDeleteProvider': "Eliminar proveedor",
+  'aiModelsFailed':
+      "No se pudieron cargar los modelos. Revisa el punto de conexión y la clave de API.",
+  'aiModelsLoaded': "Se cargaron {value1} modelos",
+  'aiNoProvider': "Ningún proveedor seleccionado",
   'aiOnDevicePrivacy':
       "Los mensajes no leídos se procesan por completo en este dispositivo con Apple Intelligence y no se envían a un servidor.",
   'aiOnDeviceUnavailableDescription':
@@ -141,12 +148,16 @@ const esMessages = <String, String>{
   'aiProcessingMode': "Modo de procesamiento",
   'aiProviderApplePcc': "Apple Private Cloud Compute",
   'aiProviderAppleOnDevice': "Modelo de Apple en el dispositivo",
-  'aiProviderOpenAiCompatible': "Servidor compatible con OpenAI",
+  'aiProviderOpenAiCompatible': "Servidor personalizado",
+  'aiProviderName': "Nombre",
+  'aiProviderNameHint': "Mi proveedor de IA",
+  'aiProviders': "Proveedores",
+  'aiRefreshModels': "Cargar modelos",
   'aiSave': "Guardar configuración",
   'aiSaved': "Ajustes de IA guardados",
   'aiServerApiKey': "Clave de API",
   'aiServerApiKeyOptional': "Opcional para servidores locales o sin clave",
-  'aiServerEndpoint': "URL del punto de conexión",
+  'aiServerEndpoint': "URL de API",
   'aiServerEndpointHint': "https://example.com/v1/chat/completions",
   'aiServerModel': "Modelo",
   'aiServerModelHint': "Nombre del modelo",
