@@ -68,7 +68,8 @@ void main() {
     final body = jsonDecode(captured.body) as Map<String, dynamic>;
     expect(body['model'], 'test-model');
     expect(body['stream'], isTrue);
-    expect(body['max_tokens'], 4096);
+    expect(body, isNot(contains('max_tokens')));
+    expect(body, isNot(contains('max_completion_tokens')));
     expect(body, isNot(contains('reasoning_effort')));
     expect(body.containsKey('response_format'), isFalse);
     final messages = body['messages'] as List<dynamic>;
@@ -131,10 +132,79 @@ void main() {
       final body = jsonDecode(captured.body) as Map<String, dynamic>;
       expect(body['stream'], isTrue);
       expect(body['reasoning_effort'], 'low');
-      expect(body['max_tokens'], 4096);
+      expect(body, isNot(contains('max_tokens')));
+      expect(body, isNot(contains('max_completion_tokens')));
       expect(result['overview'], '要点');
     },
   );
+
+  test('retries without an unsupported reasoning parameter', () async {
+    final bodies = <Map<String, dynamic>>[];
+    final client = MockClient((request) async {
+      bodies.add(jsonDecode(request.body) as Map<String, dynamic>);
+      if (bodies.length == 1) {
+        return http.Response(
+          jsonEncode({
+            'error': {'message': "Unsupported parameter: 'reasoning_effort'"},
+          }),
+          400,
+        );
+      }
+      return http.Response(
+        jsonEncode({
+          'choices': [
+            {
+              'message': {'content': jsonEncode(_summaryJson())},
+            },
+          ],
+        }),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    });
+    final provider = OpenAiCompatibleUnreadSummaryProvider(
+      serverBaseUri: Uri.parse('https://example.test'),
+      model: 'deepseek-reasoner',
+      httpClient: client,
+      transientRetryDelays: const [],
+    );
+
+    final result = await provider.complete(_request());
+
+    expect(bodies, hasLength(2));
+    expect(bodies.first['reasoning_effort'], 'low');
+    expect(bodies.last, isNot(contains('reasoning_effort')));
+    expect(result['overview'], '要点');
+  });
+
+  test('extracts summary JSON after reasoning text', () async {
+    final summary = jsonEncode(_summaryJson());
+    final client = MockClient(
+      (_) async => http.Response(
+        jsonEncode({
+          'choices': [
+            {
+              'message': {
+                'content': '<think>{"scratch":true}</think>\n$summary\nDone.',
+              },
+            },
+          ],
+        }),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      ),
+    );
+    final provider = OpenAiCompatibleUnreadSummaryProvider(
+      serverBaseUri: Uri.parse('https://example.test'),
+      model: 'reasoning-model',
+      httpClient: client,
+    );
+
+    final result = await provider.complete(_request());
+
+    expect(result['overview'], '要点');
+    expect(result, isNot(contains('scratch')));
+  });
 
   test(
     'parses fenced JSON assembled from content parts without a key',

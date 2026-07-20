@@ -379,12 +379,13 @@ class _MessageBubbleState extends State<MessageBubble>
                 (message.senderTitle?.trim().isNotEmpty ?? false)),
       _ => true,
     };
-    final premiumNameColor = messageNameColorForSender(
-      theme: theme.cloudThemeFor(Theme.of(context).brightness),
+    final cloudTheme = theme.cloudThemeFor(Theme.of(context).brightness);
+    final senderNameColor = messageNameColorForSender(
+      theme: cloudTheme,
       accentColorId: message.senderAccentColorId,
       isPremium: message.senderIsPremium,
       showPremiumColors: theme.showChatPremiumNameColors,
-      premiumColorsDisabledFallback: c.textSecondary,
+      premiumColorsDisabledFallback: cloudTheme?.senderNameColor ?? c.linkBlue,
     );
     final showPremiumStatus =
         theme.showChatPremiumEmojiStatus &&
@@ -521,7 +522,7 @@ class _MessageBubbleState extends State<MessageBubble>
                                   name: message.senderName!,
                                   nameStyle: TextStyle(
                                     fontSize: 12,
-                                    color: premiumNameColor,
+                                    color: senderNameColor,
                                     fontWeight: message.senderIsPremium
                                         ? FontWeight.w600
                                         : FontWeight.w400,
@@ -539,7 +540,7 @@ class _MessageBubbleState extends State<MessageBubble>
                                 StatusEmojiView(
                                   id: message.senderEmojiStatusId,
                                   size: 14,
-                                  color: premiumNameColor,
+                                  color: senderNameColor,
                                 ),
                               ],
                             ],

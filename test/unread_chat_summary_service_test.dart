@@ -722,6 +722,62 @@ void main() {
     });
 
     test(
+      'keeps every message when many time gaps still fit the chunk budget',
+      () async {
+        final provider = _RecordingProvider();
+        final service = UnreadChatSummaryService(
+          historyLoader: UnreadChatHistoryLoader(
+            query: (_, _) async => const {'@type': 'messages', 'messages': []},
+          ),
+          provider: provider,
+          maxChunkMessages: 100,
+          maxChunkTokenEstimate: 100000,
+          maxChunks: 3,
+          maxInlineBurstMessages: 1,
+          maxChunkTimeGapSeconds: 300,
+          parallelismMinimumMessageCount: 5,
+          mergeChunkSummariesLocally: true,
+        );
+        final transcript = UnreadChatTranscript(
+          snapshot: _snapshot(
+            lastReadInboxId: 0,
+            unreadCount: 10,
+            upperMessageId: 10,
+          ),
+          messages: [
+            for (var id = 1; id <= 10; id++)
+              UnreadChatMessage(
+                id: id,
+                date: id * 1000,
+                senderKey: 'user:$id',
+                isOutgoing: false,
+                isService: false,
+                contentType: 'messageText',
+                text: 'detail $id',
+              ),
+          ],
+          historyRequestCount: 1,
+          reachedReadBoundary: true,
+          historyCapped: false,
+          historyStalled: false,
+        );
+
+        final result = await service.summarizeTranscript(transcript);
+        final chunks = provider.requests
+            .where((request) => request.stage == UnreadChatSummaryStage.chunk)
+            .toList();
+
+        expect(chunks, hasLength(3));
+        expect(chunks.expand((chunk) => chunk.allowedEvidenceIds).toSet(), {
+          for (var id = 1; id <= 10; id++) 'm$id',
+        });
+        expect(result.coverage.summarizedMessageCount, 10);
+        expect(result.coverage.processingCapped, isFalse);
+        expect(result.coverage.complete, isTrue);
+      },
+    );
+
+    test(
       'caps each source message at 300 tokens before building the prompt',
       () async {
         final provider = _RecordingProvider();
@@ -1017,50 +1073,49 @@ void main() {
       },
     );
 
-    test('rejects evidence IDs outside the supplied transcript', () async {
-      final provider = _InvalidEvidenceProvider();
-      final service = UnreadChatSummaryService(
-        historyLoader: UnreadChatHistoryLoader(
-          query: (_, _) async => const {'@type': 'messages', 'messages': []},
-        ),
-        provider: provider,
-      );
-      final transcript = UnreadChatTranscript(
-        snapshot: _snapshot(
-          lastReadInboxId: 0,
-          unreadCount: 1,
-          upperMessageId: 1,
-        ),
-        messages: [
-          const UnreadChatMessage(
-            id: 1,
-            date: 1,
-            senderKey: 'user:7',
-            isOutgoing: false,
-            isService: false,
-            contentType: 'messageText',
-            text: 'hello',
+    test(
+      'falls back to grounded local excerpts when every model result is invalid',
+      () async {
+        final provider = _InvalidEvidenceProvider();
+        final service = UnreadChatSummaryService(
+          historyLoader: UnreadChatHistoryLoader(
+            query: (_, _) async => const {'@type': 'messages', 'messages': []},
           ),
-        ],
-        historyRequestCount: 1,
-        reachedReadBoundary: true,
-        historyCapped: false,
-        historyStalled: false,
-      );
+          provider: provider,
+        );
+        final transcript = UnreadChatTranscript(
+          snapshot: _snapshot(
+            lastReadInboxId: 0,
+            unreadCount: 1,
+            upperMessageId: 1,
+          ),
+          messages: [
+            const UnreadChatMessage(
+              id: 1,
+              date: 1,
+              senderKey: 'user:7',
+              isOutgoing: false,
+              isService: false,
+              contentType: 'messageText',
+              text: 'hello',
+            ),
+          ],
+          historyRequestCount: 1,
+          reachedReadBoundary: true,
+          historyCapped: false,
+          historyStalled: false,
+        );
 
-      expect(
-        () => service.summarizeTranscript(transcript),
-        throwsA(
-          isA<UnreadChatSummaryFailure>()
-              .having((failure) => failure.stage, 'stage', 'summarizing_chunks')
-              .having(
-                (failure) => failure.causes.single.code,
-                'cause code',
-                'invalid_grounded_summary',
-              ),
-        ),
-      );
-    });
+        final result = await service.summarizeTranscript(transcript);
+
+        expect(result.coverage.usedLocalFallback, isTrue);
+        expect(result.coverage.failedRequestCount, 1);
+        expect(result.coverage.complete, isFalse);
+        expect(result.highlights.single.text, 'hello');
+        expect(result.highlights.single.evidenceIds, ['m1']);
+        expect(result.toJson().toString(), isNot(contains('m999')));
+      },
+    );
 
     test('keeps grounded sections when a sibling section is malformed', () {
       final content = UnreadChatSummaryContent.fromJsonBestEffort(

@@ -169,25 +169,92 @@ Map<String, dynamic> decodeUnreadChatSummaryJson(
   int? statusCode,
 }) {
   final trimmed = content.trim();
-  var summaryJson = trimmed;
-  if (trimmed.startsWith('```')) {
-    final firstNewline = trimmed.indexOf('\n');
-    final closingFence = trimmed.lastIndexOf('```');
-    if (firstNewline >= 0 && closingFence > firstNewline) {
-      summaryJson = trimmed.substring(firstNewline + 1, closingFence).trim();
+  final candidates = <String>[];
+  void addCandidate(String value) {
+    final candidate = value.trim();
+    if (candidate.isNotEmpty && !candidates.contains(candidate)) {
+      candidates.add(candidate);
     }
   }
-  try {
-    final decoded = jsonDecode(summaryJson);
-    if (decoded is! Map) {
-      throw const FormatException('summary is not an object');
+
+  addCandidate(trimmed);
+  final fences = RegExp(
+    r'```(?:json)?\s*(.*?)```',
+    caseSensitive: false,
+    dotAll: true,
+  );
+  for (final match in fences.allMatches(trimmed)) {
+    addCandidate(match.group(1) ?? '');
+  }
+  for (final candidate in _balancedJsonObjects(trimmed)) {
+    addCandidate(candidate);
+  }
+
+  Object? lastError;
+  Map<String, dynamic>? firstObject;
+  for (final candidate in candidates) {
+    try {
+      final decoded = jsonDecode(candidate);
+      if (decoded is! Map) {
+        lastError = const FormatException('summary is not an object');
+        continue;
+      }
+      final value = Map<String, dynamic>.from(decoded);
+      firstObject ??= value;
+      if (_looksLikeUnreadSummary(value)) return value;
+    } on FormatException catch (error) {
+      lastError = error;
     }
-    return Map<String, dynamic>.from(decoded);
-  } on FormatException catch (error) {
-    throw UnreadChatSummaryProviderException(
-      'The model returned an invalid summary object: $error',
-      statusCode: statusCode,
-    );
+  }
+  if (firstObject != null) return firstObject;
+  throw UnreadChatSummaryProviderException(
+    'The model returned an invalid summary object: '
+    '${lastError ?? const FormatException('no JSON object found')}',
+    statusCode: statusCode,
+  );
+}
+
+bool _looksLikeUnreadSummary(Map<String, dynamic> value) =>
+    value.containsKey('overview') ||
+    value.containsKey('topics') ||
+    value.containsKey('highlights') ||
+    value.containsKey('needs_reply');
+
+Iterable<String> _balancedJsonObjects(String value) sync* {
+  var start = -1;
+  var depth = 0;
+  var inString = false;
+  var escaped = false;
+  for (var index = 0; index < value.length; index++) {
+    final codeUnit = value.codeUnitAt(index);
+    if (start < 0) {
+      if (codeUnit == 0x7B) {
+        start = index;
+        depth = 1;
+      }
+      continue;
+    }
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (codeUnit == 0x5C) {
+        escaped = true;
+      } else if (codeUnit == 0x22) {
+        inString = false;
+      }
+      continue;
+    }
+    if (codeUnit == 0x22) {
+      inString = true;
+    } else if (codeUnit == 0x7B) {
+      depth++;
+    } else if (codeUnit == 0x7D) {
+      depth--;
+      if (depth == 0) {
+        yield value.substring(start, index + 1);
+        start = -1;
+      }
+    }
   }
 }
 
@@ -562,6 +629,7 @@ class UnreadChatSummaryService {
     this.outputLanguage = 'en',
     this.parallelismMinimumMessageCount = 120,
     this.maxMessageTokenEstimate = 300,
+    this.trustedInstructions = unreadChatSummaryTrustedInstructions,
   }) : assert(maxChunkMessages > 0),
        assert(maxChunkTokenEstimate > 0),
        assert(maxChunks > 0),
@@ -574,7 +642,8 @@ class UnreadChatSummaryService {
        assert(maxChunkTimeGapSeconds >= 0),
        assert(outputLanguage.isNotEmpty),
        assert(parallelismMinimumMessageCount > 0),
-       assert(maxMessageTokenEstimate > 0);
+       assert(maxMessageTokenEstimate > 0),
+       assert(trustedInstructions.isNotEmpty);
 
   final UnreadChatHistoryLoader historyLoader;
   final UnreadChatSummaryProvider provider;
@@ -596,6 +665,7 @@ class UnreadChatSummaryService {
   final String outputLanguage;
   final int parallelismMinimumMessageCount;
   final int maxMessageTokenEstimate;
+  final String trustedInstructions;
   String? _transcriptKey;
   Future<UnreadChatTranscript>? _transcriptFuture;
   final Map<String, _GroundedSummary> _completionCache = {};
@@ -700,7 +770,7 @@ class UnreadChatSummaryService {
         final content = await _completeGrounded(
           UnreadChatSummaryProviderRequest(
             stage: UnreadChatSummaryStage.chunk,
-            trustedInstructions: unreadChatSummaryTrustedInstructions,
+            trustedInstructions: trustedInstructions,
             allowedEvidenceIds: allowedEvidenceIds,
             payload: {
               'stage': 'summarize_chunk',
@@ -752,6 +822,19 @@ class UnreadChatSummaryService {
         .where((attempt) => attempt.summary != null)
         .toList(growable: false);
     if (successfulAttempts.isEmpty) {
+      final fallbackMessages = _localFallbackMessages(selectedMessages);
+      if (fallbackMessages.isNotEmpty) {
+        return UnreadChatSummary(
+          content: _localFallbackContent(fallbackMessages),
+          coverage: _coverage(
+            transcript,
+            summarizedMessages: fallbackMessages,
+            processingCapped: selection.sampled,
+            failedRequestCount: chunkAttempts.length,
+            usedLocalFallback: true,
+          ),
+        );
+      }
       final failures = <UnreadChatSummaryFailureCause>[];
       final seenFailures = <String>{};
       for (final attempt in chunkAttempts) {
@@ -1099,18 +1182,16 @@ class UnreadChatSummaryService {
     final chunks = <List<_PromptUnit>>[];
     var current = <_PromptUnit>[];
     var currentTokens = 0;
-    final splitOnTimeGaps = _isLongContext(units);
-    for (final unit in units) {
+    final timeGapSplitIndexes = _preferredTimeGapSplitIndexes(units);
+    for (var index = 0; index < units.length; index++) {
+      final unit = units[index];
       final messageTokens = _promptUnitTokens(unit);
       final exceedsMessageLimit = current.length >= maxChunkMessages;
       final exceedsTokenLimit =
           current.isNotEmpty &&
           currentTokens + messageTokens > maxChunkTokenEstimate;
       final crossesTimeGap =
-          splitOnTimeGaps &&
-          current.isNotEmpty &&
-          maxChunkTimeGapSeconds > 0 &&
-          unit.firstDate - current.last.lastDate > maxChunkTimeGapSeconds;
+          current.isNotEmpty && timeGapSplitIndexes.contains(index);
       if (exceedsMessageLimit || exceedsTokenLimit || crossesTimeGap) {
         chunks.add(current);
         current = <_PromptUnit>[];
@@ -1121,6 +1202,29 @@ class UnreadChatSummaryService {
     }
     if (current.isNotEmpty) chunks.add(current);
     return chunks;
+  }
+
+  Set<int> _preferredTimeGapSplitIndexes(List<_PromptUnit> units) {
+    if (units.length < 2 ||
+        maxChunks < 2 ||
+        maxChunkTimeGapSeconds <= 0 ||
+        !_isLongContext(units)) {
+      return const {};
+    }
+    final gaps = <({int index, int seconds})>[];
+    for (var index = 1; index < units.length; index++) {
+      final seconds = units[index].firstDate - units[index - 1].lastDate;
+      if (seconds > maxChunkTimeGapSeconds) {
+        gaps.add((index: index, seconds: seconds));
+      }
+    }
+    gaps.sort((left, right) {
+      final durationOrder = right.seconds.compareTo(left.seconds);
+      return durationOrder != 0
+          ? durationOrder
+          : left.index.compareTo(right.index);
+    });
+    return gaps.take(maxChunks - 1).map((gap) => gap.index).toSet();
   }
 
   bool _isLongContext(List<_PromptUnit> units) {
@@ -1159,7 +1263,7 @@ class UnreadChatSummaryService {
         return _completeGrounded(
           UnreadChatSummaryProviderRequest(
             stage: UnreadChatSummaryStage.merge,
-            trustedInstructions: unreadChatSummaryTrustedInstructions,
+            trustedInstructions: trustedInstructions,
             allowedEvidenceIds: allowedEvidenceIds,
             payload: {
               'stage': 'merge_chunk_summaries',
@@ -1345,6 +1449,69 @@ class UnreadChatSummaryService {
     return result;
   }
 
+  List<UnreadChatMessage> _localFallbackMessages(
+    List<UnreadChatMessage> messages,
+  ) {
+    final candidates = messages
+        .where((message) => message.text.trim().isNotEmpty)
+        .toList(growable: false);
+    if (candidates.length <= 6) return candidates;
+
+    final chosen = <UnreadChatMessage>[];
+    final chosenIds = <int>{};
+    void add(UnreadChatMessage message) {
+      if (chosen.length < 6 && chosenIds.add(message.id)) chosen.add(message);
+    }
+
+    add(candidates.first);
+    add(candidates.last);
+    for (final message in candidates.reversed) {
+      if (RegExp(r'[?？]').hasMatch(message.text) ||
+          message.replyToMessageId != null) {
+        add(message);
+      }
+    }
+    for (final message in candidates.reversed) {
+      add(message);
+    }
+    chosen.sort((left, right) => left.date.compareTo(right.date));
+    return chosen;
+  }
+
+  UnreadChatSummaryContent _localFallbackContent(
+    List<UnreadChatMessage> messages,
+  ) {
+    UnreadChatSummaryItem item(UnreadChatMessage message) =>
+        UnreadChatSummaryItem(
+          text: _truncateUnreadSummaryText(message.text, 120),
+          evidenceIds: [message.evidenceId],
+        );
+
+    final questions = messages
+        .where(
+          (message) =>
+              !message.isOutgoing && RegExp(r'[?？]').hasMatch(message.text),
+        )
+        .map(item)
+        .toList(growable: false);
+    final questionIds = questions
+        .expand((question) => question.evidenceIds)
+        .toSet();
+    return UnreadChatSummaryContent(
+      overview: '',
+      overviewEvidenceIds: const [],
+      highlights: [
+        for (final message in messages)
+          if (!questionIds.contains(message.evidenceId)) item(message),
+      ],
+      needsReply: questions,
+      decisions: const [],
+      actions: const [],
+      questions: const [],
+      uncertainties: const [],
+    );
+  }
+
   Future<_GroundedSummary> _completeGrounded(
     UnreadChatSummaryProviderRequest request, {
     required String scopeKey,
@@ -1468,6 +1635,7 @@ class UnreadChatSummaryService {
     required List<UnreadChatMessage> summarizedMessages,
     required bool processingCapped,
     int failedRequestCount = 0,
+    bool usedLocalFallback = false,
   }) => UnreadChatSummaryCoverage(
     expectedUnreadCount: transcript.snapshot.unreadCount,
     fetchedMessageCount: transcript.messages.length,
@@ -1481,6 +1649,7 @@ class UnreadChatSummaryService {
     processingCapped: processingCapped,
     historyStalled: transcript.historyStalled,
     failedRequestCount: failedRequestCount,
+    usedLocalFallback: usedLocalFallback,
   );
 }
 

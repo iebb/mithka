@@ -527,6 +527,7 @@ class UnreadChatSummaryCoverage {
     required this.processingCapped,
     required this.historyStalled,
     this.failedRequestCount = 0,
+    this.usedLocalFallback = false,
   });
 
   final int expectedUnreadCount;
@@ -539,6 +540,7 @@ class UnreadChatSummaryCoverage {
   final bool processingCapped;
   final bool historyStalled;
   final int failedRequestCount;
+  final bool usedLocalFallback;
 
   bool get countMismatch => fetchedUnreadMessageCount < expectedUnreadCount;
 
@@ -548,6 +550,7 @@ class UnreadChatSummaryCoverage {
       !processingCapped &&
       !historyStalled &&
       failedRequestCount == 0 &&
+      !usedLocalFallback &&
       !countMismatch;
 
   List<String> get limitations => [
@@ -556,6 +559,7 @@ class UnreadChatSummaryCoverage {
     if (processingCapped) 'summary_chunk_cap_reached',
     if (historyStalled) 'history_pagination_stalled',
     if (failedRequestCount > 0) 'summary_partial_failure',
+    if (usedLocalFallback) 'local_fallback',
     if (countMismatch) 'unread_count_mismatch',
   ];
 
@@ -570,6 +574,7 @@ class UnreadChatSummaryCoverage {
     'processing_capped': processingCapped,
     'history_stalled': historyStalled,
     'failed_request_count': failedRequestCount,
+    'used_local_fallback': usedLocalFallback,
     'complete': complete,
     'limitations': limitations,
   };

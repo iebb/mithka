@@ -345,7 +345,7 @@ class RoleTag extends StatelessWidget {
           ? const ValueKey('connectedSenderRoleTag')
           : null,
       padding: connectedToTrailing
-          ? const EdgeInsets.symmetric(horizontal: 7, vertical: 3)
+          ? const EdgeInsets.symmetric(horizontal: 5, vertical: 2)
           : const EdgeInsets.symmetric(
               horizontal: AppSpacing.xs + 1,
               vertical: 1.5,
@@ -358,6 +358,15 @@ class RoleTag extends StatelessWidget {
                 bottomStart: Radius.circular(8),
               )
             : BorderRadius.circular(AppRadius.sm),
+        boxShadow: connectedToTrailing
+            ? const [
+                BoxShadow(
+                  color: Color(0x33000000),
+                  blurRadius: 5,
+                  offset: Offset(0, 2),
+                ),
+              ]
+            : null,
       ),
       child: Text(
         _label.l10n(context),

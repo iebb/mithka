@@ -4851,10 +4851,11 @@ class _ChatViewState extends State<ChatView> {
       pointsDown: pointsDown,
       showsUnreadCount: showsUnreadCount,
     );
-    if (!_canOfferUnreadSummary(settings)) return banner;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [_unreadSummaryButton(), const SizedBox(width: 6), banner],
+    return ChatNewMessagesControlShell(
+      unreadBadge: banner,
+      aiAttachment: _canOfferUnreadSummary(settings)
+          ? _unreadSummaryButton()
+          : null,
     );
   }
 
@@ -5023,6 +5024,7 @@ class _ChatViewState extends State<ChatView> {
             maxConcurrentRequests: 1,
             maxChunkTokenEstimate: tokenBudget.payloadTokens,
             mergeChunkSummariesLocally: true,
+            trustedInstructions: unreadChatSummaryCompactTrustedInstructions,
             providerCode: 'apple_on_device',
             contextWindowTokens: contextWindow,
             outputLanguage: outputLanguage,
@@ -5044,12 +5046,14 @@ class _ChatViewState extends State<ChatView> {
         }
         final contextWindow =
             hostedContextSize ?? AiServerProfile.defaultContextWindowTokens;
-        const maximumResponseTokens = 4096;
+        // Reserve response space while selecting input, but do not send a
+        // generation cap to user-configured servers.
+        const responseTokenReserve = 4096;
         final tokenBudget = unreadSummaryTokenBudget(
           contextWindow,
           maximumContextSize: AiServerProfile.maximumContextWindowTokens,
-          trustedInstructions: unreadChatSummaryTrustedInstructions,
-          maximumResponseTokens: maximumResponseTokens,
+          trustedInstructions: unreadChatSummaryCompactTrustedInstructions,
+          maximumResponseTokens: responseTokenReserve,
           maximumPayloadTokens: 24000,
         );
         final provider = OpenAiCompatibleUnreadSummaryProvider(
@@ -5062,9 +5066,9 @@ class _ChatViewState extends State<ChatView> {
             historyLoader: loader,
             provider: provider,
             maxChunks: 4,
-            maxConcurrentRequests: 3,
             maxChunkTokenEstimate: tokenBudget.payloadTokens,
             mergeChunkSummariesLocally: true,
+            trustedInstructions: unreadChatSummaryCompactTrustedInstructions,
             providerCode: 'openai_compatible/$model',
             contextWindowTokens: contextWindow,
             outputLanguage: outputLanguage,

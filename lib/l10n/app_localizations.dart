@@ -290,12 +290,15 @@ abstract final class AppStringKeys {
   static const aiSummaryFailed = 'aiSummaryFailed';
   static const aiSummaryFoundCount = 'aiSummaryFoundCount';
   static const aiSummaryHighlights = 'aiSummaryHighlights';
+  static const aiSummaryHistoryIncomplete = 'aiSummaryHistoryIncomplete';
   static const aiSummaryIncomplete = 'aiSummaryIncomplete';
+  static const aiSummaryLocalFallback = 'aiSummaryLocalFallback';
   static const aiSummaryNeedsReply = 'aiSummaryNeedsReply';
   static const aiSummaryNoContent = 'aiSummaryNoContent';
   static const aiSummaryNoUnread = 'aiSummaryNoUnread';
   static const aiSummaryOpenSettings = 'aiSummaryOpenSettings';
   static const aiSummaryOverview = 'aiSummaryOverview';
+  static const aiSummaryPartialFailure = 'aiSummaryPartialFailure';
   static const aiSummaryProcessedCount = 'aiSummaryProcessedCount';
   static const aiSummaryPrivate = 'aiSummaryPrivate';
   static const aiSummaryQuestions = 'aiSummaryQuestions';
@@ -304,6 +307,7 @@ abstract final class AppStringKeys {
   static const aiSummaryRetry = 'aiSummaryRetry';
   static const aiSummaryRant = 'aiSummaryRant';
   static const aiSummaryRunningCount = 'aiSummaryRunningCount';
+  static const aiSummarySampled = 'aiSummarySampled';
   static const aiSummaryThinking = 'aiSummaryThinking';
   static const aiSummaryTechnicalDetails = 'aiSummaryTechnicalDetails';
   static const aiSummaryTitle = 'aiSummaryTitle';
@@ -570,7 +574,9 @@ abstract final class AppStringKeys {
   static const callCamera = 'callCamera';
   static const callConnecting = 'callConnecting';
   static const callDecline = 'callDecline';
+  static const callDisableVideo = 'callDisableVideo';
   static const callEnded = 'callEnded';
+  static const callEnableVideo = 'callEnableVideo';
   static const callEndToEndEncrypted = 'callEndToEndEncrypted';
   static const callFrontCamera = 'callFrontCamera';
   static const callHangUp = 'callHangUp';
@@ -2980,13 +2986,37 @@ abstract final class AppStringKeys {
       'messageBubbleSummarizingPrivatelyWithTelegram';
   static const messageSendOptionsCaptionAboveMedia =
       'messageSendOptionsCaptionAboveMedia';
+  static const messageSendOptionsChooseDate = 'messageSendOptionsChooseDate';
+  static const messageSendOptionsDaily = 'messageSendOptionsDaily';
+  static const messageSendOptionsDeliveryTime =
+      'messageSendOptionsDeliveryTime';
   static const messageSendOptionsHideWithSpoiler =
       'messageSendOptionsHideWithSpoiler';
+  static const messageSendOptionsInOneHour = 'messageSendOptionsInOneHour';
+  static const messageSendOptionsMedia = 'messageSendOptionsMedia';
+  static const messageSendOptionsMessageEffect =
+      'messageSendOptionsMessageEffect';
+  static const messageSendOptionsMonthly = 'messageSendOptionsMonthly';
+  static const messageSendOptionsNow = 'messageSendOptionsNow';
+  static const messageSendOptionsOff = 'messageSendOptionsOff';
+  static const messageSendOptionsOnce = 'messageSendOptionsOnce';
+  static const messageSendOptionsRepeat = 'messageSendOptionsRepeat';
   static const messageSendOptionsScheduledMessages =
       'messageSendOptionsScheduledMessages';
+  static const messageSendOptionsSchedule = 'messageSendOptionsSchedule';
+  static const messageSendOptionsSeconds = 'messageSendOptionsSeconds';
+  static const messageSendOptionsSelectDateAndTime =
+      'messageSendOptionsSelectDateAndTime';
+  static const messageSendOptionsSelfDestruct =
+      'messageSendOptionsSelfDestruct';
   static const messageSendOptionsSendSilently =
       'messageSendOptionsSendSilently';
+  static const messageSendOptionsTime = 'messageSendOptionsTime';
+  static const messageSendOptionsTitle = 'messageSendOptionsTitle';
+  static const messageSendOptionsTomorrow = 'messageSendOptionsTomorrow';
   static const messageSendOptionsViewOnce = 'messageSendOptionsViewOnce';
+  static const messageSendOptionsWeekly = 'messageSendOptionsWeekly';
+  static const messageSendOptionsWhenOnline = 'messageSendOptionsWhenOnline';
   static const messageSpecialContentViewResults =
       'messageSpecialContentViewResults';
   static const momentsShortVideos = 'momentsShortVideos';

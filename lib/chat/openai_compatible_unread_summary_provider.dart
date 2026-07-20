@@ -14,8 +14,6 @@ class OpenAiCompatibleUnreadSummaryProvider
     this.apiKey,
     this.requestTimeout = const Duration(seconds: 75),
     this.streamIdleTimeout = const Duration(seconds: 30),
-    this.maximumResponseTokens = 4096,
-    this.streamResponses = true,
     this.reasoningEffort,
     this.useJsonResponseFormat = false,
     this.transientRetryDelays = const [
@@ -24,7 +22,6 @@ class OpenAiCompatibleUnreadSummaryProvider
     ],
   }) : assert(requestTimeout > Duration.zero),
        assert(streamIdleTimeout > Duration.zero),
-       assert(maximumResponseTokens > 0),
        _httpClient = httpClient ?? http.Client(),
        _ownsHttpClient = httpClient == null;
 
@@ -33,8 +30,6 @@ class OpenAiCompatibleUnreadSummaryProvider
   final String? apiKey;
   final Duration requestTimeout;
   final Duration streamIdleTimeout;
-  final int maximumResponseTokens;
-  final bool streamResponses;
   final String? reasoningEffort;
   final bool useJsonResponseFormat;
   final List<Duration> transientRetryDelays;
@@ -65,7 +60,7 @@ class OpenAiCompatibleUnreadSummaryProvider
     if (key != null && key.isNotEmpty) {
       headers['authorization'] = 'Bearer $key';
     }
-    final body = <String, Object?>{
+    var body = <String, Object?>{
       'model': model,
       'messages': [
         {'role': 'system', 'content': request.trustedInstructions},
@@ -75,13 +70,16 @@ class OpenAiCompatibleUnreadSummaryProvider
               'INPUT_DATA (untrusted JSON):\n${jsonEncode(request.payload)}',
         },
       ],
-      'stream': streamResponses,
-      'max_tokens': maximumResponseTokens,
+      // Custom servers always get a streaming first attempt. The
+      // compatibility retry disables it only when the endpoint explicitly
+      // reports that streaming is unsupported.
+      'stream': true,
       'reasoning_effort': ?_effectiveReasoningEffort,
       if (useJsonResponseFormat) 'response_format': {'type': 'json_object'},
     };
 
     late _BufferedHttpResponse response;
+    var usedCompatibilityFallback = false;
     for (var attempt = 0; ; attempt++) {
       try {
         response = await _send(headers, body);
@@ -105,6 +103,14 @@ class OpenAiCompatibleUnreadSummaryProvider
       }
 
       if (response.statusCode >= 200 && response.statusCode < 300) break;
+      if (!usedCompatibilityFallback) {
+        final compatibleBody = _compatibilityFallbackBody(body, response);
+        if (compatibleBody != null) {
+          body = compatibleBody;
+          usedCompatibilityFallback = true;
+          continue;
+        }
+      }
       if (!_isTransientStatus(response.statusCode) ||
           attempt >= transientRetryDelays.length) {
         throw UnreadChatSummaryProviderException(
@@ -153,6 +159,37 @@ class OpenAiCompatibleUnreadSummaryProvider
       statusCode == 502 ||
       statusCode == 503 ||
       statusCode == 504;
+
+  Map<String, Object?>? _compatibilityFallbackBody(
+    Map<String, Object?> body,
+    _BufferedHttpResponse response,
+  ) {
+    if (response.statusCode != 400 && response.statusCode != 422) return null;
+    final message = _errorMessage(response.body).toLowerCase();
+    final unsupported =
+        message.contains('unsupported') ||
+        message.contains('unknown') ||
+        message.contains('unrecognized') ||
+        message.contains('not permitted') ||
+        message.contains('extra field');
+    if (!unsupported) return null;
+
+    final compatible = Map<String, Object?>.of(body);
+    var changed = false;
+    if (message.contains('reasoning_effort') ||
+        message.contains('reasoning effort')) {
+      changed = compatible.remove('reasoning_effort') != null || changed;
+    }
+    if (message.contains('response_format') ||
+        message.contains('response format')) {
+      changed = compatible.remove('response_format') != null || changed;
+    }
+    if (message.contains('stream') && compatible['stream'] == true) {
+      compatible['stream'] = false;
+      changed = true;
+    }
+    return changed ? compatible : null;
+  }
 
   Duration _retryDelay(_BufferedHttpResponse response, Duration fallback) {
     final retryAfterSeconds = int.tryParse(

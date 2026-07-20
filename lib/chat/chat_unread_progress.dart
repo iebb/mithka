@@ -1,6 +1,39 @@
+import 'package:flutter/widgets.dart';
+
 enum ChatBottomIndicator { none, newMessages, jumpToBottom }
 
 enum ChatNewMessagesControlPlacement { hidden, top, bottom }
+
+/// Keeps the unread-message badge mounted while the optional AI attachment is
+/// enabled or disabled. A stable badge subtree avoids coupling the core unread
+/// affordance to AI configuration changes.
+class ChatNewMessagesControlShell extends StatelessWidget {
+  const ChatNewMessagesControlShell({
+    super.key,
+    required this.unreadBadge,
+    this.aiAttachment,
+    this.attachmentGap = 6,
+  });
+
+  static const unreadBadgeKey = ValueKey('chatUnreadMessagesBadge');
+  static const aiAttachmentKey = ValueKey('chatUnreadMessagesAiAttachment');
+
+  final Widget unreadBadge;
+  final Widget? aiAttachment;
+  final double attachmentGap;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      if (aiAttachment case final attachment?) ...[
+        KeyedSubtree(key: aiAttachmentKey, child: attachment),
+        SizedBox(width: attachmentGap),
+      ],
+      KeyedSubtree(key: unreadBadgeKey, child: unreadBadge),
+    ],
+  );
+}
 
 ChatBottomIndicator chatBottomIndicator({
   required bool isScrolledUp,

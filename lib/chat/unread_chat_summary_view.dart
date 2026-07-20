@@ -33,6 +33,7 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
   UnreadChatSummary? _summary;
   Object? _error;
   bool _loading = true;
+  bool _showTechnicalDetails = false;
   UnreadChatSummaryProgress _progress = const UnreadChatSummaryProgress(
     stage: UnreadChatSummaryProgressStage.loadingMessages,
   );
@@ -48,6 +49,7 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
       setState(() {
         _loading = true;
         _error = null;
+        _showTechnicalDetails = false;
         _progress = const UnreadChatSummaryProgress(
           stage: UnreadChatSummaryProgressStage.loadingMessages,
         );
@@ -87,16 +89,18 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
           ),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 28, 20, 36),
+              padding: const EdgeInsets.fromLTRB(20, 22, 20, 36),
               children: [
                 Text(
                   _pageHeading(context),
                   style: TextStyle(
                     color: c.textPrimary,
-                    fontSize: 30,
-                    height: 1.18,
+                    fontSize: 25,
+                    height: 1.2,
                     fontWeight: FontWeight.w700,
                   ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 12),
                 Text(
@@ -107,7 +111,7 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
                     height: 1.3,
                   ),
                 ),
-                const SizedBox(height: 42),
+                const SizedBox(height: 28),
                 if (_loading) _loadingContent(context),
                 if (!_loading && _error != null) _errorContent(context),
                 if (!_loading && _error == null && _summary != null)
@@ -125,44 +129,23 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
     if (!_loading && summary != null && summary.title.trim().isNotEmpty) {
       return summary.title.trim();
     }
-    return AppStrings.t(AppStringKeys.aiSummaryRunningCount, {
-      'value1': widget.snapshot.unreadCount,
-    });
+    return AppStringKeys.aiSummaryTitle.l10n(context);
   }
 
   Widget _loadingContent(BuildContext context) {
     final c = context.colors;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
       children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              _progressLabel(context),
-              style: TextStyle(
-                color: c.textPrimary,
-                fontSize: 18,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(width: 10),
-            AppActivityIndicator(size: 18, color: c.textSecondary),
-          ],
-        ),
-        const SizedBox(height: 32),
-        Container(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-          decoration: BoxDecoration(
-            color: c.card,
-            borderRadius: BorderRadius.circular(12),
-            border: Border(left: BorderSide(color: AppTheme.brand, width: 3)),
-          ),
+        AppActivityIndicator(size: 18, color: AppTheme.brand),
+        const SizedBox(width: 12),
+        Expanded(
           child: Text(
-            AppStrings.t(AppStringKeys.aiSummaryFoundCount, {
-              'value1': widget.snapshot.unreadCount,
-            }),
-            style: TextStyle(color: c.textSecondary, fontSize: 16),
+            _progressLabel(context),
+            style: TextStyle(
+              color: c.textSecondary,
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ),
       ],
@@ -200,48 +183,78 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const AppIcon(
-            HeroAppIcons.triangleExclamation,
-            size: 25,
-            color: Color(0xFFE39A20),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            AppStringKeys.aiSummaryFailed.l10n(context),
-            style: AppTextStyle.bodyLarge(
-              c.textPrimary,
-              weight: FontWeight.w600,
-            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const AppIcon(
+                HeroAppIcons.triangleExclamation,
+                size: 22,
+                color: Color(0xFFE39A20),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  AppStringKeys.aiSummaryFailed.l10n(context),
+                  style: AppTextStyle.bodyLarge(
+                    c.textPrimary,
+                    weight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 6),
           Text(
             AppStringKeys.aiSummaryUnavailable.l10n(context),
             style: AppTextStyle.footnote(c.textSecondary),
           ),
-          const SizedBox(height: 16),
-          Text(
-            AppStringKeys.aiSummaryTechnicalDetails.l10n(context),
-            style: AppTextStyle.caption(c.textTertiary),
-          ),
-          const SizedBox(height: 6),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: c.groupedBackground,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: c.divider, width: 0.5),
-            ),
-            child: SelectableText(
-              _technicalErrorDetails(),
-              style: TextStyle(
-                color: c.textSecondary,
-                fontSize: 12,
-                height: 1.45,
-                fontFamily: 'monospace',
+          const SizedBox(height: 14),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () =>
+                setState(() => _showTechnicalDetails = !_showTechnicalDetails),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      AppStringKeys.aiSummaryTechnicalDetails.l10n(context),
+                      style: AppTextStyle.caption(c.textSecondary),
+                    ),
+                  ),
+                  AppIcon(
+                    _showTechnicalDetails
+                        ? HeroAppIcons.chevronUp
+                        : HeroAppIcons.chevronDown,
+                    size: 16,
+                    color: c.textTertiary,
+                  ),
+                ],
               ),
             ),
           ),
+          if (_showTechnicalDetails) ...[
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: c.groupedBackground,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: c.divider, width: 0.5),
+              ),
+              child: SelectableText(
+                _technicalErrorDetails(),
+                style: TextStyle(
+                  color: c.textSecondary,
+                  fontSize: 12,
+                  height: 1.45,
+                  fontFamily: 'monospace',
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 18),
           Row(
             children: [
@@ -321,11 +334,34 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
               color: const Color(0xFFE39A20).withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Text(
-              AppStrings.t(AppStringKeys.aiSummaryIncomplete, {
-                'value1': summary.coverage.summarizedUnreadMessageCount,
-              }),
-              style: AppTextStyle.footnote(const Color(0xFFD58700)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  AppStrings.t(AppStringKeys.aiSummaryIncomplete, {
+                    'value1': summary.coverage.summarizedUnreadMessageCount,
+                    'value2': summary.coverage.expectedUnreadCount,
+                  }),
+                  style: AppTextStyle.footnote(const Color(0xFFD58700)),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _coverageReason(context, summary.coverage),
+                  style: AppTextStyle.footnote(const Color(0xFFD58700)),
+                ),
+                const SizedBox(height: 8),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _run,
+                  child: Text(
+                    AppStringKeys.aiSummaryRetry.l10n(context),
+                    style: AppTextStyle.footnote(
+                      AppTheme.brand,
+                      weight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 16),
@@ -587,26 +623,34 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
           WidgetSpan(
             alignment: PlaceholderAlignment.middle,
             child: Padding(
-              padding: const EdgeInsets.only(left: 5, bottom: 1),
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => _openEvidence(evidenceIds[evidenceIndex]),
-                child: Container(
-                  constraints: const BoxConstraints(minWidth: 21),
-                  height: 21,
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: context.colors.searchFill,
-                    borderRadius: BorderRadius.circular(10.5),
-                  ),
-                  child: Text(
-                    '${evidenceIndex + 1}',
-                    style: TextStyle(
-                      color: context.colors.textSecondary,
-                      fontSize: 11,
-                      height: 1,
-                      fontWeight: FontWeight.w600,
+              padding: const EdgeInsets.only(left: 4, bottom: 1),
+              child: Semantics(
+                button: true,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _openEvidence(evidenceIds[evidenceIndex]),
+                  child: Container(
+                    key: ValueKey(
+                      'ai-summary-evidence-badge-${evidenceIds[evidenceIndex]}',
+                    ),
+                    constraints: const BoxConstraints(
+                      minWidth: 18,
+                      minHeight: 18,
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 5),
+                    decoration: BoxDecoration(
+                      color: context.colors.searchFill,
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                    child: Text(
+                      '${evidenceIndex + 1}',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: context.colors.textSecondary,
+                        fontSize: 10,
+                        height: 1.8,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ),
@@ -617,6 +661,29 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
     ),
     style: style,
   );
+
+  String _coverageReason(
+    BuildContext context,
+    UnreadChatSummaryCoverage coverage,
+  ) {
+    if (coverage.usedLocalFallback) {
+      return AppStringKeys.aiSummaryLocalFallback.l10n(context);
+    }
+    final reasons = <String>[];
+    if (coverage.failedRequestCount > 0) {
+      reasons.add(AppStringKeys.aiSummaryPartialFailure.l10n(context));
+    }
+    if (coverage.processingCapped) {
+      reasons.add(AppStringKeys.aiSummarySampled.l10n(context));
+    }
+    if (!coverage.reachedReadBoundary ||
+        coverage.historyCapped ||
+        coverage.historyStalled ||
+        coverage.countMismatch) {
+      reasons.add(AppStringKeys.aiSummaryHistoryIncomplete.l10n(context));
+    }
+    return reasons.join(' ');
+  }
 
   Widget _sectionHeading(BuildContext context, String title) => Text(
     title,

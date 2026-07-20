@@ -1,7 +1,44 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/chat_unread_progress.dart';
 
 void main() {
+  testWidgets('unread badge remains when the AI attachment is absent', (
+    tester,
+  ) async {
+    Future<void> pump({required bool attachAi}) => tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: ChatNewMessagesControlShell(
+          unreadBadge: const Text('90 unread'),
+          aiAttachment: attachAi ? const Text('AI') : null,
+        ),
+      ),
+    );
+
+    await pump(attachAi: false);
+    expect(
+      find.byKey(ChatNewMessagesControlShell.unreadBadgeKey),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(ChatNewMessagesControlShell.aiAttachmentKey),
+      findsNothing,
+    );
+    expect(find.text('90 unread'), findsOneWidget);
+
+    await pump(attachAi: true);
+    expect(
+      find.byKey(ChatNewMessagesControlShell.unreadBadgeKey),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(ChatNewMessagesControlShell.aiAttachmentKey),
+      findsOneWidget,
+    );
+    expect(find.text('90 unread'), findsOneWidget);
+  });
+
   test('new messages replace the jump-to-bottom button while scrolled up', () {
     expect(
       chatBottomIndicator(isScrolledUp: true, hasNewMessages: true),

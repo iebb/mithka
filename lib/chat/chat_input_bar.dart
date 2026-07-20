@@ -31,7 +31,7 @@ import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/telegram_language_controller.dart';
 import '../media/app_asset_picker.dart';
-import '../settings/business_tools_views.dart';
+import '../settings/business_service.dart';
 import '../settings/rich_message_relay_config.dart';
 import '../settings/rich_message_relay_view.dart';
 import '../tdlib/json_helpers.dart';
@@ -73,7 +73,6 @@ import 'sticker_store.dart';
 import 'telegram_ai_editor_view.dart';
 import 'telegram_ai_service.dart';
 import 'telegram_mini_app_view.dart';
-import 'venue_composer_view.dart';
 import 'video_note_preview_view.dart';
 import 'video_note_recorder_view.dart';
 import 'voice_note_preview_view.dart';
@@ -133,6 +132,9 @@ class ChatInputBar extends StatefulWidget {
     this.onPanelGeometryChanged,
     this.onMediaSendTapped,
     this.gifPreviewBuilder,
+    this.quickReplyLoader,
+    this.quickReplySender,
+    this.onVoicePanelOpenedForTesting,
   });
   final ChatViewModel vm;
   final FutureOr<void> Function(bool isVideo) onStartCall;
@@ -141,6 +143,12 @@ class ChatInputBar extends StatefulWidget {
   final VoidCallback? onMediaSendTapped;
   @visibleForTesting
   final Widget Function(GifItem item)? gifPreviewBuilder;
+  @visibleForTesting
+  final Future<List<BusinessQuickReplyShortcut>> Function()? quickReplyLoader;
+  @visibleForTesting
+  final Future<void> Function(int chatId, int shortcutId)? quickReplySender;
+  @visibleForTesting
+  final VoidCallback? onVoicePanelOpenedForTesting;
 
   @override
   State<ChatInputBar> createState() => _ChatInputBarState();
@@ -205,7 +213,18 @@ class _ChatInputBarState extends State<ChatInputBar> {
   bool _inlineBotLoading = false;
   BotPlatformCapabilities? _inlineBot;
   BotInlineResultsPage? _inlineBotResults;
+  bool _quickRepliesLoaded = false;
+  bool _quickReplyContextVisible = false;
+  bool _quickReplyLoading = false;
+  int? _quickReplySendingId;
+  List<BusinessQuickReplyShortcut> _quickReplies = const [];
   ChatViewModel get vm => widget.vm;
+
+  bool get _canUseQuickReplies =>
+      !vm.isGroup &&
+      !vm.peerIsBot &&
+      !vm.isSecretChat &&
+      vm.peerUserId != vm.meId;
 
   @override
   void initState() {
@@ -233,6 +252,11 @@ class _ChatInputBarState extends State<ChatInputBar> {
     _botPlatformUpdates = TdClient.shared.subscribe().listen(
       _handleBotPlatformUpdate,
     );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _canUseQuickReplies) {
+        unawaited(_loadQuickReplies(userInitiated: false));
+      }
+    });
   }
 
   void _handleBotPlatformUpdate(Map<String, dynamic> update) {
@@ -266,7 +290,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
     final hasText = _controller.text.trim().isNotEmpty;
     if (hasText != _hasText) {
       _hasText = hasText;
-      if (hasText) _replyKeyboardVisible = false;
+      if (hasText) {
+        _replyKeyboardVisible = false;
+        _quickReplyContextVisible = false;
+      }
       if (mounted) setState(() {});
     }
     _updateMentionSuggestions();
@@ -426,6 +453,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
       );
     }
     _hasText = _controller.text.trim().isNotEmpty;
+    if (_hasText) _quickReplyContextVisible = false;
     if (mounted) setState(() {});
   }
 
@@ -618,8 +646,11 @@ class _ChatInputBarState extends State<ChatInputBar> {
       (_panel == _Panel.sticker && _stickerPack == _stickerSearchTabId);
 
   void _setPanel(_Panel next) {
-    if (_panel == next) return;
-    setState(() => _panel = next);
+    if (_panel == next && !_quickReplyContextVisible) return;
+    setState(() {
+      _panel = next;
+      _quickReplyContextVisible = false;
+    });
     widget.onPanelGeometryChanged?.call();
   }
 
@@ -657,7 +688,14 @@ class _ChatInputBarState extends State<ChatInputBar> {
   void _toggleVoice() {
     _focus.unfocus();
     _setPanel(_panel == _Panel.voice ? _Panel.none : _Panel.voice);
-    if (_panel == _Panel.voice) _prepareRecorder();
+    if (_panel == _Panel.voice) {
+      final testingHook = widget.onVoicePanelOpenedForTesting;
+      if (testingHook != null) {
+        testingHook();
+      } else {
+        unawaited(_prepareRecorder());
+      }
+    }
   }
 
   Future<void> _prepareRecorder() async {
@@ -1114,7 +1152,9 @@ class _ChatInputBarState extends State<ChatInputBar> {
               if (_inlineBotLoading || _inlineBotResults != null)
                 _inlineBotResultMenu()
               else if (_mentionCandidates.isNotEmpty)
-                _mentionMenu(),
+                _mentionMenu()
+              else if (_quickReplyContextVisible)
+                _quickReplyContextMenu(),
               _inputRow(replyKeyboard),
               if (replyKeyboardPanelVisible)
                 _replyKeyboardPanel(replyKeyboard)
@@ -2100,10 +2140,253 @@ class _ChatInputBarState extends State<ChatInputBar> {
   void _toggleReplyKeyboard() {
     setState(() {
       _replyKeyboardVisible = !_replyKeyboardVisible;
-      if (_replyKeyboardVisible) _panel = _Panel.none;
+      if (_replyKeyboardVisible) {
+        _panel = _Panel.none;
+        _quickReplyContextVisible = false;
+      }
     });
     widget.onPanelGeometryChanged?.call();
     if (_replyKeyboardVisible) _focus.unfocus();
+  }
+
+  void _handleEmptyInputTap() {
+    if (_hasText || !_canUseQuickReplies || _replyKeyboardVisible) return;
+    if (_quickReplyContextVisible) {
+      setState(() => _quickReplyContextVisible = false);
+      return;
+    }
+    if (_quickRepliesLoaded) {
+      if (_quickReplies.isEmpty) return;
+      _focus.unfocus();
+      setState(() => _quickReplyContextVisible = true);
+      return;
+    }
+    _focus.unfocus();
+    unawaited(_loadQuickReplies(userInitiated: true));
+  }
+
+  Future<List<BusinessQuickReplyShortcut>> _fetchQuickReplies() async {
+    final injected = widget.quickReplyLoader;
+    if (injected != null) return injected();
+    final capabilities = await BusinessService().capabilities();
+    if (!capabilities.canUse('businessFeatureQuickReplies')) {
+      return const [];
+    }
+    return BusinessQuickReplyService.shared.loadShortcuts();
+  }
+
+  Future<void> _loadQuickReplies({required bool userInitiated}) async {
+    if (_quickRepliesLoaded || !_canUseQuickReplies) return;
+    if (userInitiated && mounted) {
+      setState(() {
+        _quickReplyContextVisible = true;
+        _quickReplyLoading = true;
+      });
+    }
+    try {
+      final replies = await _fetchQuickReplies();
+      if (!mounted) return;
+      setState(() {
+        _quickReplies = replies;
+        _quickRepliesLoaded = true;
+        _quickReplyLoading = false;
+        if (replies.isEmpty) _quickReplyContextVisible = false;
+      });
+      if (userInitiated && replies.isEmpty) _restoreKeyboardFocus();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _quickReplyContextVisible = false;
+        _quickReplyLoading = false;
+      });
+      if (userInitiated) {
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.businessToolsCouldNotLoadQuickRepliesValue1,
+            {'value1': error},
+          ),
+        );
+        _restoreKeyboardFocus();
+      }
+    }
+  }
+
+  Future<void> _sendQuickReply(BusinessQuickReplyShortcut shortcut) async {
+    if (_quickReplySendingId != null) return;
+    setState(() => _quickReplySendingId = shortcut.id);
+    try {
+      final injected = widget.quickReplySender;
+      if (injected != null) {
+        await injected(vm.chatId, shortcut.id);
+      } else {
+        await BusinessQuickReplyService.shared.send(vm.chatId, shortcut.id);
+      }
+      if (!mounted) return;
+      setState(() {
+        _quickReplySendingId = null;
+        _quickReplyContextVisible = false;
+      });
+      widget.onMessageSent();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _quickReplySendingId = null);
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.businessToolsCouldNotSendQuickReplyValue1, {
+          'value1': error,
+        }),
+      );
+    }
+  }
+
+  Widget _quickReplyContextMenu() {
+    final c = context.colors;
+    final height = _quickReplyLoading
+        ? 92.0
+        : math.min(44 + (_quickReplies.length * 58), 276).toDouble();
+    return Container(
+      key: const ValueKey('quickReplyContextMenu'),
+      height: height,
+      margin: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+      decoration: BoxDecoration(
+        color: c.card,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: c.divider.withValues(alpha: 0.72)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 14,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          SizedBox(
+            height: 44,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: Row(
+                children: [
+                  AppIcon(
+                    HeroAppIcons.solidMessage,
+                    size: 17,
+                    color: AppTheme.brand,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      telegramText(AppStringKeys.businessToolsQuickReplies),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: c.textPrimary,
+                      ),
+                    ),
+                  ),
+                  GestureDetector(
+                    key: const ValueKey('closeQuickReplyContextMenu'),
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () =>
+                        setState(() => _quickReplyContextVisible = false),
+                    child: SizedBox(
+                      width: 34,
+                      height: 34,
+                      child: Center(
+                        child: AppIcon(
+                          HeroAppIcons.xmark,
+                          size: 18,
+                          color: c.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_quickReplyLoading)
+            const Expanded(child: Center(child: AppActivityIndicator(size: 20)))
+          else
+            Expanded(
+              child: ListView.builder(
+                padding: EdgeInsets.zero,
+                itemCount: _quickReplies.length,
+                itemBuilder: (context, index) {
+                  final shortcut = _quickReplies[index];
+                  final sending = _quickReplySendingId == shortcut.id;
+                  return GestureDetector(
+                    key: ValueKey('quickReply-${shortcut.id}'),
+                    behavior: HitTestBehavior.opaque,
+                    onTap: sending
+                        ? null
+                        : () => unawaited(_sendQuickReply(shortcut)),
+                    child: Container(
+                      height: 58,
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      decoration: BoxDecoration(
+                        border: Border(
+                          top: BorderSide(
+                            color: c.divider.withValues(alpha: 0.55),
+                          ),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '/${shortcut.name}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                    color: c.textPrimary,
+                                  ),
+                                ),
+                                if (shortcut.preview.isNotEmpty) ...[
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    shortcut.preview,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: c.textSecondary,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          if (sending)
+                            AppActivityIndicator(
+                              size: 18,
+                              color: AppTheme.brand,
+                            )
+                          else
+                            AppIcon(
+                              HeroAppIcons.paperPlane,
+                              size: 18,
+                              color: AppTheme.brand,
+                            ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   Widget _inputRow(_ReplyKeyboard? replyKeyboard) {
@@ -2209,6 +2492,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
                         child: TextField(
                           controller: _controller,
                           focusNode: _focus,
+                          onTap: _handleEmptyInputTap,
                           minLines: 1,
                           maxLines: 4,
                           keyboardType: TextInputType.multiline,
@@ -3322,39 +3606,6 @@ class _ChatInputBarState extends State<ChatInputBar> {
     }
   }
 
-  Future<void> _sendVenue() async {
-    final start = await resolveLocationPickerStart();
-    if (!mounted) return;
-    final picked = await Navigator.of(context).push<LocationShareResult>(
-      MaterialPageRoute(
-        builder: (_) =>
-            LocationPickerView(initial: start, returnShareResult: true),
-      ),
-    );
-    if (!mounted || picked == null) return;
-    final details = await Navigator.of(context).push<VenueComposerResult>(
-      MaterialPageRoute(
-        builder: (_) => VenueComposerView(
-          location: picked.center,
-          suggestedAddress: picked.address,
-        ),
-      ),
-    );
-    if (!mounted || details == null) return;
-    final sent = await widget.vm.sendVenue(
-      latitude: picked.center.latitude,
-      longitude: picked.center.longitude,
-      title: details.title,
-      address: details.address,
-    );
-    if (!mounted) return;
-    if (sent) {
-      widget.onMessageSent();
-    } else {
-      showToast(context, AppStringKeys.topicPostContentActionFailed);
-    }
-  }
-
   Future<void> _sendContact() async {
     final contact = await Navigator.of(context).push<MessageContactCard>(
       MaterialPageRoute(builder: (_) => const ContactSharePickerView()),
@@ -3482,18 +3733,6 @@ class _ChatInputBarState extends State<ChatInputBar> {
     }
   }
 
-  Future<void> _openBusinessQuickReplies() async {
-    final sent = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => BusinessQuickReplyPickerView(
-          chatId: widget.vm.chatId,
-          chatTitle: widget.vm.peerTitle,
-        ),
-      ),
-    );
-    if (sent == true && mounted) widget.onMessageSent();
-  }
-
   // MARK: - Function panel
 
   Widget _functionPanel() {
@@ -3508,24 +3747,9 @@ class _ChatInputBarState extends State<ChatInputBar> {
         () => widget.onStartCall(false),
       ),
       (
-        HeroAppIcons.video.data,
-        AppStrings.t(
-          vm.isGroup
-              ? AppStringKeys.composerGroupVideoCall
-              : AppStringKeys.composerVideoCall,
-        ),
-        () => widget.onStartCall(true),
-      ),
-      (HeroAppIcons.solidFileVideo.data, 'Video message', _recordVideoNote),
-      (
         HeroAppIcons.locationDot.data,
         AppStrings.t(AppStringKeys.composerLocation),
         _sendLocation,
-      ),
-      (
-        HeroAppIcons.locationPin.data,
-        AppStrings.t(AppStringKeys.composerVenue),
-        _sendVenue,
       ),
       (
         HeroAppIcons.idBadge.data,
@@ -3565,16 +3789,11 @@ class _ChatInputBarState extends State<ChatInputBar> {
           AppStrings.t(AppStringKeys.suggestedPostComposerTitle),
           _createSuggestedPost,
         ),
-      if (!vm.isGroup &&
-          !vm.peerIsBot &&
-          !vm.isSecretChat &&
-          vm.peerUserId != vm.meId)
-        (
-          HeroAppIcons.solidMessage.data,
-          'Quick Replies',
-          _openBusinessQuickReplies,
-        ),
-      (HeroAppIcons.clock.data, 'Scheduled', _openScheduledMessages),
+      (
+        HeroAppIcons.clock.data,
+        telegramText(AppStringKeys.messageSendOptionsScheduledMessages),
+        _openScheduledMessages,
+      ),
     ];
     final c = context.colors;
     return Container(
@@ -3929,12 +4148,54 @@ class _ChatInputBarState extends State<ChatInputBar> {
               ? AppStrings.t(AppStringKeys.composerReleaseFingerToCancel)
               : 'Release to preview · slide up to lock · left to cancel');
     return Container(
-      height: 270,
+      height: 318,
       width: double.infinity,
       color: c.panelBackground,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
+          Container(
+            height: 42,
+            margin: const EdgeInsets.symmetric(horizontal: 20),
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              color: c.searchFill,
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _voiceModeButton(
+                    key: const ValueKey('voicePanelVoiceMessage'),
+                    selected: true,
+                    icon: HeroAppIcons.microphone,
+                    label: telegramText(
+                      AppStringKeys.voiceNotePreviewVoiceMessage,
+                    ),
+                    onTap: () {},
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: _voiceModeButton(
+                    key: const ValueKey('voicePanelVideoMessage'),
+                    selected: false,
+                    icon: HeroAppIcons.solidFileVideo,
+                    label: telegramText(
+                      AppStringKeys.videoNotePreviewVideoMessage,
+                    ),
+                    onTap: _recording
+                        ? null
+                        : () {
+                            _setPanel(_Panel.none);
+                            unawaited(_recordVideoNote());
+                          },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
           Text(
             label,
             style: TextStyle(
@@ -4065,6 +4326,62 @@ class _ChatInputBarState extends State<ChatInputBar> {
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _voiceModeButton({
+    required Key key,
+    required bool selected,
+    required AppIconData icon,
+    required String label,
+    required VoidCallback? onTap,
+  }) {
+    final c = context.colors;
+    return GestureDetector(
+      key: key,
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        curve: Curves.easeOutCubic,
+        height: 36,
+        decoration: BoxDecoration(
+          color: selected ? c.card : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.10),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            AppIcon(
+              icon,
+              size: 17,
+              color: selected ? AppTheme.brand : c.textSecondary,
+            ),
+            const SizedBox(width: 7),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  color: selected ? c.textPrimary : c.textSecondary,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -52,9 +52,9 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.text('Summarizing 1972 unread messages'), findsOneWidget);
+      expect(find.text('AI Summary'), findsWidgets);
       expect(find.text('Reading unread messages…'), findsOneWidget);
-      expect(find.text('Found 1972 unread messages'), findsOneWidget);
+      expect(find.text('Found 1972 unread messages'), findsNothing);
 
       reportProgress(
         const UnreadChatSummaryProgress(
@@ -74,7 +74,7 @@ void main() {
         ),
       );
       await tester.pump();
-      expect(find.text('Summarizing chunks in parallel · 1/2'), findsOneWidget);
+      expect(find.text('Summarizing · 1/2'), findsOneWidget);
 
       reportProgress(
         const UnreadChatSummaryProgress(
@@ -139,6 +139,19 @@ void main() {
       expect(find.textContaining('成员讨论了发布时间。'), findsOneWidget);
       expect(find.text('1'), findsWidgets);
       expect(find.text('2'), findsOneWidget);
+      final badges = find.byWidgetPredicate(
+        (widget) =>
+            widget.key is ValueKey<String> &&
+            (widget.key! as ValueKey<String>).value.startsWith(
+              'ai-summary-evidence-badge-',
+            ),
+      );
+      expect(badges, findsWidgets);
+      for (final badge in badges.evaluate()) {
+        final size = tester.getSize(find.byWidget(badge.widget));
+        expect(size.width, lessThan(40));
+        expect(size.height, lessThanOrEqualTo(20));
+      }
       expect(find.textContaining('Processed 1972 messages'), findsOneWidget);
       expect(find.textContaining('AI take'), findsOneWidget);
       expect(find.textContaining('消息很多，真正要拍板的只有发布时间。'), findsOneWidget);
@@ -146,6 +159,68 @@ void main() {
       expect(find.text('Assembling the summary…'), findsNothing);
     },
   );
+
+  testWidgets('partial summary explains its exact coverage reason', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final theme = ThemeController(await SharedPreferences.getInstance());
+    addTearDown(theme.dispose);
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: theme,
+        child: MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: UnreadChatSummaryView(
+            snapshot: UnreadChatRangeSnapshot(
+              chatId: 1,
+              accountSlot: 0,
+              lastReadInboxId: 1,
+              unreadCount: 120,
+              upperMessageId: 121,
+              capturedAt: DateTime(2026, 7, 20),
+            ),
+            summarize: (_) async => UnreadChatSummary(
+              content: UnreadChatSummaryContent(
+                title: 'Partial summary',
+                overview: 'Covered content.',
+                overviewEvidenceIds: const ['m2'],
+                highlights: const [],
+                needsReply: const [],
+                decisions: const [],
+                actions: const [],
+                questions: const [],
+                uncertainties: const [],
+              ),
+              coverage: const UnreadChatSummaryCoverage(
+                expectedUnreadCount: 120,
+                fetchedMessageCount: 120,
+                fetchedUnreadMessageCount: 120,
+                summarizedMessageCount: 37,
+                summarizedUnreadMessageCount: 37,
+                reachedReadBoundary: true,
+                historyCapped: false,
+                processingCapped: false,
+                historyStalled: false,
+                failedRequestCount: 1,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Covered 37 of 120 unread messages.'), findsOneWidget);
+    expect(find.text('Some AI requests failed.'), findsOneWidget);
+  });
 
   testWidgets('failure surface shows actionable request diagnostics', (
     tester,
@@ -201,6 +276,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Technical details'), findsOneWidget);
+    expect(find.textContaining('provider: apple_pcc'), findsNothing);
+    await tester.tap(find.text('Technical details'));
+    await tester.pump();
     expect(find.textContaining('provider: apple_pcc'), findsOneWidget);
     expect(find.textContaining('chunks_succeeded: 0/5'), findsOneWidget);
     expect(find.textContaining('context_window_tokens: 32768'), findsOneWidget);
