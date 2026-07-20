@@ -360,9 +360,10 @@ class CallManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Turn the outgoing camera on with the chosen lens. The UI shows a front/back
-  /// selector before calling this. `call.isVideo` remains the original Telegram
-  /// call type; the live call surface follows [isVideoEnabled].
+  /// Turn the outgoing camera on with the chosen lens. The UI reuses the last
+  /// selected lens, while its rotate action can switch cameras after video is
+  /// active. `call.isVideo` remains the original Telegram call type; the live
+  /// call surface follows [isVideoEnabled].
   void enableVideo(bool front) {
     isVideoEnabled = true;
     useFrontCamera = front;

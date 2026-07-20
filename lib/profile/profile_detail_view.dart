@@ -954,7 +954,7 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
         ),
         if (_emojiStatusId != 0) ...[
           const SizedBox(width: 6),
-          CustomEmojiView(id: _emojiStatusId, size: 24),
+          StatusEmojiView(id: _emojiStatusId, size: 24),
         ],
         if (_isPremium) ...[const SizedBox(width: 6), const VipBadge()],
       ],

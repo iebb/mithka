@@ -1,4 +1,39 @@
+import 'package:flutter/widgets.dart';
+
 enum ChatBottomIndicator { none, newMessages, jumpToBottom }
+
+enum ChatNewMessagesControlPlacement { hidden, top, bottom }
+
+/// Keeps the unread-message badge mounted while the optional AI attachment is
+/// enabled or disabled. A stable badge subtree avoids coupling the core unread
+/// affordance to AI configuration changes.
+class ChatNewMessagesControlShell extends StatelessWidget {
+  const ChatNewMessagesControlShell({
+    super.key,
+    required this.unreadBadge,
+    this.aiAttachment,
+    this.attachmentGap = 6,
+  });
+
+  static const unreadBadgeKey = ValueKey('chatUnreadMessagesBadge');
+  static const aiAttachmentKey = ValueKey('chatUnreadMessagesAiAttachment');
+
+  final Widget unreadBadge;
+  final Widget? aiAttachment;
+  final double attachmentGap;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      if (aiAttachment case final attachment?) ...[
+        KeyedSubtree(key: aiAttachmentKey, child: attachment),
+        SizedBox(width: attachmentGap),
+      ],
+      KeyedSubtree(key: unreadBadgeKey, child: unreadBadge),
+    ],
+  );
+}
 
 ChatBottomIndicator chatBottomIndicator({
   required bool isScrolledUp,
@@ -8,6 +43,18 @@ ChatBottomIndicator chatBottomIndicator({
   return hasNewMessages
       ? ChatBottomIndicator.newMessages
       : ChatBottomIndicator.jumpToBottom;
+}
+
+ChatNewMessagesControlPlacement chatNewMessagesControlPlacement({
+  required bool isScrolledUp,
+  required bool hasNewMessages,
+  required bool isEntryUnread,
+}) {
+  if (!hasNewMessages) return ChatNewMessagesControlPlacement.hidden;
+  if (isScrolledUp) return ChatNewMessagesControlPlacement.bottom;
+  return isEntryUnread
+      ? ChatNewMessagesControlPlacement.top
+      : ChatNewMessagesControlPlacement.hidden;
 }
 
 /// Buffers only message IDs received through TDLib's `updateNewMessage` path.
@@ -43,6 +90,21 @@ List<int> appendedLiveIncomingMessageIds({
             currentIds.contains(id),
       )
       .toList(growable: false);
+}
+
+/// Returns the earliest loaded incoming message beyond a captured read
+/// boundary. The boundary must be the value from when the chat opened: TDLib
+/// advances its live boundary as soon as the latest messages are marked read.
+int? firstUnreadMessageIdAfterBoundary({
+  required Iterable<int> incomingMessageIds,
+  required int lastReadInboxId,
+}) {
+  int? earliest;
+  for (final messageId in incomingMessageIds) {
+    if (messageId <= lastReadInboxId) continue;
+    if (earliest == null || messageId < earliest) earliest = messageId;
+  }
+  return earliest;
 }
 
 class ChatUnreadProgress {

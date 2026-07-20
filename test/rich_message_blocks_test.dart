@@ -228,4 +228,59 @@ void main() {
     expect(message.richBlocks[19].children.single.text, 'Inside');
     expect(message.richBlocks[20].mapLocation?.latitude, 35.681236);
   });
+
+  test('treats whitespace-only rich media captions as absent', () {
+    final message = TDParse.message({
+      '@type': 'message',
+      'id': 501,
+      'chat_id': 42,
+      'date': 1,
+      'is_outgoing': false,
+      'content': {
+        '@type': 'messageRichMessage',
+        'message': {
+          '@type': 'richMessage',
+          'is_full': true,
+          'blocks': [
+            {
+              '@type': 'pageBlockPhoto',
+              'photo': _photo(21),
+              'caption': _caption(' \n '),
+            },
+            {
+              '@type': 'pageBlockVideo',
+              'video': _video(22),
+              'caption': _caption('\t'),
+            },
+            {
+              '@type': 'pageBlockAnimation',
+              'animation': _animation(23),
+              'caption': _caption('  '),
+            },
+            {
+              '@type': 'pageBlockAudio',
+              'audio': {'@type': 'audio', 'duration': 30, 'audio': _file(24)},
+              'caption': _caption('\n\t'),
+            },
+            {
+              '@type': 'pageBlockVoiceNote',
+              'voice_note': {
+                '@type': 'voiceNote',
+                'duration': 8,
+                'voice': _file(25),
+              },
+              'caption': _caption(' \t '),
+            },
+          ],
+        },
+      },
+    });
+
+    expect(message, isNotNull);
+    expect(message!.richBlocks, hasLength(5));
+    for (final block in message.richBlocks) {
+      expect(block.caption, isEmpty);
+      expect(block.captionEntities, isEmpty);
+    }
+  });
 }

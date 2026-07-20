@@ -143,6 +143,17 @@ void main() {
     }
   });
 
+  test('Simplified Chinese unread count uses the unread label', () {
+    expect(
+      AppStrings.tForLocale(
+        'zhHans',
+        AppStringKeys.chatUnreadMessagesCount,
+        {'value1': 1972},
+      ),
+      '1972条未读消息',
+    );
+  });
+
   test('tForLocale resolves country keys through countryNames', () {
     for (final localeKey in localeTables.keys) {
       final value = AppStrings.tForLocale(localeKey, 'countryJP');

@@ -57,7 +57,7 @@ Future<void> showEmojiStatusPicker(
               onTap: () => pick(id),
               child: Padding(
                 padding: const EdgeInsets.all(5),
-                child: CustomEmojiView(id: id, size: 34, color: c.textPrimary),
+                child: StatusEmojiView(id: id, size: 34, color: c.textPrimary),
               ),
             );
           },
@@ -291,7 +291,7 @@ Widget _statusTabStrip(
 Widget _packTabIcon(CustomEmojiPack pack, dynamic c) {
   final withId = pack.emoji.where((e) => e.customEmojiId != 0).toList();
   if (withId.isNotEmpty) {
-    return CustomEmojiView(
+    return StatusEmojiView(
       id: withId.first.customEmojiId,
       size: 26,
       color: c.textPrimary,

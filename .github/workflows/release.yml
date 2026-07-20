@@ -338,8 +338,17 @@ jobs:
           cp "build/app/outputs/flutter-apk/app-${{ matrix.abi }}-release.apk" \
             "dist/mithka-${{ needs.prepare.outputs.artifact_label }}-${{ matrix.abi }}-vc${{ needs.prepare.outputs.build_stamp }}-release.apk"
 
+      - name: Upload standard APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-standard-${{ matrix.abi }}-${{ needs.prepare.outputs.release_date }}-${{ needs.prepare.outputs.build_stamp }}
+          path: dist/mithka-${{ needs.prepare.outputs.artifact_label }}-${{ matrix.abi }}-vc${{ needs.prepare.outputs.build_stamp }}-release.apk
+          if-no-files-found: error
+
       - name: Patch and re-sign ${{ matrix.abi }} compatibility APK (+2000 version code)
+        id: compatibility_apk
         if: needs.prepare.outputs.produce_compat_apk == 'true'
+        continue-on-error: true
         env:
           STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
@@ -555,22 +564,30 @@ jobs:
 
           standard_cert="$(
             "$apksigner" verify --print-certs "$standard_apk" \
-              | awk -F': ' '/Signer #1 certificate SHA-256 digest/ { print $2; exit }'
+              | awk -F': ' '/certificate SHA-256 digest:/ { print $NF; exit }'
           )"
           compat_cert="$(
             "$apksigner" verify --print-certs "$compat_apk" \
-              | awk -F': ' '/Signer #1 certificate SHA-256 digest/ { print $2; exit }'
+              | awk -F': ' '/certificate SHA-256 digest:/ { print $NF; exit }'
           )"
           test -n "$standard_cert"
           test "$compat_cert" = "$standard_cert"
           echo "Compatibility APK version code: $actual_version_code"
           echo "Compatibility APK re-signed with the standard APK certificate: $compat_cert"
 
-      - name: Upload APK artifact
+      - name: Report compatibility APK failure
+        if: needs.prepare.outputs.produce_compat_apk == 'true' && steps.compatibility_apk.outcome == 'failure'
+        run: |
+          echo "::warning::Compatibility APK generation failed for ${{ matrix.abi }}; the standard APK was uploaded and will still be released."
+          echo "### Compatibility APK warning" >> "$GITHUB_STEP_SUMMARY"
+          echo "The ${{ matrix.abi }} compatibility APK failed, but the standard APK was uploaded and will still be released." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload compatibility APK artifact
+        if: needs.prepare.outputs.produce_compat_apk == 'true' && steps.compatibility_apk.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: apk-${{ matrix.abi }}-${{ needs.prepare.outputs.release_date }}-${{ needs.prepare.outputs.build_stamp }}
-          path: dist/*.apk
+          name: apk-compat-${{ matrix.abi }}-${{ needs.prepare.outputs.release_date }}-${{ needs.prepare.outputs.compat_build_stamp }}
+          path: dist/mithka-${{ needs.prepare.outputs.artifact_label }}-${{ matrix.abi }}-vc${{ needs.prepare.outputs.compat_build_stamp }}-compat-release.apk
           if-no-files-found: error
 
   release:
@@ -588,8 +605,27 @@ jobs:
           path: apks
           merge-multiple: true
 
-      - name: List artifacts
-        run: ls -lhR apks
+      - name: Verify and list artifacts
+        run: |
+          ls -lhR apks
+          standard_apk_count="$(
+            find apks -maxdepth 1 -type f \
+              -name '*-release.apk' ! -name '*-compat-release.apk' \
+              | wc -l \
+              | tr -d ' '
+          )"
+          compat_apk_count="$(
+            find apks -maxdepth 1 -type f -name '*-compat-release.apk' \
+              | wc -l \
+              | tr -d ' '
+          )"
+          if [ "$standard_apk_count" -ne 2 ]; then
+            echo "Expected 2 standard APKs, found $standard_apk_count" >&2
+            exit 1
+          fi
+          echo "COMPAT_APK_COUNT=$compat_apk_count" >> "$GITHUB_ENV"
+          echo "Standard APKs: $standard_apk_count"
+          echo "Compatibility APKs: $compat_apk_count"
 
       - name: Create release tag
         env:
@@ -696,9 +732,12 @@ jobs:
 
           {
             echo "## Android APK version selection / Android APK 版本选择"
-            if [ "$PRODUCE_COMPAT_APK" = "true" ]; then
+            if [ "$PRODUCE_COMPAT_APK" = "true" ] && [ "$COMPAT_APK_COUNT" -eq 2 ]; then
               echo "- **English:** Choose the standard APK whose filename contains \`vc$BUILD_STAMP\` for new installs and normal updates. Use the \`+2000\` compatibility APK containing \`vc$COMPAT_BUILD_STAMP\` only if Android rejects the standard APK as a version downgrade from an older offset build. Both APKs contain the same app build. Do not choose the compatibility APK when the standard one installs successfully, because its higher code can delay later standard updates. The compatibility APK is produced only before 2026-08-01 UTC."
               echo "- **中文：** 新安装和常规更新请选择文件名包含 \`vc$BUILD_STAMP\` 的标准 APK。仅当旧的 \`+2000\` 偏移构建导致 Android 将标准 APK 判定为降级时，才使用包含 \`vc$COMPAT_BUILD_STAMP\` 的兼容 APK。两个 APK 的应用内容相同。如果标准 APK 可以正常安装，请勿选择兼容 APK，因为较高的版本代码可能延迟后续标准版更新。兼容 APK 仅在 2026-08-01 UTC 之前生成（不含当天）。"
+            elif [ "$PRODUCE_COMPAT_APK" = "true" ]; then
+              echo "- **English:** The standard APKs containing \`vc$BUILD_STAMP\` are available for both ABIs. Compatibility APK generation was incomplete ($COMPAT_APK_COUNT of 2 passed validation), so only use a \`vc$COMPAT_BUILD_STAMP\` compatibility APK if it is attached for your device ABI and Android rejects the standard APK as a downgrade."
+              echo "- **中文：** 两种 ABI 的标准 APK（文件名包含 \`vc$BUILD_STAMP\`）均已提供。兼容 APK 生成不完整（2 个中有 $COMPAT_APK_COUNT 个通过验证）；仅当已附上适用于设备 ABI 的 \`vc$COMPAT_BUILD_STAMP\` 兼容 APK，且 Android 将标准 APK 判定为降级时才使用它。"
             else
               echo "- **English:** Only the standard APK is produced from 2026-08-01 UTC. The temporary \`+2000\` compatibility APK is no longer generated. Choose the APK matching your device ABI."
               echo "- **中文：** 从 2026-08-01 UTC 起仅生成标准 APK，不再生成临时的 \`+2000\` 兼容 APK。请选择与设备 ABI 匹配的 APK。"

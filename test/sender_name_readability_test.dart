@@ -53,6 +53,7 @@ void main() {
       findsOneWidget,
     );
     final decoration = senderNameReadabilityDecoration(const Color(0xFF223344));
+    expect(decoration.color, const Color(0xFF223344));
     expect(decoration.borderRadius, isNotNull);
     expect(decoration.boxShadow, isNotEmpty);
   });
@@ -89,12 +90,29 @@ void main() {
     final namePill = find.byKey(const ValueKey('senderNameReadabilityPlate'));
     expect(tester.getTopRight(rolePill).dx, tester.getTopLeft(namePill).dx);
 
+    final roleContainer = tester.widget<Container>(rolePill);
+    expect(
+      roleContainer.padding,
+      const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+    );
+    final namePadding = tester.widget<Padding>(
+      find.descendant(of: namePill, matching: find.byType(Padding)).first,
+    );
+    expect(
+      namePadding.padding,
+      const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+    );
+
     final roleText = tester.widget<Text>(find.text('Moderator'));
     final nameText = tester.widget<Text>(find.text('Bob Harris'));
     expect(roleText.style?.fontSize, nameText.style?.fontSize);
 
     final nameDecoration =
         tester.widget<DecoratedBox>(namePill).decoration as BoxDecoration;
+    final roleDecoration = roleContainer.decoration! as BoxDecoration;
+    expect(nameDecoration.color, const Color(0xFF223344));
+    expect(nameDecoration.boxShadow, isNotEmpty);
+    expect(roleDecoration.boxShadow, isNotEmpty);
     expect(
       nameDecoration.borderRadius,
       const BorderRadiusDirectional.only(

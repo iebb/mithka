@@ -101,7 +101,7 @@ class ChatRowView extends StatelessWidget {
                     ),
                     if (showPremiumStatus) ...[
                       const SizedBox(width: AppSpacing.xs),
-                      CustomEmojiView(
+                      StatusEmojiView(
                         id: chat.peerEmojiStatusId,
                         size: 17,
                         color: premiumNameColor,

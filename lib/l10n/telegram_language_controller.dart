@@ -686,6 +686,7 @@ const _telegramKeyForAppKey = <String, String>{
   AppStringKeys.composerAudio: 'AttachMusic',
   AppStringKeys.composerCamera: 'Camera',
   AppStringKeys.composerChecklist: 'Todo',
+  AppStringKeys.composerContact: 'AttachContact',
   AppStringKeys.composerImage: 'AttachPhoto',
   AppStringKeys.composerImagePreview: 'AttachPhoto',
   AppStringKeys.composerGifSendFailed: 'ErrorOccurred',

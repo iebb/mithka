@@ -2179,7 +2179,9 @@ abstract final class TDParse {
     final builder = _RichTextBuilder();
     _appendRichText(builder, caption.obj('text') ?? caption);
     _appendCredit(builder, caption.obj('credit'));
-    return _ParsedMarkdownText(builder.buffer.toString(), builder.entities);
+    final text = builder.buffer.toString();
+    if (text.trim().isEmpty) return const _ParsedMarkdownText('', []);
+    return _ParsedMarkdownText(text, builder.entities);
   }
 
   static List<List<RichMessageTableCell>> _richTableRows(Object? rows) {

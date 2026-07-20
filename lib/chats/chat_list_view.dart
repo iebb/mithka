@@ -845,7 +845,7 @@ class _ChatListViewState extends State<ChatListView>
                             context,
                             currentStatusId: _meStatusId,
                           ),
-                          child: CustomEmojiView(
+                          child: StatusEmojiView(
                             id: _meStatusId,
                             size: 18,
                             color: c.textPrimary,

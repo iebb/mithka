@@ -27,6 +27,7 @@
 		9A4F20E631E1000100000001 /* TelegramAccountSecurityBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4F20E531E1000100000001 /* TelegramAccountSecurityBridge.swift */; };
 		9A4F20E831E1000100000001 /* MithkaProBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4F20E731E1000100000001 /* MithkaProBridge.swift */; };
 		9A4F20EA31E1000100000001 /* CommunicationNotificationBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4F20E931E1000100000001 /* CommunicationNotificationBridge.swift */; };
+		9A4F20EC31E1000100000001 /* ApplePCCBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4F20EB31E1000100000001 /* ApplePCCBridge.swift */; };
 		A685F7A8DE8A8339A7CFE48A /* RunnerUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8FADD48E0FE94429FDE1912 /* RunnerUITests.swift */; };
 		B005C7BA5D2714CB149B4B95 /* MithkaBlue.icon in Resources */ = {isa = PBXBuildFile; fileRef = 0CC7151EAA772074B2F1F159 /* MithkaBlue.icon */; };
 		BD06D3B4F53874C98C6D9618 /* tdjson.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 7AF24ACBEB1466595B72E2DD /* tdjson.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -95,6 +96,7 @@
 		9A4F20E531E1000100000001 /* TelegramAccountSecurityBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TelegramAccountSecurityBridge.swift; sourceTree = "<group>"; };
 		9A4F20E731E1000100000001 /* MithkaProBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = MithkaProBridge.swift; sourceTree = "<group>"; };
 		9A4F20E931E1000100000001 /* CommunicationNotificationBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = CommunicationNotificationBridge.swift; sourceTree = "<group>"; };
+		9A4F20EB31E1000100000001 /* ApplePCCBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ApplePCCBridge.swift; sourceTree = "<group>"; };
 		9AE1F80607B45379F5468F27 /* Pods-Runner.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.debug.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"; sourceTree = "<group>"; };
 		A257B729519AB240FBD5E29F /* MithkaPurple.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaPurple.icon; sourceTree = "<group>"; };
 		C145FCC43A8CB4B5D827E2D6 /* MithkaPixel.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaPixel.icon; sourceTree = "<group>"; };
@@ -204,6 +206,7 @@
 				9A4F20E531E1000100000001 /* TelegramAccountSecurityBridge.swift */,
 				9A4F20E731E1000100000001 /* MithkaProBridge.swift */,
 				9A4F20E931E1000100000001 /* CommunicationNotificationBridge.swift */,
+				9A4F20EB31E1000100000001 /* ApplePCCBridge.swift */,
 				7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 				8CE983C22FEBFF5D00D0A469 /* Pengram.icon */,
@@ -579,6 +582,7 @@
 				9A4F20E631E1000100000001 /* TelegramAccountSecurityBridge.swift in Sources */,
 				9A4F20E831E1000100000001 /* MithkaProBridge.swift in Sources */,
 				9A4F20EA31E1000100000001 /* CommunicationNotificationBridge.swift in Sources */,
+				9A4F20EC31E1000100000001 /* ApplePCCBridge.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 				7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */,
 			);

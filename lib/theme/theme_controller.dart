@@ -914,6 +914,7 @@ class ThemeController extends ChangeNotifier {
     _interfaceScale = _prefs.getDouble(_interfaceScaleKey) ?? 1.0;
     _circularGroupAvatars = _prefs.getBool(_groupAvatarCircleKey) ?? true;
     _animateAvatars = _prefs.getBool(_animateAvatarsKey) ?? true;
+    _animateStatusEmoji = _prefs.getBool(_animateStatusEmojiKey) ?? true;
     final storedChatFolderMode = _prefs.getString(_chatFolderDisplayModeKey);
     _chatFolderDisplayMode = ChatFolderDisplayMode.values.firstWhere(
       (mode) => mode.name == storedChatFolderMode,
@@ -1040,6 +1041,7 @@ class ThemeController extends ChangeNotifier {
   static const _interfaceScaleKey = 'interfaceScale';
   static const _groupAvatarCircleKey = 'circularGroupAvatars';
   static const _animateAvatarsKey = 'animateAvatars';
+  static const _animateStatusEmojiKey = 'animateStatusEmoji';
   static const _chatFolderDisplayModeKey = 'chatFolderDisplayMode';
   // Retained only to migrate the former show/hide toggle.
   static const _chatFolderFilterKey = 'showChatFolderFilter';
@@ -1104,6 +1106,7 @@ class ThemeController extends ChangeNotifier {
   late double _interfaceScale;
   late bool _circularGroupAvatars;
   late bool _animateAvatars;
+  late bool _animateStatusEmoji;
   late ChatFolderDisplayMode _chatFolderDisplayMode;
   bool _showChatListSearch = true;
   late ChatListSwipeBehavior _chatListSwipeBehavior;
@@ -1289,6 +1292,7 @@ class ThemeController extends ChangeNotifier {
 
   bool get circularGroupAvatars => _circularGroupAvatars;
   bool get animateAvatars => _animateAvatars;
+  bool get animateStatusEmoji => _animateStatusEmoji;
   ChatFolderDisplayMode get chatFolderDisplayMode => _chatFolderDisplayMode;
   bool get showChatListSearch => _showChatListSearch;
   ChatListSwipeBehavior get chatListSwipeBehavior => _chatListSwipeBehavior;
@@ -1736,6 +1740,13 @@ class ThemeController extends ChangeNotifier {
     if (_animateAvatars == value) return;
     _animateAvatars = value;
     _prefs.setBool(_animateAvatarsKey, value);
+    notifyListeners();
+  }
+
+  set animateStatusEmoji(bool value) {
+    if (_animateStatusEmoji == value) return;
+    _animateStatusEmoji = value;
+    _prefs.setBool(_animateStatusEmojiKey, value);
     notifyListeners();
   }
 

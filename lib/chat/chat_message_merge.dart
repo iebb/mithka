@@ -57,6 +57,23 @@ bool confirmsOlderHistoryExhausted({required bool onlyLocal}) {
   return !onlyLocal;
 }
 
+/// Chat-list preview / cold local cache often yields a single bubble. Windows
+/// thinner than this must await a remote page before the transcript is marked
+/// ready, otherwise the UI settles on the preview until the user scrolls.
+const kThinInitialHistoryMessageCount = 12;
+
+bool isThinInitialHistoryWindow(int messageCount) =>
+    messageCount > 0 && messageCount < kThinInitialHistoryMessageCount;
+
+/// Caught-up chats should open on the latest window. Around-last-read is only
+/// for chats that still have unread inbox messages.
+bool shouldLoadInitialHistoryAroundLastRead({
+  required bool openAtLatest,
+  required int lastReadInboxId,
+  required int unreadCount,
+}) =>
+    !openAtLatest && lastReadInboxId > 0 && unreadCount > 0;
+
 List<ChatMessage> mergeChatMessages(
   Iterable<ChatMessage> current,
   Iterable<ChatMessage> incoming, {

@@ -241,4 +241,31 @@ void main() {
       throwsArgumentError,
     );
   });
+
+  test('omits absent captions from every direct rich media block', () {
+    for (final kind in const [
+      OutgoingAttachmentKind.photo,
+      OutgoingAttachmentKind.video,
+      OutgoingAttachmentKind.animation,
+      OutgoingAttachmentKind.audio,
+      OutgoingAttachmentKind.voiceNote,
+    ]) {
+      for (final caption in const ['', ' \n\t ']) {
+        final payload = richMessageMediaBlockPayload(
+          OutgoingAttachment(
+            path: '',
+            kind: kind,
+            fileId: 77,
+            caption: caption,
+          ),
+        );
+
+        expect(
+          payload['caption'],
+          isNull,
+          reason: '${kind.name} must not get a caption from whitespace',
+        );
+      }
+    }
+  });
 }
