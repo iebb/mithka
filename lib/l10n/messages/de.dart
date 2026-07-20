@@ -126,6 +126,8 @@ const deMessages = <String, String>{
       "Verwende eine HTTPS-URL, die mit /v1/chat/completions endet. HTTP ist nur für localhost erlaubt.",
   'aiAddProvider': "Anbieter hinzufügen",
   'aiContextWindow': "Kontext-Token",
+  'aiContextDetected': "Vom Anbieter erkannt",
+  'aiContextManual': "Nicht gemeldet; bitte manuell prüfen",
   'aiDeleteProvider': "Anbieter löschen",
   'aiModelsFailed':
       "Modelle konnten nicht geladen werden. Prüfe Endpunkt und API-Schlüssel.",

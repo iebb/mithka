@@ -123,6 +123,8 @@ const enMessages = <String, String>{
       "Use an HTTPS URL ending in /v1/chat/completions. HTTP is allowed only for localhost.",
   'aiAddProvider': "Add Provider",
   'aiContextWindow': "Context Tokens",
+  'aiContextDetected': "Detected from provider",
+  'aiContextManual': "Not reported by provider; verify manually",
   'aiDeleteProvider': "Delete Provider",
   'aiModelsFailed': "Could not load models. Check the endpoint and API key.",
   'aiModelsLoaded': "Loaded {value1} models",

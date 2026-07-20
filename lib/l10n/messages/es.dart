@@ -127,6 +127,8 @@ const esMessages = <String, String>{
       "Usa una URL HTTPS que termine en /v1/chat/completions. HTTP solo se permite para localhost.",
   'aiAddProvider': "Añadir proveedor",
   'aiContextWindow': "Tokens de contexto",
+  'aiContextDetected': "Detectado por el proveedor",
+  'aiContextManual': "No indicado; compruébalo manualmente",
   'aiDeleteProvider': "Eliminar proveedor",
   'aiModelsFailed':
       "No se pudieron cargar los modelos. Revisa el punto de conexión y la clave de API.",

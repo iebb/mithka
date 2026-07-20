@@ -128,6 +128,8 @@ const frMessages = <String, String>{
       "Utilisez une URL HTTPS se terminant par /v1/chat/completions. HTTP n’est autorisé que pour localhost.",
   'aiAddProvider': "Ajouter un fournisseur",
   'aiContextWindow': "Jetons de contexte",
+  'aiContextDetected': "Détecté par le fournisseur",
+  'aiContextManual': "Non indiqué ; vérifiez manuellement",
   'aiDeleteProvider': "Supprimer le fournisseur",
   'aiModelsFailed':
       "Impossible de charger les modèles. Vérifiez le point de terminaison et la clé API.",

@@ -26,6 +26,7 @@ class _AiSettingsViewState extends State<AiSettingsView> {
   final _contextWindow = TextEditingController();
   List<OpenAiCompatibleModelInfo> _availableModels = const [];
   String? _editingProfileId;
+  bool _contextWindowDetected = false;
   bool _didLoadValues = false;
   bool _didRefreshPccCapabilities = false;
   bool _saving = false;
@@ -252,6 +253,10 @@ class _AiSettingsViewState extends State<AiSettingsView> {
           label: AppStringKeys.aiServerEndpoint.l10n(context),
           hint: AppStringKeys.aiServerEndpointHint.l10n(context),
           keyboardType: TextInputType.url,
+          onChanged: (_) => setState(() {
+            _availableModels = const [];
+            _contextWindowDetected = false;
+          }),
         ),
         const SizedBox(height: AppSpacing.sm),
         _inputField(
@@ -261,6 +266,7 @@ class _AiSettingsViewState extends State<AiSettingsView> {
           label: AppStringKeys.aiServerApiKey.l10n(context),
           hint: AppStringKeys.aiServerApiKeyOptional.l10n(context),
           obscureText: _obscureApiKey,
+          onChanged: (_) => setState(() => _contextWindowDetected = false),
           trailing: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () => setState(() => _obscureApiKey = !_obscureApiKey),
@@ -281,6 +287,7 @@ class _AiSettingsViewState extends State<AiSettingsView> {
           icon: HeroAppIcons.wandMagicSparkles,
           label: AppStringKeys.aiServerModel.l10n(context),
           hint: AppStringKeys.aiServerModelHint.l10n(context),
+          onChanged: (_) => setState(() => _contextWindowDetected = false),
           trailing: _availableModels.isEmpty
               ? null
               : GestureDetector(
@@ -304,6 +311,14 @@ class _AiSettingsViewState extends State<AiSettingsView> {
           label: AppStringKeys.aiContextWindow.l10n(context),
           hint: '${AiServerProfile.defaultContextWindowTokens}',
           keyboardType: TextInputType.number,
+          onChanged: (_) => setState(() => _contextWindowDetected = false),
+        ),
+        _note(
+          context,
+          (_contextWindowDetected
+                  ? AppStringKeys.aiContextDetected
+                  : AppStringKeys.aiContextManual)
+              .l10n(context),
         ),
         _note(context, AppStringKeys.aiServerPrivacy.l10n(context)),
         const SizedBox(height: AppSpacing.lg),
@@ -346,6 +361,7 @@ class _AiSettingsViewState extends State<AiSettingsView> {
     TextInputType? keyboardType,
     bool obscureText = false,
     Widget? trailing,
+    ValueChanged<String>? onChanged,
   }) {
     final c = context.colors;
     return Semantics(
@@ -376,6 +392,7 @@ class _AiSettingsViewState extends State<AiSettingsView> {
                     autocorrect: false,
                     enableSuggestions: false,
                     keyboardType: keyboardType,
+                    onChanged: onChanged,
                     style: AppTextStyle.body(c.textPrimary),
                     cursorColor: AppTheme.brand,
                     decoration: InputDecoration(
@@ -455,6 +472,7 @@ class _AiSettingsViewState extends State<AiSettingsView> {
         model: _model.text,
         apiKey: _apiKey.text,
         contextWindowTokens: contextWindow,
+        contextWindowDetected: _contextWindowDetected,
         availableModels: _availableModels,
       );
       _editingProfileId = saved.id;
@@ -476,6 +494,7 @@ class _AiSettingsViewState extends State<AiSettingsView> {
       final models = await settings.discoverModels(
         endpoint: _endpoint.text,
         apiKey: _apiKey.text,
+        preferredModel: _model.text,
       );
       if (!mounted) return;
       setState(() {
@@ -484,8 +503,12 @@ class _AiSettingsViewState extends State<AiSettingsView> {
           _model.text = models.first.id;
         }
         final selected = models.where((item) => item.id == _model.text.trim());
-        if (selected.isNotEmpty && selected.first.contextWindowTokens != null) {
-          _contextWindow.text = '${selected.first.contextWindowTokens}';
+        final contextTokens = selected.isEmpty
+            ? null
+            : selected.first.contextWindowTokens;
+        _contextWindowDetected = contextTokens != null;
+        if (contextTokens != null) {
+          _contextWindow.text = '$contextTokens';
         }
       });
       showToast(
@@ -525,6 +548,7 @@ class _AiSettingsViewState extends State<AiSettingsView> {
       _apiKey.clear();
       _contextWindow.text = '${AiServerProfile.defaultContextWindowTokens}';
       _availableModels = const [];
+      _contextWindowDetected = false;
     });
   }
 
@@ -537,6 +561,7 @@ class _AiSettingsViewState extends State<AiSettingsView> {
     _contextWindow.text =
         '${profile?.contextWindowTokens ?? AiServerProfile.defaultContextWindowTokens}';
     _availableModels = profile?.availableModels ?? const [];
+    _contextWindowDetected = profile?.contextWindowDetected ?? false;
   }
 
   Future<void> _showServerProfilePicker(AiSettingsController settings) async {
@@ -654,15 +679,9 @@ class _AiSettingsViewState extends State<AiSettingsView> {
                 final selected = model.id == _model.text.trim();
                 return GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onTap: () {
-                    setState(() {
-                      _model.text = model.id;
-                      final contextTokens = model.contextWindowTokens;
-                      if (contextTokens != null) {
-                        _contextWindow.text = '$contextTokens';
-                      }
-                    });
+                  onTap: () async {
                     Navigator.of(sheetContext).pop();
+                    await _selectModel(model);
                   },
                   child: SizedBox(
                     height: 52,
@@ -703,6 +722,48 @@ class _AiSettingsViewState extends State<AiSettingsView> {
         );
       },
     );
+  }
+
+  Future<void> _selectModel(OpenAiCompatibleModelInfo model) async {
+    if (!mounted) return;
+    setState(() {
+      _model.text = model.id;
+      final contextTokens = model.contextWindowTokens;
+      _contextWindowDetected = contextTokens != null;
+      _contextWindow.text =
+          '${contextTokens ?? AiServerProfile.defaultContextWindowTokens}';
+    });
+    if (model.contextWindowTokens != null) return;
+
+    setState(() => _refreshingModels = true);
+    try {
+      final settings = context.read<AiSettingsController>();
+      final detail = await settings.discoverModelDetails(
+        endpoint: _endpoint.text,
+        apiKey: _apiKey.text,
+        model: model.id,
+      );
+      final contextTokens = detail?.contextWindowTokens;
+      if (!mounted || contextTokens == null || _model.text != model.id) return;
+      setState(() {
+        _contextWindow.text = '$contextTokens';
+        _contextWindowDetected = true;
+        _availableModels = [
+          for (final available in _availableModels)
+            if (available.id == model.id)
+              OpenAiCompatibleModelInfo(
+                id: available.id,
+                contextWindowTokens: contextTokens,
+              )
+            else
+              available,
+        ];
+      });
+    } on Object {
+      // The model name is still usable. Context remains explicitly manual.
+    } finally {
+      if (mounted) setState(() => _refreshingModels = false);
+    }
   }
 
   Future<void> _showProviderPicker(AiSettingsController settings) async {

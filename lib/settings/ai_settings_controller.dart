@@ -31,18 +31,20 @@ class AiServerProfile {
     required this.endpoint,
     required this.model,
     this.contextWindowTokens = defaultContextWindowTokens,
+    this.contextWindowDetected = false,
     this.availableModels = const [],
   });
 
   static const defaultContextWindowTokens = 131072;
   static const minimumContextWindowTokens = 4096;
-  static const maximumContextWindowTokens = 1048576;
+  static const maximumContextWindowTokens = 16777216;
 
   final String id;
   final String name;
   final String endpoint;
   final String model;
   final int contextWindowTokens;
+  final bool contextWindowDetected;
   final List<OpenAiCompatibleModelInfo> availableModels;
 
   Uri get chatCompletionsUri => Uri.parse(endpoint);
@@ -52,6 +54,7 @@ class AiServerProfile {
     String? endpoint,
     String? model,
     int? contextWindowTokens,
+    bool? contextWindowDetected,
     List<OpenAiCompatibleModelInfo>? availableModels,
   }) => AiServerProfile(
     id: id,
@@ -59,6 +62,7 @@ class AiServerProfile {
     endpoint: endpoint ?? this.endpoint,
     model: model ?? this.model,
     contextWindowTokens: contextWindowTokens ?? this.contextWindowTokens,
+    contextWindowDetected: contextWindowDetected ?? this.contextWindowDetected,
     availableModels: availableModels ?? this.availableModels,
   );
 
@@ -68,6 +72,7 @@ class AiServerProfile {
     'endpoint': endpoint,
     'model': model,
     'context_window_tokens': contextWindowTokens,
+    'context_window_detected': contextWindowDetected,
     'available_models': availableModels
         .map((model) => model.toJson())
         .toList(growable: false),
@@ -114,6 +119,7 @@ class AiServerProfile {
               parsedContext <= maximumContextWindowTokens
           ? parsedContext
           : defaultContextWindowTokens,
+      contextWindowDetected: value['context_window_detected'] == true,
       availableModels: List.unmodifiable(availableModels),
     );
   }
@@ -313,8 +319,48 @@ class AiSettingsController extends ChangeNotifier {
   Future<List<OpenAiCompatibleModelInfo>> discoverModels({
     required String endpoint,
     required String apiKey,
-  }) => _modelsApi.listModels(
+    String? preferredModel,
+  }) async {
+    final uri = validateOpenAiCompatibleEndpoint(endpoint);
+    final models = await _modelsApi.listModels(
+      chatCompletionsUri: uri,
+      apiKey: apiKey,
+    );
+    if (models.isEmpty) return models;
+    final normalizedPreferred = preferredModel?.trim() ?? '';
+    final targetIndex = normalizedPreferred.isEmpty
+        ? 0
+        : models.indexWhere((model) => model.id == normalizedPreferred);
+    if (targetIndex < 0) return models;
+    if (models[targetIndex].contextWindowTokens != null) return models;
+
+    try {
+      final detail = await _modelsApi.retrieveModel(
+        chatCompletionsUri: uri,
+        modelId: models[targetIndex].id,
+        apiKey: apiKey,
+      );
+      if (detail?.contextWindowTokens == null) return models;
+      final enriched = models.toList();
+      enriched[targetIndex] = OpenAiCompatibleModelInfo(
+        id: models[targetIndex].id,
+        contextWindowTokens: detail!.contextWindowTokens,
+      );
+      return List.unmodifiable(enriched);
+    } on OpenAiCompatibleModelsException {
+      // Model-list discovery still succeeded. Detail lookup is optional and
+      // must not hide usable model IDs on providers that do not implement it.
+      return models;
+    }
+  }
+
+  Future<OpenAiCompatibleModelInfo?> discoverModelDetails({
+    required String endpoint,
+    required String apiKey,
+    required String model,
+  }) => _modelsApi.retrieveModel(
     chatCompletionsUri: validateOpenAiCompatibleEndpoint(endpoint),
+    modelId: model,
     apiKey: apiKey,
   );
 
@@ -328,6 +374,7 @@ class AiSettingsController extends ChangeNotifier {
     final models = await discoverModels(
       endpoint: profile.endpoint,
       apiKey: _profileApiKeys[profileId] ?? '',
+      preferredModel: profile.model,
     );
     final selectedModel = models.where((item) => item.id == profile.model);
     final discoveredContext = selectedModel.isEmpty
@@ -337,6 +384,7 @@ class AiSettingsController extends ChangeNotifier {
       profile.copyWith(
         availableModels: List.unmodifiable(models),
         contextWindowTokens: discoveredContext ?? profile.contextWindowTokens,
+        contextWindowDetected: discoveredContext != null,
       ),
     );
     return models;
@@ -349,6 +397,7 @@ class AiSettingsController extends ChangeNotifier {
     required String model,
     required String apiKey,
     required int contextWindowTokens,
+    bool contextWindowDetected = false,
     List<OpenAiCompatibleModelInfo>? availableModels,
   }) async {
     final uri = validateOpenAiCompatibleEndpoint(endpoint);
@@ -373,6 +422,7 @@ class AiSettingsController extends ChangeNotifier {
       endpoint: uri.toString(),
       model: normalizedModel,
       contextWindowTokens: contextWindowTokens,
+      contextWindowDetected: contextWindowDetected,
       availableModels: List.unmodifiable(
         availableModels ?? existing?.availableModels ?? const [],
       ),

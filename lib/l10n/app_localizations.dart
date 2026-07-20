@@ -248,6 +248,8 @@ abstract final class AppStringKeys {
   static const aiInvalidEndpoint = 'aiInvalidEndpoint';
   static const aiAddProvider = 'aiAddProvider';
   static const aiContextWindow = 'aiContextWindow';
+  static const aiContextDetected = 'aiContextDetected';
+  static const aiContextManual = 'aiContextManual';
   static const aiDeleteProvider = 'aiDeleteProvider';
   static const aiModelsFailed = 'aiModelsFailed';
   static const aiModelsLoaded = 'aiModelsLoaded';

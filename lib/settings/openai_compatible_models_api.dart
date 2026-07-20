@@ -107,6 +107,13 @@ class OpenAiCompatibleModelsApi {
     return chatCompletionsUri.replace(path: '$prefix/v1/models');
   }
 
+  static Uri modelUriFor(Uri chatCompletionsUri, String modelId) {
+    final modelsUri = modelsUriFor(chatCompletionsUri);
+    return modelsUri.replace(
+      pathSegments: [...modelsUri.pathSegments, modelId.trim()],
+    );
+  }
+
   Future<List<OpenAiCompatibleModelInfo>> listModels({
     required Uri chatCompletionsUri,
     String? apiKey,
@@ -149,6 +156,56 @@ class OpenAiCompatibleModelsApi {
     final models = byId.values.toList()
       ..sort((left, right) => left.id.compareTo(right.id));
     return models;
+  }
+
+  /// Fetches the standard per-model detail resource. Providers that do not
+  /// implement it, or that return no context metadata, yield `null` or a model
+  /// whose [OpenAiCompatibleModelInfo.contextWindowTokens] is null.
+  Future<OpenAiCompatibleModelInfo?> retrieveModel({
+    required Uri chatCompletionsUri,
+    required String modelId,
+    String? apiKey,
+  }) async {
+    final normalizedModelId = modelId.trim();
+    if (normalizedModelId.isEmpty) return null;
+    final key = apiKey?.trim();
+    final response = await _httpClient
+        .get(
+          modelUriFor(chatCompletionsUri, normalizedModelId),
+          headers: {
+            'accept': 'application/json',
+            if (key != null && key.isNotEmpty) 'authorization': 'Bearer $key',
+          },
+        )
+        .timeout(requestTimeout);
+    if (response.statusCode == 404 ||
+        response.statusCode == 405 ||
+        response.statusCode == 501) {
+      return null;
+    }
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw OpenAiCompatibleModelsException(
+        _errorMessage(response.body),
+        statusCode: response.statusCode,
+      );
+    }
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(response.body);
+    } on FormatException catch (error) {
+      throw OpenAiCompatibleModelsException(
+        'The model details returned invalid JSON: $error',
+      );
+    }
+    final model = OpenAiCompatibleModelInfo.fromJson(
+      decoded is Map && decoded['data'] is Map ? decoded['data'] : decoded,
+    );
+    if (model == null) {
+      throw const OpenAiCompatibleModelsException(
+        'The model details response has no model ID.',
+      );
+    }
+    return model;
   }
 
   void close() {

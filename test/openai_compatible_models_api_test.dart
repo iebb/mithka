@@ -73,6 +73,49 @@ void main() {
     expect(captured.headers, isNot(contains('authorization')));
   });
 
+  test('retrieves context metadata from a per-model detail resource', () async {
+    late http.Request captured;
+    final api = OpenAiCompatibleModelsApi(
+      httpClient: MockClient((request) async {
+        captured = request;
+        return http.Response(
+          jsonEncode({
+            'id': 'vendor/model',
+            'capabilities': {'maxInputTokens': 262144},
+          }),
+          200,
+        );
+      }),
+    );
+
+    final model = await api.retrieveModel(
+      chatCompletionsUri: Uri.parse(
+        'https://ai.example/custom/v1/chat/completions',
+      ),
+      modelId: 'vendor/model',
+      apiKey: 'secret',
+    );
+
+    expect(captured.url.pathSegments.last, 'vendor/model');
+    expect(captured.headers['authorization'], 'Bearer secret');
+    expect(model?.id, 'vendor/model');
+    expect(model?.contextWindowTokens, 262144);
+  });
+
+  test('treats an unsupported per-model detail endpoint as optional', () async {
+    final api = OpenAiCompatibleModelsApi(
+      httpClient: MockClient((_) async => http.Response('', 404)),
+    );
+
+    expect(
+      await api.retrieveModel(
+        chatCompletionsUri: Uri.parse('https://ai.example/v1/chat/completions'),
+        modelId: 'model',
+      ),
+      isNull,
+    );
+  });
+
   test('surfaces server model-list errors', () async {
     final api = OpenAiCompatibleModelsApi(
       httpClient: MockClient(

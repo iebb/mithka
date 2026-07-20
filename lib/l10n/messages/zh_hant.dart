@@ -108,6 +108,8 @@ const zhHantMessages = <String, String>{
       "請使用以 /v1/chat/completions 結尾的 HTTPS 網址。只有 localhost 可使用 HTTP。",
   'aiAddProvider': "新增服務商",
   'aiContextWindow': "上下文 Token",
+  'aiContextDetected': "已從服務商偵測",
+  'aiContextManual': "服務商未提供，請手動確認",
   'aiDeleteProvider': "刪除服務商",
   'aiModelsFailed': "無法載入模型，請檢查端點與 API 金鑰。",
   'aiModelsLoaded': "已載入 {value1} 個模型",

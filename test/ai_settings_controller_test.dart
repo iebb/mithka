@@ -1,6 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:mithka/settings/ai_settings_controller.dart';
 import 'package:mithka/settings/apple_pcc_api.dart';
+import 'package:mithka/settings/openai_compatible_models_api.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -59,6 +62,7 @@ void main() {
           model: ' example-model ',
           apiKey: ' $secret ',
           contextWindowTokens: 131072,
+          contextWindowDetected: true,
         );
 
         expect(controller.enabled, isTrue);
@@ -71,6 +75,7 @@ void main() {
         expect(controller.apiKey, secret);
         expect(controller.activeServerProfile?.name, 'Example AI');
         expect(controller.activeServerProfile?.contextWindowTokens, 131072);
+        expect(controller.activeServerProfile?.contextWindowDetected, isTrue);
         expect(controller.isConfiguredForCurrentProvider, isTrue);
         expect(secureValues.values, contains(secret));
         expect(
@@ -93,6 +98,7 @@ void main() {
         expect(restored.provider, AiProviderMode.openAiCompatible);
         expect(restored.model, 'example-model');
         expect(restored.apiKey, secret);
+        expect(restored.activeServerProfile?.contextWindowDetected, isTrue);
         expect(restored.isConfiguredForCurrentProvider, isTrue);
 
         await controller.deleteServerProfile(profile.id);
@@ -132,11 +138,12 @@ void main() {
           endpoint: 'https://second.example/v1/chat/completions',
           model: 'second-model',
           apiKey: 'second-key',
-          contextWindowTokens: 262144,
+          contextWindowTokens: 2097152,
         );
 
         expect(controller.serverProfiles, hasLength(2));
         expect(controller.activeServerProfileId, second.id);
+        expect(controller.activeServerProfile?.contextWindowTokens, 2097152);
         expect(controller.apiKey, 'second-key');
         await controller.selectServerProfile(first.id);
         expect(controller.model, 'first-model');
@@ -166,6 +173,43 @@ void main() {
 
       expect(controller.apiKey, isEmpty);
       expect(controller.isConfiguredForCurrentProvider, isTrue);
+    });
+
+    test('model discovery enriches the selected model context', () async {
+      SharedPreferences.setMockInitialValues({});
+      final modelsApi = OpenAiCompatibleModelsApi(
+        httpClient: MockClient((request) async {
+          if (request.url.path.endsWith('/v1/models')) {
+            return http.Response(
+              '{"data":[{"id":"first"},{"id":"selected"}]}',
+              200,
+            );
+          }
+          expect(request.url.pathSegments.last, 'selected');
+          return http.Response(
+            '{"id":"selected","max_input_tokens":262144}',
+            200,
+          );
+        }),
+      );
+      final controller = AiSettingsController(
+        await SharedPreferences.getInstance(),
+        pccApi: _pccApi(available: false),
+        modelsApi: modelsApi,
+        secureRead: (_) async => null,
+        secureWrite: (_, _) async {},
+      );
+      await controller.initialize();
+
+      final models = await controller.discoverModels(
+        endpoint: 'https://ai.example/v1/chat/completions',
+        apiKey: 'secret',
+        preferredModel: 'selected',
+      );
+
+      expect(models.first.contextWindowTokens, isNull);
+      expect(models.last.id, 'selected');
+      expect(models.last.contextWindowTokens, 262144);
     });
 
     test(

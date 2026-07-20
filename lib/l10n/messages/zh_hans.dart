@@ -106,6 +106,8 @@ const zhHansMessages = <String, String>{
       "请使用以 /v1/chat/completions 结尾的 HTTPS 地址。只有 localhost 可使用 HTTP。",
   'aiAddProvider': "添加服务商",
   'aiContextWindow': "上下文 Token",
+  'aiContextDetected': "已从服务商检测",
+  'aiContextManual': "服务商未提供，请手动确认",
   'aiDeleteProvider': "删除服务商",
   'aiModelsFailed': "无法获取模型列表，请检查端点和 API 密钥。",
   'aiModelsLoaded': "已加载 {value1} 个模型",

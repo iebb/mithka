@@ -86,6 +86,10 @@ void main() {
 
     final fields = find.byType(TextField);
     expect(fields, findsNWidgets(5));
+    expect(
+      find.text('Not reported by provider; verify manually'),
+      findsOneWidget,
+    );
     expect(tester.widget<TextField>(fields.at(2)).obscureText, isTrue);
     await tester.enterText(fields.at(0), 'Summary Provider');
     await tester.enterText(
@@ -109,6 +113,7 @@ void main() {
     expect(settings.serverProfiles, hasLength(1));
     expect(settings.activeServerProfile?.name, 'Summary Provider');
     expect(settings.activeServerProfile?.contextWindowTokens, 131072);
+    expect(settings.activeServerProfile?.contextWindowDetected, isFalse);
     expect(secureKey, 'sk-user-owned');
     expect(preferences.getKeys(), isNot(contains('mithka.ai.api_key.v1')));
   });

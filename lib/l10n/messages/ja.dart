@@ -117,6 +117,8 @@ const jaMessages = <String, String>{
       "/v1/chat/completions で終わる HTTPS URL を使用してください。HTTP は localhost でのみ使用できます。",
   'aiAddProvider': "プロバイダーを追加",
   'aiContextWindow': "コンテキストトークン",
+  'aiContextDetected': "プロバイダーから検出済み",
+  'aiContextManual': "未提供のため手動で確認してください",
   'aiDeleteProvider': "プロバイダーを削除",
   'aiModelsFailed': "モデルを読み込めません。エンドポイントと API キーを確認してください。",
   'aiModelsLoaded': "{value1} 個のモデルを読み込みました",

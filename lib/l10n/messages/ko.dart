@@ -118,6 +118,8 @@ const koMessages = <String, String>{
       "/v1/chat/completions로 끝나는 HTTPS URL을 사용하세요. HTTP는 localhost에서만 허용됩니다.",
   'aiAddProvider': "제공자 추가",
   'aiContextWindow': "컨텍스트 토큰",
+  'aiContextDetected': "제공자에서 감지됨",
+  'aiContextManual': "제공자가 보고하지 않음; 직접 확인하세요",
   'aiDeleteProvider': "제공자 삭제",
   'aiModelsFailed': "모델을 불러오지 못했습니다. 엔드포인트와 API 키를 확인하세요.",
   'aiModelsLoaded': "모델 {value1}개를 불러왔습니다",
