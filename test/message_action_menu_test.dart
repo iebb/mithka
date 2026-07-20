@@ -175,6 +175,43 @@ void main() {
     expect(find.text('Edit'), findsOneWidget);
   });
 
+  testWidgets('message menu names reply actions and omits info', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final translation = TranslationController(prefs);
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: translation,
+        child: MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: const [AppLocalizations.delegate],
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: MessageActionMenu(
+              message: ChatMessage(
+                id: 4,
+                isOutgoing: false,
+                text: 'message with replies',
+                date: 1,
+                contentType: 'messageText',
+                commentCount: 2,
+              ),
+              isPinned: false,
+              onSelect: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Reply'), findsOneWidget);
+    expect(find.text('View replies'), findsOneWidget);
+    expect(find.byKey(const ValueKey('message-action-info')), findsNothing);
+  });
+
   testWidgets('protected chats omit every forwarding-based action', (
     tester,
   ) async {

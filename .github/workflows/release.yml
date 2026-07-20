@@ -5,6 +5,9 @@ name: 🚀 Android Releases
 # the latest prebuilt native TDLib (tdjson) asset from iebb/mithka-tdjson. A
 # final job creates the version tag from pubspec.yaml and publishes all the APKs:
 # nightly creates a dated pre-release, release creates a dated stable release.
+# Before 2026-08-01 UTC, each ABI also gets a compatibility APK
+# whose version code is the normal YYMMDDHH code plus 2000. APK filenames carry
+# their exact version code so users can choose the correct upgrade path.
 #
 # master never builds APKs. The twice-daily sync workflow merges new master
 # commits into nightly, increments the patch version once, and dispatches this
@@ -43,6 +46,8 @@ jobs:
       app_version: ${{ steps.version.outputs.app_version }}
       version_code: ${{ steps.version.outputs.version_code }}
       build_stamp: ${{ steps.version.outputs.build_stamp }}
+      compat_build_stamp: ${{ steps.version.outputs.compat_build_stamp }}
+      produce_compat_apk: ${{ steps.version.outputs.produce_compat_apk }}
       release_date: ${{ steps.version.outputs.release_date }}
       artifact_label: ${{ steps.version.outputs.artifact_label }}
       release_tag: ${{ steps.version.outputs.release_tag }}
@@ -65,9 +70,15 @@ jobs:
           case "$version_code" in
             ''|*[!0-9]*) echo "Invalid Android version code: $version_code" >&2; exit 1 ;;
           esac
-          build_stamp="$(date -u '+%y%m%d%H')"
-          release_date="$(date -u '+%Y%m%d')"
-          release_title_date="$(date -u '+%Y-%m-%d')"
+          read -r build_stamp build_day release_date release_title_date <<< "$(
+            date -u '+%y%m%d%H %y%m%d %Y%m%d %Y-%m-%d'
+          )"
+          compat_build_stamp="$((10#$build_stamp + 2000))"
+          if [ "$((10#$build_day))" -lt 260801 ]; then
+            produce_compat_apk="true"
+          else
+            produce_compat_apk="false"
+          fi
           short_sha="${GITHUB_SHA::7}"
           branch_name="${GITHUB_REF_NAME:-${GITHUB_REF#refs/heads/}}"
           case "$branch_name" in
@@ -95,6 +106,8 @@ jobs:
           echo "app_version=$app_version" >> "$GITHUB_OUTPUT"
           echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
           echo "build_stamp=$build_stamp" >> "$GITHUB_OUTPUT"
+          echo "compat_build_stamp=$compat_build_stamp" >> "$GITHUB_OUTPUT"
+          echo "produce_compat_apk=$produce_compat_apk" >> "$GITHUB_OUTPUT"
           echo "release_date=$release_date" >> "$GITHUB_OUTPUT"
           echo "artifact_label=$artifact_label" >> "$GITHUB_OUTPUT"
           echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
@@ -107,6 +120,11 @@ jobs:
           echo "Release channel: $release_channel"
           echo "Android version code: $version_code"
           echo "GMT build stamp: $build_stamp"
+          if [ "$produce_compat_apk" = "true" ]; then
+            echo "Compatibility APK version code: $compat_build_stamp"
+          else
+            echo "Compatibility APK disabled from 2026-08-01 UTC"
+          fi
           echo "Release date: $release_date"
 
   build:
@@ -318,13 +336,241 @@ jobs:
         run: |
           mkdir -p dist
           cp "build/app/outputs/flutter-apk/app-${{ matrix.abi }}-release.apk" \
-            "dist/mithka-${{ needs.prepare.outputs.artifact_label }}-${{ matrix.abi }}-release.apk"
+            "dist/mithka-${{ needs.prepare.outputs.artifact_label }}-${{ matrix.abi }}-vc${{ needs.prepare.outputs.build_stamp }}-release.apk"
+
+      - name: Patch and re-sign ${{ matrix.abi }} compatibility APK (+2000 version code)
+        if: needs.prepare.outputs.produce_compat_apk == 'true'
+        env:
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          standard_apk="dist/mithka-${{ needs.prepare.outputs.artifact_label }}-${{ matrix.abi }}-vc${{ needs.prepare.outputs.build_stamp }}-release.apk"
+          compat_apk="dist/mithka-${{ needs.prepare.outputs.artifact_label }}-${{ matrix.abi }}-vc${{ needs.prepare.outputs.compat_build_stamp }}-compat-release.apk"
+          compat_work="$RUNNER_TEMP/mithka-compat-${{ matrix.abi }}"
+          unsigned_apk="$compat_work/compat-unsigned.apk"
+          aligned_apk="$compat_work/compat-aligned.apk"
+          mkdir -p "$compat_work"
+
+          # AndroidManifest.xml is binary AXML. Patch only its typed
+          # android:versionCode value, rewrite the ZIP container without the old
+          # signatures, then align and sign it with the same key as the standard
+          # APK. Dart, native libraries, resources, and assets are not rebuilt.
+          python3 - \
+            "$standard_apk" \
+            "$unsigned_apk" \
+            "${{ needs.prepare.outputs.build_stamp }}" \
+            "${{ needs.prepare.outputs.compat_build_stamp }}" <<'PY'
+          import struct
+          import sys
+          import zipfile
+
+          source_path, output_path, expected_raw, replacement_raw = sys.argv[1:]
+          expected = int(expected_raw)
+          replacement = int(replacement_raw)
+          if not (0 < expected <= 2_100_000_000):
+              raise SystemExit(f"Invalid source version code: {expected}")
+          if replacement != expected + 2000 or replacement > 2_100_000_000:
+              raise SystemExit(
+                  f"Invalid compatibility version code: {replacement} (source {expected})"
+              )
+
+          RES_XML_TYPE = 0x0003
+          RES_XML_RESOURCE_MAP_TYPE = 0x0180
+          RES_XML_START_ELEMENT_TYPE = 0x0102
+          VERSION_CODE_RESOURCE_ID = 0x0101021B
+          NO_INDEX = 0xFFFFFFFF
+          INTEGER_TYPES = {0x10, 0x11}
+
+          def chunk_header(data: bytearray, offset: int) -> tuple[int, int, int]:
+              if offset < 0 or offset + 8 > len(data):
+                  raise SystemExit(f"Truncated AXML chunk header at {offset}")
+              chunk_type, header_size, chunk_size = struct.unpack_from(
+                  "<HHI", data, offset
+              )
+              if header_size < 8 or chunk_size < header_size:
+                  raise SystemExit(f"Invalid AXML chunk at {offset}")
+              return chunk_type, header_size, chunk_size
+
+          def is_v1_signature(name: str) -> bool:
+              upper = name.upper()
+              if not upper.startswith("META-INF/"):
+                  return False
+              leaf = upper.rsplit("/", 1)[-1]
+              return leaf == "MANIFEST.MF" or leaf.endswith(
+                  (".SF", ".RSA", ".DSA", ".EC")
+              )
+
+          with zipfile.ZipFile(source_path, "r") as source_apk:
+              manifest = bytearray(source_apk.read("AndroidManifest.xml"))
+              root_type, root_header_size, root_size = chunk_header(manifest, 0)
+              if root_type != RES_XML_TYPE or root_size > len(manifest):
+                  raise SystemExit("AndroidManifest.xml is not a valid binary AXML file")
+
+              resource_ids: list[int] = []
+              patched = 0
+              offset = root_header_size
+              while offset < root_size:
+                  chunk_type, header_size, chunk_size = chunk_header(manifest, offset)
+                  chunk_end = offset + chunk_size
+                  if chunk_end > root_size:
+                      raise SystemExit(f"AXML chunk at {offset} extends past the root")
+
+                  if chunk_type == RES_XML_RESOURCE_MAP_TYPE:
+                      payload_size = chunk_size - header_size
+                      if payload_size % 4:
+                          raise SystemExit("Invalid AXML resource map size")
+                      resource_ids = list(
+                          struct.unpack_from(
+                              f"<{payload_size // 4}I", manifest, offset + header_size
+                          )
+                      )
+                  elif chunk_type == RES_XML_START_ELEMENT_TYPE:
+                      extension = offset + header_size
+                      if extension + 20 > chunk_end:
+                          raise SystemExit("Truncated AXML start-element extension")
+                      attribute_start, attribute_size, attribute_count = struct.unpack_from(
+                          "<HHH", manifest, extension + 8
+                      )
+                      if attribute_size < 20:
+                          raise SystemExit("Invalid AXML attribute size")
+                      attributes = extension + attribute_start
+                      if attributes + attribute_size * attribute_count > chunk_end:
+                          raise SystemExit("AXML attributes extend past their chunk")
+
+                      for index in range(attribute_count):
+                          attribute = attributes + index * attribute_size
+                          name_index = struct.unpack_from("<I", manifest, attribute + 4)[0]
+                          if (
+                              name_index >= len(resource_ids)
+                              or resource_ids[name_index] != VERSION_CODE_RESOURCE_ID
+                          ):
+                              continue
+
+                          raw_value = struct.unpack_from("<I", manifest, attribute + 8)[0]
+                          value_size = struct.unpack_from("<H", manifest, attribute + 12)[0]
+                          value_type = manifest[attribute + 15]
+                          current = struct.unpack_from("<I", manifest, attribute + 16)[0]
+                          if raw_value != NO_INDEX or value_size != 8:
+                              raise SystemExit("Unexpected encoded android:versionCode value")
+                          if value_type not in INTEGER_TYPES:
+                              raise SystemExit("android:versionCode is not an integer")
+                          if current != expected:
+                              raise SystemExit(
+                                  f"Expected version code {expected}, found {current}"
+                              )
+                          struct.pack_into("<I", manifest, attribute + 16, replacement)
+                          patched += 1
+
+                  offset = chunk_end
+
+              if patched != 1:
+                  raise SystemExit(
+                      f"Expected one android:versionCode attribute, patched {patched}"
+                  )
+
+              with zipfile.ZipFile(
+                  output_path, "w", allowZip64=True, strict_timestamps=False
+              ) as output_apk:
+                  output_apk.comment = source_apk.comment
+                  for entry in source_apk.infolist():
+                      if is_v1_signature(entry.filename):
+                          continue
+                      payload = (
+                          manifest
+                          if entry.filename == "AndroidManifest.xml"
+                          else source_apk.read(entry.filename)
+                      )
+                      output_apk.writestr(entry, payload)
+
+          print(f"Patched version code {expected} -> {replacement}")
+          PY
+
+          build_tools="$(
+            find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d \
+              | grep -E '/[0-9]+(\.[0-9]+){2}$' \
+              | sort -V \
+              | tail -1 \
+              || true
+          )"
+          if [ -z "$build_tools" ]; then
+            build_tools="$(
+              find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d \
+                | sort -V \
+                | tail -1
+            )"
+          fi
+          zipalign="$build_tools/zipalign"
+          apksigner="$build_tools/apksigner"
+          test -x "$zipalign"
+          test -x "$apksigner"
+          "$zipalign" -f 4 "$unsigned_apk" "$aligned_apk"
+
+          if [ -s android/app/upload-keystore.jks ]; then
+            test -n "$STORE_PASSWORD"
+            test -n "$KEY_ALIAS"
+            signing_keystore="android/app/upload-keystore.jks"
+            signing_alias="$KEY_ALIAS"
+            export APKSIGNER_STORE_PASSWORD="$STORE_PASSWORD"
+            export APKSIGNER_KEY_PASSWORD="${KEY_PASSWORD:-$STORE_PASSWORD}"
+          else
+            signing_keystore="${ANDROID_USER_HOME:-$HOME/.android}/debug.keystore"
+            signing_alias="androiddebugkey"
+            export APKSIGNER_STORE_PASSWORD="android"
+            export APKSIGNER_KEY_PASSWORD="android"
+          fi
+          test -s "$signing_keystore"
+
+          "$apksigner" sign \
+            --ks "$signing_keystore" \
+            --ks-key-alias "$signing_alias" \
+            --ks-pass env:APKSIGNER_STORE_PASSWORD \
+            --key-pass env:APKSIGNER_KEY_PASSWORD \
+            --out "$compat_apk" \
+            "$aligned_apk"
+          "$apksigner" verify --verbose --print-certs "$compat_apk"
+
+          analyzer="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
+          if [ ! -x "$analyzer" ]; then
+            analyzer="$(command -v apkanalyzer)"
+          fi
+          actual_version_code="$("$analyzer" manifest version-code "$compat_apk")"
+          expected_version_code="${{ needs.prepare.outputs.compat_build_stamp }}"
+          if [ "$actual_version_code" != "$expected_version_code" ]; then
+            echo "Expected compatibility APK version code $expected_version_code, got $actual_version_code" >&2
+            exit 1
+          fi
+
+          bad_entries="$(
+            zipinfo -1 "$compat_apk" \
+              | grep '^lib/' \
+              | grep -v "^lib/${{ matrix.abi }}/" \
+              || true
+          )"
+          if [ -n "$bad_entries" ]; then
+            echo "Compatibility APK contains native libraries outside ${{ matrix.abi }}:" >&2
+            echo "$bad_entries" >&2
+            exit 1
+          fi
+
+          standard_cert="$(
+            "$apksigner" verify --print-certs "$standard_apk" \
+              | awk -F': ' '/Signer #1 certificate SHA-256 digest/ { print $2; exit }'
+          )"
+          compat_cert="$(
+            "$apksigner" verify --print-certs "$compat_apk" \
+              | awk -F': ' '/Signer #1 certificate SHA-256 digest/ { print $2; exit }'
+          )"
+          test -n "$standard_cert"
+          test "$compat_cert" = "$standard_cert"
+          echo "Compatibility APK version code: $actual_version_code"
+          echo "Compatibility APK re-signed with the standard APK certificate: $compat_cert"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: apk-${{ matrix.abi }}-${{ needs.prepare.outputs.release_date }}-${{ needs.prepare.outputs.build_stamp }}
-          path: dist/mithka-${{ needs.prepare.outputs.artifact_label }}-${{ matrix.abi }}-release.apk
+          path: dist/*.apk
           if-no-files-found: error
 
   release:
@@ -355,92 +601,113 @@ jobs:
           git tag -f "$RELEASE_TAG" "$GITHUB_SHA"
           git push --force origin "$RELEASE_TAG"
 
-      - name: Generate nightly release notes
+      - name: Generate release notes
         env:
           GITHUB_TOKEN: ${{ github.token }}
           PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          BUILD_STAMP: ${{ needs.prepare.outputs.build_stamp }}
+          COMPAT_BUILD_STAMP: ${{ needs.prepare.outputs.compat_build_stamp }}
+          PRODUCE_COMPAT_APK: ${{ needs.prepare.outputs.produce_compat_apk }}
         run: |
-          : > release-notes.md
-          if [ "$PRERELEASE" != "true" ]; then
-            exit 0
-          fi
-
-          previous_tag="$(
-            git tag --list 'v*-nightly.*' --sort=-creatordate \
-              | awk -v current="$RELEASE_TAG" \
-                '$0 != current && !found { print; found=1 }'
-          )"
-          if [ -n "$previous_tag" ] && \
-            git merge-base --is-ancestor "$previous_tag" "$GITHUB_SHA"; then
-            change_range="$previous_tag..$GITHUB_SHA"
-            compare_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/compare/${previous_tag}...${RELEASE_TAG}"
-            compare_label="$previous_tag...$RELEASE_TAG"
-          else
-            change_range="$GITHUB_SHA^1..$GITHUB_SHA"
-            compare_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commits/${RELEASE_TAG}"
-            compare_label="$RELEASE_TAG commits"
-          fi
-
-          git log --reverse --no-merges --max-count=100 \
-            --format='Commit: %H%nSubject: %s%nDetails: %b' \
-            --stat=100,80 "$change_range" -- . \
-            ':(exclude).github/**' \
-            ':(exclude)test/**' \
-            ':(exclude)integration_test/**' \
-            ':(exclude)ios/RunnerTests/**' \
-            | awk '!/^Subject: chore: sync nightly /' \
-            > changes.txt
-
-          git log --reverse --no-merges \
-            --format='- %s ([%h]('"$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"'/commit/%H))' \
-            "$change_range" -- . ':(exclude).github/**' \
-            | grep -v '^- chore: sync nightly ' \
-            > fallback-items.txt \
-            || true
-          {
-            echo "## Changes"
-            if [ -s fallback-items.txt ]; then
-              cat fallback-items.txt
+          : > change-summary.md
+          if [ "$PRERELEASE" = "true" ]; then
+            previous_tag="$(
+              git tag --list 'v*-nightly.*' --sort=-creatordate \
+                | awk -v current="$RELEASE_TAG" \
+                  '$0 != current && !found { print; found=1 }'
+            )"
+            if [ -n "$previous_tag" ] && \
+              git merge-base --is-ancestor "$previous_tag" "$GITHUB_SHA"; then
+              change_range="$previous_tag..$GITHUB_SHA"
+              compare_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/compare/${previous_tag}...${RELEASE_TAG}"
+              compare_label="$previous_tag...$RELEASE_TAG"
             else
-              echo "- Maintenance and reliability improvements."
+              change_range="$GITHUB_SHA^1..$GITHUB_SHA"
+              compare_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commits/${RELEASE_TAG}"
+              compare_label="$RELEASE_TAG commits"
             fi
-            echo
-            echo "**Full changelog:** [$compare_label]($compare_url)"
-          } > release-notes.md
 
-          jq -n --rawfile changes changes.txt '{
-            model: "openai/gpt-4.1",
-            messages: [
-              {
-                role: "system",
-                content: "Write concise Markdown release notes for app users. Use only facts in the supplied git history. Start with exactly: ## Changes. Then write 1 to 6 bullet points, combining related commits. Prefer one bullet when the history covers one feature or fix, and make every bullet a distinct user-visible change. Focus on features, fixes, reliability, privacy, and performance. Do not invent or repeat changes. Omit tests, implementation details, commit hashes, generated version bumps, and CI-only changes. If there are no user-visible changes, write one bullet: Maintenance and reliability improvements. Do not add an introduction or conclusion."
-              },
-              { role: "user", content: $changes }
-            ],
-            temperature: 0,
-            max_tokens: 500
-          }' > model-request.json
+            git log --reverse --no-merges --max-count=100 \
+              --format='Commit: %H%nSubject: %s%nDetails: %b' \
+              --stat=100,80 "$change_range" -- . \
+              ':(exclude).github/**' \
+              ':(exclude)test/**' \
+              ':(exclude)integration_test/**' \
+              ':(exclude)ios/RunnerTests/**' \
+              | awk '!/^Subject: chore: sync nightly /' \
+              > changes.txt
 
-          if model_response="$(
-            curl -fsS --retry 1 --retry-all-errors \
-              --connect-timeout 10 --max-time 30 \
-              https://models.github.ai/inference/chat/completions \
-              -H "Authorization: Bearer $GITHUB_TOKEN" \
-              -H 'Content-Type: application/json' \
-              --data-binary @model-request.json
-          )" && model_notes="$(
-            jq -er '.choices[0].message.content | select(startswith("## Changes"))' \
-              <<< "$model_response"
-          )"; then
+            git log --reverse --no-merges \
+              --format='- %s ([%h]('"$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"'/commit/%H))' \
+              "$change_range" -- . ':(exclude).github/**' \
+              | grep -v '^- chore: sync nightly ' \
+              > fallback-items.txt \
+              || true
             {
-              printf '%s\n\n' "$model_notes"
-              echo "**Full changelog:** [$compare_label]($compare_url)"
-            } > release-notes.md
-            echo "Generated nightly release notes with GitHub Models"
-          else
-            echo "GitHub Models unavailable; using commit-list release notes" >&2
+              echo "## Changes"
+              echo "### English"
+              if [ -s fallback-items.txt ]; then
+                cat fallback-items.txt
+              else
+                echo "- Maintenance and reliability improvements."
+              fi
+              echo
+              echo "### 中文"
+              echo "- 维护和可靠性改进；详细内容请参阅完整变更记录。"
+            } > change-summary.md
+
+            jq -n --rawfile changes changes.txt '{
+              model: "openai/gpt-4.1",
+              messages: [
+                {
+                  role: "system",
+                  content: "Write concise bilingual Markdown release notes for app users using only facts in the supplied git history. Use exactly this structure: ## Changes, then ### English with 1 to 6 English bullet points, then ### 中文 with faithful Simplified Chinese translations of the same bullet points in the same order. Combine related commits and make every bullet a distinct user-visible change. Focus on features, fixes, reliability, privacy, and performance. Do not invent or repeat changes. Omit tests, implementation details, commit hashes, generated version bumps, and CI-only changes. If there are no user-visible changes, use one maintenance and reliability bullet in each language. Do not add an introduction or conclusion."
+                },
+                { role: "user", content: $changes }
+              ],
+              temperature: 0,
+              max_tokens: 900
+            }' > model-request.json
+
+            if model_response="$(
+              curl -fsS --retry 1 --retry-all-errors \
+                --connect-timeout 10 --max-time 30 \
+                https://models.github.ai/inference/chat/completions \
+                -H "Authorization: Bearer $GITHUB_TOKEN" \
+                -H 'Content-Type: application/json' \
+                --data-binary @model-request.json
+            )" && model_notes="$(
+              jq -er '.choices[0].message.content | select(startswith("## Changes") and contains("### English") and contains("### 中文"))' \
+                <<< "$model_response"
+            )"; then
+              printf '%s\n' "$model_notes" > change-summary.md
+              echo "Generated bilingual nightly release notes with GitHub Models"
+            else
+              echo "GitHub Models unavailable; using bilingual fallback release notes" >&2
+            fi
           fi
+
+          : > release-notes.md
+          if [ -s change-summary.md ]; then
+            cat change-summary.md >> release-notes.md
+            echo >> release-notes.md
+          fi
+
+          {
+            echo "## Android APK version selection / Android APK 版本选择"
+            if [ "$PRODUCE_COMPAT_APK" = "true" ]; then
+              echo "- **English:** Choose the standard APK whose filename contains \`vc$BUILD_STAMP\` for new installs and normal updates. Use the \`+2000\` compatibility APK containing \`vc$COMPAT_BUILD_STAMP\` only if Android rejects the standard APK as a version downgrade from an older offset build. Both APKs contain the same app build. Do not choose the compatibility APK when the standard one installs successfully, because its higher code can delay later standard updates. The compatibility APK is produced only before 2026-08-01 UTC."
+              echo "- **中文：** 新安装和常规更新请选择文件名包含 \`vc$BUILD_STAMP\` 的标准 APK。仅当旧的 \`+2000\` 偏移构建导致 Android 将标准 APK 判定为降级时，才使用包含 \`vc$COMPAT_BUILD_STAMP\` 的兼容 APK。两个 APK 的应用内容相同。如果标准 APK 可以正常安装，请勿选择兼容 APK，因为较高的版本代码可能延迟后续标准版更新。兼容 APK 仅在 2026-08-01 UTC 之前生成（不含当天）。"
+            else
+              echo "- **English:** Only the standard APK is produced from 2026-08-01 UTC. The temporary \`+2000\` compatibility APK is no longer generated. Choose the APK matching your device ABI."
+              echo "- **中文：** 从 2026-08-01 UTC 起仅生成标准 APK，不再生成临时的 \`+2000\` 兼容 APK。请选择与设备 ABI 匹配的 APK。"
+            fi
+            if [ "$PRERELEASE" = "true" ]; then
+              echo
+              echo "**Full changelog:** [$compare_label]($compare_url)"
+            fi
+          } >> release-notes.md
 
       - name: Remove old APK assets
         env:
@@ -479,11 +746,50 @@ jobs:
         run: |
           test -n "$TELEGRAM_BOT_TOKEN"
           test -n "$TELEGRAM_CI_CHANNEL"
-          response="$(curl -fsS \
-            -F "chat_id=$TELEGRAM_CI_CHANNEL" \
-            -F "text=🚀 Mithka $RELEASE_CHANNEL $RELEASE_TAG · $RELEASE_DATE
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
 
-          APKs: $RELEASE_URL" \
+          notes = Path("release-notes.md").read_text(encoding="utf-8")
+          summary_lines = []
+          for raw_line in notes.splitlines():
+              line = raw_line.strip()
+              if not line or line == "## Changes":
+                  continue
+              if line.startswith("**Full changelog:**"):
+                  break
+              if line.startswith("### "):
+                  line = f"{line[4:]}:"
+              elif line.startswith("## "):
+                  line = line[3:]
+              elif line.startswith("- "):
+                  line = f"• {line[2:]}"
+              line = re.sub(r"\[([^]]+)]\([^)]+\)", r"\1", line)
+              line = line.replace("**", "").replace("`", "")
+              summary_lines.append(line)
+
+          header = (
+              f"🚀 Mithka {os.environ['RELEASE_CHANNEL']} "
+              f"{os.environ['RELEASE_TAG']} · {os.environ['RELEASE_DATE']}"
+          )
+          footer = f"APKs: {os.environ['RELEASE_URL']}"
+          summary = "\n".join(summary_lines)
+          if summary:
+              # Telegram accepts at most 4096 characters. Leave extra room for
+              # UTF-16 counting differences around emoji and future labels.
+              available = 3800 - len(header) - len(footer) - len("\n\nSummary:\n\n")
+              if len(summary) > available:
+                  summary = summary[: max(0, available - 1)].rstrip() + "…"
+              message = f"{header}\n\nSummary:\n{summary}\n\n{footer}"
+          else:
+              message = f"{header}\n\n{footer}"
+
+          Path("telegram-message.txt").write_text(message, encoding="utf-8")
+          PY
+          response="$(curl -fsS \
+            --data-urlencode "chat_id=$TELEGRAM_CI_CHANNEL" \
+            --data-urlencode "text@telegram-message.txt" \
             "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage")"
           # Release CI announcements should stay in the channel history but not
           # become pinned. If another automation or Telegram-side behavior pins

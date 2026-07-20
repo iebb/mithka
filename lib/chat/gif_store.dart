@@ -84,6 +84,15 @@ class GifStore extends ChangeNotifier {
   int? _loadedSlot;
   late final StreamSubscription<Map<String, dynamic>> _subscription;
 
+  @visibleForTesting
+  void replaceItemsForTest(List<GifItem> value) {
+    _loadedSlot = TdClient.shared.activeSlot;
+    _loaded = true;
+    loading = false;
+    items = List<GifItem>.unmodifiable(value);
+    notifyListeners();
+  }
+
   void loadIfNeeded() {
     final slot = TdClient.shared.activeSlot;
     if (_loadedSlot != slot) {

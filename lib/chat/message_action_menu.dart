@@ -2,7 +2,7 @@
 //  message_action_menu.dart
 //
 //  The dark, rounded HUD menu shown when a message bubble is long-pressed. A
-//  grid of context actions (复制 / 引用 / 转发 / 收藏 / 删除, plus 存表情 for
+//  grid of context actions (复制 / 回复 / 转发 / 收藏 / 删除, plus 存表情 for
 //  stickers). Fixed dark colors on purpose — a floating HUD, not themed surface.
 //  Port of the Swift `MessageActionMenu`.
 //
@@ -25,9 +25,8 @@ enum MessageAction {
   copy(HeroAppIcons.file, AppStringKeys.messageActionCopy),
   edit(HeroAppIcons.pen, AppStringKeys.messageActionEdit),
   suggestOffer(HeroAppIcons.penToSquare, AppStringKeys.suggestedPostEditOffer),
-  info(HeroAppIcons.circleInfo, AppStringKeys.messageActionInfo),
   translate(HeroAppIcons.language, AppStringKeys.messageActionTranslate),
-  reply(HeroAppIcons.quoteLeft, AppStringKeys.messageActionQuote),
+  reply(HeroAppIcons.quoteLeft, AppStringKeys.chatInputBarReply),
   replies(HeroAppIcons.comments, AppStringKeys.messageActionReplies),
   forward(HeroAppIcons.share, AppStringKeys.messageActionForward),
   repeat(HeroAppIcons.circlePlus, AppStringKeys.messageActionRepeat),
@@ -208,8 +207,7 @@ class MessageActionMenu extends StatelessWidget {
   bool get _hasCopyableText => message.text.trim().isNotEmpty;
 
   List<MessageAction> _actions(bool translationEnabled) {
-    // Call logs aren't reactable, but their delivery metadata remains useful.
-    if (message.isCall) return [MessageAction.info, MessageAction.delete];
+    if (message.isCall) return [MessageAction.delete];
     final result = <MessageAction>[];
     if (_hasCopyableText) {
       result.add(MessageAction.copy);
@@ -254,7 +252,6 @@ class MessageActionMenu extends StatelessWidget {
     if (message.stickerSetId != null && canAddEmoji) {
       result.add(MessageAction.viewStickerSet);
     }
-    result.add(MessageAction.info);
     result.add(MessageAction.delete);
     return result;
   }

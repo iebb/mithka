@@ -101,16 +101,27 @@ class _LoginViewState extends State<LoginView> {
   Future<void> _initializeBackupConsent() async {
     final slot = TdClient.shared.activeSlot;
     try {
-      await AccountBackupService.shared.beginLoginConsent(slot: slot);
       final results = await Future.wait<Object>([
         AccountBackupService.shared.isSupported,
         AccountBackupService.shared.consentedAccountCount(),
       ]);
+      final supported = results[0] as bool;
+      final accountCount = results[1] as int;
+      final selectedByDefault =
+          AccountBackupService.shouldSelectLoginBackupByDefault(
+            accountCount: accountCount,
+            isIOS: Platform.isIOS,
+            isSupported: supported,
+          );
+      await AccountBackupService.shared.beginLoginConsent(
+        slot: slot,
+        enabled: selectedByDefault,
+      );
       if (!mounted || slot != TdClient.shared.activeSlot) return;
       setState(() {
-        _backupConsent = false;
-        _backupSupported = results[0] as bool;
-        _backupConsentCount = results[1] as int;
+        _backupConsent = selectedByDefault;
+        _backupSupported = supported;
+        _backupConsentCount = accountCount;
       });
     } catch (_) {
       if (mounted) setState(() => _backupSupported = false);

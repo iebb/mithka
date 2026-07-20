@@ -41,6 +41,14 @@ class StickerStore extends ChangeNotifier {
   bool loading = false;
   bool _loaded = false;
 
+  @visibleForTesting
+  void replacePacksForTest(List<StickerPack> value) {
+    packs = List<StickerPack>.from(value);
+    loading = false;
+    _loaded = true;
+    notifyListeners();
+  }
+
   void reset() {
     packs = [];
     loading = false;

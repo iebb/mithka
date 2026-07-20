@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 
 import '../chat/chat_picker_view.dart';
+import '../chat/image_edit_view.dart';
 import '../components/app_dialog.dart';
 import '../components/app_icons.dart';
 import '../components/confirm_dialog.dart';
@@ -226,7 +228,19 @@ class _ProfileContactManagementViewState
       type: AppAssetPickerType.image,
       maxAssets: 1,
     );
-    return selection.assets.isEmpty ? null : selection.assets.first.file.path;
+    if (selection.assets.isEmpty || !mounted) return null;
+    final edited = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => ImageEditView(
+          sourcePath: selection.assets.first.file.path,
+          avatar: true,
+        ),
+      ),
+    );
+    if (edited == null) return null;
+    final file = File(edited);
+    return await file.exists() && await file.length() > 0 ? edited : null;
   }
 
   Future<void> _setPersonalPhoto() async {

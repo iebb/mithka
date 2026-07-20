@@ -57,6 +57,15 @@ class AccountBackupService {
     required bool storedConsent,
   }) => pendingConsent ?? storedConsent;
 
+  static bool shouldSelectLoginBackupByDefault({
+    required int accountCount,
+    required bool isIOS,
+    required bool isSupported,
+  }) =>
+      isIOS &&
+      isSupported &&
+      accountCount < MithkaProService.freeCloudSessionSyncLimit;
+
   Future<bool> get isSupported async {
     if (!_platformEligible) return false;
     return await _channel.invokeMethod<bool>('isSupported') ?? false;
@@ -115,11 +124,14 @@ class AccountBackupService {
     );
   }
 
-  Future<void> beginLoginConsent({required int slot}) async {
+  Future<void> beginLoginConsent({
+    required int slot,
+    bool enabled = false,
+  }) async {
     await _ensureExplicitConsentMigration();
-    _pendingConsentBySlot[slot] = false;
+    _pendingConsentBySlot[slot] = enabled;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('$_pendingConsentPrefix$slot', false);
+    await prefs.setBool('$_pendingConsentPrefix$slot', enabled);
   }
 
   Future<void> setPendingLoginConsent({

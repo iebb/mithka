@@ -80,7 +80,6 @@ import 'media_library_saver.dart';
 import 'media_send_preview_view.dart';
 import 'message_action_menu.dart';
 import 'message_bubble.dart';
-import 'message_info_view.dart';
 import 'message_replies_sheet.dart';
 import 'music_player_controller.dart';
 import 'outgoing_attachment.dart';
@@ -793,6 +792,7 @@ class _ChatViewState extends State<ChatView> {
   Timer? _readSyncTimer;
   int? _scrollTargetId;
   int? _lastNewestMessageId;
+  int? _lastOldestMessageId;
   final ChatUnreadProgress _unreadProgress = ChatUnreadProgress();
   int get _liveNewMessageCount => _unreadProgress.liveCount;
   int get _remainingUnreadCount => _showEntryUnreadBanner
@@ -822,6 +822,12 @@ class _ChatViewState extends State<ChatView> {
   double _lastScrollPixels = 0;
   bool _backSwipePopping = false;
   bool _loadingOlderFromScroll = false;
+  final OldestHistoryPullController _olderHistoryPull =
+      OldestHistoryPullController();
+  bool _revealLoadedOlderPage = false;
+  bool _loadedOlderRevealPending = false;
+  bool _loadedOlderRevealScheduled = false;
+  bool _wasLoadingOlder = false;
   bool _maintainSessionScrollAnchor = false;
   ChatThemeStyle? _resolvedChatThemeStyle;
   TelegramCloudTheme? _resolvedCloudTheme;
@@ -855,6 +861,13 @@ class _ChatViewState extends State<ChatView> {
 
   ChatMessage? _latestServerMessage(List<ChatMessage> messages) {
     for (final message in messages.reversed) {
+      if (!isPendingChatMessage(message) && message.id > 0) return message;
+    }
+    return null;
+  }
+
+  ChatMessage? _oldestServerMessage(List<ChatMessage> messages) {
+    for (final message in messages) {
       if (!isPendingChatMessage(message) && message.id > 0) return message;
     }
     return null;
@@ -928,6 +941,7 @@ class _ChatViewState extends State<ChatView> {
       _initialTranscriptReady = true;
       _lastCount = _vm.messages.length;
       _lastNewestMessageId = _latestServerMessage(_vm.messages)?.id;
+      _lastOldestMessageId = _oldestServerMessage(_vm.messages)?.id;
       if (initialScrollPlan.correctToBottomAfterLayout) {
         _scheduleRestoredBottomCorrection();
       }
@@ -1037,6 +1051,65 @@ class _ChatViewState extends State<ChatView> {
     return false;
   }
 
+  bool _onTranscriptScrollNotification(ScrollNotification notification) {
+    if (notification.depth != 0 || notification.metrics.axis != Axis.vertical) {
+      return false;
+    }
+    if (notification is UserScrollNotification) {
+      _onTranscriptUserScroll(notification);
+    }
+    if (notification is ScrollStartNotification) {
+      _olderHistoryPull.reset();
+    } else if (notification is ScrollUpdateNotification) {
+      if (_olderHistoryPull.updateBouncingPosition(notification.metrics)) {
+        _triggerOlderHistoryPull();
+      }
+    } else if (notification is OverscrollNotification) {
+      if (isNearOldest(notification.metrics, threshold: 1) &&
+          _olderHistoryPull.addClampedOverscroll(notification.overscroll)) {
+        _triggerOlderHistoryPull();
+      }
+    } else if (notification is ScrollEndNotification) {
+      _olderHistoryPull.reset();
+      _scheduleLoadedOlderReveal();
+    }
+    return false;
+  }
+
+  void _triggerOlderHistoryPull() {
+    if (!_initialTranscriptReady ||
+        _vm.messages.isEmpty ||
+        !_vm.hasOlderHistory) {
+      return;
+    }
+    _revealLoadedOlderPage = true;
+    _cancelBottomFollow();
+    if (!_vm.isLoadingOlder && !_isFillingShortTranscript) {
+      unawaited(_loadOlderFromScroll());
+    }
+  }
+
+  void _scheduleLoadedOlderReveal() {
+    if (!_loadedOlderRevealPending || _loadedOlderRevealScheduled) return;
+    _loadedOlderRevealScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadedOlderRevealScheduled = false;
+      if (!mounted ||
+          !_loadedOlderRevealPending ||
+          !_scroll.hasClients ||
+          _hasTranscriptPointerDown ||
+          _isUserScrolling) {
+        return;
+      }
+      _loadedOlderRevealPending = false;
+      final target = _scroll.position.minScrollExtent;
+      if ((_scroll.position.pixels - target).abs() > 0.5) {
+        _scroll.jumpTo(target);
+      }
+      _saveSessionScrollSnapshot();
+    });
+  }
+
   bool get _hasTranscriptPointerDown => _transcriptPointersDown.isNotEmpty;
 
   void _onTranscriptPointerDown(PointerDownEvent event) {
@@ -1050,6 +1123,7 @@ class _ChatViewState extends State<ChatView> {
 
   void _onTranscriptPointerEnd(PointerEvent event) {
     _transcriptPointersDown.remove(event.pointer);
+    _scheduleLoadedOlderReveal();
     _scheduleShortFirstContactReveal();
     _scheduleSessionScrollAnchorMaintenance();
     _scheduleRestoredBottomCorrection();
@@ -1448,6 +1522,29 @@ class _ChatViewState extends State<ChatView> {
     _scheduleScrollToBottom();
   }
 
+  void _onComposerPanelGeometryChanged() {
+    final wasNearBottom = _isNearBottom(260);
+    if (!_autoScrollPolicy.shouldFollowComposerPanelChange(
+      wasNearBottom: wasNearBottom,
+    )) {
+      return;
+    }
+    _setScrollTarget(null);
+    _scheduleScrollToBottom(animated: false);
+  }
+
+  void _onComposerMediaSendTapped() {
+    _cancelSessionScrollAnchorMaintenance();
+    _maintainRestoredBottom = false;
+    _autoScrollPolicy.returnToBottom();
+    _setScrollTarget(null);
+    if (_vm.anchoredHistory) {
+      unawaited(_returnToLatest());
+      return;
+    }
+    _scheduleScrollToBottom(animated: false);
+  }
+
   void _playMusicMessage(ChatMessage message) {
     unawaited(
       MusicPlayerController.shared.playChat(
@@ -1515,6 +1612,20 @@ class _ChatViewState extends State<ChatView> {
 
   void _onModel() {
     if (!mounted) return;
+    final olderLoadFinished = _wasLoadingOlder && !_vm.isLoadingOlder;
+    _wasLoadingOlder = _vm.isLoadingOlder;
+    final oldest = _oldestServerMessage(_vm.messages);
+    final previousOldestId = _lastOldestMessageId;
+    final prependedOlder =
+        oldest != null &&
+        previousOldestId != null &&
+        oldest.id < previousOldestId;
+    final hydratedShortTranscript = shouldRebaseForHydratedOlderPage(
+      prependedOlder: prependedOlder,
+      latestArmWasShort: _isTranscriptShort(),
+      historyFillInFlight: _isFillingShortTranscript || _loadingOlderFromScroll,
+      revealRequested: _revealLoadedOlderPage,
+    );
     final wasPinnedToLoadedBottom =
         _didInitialScroll &&
         !_hasTranscriptPointerDown &&
@@ -1560,9 +1671,10 @@ class _ChatViewState extends State<ChatView> {
     )) {
       _resetTranscriptPivot();
     }
-    if (!_transcriptPivotFrozen &&
-        _vm.initialLoaded &&
-        !identical(_transcriptCacheMessages, _vm.messages)) {
+    if (hydratedShortTranscript ||
+        (!_transcriptPivotFrozen &&
+            _vm.initialLoaded &&
+            !identical(_transcriptCacheMessages, _vm.messages))) {
       // Cold local pages may be followed by a larger remote hydration. Until
       // the latest arm fills a viewport (or the user scrolls), let that fuller
       // initial window establish the fixed cutoff.
@@ -1584,8 +1696,14 @@ class _ChatViewState extends State<ChatView> {
         liveIncomingMessageIds: liveIncomingMessageIds,
         currentMessageIds: _vm.messages.map((message) => message.id),
       );
+      if (prependedOlder && _revealLoadedOlderPage) {
+        _revealLoadedOlderPage = false;
+        _loadedOlderRevealPending = true;
+        _scheduleLoadedOlderReveal();
+      }
       _lastCount = _vm.messages.length;
       _lastNewestMessageId = newest?.id ?? _lastNewestMessageId;
+      _lastOldestMessageId = oldest?.id ?? _lastOldestMessageId;
       final shouldAutoScroll =
           _didInitialScroll &&
           _scrollTargetId == null &&
@@ -1612,6 +1730,9 @@ class _ChatViewState extends State<ChatView> {
         _bannerTimer?.cancel();
         _bannerTimer = null;
       }
+    }
+    if (olderLoadFinished && _revealLoadedOlderPage) {
+      _revealLoadedOlderPage = false;
     }
     final target = _vm.consumePendingScrollToId();
     if (target != null) {
@@ -2111,6 +2232,9 @@ class _ChatViewState extends State<ChatView> {
       // An empty older page flips canLoadOlder without a model notification.
       // Re-evaluate the first-contact card now that history is known complete.
       _scheduleShortFirstContactReveal();
+    }
+    if (_revealLoadedOlderPage && _vm.canLoadOlder) {
+      unawaited(_loadOlderFromScroll());
     }
   }
 
@@ -3244,15 +3368,6 @@ class _ChatViewState extends State<ChatView> {
         unawaited(_editMessage(message));
       case MessageAction.suggestOffer:
         unawaited(_offerSuggestedPost(message));
-      case MessageAction.info:
-        unawaited(
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) =>
-                  MessageInfoView(chatId: widget.chatId, message: message),
-            ),
-          ),
-        );
       case MessageAction.translate:
         unawaited(_translateMessage(message));
       case MessageAction.reply:
@@ -3939,6 +4054,7 @@ class _ChatViewState extends State<ChatView> {
       telegramText(AppStringKeys.composerImagePreview),
       telegramText(AppStringKeys.chatVideoPlaceholder),
       telegramText(AppStringKeys.composerAnimatedEmojiPreview),
+      telegramText(AppStringKeys.tdMessageGif),
       telegramText(AppStringKeys.tdMessageMusic),
       telegramText(AppStringKeys.channelsFileAttachment),
       if (message.document != null)
@@ -3952,9 +4068,7 @@ class _ChatViewState extends State<ChatView> {
   String _mediaLabel(ChatMessage message) => switch (message.contentType) {
     'messagePhoto' => telegramText(AppStringKeys.composerImagePreview),
     'messageVideo' => telegramText(AppStringKeys.chatVideoPlaceholder),
-    'messageAnimation' => telegramText(
-      AppStringKeys.composerAnimatedEmojiPreview,
-    ),
+    'messageAnimation' => telegramText(AppStringKeys.tdMessageGif),
     'messageAudio' => telegramText(AppStringKeys.tdMessageMusic),
     _ => telegramText(AppStringKeys.topicPostContentFile),
   };
@@ -4407,6 +4521,38 @@ class _ChatViewState extends State<ChatView> {
           ),
         ),
         if (!transcriptReady) Positioned.fill(child: _transcriptSkeleton()),
+        if (transcriptReady && _vm.isLoadingOlder)
+          Positioned(
+            key: const ValueKey('chat-older-history-loading'),
+            top: showPinnedTodo ? 72 : 8,
+            left: 0,
+            right: 0,
+            child: IgnorePointer(
+              child: Center(
+                child: Container(
+                  width: 34,
+                  height: 34,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: context.colors.card.withValues(alpha: 0.94),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: context.colors.divider,
+                      width: 0.5,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.16),
+                        blurRadius: 10,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: const AppActivityIndicator(size: 17),
+                ),
+              ),
+            ),
+          ),
         if (showPinnedTodo)
           Positioned(
             top: 12,
@@ -4684,6 +4830,8 @@ class _ChatViewState extends State<ChatView> {
             vm: _vm,
             onStartCall: _startCall,
             onMessageSent: _onComposerMessageSent,
+            onPanelGeometryChanged: _onComposerPanelGeometryChanged,
+            onMediaSendTapped: _onComposerMediaSendTapped,
           ),
         ],
       );
@@ -5661,8 +5809,8 @@ class _ChatViewState extends State<ChatView> {
       color: _effectiveWallpaper() == null
           ? context.colors.chatBackground
           : const Color(0x00000000),
-      child: NotificationListener<UserScrollNotification>(
-        onNotification: _onTranscriptUserScroll,
+      child: NotificationListener<ScrollNotification>(
+        onNotification: _onTranscriptScrollNotification,
         child: Listener(
           behavior: HitTestBehavior.translucent,
           onPointerDown: _onTranscriptPointerDown,

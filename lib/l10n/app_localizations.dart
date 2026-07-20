@@ -2215,6 +2215,7 @@ abstract final class AppStringKeys {
   static const tdMessageForwardedStory = 'tdMessageForwardedStory';
   static const tdMessageGame = 'tdMessageGame';
   static const tdMessageGift = 'tdMessageGift';
+  static const tdMessageGif = 'tdMessageGif';
   static const tdMessageGiveaway = 'tdMessageGiveaway';
   static const tdMessageGroupCreated = 'tdMessageGroupCreated';
   static const tdMessageGroupNameChanged = 'tdMessageGroupNameChanged';

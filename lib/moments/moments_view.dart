@@ -1133,9 +1133,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
     if (message.image != null) {
       final placeholder = switch (message.contentType) {
         'messagePhoto' => telegramText(AppStringKeys.composerImagePreview),
-        'messageAnimation' => telegramText(
-          AppStringKeys.composerAnimatedEmojiPreview,
-        ),
+        'messageAnimation' => telegramText(AppStringKeys.tdMessageGif),
         _ => null,
       };
       return message.text == placeholder ? '' : message.text;

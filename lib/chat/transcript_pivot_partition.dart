@@ -35,6 +35,19 @@ bool shouldRebasePendingTranscriptPivot({
   return pivot?.cutoffMessageId == pendingOrderId && hasServerMessage;
 }
 
+/// Lets an older page fill a short visible transcript even when a touch froze
+/// its previous pivot while the request was in flight. Full transcripts retain
+/// their fixed pivot so ordinary pagination does not move the viewport.
+bool shouldRebaseForHydratedOlderPage({
+  required bool prependedOlder,
+  required bool latestArmWasShort,
+  required bool historyFillInFlight,
+  required bool revealRequested,
+}) =>
+    prependedOlder &&
+    latestArmWasShort &&
+    (historyFillInFlight || revealRequested);
+
 /// Keeps the first-contact card at the absolute start of non-empty history.
 ///
 /// An empty centered transcript is the only exception: placing the card after

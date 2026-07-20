@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as image_lib;
 import 'package:mithka/l10n/app_localizations.dart';
@@ -14,6 +14,30 @@ import '../theme/app_theme.dart';
 enum _EditTool { crop, mask, draw, text }
 
 enum _CropDrag { none, move, topLeft, topRight, bottomLeft, bottomRight }
+
+@visibleForTesting
+Uint8List encodeEditedPhotoJpeg(
+  ByteData rgbaData, {
+  required int width,
+  required int height,
+  int quality = 88,
+}) {
+  final image = image_lib.Image.fromBytes(
+    width: width,
+    height: height,
+    bytes: rgbaData.buffer,
+    bytesOffset: rgbaData.offsetInBytes,
+    numChannels: 4,
+    order: image_lib.ChannelOrder.rgba,
+  );
+  return Uint8List.fromList(
+    image_lib.encodeJpg(
+      image,
+      quality: quality,
+      chroma: image_lib.JpegChroma.yuv420,
+    ),
+  );
+}
 
 class ImageEditResult {
   const ImageEditResult({required this.path, this.caption = ''});
@@ -332,37 +356,21 @@ class _ImageEditViewState extends State<ImageEditView> {
       canvas.restore();
       final picture = recorder.endRecording();
       final out = await picture.toImage(outW, outH);
-      final data = await out.toByteData(
-        format: widget.avatar
-            ? ui.ImageByteFormat.png
-            : ui.ImageByteFormat.rawRgba,
-      );
+      final data = await out.toByteData();
       if (data == null) return;
       final dir = await getTemporaryDirectory();
-      final extension = widget.avatar ? 'png' : 'jpg';
       final file = File(
-        '${dir.path}/mithka_edit_${DateTime.now().microsecondsSinceEpoch}.$extension',
+        '${dir.path}/mithka_edit_${DateTime.now().microsecondsSinceEpoch}.jpg',
       );
-      if (widget.avatar) {
-        await file.writeAsBytes(data.buffer.asUint8List(), flush: true);
-      } else {
-        final image = image_lib.Image.fromBytes(
+      await file.writeAsBytes(
+        encodeEditedPhotoJpeg(
+          data,
           width: outW,
           height: outH,
-          bytes: data.buffer,
-          bytesOffset: data.offsetInBytes,
-          numChannels: 4,
-          order: image_lib.ChannelOrder.rgba,
-        );
-        await file.writeAsBytes(
-          image_lib.encodeJpg(
-            image,
-            quality: 88,
-            chroma: image_lib.JpegChroma.yuv420,
-          ),
-          flush: true,
-        );
-      }
+          quality: widget.avatar ? 90 : 88,
+        ),
+        flush: true,
+      );
       out.dispose();
       if (mounted) {
         if (widget.avatar) {

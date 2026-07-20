@@ -348,6 +348,7 @@ class ChatViewModel extends ChangeNotifier {
   bool get canForwardContent => !hasProtectedContent;
   bool get canLoadOlder =>
       !_isLoadingOlder && _allMessages.isNotEmpty && _hasOlderHistory;
+  bool get isLoadingOlder => _isLoadingOlder;
   bool get hasOlderHistory => _hasOlderHistory;
   int get _oldestServerMessageId {
     for (final message in _allMessages) {
@@ -1053,7 +1054,10 @@ class ChatViewModel extends ChangeNotifier {
     return id;
   }
 
-  Future<void> _waitForMessageSend(int pendingMessageId) {
+  Future<void> _waitForMessageSend(
+    int pendingMessageId, {
+    Duration timeout = const Duration(seconds: 15),
+  }) {
     final recent = _recentMessageSendResults.remove(pendingMessageId);
     if (recent != null) {
       final error = recent.error;
@@ -1063,10 +1067,16 @@ class ChatViewModel extends ChangeNotifier {
     _messageSendWaiters[pendingMessageId] = waiter;
     return waiter.future
         .timeout(
-          const Duration(seconds: 15),
+          timeout,
           onTimeout: () {
-            _discardPendingMessage(pendingMessageId);
-            throw TimeoutException('Rich message send timed out');
+            // A timeout means TDLib has not reported the final state yet. It
+            // does not mean the accepted message failed. In particular, do
+            // not mark it discarded: a late updateMessageSendSucceeded would
+            // otherwise delete the newly assigned server message id.
+            debugPrint(
+              'Message $pendingMessageId is still pending; keeping it until '
+              'TDLib reports success or failure',
+            );
           },
         )
         .whenComplete(() {
@@ -1075,6 +1085,16 @@ class ChatViewModel extends ChangeNotifier {
           }
         });
   }
+
+  @visibleForTesting
+  Future<void> waitForMessageSendTimeoutForTest(
+    int pendingMessageId, {
+    required Duration timeout,
+  }) => _waitForMessageSend(pendingMessageId, timeout: timeout);
+
+  @visibleForTesting
+  bool isPendingMessageDiscardedForTest(int pendingMessageId) =>
+      _discardedPendingMessageIds.contains(pendingMessageId);
 
   void _discardPendingMessage(int pendingMessageId) {
     _discardedPendingMessageIds.add(pendingMessageId);
@@ -1138,19 +1158,12 @@ class ChatViewModel extends ChangeNotifier {
     return true;
   }
 
-  /// 引用: set (or clear) the reply target. In a group, replying to someone also
-  /// @-mentions them in the draft (messenger behavior).
+  /// Sets or clears the reply target without changing the current draft.
+  ///
+  /// The reply metadata already addresses the sender. Mentions remain an
+  /// explicit action so replying cannot accidentally invoke inline-bot search.
   void setReply(ChatMessage? message) {
     replyTo = message;
-    if (message != null &&
-        isGroup &&
-        !message.isOutgoing &&
-        (message.senderName?.isNotEmpty ?? false)) {
-      final userId = message.senderId;
-      if (userId != null && userId > 0) {
-        _insertMention(message.senderName!, userId);
-      }
-    }
     notifyListeners();
   }
 
@@ -2292,16 +2305,19 @@ class ChatViewModel extends ChangeNotifier {
   Future<bool> loadOlder() async {
     if (!canLoadOlder) return false;
     _isLoadingOlder = true;
+    notifyListeners();
     try {
       return await _fetchHistory(_oldestServerMessageId, 0, 30, isOlder: true);
     } finally {
       _isLoadingOlder = false;
+      notifyListeners();
     }
   }
 
   Future<bool> loadOlderLocal() async {
     if (!canLoadOlder) return false;
     _isLoadingOlder = true;
+    notifyListeners();
     try {
       return await _fetchHistory(
         _oldestServerMessageId,
@@ -2312,6 +2328,7 @@ class ChatViewModel extends ChangeNotifier {
       );
     } finally {
       _isLoadingOlder = false;
+      notifyListeners();
     }
   }
 
@@ -4156,9 +4173,7 @@ class ChatViewModel extends ChangeNotifier {
       final placeholder = switch (q.contentType) {
         'messagePhoto' => telegramText(AppStringKeys.composerImagePreview),
         'messageVideo' => telegramText(AppStringKeys.chatVideoPlaceholder),
-        'messageAnimation' => telegramText(
-          AppStringKeys.composerAnimatedEmojiPreview,
-        ),
+        'messageAnimation' => telegramText(AppStringKeys.tdMessageGif),
         _ => null,
       };
       return q.text == placeholder ? '' : q.text;

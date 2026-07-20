@@ -3,6 +3,54 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/chat_scroll_metrics.dart';
 
 void main() {
+  group('oldest history pull', () {
+    test(
+      'fires once after accumulated clamped overscroll crosses threshold',
+      () {
+        final pull = OldestHistoryPullController(triggerDistance: 50);
+
+        expect(pull.addClampedOverscroll(-18), isFalse);
+        expect(pull.addClampedOverscroll(-31), isFalse);
+        expect(pull.addClampedOverscroll(-2), isTrue);
+        expect(pull.distance, 51);
+        expect(pull.triggered, isTrue);
+        expect(pull.addClampedOverscroll(-100), isFalse);
+      },
+    );
+
+    test('reset arms the next pull and ignores movement toward latest', () {
+      final pull = OldestHistoryPullController(triggerDistance: 30);
+
+      expect(pull.addClampedOverscroll(40), isFalse);
+      expect(pull.distance, 0);
+      expect(pull.addClampedOverscroll(-30), isTrue);
+
+      pull.reset();
+
+      expect(pull.triggered, isFalse);
+      expect(pull.distance, 0);
+      expect(pull.addClampedOverscroll(-30), isTrue);
+    });
+
+    test('supports bouncing positions beyond a negative minimum extent', () {
+      final pull = OldestHistoryPullController();
+
+      expect(
+        pull.updateBouncingPosition(
+          _metrics(min: -600, max: 1400, pixels: -645),
+        ),
+        isFalse,
+      );
+      expect(
+        pull.updateBouncingPosition(
+          _metrics(min: -600, max: 1400, pixels: -653),
+        ),
+        isTrue,
+      );
+      expect(pull.distance, 53);
+    });
+  });
+
   group('chat scroll metrics', () {
     test('measures both edges when the minimum extent is negative', () {
       final metrics = _metrics(min: -600, max: 1400, pixels: -100);

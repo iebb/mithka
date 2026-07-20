@@ -3464,7 +3464,7 @@ abstract final class TDParse {
       case 'messageAnimation':
         final caption = content.obj('caption')?.str('text') ?? '';
         return caption.isEmpty
-            ? telegramText(AppStringKeys.composerAnimatedEmojiPreview)
+            ? telegramText(AppStringKeys.tdMessageGif)
             : caption;
       case 'messageAnimatedEmoji':
         return content.obj('animated_emoji')?.str('emoji') ??

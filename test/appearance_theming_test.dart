@@ -24,7 +24,7 @@ void main() {
     expect(ThemeController(prefs).themingEnabled, isFalse);
   });
 
-  testWidgets('Appearance hides all theming rows when theming is disabled', (
+  testWidgets('Appearance keeps theme scope available when theming is off', (
     tester,
   ) async {
     final controller = await _pumpAppearance(tester, themingEnabled: false);
@@ -33,7 +33,7 @@ void main() {
     expect(find.text('Theme'), findsNothing);
     expect(find.text('Wallpaper'), findsNothing);
     expect(find.text('Use chat theme for UI'), findsNothing);
-    expect(find.text('Use themes per account'), findsNothing);
+    expect(find.text('Use themes per account'), findsOneWidget);
 
     controller.themingEnabled = true;
     await tester.pump();

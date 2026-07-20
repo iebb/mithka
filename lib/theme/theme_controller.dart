@@ -826,14 +826,15 @@ class ThemeController extends ChangeNotifier {
     // Theming existed unconditionally before this preference was introduced,
     // so both new installs and migrated users retain the established behavior.
     _themingEnabled = _prefs.getBool(_themingEnabledKey) ?? true;
+    _usePerAccountTheming = _prefs.getBool(_usePerAccountThemingKey) ?? false;
     _mode = AppearanceMode.values.firstWhere(
-      (m) => m.name == _prefs.getString(_modeKey),
+      (m) => m.name == _prefs.getString(_scopedThemeKey(_modeKey)),
       orElse: () => AppearanceMode.system,
     );
     _brandColor = Color(
-      _prefs.getInt(_brandKey) ?? (0xFF000000 | AppTheme.defaultBrand),
+      _prefs.getInt(_scopedThemeKey(_brandKey)) ??
+          (0xFF000000 | AppTheme.defaultBrand),
     );
-    _usePerAccountTheming = _prefs.getBool(_usePerAccountThemingKey) ?? false;
     final legacyCloudTheme = _decodeTheme(_scopedThemeKey(_cloudThemeKey));
     _lightCloudTheme = _decodeTheme(_scopedThemeKey(_lightCloudThemeKey));
     _darkCloudTheme = _decodeTheme(_scopedThemeKey(_darkCloudThemeKey));
@@ -1171,24 +1172,41 @@ class ThemeController extends ChangeNotifier {
     }
   }
 
-  void _loadScopedThemeSelection() {
+  void _loadScopedThemeSettings() {
+    _mode = AppearanceMode.values.firstWhere(
+      (mode) => mode.name == _prefs.getString(_scopedThemeKey(_modeKey)),
+      orElse: () => AppearanceMode.system,
+    );
+    _brandColor = Color(
+      _prefs.getInt(_scopedThemeKey(_brandKey)) ??
+          (0xFF000000 | AppTheme.defaultBrand),
+    );
     _lightCloudTheme = _decodeTheme(_scopedThemeKey(_lightCloudThemeKey));
     _darkCloudTheme = _decodeTheme(_scopedThemeKey(_darkCloudThemeKey));
     _useTelegramThemeForUi =
         _prefs.getBool(_scopedThemeKey(_useTelegramThemeForUiKey)) ?? false;
     if (!hasCloudTheme) _useTelegramThemeForUi = false;
+    AppTheme.applyBrand(_brandColor);
+  }
+
+  void _persistScopedThemeSettings() {
+    _prefs.setString(_scopedThemeKey(_modeKey), _mode.name);
+    _prefs.setInt(_scopedThemeKey(_brandKey), _brandColor.toARGB32());
+    _persistCloudThemes();
   }
 
   void setActiveAccountSlot(int value) {
     if (_activeAccountSlot == value) return;
     _activeAccountSlot = value;
     if (!_usePerAccountTheming) return;
-    _loadScopedThemeSelection();
+    _loadScopedThemeSettings();
     notifyListeners();
   }
 
   set usePerAccountTheming(bool value) {
     if (_usePerAccountTheming == value) return;
+    final mode = _mode;
+    final brand = _brandColor;
     final light = _lightCloudTheme;
     final dark = _darkCloudTheme;
     final useForUi = _useTelegramThemeForUi;
@@ -1196,19 +1214,23 @@ class ThemeController extends ChangeNotifier {
     _prefs.setBool(_usePerAccountThemingKey, value);
     if (value) {
       final accountHasSelection =
+          _prefs.containsKey(_scopedThemeKey(_modeKey)) ||
+          _prefs.containsKey(_scopedThemeKey(_brandKey)) ||
           _prefs.containsKey(_scopedThemeKey(_lightCloudThemeKey)) ||
           _prefs.containsKey(_scopedThemeKey(_darkCloudThemeKey)) ||
           _prefs.containsKey(_scopedThemeKey(_useTelegramThemeForUiKey));
       if (!accountHasSelection) {
+        _mode = mode;
+        _brandColor = brand;
         _lightCloudTheme = light;
         _darkCloudTheme = dark;
         _useTelegramThemeForUi = useForUi;
-        _persistCloudThemes();
+        _persistScopedThemeSettings();
       } else {
-        _loadScopedThemeSelection();
+        _loadScopedThemeSettings();
       }
     } else {
-      _loadScopedThemeSelection();
+      _loadScopedThemeSettings();
     }
     notifyListeners();
   }
@@ -1412,15 +1434,17 @@ class ThemeController extends ChangeNotifier {
   }
 
   set mode(AppearanceMode value) {
+    if (_mode == value) return;
     _mode = value;
-    _prefs.setString(_modeKey, value.name);
+    _prefs.setString(_scopedThemeKey(_modeKey), value.name);
     notifyListeners();
   }
 
-  /// The app's accent / brand color. Persisted and applied app-wide.
+  /// The active scope's accent / brand color.
   set brandColor(Color value) {
+    if (_brandColor == value) return;
     _brandColor = value;
-    _prefs.setInt(_brandKey, value.toARGB32());
+    _prefs.setInt(_scopedThemeKey(_brandKey), value.toARGB32());
     AppTheme.applyBrand(value);
     notifyListeners();
   }
@@ -1521,8 +1545,8 @@ class ThemeController extends ChangeNotifier {
       _prefs.getInt(_preCloudThemeBrandKey) ??
           (0xFF000000 | AppTheme.defaultBrand),
     );
-    _prefs.setString(_modeKey, _mode.name);
-    _prefs.setInt(_brandKey, _brandColor.toARGB32());
+    _prefs.setString(_scopedThemeKey(_modeKey), _mode.name);
+    _prefs.setInt(_scopedThemeKey(_brandKey), _brandColor.toARGB32());
     _prefs.remove(_preCloudThemeModeKey);
     _prefs.remove(_preCloudThemeBrandKey);
     AppTheme.applyBrand(_brandColor);

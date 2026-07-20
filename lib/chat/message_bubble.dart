@@ -41,6 +41,7 @@ import 'custom_emoji.dart';
 import 'file_detail_view.dart';
 import 'link_handler.dart';
 import 'location_detail_view.dart';
+import 'looping_video_view.dart';
 import 'message_action_menu.dart';
 import 'message_special_content.dart';
 import 'music_player_controller.dart';
@@ -774,9 +775,11 @@ class _MessageBubbleState extends State<MessageBubble>
     if (message.isDice) {
       body = _diceBubble(outgoing);
     } else if (message.video != null) {
-      body = message.contentType == 'messageVideoNote'
-          ? _videoNoteContent()
-          : _videoContent(outgoing);
+      body = switch (message.contentType) {
+        'messageVideoNote' => _videoNoteContent(),
+        'messageAnimation' => _animationContent(outgoing),
+        _ => _videoContent(outgoing),
+      };
     } else if (message.stickerFileId != null && message.image != null) {
       body = _staticStickerContent(message.image!);
     } else if (message.image != null) {
@@ -3930,9 +3933,44 @@ class _MessageBubbleState extends State<MessageBubble>
     );
   }
 
+  /// Telegram GIFs arrive as silent MP4 animations. Start them inline and
+  /// repeat indefinitely; tapping still opens the full media viewer.
+  Widget _animationContent(bool outgoing) {
+    final size = _imageDisplaySize();
+    final caption = _caption();
+    final grouped = _groupsMediaCaption(caption);
+    final mediaRadius = grouped ? 0.0 : 10.0;
+    final media = GestureDetector(
+      onTap: () => widget.onPlayVideo?.call(message),
+      onLongPress: () => _handleLongPress(MessageActionSource.video),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(mediaRadius),
+        child: SizedBox(
+          key: ValueKey('message-animation-${message.id}'),
+          width: size.width,
+          height: size.height,
+          child: LoopingVideoView(
+            file: message.video!,
+            fallback: message.image,
+            showDownloadProgress: true,
+          ),
+        ),
+      ),
+    );
+    return _mediaWithCaption(
+      media: media,
+      caption: caption,
+      outgoing: outgoing,
+    );
+  }
+
   String? _caption() {
     final t = _activeMessageText;
     if (t.isEmpty) return null;
+    if (message.contentType == 'messageAnimation' &&
+        t == telegramText(AppStringKeys.tdMessageGif)) {
+      return null;
+    }
     if (t.startsWith('[') && t.endsWith(']')) return null;
     return t;
   }

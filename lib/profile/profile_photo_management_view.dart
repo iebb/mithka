@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../chat/image_edit_view.dart';
 import '../components/app_icons.dart';
 import '../components/confirm_dialog.dart';
 import '../components/photo_avatar.dart';
@@ -87,9 +89,29 @@ class _ProfilePhotoManagementViewState
     );
     if (selection.assets.isEmpty) return;
     try {
+      if (!mounted) return;
+      final edited = await Navigator.of(context).push<String>(
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (_) => ImageEditView(
+            sourcePath: selection.assets.first.file.path,
+            avatar: true,
+          ),
+        ),
+      );
+      if (edited == null) return;
+      final file = File(edited);
+      if (!await file.exists() || await file.length() == 0) {
+        if (!mounted) return;
+        showToast(
+          context,
+          AppStrings.t(AppStringKeys.editProfileInvalidAvatarFile),
+        );
+        return;
+      }
       await _client.query(
         setOwnProfilePhotoRequest(
-          photo: localStaticChatPhoto(selection.assets.first.file.path),
+          photo: localStaticChatPhoto(edited),
           isPublic: isPublic,
         ),
       );

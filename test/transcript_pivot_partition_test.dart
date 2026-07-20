@@ -95,6 +95,44 @@ void main() {
     });
   });
 
+  group('shouldRebaseForHydratedOlderPage', () {
+    test('reveals a page that completed after short-fill was interrupted', () {
+      expect(
+        shouldRebaseForHydratedOlderPage(
+          prependedOlder: true,
+          latestArmWasShort: true,
+          historyFillInFlight: true,
+          revealRequested: false,
+        ),
+        isTrue,
+      );
+    });
+
+    test('reveals a pulled older page in a short transcript', () {
+      expect(
+        shouldRebaseForHydratedOlderPage(
+          prependedOlder: true,
+          latestArmWasShort: true,
+          historyFillInFlight: false,
+          revealRequested: true,
+        ),
+        isTrue,
+      );
+    });
+
+    test('keeps the fixed viewport pivot for ordinary full pagination', () {
+      expect(
+        shouldRebaseForHydratedOlderPage(
+          prependedOlder: true,
+          latestArmWasShort: false,
+          historyFillInFlight: true,
+          revealRequested: true,
+        ),
+        isFalse,
+      );
+    });
+  });
+
   group('shouldPlaceFirstContactCardAtCenter', () {
     test('uses center only for a completely empty transcript', () {
       expect(

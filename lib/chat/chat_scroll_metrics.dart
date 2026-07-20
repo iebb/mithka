@@ -14,6 +14,47 @@ double distanceToOldest(ScrollMetrics metrics) => metrics.extentBefore;
 /// overscrolling beyond that edge.
 double distanceToLatest(ScrollMetrics metrics) => metrics.extentAfter;
 
+/// Tracks a pull beyond the oldest edge and fires once per drag after the
+/// configured distance. It supports both clamping physics (which reports a
+/// signed overscroll delta) and bouncing physics (which moves `pixels` beyond
+/// `minScrollExtent`).
+class OldestHistoryPullController {
+  OldestHistoryPullController({this.triggerDistance = 52})
+    : assert(triggerDistance > 0);
+
+  final double triggerDistance;
+  double _distance = 0;
+  bool _triggered = false;
+
+  double get distance => _distance;
+  bool get triggered => _triggered;
+
+  bool addClampedOverscroll(double overscroll) {
+    if (overscroll >= 0 || _triggered) return false;
+    _distance += -overscroll;
+    return _maybeTrigger();
+  }
+
+  bool updateBouncingPosition(ScrollMetrics metrics) {
+    if (_triggered) return false;
+    final beyondOldest = metrics.minScrollExtent - metrics.pixels;
+    if (beyondOldest <= 0) return false;
+    _distance = beyondOldest > _distance ? beyondOldest : _distance;
+    return _maybeTrigger();
+  }
+
+  void reset() {
+    _distance = 0;
+    _triggered = false;
+  }
+
+  bool _maybeTrigger() {
+    if (_triggered || _distance < triggerDistance) return false;
+    _triggered = true;
+    return true;
+  }
+}
+
 /// Whether the viewport is within [threshold] pixels of the oldest edge.
 bool isNearOldest(ScrollMetrics metrics, {required double threshold}) {
   assert(threshold >= 0);

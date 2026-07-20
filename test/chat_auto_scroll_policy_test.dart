@@ -41,6 +41,22 @@ void main() {
     expect(policy.shouldFollowAppendedMessage(wasNearBottom: true), isTrue);
   });
 
+  test('composer panels follow only when the transcript was at bottom', () {
+    final policy = ChatAutoScrollPolicy();
+
+    expect(policy.shouldFollowComposerPanelChange(wasNearBottom: true), isTrue);
+    expect(
+      policy.shouldFollowComposerPanelChange(wasNearBottom: false),
+      isFalse,
+    );
+
+    policy.noteUserScroll(towardOlderMessages: true, isAtBottom: false);
+    expect(
+      policy.shouldFollowComposerPanelChange(wasNearBottom: true),
+      isFalse,
+    );
+  });
+
   test('bottom follow corrects only while laid-out geometry has a gap', () {
     final coordinator = ChatBottomFollowCoordinator();
     final callbacks = <void Function()>[];
