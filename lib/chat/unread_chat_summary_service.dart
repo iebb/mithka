@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../tdlib/json_helpers.dart';
@@ -36,6 +38,36 @@ class UnreadChatSummaryProgress {
 
 typedef UnreadChatSummaryProgressCallback =
     void Function(UnreadChatSummaryProgress progress);
+
+enum UnreadChatSummaryDraftStage { chunk, finalMerge }
+
+class UnreadChatSummaryDraft {
+  const UnreadChatSummaryDraft({
+    required this.stage,
+    required this.text,
+    this.chunkIndex = 0,
+    this.chunkCount = 0,
+    this.complete = false,
+  });
+
+  final UnreadChatSummaryDraftStage stage;
+  final String text;
+  final int chunkIndex;
+  final int chunkCount;
+  final bool complete;
+}
+
+typedef UnreadChatSummaryDraftCallback =
+    void Function(UnreadChatSummaryDraft draft);
+typedef UnreadChatSummaryContentCallback = void Function(String content);
+
+void _logUnreadChatSummary(String message) {
+  assert(() {
+    debugPrint('[mithka.ai_summary] $message');
+    developer.log(message, name: 'mithka.ai_summary');
+    return true;
+  }());
+}
 
 class UnreadChatSummaryProviderException implements Exception {
   const UnreadChatSummaryProviderException(this.message, {this.statusCode});
@@ -214,6 +246,74 @@ Map<String, dynamic> decodeUnreadChatSummaryJson(
   );
 }
 
+/// Extracts only user-facing fields from an incomplete streamed JSON object.
+/// Raw JSON, evidence IDs, and model reasoning must never be shown as a draft.
+String visibleUnreadChatSummaryDraft(String content) {
+  final title = _partialJsonStringField(content, 'title');
+  final overview = _partialJsonStringField(content, 'overview');
+  if (overview.isNotEmpty) {
+    return title.isEmpty ? overview : '$title\n\n$overview';
+  }
+  if (title.isNotEmpty) return title;
+  for (final field in const ['summary', 'text']) {
+    final value = _partialJsonStringField(content, field);
+    if (value.isNotEmpty) return value;
+  }
+  return '';
+}
+
+String _partialJsonStringField(String source, String field) {
+  final match = RegExp(
+    '"${RegExp.escape(field)}"\\s*:\\s*"',
+  ).firstMatch(source);
+  if (match == null) return '';
+  final output = StringBuffer();
+  var escaped = false;
+  for (var index = match.end; index < source.length; index++) {
+    final code = source.codeUnitAt(index);
+    if (escaped) {
+      escaped = false;
+      switch (code) {
+        case 0x22:
+          output.write('"');
+        case 0x5C:
+          output.write('\\');
+        case 0x2F:
+          output.write('/');
+        case 0x62:
+          output.write('\b');
+        case 0x66:
+          output.write('\f');
+        case 0x6E:
+          output.write('\n');
+        case 0x72:
+          output.write('\r');
+        case 0x74:
+          output.write('\t');
+        case 0x75:
+          if (index + 4 < source.length) {
+            final hex = source.substring(index + 1, index + 5);
+            final value = int.tryParse(hex, radix: 16);
+            if (value != null) {
+              output.writeCharCode(value);
+              index += 4;
+            }
+          }
+        default:
+          output.writeCharCode(code);
+      }
+      continue;
+    }
+    if (code == 0x5C) {
+      escaped = true;
+      continue;
+    }
+    if (code == 0x22) break;
+    output.writeCharCode(code);
+  }
+  return output.toString().trim();
+}
+
 bool _looksLikeUnreadSummary(Map<String, dynamic> value) =>
     value.containsKey('overview') ||
     value.containsKey('topics') ||
@@ -278,6 +378,13 @@ abstract interface class UnreadChatSummaryProvider {
   Future<Map<String, dynamic>> complete(
     UnreadChatSummaryProviderRequest request,
   );
+}
+
+abstract interface class StreamingUnreadChatSummaryProvider {
+  Future<Map<String, dynamic>> completeStreaming(
+    UnreadChatSummaryProviderRequest request, {
+    required UnreadChatSummaryContentCallback onContent,
+  });
 }
 
 const unreadChatSummaryTrustedInstructions = '''
@@ -674,7 +781,12 @@ class UnreadChatSummaryService {
   Future<UnreadChatSummary> summarize(
     UnreadChatRangeSnapshot snapshot, {
     UnreadChatSummaryProgressCallback? onProgress,
+    UnreadChatSummaryDraftCallback? onDraft,
   }) async {
+    final stopwatch = Stopwatch()..start();
+    _logUnreadChatSummary(
+      'start provider=$providerCode expected_unread=${snapshot.unreadCount}',
+    );
     onProgress?.call(
       const UnreadChatSummaryProgress(
         stage: UnreadChatSummaryProgressStage.loadingMessages,
@@ -694,11 +806,25 @@ class UnreadChatSummaryService {
       );
       _completionCache.clear();
       _inFlightCompletions.clear();
+      _logUnreadChatSummary('history load started');
+    } else {
+      _logUnreadChatSummary('history cache reused');
     }
     late final UnreadChatTranscript transcript;
     try {
       transcript = await _transcriptFuture!;
+      _logUnreadChatSummary(
+        'history loaded messages=${transcript.messages.length} '
+        'requests=${transcript.historyRequestCount} '
+        'boundary=${transcript.reachedReadBoundary} '
+        'capped=${transcript.historyCapped} stalled=${transcript.historyStalled} '
+        'elapsed_ms=${stopwatch.elapsedMilliseconds}',
+      );
     } catch (error, stackTrace) {
+      _logUnreadChatSummary(
+        'history failed type=${error.runtimeType} '
+        'elapsed_ms=${stopwatch.elapsedMilliseconds}',
+      );
       if (_transcriptKey == key) {
         _transcriptFuture = null;
       }
@@ -715,13 +841,24 @@ class UnreadChatSummaryService {
         stackTrace,
       );
     }
-    return summarizeTranscript(transcript, onProgress: onProgress);
+    final result = await summarizeTranscript(
+      transcript,
+      onProgress: onProgress,
+      onDraft: onDraft,
+    );
+    _logUnreadChatSummary(
+      'finished summarized=${result.coverage.summarizedMessageCount} '
+      'elapsed_ms=${stopwatch.elapsedMilliseconds}',
+    );
+    return result;
   }
 
   Future<UnreadChatSummary> summarizeTranscript(
     UnreadChatTranscript transcript, {
     UnreadChatSummaryProgressCallback? onProgress,
+    UnreadChatSummaryDraftCallback? onDraft,
   }) async {
+    final stopwatch = Stopwatch()..start();
     if (transcript.messages.isEmpty) {
       return UnreadChatSummary(
         content: UnreadChatSummaryContent.empty(),
@@ -747,7 +884,21 @@ class UnreadChatSummaryService {
         chunk.fold<int>(0, (total, unit) => total + _promptUnitTokens(unit)),
     ];
     final useParallelRequests =
-        maxConcurrentRequests > 1 && _isLongContext(promptUnits);
+        selectedChunks.length > 1 &&
+        maxConcurrentRequests > 1 &&
+        _isLongContext(promptUnits);
+    _logUnreadChatSummary(
+      'prepared source=${transcript.messages.length} '
+      'model_input=${promptMessages.length} '
+      'omitted_duplicate_or_low_signal='
+      '${transcript.messages.length - promptMessages.length} '
+      'selected=${selectedMessages.length} '
+      'chunks=${selectedChunks.length} '
+      'chunk_tokens=${chunkTokenEstimates.join(',')} '
+      'chunk_budget=$maxChunkTokenEstimate '
+      'context_window=${contextWindowTokens ?? 'unknown'} '
+      'parallel=$useParallelRequests elapsed_ms=${stopwatch.elapsedMilliseconds}',
+    );
     var completedChunks = 0;
     void reportChunkProgress() => onProgress?.call(
       UnreadChatSummaryProgress(
@@ -763,6 +914,12 @@ class UnreadChatSummaryService {
       chunk,
       index,
     ) async {
+      final chunkStopwatch = Stopwatch()..start();
+      _logUnreadChatSummary(
+        'chunk ${index + 1}/${selectedChunks.length} started '
+        'messages=${chunk.expand((unit) => unit.messages).length} '
+        'tokens=${chunkTokenEstimates[index]}',
+      );
       final allowedEvidenceIds = {
         for (final unit in chunk) ...unit.evidenceIds,
       };
@@ -804,9 +961,39 @@ class UnreadChatSummaryService {
             },
           ),
           scopeKey: summaryScope,
+          onDraftText: onDraft == null
+              ? null
+              : (text) => onDraft(
+                  UnreadChatSummaryDraft(
+                    stage: UnreadChatSummaryDraftStage.chunk,
+                    text: text,
+                    chunkIndex: index,
+                    chunkCount: selectedChunks.length,
+                  ),
+                ),
+        );
+        final stableDraft = _stableDraftText(content.content);
+        if (stableDraft.isNotEmpty) {
+          onDraft?.call(
+            UnreadChatSummaryDraft(
+              stage: UnreadChatSummaryDraftStage.chunk,
+              text: stableDraft,
+              chunkIndex: index,
+              chunkCount: selectedChunks.length,
+              complete: true,
+            ),
+          );
+        }
+        _logUnreadChatSummary(
+          'chunk ${index + 1}/${selectedChunks.length} completed '
+          'elapsed_ms=${chunkStopwatch.elapsedMilliseconds}',
         );
         return _ChunkSummaryAttempt.success(chunk: chunk, summary: content);
       } catch (error, stackTrace) {
+        _logUnreadChatSummary(
+          'chunk ${index + 1}/${selectedChunks.length} failed '
+          'type=${error.runtimeType} elapsed_ms=${chunkStopwatch.elapsedMilliseconds}',
+        );
         return _ChunkSummaryAttempt.failure(
           chunk: chunk,
           error: error,
@@ -887,13 +1074,21 @@ class UnreadChatSummaryService {
         ),
       );
       if (mergeChunkSummariesLocally) {
+        _logUnreadChatSummary(
+          'merge local started chunks=${chunkContents.length}',
+        );
         content = _mergeChunkContentsLocally(chunkContents);
       } else {
         try {
+          final mergeStopwatch = Stopwatch()..start();
+          _logUnreadChatSummary(
+            'merge provider started chunks=${chunkContents.length}',
+          );
           content = await _mergeChunkContents(
             chunkContents,
             scopeKey: summaryScope,
             useParallelRequests: useParallelRequests,
+            onDraft: onDraft,
             coverageIsIncomplete:
                 transcript.historyCapped ||
                 transcript.historyStalled ||
@@ -901,7 +1096,14 @@ class UnreadChatSummaryService {
                 selection.sampled ||
                 failedRequestCount > 0,
           );
-        } catch (_) {
+          _logUnreadChatSummary(
+            'merge provider completed '
+            'elapsed_ms=${mergeStopwatch.elapsedMilliseconds}',
+          );
+        } catch (error) {
+          _logUnreadChatSummary(
+            'merge provider failed type=${error.runtimeType}; using local merge',
+          );
           failedRequestCount++;
           content = _mergeChunkContentsLocally(chunkContents);
         }
@@ -909,11 +1111,15 @@ class UnreadChatSummaryService {
     }
     content = _withGroundedTopicDates(content, transcript.messages);
 
+    final coveredMessages = failedRequestCount == 0 && !selection.sampled
+        ? transcript.messages
+        : summarizedMessages;
+
     return UnreadChatSummary(
       content: content,
       coverage: _coverage(
         transcript,
-        summarizedMessages: summarizedMessages,
+        summarizedMessages: coveredMessages,
         processingCapped: selection.sampled,
         failedRequestCount: failedRequestCount,
       ),
@@ -1245,11 +1451,15 @@ class UnreadChatSummaryService {
     required String scopeKey,
     required bool coverageIsIncomplete,
     required bool useParallelRequests,
+    UnreadChatSummaryDraftCallback? onDraft,
   }) async {
     var level = List<_GroundedSummary>.of(summaries);
     var mergeLevel = 1;
     while (level.length > 1) {
       final batches = _mergeBatches(level);
+      _logUnreadChatSummary(
+        'merge level=$mergeLevel inputs=${level.length} batches=${batches.length}',
+      );
       final nextLevel = await _parallelMapOrdered(batches, (
         batch,
         index,
@@ -1279,6 +1489,14 @@ class UnreadChatSummaryService {
             },
           ),
           scopeKey: scopeKey,
+          onDraftText: batches.length == 1 && onDraft != null
+              ? (text) => onDraft(
+                  UnreadChatSummaryDraft(
+                    stage: UnreadChatSummaryDraftStage.finalMerge,
+                    text: text,
+                  ),
+                )
+              : null,
         );
       }, maxWorkers: useParallelRequests ? maxConcurrentRequests : 1);
       level = nextLevel;
@@ -1515,6 +1733,7 @@ class UnreadChatSummaryService {
   Future<_GroundedSummary> _completeGrounded(
     UnreadChatSummaryProviderRequest request, {
     required String scopeKey,
+    UnreadChatSummaryContentCallback? onDraftText,
   }) async {
     final key = jsonEncode({
       'scope': scopeKey,
@@ -1524,11 +1743,24 @@ class UnreadChatSummaryService {
       'payload': request.payload,
     });
     final cached = _completionCache[key];
-    if (cached != null) return cached;
+    if (cached != null) {
+      _logUnreadChatSummary('completion cache hit stage=${request.stage.name}');
+      final stableDraft = _stableDraftText(cached.content);
+      if (stableDraft.isNotEmpty) onDraftText?.call(stableDraft);
+      return cached;
+    }
     final pending = _inFlightCompletions[key];
-    if (pending != null) return pending;
+    if (pending != null) {
+      _logUnreadChatSummary(
+        'completion in-flight reused stage=${request.stage.name}',
+      );
+      return pending;
+    }
 
-    final completion = _requestGroundedCompletion(request);
+    final completion = _requestGroundedCompletion(
+      request,
+      onDraftText: onDraftText,
+    );
     _inFlightCompletions[key] = completion;
     try {
       final result = await completion;
@@ -1542,9 +1774,41 @@ class UnreadChatSummaryService {
   }
 
   Future<_GroundedSummary> _requestGroundedCompletion(
-    UnreadChatSummaryProviderRequest request,
-  ) async {
-    final raw = await provider.complete(request);
+    UnreadChatSummaryProviderRequest request, {
+    UnreadChatSummaryContentCallback? onDraftText,
+  }) async {
+    final stopwatch = Stopwatch()..start();
+    var firstDraftReported = false;
+    void reportRawDraft(String rawContent) {
+      final draft = visibleUnreadChatSummaryDraft(rawContent);
+      if (draft.isEmpty) return;
+      if (!firstDraftReported) {
+        firstDraftReported = true;
+        _logUnreadChatSummary(
+          'first visible draft stage=${request.stage.name} '
+          'elapsed_ms=${stopwatch.elapsedMilliseconds}',
+        );
+      }
+      onDraftText?.call(draft);
+    }
+
+    final streamingProvider = provider is StreamingUnreadChatSummaryProvider
+        ? provider as StreamingUnreadChatSummaryProvider
+        : null;
+    final Map<String, dynamic> raw;
+    if (streamingProvider != null) {
+      raw = await streamingProvider.completeStreaming(
+        request,
+        onContent: reportRawDraft,
+      );
+    } else {
+      raw = await provider.complete(request);
+    }
+    _logUnreadChatSummary(
+      'provider response stage=${request.stage.name} '
+      'streaming=${streamingProvider != null} '
+      'elapsed_ms=${stopwatch.elapsedMilliseconds}',
+    );
     return _GroundedSummary(
       content: UnreadChatSummaryContent.fromJsonBestEffort(
         raw,
@@ -1552,6 +1816,14 @@ class UnreadChatSummaryService {
       ),
       allowedEvidenceIds: request.allowedEvidenceIds,
     );
+  }
+
+  String _stableDraftText(UnreadChatSummaryContent content) {
+    final title = content.title.trim();
+    final overview = content.overview.trim();
+    if (title.isEmpty) return overview;
+    if (overview.isEmpty) return title;
+    return '$title\n\n$overview';
   }
 
   List<List<_GroundedSummary>> _mergeBatches(List<_GroundedSummary> summaries) {

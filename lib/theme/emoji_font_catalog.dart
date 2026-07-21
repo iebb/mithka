@@ -133,10 +133,17 @@ class EmojiFontCatalog {
 
   static final shared = EmojiFontCatalog._();
 
+  /// Bump whenever release font binaries change without changing their keys.
+  /// A new namespace prevents old glyph data from being loaded and forces the
+  /// selected font to be downloaded again.
+  static const cacheRevision = 2;
+  static const cacheDirectoryName = 'emoji_fonts_v$cacheRevision';
+
   static const manifestUrl =
       'https://github.com/iebb/emojifonts/releases/download/latest/manifest.json';
 
   final Set<String> _loadedFamilies = {};
+  final Map<String, Future<String>> _inFlightFontLoads = {};
 
   Future<List<EmojiFontManifestEntry>> loadManifest({
     bool forceRefresh = false,
@@ -173,7 +180,42 @@ class EmojiFontCatalog {
     return family;
   }
 
-  Future<String> downloadAndLoad(EmojiFontManifestEntry entry) async {
+  Future<String?> loadCachedOrDownload(String key) async {
+    final cached = await loadCached(key);
+    if (cached != null) return cached;
+    try {
+      final entries = await loadManifest(forceRefresh: true);
+      EmojiFontManifestEntry? selected;
+      for (final entry in entries) {
+        if (entry.key == key) {
+          selected = entry;
+          break;
+        }
+      }
+      if (selected == null) return null;
+      return downloadAndLoad(selected);
+    } catch (error) {
+      debugPrint(
+        '[emoji_font_catalog] redownload failed key=$key '
+        'type=${error.runtimeType}',
+      );
+      return null;
+    }
+  }
+
+  Future<String> downloadAndLoad(EmojiFontManifestEntry entry) {
+    final pending = _inFlightFontLoads[entry.key];
+    if (pending != null) return pending;
+    final operation = _downloadAndLoad(entry);
+    _inFlightFontLoads[entry.key] = operation;
+    return operation.whenComplete(() {
+      if (identical(_inFlightFontLoads[entry.key], operation)) {
+        _inFlightFontLoads.remove(entry.key);
+      }
+    });
+  }
+
+  Future<String> _downloadAndLoad(EmojiFontManifestEntry entry) async {
     final file = await _fontFile(entry);
     if (!await file.exists()) {
       await file.parent.create(recursive: true);
@@ -238,7 +280,7 @@ class EmojiFontCatalog {
 
   Future<Directory> _cacheDir() async {
     final support = await getApplicationSupportDirectory();
-    return Directory('${support.path}/emoji_fonts');
+    return Directory('${support.path}/$cacheDirectoryName');
   }
 
   Future<void> _loadFontFile(String family, File file) async {

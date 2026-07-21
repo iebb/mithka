@@ -4,6 +4,15 @@ enum ChatBottomIndicator { none, newMessages, jumpToBottom }
 
 enum ChatNewMessagesControlPlacement { hidden, top, bottom }
 
+const unreadChatSummaryMinimumUnreadMessages = 100;
+
+bool shouldShowUnreadChatSummaryAttachment({
+  required int unreadMessageCount,
+  required bool providerAvailable,
+}) =>
+    providerAvailable &&
+    unreadMessageCount >= unreadChatSummaryMinimumUnreadMessages;
+
 /// Keeps the unread-message badge mounted while the optional AI attachment is
 /// enabled or disabled. A stable badge subtree avoids coupling the core unread
 /// affordance to AI configuration changes.
@@ -12,7 +21,7 @@ class ChatNewMessagesControlShell extends StatelessWidget {
     super.key,
     required this.unreadBadge,
     this.aiAttachment,
-    this.attachmentGap = 6,
+    this.minimumAttachmentHeight = 40,
   });
 
   static const unreadBadgeKey = ValueKey('chatUnreadMessagesBadge');
@@ -20,19 +29,28 @@ class ChatNewMessagesControlShell extends StatelessWidget {
 
   final Widget unreadBadge;
   final Widget? aiAttachment;
-  final double attachmentGap;
+  final double minimumAttachmentHeight;
 
   @override
-  Widget build(BuildContext context) => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      if (aiAttachment case final attachment?) ...[
-        KeyedSubtree(key: aiAttachmentKey, child: attachment),
-        SizedBox(width: attachmentGap),
+  Widget build(BuildContext context) {
+    final attachment = aiAttachment;
+    final badge = KeyedSubtree(key: unreadBadgeKey, child: unreadBadge);
+    if (attachment == null) return badge;
+
+    return Stack(
+      alignment: Alignment.centerRight,
+      children: [
+        ConstrainedBox(
+          constraints: BoxConstraints(minHeight: minimumAttachmentHeight),
+          child: Align(widthFactor: 1, heightFactor: 1, child: badge),
+        ),
+        Positioned(
+          right: 0,
+          child: KeyedSubtree(key: aiAttachmentKey, child: attachment),
+        ),
       ],
-      KeyedSubtree(key: unreadBadgeKey, child: unreadBadge),
-    ],
-  );
+    );
+  }
 }
 
 ChatBottomIndicator chatBottomIndicator({

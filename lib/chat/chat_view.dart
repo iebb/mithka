@@ -127,7 +127,8 @@ class _UnreadSummarySession {
   Future<UnreadChatSummary> summarize(
     UnreadChatRangeSnapshot snapshot, {
     UnreadChatSummaryProgressCallback? onProgress,
-  }) => service.summarize(snapshot, onProgress: onProgress);
+    UnreadChatSummaryDraftCallback? onDraft,
+  }) => service.summarize(snapshot, onProgress: onProgress, onDraft: onDraft);
 
   void dispose() => onDispose?.call();
 }
@@ -902,10 +903,13 @@ class _ChatViewState extends State<ChatView> {
   void initState() {
     super.initState();
     _wallpaperController.addListener(_onWallpaperChanged);
-    unawaited(_wallpaperController.load(widget.chatId));
-    unawaited(_wallpaperController.loadDefaultWallpaper(dark: false));
-    unawaited(_wallpaperController.loadDefaultWallpaper(dark: true));
-    unawaited(_wallpaperController.loadGlobalChatThemes());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(_wallpaperController.load(widget.chatId));
+      unawaited(_wallpaperController.loadDefaultWallpaper(dark: false));
+      unawaited(_wallpaperController.loadDefaultWallpaper(dark: true));
+      unawaited(_wallpaperController.loadGlobalChatThemes());
+    });
     _openAtLatest = context.read<ThemeController>().openChatsAtLatest;
     _sessionRenderState = widget.initialMessageId == null
         ? _sessionCache.read(widget.chatId)
@@ -4963,6 +4967,7 @@ class _ChatViewState extends State<ChatView> {
   Widget _newMessagesBanner({
     required bool pointsDown,
     required bool showsUnreadCount,
+    required bool hasAiAttachment,
   }) {
     final c = context.colors;
     final count = _remainingUnreadCount;
@@ -4972,7 +4977,12 @@ class _ChatViewState extends State<ChatView> {
           ? _returnToLatest
           : () => unawaited(_jumpToFirstUnread()),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        padding: EdgeInsetsDirectional.fromSTEB(
+          12,
+          7,
+          hasAiAttachment ? 48 : 12,
+          7,
+        ),
         decoration: BoxDecoration(
           color: c.navBar,
           borderRadius: BorderRadius.circular(16),
@@ -5018,27 +5028,34 @@ class _ChatViewState extends State<ChatView> {
     required bool pointsDown,
     required bool showsUnreadCount,
   }) {
+    final aiAttachment = _canOfferUnreadSummary(settings)
+        ? _unreadSummaryButton()
+        : null;
     final banner = _newMessagesBanner(
       pointsDown: pointsDown,
       showsUnreadCount: showsUnreadCount,
+      hasAiAttachment: aiAttachment != null,
     );
     return ChatNewMessagesControlShell(
       unreadBadge: banner,
-      aiAttachment: _canOfferUnreadSummary(settings)
-          ? _unreadSummaryButton()
-          : null,
+      aiAttachment: aiAttachment,
     );
   }
 
   bool _canOfferUnreadSummary(AiSettingsController? settings) =>
-      settings?.initialized == true &&
-      settings?.enabled == true &&
-      settings?.isConfiguredForCurrentProvider == true &&
-      _vm.unreadSummarySnapshot != null &&
-      !_vm.isSecretChat &&
-      !_vm.hasProtectedContent;
+      shouldShowUnreadChatSummaryAttachment(
+        unreadMessageCount: _remainingUnreadCount,
+        providerAvailable:
+            settings?.initialized == true &&
+            settings?.enabled == true &&
+            settings?.isConfiguredForCurrentProvider == true &&
+            _vm.unreadSummarySnapshot != null &&
+            !_vm.isSecretChat &&
+            !_vm.hasProtectedContent,
+      );
 
   Widget _unreadSummaryButton() {
+    final c = context.colors;
     return Semantics(
       button: true,
       label: AppStringKeys.aiSummaryButton.l10n(context),
@@ -5056,7 +5073,7 @@ class _ChatViewState extends State<ChatView> {
               color: AppTheme.brand,
               shape: BoxShape.circle,
               border: Border.all(
-                color: const Color(0xFFFFFFFF).withValues(alpha: 0.24),
+                color: c.textPrimary.withValues(alpha: 0.24),
                 width: 0.5,
               ),
               boxShadow: [
@@ -5067,10 +5084,10 @@ class _ChatViewState extends State<ChatView> {
                 ),
               ],
             ),
-            child: const Text(
+            child: Text(
               'AI',
               style: TextStyle(
-                color: Color(0xFFFFFFFF),
+                color: c.textPrimary,
                 fontSize: 13,
                 fontWeight: FontWeight.w800,
                 letterSpacing: 0.2,
@@ -5112,8 +5129,11 @@ class _ChatViewState extends State<ChatView> {
         MaterialPageRoute<int>(
           builder: (_) => UnreadChatSummaryView(
             snapshot: snapshot,
-            summarize: (onProgress) =>
-                session.summarize(snapshot, onProgress: onProgress),
+            summarize: (onProgress, onDraft) => session.summarize(
+              snapshot,
+              onProgress: onProgress,
+              onDraft: onDraft,
+            ),
           ),
         ),
       );
@@ -5225,7 +5245,7 @@ class _ChatViewState extends State<ChatView> {
           maximumContextSize: AiServerProfile.maximumContextWindowTokens,
           trustedInstructions: unreadChatSummaryCompactTrustedInstructions,
           maximumResponseTokens: responseTokenReserve,
-          maximumPayloadTokens: 24000,
+          maximumPayloadTokens: contextWindow,
         );
         final provider = OpenAiCompatibleUnreadSummaryProvider(
           serverBaseUri: endpoint,
@@ -5236,9 +5256,11 @@ class _ChatViewState extends State<ChatView> {
           UnreadChatSummaryService(
             historyLoader: loader,
             provider: provider,
+            maxChunkMessages: 1000000,
             maxChunks: 4,
+            maxConcurrentRequests: 4,
             maxChunkTokenEstimate: tokenBudget.payloadTokens,
-            mergeChunkSummariesLocally: true,
+            maxChunkTimeGapSeconds: 0,
             trustedInstructions: unreadChatSummaryCompactTrustedInstructions,
             providerCode: 'openai_compatible/$model',
             contextWindowTokens: contextWindow,

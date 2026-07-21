@@ -35,7 +35,7 @@ class AiServerProfile {
     this.availableModels = const [],
   });
 
-  static const defaultContextWindowTokens = 131072;
+  static const defaultContextWindowTokens = 200000;
   static const minimumContextWindowTokens = 4096;
   static const maximumContextWindowTokens = 16777216;
 

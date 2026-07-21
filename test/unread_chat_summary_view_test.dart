@@ -20,6 +20,7 @@ void main() {
       addTearDown(theme.dispose);
       final completion = Completer<UnreadChatSummary>();
       late UnreadChatSummaryProgressCallback reportProgress;
+      late UnreadChatSummaryDraftCallback reportDraft;
       final snapshot = UnreadChatRangeSnapshot(
         chatId: 1,
         accountSlot: 0,
@@ -42,8 +43,9 @@ void main() {
             supportedLocales: AppLocalizations.supportedLocales,
             home: UnreadChatSummaryView(
               snapshot: snapshot,
-              summarize: (onProgress) {
+              summarize: (onProgress, onDraft) {
                 reportProgress = onProgress;
+                reportDraft = onDraft;
                 return completion.future;
               },
             ),
@@ -86,6 +88,45 @@ void main() {
       );
       await tester.pump();
       expect(find.text('Assembling the summary…'), findsOneWidget);
+
+      reportDraft(
+        const UnreadChatSummaryDraft(
+          stage: UnreadChatSummaryDraftStage.chunk,
+          text: 'First chunk summary',
+          chunkCount: 2,
+          complete: true,
+        ),
+      );
+      reportDraft(
+        const UnreadChatSummaryDraft(
+          stage: UnreadChatSummaryDraftStage.chunk,
+          text: 'Second chunk streaming',
+          chunkIndex: 1,
+          chunkCount: 2,
+        ),
+      );
+      reportDraft(
+        const UnreadChatSummaryDraft(
+          stage: UnreadChatSummaryDraftStage.finalMerge,
+          text: 'Final summary streaming',
+        ),
+      );
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('ai-summary-chunk-draft-0')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('ai-summary-chunk-draft-1')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('ai-summary-final-merge-draft')),
+        findsOneWidget,
+      );
+      expect(find.textContaining('First chunk summary'), findsOneWidget);
+      expect(find.textContaining('Second chunk streaming'), findsOneWidget);
+      expect(find.textContaining('Final summary streaming'), findsOneWidget);
 
       completion.complete(
         UnreadChatSummary(
@@ -187,7 +228,7 @@ void main() {
               upperMessageId: 121,
               capturedAt: DateTime(2026, 7, 20),
             ),
-            summarize: (_) async => UnreadChatSummary(
+            summarize: (_, _) async => UnreadChatSummary(
               content: UnreadChatSummaryContent(
                 title: 'Partial summary',
                 overview: 'Covered content.',
@@ -249,7 +290,7 @@ void main() {
               upperMessageId: 3000,
               capturedAt: DateTime(2026, 7, 20),
             ),
-            summarize: (_) async => throw UnreadChatSummaryFailure(
+            summarize: (_, _) async => throw UnreadChatSummaryFailure(
               providerCode: 'apple_pcc',
               stage: 'summarizing_chunks',
               causes: const [

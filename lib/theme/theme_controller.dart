@@ -1604,7 +1604,7 @@ class ThemeController extends ChangeNotifier {
   Future<void> loadSelectedEmojiFontIfAvailable() async {
     final key = _emojiFontChoice.key;
     if (key == EmojiFontChoice.system.key) return;
-    final family = await EmojiFontCatalog.shared.loadCached(key);
+    final family = await EmojiFontCatalog.shared.loadCachedOrDownload(key);
     if (family == null) return;
     _emojiFontChoice = EmojiFontChoice(
       key: key,
