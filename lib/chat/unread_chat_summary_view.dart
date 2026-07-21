@@ -13,6 +13,7 @@ import 'unread_chat_summary_service.dart';
 typedef UnreadChatSummaryOperation =
     Future<UnreadChatSummary> Function(
       UnreadChatSummaryProgressCallback onProgress,
+      UnreadChatSummaryDraftCallback onDraft,
     );
 
 class UnreadChatSummaryView extends StatefulWidget {
@@ -34,6 +35,8 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
   Object? _error;
   bool _loading = true;
   bool _showTechnicalDetails = false;
+  final Map<int, UnreadChatSummaryDraft> _chunkDrafts = {};
+  UnreadChatSummaryDraft? _finalMergeDraft;
   UnreadChatSummaryProgress _progress = const UnreadChatSummaryProgress(
     stage: UnreadChatSummaryProgressStage.loadingMessages,
   );
@@ -50,13 +53,15 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
         _loading = true;
         _error = null;
         _showTechnicalDetails = false;
+        _chunkDrafts.clear();
+        _finalMergeDraft = null;
         _progress = const UnreadChatSummaryProgress(
           stage: UnreadChatSummaryProgressStage.loadingMessages,
         );
       });
     }
     try {
-      final summary = await widget.summarize(_reportProgress);
+      final summary = await widget.summarize(_reportProgress, _reportDraft);
       if (!mounted) return;
       setState(() {
         _summary = summary;
@@ -74,6 +79,35 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
   void _reportProgress(UnreadChatSummaryProgress progress) {
     if (!mounted || !_loading) return;
     setState(() => _progress = progress);
+  }
+
+  void _reportDraft(UnreadChatSummaryDraft draft) {
+    if (!mounted || !_loading) return;
+    final normalized = draft.text.trim();
+    if (normalized.isEmpty) return;
+    final value = UnreadChatSummaryDraft(
+      stage: draft.stage,
+      text: normalized,
+      chunkIndex: draft.chunkIndex,
+      chunkCount: draft.chunkCount,
+      complete: draft.complete,
+    );
+    switch (draft.stage) {
+      case UnreadChatSummaryDraftStage.chunk:
+        final previous = _chunkDrafts[draft.chunkIndex];
+        if (previous?.text == value.text &&
+            previous?.complete == value.complete) {
+          return;
+        }
+        setState(() => _chunkDrafts[draft.chunkIndex] = value);
+      case UnreadChatSummaryDraftStage.finalMerge:
+        final previous = _finalMergeDraft;
+        if (previous?.text == value.text &&
+            previous?.complete == value.complete) {
+          return;
+        }
+        setState(() => _finalMergeDraft = value);
+    }
   }
 
   @override
@@ -134,21 +168,83 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
 
   Widget _loadingContent(BuildContext context) {
     final c = context.colors;
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        AppActivityIndicator(size: 18, color: AppTheme.brand),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            _progressLabel(context),
+        Row(
+          children: [
+            AppActivityIndicator(size: 18, color: AppTheme.brand),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                _progressLabel(context),
+                style: TextStyle(
+                  color: c.textSecondary,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (_chunkDrafts.isNotEmpty || _finalMergeDraft != null) ...[
+          const SizedBox(height: 18),
+          for (final draft in _orderedChunkDrafts) ...[
+            _streamingDraftCard(context, draft),
+            const SizedBox(height: 10),
+          ],
+          if (_finalMergeDraft case final draft?)
+            _streamingDraftCard(context, draft),
+        ],
+      ],
+    );
+  }
+
+  List<UnreadChatSummaryDraft> get _orderedChunkDrafts {
+    final indexes = _chunkDrafts.keys.toList()..sort();
+    return [for (final index in indexes) _chunkDrafts[index]!];
+  }
+
+  Widget _streamingDraftCard(
+    BuildContext context,
+    UnreadChatSummaryDraft draft,
+  ) {
+    final c = context.colors;
+    final isMerge = draft.stage == UnreadChatSummaryDraftStage.finalMerge;
+    final label = isMerge
+        ? AppStringKeys.aiSummaryAssembling.l10n(context)
+        : '${draft.chunkIndex + 1}/${draft.chunkCount}';
+    return Container(
+      key: ValueKey(
+        isMerge
+            ? 'ai-summary-final-merge-draft'
+            : 'ai-summary-chunk-draft-${draft.chunkIndex}',
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 15),
+      decoration: BoxDecoration(
+        color: c.card,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: c.divider, width: 0.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
             style: TextStyle(
-              color: c.textSecondary,
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
+              color: isMerge ? AppTheme.brand : c.textTertiary,
+              fontSize: 12,
+              height: 1.3,
+              fontWeight: FontWeight.w600,
             ),
           ),
-        ),
-      ],
+          const SizedBox(height: 7),
+          Text(
+            '${draft.text}${draft.complete ? '' : ' ▌'}',
+            style: TextStyle(color: c.textPrimary, fontSize: 16, height: 1.55),
+          ),
+        ],
+      ),
     );
   }
 

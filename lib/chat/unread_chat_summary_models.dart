@@ -542,7 +542,11 @@ class UnreadChatSummaryCoverage {
   final int failedRequestCount;
   final bool usedLocalFallback;
 
-  bool get countMismatch => fetchedUnreadMessageCount < expectedUnreadCount;
+  /// TDLib's unread counter may advance or settle while the frozen history is
+  /// loaded. Reaching the captured read boundary is stronger evidence of full
+  /// coverage than an off-by-one (or otherwise stale) unread count.
+  bool get countMismatch =>
+      !reachedReadBoundary && fetchedUnreadMessageCount < expectedUnreadCount;
 
   bool get complete =>
       reachedReadBoundary &&

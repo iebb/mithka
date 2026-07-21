@@ -127,7 +127,11 @@ void main() {
         httpClient: client,
       );
 
-      final result = await provider.complete(_request());
+      final streamedContent = <String>[];
+      final result = await provider.completeStreaming(
+        _request(),
+        onContent: streamedContent.add,
+      );
 
       final body = jsonDecode(captured.body) as Map<String, dynamic>;
       expect(body['stream'], isTrue);
@@ -135,8 +139,56 @@ void main() {
       expect(body, isNot(contains('max_tokens')));
       expect(body, isNot(contains('max_completion_tokens')));
       expect(result['overview'], '要点');
+      expect(streamedContent, isNotEmpty);
+      expect(streamedContent.last, summary);
     },
   );
+
+  test('extracts a safe visible draft from incomplete streamed JSON', () {
+    expect(
+      visibleUnreadChatSummaryDraft(
+        '{"title":"Daily chat","overview":"The group discussed an API',
+      ),
+      'Daily chat\n\nThe group discussed an API',
+    );
+    expect(
+      visibleUnreadChatSummaryDraft(
+        '{"reasoning":"secret","overview_evidence_ids":["m1"]}',
+      ),
+      isEmpty,
+    );
+  });
+
+  test('publishes SSE content before the request completes', () async {
+    final client = _ControlledStreamingClient();
+    addTearDown(client.close);
+    final provider = OpenAiCompatibleUnreadSummaryProvider(
+      serverBaseUri: Uri.parse('https://example.test'),
+      model: 'streaming-model',
+      httpClient: client,
+    );
+    final summary = jsonEncode({'title': 'Live summary', ..._summaryJson()});
+    final splitAt = summary.indexOf('要点') + 1;
+    final drafts = <String>[];
+    var completed = false;
+    final completion = provider
+        .completeStreaming(_request(), onContent: drafts.add)
+        .whenComplete(() => completed = true);
+
+    await client.requestReceived.future;
+    client.addEvent(summary.substring(0, splitAt));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(drafts, isNotEmpty);
+    expect(drafts.last, summary.substring(0, splitAt));
+    expect(completed, isFalse);
+
+    client.addEvent(summary.substring(splitAt));
+    client.finish();
+    final result = await completion;
+    expect(result['overview'], '要点');
+    expect(completed, isTrue);
+  });
 
   test('retries without an unsupported reasoning parameter', () async {
     final bodies = <Map<String, dynamic>>[];
@@ -350,5 +402,45 @@ class _HangingClient extends http.BaseClient {
   Future<http.StreamedResponse> send(http.BaseRequest request) {
     attempts++;
     return _response.future;
+  }
+}
+
+class _ControlledStreamingClient extends http.BaseClient {
+  final requestReceived = Completer<void>();
+  final _controller = StreamController<List<int>>();
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    if (!requestReceived.isCompleted) requestReceived.complete();
+    return http.StreamedResponse(
+      _controller.stream,
+      200,
+      headers: {'content-type': 'text/event-stream'},
+    );
+  }
+
+  void addEvent(String content) {
+    _controller.add(
+      utf8.encode(
+        'data: ${jsonEncode({
+          'choices': [
+            {
+              'delta': {'content': content},
+            },
+          ],
+        })}\n\n',
+      ),
+    );
+  }
+
+  void finish() {
+    _controller.add(utf8.encode('data: [DONE]\n\n'));
+    unawaited(_controller.close());
+  }
+
+  @override
+  void close() {
+    unawaited(_controller.close());
+    super.close();
   }
 }

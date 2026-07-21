@@ -3,6 +3,30 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/chat_unread_progress.dart';
 
 void main() {
+  test('AI summary attachment requires at least 100 unread messages', () {
+    expect(
+      shouldShowUnreadChatSummaryAttachment(
+        unreadMessageCount: 99,
+        providerAvailable: true,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldShowUnreadChatSummaryAttachment(
+        unreadMessageCount: 100,
+        providerAvailable: true,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldShowUnreadChatSummaryAttachment(
+        unreadMessageCount: 1000,
+        providerAvailable: false,
+      ),
+      isFalse,
+    );
+  });
+
   testWidgets('unread badge remains when the AI attachment is absent', (
     tester,
   ) async {
@@ -37,6 +61,28 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('90 unread'), findsOneWidget);
+  });
+
+  testWidgets('AI attachment is overlaid on the unread badge right edge', (
+    tester,
+  ) async {
+    const badgeKey = ValueKey('badgeBounds');
+    const attachmentKey = ValueKey('attachmentBounds');
+    await tester.pumpWidget(
+      const Directionality(
+        textDirection: TextDirection.ltr,
+        child: ChatNewMessagesControlShell(
+          unreadBadge: SizedBox(key: badgeKey, width: 160, height: 32),
+          aiAttachment: SizedBox(key: attachmentKey, width: 40, height: 40),
+        ),
+      ),
+    );
+
+    final badgeRect = tester.getRect(find.byKey(badgeKey));
+    final attachmentRect = tester.getRect(find.byKey(attachmentKey));
+    expect(attachmentRect.right, badgeRect.right);
+    expect(attachmentRect.left, lessThan(badgeRect.right));
+    expect(attachmentRect.center.dy, badgeRect.center.dy);
   });
 
   test('new messages replace the jump-to-bottom button while scrolled up', () {

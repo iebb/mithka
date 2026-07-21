@@ -978,6 +978,7 @@ class ThemeController extends ChangeNotifier {
     _openChatsAtLatest = _prefs.getBool(_openChatsAtLatestKey) ?? false;
     _preserveSenderWhenRepeating =
         _prefs.getBool(_preserveSenderWhenRepeatingKey) ?? true;
+    _quickRepliesEnabled = _prefs.getBool(_quickRepliesEnabledKey) ?? true;
     final storedQuickReactions = _prefs.getStringList(_quickReactionsKey);
     _quickReactions = storedQuickReactions == null
         ? [...defaultQuickReactions]
@@ -1068,6 +1069,7 @@ class ThemeController extends ChangeNotifier {
   static const _alwaysShowMessageTimeKey = 'alwaysShowMessageTime';
   static const _openChatsAtLatestKey = 'openChatsAtLatest';
   static const _preserveSenderWhenRepeatingKey = 'preserveSenderWhenRepeating';
+  static const _quickRepliesEnabledKey = 'quickRepliesEnabled';
   static const _quickReactionsKey = 'quickReactions';
   static const _groupImageMessagesKey = 'groupImageMessages';
   static const _hideBlockedUserMessagesKey = 'hideBlockedUserMessages';
@@ -1125,6 +1127,7 @@ class ThemeController extends ChangeNotifier {
   bool _alwaysShowMessageTime = false;
   bool _openChatsAtLatest = false;
   bool _preserveSenderWhenRepeating = true;
+  bool _quickRepliesEnabled = true;
   late List<QuickReactionChoice> _quickReactions;
   bool _groupImageMessages = true;
   bool _hideBlockedUserMessages = false;
@@ -1316,6 +1319,7 @@ class ThemeController extends ChangeNotifier {
   bool get alwaysShowMessageTime => _alwaysShowMessageTime;
   bool get openChatsAtLatest => _openChatsAtLatest;
   bool get preserveSenderWhenRepeating => _preserveSenderWhenRepeating;
+  bool get quickRepliesEnabled => _quickRepliesEnabled;
   List<QuickReactionChoice> get quickReactions =>
       List.unmodifiable(_quickReactions);
   bool get groupImageMessages => _groupImageMessages;
@@ -1604,7 +1608,7 @@ class ThemeController extends ChangeNotifier {
   Future<void> loadSelectedEmojiFontIfAvailable() async {
     final key = _emojiFontChoice.key;
     if (key == EmojiFontChoice.system.key) return;
-    final family = await EmojiFontCatalog.shared.loadCached(key);
+    final family = await EmojiFontCatalog.shared.loadCachedOrDownload(key);
     if (family == null) return;
     _emojiFontChoice = EmojiFontChoice(
       key: key,
@@ -1876,6 +1880,13 @@ class ThemeController extends ChangeNotifier {
     if (_preserveSenderWhenRepeating == value) return;
     _preserveSenderWhenRepeating = value;
     _prefs.setBool(_preserveSenderWhenRepeatingKey, value);
+    notifyListeners();
+  }
+
+  set quickRepliesEnabled(bool value) {
+    if (_quickRepliesEnabled == value) return;
+    _quickRepliesEnabled = value;
+    _prefs.setBool(_quickRepliesEnabledKey, value);
     notifyListeners();
   }
 

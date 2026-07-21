@@ -345,6 +345,14 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
             (v) => theme.preserveSenderWhenRepeating = v,
           ),
           const InsetDivider(leadingInset: 56),
+          _toggleRow(
+            HeroAppIcons.solidMessage,
+            const Color(0xFF34C759),
+            AppStrings.t(AppStringKeys.businessToolsQuickReplies),
+            theme.quickRepliesEnabled,
+            (v) => theme.quickRepliesEnabled = v,
+          ),
+          const InsetDivider(leadingInset: 56),
           _navigationRow(
             HeroAppIcons.video,
             const Color(0xFFAF52DE),

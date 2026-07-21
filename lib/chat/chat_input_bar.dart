@@ -132,6 +132,7 @@ class ChatInputBar extends StatefulWidget {
     this.onPanelGeometryChanged,
     this.onMediaSendTapped,
     this.gifPreviewBuilder,
+    this.quickRepliesEnabled = true,
     this.quickReplyLoader,
     this.quickReplySender,
     this.onVoicePanelOpenedForTesting,
@@ -143,6 +144,7 @@ class ChatInputBar extends StatefulWidget {
   final VoidCallback? onMediaSendTapped;
   @visibleForTesting
   final Widget Function(GifItem item)? gifPreviewBuilder;
+  final bool quickRepliesEnabled;
   @visibleForTesting
   final Future<List<BusinessQuickReplyShortcut>> Function()? quickReplyLoader;
   @visibleForTesting
@@ -215,12 +217,12 @@ class _ChatInputBarState extends State<ChatInputBar> {
   BotInlineResultsPage? _inlineBotResults;
   bool _quickRepliesLoaded = false;
   bool _quickReplyContextVisible = false;
-  bool _quickReplyLoading = false;
   int? _quickReplySendingId;
   List<BusinessQuickReplyShortcut> _quickReplies = const [];
   ChatViewModel get vm => widget.vm;
 
   bool get _canUseQuickReplies =>
+      widget.quickRepliesEnabled &&
       !vm.isGroup &&
       !vm.peerIsBot &&
       !vm.isSecretChat &&
@@ -252,6 +254,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
     _botPlatformUpdates = TdClient.shared.subscribe().listen(
       _handleBotPlatformUpdate,
     );
+    if (widget.quickReplyLoader == null) {
+      BusinessQuickReplyService.shared.addListener(_syncQuickReplyCache);
+      _adoptQuickReplyCache(rebuild: false);
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && _canUseQuickReplies) {
         unawaited(_loadQuickReplies(userInitiated: false));
@@ -457,12 +463,42 @@ class _ChatInputBarState extends State<ChatInputBar> {
     if (mounted) setState(() {});
   }
 
+  void _syncQuickReplyCache() => _adoptQuickReplyCache(rebuild: true);
+
+  void _adoptQuickReplyCache({required bool rebuild}) {
+    final service = BusinessQuickReplyService.shared;
+    if (!service.shortcutsLoaded) return;
+    final replies = service.shortcuts;
+    _quickReplies = replies;
+    _quickRepliesLoaded = true;
+    if (replies.isEmpty || !widget.quickRepliesEnabled) {
+      _quickReplyContextVisible = false;
+    }
+    if (rebuild && mounted) setState(() {});
+  }
+
+  @override
+  void didUpdateWidget(ChatInputBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.quickRepliesEnabled && !widget.quickRepliesEnabled) {
+      _quickReplyContextVisible = false;
+    } else if (!oldWidget.quickRepliesEnabled &&
+        widget.quickRepliesEnabled &&
+        _canUseQuickReplies) {
+      _adoptQuickReplyCache(rebuild: false);
+      unawaited(_loadQuickReplies(userInitiated: false));
+    }
+  }
+
   @override
   void dispose() {
     vm.removeListener(_syncFromVm);
     EmojiStore.shared.removeListener(_onStore);
     StickerStore.shared.removeListener(_onStore);
     GifStore.shared.removeListener(_onStore);
+    if (widget.quickReplyLoader == null) {
+      BusinessQuickReplyService.shared.removeListener(_syncQuickReplyCache);
+    }
     _controller.dispose();
     _panelSearch
       ..removeListener(_queuePanelSearch)
@@ -1153,7 +1189,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
                 _inlineBotResultMenu()
               else if (_mentionCandidates.isNotEmpty)
                 _mentionMenu()
-              else if (_quickReplyContextVisible)
+              else if (_quickReplyContextVisible && _quickReplies.isNotEmpty)
                 _quickReplyContextMenu(),
               _inputRow(replyKeyboard),
               if (replyKeyboardPanelVisible)
@@ -2161,44 +2197,30 @@ class _ChatInputBarState extends State<ChatInputBar> {
       setState(() => _quickReplyContextVisible = true);
       return;
     }
-    _focus.unfocus();
     unawaited(_loadQuickReplies(userInitiated: true));
   }
 
   Future<List<BusinessQuickReplyShortcut>> _fetchQuickReplies() async {
     final injected = widget.quickReplyLoader;
     if (injected != null) return injected();
-    final capabilities = await BusinessService().capabilities();
-    if (!capabilities.canUse('businessFeatureQuickReplies')) {
-      return const [];
-    }
-    return BusinessQuickReplyService.shared.loadShortcuts();
+    return BusinessQuickReplyService.shared.preloadShortcuts();
   }
 
   Future<void> _loadQuickReplies({required bool userInitiated}) async {
     if (_quickRepliesLoaded || !_canUseQuickReplies) return;
-    if (userInitiated && mounted) {
-      setState(() {
-        _quickReplyContextVisible = true;
-        _quickReplyLoading = true;
-      });
-    }
     try {
       final replies = await _fetchQuickReplies();
       if (!mounted) return;
       setState(() {
         _quickReplies = replies;
         _quickRepliesLoaded = true;
-        _quickReplyLoading = false;
-        if (replies.isEmpty) _quickReplyContextVisible = false;
+        _quickReplyContextVisible =
+            userInitiated && replies.isNotEmpty && _canUseQuickReplies;
       });
-      if (userInitiated && replies.isEmpty) _restoreKeyboardFocus();
+      if (userInitiated && replies.isNotEmpty) _focus.unfocus();
     } catch (error) {
       if (!mounted) return;
-      setState(() {
-        _quickReplyContextVisible = false;
-        _quickReplyLoading = false;
-      });
+      setState(() => _quickReplyContextVisible = false);
       if (userInitiated) {
         showToast(
           context,
@@ -2241,10 +2263,9 @@ class _ChatInputBarState extends State<ChatInputBar> {
   }
 
   Widget _quickReplyContextMenu() {
+    if (_quickReplies.isEmpty) return const SizedBox.shrink();
     final c = context.colors;
-    final height = _quickReplyLoading
-        ? 92.0
-        : math.min(44 + (_quickReplies.length * 58), 276).toDouble();
+    final height = math.min(44 + (_quickReplies.length * 58), 276).toDouble();
     return Container(
       key: const ValueKey('quickReplyContextMenu'),
       height: height,
@@ -2307,83 +2328,77 @@ class _ChatInputBarState extends State<ChatInputBar> {
               ),
             ),
           ),
-          if (_quickReplyLoading)
-            const Expanded(child: Center(child: AppActivityIndicator(size: 20)))
-          else
-            Expanded(
-              child: ListView.builder(
-                padding: EdgeInsets.zero,
-                itemCount: _quickReplies.length,
-                itemBuilder: (context, index) {
-                  final shortcut = _quickReplies[index];
-                  final sending = _quickReplySendingId == shortcut.id;
-                  return GestureDetector(
-                    key: ValueKey('quickReply-${shortcut.id}'),
-                    behavior: HitTestBehavior.opaque,
-                    onTap: sending
-                        ? null
-                        : () => unawaited(_sendQuickReply(shortcut)),
-                    child: Container(
-                      height: 58,
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
-                      decoration: BoxDecoration(
-                        border: Border(
-                          top: BorderSide(
-                            color: c.divider.withValues(alpha: 0.55),
-                          ),
+          Expanded(
+            child: ListView.builder(
+              padding: EdgeInsets.zero,
+              itemCount: _quickReplies.length,
+              itemBuilder: (context, index) {
+                final shortcut = _quickReplies[index];
+                final sending = _quickReplySendingId == shortcut.id;
+                return GestureDetector(
+                  key: ValueKey('quickReply-${shortcut.id}'),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: sending
+                      ? null
+                      : () => unawaited(_sendQuickReply(shortcut)),
+                  child: Container(
+                    height: 58,
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        top: BorderSide(
+                          color: c.divider.withValues(alpha: 0.55),
                         ),
                       ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '/${shortcut.name}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: c.textPrimary,
+                                ),
+                              ),
+                              if (shortcut.preview.isNotEmpty) ...[
+                                const SizedBox(height: 2),
                                 Text(
-                                  '/${shortcut.name}',
+                                  shortcut.preview,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w600,
-                                    color: c.textPrimary,
+                                    fontSize: 12,
+                                    color: c.textSecondary,
                                   ),
                                 ),
-                                if (shortcut.preview.isNotEmpty) ...[
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    shortcut.preview,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: c.textSecondary,
-                                    ),
-                                  ),
-                                ],
                               ],
-                            ),
+                            ],
                           ),
-                          const SizedBox(width: 10),
-                          if (sending)
-                            AppActivityIndicator(
-                              size: 18,
-                              color: AppTheme.brand,
-                            )
-                          else
-                            AppIcon(
-                              HeroAppIcons.paperPlane,
-                              size: 18,
-                              color: AppTheme.brand,
-                            ),
-                        ],
-                      ),
+                        ),
+                        const SizedBox(width: 10),
+                        if (sending)
+                          AppActivityIndicator(size: 18, color: AppTheme.brand)
+                        else
+                          AppIcon(
+                            HeroAppIcons.paperPlane,
+                            size: 18,
+                            color: AppTheme.brand,
+                          ),
+                      ],
                     ),
-                  );
-                },
-              ),
+                  ),
+                );
+              },
             ),
+          ),
         ],
       ),
     );

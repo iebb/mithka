@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/unread_chat_summary_models.dart';
 import 'package:mithka/chat/unread_chat_summary_service.dart';
@@ -416,17 +418,17 @@ void main() {
       expect(onDeviceBudget.totalPlannedTokens, lessThanOrEqualTo(4096));
 
       final hostedBudget = unreadSummaryTokenBudget(
-        131072,
+        200000,
         maximumContextSize: 1048576,
         trustedInstructions: unreadChatSummaryTrustedInstructions,
         maximumResponseTokens: 4096,
-        maximumPayloadTokens: 24000,
+        maximumPayloadTokens: 200000,
       );
-      expect(hostedBudget.contextTokens, 131072);
+      expect(hostedBudget.contextTokens, 200000);
       expect(hostedBudget.initialPromptTokens, greaterThan(0));
       expect(hostedBudget.responseTokens, 4096);
-      expect(hostedBudget.payloadTokens, 24000);
-      expect(hostedBudget.totalPlannedTokens, lessThanOrEqualTo(131072));
+      expect(hostedBudget.payloadTokens, greaterThan(190000));
+      expect(hostedBudget.totalPlannedTokens, lessThanOrEqualTo(200000));
 
       final longerInitialPrompt = unreadSummaryTokenBudget(
         4096,
@@ -830,6 +832,122 @@ void main() {
     );
 
     test(
+      'hosted-sized context keeps 327 loaded messages in one request',
+      () async {
+        final provider = _RecordingProvider();
+        final service = UnreadChatSummaryService(
+          historyLoader: UnreadChatHistoryLoader(
+            query: (_, _) async => const {'@type': 'messages', 'messages': []},
+          ),
+          provider: provider,
+          maxChunkMessages: 1000000,
+          maxChunkTokenEstimate: 190000,
+          maxChunkTimeGapSeconds: 0,
+          maxConcurrentRequests: 4,
+          maxChunks: 4,
+        );
+        final transcript = UnreadChatTranscript(
+          snapshot: _snapshot(
+            lastReadInboxId: 0,
+            unreadCount: 328,
+            upperMessageId: 327,
+          ),
+          messages: [
+            for (var id = 1; id <= 327; id++)
+              UnreadChatMessage(
+                id: id,
+                date: id * 3600,
+                senderKey: 'user:${id % 4}',
+                isOutgoing: false,
+                isService: false,
+                contentType: 'messageText',
+                text: 'unique detail $id',
+              ),
+          ],
+          historyRequestCount: 4,
+          reachedReadBoundary: true,
+          historyCapped: false,
+          historyStalled: false,
+        );
+
+        final result = await service.summarizeTranscript(transcript);
+        final chunkRequests = provider.requests
+            .where((request) => request.stage == UnreadChatSummaryStage.chunk)
+            .toList();
+
+        expect(chunkRequests, hasLength(1));
+        expect(provider.requests, hasLength(1));
+        expect(result.coverage.summarizedMessageCount, 327);
+        expect(result.coverage.countMismatch, isFalse);
+        expect(result.coverage.complete, isTrue);
+      },
+    );
+
+    test(
+      'streams persistent chunk drafts before streaming the final merge',
+      () async {
+        final provider = _StreamingRecordingProvider();
+        final service = UnreadChatSummaryService(
+          historyLoader: UnreadChatHistoryLoader(
+            query: (_, _) async => const {'@type': 'messages', 'messages': []},
+          ),
+          provider: provider,
+          maxChunkMessages: 2,
+          maxChunkTokenEstimate: 100000,
+          maxChunkTimeGapSeconds: 0,
+        );
+        final transcript = UnreadChatTranscript(
+          snapshot: _snapshot(lastReadInboxId: 0, upperMessageId: 4),
+          messages: [
+            for (var id = 1; id <= 4; id++)
+              UnreadChatMessage(
+                id: id,
+                date: id,
+                senderKey: 'user:$id',
+                isOutgoing: false,
+                isService: false,
+                contentType: 'messageText',
+                text: 'detail $id',
+              ),
+          ],
+          historyRequestCount: 1,
+          reachedReadBoundary: true,
+          historyCapped: false,
+          historyStalled: false,
+        );
+        final drafts = <UnreadChatSummaryDraft>[];
+
+        final result = await service.summarizeTranscript(
+          transcript,
+          onDraft: drafts.add,
+        );
+
+        expect(
+          drafts
+              .where(
+                (draft) => draft.stage == UnreadChatSummaryDraftStage.chunk,
+              )
+              .map((draft) => draft.chunkIndex)
+              .toSet(),
+          {0, 1},
+        );
+        final finalMergeIndex = drafts.lastIndexWhere(
+          (draft) => draft.stage == UnreadChatSummaryDraftStage.finalMerge,
+        );
+        expect(finalMergeIndex, greaterThan(0));
+        expect(
+          drafts
+              .take(finalMergeIndex)
+              .where((draft) => draft.complete)
+              .map((draft) => draft.chunkIndex)
+              .toSet(),
+          {0, 1},
+        );
+        expect(result.overview, 'Merged');
+      },
+    );
+
+    test(
       'omits same-sender and cross-sender repeats plus simple replies',
       () async {
         final provider = _RecordingProvider();
@@ -916,6 +1034,7 @@ void main() {
           provider.requests.single.payload['selection'],
           containsPair('ignored_duplicate_or_low_signal_count', 3),
         );
+        expect(result.coverage.summarizedMessageCount, 6);
         expect(result.coverage.complete, isTrue);
       },
     );
@@ -1211,5 +1330,22 @@ class _ConcurrentRecordingProvider extends _RecordingProvider {
           ? 'Merged'
           : 'Chunk ${request.allowedEvidenceIds.first}',
     );
+  }
+}
+
+class _StreamingRecordingProvider extends _RecordingProvider
+    implements StreamingUnreadChatSummaryProvider {
+  @override
+  Future<Map<String, dynamic>> completeStreaming(
+    UnreadChatSummaryProviderRequest request, {
+    required UnreadChatSummaryContentCallback onContent,
+  }) async {
+    requests.add(request);
+    final result = _summaryJson(
+      request.allowedEvidenceIds.first,
+      text: request.stage == UnreadChatSummaryStage.merge ? 'Merged' : 'Chunk',
+    );
+    onContent(jsonEncode(result));
+    return result;
   }
 }

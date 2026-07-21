@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -108,6 +110,79 @@ void main() {
     await tester.pump();
 
     expect(sends, [(41, 9)]);
+    expect(find.byKey(const ValueKey('quickReplyContextMenu')), findsNothing);
+  });
+
+  testWidgets('opening a chat never flashes a pending or empty quick reply', (
+    tester,
+  ) async {
+    final vm = _QuickReplyTestViewModel()
+      ..peerUserId = 7
+      ..meId = 1;
+    addTearDown(vm.dispose);
+    final replies = Completer<List<BusinessQuickReplyShortcut>>();
+    var loadCount = 0;
+
+    await tester.pumpWidget(
+      _localizedApp(
+        ChatInputBar(
+          vm: vm,
+          onStartCall: (_) {},
+          onMessageSent: () {},
+          quickReplyLoader: () {
+            loadCount++;
+            return replies.future;
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(loadCount, 1);
+    expect(find.byKey(const ValueKey('quickReplyContextMenu')), findsNothing);
+
+    replies.complete(const []);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('quickReplyContextMenu')), findsNothing);
+
+    await tester.tap(find.byType(TextField).first);
+    await tester.pump();
+    expect(find.byKey(const ValueKey('quickReplyContextMenu')), findsNothing);
+  });
+
+  testWidgets('disabled quick replies never preload or appear', (tester) async {
+    final vm = _QuickReplyTestViewModel()
+      ..peerUserId = 7
+      ..meId = 1;
+    addTearDown(vm.dispose);
+    var loadCount = 0;
+
+    await tester.pumpWidget(
+      _localizedApp(
+        ChatInputBar(
+          vm: vm,
+          quickRepliesEnabled: false,
+          onStartCall: (_) {},
+          onMessageSent: () {},
+          quickReplyLoader: () async {
+            loadCount++;
+            return const [
+              BusinessQuickReplyShortcut(
+                id: 9,
+                name: 'hello',
+                messageCount: 1,
+                preview: 'Hello',
+              ),
+            ];
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.byType(TextField).first);
+    await tester.pump();
+
+    expect(loadCount, 0);
     expect(find.byKey(const ValueKey('quickReplyContextMenu')), findsNothing);
   });
 }

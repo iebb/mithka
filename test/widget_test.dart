@@ -3491,6 +3491,11 @@ void main() {
   });
 
   group('EmojiFontChoice', () {
+    test('uses a revisioned cache for rebuilt emoji fonts', () {
+      expect(EmojiFontCatalog.cacheRevision, 2);
+      expect(EmojiFontCatalog.cacheDirectoryName, 'emoji_fonts_v2');
+    });
+
     test('uses platform fallback until a runtime font is loaded', () {
       expect(EmojiFontChoice.system.fontFamilies, isNotEmpty);
       const choice = EmojiFontChoice(

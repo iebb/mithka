@@ -8,6 +8,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   group('AiSettingsController', () {
+    test('hosted models default to a 200K context window', () {
+      expect(AiServerProfile.defaultContextWindowTokens, 200000);
+    });
+
     test('defaults off and reports unavailable PCC as unconfigured', () async {
       SharedPreferences.setMockInitialValues({});
       final preferences = await SharedPreferences.getInstance();

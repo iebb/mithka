@@ -53,6 +53,7 @@ import 'settings/ai_settings_controller.dart';
 import 'settings/app_icon_controller.dart';
 import 'settings/auto_download_media_controller.dart';
 import 'settings/blocked_user_service.dart';
+import 'settings/business_service.dart';
 import 'settings/country_message_filter.dart';
 import 'settings/developer_mode_controller.dart';
 import 'settings/keyword_blocker.dart';
@@ -280,6 +281,10 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _performance.start();
     _accounts.addListener(_handleActiveAccountChange);
+    _theme.addListener(_handleThemePreferencesChange);
+    BusinessQuickReplyService.shared.startPreloading(
+      enabled: _theme.quickRepliesEnabled,
+    );
     _theme.loadSelectedEmojiFontIfAvailable();
     _autoDownload.initialize(widget.prefs);
     _auth.start();
@@ -297,12 +302,19 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _performance.dispose();
     _accounts.removeListener(_handleActiveAccountChange);
+    _theme.removeListener(_handleThemePreferencesChange);
     _calls.dispose();
     super.dispose();
   }
 
   void _handleActiveAccountChange() {
     _theme.setActiveAccountSlot(_accounts.activeSlot);
+  }
+
+  void _handleThemePreferencesChange() {
+    BusinessQuickReplyService.shared.setPreloadingEnabled(
+      _theme.quickRepliesEnabled,
+    );
   }
 
   @override

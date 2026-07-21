@@ -1,12 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import 'unread_chat_summary_service.dart';
 
 class OpenAiCompatibleUnreadSummaryProvider
-    implements UnreadChatSummaryProvider {
+    implements UnreadChatSummaryProvider, StreamingUnreadChatSummaryProvider {
   OpenAiCompatibleUnreadSummaryProvider({
     required this.serverBaseUri,
     required this.model,
@@ -54,7 +56,18 @@ class OpenAiCompatibleUnreadSummaryProvider
   @override
   Future<Map<String, dynamic>> complete(
     UnreadChatSummaryProviderRequest request,
-  ) async {
+  ) => completeStreaming(request, onContent: (_) {});
+
+  @override
+  Future<Map<String, dynamic>> completeStreaming(
+    UnreadChatSummaryProviderRequest request, {
+    required UnreadChatSummaryContentCallback onContent,
+  }) async {
+    final stopwatch = Stopwatch()..start();
+    _log(
+      'request stage=${request.stage.name} host=${serverBaseUri.host} '
+      'model=$model stream=true',
+    );
     final key = apiKey?.trim();
     final headers = <String, String>{'content-type': 'application/json'};
     if (key != null && key.isNotEmpty) {
@@ -82,8 +95,12 @@ class OpenAiCompatibleUnreadSummaryProvider
     var usedCompatibilityFallback = false;
     for (var attempt = 0; ; attempt++) {
       try {
-        response = await _send(headers, body);
+        response = await _send(headers, body, onContent: onContent);
       } on TimeoutException {
+        _log(
+          'timeout stage=${request.stage.name} '
+          'elapsed_ms=${stopwatch.elapsedMilliseconds}',
+        );
         // A completion can be expensive and billable. Repeating the same
         // timed-out request hides the real latency and can triple the wait.
         throw UnreadChatSummaryProviderException(
@@ -93,6 +110,10 @@ class OpenAiCompatibleUnreadSummaryProvider
           'faster model.',
         );
       } on http.ClientException catch (error) {
+        _log(
+          'network error stage=${request.stage.name} attempt=${attempt + 1} '
+          'type=${error.runtimeType}',
+        );
         if (attempt >= transientRetryDelays.length) {
           throw UnreadChatSummaryProviderException(
             'The summary request failed: $error',
@@ -102,6 +123,11 @@ class OpenAiCompatibleUnreadSummaryProvider
         continue;
       }
 
+      _log(
+        'response headers stage=${request.stage.name} '
+        'status=${response.statusCode} attempt=${attempt + 1} '
+        'elapsed_ms=${stopwatch.elapsedMilliseconds}',
+      );
       if (response.statusCode >= 200 && response.statusCode < 300) break;
       if (!usedCompatibilityFallback) {
         final compatibleBody = _compatibilityFallbackBody(body, response);
@@ -123,29 +149,123 @@ class OpenAiCompatibleUnreadSummaryProvider
       );
     }
 
-    return decodeUnreadChatSummaryJson(
+    final result = decodeUnreadChatSummaryJson(
       _completionContent(response.body),
       statusCode: response.statusCode,
     );
+    _log(
+      'decoded stage=${request.stage.name} '
+      'elapsed_ms=${stopwatch.elapsedMilliseconds}',
+    );
+    return result;
   }
 
   Future<_BufferedHttpResponse> _send(
     Map<String, String> headers,
-    Map<String, Object?> body,
-  ) async {
+    Map<String, Object?> body, {
+    required UnreadChatSummaryContentCallback onContent,
+  }) async {
+    final stopwatch = Stopwatch()..start();
     final request = http.Request('POST', chatCompletionsUri)
       ..headers.addAll(headers)
       ..body = jsonEncode(body);
     final response = await _httpClient.send(request).timeout(requestTimeout);
-    final responseBody = await response.stream
-        .timeout(streamIdleTimeout)
-        .transform(utf8.decoder)
-        .join();
+    _log(
+      'connected status=${response.statusCode} '
+      'elapsed_ms=${stopwatch.elapsedMilliseconds}',
+    );
+    final isSuccessful =
+        response.statusCode >= 200 && response.statusCode < 300;
+    final isEventStream =
+        response.headers['content-type']?.toLowerCase().contains(
+          'text/event-stream',
+        ) ==
+        true;
+    late final String responseBody;
+    if (isEventStream) {
+      final raw = StringBuffer();
+      final streamedContent = StringBuffer();
+      var lastReportedLength = 0;
+      var receivedFirstEvent = false;
+      await for (final line
+          in response.stream
+              .timeout(streamIdleTimeout)
+              .transform(utf8.decoder)
+              .transform(const LineSplitter())) {
+        raw.writeln(line);
+        if (!receivedFirstEvent && line.trim().isNotEmpty) {
+          receivedFirstEvent = true;
+          _log(
+            'first stream event elapsed_ms=${stopwatch.elapsedMilliseconds}',
+          );
+        }
+        if (!isSuccessful) continue;
+        final delta = _sseContentDelta(line);
+        if (delta.isEmpty) continue;
+        streamedContent.write(delta);
+        final accumulated = streamedContent.toString();
+        if (accumulated.length - lastReportedLength >= 8) {
+          lastReportedLength = accumulated.length;
+          onContent(accumulated);
+        }
+      }
+      final accumulated = streamedContent.toString();
+      if (isSuccessful &&
+          accumulated.isNotEmpty &&
+          accumulated.length != lastReportedLength) {
+        onContent(accumulated);
+      }
+      _log(
+        'stream closed content_chars=${accumulated.length} '
+        'elapsed_ms=${stopwatch.elapsedMilliseconds}',
+      );
+      responseBody = raw.toString();
+    } else {
+      responseBody = await response.stream
+          .timeout(streamIdleTimeout)
+          .transform(utf8.decoder)
+          .join();
+      _log(
+        'buffered response chars=${responseBody.length} '
+        'elapsed_ms=${stopwatch.elapsedMilliseconds}',
+      );
+    }
     return _BufferedHttpResponse(
       statusCode: response.statusCode,
       headers: response.headers,
       body: responseBody,
     );
+  }
+
+  String _sseContentDelta(String rawLine) {
+    final line = rawLine.trimLeft();
+    if (!line.startsWith('data:')) return '';
+    final data = line.substring(5).trim();
+    if (data.isEmpty || data == '[DONE]') return '';
+    final event = _decodeEnvelope(data);
+    final choices = event['choices'];
+    if (choices is! List || choices.isEmpty || choices.first is! Map) return '';
+    final choice = Map<String, dynamic>.from(choices.first as Map);
+    final delta = choice['delta'];
+    if (delta is Map && delta['content'] is String) {
+      return delta['content'] as String;
+    }
+    final message = choice['message'];
+    if (message is Map) {
+      return _messageContent({
+        'choices': [choice],
+      });
+    }
+    final text = choice['text'];
+    return text is String ? text : '';
+  }
+
+  void _log(String message) {
+    assert(() {
+      debugPrint('[mithka.ai_summary.provider] $message');
+      developer.log(message, name: 'mithka.ai_summary.provider');
+      return true;
+    }());
   }
 
   void close() {

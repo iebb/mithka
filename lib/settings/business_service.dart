@@ -469,6 +469,12 @@ class BusinessQuickReplyService extends ChangeNotifier {
   final TdClient _client = TdClient.shared;
   final Map<int, BusinessQuickReplyShortcut> _shortcuts = {};
   final Map<int, List<BusinessQuickReplyMessage>> _messages = {};
+  final Map<int, Map<int, BusinessQuickReplyShortcut>> _shortcutCacheBySlot =
+      {};
+  final Map<int, List<int>> _shortcutOrderBySlot = {};
+  final Set<int> _loadedShortcutSlots = {};
+  int _activeSlot = TdClient.shared.activeSlot;
+  bool _automaticPreloadingEnabled = true;
   List<int> _order = const [];
   // Process-lifetime subscriptions owned by the process-lifetime singleton.
   // ignore: cancel_subscriptions
@@ -476,6 +482,7 @@ class BusinessQuickReplyService extends ChangeNotifier {
   // ignore: cancel_subscriptions
   StreamSubscription<int>? _slotChanges;
   Completer<void>? _shortcutLoad;
+  Future<void>? _shortcutPreload;
   final Map<int, Completer<void>> _messageLoads = {};
 
   List<BusinessQuickReplyShortcut> get shortcuts => [
@@ -484,19 +491,66 @@ class BusinessQuickReplyService extends ChangeNotifier {
     for (final entry in _shortcuts.entries)
       if (!_order.contains(entry.key)) entry.value,
   ];
+  bool get shortcutsLoaded => _loadedShortcutSlots.contains(_activeSlot);
 
   List<BusinessQuickReplyMessage> messages(int shortcutId) =>
       List.unmodifiable(_messages[shortcutId] ?? const []);
 
   void _ensureListening() {
     _updates ??= _client.subscribe().listen(_handleUpdate);
-    _slotChanges ??= _client.subscribeActiveSlotChanges().listen((_) {
-      _shortcuts.clear();
+    _slotChanges ??= _client.subscribeActiveSlotChanges().listen(
+      (slot) => _activateSlot(slot, preload: true),
+    );
+  }
+
+  /// Starts one account-level preload as soon as TDLib reports that the active
+  /// account is authorized. Chat composers can then consume the shared cache
+  /// without briefly presenting a loading surface.
+  void startPreloading({bool enabled = true}) {
+    _automaticPreloadingEnabled = enabled;
+    _ensureListening();
+    if (enabled && _client.hasActiveClient) unawaited(preloadShortcuts());
+  }
+
+  void setPreloadingEnabled(bool enabled) {
+    if (_automaticPreloadingEnabled == enabled) return;
+    _automaticPreloadingEnabled = enabled;
+    if (enabled && _client.hasActiveClient) unawaited(preloadShortcuts());
+  }
+
+  void _activateSlot(int slot, {required bool preload}) {
+    if (_activeSlot != slot) {
+      _cacheActiveShortcuts();
+      _activeSlot = slot;
+      _shortcuts
+        ..clear()
+        ..addAll(_shortcutCacheBySlot[slot] ?? const {});
       _messages.clear();
-      _order = const [];
+      _order = List<int>.from(_shortcutOrderBySlot[slot] ?? const []);
       _completeLoads();
+      _shortcutLoad = null;
+      _shortcutPreload = null;
       notifyListeners();
-    });
+    }
+    if (preload && _automaticPreloadingEnabled) {
+      unawaited(preloadShortcuts());
+    }
+  }
+
+  void _cacheActiveShortcuts() {
+    _shortcutCacheBySlot[_activeSlot] = Map.of(_shortcuts);
+    _shortcutOrderBySlot[_activeSlot] = List.of(_order);
+  }
+
+  List<BusinessQuickReplyShortcut> _shortcutsForSlot(int slot) {
+    final values = _shortcutCacheBySlot[slot] ?? const {};
+    final order = _shortcutOrderBySlot[slot] ?? const [];
+    return [
+      for (final id in order)
+        if (values[id] != null) values[id]!,
+      for (final entry in values.entries)
+        if (!order.contains(entry.key)) entry.value,
+    ];
   }
 
   void _completeLoads() {
@@ -510,11 +564,17 @@ class BusinessQuickReplyService extends ChangeNotifier {
 
   void _handleUpdate(Map<String, dynamic> update) {
     switch (update.type) {
+      case 'updateAuthorizationState':
+        if (update.obj('authorization_state')?.type ==
+            'authorizationStateReady') {
+          _activateSlot(_client.activeSlot, preload: true);
+        }
       case 'updateQuickReplyShortcut':
         final raw = update.obj('shortcut');
         if (raw == null) return;
         final shortcut = BusinessQuickReplyShortcut.fromJson(raw);
         _shortcuts[shortcut.id] = shortcut;
+        _cacheActiveShortcuts();
         notifyListeners();
       case 'updateQuickReplyShortcutDeleted':
         final id = update.integer('shortcut_id');
@@ -522,9 +582,12 @@ class BusinessQuickReplyService extends ChangeNotifier {
         _shortcuts.remove(id);
         _messages.remove(id);
         _order = _order.where((value) => value != id).toList();
+        _cacheActiveShortcuts();
         notifyListeners();
       case 'updateQuickReplyShortcuts':
         _order = update.int64Array('shortcut_ids') ?? const [];
+        _loadedShortcutSlots.add(_activeSlot);
+        _cacheActiveShortcuts();
         final waiter = _shortcutLoad;
         if (waiter != null && !waiter.isCompleted) waiter.complete();
         notifyListeners();
@@ -541,8 +604,48 @@ class BusinessQuickReplyService extends ChangeNotifier {
     }
   }
 
+  Future<List<BusinessQuickReplyShortcut>> preloadShortcuts() async {
+    _ensureListening();
+    final slot = _activeSlot;
+    if (_loadedShortcutSlots.contains(slot)) return _shortcutsForSlot(slot);
+    final inFlight = _shortcutPreload;
+    if (inFlight != null) {
+      await inFlight;
+      return _shortcutsForSlot(slot);
+    }
+
+    final operation = () async {
+      try {
+        final capabilities = await BusinessService().capabilities();
+        if (_activeSlot != slot) return;
+        if (!capabilities.canUse('businessFeatureQuickReplies')) {
+          _shortcuts.clear();
+          _order = const [];
+          _loadedShortcutSlots.add(slot);
+          _cacheActiveShortcuts();
+          notifyListeners();
+          return;
+        }
+        await loadShortcuts();
+      } catch (error) {
+        debugPrint(
+          '[quick_replies] preload failed slot=$slot '
+          'type=${error.runtimeType}',
+        );
+      }
+    }();
+    _shortcutPreload = operation;
+    try {
+      await operation;
+    } finally {
+      if (identical(_shortcutPreload, operation)) _shortcutPreload = null;
+    }
+    return _shortcutsForSlot(slot);
+  }
+
   Future<List<BusinessQuickReplyShortcut>> loadShortcuts() async {
     _ensureListening();
+    final slot = _activeSlot;
     final inFlight = _shortcutLoad;
     if (inFlight != null) {
       try {
@@ -550,7 +653,7 @@ class BusinessQuickReplyService extends ChangeNotifier {
       } on TimeoutException {
         // The active caller will still return any update-backed cache it has.
       }
-      return shortcuts;
+      return _shortcutsForSlot(slot);
     }
     final waiter = Completer<void>();
     _shortcutLoad = waiter;
@@ -562,8 +665,13 @@ class BusinessQuickReplyService extends ChangeNotifier {
       // aggregate update after it was already loaded.
     } finally {
       if (identical(_shortcutLoad, waiter)) _shortcutLoad = null;
+      if (_activeSlot == slot) {
+        _loadedShortcutSlots.add(slot);
+        _cacheActiveShortcuts();
+        notifyListeners();
+      }
     }
-    return shortcuts;
+    return _shortcutsForSlot(slot);
   }
 
   Future<List<BusinessQuickReplyMessage>> loadMessages(int shortcutId) async {

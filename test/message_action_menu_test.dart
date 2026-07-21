@@ -104,6 +104,16 @@ void main() {
     expect(ThemeController(prefs).preserveSenderWhenRepeating, isFalse);
   });
 
+  test('quick replies default on and persist the global opt-out', () async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final theme = ThemeController(prefs);
+    expect(theme.quickRepliesEnabled, isTrue);
+
+    theme.quickRepliesEnabled = false;
+    expect(ThemeController(prefs).quickRepliesEnabled, isFalse);
+  });
+
   testWidgets('message menu renders +1 at reaction bar width', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
