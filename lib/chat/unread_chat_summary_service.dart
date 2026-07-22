@@ -403,7 +403,8 @@ LANGUAGE
 
 SELECTION
 - A row may inline a short same-sender burst and therefore contain multiple evidence_ids.
-- When selection.strategy is frequency_recency_signal_sample, the input is a representative sample, not the complete range.
+- When selection.strategy is not complete, the input is a representative sample, not the complete range.
+- recent_random_2000_longest_500 means the app limited the unread range to its newest seven days, sampled at most 2,000 candidates, and retained the 500 longest messages.
 - Exact repeats and low-information standalone replies may already be omitted from INPUT_DATA.
 - Individual message text may be truncated to selection.per_message_token_cap tokens to prevent one message from consuming the context window.
 - Large gaps between message timestamps are strong topic boundaries. Keep topics in chronological order and do not blend unrelated periods merely because they share a keyword.
@@ -578,6 +579,104 @@ int unreadSummaryChunkTokenBudget(
   trustedInstructions: trustedInstructions,
   maximumResponseTokens: maximumResponseTokens,
 ).payloadTokens;
+
+const unreadSummaryRecentWindow = Duration(days: 7);
+const unreadSummaryRandomCandidateLimit = 2000;
+const unreadSummarySelectedMessageLimit = 500;
+
+@immutable
+class UnreadSummaryMessageSelection {
+  UnreadSummaryMessageSelection({
+    required Iterable<UnreadChatMessage> messages,
+    required this.sourceMessageCount,
+    required this.recentCandidateCount,
+    required this.randomCandidateCount,
+  }) : messages = List.unmodifiable(messages);
+
+  final List<UnreadChatMessage> messages;
+  final int sourceMessageCount;
+  final int recentCandidateCount;
+  final int randomCandidateCount;
+
+  bool get sampled =>
+      messages.length < sourceMessageCount ||
+      randomCandidateCount < recentCandidateCount;
+}
+
+/// Selects the bounded source set used by unread summaries.
+///
+/// The unread transcript is already the smaller logical range. If it spans
+/// more than seven days, only its newest seven-day window is eligible. At most
+/// 2,000 eligible messages are sampled uniformly, then the 500 longest are
+/// retained and restored to chronological order for the model prompt.
+UnreadSummaryMessageSelection selectUnreadSummaryMessages(
+  List<UnreadChatMessage> messages,
+  UnreadChatRangeSnapshot snapshot, {
+  math.Random? random,
+}) {
+  if (messages.isEmpty) {
+    return UnreadSummaryMessageSelection(
+      messages: const [],
+      sourceMessageCount: 0,
+      recentCandidateCount: 0,
+      randomCandidateCount: 0,
+    );
+  }
+  final chronological = messages.toList(growable: false)
+    ..sort((left, right) {
+      final dateOrder = left.date.compareTo(right.date);
+      return dateOrder != 0 ? dateOrder : left.id.compareTo(right.id);
+    });
+  final newestDate = chronological.last.date;
+  final cutoff = newestDate - unreadSummaryRecentWindow.inSeconds;
+  final recentCandidates = chronological
+      .where((message) => message.date >= cutoff)
+      .toList(growable: false);
+
+  final randomCandidates = <UnreadChatMessage>[];
+  final generator = random ?? math.Random(_summarySelectionSeed(snapshot));
+  for (var index = 0; index < recentCandidates.length; index++) {
+    final message = recentCandidates[index];
+    if (randomCandidates.length < unreadSummaryRandomCandidateLimit) {
+      randomCandidates.add(message);
+      continue;
+    }
+    final replacement = generator.nextInt(index + 1);
+    if (replacement < unreadSummaryRandomCandidateLimit) {
+      randomCandidates[replacement] = message;
+    }
+  }
+
+  randomCandidates.sort((left, right) {
+    final lengthOrder = right.text.runes.length.compareTo(
+      left.text.runes.length,
+    );
+    if (lengthOrder != 0) return lengthOrder;
+    final dateOrder = right.date.compareTo(left.date);
+    return dateOrder != 0 ? dateOrder : right.id.compareTo(left.id);
+  });
+  final selected =
+      randomCandidates
+          .take(unreadSummarySelectedMessageLimit)
+          .toList(growable: false)
+        ..sort((left, right) {
+          final dateOrder = left.date.compareTo(right.date);
+          return dateOrder != 0 ? dateOrder : left.id.compareTo(right.id);
+        });
+  return UnreadSummaryMessageSelection(
+    messages: selected,
+    sourceMessageCount: messages.length,
+    recentCandidateCount: recentCandidates.length,
+    randomCandidateCount: randomCandidates.length,
+  );
+}
+
+int _summarySelectionSeed(UnreadChatRangeSnapshot snapshot) =>
+    (snapshot.chatId ^
+            snapshot.upperMessageId ^
+            snapshot.lastReadInboxId ^
+            snapshot.unreadCount)
+        .abs();
 
 class UnreadChatHistoryLoader {
   const UnreadChatHistoryLoader({
@@ -870,9 +969,14 @@ class UnreadChatSummaryService {
       );
     }
 
-    final promptMessages = _messagesForPrompt(transcript.messages);
+    final sourceSelection = selectUnreadSummaryMessages(
+      transcript.messages,
+      transcript.snapshot,
+    );
+    final promptMessages = _messagesForPrompt(sourceSelection.messages);
     final promptUnits = _promptUnits(promptMessages);
     final selection = _selectPromptUnits(promptUnits);
+    final processingSampled = sourceSelection.sampled || selection.sampled;
     final selectedChunks = _chunks(selection.units);
     final summaryScope = jsonEncode(transcript.snapshot.toJson());
     final selectedMessages = selectedChunks
@@ -889,9 +993,12 @@ class UnreadChatSummaryService {
         _isLongContext(promptUnits);
     _logUnreadChatSummary(
       'prepared source=${transcript.messages.length} '
+      'recent_candidates=${sourceSelection.recentCandidateCount} '
+      'random_candidates=${sourceSelection.randomCandidateCount} '
+      'longest_selected=${sourceSelection.messages.length} '
       'model_input=${promptMessages.length} '
       'omitted_duplicate_or_low_signal='
-      '${transcript.messages.length - promptMessages.length} '
+      '${sourceSelection.messages.length - promptMessages.length} '
       'selected=${selectedMessages.length} '
       'chunks=${selectedChunks.length} '
       'chunk_tokens=${chunkTokenEstimates.join(',')} '
@@ -937,13 +1044,18 @@ class UnreadChatSummaryService {
               'chunk_count': selectedChunks.length,
               'range': transcript.snapshot.toJson(),
               'selection': {
-                'strategy': selection.sampled
+                'strategy': sourceSelection.sampled
+                    ? 'recent_random_2000_longest_500'
+                    : selection.sampled
                     ? 'frequency_recency_signal_sample'
                     : 'complete',
                 'source_message_count': transcript.messages.length,
+                'recent_candidate_count': sourceSelection.recentCandidateCount,
+                'random_candidate_count': sourceSelection.randomCandidateCount,
+                'longest_message_limit': unreadSummarySelectedMessageLimit,
                 'selected_message_count': selectedMessages.length,
                 'ignored_duplicate_or_low_signal_count':
-                    transcript.messages.length - promptMessages.length,
+                    sourceSelection.messages.length - promptMessages.length,
                 'per_message_token_cap': maxMessageTokenEstimate,
               },
               'message_schema': const [
@@ -1016,7 +1128,7 @@ class UnreadChatSummaryService {
           coverage: _coverage(
             transcript,
             summarizedMessages: fallbackMessages,
-            processingCapped: selection.sampled,
+            processingCapped: processingSampled,
             failedRequestCount: chunkAttempts.length,
             usedLocalFallback: true,
           ),
@@ -1093,7 +1205,7 @@ class UnreadChatSummaryService {
                 transcript.historyCapped ||
                 transcript.historyStalled ||
                 !transcript.reachedReadBoundary ||
-                selection.sampled ||
+                processingSampled ||
                 failedRequestCount > 0,
           );
           _logUnreadChatSummary(
@@ -1111,7 +1223,7 @@ class UnreadChatSummaryService {
     }
     content = _withGroundedTopicDates(content, transcript.messages);
 
-    final coveredMessages = failedRequestCount == 0 && !selection.sampled
+    final coveredMessages = failedRequestCount == 0 && !processingSampled
         ? transcript.messages
         : summarizedMessages;
 
@@ -1120,7 +1232,7 @@ class UnreadChatSummaryService {
       coverage: _coverage(
         transcript,
         summarizedMessages: coveredMessages,
-        processingCapped: selection.sampled,
+        processingCapped: processingSampled,
         failedRequestCount: failedRequestCount,
       ),
     );

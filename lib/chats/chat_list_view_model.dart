@@ -1142,7 +1142,7 @@ class ChatListViewModel extends ChangeNotifier {
     return b.id.compareTo(a.id);
   }
 
-  // MARK: - Chat-list Premium display metadata (private chats)
+  // MARK: - Chat-list peer display metadata (private chats)
 
   void _resolvePeerIfNeeded(ChatSummary summary) {
     final userId = summary.peerUserId;

@@ -37,7 +37,112 @@ void main() {
       expect(controller.apiKey, isEmpty);
       expect(controller.pccCapabilities?.available, isFalse);
       expect(controller.isConfiguredForCurrentProvider, isFalse);
+      expect(controller.modelCandidates, hasLength(2));
+      expect(
+        controller.translationModelCandidate.kind,
+        AiModelCandidateKind.applePcc,
+      );
+      expect(
+        controller.summaryModelCandidate.kind,
+        AiModelCandidateKind.applePcc,
+      );
     });
+
+    test(
+      'persists independent translation and summary model choices',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final preferences = await SharedPreferences.getInstance();
+        final secureValues = <String, String>{};
+        final appleApi = ApplePccApi(
+          invokeMethod: (_, _) async => const {
+            'sdkAvailable': true,
+            'available': true,
+            'reason': '',
+            'contextSize': 32768,
+            'quotaLimitReached': false,
+            'onDeviceSdkAvailable': true,
+            'onDeviceAvailable': true,
+            'onDeviceReason': 'available',
+            'onDeviceContextSize': 4096,
+          },
+        );
+        final controller = AiSettingsController(
+          preferences,
+          pccApi: appleApi,
+          secureRead: (key) async => secureValues[key],
+          secureWrite: (key, value) async {
+            if (value == null) {
+              secureValues.remove(key);
+            } else {
+              secureValues[key] = value;
+            }
+          },
+        );
+        await controller.initialize();
+        final provider = await controller.saveServerProvider(
+          name: 'Translation Server',
+          endpoint: 'https://translate.example/v1/chat/completions',
+          apiKey: 'secret',
+        );
+        final model = await controller.saveModelProfile(
+          providerId: provider.id,
+          model: 'translate-model',
+          contextWindowTokens: 65536,
+        );
+        final serverCandidateId = AiSettingsController.serverModelCandidateId(
+          model.id,
+        );
+
+        await controller.setFeatureModelCandidate(
+          AiFeature.translation,
+          serverCandidateId,
+        );
+        await controller.setFeatureModelCandidate(
+          AiFeature.summary,
+          AiSettingsController.appleOnDeviceModelCandidateId,
+        );
+
+        final translation = controller.configurationForFeature(
+          AiFeature.translation,
+        );
+        final summary = controller.configurationForFeature(AiFeature.summary);
+        expect(controller.modelCandidates, hasLength(3));
+        expect(translation.providerMode, AiProviderMode.openAiCompatible);
+        expect(translation.model, 'translate-model');
+        expect(translation.apiKey, 'secret');
+        expect(summary.providerMode, AiProviderMode.appleOnDevice);
+        expect(summary.contextWindowTokens, 4096);
+        expect(
+          controller.isConfiguredForFeature(AiFeature.translation),
+          isTrue,
+        );
+        expect(controller.isConfiguredForFeature(AiFeature.summary), isTrue);
+
+        final restored = AiSettingsController(
+          preferences,
+          pccApi: appleApi,
+          secureRead: (key) async => secureValues[key],
+          secureWrite: (_, _) async {},
+        );
+        await restored.initialize();
+        expect(restored.translationModelCandidate.id, serverCandidateId);
+        expect(
+          restored.summaryModelCandidate.id,
+          AiSettingsController.appleOnDeviceModelCandidateId,
+        );
+
+        await controller.deleteModelProfile(model.id);
+        expect(
+          controller.translationModelCandidate.id,
+          AiSettingsController.applePccModelCandidateId,
+        );
+        expect(
+          controller.summaryModelCandidate.id,
+          AiSettingsController.appleOnDeviceModelCandidateId,
+        );
+      },
+    );
 
     test(
       'persists ordinary values but keeps API key in secure storage',
@@ -364,6 +469,14 @@ void main() {
       expect(controller.provider, AiProviderMode.appleOnDevice);
       expect(controller.pccCapabilities?.onDeviceContextSize, 4096);
       expect(controller.isConfiguredForCurrentProvider, isTrue);
+      expect(
+        controller.translationModelCandidate.kind,
+        AiModelCandidateKind.appleOnDevice,
+      );
+      expect(
+        controller.summaryModelCandidate.kind,
+        AiModelCandidateKind.appleOnDevice,
+      );
     });
 
     test(

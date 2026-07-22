@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -14,12 +16,17 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  testWidgets('AI settings configures server mode and keeps its key secure', (
+  testWidgets('AI settings uses dedicated provider and model list pages', (
     tester,
   ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     SharedPreferences.setMockInitialValues({});
     final preferences = await SharedPreferences.getInstance();
     String? secureKey;
+    Map<String, dynamic>? modelTestPayload;
     final settings = AiSettingsController(
       preferences,
       pccApi: ApplePccApi(
@@ -34,12 +41,19 @@ void main() {
         },
       ),
       modelsApi: OpenAiCompatibleModelsApi(
-        httpClient: MockClient(
-          (request) async => http.Response(
+        httpClient: MockClient((request) async {
+          if (request.method == 'POST') {
+            modelTestPayload = jsonDecode(request.body) as Map<String, dynamic>;
+            return http.Response(
+              '{"choices":[{"message":{"content":"Hello from the model"}}]}',
+              200,
+            );
+          }
+          return http.Response(
             '{"data":[{"id":"summary-model","context_window_tokens":131072}]}',
             200,
-          ),
-        ),
+          );
+        }),
       ),
       secureRead: (_) async => null,
       secureWrite: (_, value) async => secureKey = value,
@@ -71,8 +85,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('AI Settings'), findsOneWidget);
-    expect(find.text('Processing Mode'), findsWidgets);
-    expect(find.text('Unavailable on this device'), findsOneWidget);
+    expect(find.text('Model Configuration'), findsOneWidget);
+    expect(find.text('Translate using'), findsOneWidget);
+    expect(find.text('Summarize using'), findsOneWidget);
     expect(tester.widget<AppSwitch>(find.byType(AppSwitch)).value, isFalse);
 
     await tester.tap(find.byType(SettingsSwitchRow));
@@ -83,19 +98,13 @@ void main() {
       isTrue,
     );
 
-    await tester.tap(find.text('Apple Private Cloud Compute').first);
+    await tester.tap(find.widgetWithText(SettingsRow, 'Providers'));
     await tester.pumpAndSettle();
-    expect(find.text('Apple On-Device Model'), findsOneWidget);
-    await tester.tap(find.text('Apple On-Device Model'));
-    await tester.pumpAndSettle();
-    expect(settings.provider, AiProviderMode.appleOnDevice);
-    expect(find.text('4K-token context window'), findsOneWidget);
+    expect(find.text('Add Provider'), findsOneWidget);
+    expect(find.text('No provider selected'), findsOneWidget);
 
-    await tester.tap(find.text('Apple On-Device Model').first);
+    await tester.tap(find.text('Add Provider'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Custom Server').last);
-    await tester.pumpAndSettle();
-
     final fields = find.byType(TextField);
     expect(fields, findsNWidgets(3));
     expect(tester.widget<TextField>(fields.at(2)).obscureText, isTrue);
@@ -114,31 +123,58 @@ void main() {
     await tester.tap(find.text('Save Provider'));
     await tester.pumpAndSettle();
 
-    expect(settings.isConfiguredForCurrentProvider, isFalse);
     expect(settings.serverProviders, hasLength(1));
     expect(settings.modelProfiles, isEmpty);
+    expect(find.text('Summary Provider'), findsOneWidget);
 
-    await tester.drag(find.byType(ListView), const Offset(0, -400));
+    Navigator.of(tester.element(find.byType(AiProviderListView))).pop();
     await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(SettingsRow, 'Models'));
+    await tester.pumpAndSettle();
+    expect(find.text('Apple Private Cloud Compute'), findsOneWidget);
+    expect(find.text('Apple On-Device Model'), findsOneWidget);
     await tester.tap(find.text('Add Model'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Summary Provider').last);
-    await tester.pumpAndSettle();
-    expect(find.text('Enter Model Manually'), findsOneWidget);
-    await tester.tap(find.text('summary-model'));
+    expect(find.text('Summary Provider'), findsOneWidget);
+    expect(find.byType(TextField), findsNWidgets(3));
+    await tester.tap(find.text('Load Models'));
+    await tester.pump(const Duration(milliseconds: 300));
+    Navigator.of(tester.element(find.text('summary-model'))).pop(
+      const OpenAiCompatibleModelInfo(
+        id: 'summary-model',
+        contextWindowTokens: 131072,
+      ),
+    );
     await tester.pumpAndSettle();
 
+    expect(find.byType(TextField), findsNWidgets(2));
+    expect(find.widgetWithText(SettingsRow, 'Model'), findsOneWidget);
     expect(find.text('Detected from provider'), findsOneWidget);
-    final modelFields = find.descendant(
-      of: find.byType(BottomSheet),
-      matching: find.byType(TextField),
+    final testPrompt = find.widgetWithText(TextField, 'Hello');
+    expect(testPrompt, findsOneWidget);
+    await tester.enterText(testPrompt, 'Reply with a friendly greeting');
+    await tester.scrollUntilVisible(
+      find.text('Test Model'),
+      250,
+      scrollable: find.byType(Scrollable).last,
     );
-    expect(modelFields, findsNWidgets(2));
-    expect(tester.widget<TextField>(modelFields.first).readOnly, isTrue);
+    await tester.tap(find.text('Test Model'));
+    await tester.pumpAndSettle();
+    expect(find.text('Response'), findsOneWidget);
+    expect(find.text('Hello from the model'), findsOneWidget);
+    expect(modelTestPayload?['model'], 'summary-model');
+    expect(
+      (modelTestPayload?['messages'] as List).single['content'],
+      'Reply with a friendly greeting',
+    );
+    await tester.scrollUntilVisible(
+      find.text('Save Model'),
+      250,
+      scrollable: find.byType(Scrollable).last,
+    );
     await tester.tap(find.text('Save Model'));
     await tester.pumpAndSettle();
 
-    expect(settings.isConfiguredForCurrentProvider, isTrue);
     expect(settings.serverProviders, hasLength(1));
     expect(settings.activeServerProvider?.name, 'Summary Provider');
     expect(settings.modelProfiles, hasLength(1));
@@ -147,6 +183,28 @@ void main() {
     expect(settings.activeModelProfile?.contextWindowDetected, isTrue);
     expect(secureKey, 'sk-user-owned');
     expect(preferences.getKeys(), isNot(contains('mithka.ai.api_key.v1')));
+
+    Navigator.of(tester.element(find.byType(AiModelListView))).pop();
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(SettingsRow, 'Translate using'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('summary-model').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(SettingsRow, 'Summarize using'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Apple On-Device Model').last);
+    await tester.pumpAndSettle();
+
+    expect(
+      settings.translationModelCandidate.kind,
+      AiModelCandidateKind.server,
+    );
+    expect(
+      settings.summaryModelCandidate.kind,
+      AiModelCandidateKind.appleOnDevice,
+    );
+    expect(settings.isConfiguredForFeature(AiFeature.translation), isTrue);
+    expect(settings.isConfiguredForFeature(AiFeature.summary), isTrue);
     await tester.pump(const Duration(seconds: 2));
   });
 }

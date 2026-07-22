@@ -1512,21 +1512,25 @@ void main() {
       final prefs = await SharedPreferences.getInstance();
       final theme = ThemeController(prefs);
       addTearDown(theme.dispose);
-      final gifPreview = TDParse.messageText({
+      final content = <String, dynamic>{
         '@type': 'messageAnimation',
         'caption': {'@type': 'formattedText', 'text': ''},
-      });
-      final message = ChatMessage(
-        id: 8,
-        isOutgoing: true,
-        text: gifPreview,
-        date: 1,
-        contentType: 'messageAnimation',
-        video: TdFileRef(id: 81),
-        videoDuration: 25,
-        imageWidth: 320,
-        imageHeight: 240,
-      );
+        'animation': {
+          '@type': 'animation',
+          'duration': 25,
+          'width': 320,
+          'height': 240,
+          'animation': {'@type': 'file', 'id': 81},
+        },
+      };
+      final gifPreview = TDParse.messageText(content);
+      final message = TDParse.message({
+        '@type': 'message',
+        'id': 8,
+        'date': 1,
+        'is_outgoing': true,
+        'content': content,
+      })!;
 
       await tester.pumpWidget(
         ChangeNotifierProvider<ThemeController>.value(
@@ -1550,10 +1554,14 @@ void main() {
       );
 
       expect(gifPreview, '[GIF]');
+      expect(message.text, isEmpty);
       expect(find.text(gifPreview), findsNothing);
       expect(find.byKey(const ValueKey('message-animation-8')), findsOneWidget);
       expect(find.byIcon(HeroAppIcons.play.data), findsNothing);
       expect(find.text('0:25'), findsNothing);
+
+      // Expire the mocked TDLib file lookup before test teardown.
+      await tester.pump(const Duration(minutes: 3, seconds: 1));
     });
 
     testWidgets('long press reveals retained restricted message content', (
@@ -2647,6 +2655,82 @@ void main() {
       };
 
       expect(TDParse.messageText(content), '[GIF]');
+    });
+
+    test('caption-bearing media keep preview labels out of message text', () {
+      final contents = <Map<String, dynamic>>[
+        {
+          '@type': 'messagePhoto',
+          'caption': {'@type': 'formattedText', 'text': ''},
+        },
+        {
+          '@type': 'messageVideo',
+          'caption': {'@type': 'formattedText', 'text': ''},
+        },
+        {
+          '@type': 'messageAnimation',
+          'caption': {'@type': 'formattedText', 'text': ''},
+        },
+        {
+          '@type': 'messageAudio',
+          'caption': {'@type': 'formattedText', 'text': ''},
+        },
+        {
+          '@type': 'messageDocument',
+          'caption': {'@type': 'formattedText', 'text': ''},
+          'document': {'@type': 'document', 'file_name': 'report.pdf'},
+        },
+        {
+          '@type': 'messageVoiceNote',
+          'caption': {'@type': 'formattedText', 'text': ''},
+        },
+        {
+          '@type': 'messagePaidMedia',
+          'caption': {'@type': 'formattedText', 'text': ''},
+        },
+      ];
+
+      for (final content in contents) {
+        expect(
+          TDParse.messageText(content),
+          isNotEmpty,
+          reason: '${content['@type']} needs a useful list preview',
+        );
+        expect(
+          TDParse.messageContentText(content),
+          isEmpty,
+          reason: '${content['@type']} has no user-authored caption',
+        );
+        final parsed = TDParse.message({
+          '@type': 'message',
+          'id': 100,
+          'date': 1,
+          'content': content,
+        });
+        expect(
+          parsed?.text,
+          isEmpty,
+          reason: '${content['@type']} parser text',
+        );
+      }
+    });
+
+    test('captions that equal preview labels remain real message text', () {
+      final content = <String, dynamic>{
+        '@type': 'messageVideo',
+        'caption': {'@type': 'formattedText', 'text': 'Video'},
+      };
+
+      expect(TDParse.messageContentText(content), 'Video');
+      expect(
+        TDParse.message({
+          '@type': 'message',
+          'id': 101,
+          'date': 1,
+          'content': content,
+        })?.text,
+        'Video',
+      );
     });
 
     test('redacts only a message carrying restriction info', () {

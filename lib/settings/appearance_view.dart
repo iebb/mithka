@@ -143,14 +143,15 @@ class AppearanceView extends StatelessWidget {
                   ),
                   _navigationRow(
                     context,
-                    AppStrings.t(AppStringKeys.appearanceDisplay),
-                    null,
+                    AppStrings.t(AppStringKeys.appearanceInterfaceSize),
+                    '${(theme.interfaceScale * 100).round()}%',
                     () => Navigator.of(context).push(
                       PageRouteBuilder<void>(
-                        pageBuilder: (_, _, _) => const DisplaySettingsView(),
+                        pageBuilder: (_, _, _) =>
+                            const InterfaceSizeSettingsView(),
                       ),
                     ),
-                    icon: HeroAppIcons.eye.data,
+                    icon: HeroAppIcons.tableCells.data,
                   ),
                 ]),
                 const SizedBox(height: AppSpacing.xl),
@@ -214,7 +215,11 @@ class _TextSizeSettingsView extends StatelessWidget {
           Expanded(
             child: ListView(
               padding: const EdgeInsets.all(AppSpacing.lg),
-              children: [const AppearanceView()._fontSizeCard(context, theme)],
+              children: [
+                const AppearanceView()._fontSizeCard(context, theme),
+                const SizedBox(height: AppSpacing.xl),
+                const AppearanceView()._fontSizePreview(context, theme),
+              ],
             ),
           ),
         ],
@@ -371,8 +376,8 @@ class _AppIconVariantTile extends StatelessWidget {
   }
 }
 
-class DisplaySettingsView extends StatelessWidget {
-  const DisplaySettingsView({super.key});
+class InterfaceSizeSettingsView extends StatelessWidget {
+  const InterfaceSizeSettingsView({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -383,7 +388,7 @@ class DisplaySettingsView extends StatelessWidget {
       body: Column(
         children: [
           NavHeader(
-            title: AppStrings.t(AppStringKeys.appearanceDisplay),
+            title: AppStrings.t(AppStringKeys.appearanceInterfaceSize),
             onBack: () => Navigator.of(context).pop(),
           ),
           Expanded(
@@ -395,6 +400,10 @@ class DisplaySettingsView extends StatelessWidget {
                 AppSpacing.section,
               ),
               children: [
+                const AppearanceView()._interfaceSizeCard(context, theme),
+                const SizedBox(height: AppSpacing.xl),
+                const AppearanceView()._interfaceSizePreview(context, theme),
+                const SizedBox(height: AppSpacing.xl),
                 _card(context, [
                   _toggleRow(
                     context,
@@ -456,9 +465,9 @@ class DisplaySettingsView extends StatelessWidget {
                   _toggleRow(
                     context,
                     HeroAppIcons.palette.data,
-                    AppStrings.t(AppStringKeys.appearanceShowPremiumNameColor),
-                    theme.showChatPremiumNameColors,
-                    (v) => theme.showChatPremiumNameColors = v,
+                    AppStrings.t(AppStringKeys.appearanceShowNameColors),
+                    theme.showChatNameColors,
+                    (v) => theme.showChatNameColors = v,
                   ),
                   _toggleRow(
                     context,
@@ -546,9 +555,9 @@ class DisplaySettingsView extends StatelessWidget {
                   _toggleRow(
                     context,
                     HeroAppIcons.wandMagicSparkles.data,
-                    AppStrings.t(AppStringKeys.appearanceShowPremiumNameColor),
-                    theme.showPremiumNameColors,
-                    (v) => theme.showPremiumNameColors = v,
+                    AppStrings.t(AppStringKeys.appearanceShowNameColors),
+                    theme.showNameColors,
+                    (v) => theme.showNameColors = v,
                   ),
                   _toggleRow(
                     context,
@@ -800,53 +809,255 @@ extension _DisplayAppearanceHelpers on AppearanceView {
         borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          _scaleSlider(
-            context,
-            icon: HeroAppIcons.font.data,
-            title: AppStrings.t(AppStringKeys.appearanceFontSize),
-            value: theme.fontScale,
-            min: ThemeController.minFontScale,
-            max: ThemeController.maxFontScale,
-            divisions: 24,
-            leading: Text(
-              'A',
-              style: TextStyle(
-                fontSize: AppTextSize.footnote,
-                color: c.textSecondary,
-              ),
-            ),
-            trailing: Text(
-              'A',
-              style: TextStyle(
-                fontSize: AppTextSize.largeDisplay,
-                color: c.textPrimary,
-              ),
-            ),
-            onChanged: (value) => theme.fontScale = value,
+      child: _scaleSlider(
+        context,
+        icon: HeroAppIcons.font.data,
+        title: AppStrings.t(AppStringKeys.appearanceFontSize),
+        value: theme.fontScale,
+        min: ThemeController.minFontScale,
+        max: ThemeController.maxFontScale,
+        divisions: 24,
+        leading: Text(
+          'A',
+          style: TextStyle(
+            fontSize: AppTextSize.footnote,
+            color: c.textSecondary,
           ),
-          const InsetDivider(leadingInset: 52),
-          _scaleSlider(
-            context,
-            icon: HeroAppIcons.tableCells.data,
-            title: AppStrings.t(AppStringKeys.appearanceInterfaceSize),
-            value: theme.interfaceScale,
-            min: ThemeController.minInterfaceScale,
-            max: ThemeController.maxInterfaceScale,
-            divisions: 84,
-            leading: AppIcon(
-              HeroAppIcons.square,
-              size: AppTextSize.body,
-              color: c.textSecondary,
-            ),
-            trailing: AppIcon(
-              HeroAppIcons.square,
-              size: AppIconSize.add,
+        ),
+        trailing: Text(
+          'A',
+          style: TextStyle(
+            fontSize: AppTextSize.largeDisplay,
+            color: c.textPrimary,
+          ),
+        ),
+        onChanged: (value) => theme.fontScale = value,
+      ),
+    );
+  }
+
+  Widget _interfaceSizeCard(BuildContext context, ThemeController theme) {
+    final c = context.colors;
+    return Container(
+      decoration: BoxDecoration(
+        color: c.card,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: _scaleSlider(
+        context,
+        icon: HeroAppIcons.tableCells.data,
+        title: AppStrings.t(AppStringKeys.appearanceInterfaceSize),
+        value: theme.interfaceScale,
+        min: ThemeController.minInterfaceScale,
+        max: ThemeController.maxInterfaceScale,
+        divisions: 84,
+        leading: AppIcon(
+          HeroAppIcons.square,
+          size: AppTextSize.body,
+          color: c.textSecondary,
+        ),
+        trailing: AppIcon(
+          HeroAppIcons.square,
+          size: AppIconSize.add,
+          color: c.textPrimary,
+        ),
+        onChanged: (value) => theme.interfaceScale = value,
+      ),
+    );
+  }
+
+  Widget _fontSizePreview(BuildContext context, ThemeController theme) {
+    final c = context.colors;
+    Widget sample(String text, double size, FontWeight weight) => Row(
+      children: [
+        Expanded(
+          child: Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: size,
+              fontWeight: weight,
               color: c.textPrimary,
             ),
-            onChanged: (value) => theme.interfaceScale = value,
           ),
+        ),
+        const SizedBox(width: AppSpacing.lg),
+        Text(
+          '${size.round()}',
+          style: TextStyle(
+            fontSize: AppTextSize.caption,
+            color: c.textTertiary,
+            fontFeatures: const [FontFeature.tabularFigures()],
+          ),
+        ),
+      ],
+    );
+
+    return _previewCard(
+      context,
+      title: AppStrings.t(AppStringKeys.appearanceFontSize),
+      value: theme.fontScale,
+      child: Column(
+        children: [
+          sample('Mithka', AppTextSize.title, FontWeight.w700),
+          const SizedBox(height: AppSpacing.lg),
+          sample(
+            AppStrings.t(AppStringKeys.savedMessages),
+            AppTextSize.bodyLarge,
+            FontWeight.w500,
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          sample('10:42', AppTextSize.caption, FontWeight.w400),
+        ],
+      ),
+    );
+  }
+
+  Widget _interfaceSizePreview(BuildContext context, ThemeController theme) {
+    final c = context.colors;
+    return _previewCard(
+      context,
+      title: AppStrings.t(AppStringKeys.appearanceInterfaceSize),
+      value: theme.interfaceScale,
+      child: Container(
+        decoration: BoxDecoration(
+          color: c.groupedBackground,
+          borderRadius: BorderRadius.circular(AppRadius.control),
+          border: Border.all(color: c.divider),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          children: [
+            SizedBox(
+              height: 44,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                child: Row(
+                  children: [
+                    AppIcon(
+                      HeroAppIcons.chevronLeft,
+                      size: AppIconSize.lg,
+                      color: c.textPrimary,
+                    ),
+                    const SizedBox(width: AppSpacing.lg),
+                    Text(
+                      AppStrings.t(AppStringKeys.appearanceTitle),
+                      style: TextStyle(
+                        fontSize: AppTextSize.bodyLarge,
+                        fontWeight: FontWeight.w600,
+                        color: c.textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const InsetDivider(leadingInset: 0),
+            Padding(
+              padding: const EdgeInsets.all(AppSpacing.lg),
+              child: Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: AppTheme.brand.withValues(alpha: 0.14),
+                      shape: BoxShape.circle,
+                    ),
+                    alignment: Alignment.center,
+                    child: AppIcon(
+                      HeroAppIcons.solidMessage,
+                      size: AppIconSize.xl,
+                      color: AppTheme.brand,
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.lg),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          AppStrings.t(AppStringKeys.savedMessages),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: AppTextSize.bodyLarge,
+                            fontWeight: FontWeight.w600,
+                            color: c.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.xxs),
+                        Text(
+                          AppStrings.t(AppStringKeys.appearanceChatView),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: AppTextSize.footnote,
+                            color: c.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.lg),
+                  Text(
+                    '10:42',
+                    style: TextStyle(
+                      fontSize: AppTextSize.caption,
+                      color: c.textTertiary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _previewCard(
+    BuildContext context, {
+    required String title,
+    required double value,
+    required Widget child,
+  }) {
+    final c = context.colors;
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.xxl),
+      decoration: BoxDecoration(
+        color: c.card,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: AppTextSize.footnote,
+                    fontWeight: FontWeight.w600,
+                    color: c.textSecondary,
+                  ),
+                ),
+              ),
+              Text(
+                '${(value * 100).round()}%',
+                style: TextStyle(
+                  fontSize: AppTextSize.footnote,
+                  color: AppTheme.brand,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xl),
+          child,
         ],
       ),
     );

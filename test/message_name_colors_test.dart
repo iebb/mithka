@@ -40,13 +40,12 @@ void main() {
     },
   );
 
-  test('senders always use their assigned theme-palette color', () {
+  test('normal users use their assigned theme-palette color', () {
     final color = messageNameColorForSender(
       theme: null,
       accentColorId: 5,
-      isPremium: false,
-      showPremiumColors: false,
-      premiumColorsDisabledFallback: const Color(0xFF010101),
+      showNameColors: true,
+      nameColorsDisabledFallback: const Color(0xFF010101),
     );
 
     expect(color, AppTheme.avatarPalette[5]);
@@ -73,15 +72,14 @@ void main() {
     final color = messageNameColorForSender(
       theme: theme,
       accentColorId: 9,
-      isPremium: false,
-      showPremiumColors: true,
-      premiumColorsDisabledFallback: const Color(0xFF010101),
+      showNameColors: true,
+      nameColorsDisabledFallback: const Color(0xFF010101),
     );
 
     expect(color.toARGB32(), 0xFF330000);
   });
 
-  test('premium-color opt-out uses the theme sender-name color', () {
+  test('name-color opt-out uses the theme sender-name color', () {
     const theme = TelegramCloudTheme(
       slug: 'test',
       rawTitle: 'Test',
@@ -94,9 +92,8 @@ void main() {
     final color = messageNameColorForSender(
       theme: theme,
       accentColorId: 5,
-      isPremium: true,
-      showPremiumColors: false,
-      premiumColorsDisabledFallback: theme.senderNameColor,
+      showNameColors: false,
+      nameColorsDisabledFallback: theme.senderNameColor,
     );
 
     expect(color, theme.senderNameColor);

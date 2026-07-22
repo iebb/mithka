@@ -69,8 +69,7 @@ bool shouldLoadInitialHistoryAroundLastRead({
   required bool openAtLatest,
   required int lastReadInboxId,
   required int unreadCount,
-}) =>
-    !openAtLatest && lastReadInboxId > 0 && unreadCount > 0;
+}) => !openAtLatest && lastReadInboxId > 0 && unreadCount > 0;
 
 List<ChatMessage> mergeChatMessages(
   Iterable<ChatMessage> current,
@@ -136,3 +135,31 @@ List<ChatMessage> mergeChatHistoryWindow({
 bool shouldMergeLiveMessageIntoChatWindow({
   required bool historyReachesLatest,
 }) => historyReachesLatest;
+
+/// Media kinds that have a dedicated multi-item presentation in the chat
+/// transcript. Telegram permits photos/videos to share an album, while
+/// documents form document-only albums.
+enum ChatMediaAlbumKind { visual, document }
+
+ChatMediaAlbumKind? chatMediaAlbumKind(ChatMessage message) {
+  if (message.isService || message.isContentRestricted) return null;
+  if (message.isAlbumVisualMedia) return ChatMediaAlbumKind.visual;
+  if (message.contentType == 'messageDocument' && message.document != null) {
+    return ChatMediaAlbumKind.document;
+  }
+  return null;
+}
+
+/// Whether two adjacent messages are members of the same renderable TDLib
+/// media album. A non-zero `media_album_id` is authoritative; timestamps alone
+/// must never merge unrelated files sent consecutively.
+bool areMessagesInSameMediaAlbum(ChatMessage previous, ChatMessage next) {
+  final previousKind = chatMediaAlbumKind(previous);
+  if (previousKind == null || previousKind != chatMediaAlbumKind(next)) {
+    return false;
+  }
+  if (previous.isOutgoing != next.isOutgoing) return false;
+  if (previous.senderId != next.senderId) return false;
+  return previous.mediaAlbumId != 0 &&
+      previous.mediaAlbumId == next.mediaAlbumId;
+}

@@ -32,6 +32,49 @@ void main() {
     expect(policy.shouldFollowAppendedMessage(wasNearBottom: true), isTrue);
   });
 
+  test('requestReturnToBottom ignores inertia toward older messages', () {
+    final policy = ChatAutoScrollPolicy();
+
+    policy.noteUserScroll(towardOlderMessages: true, isAtBottom: false);
+    expect(policy.preservesViewport, isTrue);
+
+    policy.requestReturnToBottom();
+    expect(policy.preservesViewport, isFalse);
+
+    // Ballistic scroll updates must not re-lock after an explicit jump request.
+    policy.noteUserScroll(towardOlderMessages: true, isAtBottom: false);
+    expect(policy.preservesViewport, isFalse);
+
+    policy.noteUserScroll(towardOlderMessages: false, isAtBottom: true);
+    expect(policy.preservesViewport, isFalse);
+
+    // After settling at bottom, normal scroll-up locking works again.
+    policy.noteUserScroll(towardOlderMessages: true, isAtBottom: false);
+    expect(policy.preservesViewport, isTrue);
+  });
+
+  test('allowViewportPreservation restores locking after a bottom request', () {
+    final policy = ChatAutoScrollPolicy();
+
+    policy.requestReturnToBottom();
+    policy.noteUserScroll(towardOlderMessages: true, isAtBottom: false);
+    expect(policy.preservesViewport, isFalse);
+
+    policy.allowViewportPreservation();
+    policy.noteUserScroll(towardOlderMessages: true, isAtBottom: false);
+    expect(policy.preservesViewport, isTrue);
+  });
+
+  test('returnToBottom clears lock without suppressing later scroll-up', () {
+    final policy = ChatAutoScrollPolicy(preserveViewport: true);
+
+    policy.returnToBottom();
+    expect(policy.preservesViewport, isFalse);
+
+    policy.noteUserScroll(towardOlderMessages: true, isAtBottom: false);
+    expect(policy.preservesViewport, isTrue);
+  });
+
   test('sending a message releases a preserved viewport', () {
     final policy = ChatAutoScrollPolicy(preserveViewport: true);
 
@@ -76,6 +119,7 @@ void main() {
         distance--;
       },
       settled: () => settled++,
+      abandoned: () {},
     );
     while (callbacks.isNotEmpty) {
       callbacks.removeAt(0)();
@@ -99,6 +143,7 @@ void main() {
       latestExtent: () => 100,
       correct: () => corrections++,
       settled: () {},
+      abandoned: () {},
     );
     coordinator.cancel();
     callbacks.single();
@@ -126,6 +171,7 @@ void main() {
         distance = 0;
       },
       settled: () => settled++,
+      abandoned: () {},
     );
     callbacks.removeAt(0)();
     latestExtent = 150;
@@ -137,4 +183,52 @@ void main() {
     expect(corrections, 1);
     expect(settled, 1);
   });
+
+  test('bottom follow reports when its correction budget is exhausted', () {
+    final coordinator = ChatBottomFollowCoordinator();
+    final callbacks = <void Function()>[];
+    var abandoned = 0;
+    final generation = coordinator.begin();
+
+    coordinator.follow(
+      generation: generation,
+      remainingFrames: 1,
+      schedulePostFrame: callbacks.add,
+      canFollow: () => true,
+      distanceToLatest: () => 100,
+      latestExtent: () => 100,
+      correct: () {},
+      settled: () {},
+      abandoned: () => abandoned++,
+    );
+    while (callbacks.isNotEmpty) {
+      callbacks.removeAt(0)();
+    }
+
+    expect(abandoned, 1);
+  });
+
+  test(
+    'bottom follow reports when current navigation can no longer follow',
+    () {
+      final coordinator = ChatBottomFollowCoordinator();
+      final callbacks = <void Function()>[];
+      var abandoned = 0;
+      final generation = coordinator.begin();
+
+      coordinator.follow(
+        generation: generation,
+        schedulePostFrame: callbacks.add,
+        canFollow: () => false,
+        distanceToLatest: () => 100,
+        latestExtent: () => 100,
+        correct: () {},
+        settled: () {},
+        abandoned: () => abandoned++,
+      );
+      callbacks.single();
+
+      expect(abandoned, 1);
+    },
+  );
 }

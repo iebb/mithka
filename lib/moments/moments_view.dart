@@ -1106,9 +1106,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
   }
 
   String _commentText(ChatMessage message) {
-    final text = message.text.trim();
-    if (text.startsWith('[') && text.endsWith(']')) return '';
-    return text;
+    return message.text.trim();
   }
 
   String _replyPreview(ChatMessage message) {
@@ -1127,16 +1125,10 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
       return telegramText(AppStringKeys.composerAnimatedEmojiPreview);
     }
     if (message.video != null) {
-      final placeholder = telegramText(AppStringKeys.chatVideoPlaceholder);
-      return message.text == placeholder ? '' : message.text;
+      return message.text;
     }
     if (message.image != null) {
-      final placeholder = switch (message.contentType) {
-        'messagePhoto' => telegramText(AppStringKeys.composerImagePreview),
-        'messageAnimation' => telegramText(AppStringKeys.tdMessageGif),
-        _ => null,
-      };
-      return message.text == placeholder ? '' : message.text;
+      return message.text;
     }
     final text = message.text.trim();
     return text.isEmpty
@@ -2410,9 +2402,7 @@ class _ChannelPostDetailViewState extends State<ChannelPostDetailView> {
   }
 
   String _commentText(ChatMessage message) {
-    final text = message.text.trim();
-    if (text.startsWith('[') && text.endsWith(']')) return '';
-    return text;
+    return message.text.trim();
   }
 
   List<MessageTextEntity> _commentEntities(ChatMessage message) {

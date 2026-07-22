@@ -165,6 +165,74 @@ class AiModelProfile {
   }
 }
 
+enum AiFeature { translation, summary }
+
+enum AiModelCandidateKind { applePcc, appleOnDevice, server }
+
+@immutable
+class AiModelCandidate {
+  const AiModelCandidate._({
+    required this.id,
+    required this.kind,
+    this.profile,
+    this.serverProvider,
+  });
+
+  const AiModelCandidate.applePcc()
+    : this._(
+        id: AiSettingsController.applePccModelCandidateId,
+        kind: AiModelCandidateKind.applePcc,
+      );
+
+  const AiModelCandidate.appleOnDevice()
+    : this._(
+        id: AiSettingsController.appleOnDeviceModelCandidateId,
+        kind: AiModelCandidateKind.appleOnDevice,
+      );
+
+  factory AiModelCandidate.server({
+    required AiModelProfile profile,
+    required AiServerProvider provider,
+  }) => AiModelCandidate._(
+    id: AiSettingsController.serverModelCandidateId(profile.id),
+    kind: AiModelCandidateKind.server,
+    profile: profile,
+    serverProvider: provider,
+  );
+
+  final String id;
+  final AiModelCandidateKind kind;
+  final AiModelProfile? profile;
+  final AiServerProvider? serverProvider;
+
+  AiProviderMode get providerMode => switch (kind) {
+    AiModelCandidateKind.applePcc => AiProviderMode.applePcc,
+    AiModelCandidateKind.appleOnDevice => AiProviderMode.appleOnDevice,
+    AiModelCandidateKind.server => AiProviderMode.openAiCompatible,
+  };
+
+  String get model => profile?.model ?? '';
+  int? get contextWindowTokens => profile?.contextWindowTokens;
+}
+
+@immutable
+class AiFeatureModelConfiguration {
+  const AiFeatureModelConfiguration({
+    required this.candidate,
+    required this.endpoint,
+    required this.apiKey,
+    required this.contextWindowTokens,
+  });
+
+  final AiModelCandidate candidate;
+  final Uri? endpoint;
+  final String apiKey;
+  final int? contextWindowTokens;
+
+  AiProviderMode get providerMode => candidate.providerMode;
+  String get model => candidate.model;
+}
+
 typedef AiSecureRead = Future<String?> Function(String key);
 typedef AiSecureWrite = Future<void> Function(String key, String? value);
 
@@ -202,6 +270,12 @@ class AiSettingsController extends ChangeNotifier {
       'ai.custom_server.active_provider_id.v2';
   static const activeModelProfileIdPreferenceKey =
       'ai.custom_server.active_model_id.v1';
+  static const translationModelCandidatePreferenceKey =
+      'ai.feature.translation.model_candidate.v1';
+  static const summaryModelCandidatePreferenceKey =
+      'ai.feature.summary.model_candidate.v1';
+  static const applePccModelCandidateId = 'builtin:apple_pcc';
+  static const appleOnDeviceModelCandidateId = 'builtin:apple_on_device';
   static const openAiChatCompletionsPath = '/v1/chat/completions';
 
   static const _secureStorage = FlutterSecureStorage();
@@ -223,6 +297,8 @@ class AiSettingsController extends ChangeNotifier {
   List<AiModelProfile> _modelProfiles = const [];
   String? _activeServerProviderId;
   String? _activeModelProfileId;
+  String _translationModelCandidateId = applePccModelCandidateId;
+  String _summaryModelCandidateId = applePccModelCandidateId;
   final Map<String, String> _profileApiKeys = {};
   ApplePccCapabilities? _pccCapabilities;
 
@@ -257,6 +333,71 @@ class AiSettingsController extends ChangeNotifier {
       List.unmodifiable(
         _modelProfiles.where((profile) => profile.providerId == providerId),
       );
+
+  List<AiModelCandidate> get modelCandidates => List.unmodifiable([
+    const AiModelCandidate.applePcc(),
+    const AiModelCandidate.appleOnDevice(),
+    for (final profile in _modelProfiles)
+      if (_providerById(profile.providerId) case final provider?)
+        AiModelCandidate.server(profile: profile, provider: provider),
+  ]);
+
+  String get translationModelCandidateId => _translationModelCandidateId;
+  String get summaryModelCandidateId => _summaryModelCandidateId;
+  AiModelCandidate get translationModelCandidate =>
+      modelCandidateById(_translationModelCandidateId) ??
+      const AiModelCandidate.applePcc();
+  AiModelCandidate get summaryModelCandidate =>
+      modelCandidateById(_summaryModelCandidateId) ??
+      const AiModelCandidate.applePcc();
+
+  AiModelCandidate? modelCandidateById(String? id) {
+    if (id == null) return null;
+    for (final candidate in modelCandidates) {
+      if (candidate.id == id) return candidate;
+    }
+    return null;
+  }
+
+  AiFeatureModelConfiguration configurationForFeature(AiFeature feature) {
+    final candidate = switch (feature) {
+      AiFeature.translation => translationModelCandidate,
+      AiFeature.summary => summaryModelCandidate,
+    };
+    final provider = candidate.serverProvider;
+    Uri? endpoint;
+    if (provider != null) {
+      try {
+        endpoint = validateOpenAiCompatibleEndpoint(provider.endpoint);
+      } on FormatException {
+        endpoint = null;
+      }
+    }
+    return AiFeatureModelConfiguration(
+      candidate: candidate,
+      endpoint: endpoint,
+      apiKey: provider == null ? '' : apiKeyForServerProvider(provider.id),
+      contextWindowTokens: switch (candidate.kind) {
+        AiModelCandidateKind.applePcc => _pccCapabilities?.contextSize,
+        AiModelCandidateKind.appleOnDevice =>
+          _pccCapabilities?.onDeviceContextSize,
+        AiModelCandidateKind.server => candidate.contextWindowTokens,
+      },
+    );
+  }
+
+  bool isConfiguredForFeature(AiFeature feature) {
+    final configuration = configurationForFeature(feature);
+    return switch (configuration.candidate.kind) {
+      AiModelCandidateKind.applePcc =>
+        _pccCapabilities?.available == true &&
+            _pccCapabilities?.quotaLimitReached != true,
+      AiModelCandidateKind.appleOnDevice =>
+        _pccCapabilities?.onDeviceAvailable == true,
+      AiModelCandidateKind.server =>
+        configuration.model.isNotEmpty && configuration.endpoint != null,
+    };
+  }
 
   // Compatibility aliases for callers that only need provider identity.
   List<AiServerProvider> get serverProfiles => serverProviders;
@@ -373,6 +514,22 @@ class AiSettingsController extends ChangeNotifier {
     }
     _removeOrphanedModels();
     _ensureActiveModelMatchesProvider();
+    final legacyCandidateId = _legacyFeatureModelCandidateId();
+    final storedTranslationCandidate = _preferences.getString(
+      translationModelCandidatePreferenceKey,
+    );
+    final storedSummaryCandidate = _preferences.getString(
+      summaryModelCandidatePreferenceKey,
+    );
+    _translationModelCandidateId =
+        modelCandidateById(storedTranslationCandidate)?.id ?? legacyCandidateId;
+    _summaryModelCandidateId =
+        modelCandidateById(storedSummaryCandidate)?.id ?? legacyCandidateId;
+    final migratedFeatureSelections =
+        storedTranslationCandidate == null ||
+        storedSummaryCandidate == null ||
+        storedTranslationCandidate != _translationModelCandidateId ||
+        storedSummaryCandidate != _summaryModelCandidateId;
 
     final keyResults = await Future.wait(
       _serverProviders.map((provider) async {
@@ -400,7 +557,9 @@ class AiSettingsController extends ChangeNotifier {
 
     final capabilities = await _pccApi.capabilities();
     _pccCapabilities = capabilities;
-    if (migratedLegacyConfiguration) await _persistConfiguration();
+    if (migratedLegacyConfiguration || migratedFeatureSelections) {
+      await _persistConfiguration();
+    }
     _initialized = true;
     notifyListeners();
   }
@@ -422,6 +581,26 @@ class AiSettingsController extends ChangeNotifier {
     if (_provider == value) return;
     await _preferences.setString(providerPreferenceKey, value.storageValue);
     _provider = value;
+    notifyListeners();
+  }
+
+  Future<void> setFeatureModelCandidate(
+    AiFeature feature,
+    String candidateId,
+  ) async {
+    if (modelCandidateById(candidateId) == null) return;
+    final current = switch (feature) {
+      AiFeature.translation => _translationModelCandidateId,
+      AiFeature.summary => _summaryModelCandidateId,
+    };
+    if (current == candidateId) return;
+    switch (feature) {
+      case AiFeature.translation:
+        _translationModelCandidateId = candidateId;
+      case AiFeature.summary:
+        _summaryModelCandidateId = candidateId;
+    }
+    await _persistFeatureModelSelections();
     notifyListeners();
   }
 
@@ -472,6 +651,23 @@ class AiSettingsController extends ChangeNotifier {
     modelId: model,
     apiKey: apiKey,
   );
+
+  Future<String> testServerModel({
+    required String providerId,
+    required String model,
+    required String prompt,
+  }) {
+    final provider = _providerById(providerId);
+    if (provider == null) {
+      throw const FormatException('The selected AI provider no longer exists.');
+    }
+    return _modelsApi.testModel(
+      chatCompletionsUri: provider.chatCompletionsUri,
+      model: model,
+      prompt: prompt,
+      apiKey: _profileApiKeys[providerId],
+    );
+  }
 
   Future<List<OpenAiCompatibleModelInfo>> refreshModelsForProvider(
     String providerId,
@@ -633,6 +829,7 @@ class AiSettingsController extends ChangeNotifier {
       _activeServerProviderId = _serverProviders.firstOrNull?.id;
     }
     _ensureActiveModelMatchesProvider();
+    _repairFeatureModelSelections();
     await _persistConfiguration();
     notifyListeners();
   }
@@ -646,6 +843,7 @@ class AiSettingsController extends ChangeNotifier {
       _activeModelProfileId = null;
       _ensureActiveModelMatchesProvider();
     }
+    _repairFeatureModelSelections();
     await _persistConfiguration();
     notifyListeners();
   }
@@ -957,6 +1155,18 @@ class AiSettingsController extends ChangeNotifier {
         activeModelId,
       );
     }
+    await _persistFeatureModelSelections();
+  }
+
+  Future<void> _persistFeatureModelSelections() async {
+    await _preferences.setString(
+      translationModelCandidatePreferenceKey,
+      _translationModelCandidateId,
+    );
+    await _preferences.setString(
+      summaryModelCandidatePreferenceKey,
+      _summaryModelCandidateId,
+    );
   }
 
   void _removeOrphanedModels() {
@@ -980,6 +1190,26 @@ class AiSettingsController extends ChangeNotifier {
         ?.id;
   }
 
+  void _repairFeatureModelSelections() {
+    if (modelCandidateById(_translationModelCandidateId) == null) {
+      _translationModelCandidateId = applePccModelCandidateId;
+    }
+    if (modelCandidateById(_summaryModelCandidateId) == null) {
+      _summaryModelCandidateId = applePccModelCandidateId;
+    }
+  }
+
+  String _legacyFeatureModelCandidateId() {
+    return switch (_provider) {
+      AiProviderMode.applePcc => applePccModelCandidateId,
+      AiProviderMode.appleOnDevice => appleOnDeviceModelCandidateId,
+      AiProviderMode.openAiCompatible =>
+        activeModelProfile == null
+            ? applePccModelCandidateId
+            : serverModelCandidateId(activeModelProfile!.id),
+    };
+  }
+
   AiServerProvider? _providerById(String? id) {
     if (id == null) return null;
     for (final provider in _serverProviders) {
@@ -1001,6 +1231,9 @@ class AiSettingsController extends ChangeNotifier {
 
   static String _newId(String prefix) =>
       '${prefix}_${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}';
+
+  static String serverModelCandidateId(String modelProfileId) =>
+      'server:$modelProfileId';
 
   static String _legacyModelId(String providerId) => '${providerId}_model';
 

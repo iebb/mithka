@@ -13,6 +13,27 @@ ChatMessage _pending(int id, int date) => ChatMessage(
   isSending: true,
 );
 
+ChatMessage _document(
+  int id, {
+  int albumId = 0,
+  int senderId = 7,
+  bool outgoing = false,
+}) => ChatMessage(
+  id: id,
+  isOutgoing: outgoing,
+  text: '',
+  date: id,
+  senderId: senderId,
+  contentType: 'messageDocument',
+  mediaAlbumId: albumId,
+  document: MessageDocument(
+    fileName: 'file-$id.zip',
+    size: 1024,
+    ext: 'ZIP',
+    file: null,
+  ),
+);
+
 void main() {
   test(
     'background history hydration fills the middle without clearing tail',
@@ -209,5 +230,40 @@ void main() {
     expect(isThinInitialHistoryWindow(11), isTrue);
     expect(isThinInitialHistoryWindow(12), isFalse);
     expect(isThinInitialHistoryWindow(0), isFalse);
+  });
+
+  test('document messages with one album id are mergeable media', () {
+    final first = _document(1, albumId: 9001);
+    final second = _document(2, albumId: 9001);
+
+    expect(chatMediaAlbumKind(first), ChatMediaAlbumKind.document);
+    expect(areMessagesInSameMediaAlbum(first, second), isTrue);
+  });
+
+  test('album grouping never merges unrelated or incompatible files', () {
+    expect(areMessagesInSameMediaAlbum(_document(1), _document(2)), isFalse);
+    expect(
+      areMessagesInSameMediaAlbum(
+        _document(1, albumId: 9),
+        _document(2, albumId: 9, senderId: 8),
+      ),
+      isFalse,
+    );
+    expect(
+      areMessagesInSameMediaAlbum(
+        _document(1, albumId: 9),
+        ChatMessage(
+          id: 2,
+          isOutgoing: false,
+          text: '',
+          date: 2,
+          senderId: 7,
+          contentType: 'messagePhoto',
+          mediaAlbumId: 9,
+          image: TdFileRef(id: 2),
+        ),
+      ),
+      isFalse,
+    );
   });
 }

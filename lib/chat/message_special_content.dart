@@ -15,6 +15,7 @@ class MessageContactCardContent extends StatelessWidget {
     required this.background,
     required this.foreground,
     required this.secondary,
+    this.borderRadius,
     this.onOpen,
   });
 
@@ -22,6 +23,7 @@ class MessageContactCardContent extends StatelessWidget {
   final Color background;
   final Color foreground;
   final Color secondary;
+  final BorderRadius? borderRadius;
   final VoidCallback? onOpen;
 
   @override
@@ -37,7 +39,7 @@ class MessageContactCardContent extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: background,
-          borderRadius: BorderRadius.circular(9),
+          borderRadius: borderRadius ?? BorderRadius.circular(9),
         ),
         child: Row(
           children: [
@@ -107,6 +109,7 @@ class MessagePollContent extends StatelessWidget {
     required this.background,
     required this.foreground,
     required this.secondary,
+    this.borderRadius,
     required this.onVote,
     this.onStop,
     this.onAddOption,
@@ -117,6 +120,7 @@ class MessagePollContent extends StatelessWidget {
   final Color background;
   final Color foreground;
   final Color secondary;
+  final BorderRadius? borderRadius;
   final ValueChanged<int>? onVote;
   final VoidCallback? onStop;
   final VoidCallback? onAddOption;
@@ -133,7 +137,7 @@ class MessagePollContent extends StatelessWidget {
       constraints: const BoxConstraints(minWidth: 250, maxWidth: 310),
       decoration: BoxDecoration(
         color: background,
-        borderRadius: BorderRadius.circular(9),
+        borderRadius: borderRadius ?? BorderRadius.circular(9),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -381,6 +385,7 @@ class MessageChecklistContent extends StatelessWidget {
     required this.background,
     required this.foreground,
     required this.secondary,
+    this.borderRadius,
     required this.onToggleTask,
     this.onAddTask,
   });
@@ -389,6 +394,7 @@ class MessageChecklistContent extends StatelessWidget {
   final Color background;
   final Color foreground;
   final Color secondary;
+  final BorderRadius? borderRadius;
   final ValueChanged<MessageChecklistTask>? onToggleTask;
   final VoidCallback? onAddTask;
 
@@ -401,7 +407,7 @@ class MessageChecklistContent extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(13, 12, 13, 10),
       decoration: BoxDecoration(
         color: background,
-        borderRadius: BorderRadius.circular(9),
+        borderRadius: borderRadius ?? BorderRadius.circular(9),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -506,6 +512,7 @@ class MessageStoryContent extends StatelessWidget {
     required this.background,
     required this.foreground,
     required this.secondary,
+    this.borderRadius,
     this.onOpen,
   });
 
@@ -513,6 +520,7 @@ class MessageStoryContent extends StatelessWidget {
   final Color background;
   final Color foreground;
   final Color secondary;
+  final BorderRadius? borderRadius;
   final VoidCallback? onOpen;
 
   @override
@@ -525,7 +533,7 @@ class MessageStoryContent extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: background,
-        borderRadius: BorderRadius.circular(9),
+        borderRadius: borderRadius ?? BorderRadius.circular(9),
         border: Border.all(
           color: AppTheme.brand.withValues(alpha: 0.35),
           width: 0.8,
@@ -584,12 +592,14 @@ class MessageSummaryCardContent extends StatelessWidget {
     required this.background,
     required this.foreground,
     required this.secondary,
+    this.borderRadius,
   });
 
   final MessageSummaryCard card;
   final Color background;
   final Color foreground;
   final Color secondary;
+  final BorderRadius? borderRadius;
 
   AppIconData get _icon => switch (card.kind) {
     MessageSummaryKind.game => HeroAppIcons.grip,
@@ -606,7 +616,7 @@ class MessageSummaryCardContent extends StatelessWidget {
     constraints: const BoxConstraints(minWidth: 240, maxWidth: 300),
     decoration: BoxDecoration(
       color: background,
-      borderRadius: BorderRadius.circular(9),
+      borderRadius: borderRadius ?? BorderRadius.circular(9),
     ),
     clipBehavior: Clip.antiAlias,
     child: Column(
@@ -701,12 +711,14 @@ class MessageSuggestedPostStatusContent extends StatelessWidget {
     required this.background,
     required this.foreground,
     required this.secondary,
+    this.borderRadius,
   });
 
   final MessageSuggestedPostInfo info;
   final Color background;
   final Color foreground;
   final Color secondary;
+  final BorderRadius? borderRadius;
 
   @override
   Widget build(BuildContext context) {
@@ -726,7 +738,7 @@ class MessageSuggestedPostStatusContent extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
       decoration: BoxDecoration(
         color: background,
-        borderRadius: BorderRadius.circular(9),
+        borderRadius: borderRadius ?? BorderRadius.circular(9),
       ),
       child: Row(
         children: [

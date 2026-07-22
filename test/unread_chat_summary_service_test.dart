@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/unread_chat_summary_models.dart';
@@ -204,6 +205,72 @@ void main() {
   });
 
   group('UnreadChatSummaryService', () {
+    test('uses the newest seven days and retains the 500 longest messages', () {
+      final snapshot = _snapshot(
+        lastReadInboxId: 0,
+        unreadCount: 709,
+        upperMessageId: 709,
+      );
+      final messages = [
+        for (var id = 1; id <= 709; id++)
+          UnreadChatMessage(
+            id: id,
+            date: id <= 9
+                ? id * Duration.secondsPerDay
+                : 9 * Duration.secondsPerDay + id,
+            senderKey: 'user:7',
+            isOutgoing: false,
+            isService: false,
+            contentType: 'messageText',
+            text: List.filled(id, 'x').join(),
+          ),
+      ];
+
+      final selection = selectUnreadSummaryMessages(
+        messages,
+        snapshot,
+        random: Random(7),
+      );
+
+      expect(selection.recentCandidateCount, 707);
+      expect(selection.randomCandidateCount, 707);
+      expect(selection.messages, hasLength(500));
+      expect(selection.messages.first.id, 210);
+      expect(selection.messages.last.id, 709);
+      expect(selection.sampled, isTrue);
+    });
+
+    test('randomly bounds the recent candidate pool at 2000', () {
+      final snapshot = _snapshot(
+        lastReadInboxId: 0,
+        unreadCount: 2500,
+        upperMessageId: 2500,
+      );
+      final messages = [
+        for (var id = 1; id <= 2500; id++)
+          UnreadChatMessage(
+            id: id,
+            date: id,
+            senderKey: 'user:${id % 5}',
+            isOutgoing: false,
+            isService: false,
+            contentType: 'messageText',
+            text: List.filled(id % 80 + 1, 'x').join(),
+          ),
+      ];
+
+      final first = selectUnreadSummaryMessages(messages, snapshot);
+      final second = selectUnreadSummaryMessages(messages, snapshot);
+
+      expect(first.recentCandidateCount, 2500);
+      expect(first.randomCandidateCount, 2000);
+      expect(first.messages, hasLength(500));
+      expect(
+        first.messages.map((message) => message.id),
+        second.messages.map((message) => message.id),
+      );
+    });
+
     test('chunks then merges with grounded UI-language instructions', () async {
       final provider = _RecordingProvider();
       final service = UnreadChatSummaryService(
@@ -322,6 +389,9 @@ void main() {
       expect(provider.requests.first.payload['selection'], {
         'strategy': 'frequency_recency_signal_sample',
         'source_message_count': 5,
+        'recent_candidate_count': 5,
+        'random_candidate_count': 5,
+        'longest_message_limit': 500,
         'selected_message_count': 3,
         'ignored_duplicate_or_low_signal_count': 0,
         'per_message_token_cap': 300,
@@ -509,7 +579,7 @@ void main() {
       },
     );
 
-    test('inlines a 1600-message same-sender burst into one chunk', () async {
+    test('selects 500 messages from a 1600-message burst', () async {
       final provider = _RecordingProvider();
       final service = UnreadChatSummaryService(
         historyLoader: UnreadChatHistoryLoader(
@@ -554,16 +624,15 @@ void main() {
         ),
         isEmpty,
       );
-      expect(
-        (chunkRequests.single.payload['messages'] as List<Object?>).length,
-        200,
-      );
-      expect(result.coverage.summarizedMessageCount, 1600);
-      expect(result.coverage.complete, isTrue);
+      expect(chunkRequests.single.allowedEvidenceIds, hasLength(500));
+      expect(chunkRequests.single.allowedEvidenceIds, contains('m1600'));
+      expect(result.coverage.summarizedMessageCount, 500);
+      expect(result.coverage.processingCapped, isTrue);
+      expect(result.coverage.complete, isFalse);
     });
 
     test(
-      'samples 2685 alternating messages across three parallel chunks',
+      'randomly samples 2000 then selects 500 across parallel chunks',
       () async {
         final provider = _ConcurrentRecordingProvider();
         final service = UnreadChatSummaryService(
@@ -607,11 +676,19 @@ void main() {
           for (final request in chunkRequests) ...request.allowedEvidenceIds,
         };
 
-        expect(chunkRequests, hasLength(3));
+        expect(chunkRequests, hasLength(2));
         expect(provider.maximumActiveRequests, 2);
-        expect(selectedIds, containsAll(['m1', 'm400', 'm2685']));
+        expect(selectedIds, hasLength(500));
+        expect(
+          chunkRequests.first.payload['selection'],
+          containsPair('strategy', 'recent_random_2000_longest_500'),
+        );
+        expect(
+          chunkRequests.first.payload['selection'],
+          containsPair('random_candidate_count', 2000),
+        );
         expect(result.coverage.processingCapped, isTrue);
-        expect(result.coverage.summarizedMessageCount, lessThan(2685));
+        expect(result.coverage.summarizedMessageCount, 500);
       },
     );
 
@@ -877,9 +954,9 @@ void main() {
 
         expect(chunkRequests, hasLength(1));
         expect(provider.requests, hasLength(1));
-        expect(result.coverage.summarizedMessageCount, 327);
-        expect(result.coverage.countMismatch, isFalse);
-        expect(result.coverage.complete, isTrue);
+        expect(result.coverage.summarizedMessageCount, 169);
+        expect(result.coverage.processingCapped, isTrue);
+        expect(result.coverage.complete, isFalse);
       },
     );
 

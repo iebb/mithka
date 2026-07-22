@@ -49,8 +49,8 @@ class ChatRowView extends StatelessWidget {
     final rowHeight = theme.rowHeight;
     final bookmarkView =
         chat.isSavedMessages && theme.savedMessagesBookmarkView;
-    final premiumNameColor =
-        theme.showPremiumNameColors && chat.peerIsPremium && !bookmarkView
+    final nameColor =
+        theme.showNameColors && chat.peerAccentColorId >= 0 && !bookmarkView
         ? _accentColor(chat.peerAccentColorId)
         : c.textPrimary;
     final showPremiumStatus =
@@ -95,7 +95,7 @@ class ChatRowView extends StatelessWidget {
                           fontWeight: chat.peerIsPremium && !bookmarkView
                               ? FontWeight.w600
                               : FontWeight.w500,
-                          color: premiumNameColor,
+                          color: nameColor,
                         ),
                       ),
                     ),
@@ -104,7 +104,7 @@ class ChatRowView extends StatelessWidget {
                       StatusEmojiView(
                         id: chat.peerEmojiStatusId,
                         size: 17,
-                        color: premiumNameColor,
+                        color: nameColor,
                       ),
                     ],
                   ],

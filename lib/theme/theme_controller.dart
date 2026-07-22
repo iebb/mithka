@@ -964,10 +964,9 @@ class ThemeController extends ChangeNotifier {
     _hideSidebarPhone = _prefs.getBool(_hideSidebarPhoneKey) ?? false;
     _showMemberTags = _prefs.getBool(_memberTagsKey) ?? false;
     _showPlainMemberRoleTags = _prefs.getBool(_plainMemberRoleTagsKey) ?? false;
-    _showPremiumNameColors = _prefs.getBool(_premiumNameColorsKey) ?? true;
+    _showNameColors = _prefs.getBool(_nameColorsKey) ?? true;
     _showPremiumEmojiStatus = _prefs.getBool(_premiumEmojiStatusKey) ?? true;
-    _showChatPremiumNameColors =
-        _prefs.getBool(_chatPremiumNameColorsKey) ?? true;
+    _showChatNameColors = _prefs.getBool(_chatNameColorsKey) ?? true;
     _showChatPremiumEmojiStatus =
         _prefs.getBool(_chatPremiumEmojiStatusKey) ?? true;
     _showSenderNameReadabilityPlate =
@@ -1059,9 +1058,11 @@ class ThemeController extends ChangeNotifier {
   static const _hideSidebarPhoneKey = 'hideSidebarPhone';
   static const _memberTagsKey = 'showMemberTags';
   static const _plainMemberRoleTagsKey = 'showPlainMemberRoleTags';
-  static const _premiumNameColorsKey = 'showPremiumNameColors';
+  // Storage names are retained so existing appearance preferences survive the
+  // user-facing rename from Premium name colors to name colors.
+  static const _nameColorsKey = 'showPremiumNameColors';
   static const _premiumEmojiStatusKey = 'showPremiumEmojiStatus';
-  static const _chatPremiumNameColorsKey = 'showChatPremiumNameColors';
+  static const _chatNameColorsKey = 'showChatPremiumNameColors';
   static const _chatPremiumEmojiStatusKey = 'showChatPremiumEmojiStatus';
   static const _senderNameReadabilityPlateKey =
       'showSenderNameReadabilityPlate';
@@ -1118,9 +1119,9 @@ class ThemeController extends ChangeNotifier {
   bool _hideSidebarPhone = false;
   bool _showMemberTags = false;
   bool _showPlainMemberRoleTags = false;
-  bool _showPremiumNameColors = true;
+  bool _showNameColors = true;
   bool _showPremiumEmojiStatus = true;
-  bool _showChatPremiumNameColors = true;
+  bool _showChatNameColors = true;
   bool _showChatPremiumEmojiStatus = true;
   bool _showSenderNameReadabilityPlate = false;
   bool _showMessageMetaIndicators = false;
@@ -1310,9 +1311,9 @@ class ThemeController extends ChangeNotifier {
   bool get hideSidebarPhone => _hideSidebarPhone;
   bool get showMemberTags => _showMemberTags;
   bool get showPlainMemberRoleTags => _showPlainMemberRoleTags;
-  bool get showPremiumNameColors => _showPremiumNameColors;
+  bool get showNameColors => _showNameColors;
   bool get showPremiumEmojiStatus => _showPremiumEmojiStatus;
-  bool get showChatPremiumNameColors => _showChatPremiumNameColors;
+  bool get showChatNameColors => _showChatNameColors;
   bool get showChatPremiumEmojiStatus => _showChatPremiumEmojiStatus;
   bool get showSenderNameReadabilityPlate => _showSenderNameReadabilityPlate;
   bool get showMessageMetaIndicators => _showMessageMetaIndicators;
@@ -1826,9 +1827,9 @@ class ThemeController extends ChangeNotifier {
     notifyListeners();
   }
 
-  set showPremiumNameColors(bool value) {
-    _showPremiumNameColors = value;
-    _prefs.setBool(_premiumNameColorsKey, value);
+  set showNameColors(bool value) {
+    _showNameColors = value;
+    _prefs.setBool(_nameColorsKey, value);
     notifyListeners();
   }
 
@@ -1838,9 +1839,9 @@ class ThemeController extends ChangeNotifier {
     notifyListeners();
   }
 
-  set showChatPremiumNameColors(bool value) {
-    _showChatPremiumNameColors = value;
-    _prefs.setBool(_chatPremiumNameColorsKey, value);
+  set showChatNameColors(bool value) {
+    _showChatNameColors = value;
+    _prefs.setBool(_chatNameColorsKey, value);
     notifyListeners();
   }
 
