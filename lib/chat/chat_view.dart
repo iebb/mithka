@@ -4413,7 +4413,7 @@ class _ChatViewState extends State<ChatView> {
         .l10n(context);
     final targetLanguageName = _translation.targetLanguageLabel.l10n(context);
     if (!settings.initialized) await settings.initialize();
-    if (!settings.isConfiguredForCurrentProvider) {
+    if (!settings.isConfiguredForFeature(AiFeature.translation)) {
       throw TranslationApiException(unavailableMessage);
     }
     final service = AiChatTranslationService.fromSettings(
@@ -5424,7 +5424,7 @@ class _ChatViewState extends State<ChatView> {
         providerAvailable:
             settings?.initialized == true &&
             settings?.enabled == true &&
-            settings?.isConfiguredForCurrentProvider == true &&
+            settings?.isConfiguredForFeature(AiFeature.summary) == true &&
             _vm.unreadSummarySnapshot != null &&
             !_vm.isSecretChat &&
             !_vm.hasProtectedContent,
@@ -5481,13 +5481,23 @@ class _ChatViewState extends State<ChatView> {
     if (snapshot == null || !_canOfferUnreadSummary(settings)) return;
     setState(() => _openingUnreadSummary = true);
 
-    final providerMode = settings!.provider;
-    final endpoint = settings.openAiChatCompletionsUri;
-    final model = settings.model;
-    final apiKey = settings.apiKey;
-    final hostedContextSize = settings.activeModelProfile?.contextWindowTokens;
-    final pccContextSize = settings.pccCapabilities?.contextSize;
-    final onDeviceContextSize = settings.pccCapabilities?.onDeviceContextSize;
+    final configuration = settings!.configurationForFeature(AiFeature.summary);
+    final providerMode = configuration.providerMode;
+    final endpoint = configuration.endpoint;
+    final model = configuration.model;
+    final apiKey = configuration.apiKey;
+    final hostedContextSize =
+        configuration.candidate.kind == AiModelCandidateKind.server
+        ? configuration.contextWindowTokens
+        : null;
+    final pccContextSize =
+        configuration.candidate.kind == AiModelCandidateKind.applePcc
+        ? configuration.contextWindowTokens
+        : null;
+    final onDeviceContextSize =
+        configuration.candidate.kind == AiModelCandidateKind.appleOnDevice
+        ? configuration.contextWindowTokens
+        : null;
     final outputLanguage = Localizations.localeOf(context).toLanguageTag();
     final session = _createUnreadSummarySession(
       providerMode: providerMode,

@@ -139,4 +139,44 @@ void main() {
       ),
     );
   });
+
+  test(
+    'sends a customizable model test prompt and returns its response',
+    () async {
+      late http.Request captured;
+      final api = OpenAiCompatibleModelsApi(
+        httpClient: MockClient((request) async {
+          captured = request;
+          return http.Response(
+            jsonEncode({
+              'choices': [
+                {
+                  'message': {'content': 'Hello from the model'},
+                },
+              ],
+            }),
+            200,
+          );
+        }),
+      );
+
+      final response = await api.testModel(
+        chatCompletionsUri: Uri.parse('https://ai.example/v1/chat/completions'),
+        model: 'test-model',
+        prompt: 'Say hello in one sentence',
+        apiKey: 'secret',
+      );
+
+      expect(response, 'Hello from the model');
+      expect(captured.method, 'POST');
+      expect(captured.headers['authorization'], 'Bearer secret');
+      expect(jsonDecode(captured.body), {
+        'model': 'test-model',
+        'messages': [
+          {'role': 'user', 'content': 'Say hello in one sentence'},
+        ],
+        'stream': false,
+      });
+    },
+  );
 }

@@ -99,6 +99,13 @@ void main() {
     }
   });
 
+  test('Simplified Chinese AI model routing uses feature-specific labels', () {
+    expect(zhHansMessages[AppStringKeys.aiTranslateUsing], '翻译使用');
+    expect(zhHansMessages[AppStringKeys.aiSummarizeUsing], '总结使用');
+    expect(zhHansMessages[AppStringKeys.aiProviders], '服务商');
+    expect(zhHansMessages[AppStringKeys.aiAddProvider], '添加服务商');
+  });
+
   test('placeholders match the English source in every locale', () {
     for (final entry in localeTables.entries) {
       for (final kv in entry.value.entries) {
@@ -165,11 +172,9 @@ void main() {
 
   test('Simplified Chinese unread count uses the unread label', () {
     expect(
-      AppStrings.tForLocale(
-        'zhHans',
-        AppStringKeys.chatUnreadMessagesCount,
-        {'value1': 1972},
-      ),
+      AppStrings.tForLocale('zhHans', AppStringKeys.chatUnreadMessagesCount, {
+        'value1': 1972,
+      }),
       '1972条未读消息',
     );
   });

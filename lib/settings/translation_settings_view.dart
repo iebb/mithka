@@ -256,15 +256,17 @@ class _TranslationSettingsViewState extends State<TranslationSettingsView> {
                   const InsetDivider(leadingInset: 56),
                   _navRow(
                     context,
-                    icon: switch (ai.provider) {
-                      AiProviderMode.applePcc => HeroAppIcons.cloud,
-                      AiProviderMode.appleOnDevice => HeroAppIcons.cpuChip,
-                      AiProviderMode.openAiCompatible => HeroAppIcons.server,
+                    icon: switch (ai.translationModelCandidate.kind) {
+                      AiModelCandidateKind.applePcc => HeroAppIcons.cloud,
+                      AiModelCandidateKind.appleOnDevice =>
+                        HeroAppIcons.cpuChip,
+                      AiModelCandidateKind.server => HeroAppIcons.cube,
                     },
-                    title: AppStringKeys.translationSettingsAiProvider.l10n(
+                    title: AppStringKeys.aiTranslateUsing.l10n(context),
+                    trailing: _aiModelLabel(
                       context,
+                      ai.translationModelCandidate,
                     ),
-                    trailing: _aiProviderLabel(context, ai.provider),
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute(builder: (_) => const AiSettingsView()),
                     ),
@@ -515,15 +517,14 @@ class _TranslationSettingsViewState extends State<TranslationSettingsView> {
     });
   }
 
-  String _aiProviderLabel(BuildContext context, AiProviderMode provider) =>
-      switch (provider) {
-        AiProviderMode.applePcc => AppStringKeys.aiProviderApplePcc.l10n(
+  String _aiModelLabel(BuildContext context, AiModelCandidate candidate) =>
+      switch (candidate.kind) {
+        AiModelCandidateKind.applePcc => AppStringKeys.aiProviderApplePcc.l10n(
           context,
         ),
-        AiProviderMode.appleOnDevice =>
+        AiModelCandidateKind.appleOnDevice =>
           AppStringKeys.aiProviderAppleOnDevice.l10n(context),
-        AiProviderMode.openAiCompatible =>
-          AppStringKeys.aiProviderOpenAiCompatible.l10n(context),
+        AiModelCandidateKind.server => candidate.model,
       };
 
   void _showIgnoredLanguagesPicker(BuildContext context) {
