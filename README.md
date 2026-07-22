@@ -28,6 +28,9 @@ Mithka is available on the App Store:
 Mithka is available on Google Play:
 <https://play.google.com/store/apps/details?id=ad.neko.mithka>
 
+Android beta builds are available through Google Play Open testing:
+<https://play.google.com/apps/testing/ad.neko.mithka>
+
 iOS beta builds are also available on TestFlight:
 <https://testflight.apple.com/join/tVC8WkbW>
 
@@ -107,10 +110,11 @@ debug signature is used. Neither the keystore nor `key.properties` is committed.
 
 `master` does not build Android packages. At 00:00 and 12:00 UTC each day,
 GitHub Actions merges new `master` commits into `nightly` and increments the
-app's patch version once; `nightly` publishes dated GitHub prereleases. Xcode
-Cloud keeps the same major/minor version but forces the iOS patch to `0`. Pushes
-to `release` publish dated stable GitHub releases and submit the production AAB
-to Google Play through its dedicated workflow.
+app's patch version once; `nightly` publishes dated GitHub prereleases and
+submits the signed AAB to Google Play Open testing. Xcode Cloud keeps the same
+major/minor version but forces the iOS patch to `0`. Pushes to `release` publish
+dated stable GitHub releases and submit the production AAB to Google Play
+through the same channel-aware workflow.
 `secrets.dart` is generated on the runner from the `TELEGRAM_API_ID` /
 `TELEGRAM_API_HASH` repository secrets.
 
