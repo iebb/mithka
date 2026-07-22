@@ -4,16 +4,14 @@ import '../tdlib/td_models.dart';
 /// `sending_state`; the state, not the ID sign, is authoritative.
 bool isPendingChatMessage(ChatMessage message) => message.isSending;
 
-/// Orders server messages chronologically while keeping local pending
-/// messages at the latest edge.
+/// Server history follows TDLib message IDs. A pending outgoing message still
+/// has a temporary ID, so compare it by its displayed send time instead of
+/// forcing it after every server message. That keeps a 10:52 live update below
+/// outgoing messages shown at 10:51 while upload/send completion is pending.
 int compareChatMessagesChronologically(ChatMessage a, ChatMessage b) {
-  final aIsPending = isPendingChatMessage(a);
-  final bIsPending = isPendingChatMessage(b);
-  if (aIsPending != bIsPending) return aIsPending ? 1 : -1;
-  if (aIsPending) {
+  if (isPendingChatMessage(a) || isPendingChatMessage(b)) {
     final byDate = a.date.compareTo(b.date);
     if (byDate != 0) return byDate;
-    return a.id.compareTo(b.id);
   }
   return a.id.compareTo(b.id);
 }
