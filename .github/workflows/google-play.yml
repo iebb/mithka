@@ -1,17 +1,13 @@
-name: 📦 Google Play Release (Paused)
+name: 📦 Google Play Release
 
-# Automatic Google Play publishing is paused. This workflow is manual-only and
-# submits only when it is run from the release branch with the explicit
-# enable_submission confirmation checked.
+# Every push to the release branch builds and submits a signed Android App
+# Bundle to the Google Play production track. Manual runs are also available,
+# but only when the workflow is dispatched from the release branch.
 
 on:
+  push:
+    branches: [release]
   workflow_dispatch:
-    inputs:
-      enable_submission:
-        description: Enable the paused Google Play production submission
-        required: true
-        default: false
-        type: boolean
 
 concurrency:
   group: google-play-production
@@ -27,7 +23,7 @@ env:
 jobs:
   prepare:
     name: Read release version
-    if: ${{ inputs.enable_submission && github.ref == 'refs/heads/release' }}
+    if: github.ref == 'refs/heads/release'
     runs-on: ubuntu-latest
     outputs:
       app_version: ${{ steps.version.outputs.app_version }}
