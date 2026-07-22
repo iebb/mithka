@@ -36,36 +36,16 @@ void main() {
     },
   );
 
-  test('login backup defaults on only below four accounts', () {
-    for (var accountCount = 0; accountCount < 4; accountCount += 1) {
-      expect(
-        AccountBackupService.shouldSelectLoginBackupByDefault(
-          accountCount: accountCount,
-          isIOS: true,
-          isSupported: true,
-        ),
-        isTrue,
-      );
-    }
+  test('login backup defaults on whenever iCloud sync is supported', () {
     expect(
       AccountBackupService.shouldSelectLoginBackupByDefault(
-        accountCount: 4,
         isIOS: true,
         isSupported: true,
       ),
-      isFalse,
+      isTrue,
     );
     expect(
       AccountBackupService.shouldSelectLoginBackupByDefault(
-        accountCount: 8,
-        isIOS: true,
-        isSupported: true,
-      ),
-      isFalse,
-    );
-    expect(
-      AccountBackupService.shouldSelectLoginBackupByDefault(
-        accountCount: 3,
         isIOS: false,
         isSupported: true,
       ),
@@ -73,12 +53,24 @@ void main() {
     );
     expect(
       AccountBackupService.shouldSelectLoginBackupByDefault(
-        accountCount: 3,
         isIOS: true,
         isSupported: false,
       ),
       isFalse,
     );
+  });
+
+  test('account backup consent has no Pro count limit', () async {
+    SharedPreferences.setMockInitialValues({
+      'mithka.accountBackup.explicitConsentMigration.v1': true,
+    });
+    final service = AccountBackupService(platformEligible: false);
+
+    for (var accountId = 1; accountId <= 8; accountId += 1) {
+      await service.setAccountConsent('$accountId', true);
+    }
+
+    expect(await service.consentedAccountIds(), hasLength(8));
   });
 
   test('backup decision requires pending or previously stored consent', () {

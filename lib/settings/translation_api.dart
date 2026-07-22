@@ -37,11 +37,17 @@ class NativeTranslationApi {
     required String sourceLanguageCode,
     required String targetLanguageCode,
   }) async {
+    var source = sourceLanguageCode;
+    if (TranslationController.normalizeLanguageCode(source) == null ||
+        source == 'auto' ||
+        source == 'autodetect') {
+      source = (await identifyLanguage(text))?.languageCode ?? source;
+    }
     try {
       final translated = await _channel
           .invokeMethod<String>('translate', {
             'text': text,
-            'sourceLanguageCode': sourceLanguageCode,
+            'sourceLanguageCode': source,
             'targetLanguageCode': targetLanguageCode,
           })
           .timeout(
@@ -60,6 +66,47 @@ class NativeTranslationApi {
       throw TranslationApiException(e.message ?? e.code);
     }
   }
+
+  static Future<DetectedTranslationLanguage?> identifyLanguage(
+    String text,
+  ) async {
+    final sample = text.trim();
+    if (sample.isEmpty) return null;
+    try {
+      final value = await _channel.invokeMethod<Object?>('identifyLanguage', {
+        'text': sample.length > 256 ? sample.substring(0, 256) : sample,
+      });
+      final rawCode = value is Map
+          ? value['languageCode']?.toString()
+          : value?.toString();
+      final normalized = TranslationController.normalizeLanguageCode(rawCode);
+      if (normalized == null || normalized == 'und') return null;
+      final rawConfidence = value is Map ? value['confidence'] : null;
+      final confidence = switch (rawConfidence) {
+        num() => rawConfidence.toDouble(),
+        String() => double.tryParse(rawConfidence),
+        _ => null,
+      };
+      return DetectedTranslationLanguage(
+        languageCode: normalized,
+        confidence: (confidence ?? 1).clamp(0, 1),
+      );
+    } on PlatformException {
+      return null;
+    } on MissingPluginException {
+      return null;
+    }
+  }
+}
+
+class DetectedTranslationLanguage {
+  const DetectedTranslationLanguage({
+    required this.languageCode,
+    required this.confidence,
+  });
+
+  final String languageCode;
+  final double confidence;
 }
 
 class ThirdPartyTranslationApi {

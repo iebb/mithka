@@ -8,6 +8,8 @@ import 'package:flutter/foundation.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'ai_translation_prompt.dart';
+
 class TranslationLanguage {
   const TranslationLanguage(this.code, this.label);
 
@@ -52,6 +54,11 @@ enum TranslationProvider {
 class TranslationController extends ChangeNotifier {
   TranslationController(this._prefs)
     : _enabled = _prefs.getBool(_enabledKey) ?? false,
+      _translateChats = _prefs.getBool(_translateChatsKey) ?? true,
+      _aiTranslationEnabled = _prefs.getBool(_aiTranslationEnabledKey) ?? false,
+      _aiTranslationPrompt = normalizeAiTranslationPrompt(
+        _prefs.getString(aiTranslationPromptPreferenceKey),
+      ),
       _provider = TranslationProvider.fromStorage(
         _prefs.getString(_providerKey),
       ),
@@ -62,15 +69,26 @@ class TranslationController extends ChangeNotifier {
           _prefs.getString(_lingvaEndpointKey) ?? defaultLingvaEndpoint,
       _libreTranslateEndpoint =
           _prefs.getString(_libreTranslateEndpointKey) ?? '',
-      _libreTranslateApiKey = _prefs.getString(_libreTranslateApiKeyKey) ?? '';
+      _libreTranslateApiKey = _prefs.getString(_libreTranslateApiKeyKey) ?? '',
+      _ignoredLanguageCodes = {...?_prefs.getStringList(_ignoredLanguagesKey)},
+      _autoTranslateChatIds = {...?_prefs.getStringList(_autoChatsKey)},
+      _dismissedAutoTranslateChatIds = {
+        ...?_prefs.getStringList(_dismissedAutoChatsKey),
+      };
 
   static const _enabledKey = 'translation.enabled';
+  static const _translateChatsKey = 'translation.translateChats';
+  static const _aiTranslationEnabledKey = 'translation.ai.enabled';
+  static const aiTranslationPromptPreferenceKey = 'translation.ai.prompt.v1';
   static const _providerKey = 'translation.provider';
   static const _targetLanguageKey = 'translation.targetLanguage';
   static const _lingvaEndpointKey = 'translation.lingvaEndpoint';
   static const _libreTranslateEndpointKey =
       'translation.libreTranslateEndpoint';
   static const _libreTranslateApiKeyKey = 'translation.libreTranslateApiKey';
+  static const _ignoredLanguagesKey = 'translation.ignoredLanguages';
+  static const _autoChatsKey = 'translation.autoChats';
+  static const _dismissedAutoChatsKey = 'translation.dismissedAutoChats';
 
   static const defaultLingvaEndpoint = 'https://lingva.ml';
 
@@ -98,19 +116,32 @@ class TranslationController extends ChangeNotifier {
 
   final SharedPreferences _prefs;
   bool _enabled;
+  bool _translateChats;
+  bool _aiTranslationEnabled;
+  String _aiTranslationPrompt;
   TranslationProvider _provider;
   String _targetLanguageCode;
   String _lingvaEndpoint;
   String _libreTranslateEndpoint;
   String _libreTranslateApiKey;
+  final Set<String> _ignoredLanguageCodes;
+  final Set<String> _autoTranslateChatIds;
+  final Set<String> _dismissedAutoTranslateChatIds;
 
   bool get enabled => _enabled;
+  bool get translateChats => _translateChats;
+  bool get aiTranslationEnabled => _aiTranslationEnabled;
+  String get aiTranslationPrompt => _aiTranslationPrompt;
+  bool get hasCustomAiTranslationPrompt =>
+      _aiTranslationPrompt != defaultAiTranslationPrompt.trim();
   TranslationProvider get provider => _provider;
   String get providerLabel => _provider.label;
   String get targetLanguageCode => _targetLanguageCode;
   String get lingvaEndpoint => _lingvaEndpoint;
   String get libreTranslateEndpoint => _libreTranslateEndpoint;
   String get libreTranslateApiKey => _libreTranslateApiKey;
+  Set<String> get ignoredLanguageCodes =>
+      Set.unmodifiable(_ignoredLanguageCodes);
 
   String get targetLanguageLabel => labelForTarget(_targetLanguageCode);
 
@@ -120,6 +151,35 @@ class TranslationController extends ChangeNotifier {
     _prefs.setBool(_enabledKey, value);
     notifyListeners();
   }
+
+  set translateChats(bool value) {
+    if (_translateChats == value) return;
+    _translateChats = value;
+    _prefs.setBool(_translateChatsKey, value);
+    notifyListeners();
+  }
+
+  set aiTranslationEnabled(bool value) {
+    if (_aiTranslationEnabled == value) return;
+    _aiTranslationEnabled = value;
+    _prefs.setBool(_aiTranslationEnabledKey, value);
+    notifyListeners();
+  }
+
+  void setAiTranslationPrompt(String value) {
+    final normalized = normalizeAiTranslationPrompt(value);
+    if (_aiTranslationPrompt == normalized) return;
+    _aiTranslationPrompt = normalized;
+    if (normalized == defaultAiTranslationPrompt.trim()) {
+      _prefs.remove(aiTranslationPromptPreferenceKey);
+    } else {
+      _prefs.setString(aiTranslationPromptPreferenceKey, normalized);
+    }
+    notifyListeners();
+  }
+
+  void resetAiTranslationPrompt() =>
+      setAiTranslationPrompt(defaultAiTranslationPrompt);
 
   set provider(TranslationProvider value) {
     if (_provider == value) return;
@@ -158,6 +218,62 @@ class TranslationController extends ChangeNotifier {
     _libreTranslateApiKey = normalized;
     _prefs.setString(_libreTranslateApiKeyKey, normalized);
     notifyListeners();
+  }
+
+  bool autoTranslateEnabledFor(int chatId) =>
+      _autoTranslateChatIds.contains('$chatId');
+
+  void setAutoTranslateEnabledFor(int chatId, bool value) {
+    final id = '$chatId';
+    final changed = value
+        ? _autoTranslateChatIds.add(id)
+        : _autoTranslateChatIds.remove(id);
+    if (!changed) return;
+    if (value) {
+      _dismissedAutoTranslateChatIds.remove(id);
+      _persistStringSet(_dismissedAutoChatsKey, _dismissedAutoTranslateChatIds);
+    }
+    _persistStringSet(_autoChatsKey, _autoTranslateChatIds);
+    notifyListeners();
+  }
+
+  bool autoTranslateSuggestionDismissedFor(int chatId) =>
+      _dismissedAutoTranslateChatIds.contains('$chatId');
+
+  void dismissAutoTranslateSuggestionFor(int chatId) {
+    final id = '$chatId';
+    final activeChanged = _autoTranslateChatIds.remove(id);
+    final dismissedChanged = _dismissedAutoTranslateChatIds.add(id);
+    if (!activeChanged && !dismissedChanged) return;
+    if (activeChanged) {
+      _persistStringSet(_autoChatsKey, _autoTranslateChatIds);
+    }
+    _persistStringSet(_dismissedAutoChatsKey, _dismissedAutoTranslateChatIds);
+    notifyListeners();
+  }
+
+  void setIgnoredLanguage(String code, bool ignored) {
+    final normalized = normalizeLanguageCode(code);
+    if (normalized == null) return;
+    final changed = ignored
+        ? _ignoredLanguageCodes.add(normalized)
+        : _ignoredLanguageCodes.remove(normalized);
+    if (!changed) return;
+    _persistStringSet(_ignoredLanguagesKey, _ignoredLanguageCodes);
+    notifyListeners();
+  }
+
+  bool shouldTranslateLanguage(String? sourceLanguageCode) {
+    final source = normalizeLanguageCode(sourceLanguageCode);
+    if (source == null || source == 'und') return true;
+    final target = normalizeLanguageCode(_targetLanguageCode);
+    if (source == target) return false;
+    return !_ignoredLanguageCodes.contains(source);
+  }
+
+  void _persistStringSet(String key, Set<String> values) {
+    final sorted = values.toList()..sort();
+    _prefs.setStringList(key, sorted);
   }
 
   static String labelForTarget(String code) => targetLanguages

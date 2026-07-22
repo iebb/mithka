@@ -111,10 +111,9 @@ class _MithkaProViewState extends State<MithkaProView> {
                     child: Column(
                       children: [
                         _benefit(
-                          HeroAppIcons.cloudArrowDown,
-                          AppStringKeys.mithkaProUnlimitedCloudSessionSyncs,
-                          AppStringKeys
-                              .mithkaProUnlimitedCloudSessionSyncsDescription,
+                          HeroAppIcons.solidStar,
+                          AppStringKeys.mithkaProSupportDevelopment,
+                          AppStringKeys.mithkaProSupportDevelopmentDescription,
                         ),
                       ],
                     ),
@@ -239,9 +238,7 @@ class _MithkaProViewState extends State<MithkaProView> {
               : AppStrings.t(AppStringKeys.mithkaProActiveUntil, {
                   'value1': DateFormat.yMMMd().format(expiration.toLocal()),
                 })
-        : service.isLimitExempt
-        ? AppStrings.t(AppStringKeys.mithkaProLimitExempt)
-        : AppStrings.t(AppStringKeys.mithkaProFreePlan);
+        : AppStrings.t(AppStringKeys.mithkaProSupportOnly);
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(

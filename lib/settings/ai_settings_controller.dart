@@ -24,45 +24,29 @@ enum AiProviderMode {
   };
 }
 
-class AiServerProfile {
-  const AiServerProfile({
+class AiServerProvider {
+  const AiServerProvider({
     required this.id,
     required this.name,
     required this.endpoint,
-    required this.model,
-    this.contextWindowTokens = defaultContextWindowTokens,
-    this.contextWindowDetected = false,
     this.availableModels = const [],
   });
-
-  static const defaultContextWindowTokens = 200000;
-  static const minimumContextWindowTokens = 4096;
-  static const maximumContextWindowTokens = 16777216;
 
   final String id;
   final String name;
   final String endpoint;
-  final String model;
-  final int contextWindowTokens;
-  final bool contextWindowDetected;
   final List<OpenAiCompatibleModelInfo> availableModels;
 
   Uri get chatCompletionsUri => Uri.parse(endpoint);
 
-  AiServerProfile copyWith({
+  AiServerProvider copyWith({
     String? name,
     String? endpoint,
-    String? model,
-    int? contextWindowTokens,
-    bool? contextWindowDetected,
     List<OpenAiCompatibleModelInfo>? availableModels,
-  }) => AiServerProfile(
+  }) => AiServerProvider(
     id: id,
     name: name ?? this.name,
     endpoint: endpoint ?? this.endpoint,
-    model: model ?? this.model,
-    contextWindowTokens: contextWindowTokens ?? this.contextWindowTokens,
-    contextWindowDetected: contextWindowDetected ?? this.contextWindowDetected,
     availableModels: availableModels ?? this.availableModels,
   );
 
@@ -70,15 +54,12 @@ class AiServerProfile {
     'id': id,
     'name': name,
     'endpoint': endpoint,
-    'model': model,
-    'context_window_tokens': contextWindowTokens,
-    'context_window_detected': contextWindowDetected,
     'available_models': availableModels
         .map((model) => model.toJson())
         .toList(growable: false),
   };
 
-  static AiServerProfile? fromJson(Object? value) {
+  static AiServerProvider? fromJson(Object? value) {
     if (value is! Map) return null;
     final id = value['id'];
     final endpoint = value['endpoint'];
@@ -90,14 +71,6 @@ class AiServerProfile {
     }
     final uri = AiSettingsController.validateOpenAiCompatibleEndpoint(endpoint);
     final rawName = value['name'];
-    final rawModel = value['model'];
-    final rawContext = value['context_window_tokens'];
-    final parsedContext = switch (rawContext) {
-      int() => rawContext,
-      num() => rawContext.toInt(),
-      String() => int.tryParse(rawContext),
-      _ => null,
-    };
     final availableModels = <OpenAiCompatibleModelInfo>[];
     final rawModels = value['available_models'];
     if (rawModels is List) {
@@ -106,13 +79,81 @@ class AiServerProfile {
         if (parsed != null) availableModels.add(parsed);
       }
     }
-    return AiServerProfile(
+    return AiServerProvider(
       id: id.trim(),
       name: rawName is String && rawName.trim().isNotEmpty
           ? rawName.trim()
           : uri.host,
       endpoint: uri.toString(),
-      model: rawModel is String ? rawModel.trim() : '',
+      availableModels: List.unmodifiable(availableModels),
+    );
+  }
+}
+
+class AiModelProfile {
+  const AiModelProfile({
+    required this.id,
+    required this.providerId,
+    required this.model,
+    this.contextWindowTokens = defaultContextWindowTokens,
+    this.contextWindowDetected = false,
+  });
+
+  static const defaultContextWindowTokens = 200000;
+  static const minimumContextWindowTokens = 4096;
+  static const maximumContextWindowTokens = 16777216;
+
+  final String id;
+  final String providerId;
+  final String model;
+  final int contextWindowTokens;
+  final bool contextWindowDetected;
+
+  AiModelProfile copyWith({
+    String? providerId,
+    String? model,
+    int? contextWindowTokens,
+    bool? contextWindowDetected,
+  }) => AiModelProfile(
+    id: id,
+    providerId: providerId ?? this.providerId,
+    model: model ?? this.model,
+    contextWindowTokens: contextWindowTokens ?? this.contextWindowTokens,
+    contextWindowDetected: contextWindowDetected ?? this.contextWindowDetected,
+  );
+
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'provider_id': providerId,
+    'model': model,
+    'context_window_tokens': contextWindowTokens,
+    'context_window_detected': contextWindowDetected,
+  };
+
+  static AiModelProfile? fromJson(Object? value) {
+    if (value is! Map) return null;
+    final id = value['id'];
+    final providerId = value['provider_id'];
+    final model = value['model'];
+    if (id is! String ||
+        id.trim().isEmpty ||
+        providerId is! String ||
+        providerId.trim().isEmpty ||
+        model is! String ||
+        model.trim().isEmpty) {
+      return null;
+    }
+    final rawContext = value['context_window_tokens'];
+    final parsedContext = switch (rawContext) {
+      int() => rawContext,
+      num() => rawContext.toInt(),
+      String() => int.tryParse(rawContext),
+      _ => null,
+    };
+    return AiModelProfile(
+      id: id.trim(),
+      providerId: providerId.trim(),
+      model: model.trim(),
       contextWindowTokens:
           parsedContext != null &&
               parsedContext >= minimumContextWindowTokens &&
@@ -120,7 +161,6 @@ class AiServerProfile {
           ? parsedContext
           : defaultContextWindowTokens,
       contextWindowDetected: value['context_window_detected'] == true,
-      availableModels: List.unmodifiable(availableModels),
     );
   }
 }
@@ -128,11 +168,11 @@ class AiServerProfile {
 typedef AiSecureRead = Future<String?> Function(String key);
 typedef AiSecureWrite = Future<void> Function(String key, String? value);
 
-/// Global settings for unread-chat summarization.
+/// Global provider and model settings shared by AI features.
 ///
-/// Provider metadata lives in [SharedPreferences]. Every endpoint has its own
-/// API key entry in platform secure storage; keys are never serialized with the
-/// provider profiles.
+/// Provider and model metadata live in separate [SharedPreferences] records.
+/// Every provider has its own API key entry in platform secure storage; keys
+/// are never serialized with either record.
 class AiSettingsController extends ChangeNotifier {
   AiSettingsController(
     this._preferences, {
@@ -150,10 +190,18 @@ class AiSettingsController extends ChangeNotifier {
   static const providerPreferenceKey = 'ai.provider_mode';
   static const endpointPreferenceKey = 'ai.custom_server.endpoint';
   static const modelPreferenceKey = 'ai.custom_server.model';
+  // Combined provider/model records used before providers and models were
+  // separated. Kept only as a migration source.
   static const apiKeyStorageKey = 'mithka.ai.api_key.v1';
   static const serverProfilesPreferenceKey = 'ai.custom_server.profiles.v1';
   static const activeServerProfileIdPreferenceKey =
       'ai.custom_server.active_profile_id';
+  static const serverProvidersPreferenceKey = 'ai.custom_server.providers.v2';
+  static const modelProfilesPreferenceKey = 'ai.custom_server.models.v1';
+  static const activeServerProviderIdPreferenceKey =
+      'ai.custom_server.active_provider_id.v2';
+  static const activeModelProfileIdPreferenceKey =
+      'ai.custom_server.active_model_id.v1';
   static const openAiChatCompletionsPath = '/v1/chat/completions';
 
   static const _secureStorage = FlutterSecureStorage();
@@ -171,30 +219,57 @@ class AiSettingsController extends ChangeNotifier {
   bool _initialized = false;
   bool _enabled = false;
   AiProviderMode _provider = AiProviderMode.applePcc;
-  List<AiServerProfile> _serverProfiles = const [];
-  String? _activeServerProfileId;
+  List<AiServerProvider> _serverProviders = const [];
+  List<AiModelProfile> _modelProfiles = const [];
+  String? _activeServerProviderId;
+  String? _activeModelProfileId;
   final Map<String, String> _profileApiKeys = {};
   ApplePccCapabilities? _pccCapabilities;
 
   bool get initialized => _initialized;
   bool get enabled => _enabled;
   AiProviderMode get provider => _provider;
-  List<AiServerProfile> get serverProfiles => _serverProfiles;
-  String? get activeServerProfileId => _activeServerProfileId;
-  AiServerProfile? get activeServerProfile {
-    final id = _activeServerProfileId;
+  List<AiServerProvider> get serverProviders => _serverProviders;
+  List<AiModelProfile> get modelProfiles => _modelProfiles;
+  String? get activeServerProviderId => _activeServerProviderId;
+  String? get activeModelProfileId => _activeModelProfileId;
+  AiServerProvider? get activeServerProvider {
+    final id = _activeServerProviderId;
     if (id == null) return null;
-    for (final profile in _serverProfiles) {
-      if (profile.id == id) return profile;
+    for (final provider in _serverProviders) {
+      if (provider.id == id) return provider;
     }
     return null;
   }
 
-  String get endpoint => activeServerProfile?.endpoint ?? '';
-  String get model => activeServerProfile?.model ?? '';
-  String get apiKey => _profileApiKeys[_activeServerProfileId] ?? '';
+  AiModelProfile? get activeModelProfile {
+    final id = _activeModelProfileId;
+    if (id == null) return null;
+    for (final profile in _modelProfiles) {
+      if (profile.id == id && profile.providerId == _activeServerProviderId) {
+        return profile;
+      }
+    }
+    return null;
+  }
+
+  List<AiModelProfile> modelsForProvider(String providerId) =>
+      List.unmodifiable(
+        _modelProfiles.where((profile) => profile.providerId == providerId),
+      );
+
+  // Compatibility aliases for callers that only need provider identity.
+  List<AiServerProvider> get serverProfiles => serverProviders;
+  String? get activeServerProfileId => activeServerProviderId;
+  AiServerProvider? get activeServerProfile => activeServerProvider;
+
+  String get endpoint => activeServerProvider?.endpoint ?? '';
+  String get model => activeModelProfile?.model ?? '';
+  String get apiKey => _profileApiKeys[_activeServerProviderId] ?? '';
+  String apiKeyForServerProvider(String providerId) =>
+      _profileApiKeys[providerId] ?? '';
   String apiKeyForServerProfile(String profileId) =>
-      _profileApiKeys[profileId] ?? '';
+      apiKeyForServerProvider(profileId);
   bool get hasApiKey => apiKey.isNotEmpty;
   ApplePccCapabilities? get pccCapabilities => _pccCapabilities;
 
@@ -237,44 +312,78 @@ class AiSettingsController extends ChangeNotifier {
     _provider = AiProviderMode.fromStorage(
       _preferences.getString(providerPreferenceKey),
     );
-    _serverProfiles = _readStoredProfiles();
-    _activeServerProfileId = _preferences.getString(
-      activeServerProfileIdPreferenceKey,
+    _serverProviders = _readStoredProviders();
+    _modelProfiles = _readStoredModels();
+    _activeServerProviderId = _preferences.getString(
+      activeServerProviderIdPreferenceKey,
+    );
+    _activeModelProfileId = _preferences.getString(
+      activeModelProfileIdPreferenceKey,
     );
 
-    var migratedLegacyProfile = false;
-    if (_serverProfiles.isEmpty) {
+    var migratedLegacyConfiguration = false;
+    if (_serverProviders.isEmpty) {
+      final migrated = _readLegacyProfiles();
+      if (migrated.providers.isNotEmpty) {
+        _serverProviders = migrated.providers;
+        _modelProfiles = migrated.models;
+        final legacyActiveId = _preferences.getString(
+          activeServerProfileIdPreferenceKey,
+        );
+        _activeServerProviderId =
+            migrated.providers.any((provider) => provider.id == legacyActiveId)
+            ? legacyActiveId
+            : migrated.providers.first.id;
+        _activeModelProfileId = _modelProfiles
+            .where((model) => model.providerId == _activeServerProviderId)
+            .firstOrNull
+            ?.id;
+        migratedLegacyConfiguration = true;
+      }
+    }
+    if (_serverProviders.isEmpty) {
       final storedEndpoint =
           _preferences.getString(endpointPreferenceKey)?.trim() ?? '';
       final normalizedEndpoint = _normalizeStoredEndpoint(storedEndpoint);
       if (normalizedEndpoint.isNotEmpty) {
         final uri = Uri.parse(normalizedEndpoint);
-        final profile = AiServerProfile(
+        final provider = AiServerProvider(
           id: 'legacy',
           name: uri.host,
           endpoint: normalizedEndpoint,
-          model: _preferences.getString(modelPreferenceKey)?.trim() ?? '',
         );
-        _serverProfiles = [profile];
-        _activeServerProfileId = profile.id;
-        migratedLegacyProfile = true;
+        _serverProviders = [provider];
+        _activeServerProviderId = provider.id;
+        final legacyModel = _preferences.getString(modelPreferenceKey)?.trim();
+        if (legacyModel != null && legacyModel.isNotEmpty) {
+          final model = AiModelProfile(
+            id: _legacyModelId(provider.id),
+            providerId: provider.id,
+            model: legacyModel,
+          );
+          _modelProfiles = [model];
+          _activeModelProfileId = model.id;
+        }
+        migratedLegacyConfiguration = true;
       }
     }
-    if (_serverProfiles.isNotEmpty &&
-        !_serverProfiles.any((p) => p.id == _activeServerProfileId)) {
-      _activeServerProfileId = _serverProfiles.first.id;
+    if (_serverProviders.isNotEmpty &&
+        !_serverProviders.any((p) => p.id == _activeServerProviderId)) {
+      _activeServerProviderId = _serverProviders.first.id;
     }
+    _removeOrphanedModels();
+    _ensureActiveModelMatchesProvider();
 
     final keyResults = await Future.wait(
-      _serverProfiles.map((profile) async {
-        final value = await _readSecureValueSafely(_profileKey(profile.id));
-        return MapEntry(profile.id, value);
+      _serverProviders.map((provider) async {
+        final value = await _readSecureValueSafely(_profileKey(provider.id));
+        return MapEntry(provider.id, value);
       }),
     );
     for (final entry in keyResults) {
       if (entry.value.isNotEmpty) _profileApiKeys[entry.key] = entry.value;
     }
-    if (_serverProfiles.any((profile) => profile.id == 'legacy') &&
+    if (_serverProviders.any((provider) => provider.id == 'legacy') &&
         !_profileApiKeys.containsKey('legacy')) {
       final legacyKey = await _readSecureValueSafely(apiKeyStorageKey);
       if (legacyKey.isNotEmpty) {
@@ -291,7 +400,7 @@ class AiSettingsController extends ChangeNotifier {
 
     final capabilities = await _pccApi.capabilities();
     _pccCapabilities = capabilities;
-    if (migratedLegacyProfile) await _persistProfiles();
+    if (migratedLegacyConfiguration) await _persistConfiguration();
     _initialized = true;
     notifyListeners();
   }
@@ -364,33 +473,192 @@ class AiSettingsController extends ChangeNotifier {
     apiKey: apiKey,
   );
 
-  Future<List<OpenAiCompatibleModelInfo>> refreshModelsForProfile(
-    String profileId,
+  Future<List<OpenAiCompatibleModelInfo>> refreshModelsForProvider(
+    String providerId,
   ) async {
-    final profile = _profileById(profileId);
-    if (profile == null) {
+    final provider = _providerById(providerId);
+    if (provider == null) {
       throw const FormatException('The selected AI provider no longer exists.');
     }
+    final selectedModel = _modelProfiles
+        .where(
+          (model) =>
+              model.providerId == providerId &&
+              model.id == _activeModelProfileId,
+        )
+        .firstOrNull;
     final models = await discoverModels(
-      endpoint: profile.endpoint,
-      apiKey: _profileApiKeys[profileId] ?? '',
-      preferredModel: profile.model,
+      endpoint: provider.endpoint,
+      apiKey: _profileApiKeys[providerId] ?? '',
+      preferredModel: selectedModel?.model,
     );
-    final selectedModel = models.where((item) => item.id == profile.model);
-    final discoveredContext = selectedModel.isEmpty
+    final selectedResult = models.where(
+      (item) => item.id == selectedModel?.model,
+    );
+    final discoveredContext = selectedResult.isEmpty
         ? null
-        : selectedModel.first.contextWindowTokens;
-    await _replaceProfile(
-      profile.copyWith(
-        availableModels: List.unmodifiable(models),
-        contextWindowTokens: discoveredContext ?? profile.contextWindowTokens,
-        contextWindowDetected: discoveredContext != null,
-      ),
+        : selectedResult.first.contextWindowTokens;
+    await _replaceProvider(
+      provider.copyWith(availableModels: List.unmodifiable(models)),
+      notify: false,
     );
+    if (selectedModel != null && discoveredContext != null) {
+      await _replaceModel(
+        selectedModel.copyWith(
+          contextWindowTokens: discoveredContext,
+          contextWindowDetected: true,
+        ),
+        notify: false,
+      );
+    }
+    notifyListeners();
     return models;
   }
 
-  Future<AiServerProfile> saveServerProfile({
+  Future<List<OpenAiCompatibleModelInfo>> refreshModelsForProfile(
+    String profileId,
+  ) => refreshModelsForProvider(profileId);
+
+  Future<AiServerProvider> saveServerProvider({
+    String? id,
+    required String name,
+    required String endpoint,
+    required String apiKey,
+    List<OpenAiCompatibleModelInfo>? availableModels,
+  }) async {
+    final uri = validateOpenAiCompatibleEndpoint(endpoint);
+    final normalizedId = id?.trim();
+    final providerId = normalizedId != null && normalizedId.isNotEmpty
+        ? normalizedId
+        : _newId('provider');
+    final existing = _providerById(providerId);
+    final provider = AiServerProvider(
+      id: providerId,
+      name: name.trim().isEmpty ? uri.host : name.trim(),
+      endpoint: uri.toString(),
+      availableModels: List.unmodifiable(
+        availableModels ?? existing?.availableModels ?? const [],
+      ),
+    );
+    final normalizedKey = apiKey.trim();
+    await _secureWrite(
+      _profileKey(providerId),
+      normalizedKey.isEmpty ? null : normalizedKey,
+    );
+    if (normalizedKey.isEmpty) {
+      _profileApiKeys.remove(providerId);
+    } else {
+      _profileApiKeys[providerId] = normalizedKey;
+    }
+    await _replaceProvider(provider, makeActive: true);
+    return provider;
+  }
+
+  Future<AiModelProfile> saveModelProfile({
+    String? id,
+    required String providerId,
+    required String model,
+    required int contextWindowTokens,
+    bool contextWindowDetected = false,
+  }) async {
+    if (_providerById(providerId) == null) {
+      throw const FormatException('An AI provider is required.');
+    }
+    final normalizedModel = model.trim();
+    if (normalizedModel.isEmpty) {
+      throw const FormatException('A model is required.');
+    }
+    if (contextWindowTokens < AiModelProfile.minimumContextWindowTokens ||
+        contextWindowTokens > AiModelProfile.maximumContextWindowTokens) {
+      throw const FormatException(
+        'The context window is outside the supported range.',
+      );
+    }
+    final normalizedId = id?.trim();
+    final existing = normalizedId == null || normalizedId.isEmpty
+        ? _modelProfiles
+              .where(
+                (profile) =>
+                    profile.providerId == providerId &&
+                    profile.model == normalizedModel,
+              )
+              .firstOrNull
+        : _modelById(normalizedId);
+    final profile = AiModelProfile(
+      id: existing?.id ?? _newId('model'),
+      providerId: providerId,
+      model: normalizedModel,
+      contextWindowTokens: contextWindowTokens,
+      contextWindowDetected: contextWindowDetected,
+    );
+    await _replaceModel(profile, makeActive: true);
+    return profile;
+  }
+
+  Future<void> selectServerProvider(String providerId) async {
+    if (_providerById(providerId) == null) return;
+    if (_activeServerProviderId == providerId && activeModelProfile != null) {
+      return;
+    }
+    _activeServerProviderId = providerId;
+    _ensureActiveModelMatchesProvider();
+    await _persistConfiguration();
+    notifyListeners();
+  }
+
+  Future<void> selectModelProfile(String modelProfileId) async {
+    final profile = _modelById(modelProfileId);
+    if (profile == null || _providerById(profile.providerId) == null) return;
+    if (_activeModelProfileId == profile.id &&
+        _activeServerProviderId == profile.providerId) {
+      return;
+    }
+    _activeServerProviderId = profile.providerId;
+    _activeModelProfileId = profile.id;
+    await _persistConfiguration();
+    notifyListeners();
+  }
+
+  Future<void> deleteServerProvider(String providerId) async {
+    if (_providerById(providerId) == null) return;
+    await _secureWrite(_profileKey(providerId), null);
+    _profileApiKeys.remove(providerId);
+    _serverProviders = List.unmodifiable(
+      _serverProviders.where((provider) => provider.id != providerId),
+    );
+    _modelProfiles = List.unmodifiable(
+      _modelProfiles.where((model) => model.providerId != providerId),
+    );
+    if (_activeServerProviderId == providerId) {
+      _activeServerProviderId = _serverProviders.firstOrNull?.id;
+    }
+    _ensureActiveModelMatchesProvider();
+    await _persistConfiguration();
+    notifyListeners();
+  }
+
+  Future<void> deleteModelProfile(String modelProfileId) async {
+    if (_modelById(modelProfileId) == null) return;
+    _modelProfiles = List.unmodifiable(
+      _modelProfiles.where((model) => model.id != modelProfileId),
+    );
+    if (_activeModelProfileId == modelProfileId) {
+      _activeModelProfileId = null;
+      _ensureActiveModelMatchesProvider();
+    }
+    await _persistConfiguration();
+    notifyListeners();
+  }
+
+  Future<void> selectServerProfile(String profileId) =>
+      selectServerProvider(profileId);
+
+  Future<void> deleteServerProfile(String profileId) =>
+      deleteServerProvider(profileId);
+
+  /// Compatibility bridge for older callers that still submit one combined
+  /// provider/model form. New UI saves these records independently.
+  Future<AiServerProvider> saveServerProfile({
     String? id,
     required String name,
     required String endpoint,
@@ -400,96 +668,57 @@ class AiSettingsController extends ChangeNotifier {
     bool contextWindowDetected = false,
     List<OpenAiCompatibleModelInfo>? availableModels,
   }) async {
-    final uri = validateOpenAiCompatibleEndpoint(endpoint);
-    final normalizedModel = model.trim();
-    if (normalizedModel.isEmpty) {
-      throw const FormatException('A model is required.');
-    }
-    if (contextWindowTokens < AiServerProfile.minimumContextWindowTokens ||
-        contextWindowTokens > AiServerProfile.maximumContextWindowTokens) {
-      throw const FormatException(
-        'The context window is outside the supported range.',
-      );
-    }
-    final normalizedId = id?.trim();
-    final profileId = normalizedId != null && normalizedId.isNotEmpty
-        ? normalizedId
-        : _newProfileId();
-    final existing = _profileById(profileId);
-    final profile = AiServerProfile(
-      id: profileId,
-      name: name.trim().isEmpty ? uri.host : name.trim(),
-      endpoint: uri.toString(),
-      model: normalizedModel,
+    final provider = await saveServerProvider(
+      id: id,
+      name: name,
+      endpoint: endpoint,
+      apiKey: apiKey,
+      availableModels: availableModels,
+    );
+    await saveModelProfile(
+      providerId: provider.id,
+      model: model,
       contextWindowTokens: contextWindowTokens,
       contextWindowDetected: contextWindowDetected,
-      availableModels: List.unmodifiable(
-        availableModels ?? existing?.availableModels ?? const [],
-      ),
     );
-    final normalizedKey = apiKey.trim();
-    await _secureWrite(
-      _profileKey(profileId),
-      normalizedKey.isEmpty ? null : normalizedKey,
-    );
-    if (normalizedKey.isEmpty) {
-      _profileApiKeys.remove(profileId);
-    } else {
-      _profileApiKeys[profileId] = normalizedKey;
-    }
-    await _replaceProfile(profile, makeActive: true);
-    return profile;
-  }
-
-  Future<void> selectServerProfile(String profileId) async {
-    if (_profileById(profileId) == null) return;
-    if (_activeServerProfileId == profileId) return;
-    _activeServerProfileId = profileId;
-    await _preferences.setString(activeServerProfileIdPreferenceKey, profileId);
-    notifyListeners();
-  }
-
-  Future<void> deleteServerProfile(String profileId) async {
-    if (_profileById(profileId) == null) return;
-    await _secureWrite(_profileKey(profileId), null);
-    _profileApiKeys.remove(profileId);
-    _serverProfiles = List.unmodifiable(
-      _serverProfiles.where((profile) => profile.id != profileId),
-    );
-    if (_activeServerProfileId == profileId) {
-      _activeServerProfileId = _serverProfiles.firstOrNull?.id;
-    }
-    await _persistProfiles();
-    notifyListeners();
+    return provider;
   }
 
   // Compatibility helpers for callers that still edit the active server one
   // field at a time. New UI should commit an entire provider atomically.
   Future<void> setEndpoint(String value) async {
     final endpoint = validateOpenAiCompatibleEndpoint(value).toString();
-    final active = activeServerProfile;
+    final active = activeServerProvider;
     if (active == null) {
       final uri = Uri.parse(endpoint);
-      final profile = AiServerProfile(
-        id: _newProfileId(),
+      final provider = AiServerProvider(
+        id: _newId('provider'),
         name: uri.host,
         endpoint: endpoint,
-        model: '',
       );
-      await _replaceProfile(profile, makeActive: true);
+      await _replaceProvider(provider, makeActive: true);
       return;
     }
-    await _replaceProfile(active.copyWith(endpoint: endpoint));
+    await _replaceProvider(active.copyWith(endpoint: endpoint));
   }
 
   Future<void> setModel(String value) async {
-    final active = activeServerProfile;
-    if (active == null) return;
-    await _replaceProfile(active.copyWith(model: value.trim()));
+    final providerId = _activeServerProviderId;
+    if (providerId == null || value.trim().isEmpty) return;
+    final active = activeModelProfile;
+    await saveModelProfile(
+      id: active?.id,
+      providerId: providerId,
+      model: value,
+      contextWindowTokens:
+          active?.contextWindowTokens ??
+          AiModelProfile.defaultContextWindowTokens,
+      contextWindowDetected: active?.contextWindowDetected ?? false,
+    );
   }
 
   Future<void> setApiKey(String value) async {
-    final id = _activeServerProfileId;
+    final id = _activeServerProviderId;
     if (id == null) return;
     final normalized = value.trim();
     await _secureWrite(_profileKey(id), normalized.isEmpty ? null : normalized);
@@ -566,62 +795,203 @@ class AiSettingsController extends ChangeNotifier {
     super.dispose();
   }
 
-  List<AiServerProfile> _readStoredProfiles() {
-    final encoded = _preferences.getString(serverProfilesPreferenceKey);
+  List<AiServerProvider> _readStoredProviders() {
+    final encoded = _preferences.getString(serverProvidersPreferenceKey);
     if (encoded == null || encoded.isEmpty) return const [];
     try {
       final decoded = jsonDecode(encoded);
       if (decoded is! List) return const [];
-      final profiles = <AiServerProfile>[];
+      final providers = <AiServerProvider>[];
       final ids = <String>{};
       for (final value in decoded) {
-        final profile = AiServerProfile.fromJson(value);
-        if (profile != null && ids.add(profile.id)) profiles.add(profile);
+        final provider = AiServerProvider.fromJson(value);
+        if (provider != null && ids.add(provider.id)) providers.add(provider);
       }
-      return List.unmodifiable(profiles);
+      return List.unmodifiable(providers);
     } on FormatException {
       return const [];
     }
   }
 
-  Future<void> _replaceProfile(
-    AiServerProfile profile, {
-    bool makeActive = false,
-  }) async {
-    final profiles = _serverProfiles.toList();
-    final index = profiles.indexWhere((item) => item.id == profile.id);
-    if (index < 0) {
-      profiles.add(profile);
-    } else {
-      profiles[index] = profile;
+  List<AiModelProfile> _readStoredModels() {
+    final encoded = _preferences.getString(modelProfilesPreferenceKey);
+    if (encoded == null || encoded.isEmpty) return const [];
+    try {
+      final decoded = jsonDecode(encoded);
+      if (decoded is! List) return const [];
+      final models = <AiModelProfile>[];
+      final ids = <String>{};
+      for (final value in decoded) {
+        final model = AiModelProfile.fromJson(value);
+        if (model != null && ids.add(model.id)) models.add(model);
+      }
+      return List.unmodifiable(models);
+    } on FormatException {
+      return const [];
     }
-    _serverProfiles = List.unmodifiable(profiles);
-    if (makeActive || _activeServerProfileId == null) {
-      _activeServerProfileId = profile.id;
-    }
-    await _persistProfiles();
-    notifyListeners();
   }
 
-  Future<void> _persistProfiles() async {
+  ({List<AiServerProvider> providers, List<AiModelProfile> models})
+  _readLegacyProfiles() {
+    final encoded = _preferences.getString(serverProfilesPreferenceKey);
+    if (encoded == null || encoded.isEmpty) {
+      return (providers: const [], models: const []);
+    }
+    try {
+      final decoded = jsonDecode(encoded);
+      if (decoded is! List) {
+        return (providers: const [], models: const []);
+      }
+      final providers = <AiServerProvider>[];
+      final models = <AiModelProfile>[];
+      final ids = <String>{};
+      for (final value in decoded) {
+        final provider = AiServerProvider.fromJson(value);
+        if (provider == null || !ids.add(provider.id)) continue;
+        providers.add(provider);
+        if (value is! Map) continue;
+        final rawModel = value['model'];
+        if (rawModel is! String || rawModel.trim().isEmpty) continue;
+        final rawContext = value['context_window_tokens'];
+        final parsedContext = switch (rawContext) {
+          int() => rawContext,
+          num() => rawContext.toInt(),
+          String() => int.tryParse(rawContext),
+          _ => null,
+        };
+        models.add(
+          AiModelProfile(
+            id: _legacyModelId(provider.id),
+            providerId: provider.id,
+            model: rawModel.trim(),
+            contextWindowTokens:
+                parsedContext != null &&
+                    parsedContext >=
+                        AiModelProfile.minimumContextWindowTokens &&
+                    parsedContext <= AiModelProfile.maximumContextWindowTokens
+                ? parsedContext
+                : AiModelProfile.defaultContextWindowTokens,
+            contextWindowDetected: value['context_window_detected'] == true,
+          ),
+        );
+      }
+      return (
+        providers: List.unmodifiable(providers),
+        models: List.unmodifiable(models),
+      );
+    } on FormatException {
+      return (providers: const [], models: const []);
+    }
+  }
+
+  Future<void> _replaceProvider(
+    AiServerProvider provider, {
+    bool makeActive = false,
+    bool notify = true,
+  }) async {
+    final providers = _serverProviders.toList();
+    final index = providers.indexWhere((item) => item.id == provider.id);
+    if (index < 0) {
+      providers.add(provider);
+    } else {
+      providers[index] = provider;
+    }
+    _serverProviders = List.unmodifiable(providers);
+    if (makeActive || _activeServerProviderId == null) {
+      _activeServerProviderId = provider.id;
+      _ensureActiveModelMatchesProvider();
+    }
+    await _persistConfiguration();
+    if (notify) notifyListeners();
+  }
+
+  Future<void> _replaceModel(
+    AiModelProfile model, {
+    bool makeActive = false,
+    bool notify = true,
+  }) async {
+    final models = _modelProfiles.toList();
+    final index = models.indexWhere((item) => item.id == model.id);
+    if (index < 0) {
+      models.add(model);
+    } else {
+      models[index] = model;
+    }
+    _modelProfiles = List.unmodifiable(models);
+    if (makeActive || _activeModelProfileId == null) {
+      _activeServerProviderId = model.providerId;
+      _activeModelProfileId = model.id;
+    }
+    await _persistConfiguration();
+    if (notify) notifyListeners();
+  }
+
+  Future<void> _persistConfiguration() async {
+    // Models are written first so an interrupted legacy migration can safely
+    // retry from the old combined provider records on the next launch.
     await _preferences.setString(
-      serverProfilesPreferenceKey,
-      jsonEncode(_serverProfiles.map((profile) => profile.toJson()).toList()),
+      modelProfilesPreferenceKey,
+      jsonEncode(_modelProfiles.map((model) => model.toJson()).toList()),
     );
-    final activeId = _activeServerProfileId;
-    if (activeId == null) {
-      await _preferences.remove(activeServerProfileIdPreferenceKey);
+    await _preferences.setString(
+      serverProvidersPreferenceKey,
+      jsonEncode(
+        _serverProviders.map((provider) => provider.toJson()).toList(),
+      ),
+    );
+    final activeProviderId = _activeServerProviderId;
+    if (activeProviderId == null) {
+      await _preferences.remove(activeServerProviderIdPreferenceKey);
     } else {
       await _preferences.setString(
-        activeServerProfileIdPreferenceKey,
-        activeId,
+        activeServerProviderIdPreferenceKey,
+        activeProviderId,
+      );
+    }
+    final activeModelId = _activeModelProfileId;
+    if (activeModelId == null) {
+      await _preferences.remove(activeModelProfileIdPreferenceKey);
+    } else {
+      await _preferences.setString(
+        activeModelProfileIdPreferenceKey,
+        activeModelId,
       );
     }
   }
 
-  AiServerProfile? _profileById(String id) {
-    for (final profile in _serverProfiles) {
-      if (profile.id == id) return profile;
+  void _removeOrphanedModels() {
+    final providerIds = _serverProviders.map((provider) => provider.id).toSet();
+    _modelProfiles = List.unmodifiable(
+      _modelProfiles.where((model) => providerIds.contains(model.providerId)),
+    );
+  }
+
+  void _ensureActiveModelMatchesProvider() {
+    final providerId = _activeServerProviderId;
+    if (providerId == null) {
+      _activeModelProfileId = null;
+      return;
+    }
+    final current = _modelById(_activeModelProfileId);
+    if (current?.providerId == providerId) return;
+    _activeModelProfileId = _modelProfiles
+        .where((model) => model.providerId == providerId)
+        .firstOrNull
+        ?.id;
+  }
+
+  AiServerProvider? _providerById(String? id) {
+    if (id == null) return null;
+    for (final provider in _serverProviders) {
+      if (provider.id == id) return provider;
+    }
+    return null;
+  }
+
+  AiModelProfile? _modelById(String? id) {
+    if (id == null) return null;
+    for (final model in _modelProfiles) {
+      if (model.id == id) return model;
     }
     return null;
   }
@@ -629,8 +999,10 @@ class AiSettingsController extends ChangeNotifier {
   static String _profileKey(String profileId) =>
       '$_profileApiKeyPrefix$profileId$_profileApiKeySuffix';
 
-  static String _newProfileId() =>
-      DateTime.now().microsecondsSinceEpoch.toRadixString(36);
+  static String _newId(String prefix) =>
+      '${prefix}_${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}';
+
+  static String _legacyModelId(String providerId) => '${providerId}_model';
 
   static String _normalizeStoredEndpoint(String value) {
     if (value.isEmpty) return '';

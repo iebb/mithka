@@ -3,6 +3,7 @@ import AVKit
 import Flutter
 import ImageIO
 import LiveCommunicationKit
+import NaturalLanguage
 import Security
 import Sentry
 import SwiftUI
@@ -67,7 +68,11 @@ import UserNotifications
       options.environment = environment
       options.releaseName = Self.sentryReleaseName(info: info)
       options.sendDefaultPii = false
-      options.tracesSampleRate = 0.0
+      // SentryFlutter configures Dart transactions later, but its iOS bridge
+      // does not copy `tracesSampleRate` into an already-started native SDK.
+      // Keep this in lockstep with `sentryTracesSampleRate` so TestFlight
+      // builds also emit the sampled app-start/native performance traces.
+      options.tracesSampleRate = 0.02
       options.enableWatchdogTerminationTracking = true
     }
   }
@@ -506,12 +511,20 @@ import UserNotifications
           result(["ios_system"])
           return
         }
+        if call.method == "identifyLanguage" {
+          result(Self.identifyTranslationLanguage(call.arguments))
+          return
+        }
         bridge.handle(call: call, result: result)
       }
     } else {
       nativeTranslationChannel.setMethodCallHandler { call, result in
         if call.method == "capabilities" {
           result([])
+          return
+        }
+        if call.method == "identifyLanguage" {
+          result(Self.identifyTranslationLanguage(call.arguments))
           return
         }
         guard call.method == "translate" else {
@@ -527,6 +540,25 @@ import UserNotifications
         )
       }
     }
+  }
+
+  private static func identifyTranslationLanguage(_ arguments: Any?) -> [String: Any]? {
+    guard
+      let args = arguments as? [String: Any],
+      let text = args["text"] as? String,
+      !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    else { return nil }
+    let recognizer = NLLanguageRecognizer()
+    recognizer.processString(String(text.prefix(256)))
+    guard
+      let hypothesis = recognizer.languageHypotheses(withMaximum: 4)
+        .max(by: { $0.value < $1.value }),
+      hypothesis.value >= 0.5
+    else { return nil }
+    return [
+      "languageCode": hypothesis.key.rawValue,
+      "confidence": hypothesis.value,
+    ]
   }
 
   private func trimVideo(

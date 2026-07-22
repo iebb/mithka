@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -9,7 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   group('AiSettingsController', () {
     test('hosted models default to a 200K context window', () {
-      expect(AiServerProfile.defaultContextWindowTokens, 200000);
+      expect(AiModelProfile.defaultContextWindowTokens, 200000);
     });
 
     test('defaults off and reports unavailable PCC as unconfigured', () async {
@@ -60,11 +62,14 @@ void main() {
 
         await controller.setEnabled(true);
         await controller.setProvider(AiProviderMode.openAiCompatible);
-        final profile = await controller.saveServerProfile(
+        final provider = await controller.saveServerProvider(
           name: 'Example AI',
           endpoint: ' https://ai.example.com/v1/chat/completions ',
-          model: ' example-model ',
           apiKey: ' $secret ',
+        );
+        await controller.saveModelProfile(
+          providerId: provider.id,
+          model: ' example-model ',
           contextWindowTokens: 131072,
           contextWindowDetected: true,
         );
@@ -77,9 +82,11 @@ void main() {
         );
         expect(controller.model, 'example-model');
         expect(controller.apiKey, secret);
-        expect(controller.activeServerProfile?.name, 'Example AI');
-        expect(controller.activeServerProfile?.contextWindowTokens, 131072);
-        expect(controller.activeServerProfile?.contextWindowDetected, isTrue);
+        expect(controller.activeServerProvider?.name, 'Example AI');
+        expect(controller.activeModelProfile?.contextWindowTokens, 131072);
+        expect(controller.activeModelProfile?.contextWindowDetected, isTrue);
+        expect(controller.serverProviders, hasLength(1));
+        expect(controller.modelProfiles, hasLength(1));
         expect(controller.isConfiguredForCurrentProvider, isTrue);
         expect(secureValues.values, contains(secret));
         expect(
@@ -102,11 +109,12 @@ void main() {
         expect(restored.provider, AiProviderMode.openAiCompatible);
         expect(restored.model, 'example-model');
         expect(restored.apiKey, secret);
-        expect(restored.activeServerProfile?.contextWindowDetected, isTrue);
+        expect(restored.activeModelProfile?.contextWindowDetected, isTrue);
         expect(restored.isConfiguredForCurrentProvider, isTrue);
 
-        await controller.deleteServerProfile(profile.id);
-        expect(controller.serverProfiles, isEmpty);
+        await controller.deleteServerProvider(provider.id);
+        expect(controller.serverProviders, isEmpty);
+        expect(controller.modelProfiles, isEmpty);
         expect(secureValues, isEmpty);
       },
     );
@@ -130,30 +138,38 @@ void main() {
         );
         await controller.initialize();
 
-        final first = await controller.saveServerProfile(
+        final first = await controller.saveServerProvider(
           name: 'First',
           endpoint: 'https://first.example/v1/chat/completions',
-          model: 'first-model',
           apiKey: 'first-key',
+        );
+        await controller.saveModelProfile(
+          providerId: first.id,
+          model: 'first-model',
           contextWindowTokens: 32768,
         );
-        final second = await controller.saveServerProfile(
+        final second = await controller.saveServerProvider(
           name: 'Second',
           endpoint: 'https://second.example/v1/chat/completions',
-          model: 'second-model',
           apiKey: 'second-key',
+        );
+        await controller.saveModelProfile(
+          providerId: second.id,
+          model: 'second-model',
           contextWindowTokens: 2097152,
         );
 
-        expect(controller.serverProfiles, hasLength(2));
-        expect(controller.activeServerProfileId, second.id);
-        expect(controller.activeServerProfile?.contextWindowTokens, 2097152);
+        expect(controller.serverProviders, hasLength(2));
+        expect(controller.modelProfiles, hasLength(2));
+        expect(controller.activeServerProviderId, second.id);
+        expect(controller.activeModelProfile?.contextWindowTokens, 2097152);
         expect(controller.apiKey, 'second-key');
-        await controller.selectServerProfile(first.id);
+        await controller.selectServerProvider(first.id);
         expect(controller.model, 'first-model');
         expect(controller.apiKey, 'first-key');
-        await controller.deleteServerProfile(first.id);
-        expect(controller.activeServerProfileId, second.id);
+        await controller.deleteServerProvider(first.id);
+        expect(controller.activeServerProviderId, second.id);
+        expect(controller.modelProfiles, hasLength(1));
         expect(controller.apiKey, 'second-key');
         expect(secureValues.values, isNot(contains('first-key')));
       },
@@ -245,11 +261,11 @@ void main() {
 
         await controller.initialize();
 
-        expect(controller.serverProfiles, hasLength(1));
-        expect(controller.activeServerProfile?.id, 'legacy');
+        expect(controller.serverProviders, hasLength(1));
+        expect(controller.activeServerProvider?.id, 'legacy');
         expect(
-          controller.activeServerProfile?.contextWindowTokens,
-          AiServerProfile.defaultContextWindowTokens,
+          controller.activeModelProfile?.contextWindowTokens,
+          AiModelProfile.defaultContextWindowTokens,
         );
         expect(controller.apiKey, secret);
         expect(
@@ -259,9 +275,64 @@ void main() {
         expect(secureValues.values, contains(secret));
         expect(
           preferences.getString(
-            AiSettingsController.serverProfilesPreferenceKey,
+            AiSettingsController.serverProvidersPreferenceKey,
           ),
           isNot(contains(secret)),
+        );
+      },
+    );
+
+    test(
+      'splits combined provider profiles into provider and model records',
+      () async {
+        SharedPreferences.setMockInitialValues({
+          AiSettingsController.serverProfilesPreferenceKey: jsonEncode([
+            {
+              'id': 'old-provider',
+              'name': 'Existing Server',
+              'endpoint': 'https://existing.example/v1/chat/completions',
+              'model': 'existing-model',
+              'context_window_tokens': 65536,
+              'context_window_detected': true,
+              'available_models': [
+                {'id': 'existing-model', 'context_window_tokens': 65536},
+              ],
+            },
+          ]),
+          AiSettingsController.activeServerProfileIdPreferenceKey:
+              'old-provider',
+        });
+        final preferences = await SharedPreferences.getInstance();
+        final controller = AiSettingsController(
+          preferences,
+          pccApi: _pccApi(available: false),
+          secureRead: (key) async =>
+              key.contains('old-provider') ? 'existing-secret' : null,
+          secureWrite: (_, _) async {},
+        );
+
+        await controller.initialize();
+
+        expect(controller.serverProviders, hasLength(1));
+        expect(controller.modelProfiles, hasLength(1));
+        expect(controller.activeServerProvider?.name, 'Existing Server');
+        expect(controller.activeModelProfile?.model, 'existing-model');
+        expect(controller.activeModelProfile?.contextWindowTokens, 65536);
+        expect(controller.activeModelProfile?.contextWindowDetected, isTrue);
+        expect(controller.apiKey, 'existing-secret');
+        final storedProviders =
+            jsonDecode(
+                  preferences.getString(
+                    AiSettingsController.serverProvidersPreferenceKey,
+                  )!,
+                )
+                as List;
+        expect((storedProviders.single as Map).containsKey('model'), isFalse);
+        expect(
+          preferences.getString(
+            AiSettingsController.modelProfilesPreferenceKey,
+          ),
+          contains('existing-model'),
         );
       },
     );

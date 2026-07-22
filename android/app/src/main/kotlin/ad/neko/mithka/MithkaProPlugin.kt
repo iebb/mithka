@@ -441,7 +441,6 @@ class MithkaProPlugin(
         put("storeAvailable", storeAvailable && distribution == DISTRIBUTION_PLAY_STORE)
         put("isPro", isPro)
         put("distribution", distribution)
-        put("isLimitExempt", distribution != DISTRIBUTION_PLAY_STORE)
         if (status != null) put("status", status)
         if (productId != null) put("productId", productId)
         // Google Play Billing does not expose subscription expiry client-side.

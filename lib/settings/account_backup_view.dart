@@ -14,7 +14,6 @@ import '../components/app_icons.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
-import '../pro/mithka_pro_view.dart';
 import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
 
@@ -43,7 +42,6 @@ class _AccountBackupViewState extends State<AccountBackupView> {
   var _working = false;
   var _consented = false;
   var _supported = false;
-  var _canAddConsent = false;
   List<AccountSessionBackup> _backups = const [];
 
   @override
@@ -59,9 +57,6 @@ class _AccountBackupViewState extends State<AccountBackupView> {
       final consented = widget.showCreateAction
           ? await _service.activeAccountHasConsent()
           : false;
-      final canAddConsent = widget.showCreateAction
-          ? await _service.canAddBackupConsentForActiveAccount()
-          : false;
       final backups = widget.excludeLoggedInBackups
           ? await _service.listRestorableBackups()
           : await _service.listBackups();
@@ -69,7 +64,6 @@ class _AccountBackupViewState extends State<AccountBackupView> {
         setState(() {
           _consented = consented;
           _supported = supported;
-          _canAddConsent = canAddConsent;
           _backups = backups;
         });
       }
@@ -82,10 +76,6 @@ class _AccountBackupViewState extends State<AccountBackupView> {
 
   Future<void> _setEnabled(bool value) async {
     if (_working) return;
-    if (value && !_canAddConsent && !_consented) {
-      _openMithkaPro();
-      return;
-    }
     setState(() {
       _consented = value;
       _working = true;
@@ -93,8 +83,6 @@ class _AccountBackupViewState extends State<AccountBackupView> {
     try {
       await _service.setActiveAccountConsent(value);
       await _load();
-    } on AccountBackupLimitException {
-      if (mounted) _openMithkaPro();
     } catch (error) {
       if (mounted) showToast(context, error.toString());
     } finally {
@@ -402,12 +390,6 @@ class _AccountBackupViewState extends State<AccountBackupView> {
 
   void _close() {
     Navigator.of(context).pop(widget.returnToPhoneOnBack ? true : null);
-  }
-
-  void _openMithkaPro() {
-    Navigator.of(context).push(
-      PageRouteBuilder<void>(pageBuilder: (_, _, _) => const MithkaProView()),
-    );
   }
 
   @override

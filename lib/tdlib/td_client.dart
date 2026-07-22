@@ -1054,9 +1054,11 @@ class TdClient {
         'api_id': useCustomApi ? api.apiId : Secrets.apiId,
         'api_hash': useCustomApi ? api.apiHash.trim() : Secrets.apiHash,
         'system_language_code': _safeSystemLanguageCode(),
-        'device_model': Platform.isIOS ? 'iPhone' : 'Android',
-        'system_version': _safeSystemVersion(),
-        'application_version': '1.0',
+        'device_model': api.resolvedDeviceModel(
+          Platform.isIOS ? 'iPhone' : 'Android',
+        ),
+        'system_version': api.resolvedSystemVersion(_safeSystemVersion()),
+        'application_version': api.resolvedApplicationVersion('1.0'),
       }),
     );
     if (clientId == _activeClientId) {

@@ -18,19 +18,230 @@ class AiSettingsView extends StatefulWidget {
   State<AiSettingsView> createState() => _AiSettingsViewState();
 }
 
+class _AiModelEditorSheet extends StatefulWidget {
+  const _AiModelEditorSheet({
+    required this.settings,
+    required this.provider,
+    required this.discoveredModel,
+    required this.manual,
+  });
+
+  final AiSettingsController settings;
+  final AiServerProvider provider;
+  final OpenAiCompatibleModelInfo? discoveredModel;
+  final bool manual;
+
+  @override
+  State<_AiModelEditorSheet> createState() => _AiModelEditorSheetState();
+}
+
+class _AiModelEditorSheetState extends State<_AiModelEditorSheet> {
+  late final TextEditingController _model;
+  late final TextEditingController _contextWindow;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _model = TextEditingController(text: widget.discoveredModel?.id ?? '');
+    _contextWindow = TextEditingController(
+      text:
+          '${widget.discoveredModel?.contextWindowTokens ?? AiModelProfile.defaultContextWindowTokens}',
+    );
+  }
+
+  @override
+  void dispose() {
+    _model.dispose();
+    _contextWindow.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: Container(
+          margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          decoration: BoxDecoration(
+            color: c.groupedBackground,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SettingsRow(
+                  title: AppStringKeys.aiProviders.l10n(context),
+                  value: widget.provider.name,
+                  leading: const SettingsIconTile(
+                    icon: HeroAppIcons.server,
+                    backgroundColor: Color(0xFF3478F6),
+                  ),
+                  showChevron: false,
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                _field(
+                  controller: _model,
+                  icon: HeroAppIcons.cube,
+                  label: AppStringKeys.aiServerModel.l10n(context),
+                  hint: AppStringKeys.aiServerModelHint.l10n(context),
+                  readOnly: !widget.manual,
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                _field(
+                  controller: _contextWindow,
+                  icon: HeroAppIcons.tokenStack,
+                  label: AppStringKeys.aiContextWindow.l10n(context),
+                  hint: '${AiModelProfile.defaultContextWindowTokens}',
+                  keyboardType: TextInputType.number,
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, AppSpacing.sm, 4, 0),
+                  child: Text(
+                    (widget.discoveredModel?.contextWindowTokens != null
+                            ? AppStringKeys.aiContextDetected
+                            : AppStringKeys.aiContextManual)
+                        .l10n(context),
+                    style: AppTextStyle.footnote(c.textSecondary),
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                _saveButton(),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _field({
+    required TextEditingController controller,
+    required AppIconData icon,
+    required String label,
+    required String hint,
+    TextInputType? keyboardType,
+    bool readOnly = false,
+  }) {
+    final c = context.colors;
+    return Semantics(
+      textField: true,
+      label: label,
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 60),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: c.card,
+          borderRadius: BorderRadius.circular(AppRadius.card),
+          border: Border.all(color: c.divider, width: 0.5),
+        ),
+        child: Row(
+          children: [
+            AppIcon(icon, size: 19, color: c.textSecondary),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label, style: AppTextStyle.caption(c.textTertiary)),
+                  const SizedBox(height: 3),
+                  TextField(
+                    controller: controller,
+                    readOnly: readOnly,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    keyboardType: keyboardType,
+                    style: AppTextStyle.body(c.textPrimary),
+                    cursorColor: AppTheme.brand,
+                    decoration: InputDecoration(
+                      border: InputBorder.none,
+                      isCollapsed: true,
+                      hintText: hint,
+                      hintStyle: AppTextStyle.body(c.textTertiary),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _saveButton() => Semantics(
+    button: true,
+    enabled: !_saving,
+    child: GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _saving ? null : _save,
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 140),
+        opacity: _saving ? 0.55 : 1,
+        child: Container(
+          height: 48,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: AppTheme.brand,
+            borderRadius: BorderRadius.circular(AppRadius.card),
+          ),
+          child: _saving
+              ? const AppActivityIndicator(size: 20, color: Color(0xFFFFFFFF))
+              : Text(
+                  AppStringKeys.aiSaveModel.l10n(context),
+                  style: const TextStyle(
+                    color: Color(0xFFFFFFFF),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+        ),
+      ),
+    ),
+  );
+
+  Future<void> _save() async {
+    final contextWindow = int.tryParse(_contextWindow.text.trim());
+    if (contextWindow == null) {
+      showToast(context, AppStringKeys.aiInvalidModel.l10n(context));
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      await widget.settings.saveModelProfile(
+        providerId: widget.provider.id,
+        model: _model.text,
+        contextWindowTokens: contextWindow,
+        contextWindowDetected:
+            widget.discoveredModel?.contextWindowTokens != null,
+      );
+      if (!mounted) return;
+      showToast(context, AppStringKeys.aiSaved.l10n(context));
+      Navigator.of(context).pop();
+    } on FormatException {
+      if (!mounted) return;
+      showToast(context, AppStringKeys.aiInvalidModel.l10n(context));
+      setState(() => _saving = false);
+    }
+  }
+}
+
 class _AiSettingsViewState extends State<AiSettingsView> {
   final _providerName = TextEditingController();
   final _endpoint = TextEditingController();
-  final _model = TextEditingController();
   final _apiKey = TextEditingController();
-  final _contextWindow = TextEditingController();
-  List<OpenAiCompatibleModelInfo> _availableModels = const [];
   String? _editingProfileId;
-  bool _contextWindowDetected = false;
   bool _didLoadValues = false;
   bool _didRefreshPccCapabilities = false;
   bool _saving = false;
-  bool _refreshingModels = false;
   bool _obscureApiKey = true;
 
   @override
@@ -51,9 +262,7 @@ class _AiSettingsViewState extends State<AiSettingsView> {
   void dispose() {
     _providerName.dispose();
     _endpoint.dispose();
-    _model.dispose();
     _apiKey.dispose();
-    _contextWindow.dispose();
     super.dispose();
   }
 
@@ -86,11 +295,23 @@ class _AiSettingsViewState extends State<AiSettingsView> {
                             title: AppStringKeys.aiUnreadSummary.l10n(context),
                             value: settings.enabled,
                             leading: const SettingsIconTile(
-                              icon: HeroAppIcons.wandMagicSparkles,
+                              icon: HeroAppIcons.cpuChip,
                               backgroundColor: Color(0xFF7467F0),
                             ),
                             onChanged: (value) =>
                                 unawaited(settings.setEnabled(value)),
+                          ),
+                          const InsetDivider(leadingInset: 56),
+                          SettingsRow(
+                            title: AppStringKeys.aiOutputLanguage.l10n(context),
+                            value: AppStringKeys.aiOutputSameLanguage.l10n(
+                              context,
+                            ),
+                            leading: const SettingsIconTile(
+                              icon: HeroAppIcons.language,
+                              backgroundColor: Color(0xFF16A085),
+                            ),
+                            showChevron: false,
                           ),
                         ],
                       ),
@@ -108,23 +329,11 @@ class _AiSettingsViewState extends State<AiSettingsView> {
                           SettingsRow(
                             title: AppStringKeys.aiProcessingMode.l10n(context),
                             value: _providerLabel(context, settings.provider),
-                            leading: const SettingsIconTile(
-                              icon: HeroAppIcons.networkWired,
-                              backgroundColor: Color(0xFF3478F6),
+                            leading: SettingsIconTile(
+                              icon: _providerIcon(settings.provider),
+                              backgroundColor: const Color(0xFF3478F6),
                             ),
                             onTap: () => _showProviderPicker(settings),
-                          ),
-                          const InsetDivider(leadingInset: 56),
-                          SettingsRow(
-                            title: AppStringKeys.aiOutputLanguage.l10n(context),
-                            value: AppStringKeys.aiOutputSameLanguage.l10n(
-                              context,
-                            ),
-                            leading: const SettingsIconTile(
-                              icon: HeroAppIcons.language,
-                              backgroundColor: Color(0xFF16A085),
-                            ),
-                            showChevron: false,
                           ),
                         ],
                       ),
@@ -168,9 +377,7 @@ class _AiSettingsViewState extends State<AiSettingsView> {
                       .l10n(context),
               leading: SettingsIconTile(
                 icon: available
-                    ? (isPcc
-                          ? HeroAppIcons.cloudArrowDown
-                          : HeroAppIcons.mobileScreenButton)
+                    ? (isPcc ? HeroAppIcons.cloud : HeroAppIcons.cpuChip)
                     : HeroAppIcons.triangleExclamation,
                 backgroundColor: available
                     ? const Color(0xFF20A45B)
@@ -207,23 +414,25 @@ class _AiSettingsViewState extends State<AiSettingsView> {
     BuildContext context,
     AiSettingsController settings,
   ) {
+    final activeProvider = settings.activeServerProvider;
+    final activeModel = settings.activeModelProfile;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _sectionTitle(context, AppStringKeys.aiProviders.l10n(context)),
         SettingsCard(
           children: [
-            if (settings.serverProfiles.isNotEmpty) ...[
+            if (settings.serverProviders.isNotEmpty) ...[
               SettingsRow(
                 title: AppStringKeys.aiProviders.l10n(context),
                 value:
-                    settings.activeServerProfile?.name ??
+                    activeProvider?.name ??
                     AppStringKeys.aiNoProvider.l10n(context),
                 leading: const SettingsIconTile(
-                  icon: HeroAppIcons.networkWired,
+                  icon: HeroAppIcons.server,
                   backgroundColor: Color(0xFF3478F6),
                 ),
-                onTap: () => _showServerProfilePicker(settings),
+                onTap: () => _showServerProviderPicker(settings),
               ),
               const InsetDivider(leadingInset: 56),
             ],
@@ -241,7 +450,7 @@ class _AiSettingsViewState extends State<AiSettingsView> {
         _inputField(
           context,
           controller: _providerName,
-          icon: HeroAppIcons.networkWired,
+          icon: HeroAppIcons.server,
           label: AppStringKeys.aiProviderName.l10n(context),
           hint: AppStringKeys.aiProviderNameHint.l10n(context),
         ),
@@ -249,14 +458,10 @@ class _AiSettingsViewState extends State<AiSettingsView> {
         _inputField(
           context,
           controller: _endpoint,
-          icon: HeroAppIcons.networkWired,
+          icon: HeroAppIcons.link,
           label: AppStringKeys.aiServerEndpoint.l10n(context),
           hint: AppStringKeys.aiServerEndpointHint.l10n(context),
           keyboardType: TextInputType.url,
-          onChanged: (_) => setState(() {
-            _availableModels = const [];
-            _contextWindowDetected = false;
-          }),
         ),
         const SizedBox(height: AppSpacing.sm),
         _inputField(
@@ -266,7 +471,6 @@ class _AiSettingsViewState extends State<AiSettingsView> {
           label: AppStringKeys.aiServerApiKey.l10n(context),
           hint: AppStringKeys.aiServerApiKeyOptional.l10n(context),
           obscureText: _obscureApiKey,
-          onChanged: (_) => setState(() => _contextWindowDetected = false),
           trailing: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () => setState(() => _obscureApiKey = !_obscureApiKey),
@@ -280,63 +484,13 @@ class _AiSettingsViewState extends State<AiSettingsView> {
             ),
           ),
         ),
-        const SizedBox(height: AppSpacing.sm),
-        _inputField(
-          context,
-          controller: _model,
-          icon: HeroAppIcons.wandMagicSparkles,
-          label: AppStringKeys.aiServerModel.l10n(context),
-          hint: AppStringKeys.aiServerModelHint.l10n(context),
-          onChanged: (_) => setState(() => _contextWindowDetected = false),
-          trailing: _availableModels.isEmpty
-              ? null
-              : GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _showModelPicker,
-                  child: Padding(
-                    padding: const EdgeInsets.all(8),
-                    child: AppIcon(
-                      HeroAppIcons.chevronDown,
-                      size: 18,
-                      color: context.colors.textSecondary,
-                    ),
-                  ),
-                ),
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        _inputField(
-          context,
-          controller: _contextWindow,
-          icon: HeroAppIcons.clock,
-          label: AppStringKeys.aiContextWindow.l10n(context),
-          hint: '${AiServerProfile.defaultContextWindowTokens}',
-          keyboardType: TextInputType.number,
-          onChanged: (_) => setState(() => _contextWindowDetected = false),
-        ),
-        _note(
-          context,
-          (_contextWindowDetected
-                  ? AppStringKeys.aiContextDetected
-                  : AppStringKeys.aiContextManual)
-              .l10n(context),
-        ),
         _note(context, AppStringKeys.aiServerPrivacy.l10n(context)),
         const SizedBox(height: AppSpacing.lg),
         _actionButton(
           context,
-          label: AppStringKeys.aiRefreshModels.l10n(context),
-          saving: _refreshingModels,
-          onTap: _refreshModels,
-          backgroundColor: context.colors.card,
-          foregroundColor: AppTheme.brand,
-          borderColor: AppTheme.brand,
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        _actionButton(
-          context,
-          label: AppStringKeys.aiSave.l10n(context),
+          label: AppStringKeys.aiSaveProvider.l10n(context),
           saving: _saving,
-          onTap: _saveServerConfiguration,
+          onTap: _saveServerProvider,
         ),
         if (_editingProfileId != null) ...[
           const SizedBox(height: AppSpacing.sm),
@@ -344,7 +498,60 @@ class _AiSettingsViewState extends State<AiSettingsView> {
             context,
             label: AppStringKeys.aiDeleteProvider.l10n(context),
             saving: _saving,
-            onTap: _deleteServerConfiguration,
+            onTap: _deleteServerProvider,
+            backgroundColor: const Color(0xFFDC3C3C),
+          ),
+        ],
+        const SizedBox(height: AppSpacing.section),
+        _sectionTitle(context, AppStringKeys.aiModels.l10n(context)),
+        SettingsCard(
+          children: [
+            if (activeProvider != null) ...[
+              SettingsRow(
+                title: AppStringKeys.aiServerModel.l10n(context),
+                value:
+                    activeModel?.model ?? AppStringKeys.aiNoModel.l10n(context),
+                leading: const SettingsIconTile(
+                  icon: HeroAppIcons.cube,
+                  backgroundColor: Color(0xFF7467F0),
+                ),
+                onTap: settings.modelsForProvider(activeProvider.id).isEmpty
+                    ? null
+                    : () => _showSavedModelPicker(settings),
+              ),
+              const InsetDivider(leadingInset: 56),
+            ],
+            SettingsRow(
+              title: AppStringKeys.aiAddModel.l10n(context),
+              value: activeProvider == null
+                  ? AppStringKeys.aiAddProviderFirst.l10n(context)
+                  : '',
+              leading: SettingsIconTile(
+                icon: HeroAppIcons.circlePlus,
+                backgroundColor: activeProvider == null
+                    ? context.colors.textTertiary
+                    : const Color(0xFF20A45B),
+              ),
+              onTap: activeProvider == null
+                  ? null
+                  : () => _startAddModel(settings),
+              showChevron: activeProvider != null,
+            ),
+          ],
+        ),
+        if (activeModel != null) ...[
+          _note(
+            context,
+            context.l10n.t(AppStringKeys.aiModelProvider, {
+              'value1': activeProvider?.name ?? '',
+            }),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          _actionButton(
+            context,
+            label: AppStringKeys.aiDeleteModel.l10n(context),
+            saving: _saving,
+            onTap: () => _deleteActiveModel(settings),
             backgroundColor: const Color(0xFFDC3C3C),
           ),
         ],
@@ -360,6 +567,7 @@ class _AiSettingsViewState extends State<AiSettingsView> {
     required String hint,
     TextInputType? keyboardType,
     bool obscureText = false,
+    bool readOnly = false,
     Widget? trailing,
     ValueChanged<String>? onChanged,
   }) {
@@ -389,6 +597,7 @@ class _AiSettingsViewState extends State<AiSettingsView> {
                   TextField(
                     controller: controller,
                     obscureText: obscureText,
+                    readOnly: readOnly,
                     autocorrect: false,
                     enableSuggestions: false,
                     keyboardType: keyboardType,
@@ -456,24 +665,16 @@ class _AiSettingsViewState extends State<AiSettingsView> {
     );
   }
 
-  Future<void> _saveServerConfiguration() async {
+  Future<void> _saveServerProvider() async {
     if (_saving) return;
     setState(() => _saving = true);
     final settings = context.read<AiSettingsController>();
     try {
-      final contextWindow = int.tryParse(_contextWindow.text.trim());
-      if (contextWindow == null) {
-        throw const FormatException('A numeric context window is required.');
-      }
-      final saved = await settings.saveServerProfile(
+      final saved = await settings.saveServerProvider(
         id: _editingProfileId,
         name: _providerName.text,
         endpoint: _endpoint.text,
-        model: _model.text,
         apiKey: _apiKey.text,
-        contextWindowTokens: contextWindow,
-        contextWindowDetected: _contextWindowDetected,
-        availableModels: _availableModels,
       );
       _editingProfileId = saved.id;
       if (mounted) showToast(context, AppStringKeys.aiSaved.l10n(context));
@@ -486,54 +687,15 @@ class _AiSettingsViewState extends State<AiSettingsView> {
     }
   }
 
-  Future<void> _refreshModels() async {
-    if (_refreshingModels) return;
-    setState(() => _refreshingModels = true);
-    try {
-      final settings = context.read<AiSettingsController>();
-      final models = await settings.discoverModels(
-        endpoint: _endpoint.text,
-        apiKey: _apiKey.text,
-        preferredModel: _model.text,
-      );
-      if (!mounted) return;
-      setState(() {
-        _availableModels = models;
-        if (_model.text.trim().isEmpty && models.isNotEmpty) {
-          _model.text = models.first.id;
-        }
-        final selected = models.where((item) => item.id == _model.text.trim());
-        final contextTokens = selected.isEmpty
-            ? null
-            : selected.first.contextWindowTokens;
-        _contextWindowDetected = contextTokens != null;
-        if (contextTokens != null) {
-          _contextWindow.text = '$contextTokens';
-        }
-      });
-      showToast(
-        context,
-        context.l10n.t(AppStringKeys.aiModelsLoaded, {'value1': models.length}),
-      );
-      if (models.isNotEmpty) await _showModelPicker();
-    } on Object {
-      if (mounted) {
-        showToast(context, AppStringKeys.aiModelsFailed.l10n(context));
-      }
-    } finally {
-      if (mounted) setState(() => _refreshingModels = false);
-    }
-  }
-
-  Future<void> _deleteServerConfiguration() async {
+  Future<void> _deleteServerProvider() async {
     final profileId = _editingProfileId;
     if (profileId == null || _saving) return;
     setState(() => _saving = true);
     try {
       final settings = context.read<AiSettingsController>();
-      await settings.deleteServerProfile(profileId);
+      await settings.deleteServerProvider(profileId);
       if (!mounted) return;
-      _loadProfile(settings.activeServerProfile, settings.apiKey);
+      _loadProfile(settings.activeServerProvider, settings.apiKey);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -544,27 +706,18 @@ class _AiSettingsViewState extends State<AiSettingsView> {
       _editingProfileId = null;
       _providerName.clear();
       _endpoint.clear();
-      _model.clear();
       _apiKey.clear();
-      _contextWindow.text = '${AiServerProfile.defaultContextWindowTokens}';
-      _availableModels = const [];
-      _contextWindowDetected = false;
     });
   }
 
-  void _loadProfile(AiServerProfile? profile, String apiKey) {
-    _editingProfileId = profile?.id;
-    _providerName.text = profile?.name ?? '';
-    _endpoint.text = profile?.endpoint ?? '';
-    _model.text = profile?.model ?? '';
+  void _loadProfile(AiServerProvider? provider, String apiKey) {
+    _editingProfileId = provider?.id;
+    _providerName.text = provider?.name ?? '';
+    _endpoint.text = provider?.endpoint ?? '';
     _apiKey.text = apiKey;
-    _contextWindow.text =
-        '${profile?.contextWindowTokens ?? AiServerProfile.defaultContextWindowTokens}';
-    _availableModels = profile?.availableModels ?? const [];
-    _contextWindowDetected = profile?.contextWindowDetected ?? false;
   }
 
-  Future<void> _showServerProfilePicker(AiSettingsController settings) async {
+  Future<void> _showServerProviderPicker(AiSettingsController settings) async {
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -583,20 +736,20 @@ class _AiSettingsViewState extends State<AiSettingsView> {
             clipBehavior: Clip.antiAlias,
             child: ListView.separated(
               shrinkWrap: true,
-              itemCount: settings.serverProfiles.length,
+              itemCount: settings.serverProviders.length,
               separatorBuilder: (_, _) => const InsetDivider(leadingInset: 56),
               itemBuilder: (_, index) {
-                final profile = settings.serverProfiles[index];
-                final selected = profile.id == settings.activeServerProfileId;
+                final provider = settings.serverProviders[index];
+                final selected = provider.id == settings.activeServerProviderId;
                 return GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: () async {
-                    await settings.selectServerProfile(profile.id);
+                    await settings.selectServerProvider(provider.id);
                     if (!mounted || !sheetContext.mounted) return;
                     setState(() {
                       _loadProfile(
-                        profile,
-                        settings.apiKeyForServerProfile(profile.id),
+                        provider,
+                        settings.apiKeyForServerProvider(provider.id),
                       );
                     });
                     Navigator.of(sheetContext).pop();
@@ -608,7 +761,7 @@ class _AiSettingsViewState extends State<AiSettingsView> {
                       child: Row(
                         children: [
                           const SettingsIconTile(
-                            icon: HeroAppIcons.networkWired,
+                            icon: HeroAppIcons.server,
                             backgroundColor: Color(0xFF3478F6),
                           ),
                           const SizedBox(width: 12),
@@ -618,13 +771,13 @@ class _AiSettingsViewState extends State<AiSettingsView> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  profile.name,
+                                  provider.name,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: AppTextStyle.body(c.textPrimary),
                                 ),
                                 Text(
-                                  profile.model,
+                                  provider.endpoint,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: AppTextStyle.caption(c.textSecondary),
@@ -651,9 +804,11 @@ class _AiSettingsViewState extends State<AiSettingsView> {
     );
   }
 
-  Future<void> _showModelPicker() async {
-    final models = _availableModels;
-    if (models.isEmpty || !mounted) return;
+  Future<void> _showSavedModelPicker(AiSettingsController settings) async {
+    final provider = settings.activeServerProvider;
+    if (provider == null) return;
+    final models = settings.modelsForProvider(provider.id);
+    if (models.isEmpty) return;
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -673,38 +828,44 @@ class _AiSettingsViewState extends State<AiSettingsView> {
             child: ListView.separated(
               shrinkWrap: true,
               itemCount: models.length,
-              separatorBuilder: (_, _) => const InsetDivider(leadingInset: 16),
+              separatorBuilder: (_, _) => const InsetDivider(leadingInset: 56),
               itemBuilder: (_, index) {
                 final model = models[index];
-                final selected = model.id == _model.text.trim();
+                final selected = model.id == settings.activeModelProfileId;
                 return GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: () async {
-                    Navigator.of(sheetContext).pop();
-                    await _selectModel(model);
+                    await settings.selectModelProfile(model.id);
+                    if (sheetContext.mounted) {
+                      Navigator.of(sheetContext).pop();
+                    }
                   },
                   child: SizedBox(
-                    height: 52,
+                    height: 60,
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: Row(
                         children: [
+                          const SettingsIconTile(
+                            icon: HeroAppIcons.cube,
+                            backgroundColor: Color(0xFF7467F0),
+                          ),
+                          const SizedBox(width: 12),
                           Expanded(
                             child: Text(
-                              model.id,
+                              model.model,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: AppTextStyle.body(c.textPrimary),
                             ),
                           ),
-                          if (model.contextWindowTokens case final tokens?)
-                            Padding(
-                              padding: const EdgeInsets.only(right: 10),
-                              child: Text(
-                                '${tokens ~/ 1024}K',
-                                style: AppTextStyle.caption(c.textSecondary),
-                              ),
+                          Padding(
+                            padding: const EdgeInsets.only(right: 10),
+                            child: Text(
+                              '${model.contextWindowTokens ~/ 1024}K',
+                              style: AppTextStyle.caption(c.textSecondary),
                             ),
+                          ),
                           if (selected)
                             AppIcon(
                               HeroAppIcons.check,
@@ -724,45 +885,248 @@ class _AiSettingsViewState extends State<AiSettingsView> {
     );
   }
 
-  Future<void> _selectModel(OpenAiCompatibleModelInfo model) async {
-    if (!mounted) return;
-    setState(() {
-      _model.text = model.id;
-      final contextTokens = model.contextWindowTokens;
-      _contextWindowDetected = contextTokens != null;
-      _contextWindow.text =
-          '${contextTokens ?? AiServerProfile.defaultContextWindowTokens}';
-    });
-    if (model.contextWindowTokens != null) return;
-
-    setState(() => _refreshingModels = true);
+  Future<void> _startAddModel(AiSettingsController settings) async {
+    final provider = await _pickModelProvider(settings);
+    if (provider == null || !mounted) return;
+    var models = provider.availableModels;
     try {
-      final settings = context.read<AiSettingsController>();
-      final detail = await settings.discoverModelDetails(
-        endpoint: _endpoint.text,
-        apiKey: _apiKey.text,
-        model: model.id,
-      );
-      final contextTokens = detail?.contextWindowTokens;
-      if (!mounted || contextTokens == null || _model.text != model.id) return;
-      setState(() {
-        _contextWindow.text = '$contextTokens';
-        _contextWindowDetected = true;
-        _availableModels = [
-          for (final available in _availableModels)
-            if (available.id == model.id)
-              OpenAiCompatibleModelInfo(
-                id: available.id,
-                contextWindowTokens: contextTokens,
-              )
-            else
-              available,
-        ];
-      });
+      models = await settings.refreshModelsForProvider(provider.id);
+      if (mounted) {
+        showToast(
+          context,
+          context.l10n.t(AppStringKeys.aiModelsLoaded, {
+            'value1': models.length,
+          }),
+        );
+      }
     } on Object {
-      // The model name is still usable. Context remains explicitly manual.
+      if (mounted) {
+        showToast(context, AppStringKeys.aiModelsFailed.l10n(context));
+      }
+    }
+    if (!mounted) return;
+    final choice = await _pickDiscoveredModel(models);
+    if (choice == null || !mounted) return;
+    var discovered = choice.model;
+    if (!choice.manual && discovered?.contextWindowTokens == null) {
+      try {
+        discovered =
+            await settings.discoverModelDetails(
+              endpoint: provider.endpoint,
+              apiKey: settings.apiKeyForServerProvider(provider.id),
+              model: discovered!.id,
+            ) ??
+            discovered;
+      } on Object {
+        // The model remains usable with an explicitly confirmed context size.
+      }
+    }
+    if (!mounted) return;
+    await _showModelEditor(
+      settings: settings,
+      provider: provider,
+      discoveredModel: discovered,
+      manual: choice.manual,
+    );
+  }
+
+  Future<AiServerProvider?> _pickModelProvider(AiSettingsController settings) =>
+      showModalBottomSheet<AiServerProvider>(
+        context: context,
+        backgroundColor: Colors.transparent,
+        builder: (sheetContext) {
+          final c = sheetContext.colors;
+          return SafeArea(
+            child: Container(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.62,
+              ),
+              margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              decoration: BoxDecoration(
+                color: c.card,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: settings.serverProviders.length,
+                separatorBuilder: (_, _) =>
+                    const InsetDivider(leadingInset: 56),
+                itemBuilder: (_, index) {
+                  final provider = settings.serverProviders[index];
+                  return GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => Navigator.of(sheetContext).pop(provider),
+                    child: SizedBox(
+                      height: 64,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Row(
+                          children: [
+                            const SettingsIconTile(
+                              icon: HeroAppIcons.server,
+                              backgroundColor: Color(0xFF3478F6),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    provider.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: AppTextStyle.body(c.textPrimary),
+                                  ),
+                                  Text(
+                                    provider.endpoint,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: AppTextStyle.caption(
+                                      c.textSecondary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          );
+        },
+      );
+
+  Future<({bool manual, OpenAiCompatibleModelInfo? model})?>
+  _pickDiscoveredModel(List<OpenAiCompatibleModelInfo> models) =>
+      showModalBottomSheet<({bool manual, OpenAiCompatibleModelInfo? model})>(
+        context: context,
+        backgroundColor: Colors.transparent,
+        builder: (sheetContext) {
+          final c = sheetContext.colors;
+          return SafeArea(
+            child: Container(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.68,
+              ),
+              margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              decoration: BoxDecoration(
+                color: c.card,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: models.length + 1,
+                separatorBuilder: (_, _) =>
+                    const InsetDivider(leadingInset: 56),
+                itemBuilder: (_, index) {
+                  if (index == models.length) {
+                    return _modelChoiceRow(
+                      sheetContext,
+                      icon: HeroAppIcons.pen,
+                      title: AppStringKeys.aiEnterModelManually.l10n(
+                        sheetContext,
+                      ),
+                      onTap: () => Navigator.of(
+                        sheetContext,
+                      ).pop((manual: true, model: null)),
+                    );
+                  }
+                  final model = models[index];
+                  return _modelChoiceRow(
+                    sheetContext,
+                    icon: HeroAppIcons.cube,
+                    title: model.id,
+                    value: model.contextWindowTokens == null
+                        ? ''
+                        : '${model.contextWindowTokens! ~/ 1024}K',
+                    onTap: () => Navigator.of(
+                      sheetContext,
+                    ).pop((manual: false, model: model)),
+                  );
+                },
+              ),
+            ),
+          );
+        },
+      );
+
+  Widget _modelChoiceRow(
+    BuildContext context, {
+    required AppIconData icon,
+    required String title,
+    String value = '',
+    required VoidCallback onTap,
+  }) {
+    final c = context.colors;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: SizedBox(
+        height: 60,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              SettingsIconTile(
+                icon: icon,
+                backgroundColor: const Color(0xFF7467F0),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyle.body(c.textPrimary),
+                ),
+              ),
+              if (value.isNotEmpty)
+                Text(value, style: AppTextStyle.caption(c.textSecondary)),
+              const SizedBox(width: 8),
+              AppIcon(
+                HeroAppIcons.chevronRight,
+                size: 16,
+                color: c.textTertiary,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showModelEditor({
+    required AiSettingsController settings,
+    required AiServerProvider provider,
+    required OpenAiCompatibleModelInfo? discoveredModel,
+    required bool manual,
+  }) => showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => _AiModelEditorSheet(
+      settings: settings,
+      provider: provider,
+      discoveredModel: discoveredModel,
+      manual: manual,
+    ),
+  );
+
+  Future<void> _deleteActiveModel(AiSettingsController settings) async {
+    final id = settings.activeModelProfileId;
+    if (id == null || _saving) return;
+    setState(() => _saving = true);
+    try {
+      await settings.deleteModelProfile(id);
     } finally {
-      if (mounted) setState(() => _refreshingModels = false);
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -787,21 +1151,21 @@ class _AiSettingsViewState extends State<AiSettingsView> {
                   sheetContext,
                   settings: settings,
                   provider: AiProviderMode.applePcc,
-                  icon: HeroAppIcons.cloudArrowDown,
+                  icon: HeroAppIcons.cloud,
                 ),
                 const InsetDivider(leadingInset: 56),
                 _providerOption(
                   sheetContext,
                   settings: settings,
                   provider: AiProviderMode.appleOnDevice,
-                  icon: HeroAppIcons.mobileScreenButton,
+                  icon: HeroAppIcons.cpuChip,
                 ),
                 const InsetDivider(leadingInset: 56),
                 _providerOption(
                   sheetContext,
                   settings: settings,
                   provider: AiProviderMode.openAiCompatible,
-                  icon: HeroAppIcons.networkWired,
+                  icon: HeroAppIcons.server,
                 ),
               ],
             ),
@@ -865,6 +1229,12 @@ class _AiSettingsViewState extends State<AiSettingsView> {
         AiProviderMode.openAiCompatible =>
           AppStringKeys.aiProviderOpenAiCompatible.l10n(context),
       };
+
+  AppIconData _providerIcon(AiProviderMode provider) => switch (provider) {
+    AiProviderMode.applePcc => HeroAppIcons.cloud,
+    AiProviderMode.appleOnDevice => HeroAppIcons.cpuChip,
+    AiProviderMode.openAiCompatible => HeroAppIcons.server,
+  };
 
   Widget _sectionTitle(BuildContext context, String title) => Padding(
     padding: const EdgeInsets.only(left: 4, bottom: AppSpacing.sm),

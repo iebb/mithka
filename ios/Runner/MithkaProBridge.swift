@@ -132,7 +132,6 @@ final class MithkaProBridge {
       "storeAvailable": AppStore.canMakePayments,
       "isPro": entitlement != nil,
       "distribution": distribution.rawValue,
-      "isLimitExempt": distribution != .appStore,
     ]
     if let expirationDate = entitlement?.expirationDate {
       response["expirationDateMillis"] = NSNumber(

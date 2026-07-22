@@ -138,7 +138,7 @@ class _SettingsViewState extends State<SettingsView> {
                   const InsetDivider(leadingInset: 56),
                   _navRow(
                     context,
-                    HeroAppIcons.wandMagicSparkles,
+                    HeroAppIcons.cpuChip,
                     AppStrings.t(AppStringKeys.aiSettingsTitle),
                     const Color(0xFF7467F0),
                     () => const AiSettingsView(),

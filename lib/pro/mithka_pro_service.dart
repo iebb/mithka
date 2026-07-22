@@ -39,7 +39,6 @@ class MithkaProState {
     required this.storeAvailable,
     required this.isPro,
     required this.distribution,
-    required this.isLimitExempt,
     this.expirationDate,
   });
 
@@ -47,14 +46,12 @@ class MithkaProState {
     : storeAvailable = false,
       isPro = false,
       distribution = MithkaDistribution.development,
-      isLimitExempt = true,
       expirationDate = null;
 
   const MithkaProState.uninitialized()
     : storeAvailable = false,
       isPro = false,
       distribution = MithkaDistribution.unknown,
-      isLimitExempt = false,
       expirationDate = null;
 
   factory MithkaProState.fromMap(Map<Object?, Object?> map) {
@@ -64,11 +61,6 @@ class MithkaProState {
       storeAvailable: map['storeAvailable'] == true,
       isPro: map['isPro'] == true,
       distribution: distribution,
-      isLimitExempt:
-          map['isLimitExempt'] == true ||
-          distribution == MithkaDistribution.testFlight ||
-          distribution == MithkaDistribution.apk ||
-          distribution == MithkaDistribution.development,
       expirationDate: expirationMillis == null || expirationMillis <= 0
           ? null
           : DateTime.fromMillisecondsSinceEpoch(expirationMillis, isUtc: true),
@@ -78,10 +70,7 @@ class MithkaProState {
   final bool storeAvailable;
   final bool isPro;
   final MithkaDistribution distribution;
-  final bool isLimitExempt;
   final DateTime? expirationDate;
-
-  bool get enforcesFreeCloudSessionSyncLimit => !isPro && !isLimitExempt;
 
   static int? _intValue(Object? value) {
     if (value is int) return value;
@@ -161,7 +150,6 @@ class MithkaProService extends ChangeNotifier {
     : _gateway = gateway ?? const MethodChannelMithkaProGateway();
 
   static final MithkaProService shared = MithkaProService();
-  static const freeCloudSessionSyncLimit = 4;
 
   final MithkaProGateway _gateway;
   MithkaProState _state = const MithkaProState.uninitialized();
@@ -176,16 +164,6 @@ class MithkaProService extends ChangeNotifier {
   bool get working => _working;
   bool get initialized => _initialized;
   bool get isPro => _state.isPro;
-  bool get isLimitExempt => _state.isLimitExempt;
-
-  bool canAddCloudSessionSync(
-    int currentSyncCount, {
-    bool alreadySynced = false,
-  }) =>
-      alreadySynced ||
-      currentSyncCount < freeCloudSessionSyncLimit ||
-      (_initialized && !_state.enforcesFreeCloudSessionSyncLimit);
-
   Future<void> initialize() async {
     if (_initialized || _loading) return;
     await refresh();

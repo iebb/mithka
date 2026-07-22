@@ -36,7 +36,12 @@ void main() {
     expect(find.byType(Checkbox), findsNothing);
     expect(find.byType(Switch), findsNothing);
     expect(find.byType(Radio<String>), findsNothing);
-    expect(find.text('Unlimited cloud session syncs'), findsOneWidget);
+    expect(find.text('Support Mithka development'), findsOneWidget);
+    expect(
+      find.text('The warm feeling that you supported the development.'),
+      findsOneWidget,
+    );
+    expect(find.text('Unlimited cloud session syncs'), findsNothing);
     expect(find.text('Unlimited accounts'), findsNothing);
   });
 
@@ -177,7 +182,6 @@ class _ViewGateway implements MithkaProGateway {
     'storeAvailable': true,
     'isPro': pro,
     'distribution': 'app_store',
-    'isLimitExempt': false,
     'expirationDateMillis': null,
   };
 

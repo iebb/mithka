@@ -4537,6 +4537,21 @@ class ChatViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  void clearTranslations(Iterable<int> messageIds) {
+    var changed = false;
+    for (final messageId in messageIds.toSet()) {
+      for (final message in _messageRefs(messageId)) {
+        if (message.translationText == null && !message.isTranslating) continue;
+        message.translationText = null;
+        message.translationEntities = const [];
+        message.translationLanguageCode = null;
+        message.isTranslating = false;
+        changed = true;
+      }
+    }
+    if (changed) notifyListeners();
+  }
+
   List<ChatMessage> _messageRefs(int messageId) {
     final refs = <ChatMessage>[];
     final index = messages.indexWhere((m) => m.id == messageId);

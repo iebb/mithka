@@ -3536,6 +3536,8 @@ void main() {
       final controller = TranslationController(prefs);
 
       expect(controller.enabled, isFalse);
+      expect(controller.translateChats, isTrue);
+      expect(controller.aiTranslationEnabled, isFalse);
       expect(controller.provider, TranslationProvider.tdlib);
       expect(controller.targetLanguageCode, 'zh-Hans');
       expect(
@@ -3544,21 +3546,38 @@ void main() {
       );
       expect(controller.libreTranslateEndpoint, isEmpty);
       expect(controller.libreTranslateApiKey, isEmpty);
+      expect(controller.ignoredLanguageCodes, isEmpty);
 
       controller.enabled = true;
+      controller.translateChats = false;
+      controller.aiTranslationEnabled = true;
       controller.provider = TranslationProvider.lingva;
       controller.targetLanguageCode = 'ja';
       controller.lingvaEndpoint = 'https://lingva.example.com/';
       controller.libreTranslateEndpoint = ' https://libre.example.com// ';
       controller.libreTranslateApiKey = ' secret-key ';
+      controller.setIgnoredLanguage('ja-JP', true);
+      controller.setAutoTranslateEnabledFor(42, true);
 
       final reloaded = TranslationController(prefs);
       expect(reloaded.enabled, isTrue);
+      expect(reloaded.translateChats, isFalse);
+      expect(reloaded.aiTranslationEnabled, isTrue);
       expect(reloaded.provider, TranslationProvider.lingva);
       expect(reloaded.targetLanguageCode, 'ja');
       expect(reloaded.lingvaEndpoint, 'https://lingva.example.com');
       expect(reloaded.libreTranslateEndpoint, 'https://libre.example.com');
       expect(reloaded.libreTranslateApiKey, 'secret-key');
+      expect(reloaded.ignoredLanguageCodes, {'ja'});
+      expect(reloaded.autoTranslateEnabledFor(42), isTrue);
+      expect(reloaded.shouldTranslateLanguage('ja'), isFalse);
+      expect(reloaded.shouldTranslateLanguage('zh-CN'), isTrue);
+      expect(reloaded.shouldTranslateLanguage('de'), isTrue);
+
+      reloaded.dismissAutoTranslateSuggestionFor(42);
+      final dismissed = TranslationController(prefs);
+      expect(dismissed.autoTranslateEnabledFor(42), isFalse);
+      expect(dismissed.autoTranslateSuggestionDismissedFor(42), isTrue);
     });
 
     test(

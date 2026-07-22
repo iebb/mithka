@@ -28,4 +28,14 @@ void main() {
       reason: 'performance collection must not be disabled',
     );
   });
+
+  test('iOS native SDK uses the same production trace sample rate', () {
+    final source = File('ios/Runner/AppDelegate.swift').readAsStringSync();
+
+    expect(source, contains('options.tracesSampleRate = 0.02'));
+    expect(
+      RegExp(r'options\\.tracesSampleRate\\s*=\\s*0\\.0\\s*;').hasMatch(source),
+      isFalse,
+    );
+  });
 }

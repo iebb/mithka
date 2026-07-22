@@ -19,8 +19,6 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../components/app_icons.dart';
 import '../components/ui_components.dart';
-import '../pro/mithka_pro_service.dart';
-import '../pro/mithka_pro_view.dart';
 import '../settings/account_backup_view.dart';
 import '../settings/api_credentials_view.dart';
 import '../settings/proxy_config.dart';
@@ -56,7 +54,6 @@ class _LoginViewState extends State<LoginView> {
   int _restorableBackupCount = 0;
   bool _backupConsent = false;
   bool _backupSupported = false;
-  int _backupConsentCount = 0;
 
   // When true, show the phone-number step even though TDLib is still at a later
   // auth state — lets the user back out of QR / code / 2FA to fix the number.
@@ -101,15 +98,9 @@ class _LoginViewState extends State<LoginView> {
   Future<void> _initializeBackupConsent() async {
     final slot = TdClient.shared.activeSlot;
     try {
-      final results = await Future.wait<Object>([
-        AccountBackupService.shared.isSupported,
-        AccountBackupService.shared.consentedAccountCount(),
-      ]);
-      final supported = results[0] as bool;
-      final accountCount = results[1] as int;
+      final supported = await AccountBackupService.shared.isSupported;
       final selectedByDefault =
           AccountBackupService.shouldSelectLoginBackupByDefault(
-            accountCount: accountCount,
             isIOS: Platform.isIOS,
             isSupported: supported,
           );
@@ -121,7 +112,6 @@ class _LoginViewState extends State<LoginView> {
       setState(() {
         _backupConsent = selectedByDefault;
         _backupSupported = supported;
-        _backupConsentCount = accountCount;
       });
     } catch (_) {
       if (mounted) setState(() => _backupSupported = false);
@@ -129,25 +119,10 @@ class _LoginViewState extends State<LoginView> {
   }
 
   Future<void> _setBackupConsent(bool value) async {
-    final pro = context.read<MithkaProService>();
-    if (value &&
-        !pro.canAddCloudSessionSync(
-          _backupConsentCount,
-          alreadySynced: _backupConsent,
-        )) {
-      _openMithkaPro();
-      return;
-    }
     setState(() => _backupConsent = value);
     await AccountBackupService.shared.setPendingLoginConsent(
       slot: TdClient.shared.activeSlot,
       enabled: value,
-    );
-  }
-
-  void _openMithkaPro() {
-    Navigator.of(context).push(
-      PageRouteBuilder<void>(pageBuilder: (_, _, _) => const MithkaProView()),
     );
   }
 
@@ -182,7 +157,6 @@ class _LoginViewState extends State<LoginView> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthManager>();
     final accounts = context.watch<AccountStore>();
-    final pro = context.watch<MithkaProService>();
     final c = context.colors;
     final beyondPhone =
         auth.step is AuthWaitCode ||
@@ -227,7 +201,7 @@ class _LoginViewState extends State<LoginView> {
                             auth.step is! AuthMissingCredentials &&
                             !accounts.isActiveSessionReplacementPending) ...[
                           const SizedBox(height: 18),
-                          _backupConsentRow(pro),
+                          _backupConsentRow(),
                         ],
                         if (auth.errorMessage != null) ...[
                           const SizedBox(height: 18),
@@ -284,75 +258,57 @@ class _LoginViewState extends State<LoginView> {
     );
   }
 
-  Widget _backupConsentRow(MithkaProService pro) {
+  Widget _backupConsentRow() {
     final c = context.colors;
-    final allowed = pro.canAddCloudSessionSync(
-      _backupConsentCount,
-      alreadySynced: _backupConsent,
-    );
     final label = Platform.isIOS
         ? AppStringKeys.accountBackupLoginICloud
         : AppStringKeys.accountBackupLoginAndroid;
     return Semantics(
       button: true,
-      enabled: allowed || _backupConsent,
+      enabled: true,
       checked: _backupConsent,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: allowed || _backupConsent
-            ? () => unawaited(_setBackupConsent(!_backupConsent))
-            : _openMithkaPro,
-        child: AnimatedOpacity(
-          duration: const Duration(milliseconds: 160),
-          opacity: allowed || _backupConsent ? 1 : 0.42,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-            decoration: BoxDecoration(
-              color: c.card,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: c.divider, width: 0.7),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                IgnorePointer(
-                  child: AppCheckbox(
-                    value: _backupConsent,
-                    enabled: allowed || _backupConsent,
-                    onChanged: (_) {},
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        AppStrings.t(label),
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: c.textPrimary,
-                        ),
+        onTap: () => unawaited(_setBackupConsent(!_backupConsent)),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          decoration: BoxDecoration(
+            color: c.card,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: c.divider, width: 0.7),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              IgnorePointer(
+                child: AppCheckbox(value: _backupConsent, onChanged: (_) {}),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      AppStrings.t(label),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: c.textPrimary,
                       ),
-                      const SizedBox(height: 3),
-                      Text(
-                        AppStrings.t(
-                          allowed || _backupConsent
-                              ? AppStringKeys.accountBackupLoginDescription
-                              : AppStringKeys.mithkaProBackupLimitReached,
-                        ),
-                        style: TextStyle(
-                          fontSize: 12,
-                          height: 1.3,
-                          color: c.textSecondary,
-                        ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      AppStrings.t(AppStringKeys.accountBackupLoginDescription),
+                      style: TextStyle(
+                        fontSize: 12,
+                        height: 1.3,
+                        color: c.textSecondary,
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

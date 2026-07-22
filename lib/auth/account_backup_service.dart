@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../pro/mithka_pro_service.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -58,13 +57,9 @@ class AccountBackupService {
   }) => pendingConsent ?? storedConsent;
 
   static bool shouldSelectLoginBackupByDefault({
-    required int accountCount,
     required bool isIOS,
     required bool isSupported,
-  }) =>
-      isIOS &&
-      isSupported &&
-      accountCount < MithkaProService.freeCloudSessionSyncLimit;
+  }) => isIOS && isSupported;
 
   Future<bool> get isSupported async {
     if (!_platformEligible) return false;
@@ -105,23 +100,6 @@ class AccountBackupService {
   Future<bool> activeAccountHasConsent() async {
     final userId = await _activeUserId();
     return userId != null && await hasConsentForAccountId('$userId');
-  }
-
-  Future<bool> canAddBackupConsent({String? existingAccountId}) async {
-    final protectedIds = await protectedAccountIds();
-    final existing =
-        existingAccountId != null && protectedIds.contains(existingAccountId);
-    return MithkaProService.shared.canAddCloudSessionSync(
-      protectedIds.length,
-      alreadySynced: existing,
-    );
-  }
-
-  Future<bool> canAddBackupConsentForActiveAccount() async {
-    final userId = await _activeUserId();
-    return canAddBackupConsent(
-      existingAccountId: userId == null ? null : '$userId',
-    );
   }
 
   Future<void> beginLoginConsent({
@@ -171,9 +149,6 @@ class AccountBackupService {
     await _ensureExplicitConsentMigration();
     final prefs = await SharedPreferences.getInstance();
     if (enabled) {
-      if (!await canAddBackupConsent(existingAccountId: accountId)) {
-        throw const AccountBackupLimitException();
-      }
       await prefs.setBool('$_consentPrefix$accountId', true);
       return;
     }
@@ -207,7 +182,6 @@ class AccountBackupService {
           await setAccountConsent(accountId, false);
           return;
         }
-        if (!await canAddBackupConsent(existingAccountId: accountId)) return;
         await prefs.setBool('$_consentPrefix$accountId', true);
       }
 
@@ -532,13 +506,6 @@ class AccountBackupService {
       return null;
     }
   }
-}
-
-class AccountBackupLimitException implements Exception {
-  const AccountBackupLimitException();
-
-  @override
-  String toString() => 'Mithka Pro is required for more than four backups';
 }
 
 class _ExportedAccountSession {

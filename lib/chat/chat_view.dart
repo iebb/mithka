@@ -52,7 +52,9 @@ import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
 import '../theme/telegram_cloud_theme.dart';
 import '../theme/theme_controller.dart';
+import 'ai_chat_translation_service.dart';
 import 'apple_pcc_unread_summary_provider.dart';
+import 'auto_translate_policy.dart';
 import 'blocked_message_runs.dart';
 import 'channel_direct_messages_service.dart';
 import 'channel_direct_messages_view.dart';
@@ -67,6 +69,7 @@ import 'chat_picker_view.dart';
 import 'chat_scroll_metrics.dart';
 import 'chat_search_view.dart';
 import 'chat_session_cache.dart';
+import 'chat_translation_panel.dart';
 import 'chat_unread_progress.dart';
 import 'chat_view_model.dart';
 import 'chat_wallpaper.dart';
@@ -784,6 +787,7 @@ class _ChatViewState extends State<ChatView> {
   late final ChatSessionRenderState? _sessionRenderState;
   late bool _olderHistoryExhaustedHint;
   late final ChatViewModel _vm;
+  late final TranslationController _translation;
   late final ScrollController _scroll;
   final _pinnedKey = GlobalKey(); // the pinned message's row, for scroll-to
   final _targetKey = GlobalKey(); // arbitrary linked/anchored message row
@@ -864,6 +868,15 @@ class _ChatViewState extends State<ChatView> {
   bool _openingUnreadSummary = false;
   bool _exitStatePrepared = false;
   bool _notificationVisibilityRegistered = false;
+  bool _chatLanguageDetectionRunning = false;
+  bool _chatLanguageDetectionComplete = false;
+  int? _chatLanguageDetectionNewestMessageId;
+  DateTime? _chatLanguageDetectedAt;
+  String? _detectedChatLanguage;
+  bool _autoTranslationRunning = false;
+  bool _autoTranslationPassPending = false;
+  final Set<int> _autoTranslationFailedMessageIds = <int>{};
+  final Set<int> _autoTranslatedMessageIds = <int>{};
 
   /// Gap (seconds) between messages that triggers a fresh time separator.
   static const _separatorGap = 300;
@@ -989,6 +1002,8 @@ class _ChatViewState extends State<ChatView> {
       sessionFirstContactInfo: _sessionRenderState?.firstContactInfo,
       seedMessage: widget.seedMessage,
     );
+    _translation = context.read<TranslationController>();
+    _translation.addListener(_onTranslationSettingsChanged);
     _historyWindowRevision = _vm.historyWindowRevision;
     _historyWindowInvalidationRevision = _vm.historyWindowInvalidationRevision;
     unawaited(
@@ -1029,6 +1044,11 @@ class _ChatViewState extends State<ChatView> {
     // Load premium status early so the message menu can correctly hide the
     // emoji add/表情包 actions for non-premium users (the menu reads it).
     EmojiStore.shared.loadIfNeeded();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _scheduleChatLanguageDetection();
+      _scheduleAutomaticTranslations();
+    });
   }
 
   @override
@@ -1910,6 +1930,8 @@ class _ChatViewState extends State<ChatView> {
         !_bottomScrollScheduled) {
       _scheduleScrollToBottom(animated: false);
     }
+    _scheduleChatLanguageDetection();
+    _scheduleAutomaticTranslations();
     setState(() {});
     _cacheCurrentTranscript();
     _scheduleSessionScrollAnchorMaintenance();
@@ -2731,6 +2753,7 @@ class _ChatViewState extends State<ChatView> {
     _wallpaperController.removeListener(_onWallpaperChanged);
     _bannerTimer?.cancel();
     _readSyncTimer?.cancel();
+    _translation.removeListener(_onTranslationSettingsChanged);
     _vm.removeListener(_onModel);
     _vm.onDisappear();
     _vm.dispose();
@@ -3921,6 +3944,13 @@ class _ChatViewState extends State<ChatView> {
     final translation = context.read<TranslationController>();
     final targetLanguage = _translationTargetLanguage(translation);
     try {
+      if (translation.aiTranslationEnabled) {
+        return _translateTextWithAi(
+          text: sourceText,
+          sourceLanguageCode: 'autodetect',
+          targetLanguageCode: targetLanguage,
+        );
+      }
       return switch (translation.provider) {
         TranslationProvider.iosSystem ||
         TranslationProvider.androidMlKit => NativeTranslationApi.translate(
@@ -3988,21 +4018,36 @@ class _ChatViewState extends State<ChatView> {
   Future<bool> _translateMessage(
     ChatMessage message, {
     bool showErrors = true,
+    bool allowWhenManualTranslationDisabled = false,
+    String sourceLanguageCode = 'autodetect',
   }) async {
     final translation = context.read<TranslationController>();
-    if (!translation.enabled) return true;
+    if (!translation.enabled && !allowWhenManualTranslationDisabled) {
+      return true;
+    }
     final sourceText = _translationSourceText(message);
     if (sourceText.trim().isEmpty) return true;
     final targetLanguage = _translationTargetLanguage(translation);
     try {
-      if (translation.provider == TranslationProvider.iosSystem ||
+      if (translation.aiTranslationEnabled) {
+        await _vm.translateMessageExternally(
+          message.id,
+          targetLanguage,
+          () => _translateTextWithAi(
+            text: sourceText,
+            sourceLanguageCode: sourceLanguageCode,
+            targetLanguageCode: targetLanguage,
+            priorMessages: _aiTranslationContextFor(message),
+          ),
+        );
+      } else if (translation.provider == TranslationProvider.iosSystem ||
           translation.provider == TranslationProvider.androidMlKit) {
         await _vm.translateMessageExternally(
           message.id,
           targetLanguage,
           () => NativeTranslationApi.translate(
             text: sourceText,
-            sourceLanguageCode: 'autodetect',
+            sourceLanguageCode: sourceLanguageCode,
             targetLanguageCode: targetLanguage,
           ),
           showLoading: defaultTargetPlatform != TargetPlatform.iOS,
@@ -4016,7 +4061,7 @@ class _ChatViewState extends State<ChatView> {
           () => ThirdPartyTranslationApi.translate(
             provider: translation.provider,
             text: sourceText,
-            sourceLanguageCode: 'autodetect',
+            sourceLanguageCode: sourceLanguageCode,
             targetLanguageCode: targetLanguage,
             lingvaEndpoint: translation.lingvaEndpoint,
             libreTranslateEndpoint: translation.libreTranslateEndpoint,
@@ -4036,6 +4081,228 @@ class _ChatViewState extends State<ChatView> {
       return false;
     }
   }
+
+  void _onTranslationSettingsChanged() {
+    if (!mounted) return;
+    _autoTranslationFailedMessageIds.clear();
+    if (!_automaticTranslationEnabled && _autoTranslatedMessageIds.isNotEmpty) {
+      _vm.clearTranslations(_autoTranslatedMessageIds);
+      _autoTranslatedMessageIds.clear();
+    }
+    _scheduleChatLanguageDetection(force: true);
+    _scheduleAutomaticTranslations();
+    setState(() {});
+  }
+
+  bool get _automaticTranslationEnabled =>
+      _translation.translateChats &&
+      _translation.autoTranslateEnabledFor(widget.chatId) &&
+      _translation.shouldTranslateLanguage(_detectedChatLanguage);
+
+  bool get _hasIncomingTranslatableMessages => _vm.messages.any(
+    (message) =>
+        !message.isOutgoing &&
+        !message.isService &&
+        automaticTranslationSourceText(message).trim().isNotEmpty,
+  );
+
+  bool get _showsChatTranslationPanel {
+    if (_automaticTranslationEnabled) return true;
+    if (!_translation.translateChats ||
+        _translation.autoTranslateSuggestionDismissedFor(widget.chatId) ||
+        !_hasIncomingTranslatableMessages ||
+        !_chatLanguageDetectionComplete) {
+      return false;
+    }
+    return _translation.shouldTranslateLanguage(_detectedChatLanguage);
+  }
+
+  void _scheduleChatLanguageDetection({bool force = false}) {
+    if (!_translation.translateChats || _chatLanguageDetectionRunning) return;
+    final samples = automaticTranslationLanguageSamples(_vm.messages);
+    if (samples.isEmpty) return;
+    final newestId = _vm.messages.reversed
+        .firstWhere(
+          (message) =>
+              !message.isOutgoing &&
+              !message.isService &&
+              automaticTranslationSourceText(message).trim().length >= 10,
+          orElse: () => _vm.messages.last,
+        )
+        .id;
+    if (!force && _chatLanguageDetectionComplete) {
+      final detectedAt = _chatLanguageDetectedAt;
+      if (_detectedChatLanguage != null &&
+          detectedAt != null &&
+          DateTime.now().difference(detectedAt) < const Duration(hours: 1)) {
+        return;
+      }
+      if (_chatLanguageDetectionNewestMessageId == newestId) return;
+    }
+    _chatLanguageDetectionRunning = true;
+    unawaited(() async {
+      final detections = await Future.wait(
+        samples.map(NativeTranslationApi.identifyLanguage),
+      );
+      final evidence = <AutomaticTranslationLanguageEvidence>[
+        for (var index = 0; index < samples.length; index++)
+          if (detections[index] case final detected?)
+            AutomaticTranslationLanguageEvidence(
+              languageCode: detected.languageCode,
+              confidence: detected.confidence,
+              characterCount: samples[index].runes.length,
+            ),
+      ];
+      final detected = dominantAutomaticTranslationLanguage(evidence);
+      if (!mounted) return;
+      _chatLanguageDetectionRunning = false;
+      _chatLanguageDetectionComplete = true;
+      _chatLanguageDetectionNewestMessageId = newestId;
+      _chatLanguageDetectedAt = DateTime.now();
+      _detectedChatLanguage = detected;
+      _scheduleAutomaticTranslations();
+      setState(() {});
+    }());
+  }
+
+  void _scheduleAutomaticTranslations() {
+    if (!_automaticTranslationEnabled) return;
+    if (_autoTranslationRunning) {
+      _autoTranslationPassPending = true;
+      return;
+    }
+    if (_autoTranslationPassPending) return;
+    _autoTranslationPassPending = true;
+    scheduleMicrotask(() {
+      _autoTranslationPassPending = false;
+      if (!mounted || !_automaticTranslationEnabled) return;
+      unawaited(_runAutomaticTranslationPass());
+    });
+  }
+
+  Future<void> _runAutomaticTranslationPass() async {
+    if (_autoTranslationRunning || !_automaticTranslationEnabled) return;
+    _autoTranslationRunning = true;
+    if (mounted) setState(() {});
+    try {
+      final messages = _vm.messages.length > 32
+          ? _vm.messages.sublist(_vm.messages.length - 32)
+          : _vm.messages;
+      final candidates = automaticTranslationCandidates(
+        messages,
+        targetLanguageCode: _translationTargetLanguage(_translation),
+        excludedMessageIds: _autoTranslationFailedMessageIds,
+      );
+      for (final message in candidates) {
+        if (!mounted || !_automaticTranslationEnabled) break;
+        final translated = await _translateMessage(
+          message,
+          showErrors: false,
+          allowWhenManualTranslationDisabled: true,
+          sourceLanguageCode: _detectedChatLanguage ?? 'autodetect',
+        );
+        if (translated) {
+          _autoTranslatedMessageIds.add(message.id);
+        } else {
+          _autoTranslationFailedMessageIds.add(message.id);
+        }
+      }
+    } finally {
+      _autoTranslationRunning = false;
+      if (mounted) setState(() {});
+      if (_autoTranslationPassPending) {
+        _autoTranslationPassPending = false;
+        _scheduleAutomaticTranslations();
+      }
+    }
+  }
+
+  void _toggleAutomaticTranslation() {
+    final active = _translation.autoTranslateEnabledFor(widget.chatId);
+    _translation.setAutoTranslateEnabledFor(widget.chatId, !active);
+  }
+
+  void _dismissAutomaticTranslation() {
+    _translation.dismissAutoTranslateSuggestionFor(widget.chatId);
+  }
+
+  Future<void> _showChatTranslationLanguagePicker() async {
+    final c = context.colors;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.72,
+          ),
+          margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          decoration: BoxDecoration(
+            color: c.card,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: ListView.separated(
+            shrinkWrap: true,
+            itemCount: TranslationController.targetLanguages.length,
+            separatorBuilder: (_, _) => const InsetDivider(leadingInset: 54),
+            itemBuilder: (_, index) {
+              final language = TranslationController.targetLanguages[index];
+              final selected = _translation.targetLanguageCode == language.code;
+              return GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  _translation.targetLanguageCode = language.code;
+                  Navigator.of(sheetContext).pop();
+                },
+                child: SizedBox(
+                  height: 52,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      children: [
+                        AppIcon(
+                          HeroAppIcons.globe,
+                          size: 19,
+                          color: selected ? AppTheme.brand : c.textSecondary,
+                        ),
+                        const SizedBox(width: 18),
+                        Expanded(
+                          child: Text(
+                            language.label.l10n(sheetContext),
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: c.textPrimary,
+                            ),
+                          ),
+                        ),
+                        if (selected)
+                          AppIcon(
+                            HeroAppIcons.check,
+                            size: 18,
+                            color: AppTheme.brand,
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _chatTranslationPanel() => ChatTranslationPanel(
+    active: _automaticTranslationEnabled,
+    targetLanguageLabel: _translation.targetLanguageLabel.l10n(context),
+    isTranslating: _autoTranslationRunning,
+    onToggle: _toggleAutomaticTranslation,
+    onChooseLanguage: () => unawaited(_showChatTranslationLanguagePicker()),
+    onDismiss: _dismissAutomaticTranslation,
+  );
 
   String _translationSourceText(ChatMessage message) {
     final parts = [
@@ -4059,6 +4326,53 @@ class _ChatViewState extends State<ChatView> {
       };
     }
     return locale.languageCode;
+  }
+
+  Future<String> _translateTextWithAi({
+    required String text,
+    required String sourceLanguageCode,
+    required String targetLanguageCode,
+    List<String> priorMessages = const [],
+  }) async {
+    final settings = context.read<AiSettingsController>();
+    final unavailableMessage = AppStringKeys.translationAiProviderUnavailable
+        .l10n(context);
+    final targetLanguageName = _translation.targetLanguageLabel.l10n(context);
+    if (!settings.initialized) await settings.initialize();
+    if (!settings.isConfiguredForCurrentProvider) {
+      throw TranslationApiException(unavailableMessage);
+    }
+    final service = AiChatTranslationService.fromSettings(
+      settings,
+      instructions: _translation.aiTranslationPrompt,
+    );
+    try {
+      return await service.translate(
+        text: text,
+        sourceLanguageCode: sourceLanguageCode,
+        targetLanguageCode: targetLanguageCode,
+        targetLanguageName: targetLanguageName,
+        priorMessages: priorMessages,
+      );
+    } finally {
+      service.dispose();
+    }
+  }
+
+  List<String> _aiTranslationContextFor(ChatMessage message) {
+    final index = _vm.messages.indexWhere((item) => item.id == message.id);
+    if (index <= 0) return const [];
+    final contextMessages = <String>[];
+    for (var i = index - 1; i >= 0 && contextMessages.length < 4; i--) {
+      final source = automaticTranslationSourceText(
+        _vm.messages[i],
+      ).replaceAll(RegExp(r'\s+'), ' ').trim();
+      if (source.isEmpty) continue;
+      contextMessages.add(
+        source.length > 400 ? source.substring(0, 400) : source,
+      );
+    }
+    return contextMessages.reversed.toList(growable: false);
   }
 
   bool _isEditableMediaMessage(ChatMessage message) =>
@@ -5109,7 +5423,7 @@ class _ChatViewState extends State<ChatView> {
     final endpoint = settings.openAiChatCompletionsUri;
     final model = settings.model;
     final apiKey = settings.apiKey;
-    final hostedContextSize = settings.activeServerProfile?.contextWindowTokens;
+    final hostedContextSize = settings.activeModelProfile?.contextWindowTokens;
     final pccContextSize = settings.pccCapabilities?.contextSize;
     final onDeviceContextSize = settings.pccCapabilities?.onDeviceContextSize;
     final outputLanguage = Localizations.localeOf(context).toLanguageTag();
@@ -5236,13 +5550,13 @@ class _ChatViewState extends State<ChatView> {
           throw StateError('The summary server is not configured.');
         }
         final contextWindow =
-            hostedContextSize ?? AiServerProfile.defaultContextWindowTokens;
+            hostedContextSize ?? AiModelProfile.defaultContextWindowTokens;
         // Reserve response space while selecting input, but do not send a
         // generation cap to user-configured servers.
         const responseTokenReserve = 4096;
         final tokenBudget = unreadSummaryTokenBudget(
           contextWindow,
-          maximumContextSize: AiServerProfile.maximumContextWindowTokens,
+          maximumContextSize: AiModelProfile.maximumContextWindowTokens,
           trustedInstructions: unreadChatSummaryCompactTrustedInstructions,
           maximumResponseTokens: responseTokenReserve,
           maximumPayloadTokens: contextWindow,
@@ -5725,6 +6039,7 @@ class _ChatViewState extends State<ChatView> {
               ),
             ),
           ),
+          if (_showsChatTranslationPanel) _chatTranslationPanel(),
           if (widget.headerBottom != null)
             SizedBox(
               height: widget.headerBottomHeight,

@@ -65,11 +65,14 @@ class HeroAppIcons {
   static const clipboard = AppIconData(HeroiconsOutline.clipboard);
   static const clock = AppIconData(HeroiconsOutline.clock);
   static const code = AppIconData(HeroiconsOutline.codeBracket);
+  static const cloud = AppIconData(HeroiconsOutline.cloud);
   static const cloudArrowDown = AppIconData(HeroiconsOutline.cloudArrowDown);
   static const comment = AppIconData(HeroiconsOutline.chatBubbleOvalLeft);
   static const comments = AppIconData(HeroiconsOutline.chatBubbleLeftRight);
   static const compactDisc = AppIconData(HeroiconsOutline.circleStack);
   static const crop = AppIconData(HeroiconsOutline.viewfinderCircle);
+  static const cpuChip = AppIconData(HeroiconsOutline.cpuChip);
+  static const cube = AppIconData(HeroiconsOutline.cubeTransparent);
   static const download = AppIconData(HeroiconsOutline.arrowDownTray);
   static const droplet = AppIconData(HeroiconsOutline.beaker);
   static const ellipsis = AppIconData(HeroiconsOutline.ellipsisHorizontal);
@@ -138,6 +141,7 @@ class HeroAppIcons {
   static const rotateLeft = AppIconData(HeroiconsOutline.arrowUturnLeft);
   static const rotateRight = AppIconData(HeroiconsOutline.arrowUturnRight);
   static const share = AppIconData(HeroiconsOutline.share);
+  static const server = AppIconData(HeroiconsOutline.serverStack);
   static const shieldHalved = AppIconData(HeroiconsOutline.shieldCheck);
   static const solidBell = AppIconData(HeroiconsSolid.bell);
   static const solidCircle = AppIconData(HeroiconsSolid.stopCircle);
@@ -159,6 +163,7 @@ class HeroAppIcons {
   static const sun = AppIconData(HeroiconsOutline.sun);
   static const tableCells = AppIconData(HeroiconsOutline.tableCells);
   static const tableColumns = AppIconData(HeroiconsOutline.rectangleGroup);
+  static const tokenStack = AppIconData(HeroiconsOutline.square3Stack3d);
   static const thumbsUp = AppIconData(HeroiconsOutline.handThumbUp);
   static const thumbtack = AppIconData(HeroiconsOutline.bookmark);
   static const towerBroadcast = AppIconData(HeroiconsOutline.rss);

@@ -20,6 +20,8 @@ import android.view.WindowManager
 import android.webkit.MimeTypeMap
 import androidx.core.view.WindowCompat
 import com.google.mlkit.common.model.DownloadConditions
+import com.google.mlkit.nl.languageid.LanguageIdentification
+import com.google.mlkit.nl.languageid.LanguageIdentifier
 import com.google.mlkit.nl.translate.TranslateLanguage
 import com.google.mlkit.nl.translate.Translation
 import com.google.mlkit.nl.translate.Translator
@@ -43,6 +45,10 @@ class MainActivity : FlutterFragmentActivity() {
     private var mediaDropChannel: MethodChannel? = null
     private var acceptingImageDrop = false
     private val translators = mutableMapOf<String, Translator>()
+    private val languageIdentifierDelegate = lazy<LanguageIdentifier> {
+        LanguageIdentification.getClient()
+    }
+    private val languageIdentifier by languageIdentifierDelegate
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // Let Flutter paint under the status bar and gesture/nav bar.
@@ -133,6 +139,10 @@ class MainActivity : FlutterFragmentActivity() {
                     }
                     "translate" -> {
                         translateOnDevice(call.arguments as? Map<*, *>, result)
+                        return@setMethodCallHandler
+                    }
+                    "identifyLanguage" -> {
+                        identifyLanguage(call.arguments as? Map<*, *>, result)
                         return@setMethodCallHandler
                     }
                     else -> {
@@ -632,6 +642,31 @@ class MainActivity : FlutterFragmentActivity() {
         result.error("source_language_required", "ML Kit 本地翻译需要明确原文语言", null)
     }
 
+    private fun identifyLanguage(args: Map<*, *>?, result: MethodChannel.Result) {
+        val text = args?.get("text") as? String
+        if (text.isNullOrBlank()) {
+            result.success(null)
+            return
+        }
+        languageIdentifier.identifyPossibleLanguages(text.take(200))
+            .addOnSuccessListener { languages ->
+                val identified = languages
+                    .filter { it.languageTag != "und" && it.confidence >= 0.5f }
+                    .maxByOrNull { it.confidence }
+                result.success(
+                    identified?.let {
+                        mapOf(
+                            "languageCode" to it.languageTag,
+                            "confidence" to it.confidence.toDouble(),
+                        )
+                    },
+                )
+            }
+            .addOnFailureListener { error ->
+                result.error("language_identification_failed", error.localizedMessage, null)
+            }
+    }
+
     private fun translateWithLanguages(
         text: String,
         source: String,
@@ -695,6 +730,9 @@ class MainActivity : FlutterFragmentActivity() {
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
         translators.values.forEach { it.close() }
         translators.clear()
+        if (languageIdentifierDelegate.isInitialized()) {
+            languageIdentifier.close()
+        }
         telegramPasskeys?.dispose()
         telegramPasskeys = null
         accountBackup?.dispose()

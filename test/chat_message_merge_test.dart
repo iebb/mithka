@@ -2,8 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/chat_message_merge.dart';
 import 'package:mithka/tdlib/td_models.dart';
 
-ChatMessage _message(int id, String text) =>
-    ChatMessage(id: id, isOutgoing: false, text: text, date: id);
+ChatMessage _message(int id, String text, {int? date}) =>
+    ChatMessage(id: id, isOutgoing: false, text: text, date: date ?? id);
 
 ChatMessage _pending(int id, int date) => ChatMessage(
   id: id,
@@ -101,6 +101,26 @@ void main() {
     ]);
 
     expect(merged.map((message) => message.id), [1001, 1002]);
+  });
+
+  test('visible timestamps stay ordered around pending outgoing messages', () {
+    final merged = mergeChatMessages(
+      [
+        _message(100, '这个好看', date: 105057),
+        _message(200, '好', date: 105145),
+        _pending(1001, 105113),
+        _pending(1002, 105139),
+      ],
+      [_message(300, '我有', date: 105209)],
+    );
+
+    expect(merged.map((message) => message.date), [
+      105057,
+      105113,
+      105139,
+      105145,
+      105209,
+    ]);
   });
 
   test('latest server ID ignores pending messages at the tail', () {

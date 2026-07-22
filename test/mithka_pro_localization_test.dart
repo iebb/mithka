@@ -19,12 +19,9 @@ void main() {
       'accountBackupUnavailable',
       'mithkaProActive',
       'mithkaProActiveUntil',
-      'mithkaProBackupLimitReached',
       'mithkaProBestValue',
       'mithkaProBillingNotice',
       'mithkaProContinue',
-      'mithkaProFreePlan',
-      'mithkaProLimitExempt',
       'mithkaProManagePlan',
       'mithkaProMonthly',
       'mithkaProNothingToRestore',
@@ -35,10 +32,11 @@ void main() {
       'mithkaProRestore',
       'mithkaProRestoreFailed',
       'mithkaProStoreUnavailable',
+      'mithkaProSupportDevelopment',
+      'mithkaProSupportDevelopmentDescription',
+      'mithkaProSupportOnly',
       'mithkaProTerms',
       'mithkaProTitle',
-      'mithkaProUnlimitedCloudSessionSyncs',
-      'mithkaProUnlimitedCloudSessionSyncsDescription',
       'mithkaProYearly',
     };
     const locales = <String, Map<String, String>>{
@@ -58,27 +56,36 @@ void main() {
         containsAll(keys),
         reason: '${entry.key} must not fall back to raw English',
       );
-      expect(
-        entry.value.keys,
-        isNot(contains('mithkaProUnlimitedAccounts')),
-        reason: '${entry.key} must not advertise unlimited accounts',
-      );
+      for (final oldKey in {
+        'mithkaProBackupLimitReached',
+        'mithkaProFreePlan',
+        'mithkaProLimitExempt',
+        'mithkaProUnlimitedAccounts',
+        'mithkaProUnlimitedCloudSessionSyncs',
+        'mithkaProUnlimitedCloudSessionSyncsDescription',
+      }) {
+        expect(
+          entry.value.keys,
+          isNot(contains(oldKey)),
+          reason: '${entry.key} must not advertise a Pro feature gate',
+        );
+      }
       if (entry.key != 'en') {
         expect(
-          entry.value['mithkaProFreePlan'],
-          isNot(enMessages['mithkaProFreePlan']),
-          reason: '${entry.key} needs native plan copy',
+          entry.value['mithkaProSupportDevelopmentDescription'],
+          isNot(enMessages['mithkaProSupportDevelopmentDescription']),
+          reason: '${entry.key} needs native support copy',
         );
       }
     }
 
     expect(
-      enMessages['mithkaProUnlimitedCloudSessionSyncs'],
-      'Unlimited cloud session syncs',
+      enMessages['mithkaProSupportDevelopmentDescription'],
+      'The warm feeling that you supported the development.',
     );
     expect(
-      enMessages['mithkaProFreePlan'],
-      'Free plan · 4 cloud session syncs',
+      enMessages['mithkaProSupportOnly'],
+      'All features are available without Pro.',
     );
   });
 }

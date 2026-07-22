@@ -7,7 +7,6 @@ void main() {
       'storeAvailable': true,
       'isPro': true,
       'distribution': 'play_store',
-      'isLimitExempt': false,
       'expirationDateMillis': 1800000000000,
     });
 
@@ -20,31 +19,6 @@ void main() {
     );
   });
 
-  test('free store builds stop at four cloud session syncs', () async {
-    expect(MithkaProService.freeCloudSessionSyncLimit, 4);
-    for (final distribution in ['app_store', 'play_store']) {
-      final service = MithkaProService(
-        gateway: _FakeGateway(distribution: distribution),
-      );
-      await service.initialize();
-
-      expect(service.canAddCloudSessionSync(3), isTrue);
-      expect(service.canAddCloudSessionSync(4), isFalse);
-      expect(service.canAddCloudSessionSync(8), isFalse);
-      expect(service.canAddCloudSessionSync(4, alreadySynced: true), isTrue);
-    }
-  });
-
-  test('cloud session sync limit fails closed before initialization', () {
-    final service = MithkaProService(
-      gateway: _FakeGateway(distribution: 'apk'),
-    );
-
-    expect(service.initialized, isFalse);
-    expect(service.canAddCloudSessionSync(3), isTrue);
-    expect(service.canAddCloudSessionSync(4), isFalse);
-  });
-
   test('catalog failure does not discard a valid distribution state', () async {
     final service = MithkaProService(
       gateway: _FakeGateway(distribution: 'apk', failProducts: true),
@@ -53,39 +27,16 @@ void main() {
     await expectLater(service.initialize(), completes);
     expect(service.initialized, isTrue);
     expect(service.state.distribution, MithkaDistribution.apk);
-    expect(service.canAddCloudSessionSync(40), isTrue);
     expect(service.products, isEmpty);
   });
 
-  test('state failure remains non-fatal and fail closed', () async {
+  test('state failure remains non-fatal', () async {
     final service = MithkaProService(
       gateway: _FakeGateway(distribution: 'app_store', failState: true),
     );
 
     await expectLater(service.initialize(), completes);
     expect(service.initialized, isFalse);
-    expect(service.canAddCloudSessionSync(4), isFalse);
-  });
-
-  test('TestFlight, development, and APK distributions are exempt', () async {
-    for (final distribution in ['testflight', 'development', 'apk']) {
-      final service = MithkaProService(
-        gateway: _FakeGateway(distribution: distribution),
-      );
-      await service.initialize();
-
-      expect(service.state.isLimitExempt, isTrue);
-      expect(service.canAddCloudSessionSync(50), isTrue);
-    }
-  });
-
-  test('Pro has unlimited cloud session syncs in store builds', () async {
-    final service = MithkaProService(
-      gateway: _FakeGateway(distribution: 'play_store', pro: true),
-    );
-    await service.initialize();
-
-    expect(service.canAddCloudSessionSync(1000), isTrue);
   });
 
   test('products and purchase use the fixed Mithka Pro identifiers', () async {
@@ -108,13 +59,12 @@ void main() {
 class _FakeGateway implements MithkaProGateway {
   _FakeGateway({
     required this.distribution,
-    this.pro = false,
     this.failProducts = false,
     this.failState = false,
   });
 
   final String distribution;
-  bool pro;
+  bool pro = false;
   final bool failProducts;
   final bool failState;
   String? purchasedProductId;
@@ -127,7 +77,6 @@ class _FakeGateway implements MithkaProGateway {
       'storeAvailable': true,
       'isPro': pro,
       'distribution': distribution,
-      'isLimitExempt': false,
       'expirationDateMillis': pro ? 1800000000000 : null,
     };
   }

@@ -79,15 +79,10 @@ const frMessages = <String, String>{
       "La sauvegarde des comptes n’est pas disponible sur cet appareil ou cette distribution.",
   'mithkaProActive': "Mithka Pro est actif",
   'mithkaProActiveUntil': "Mithka Pro actif jusqu’au {value1}",
-  'mithkaProBackupLimitReached':
-      "La formule gratuite inclut quatre synchronisations de session dans le cloud. Mithka Pro supprime cette limite.",
   'mithkaProBestValue': "MEILLEUR PRIX",
   'mithkaProBillingNotice':
       "L’abonnement se renouvelle automatiquement sauf annulation depuis votre compte de la boutique. Le prix et les taxes sont confirmés avant l’achat.",
   'mithkaProContinue': "Continuer",
-  'mithkaProFreePlan': "Formule gratuite · 4 sessions synchronisées",
-  'mithkaProLimitExempt':
-      "Les synchronisations de session cloud sont illimitées dans cette version",
   'mithkaProManagePlan': "Gérer l’abonnement",
   'mithkaProMonthly': "Mensuel",
   'mithkaProNothingToRestore': "Aucun achat Mithka Pro actif n’a été trouvé.",
@@ -98,12 +93,13 @@ const frMessages = <String, String>{
   'mithkaProRestore': "Restaurer les achats",
   'mithkaProRestoreFailed': "Les achats n’ont pas pu être restaurés.",
   'mithkaProStoreUnavailable': "Boutique indisponible",
+  'mithkaProSupportDevelopment': "Soutenir le développement de Mithka",
+  'mithkaProSupportDevelopmentDescription':
+      "Le sentiment chaleureux d’avoir soutenu le développement.",
+  'mithkaProSupportOnly':
+      "Toutes les fonctionnalités sont disponibles sans Pro.",
   'mithkaProTerms': "Conditions d’utilisation",
   'mithkaProTitle': "Mithka Pro",
-  'mithkaProUnlimitedCloudSessionSyncs':
-      "Synchronisations de session cloud illimitées",
-  'mithkaProUnlimitedCloudSessionSyncsDescription':
-      "Synchronisez les sessions d’autorisation de tous vos comptes ; la formule gratuite en inclut quatre.",
   'mithkaProYearly': "Annuel",
   'addMembersDone': "Terminé",
   'addMembersDoneWithCount': "Terminé ({value1})",
@@ -122,21 +118,31 @@ const frMessages = <String, String>{
   'advancedTitle': "Avancé",
   'apiCredentialsCustomClientApi': "API client personnalisée",
   'apiCredentialsDescription':
-      "Utilisez vos propres identifiants d’API client Telegram. Les modifications prendront effet au prochain démarrage ou après une nouvelle connexion.",
+      "Utilisez vos propres identifiants d’API client Telegram et remplacez éventuellement les valeurs d’appareil, de système et de version de l’app transmises par TDLib. Les modifications prendront effet au prochain démarrage ou après une nouvelle connexion.",
   'apiCredentialsTitle': "Identifiants d’API personnalisés",
+  'apiCredentialsUserAgent': "Agent utilisateur TDLib",
   'aiInvalidEndpoint':
       "Utilisez une URL HTTPS se terminant par /v1/chat/completions. HTTP n’est autorisé que pour localhost.",
+  'aiInvalidModel':
+      "Saisissez un modèle et un nombre valide de jetons de contexte.",
+  'aiAddModel': "Ajouter un modèle",
   'aiAddProvider': "Ajouter un fournisseur",
+  'aiAddProviderFirst': "Ajoutez d’abord un fournisseur",
   'aiContextWindow': "Jetons de contexte",
   'aiContextDetected': "Détecté par le fournisseur",
   'aiContextManual': "Non indiqué ; vérifiez manuellement",
   'aiDeleteProvider': "Supprimer le fournisseur",
+  'aiDeleteModel': "Supprimer le modèle sélectionné",
+  'aiEnterModelManually': "Saisir le modèle manuellement",
+  'aiModelProvider': "Fourni par {value1}",
+  'aiModels': "Modèles",
   'aiModelsFailed':
       "Impossible de charger les modèles. Vérifiez le point de terminaison et la clé API.",
   'aiModelsLoaded': "{value1} modèles chargés",
   'aiNoProvider': "Aucun fournisseur sélectionné",
+  'aiNoModel': "Aucun modèle sélectionné",
   'aiOnDevicePrivacy':
-      "Les messages non lus sont traités entièrement sur cet appareil avec Apple Intelligence et ne sont pas envoyés à un serveur.",
+      "Le texte utilisé par les fonctions IA est traité entièrement sur cet appareil avec Apple Intelligence et n’est pas envoyé à un serveur.",
   'aiOnDeviceUnavailableDescription':
       "Le modèle local nécessite un appareil compatible Apple Intelligence, iOS 26 ou ultérieur et un modèle téléchargé.",
   'aiTokenContext': "Fenêtre de contexte de {value1}K jetons",
@@ -144,7 +150,7 @@ const frMessages = <String, String>{
   'aiOutputSameLanguage': "Même langue que les messages non lus",
   'aiPccAvailable': "Disponible sur cet appareil",
   'aiPccPrivacy':
-      "Les messages non lus sont traités avec Apple Private Cloud Compute et ne sont pas envoyés à votre serveur configuré.",
+      "Le texte utilisé par les fonctions IA est traité avec Apple Private Cloud Compute et n’est pas envoyé à votre serveur configuré.",
   'aiPccUnavailable': "Indisponible sur cet appareil",
   'aiPccUnavailableDescription':
       "Private Cloud Compute nécessite un appareil Apple et une version logicielle compatibles, ainsi que la disponibilité d’Apple Intelligence.",
@@ -157,6 +163,8 @@ const frMessages = <String, String>{
   'aiProviders': "Fournisseurs",
   'aiRefreshModels': "Charger les modèles",
   'aiSave': "Enregistrer la configuration",
+  'aiSaveModel': "Enregistrer le modèle",
+  'aiSaveProvider': "Enregistrer le fournisseur",
   'aiSaved': "Réglages IA enregistrés",
   'aiServerApiKey': "Clé API",
   'aiServerApiKeyOptional': "Facultative pour les serveurs locaux ou sans clé",
@@ -165,7 +173,7 @@ const frMessages = <String, String>{
   'aiServerModel': "Modèle",
   'aiServerModelHint': "Nom du modèle",
   'aiServerPrivacy':
-      "Le texte des messages non lus est envoyé à ce point de terminaison. Votre clé API reste dans le stockage sécurisé de cet appareil.",
+      "Le texte utilisé par les fonctions IA activées est envoyé à ce point de terminaison. Votre clé API reste dans le stockage sécurisé de cet appareil.",
   'aiSettingsTitle': "Réglages IA",
   'aiSummaryActions': "Actions à mener",
   'aiSummaryAssembling': "Assemblage du résumé…",
@@ -1896,6 +1904,8 @@ const frMessages = <String, String>{
   'transferBoostUploadSection': "Envoi",
   'translationInternalNoExternalApi':
       "La traduction interne n’utilise pas d’API externe",
+  'translationAiProviderUnavailable':
+      "Configurez d’abord un fournisseur disponible dans les réglages IA.",
   'translationLibreTranslateNoResult':
       "LibreTranslate n’a renvoyé aucune traduction",
   'translationLibreTranslateUrlRequired':
@@ -1915,8 +1925,30 @@ const frMessages = <String, String>{
       "Le service de traduction a renvoyé {value1}",
   'translationServiceUrlInvalid': "Adresse du service de traduction invalide",
   'translationSettingsService': "Service de traduction",
+  'translationSettingsAiDescription':
+      "La traduction IA utilise le fournisseur configuré dans les réglages IA. Le texte du chat n’est envoyé que lorsque vous traduisez un message ou activez la traduction pour ce chat.",
+  'translationSettingsAiEnabled': "Utiliser l’IA pour traduire",
+  'translationSettingsAiProvider': "Fournisseur d’IA",
+  'translationSettingsAiPrompt': "Instructions de traduction",
+  'translationSettingsAiPromptCustom': "Personnalisées",
+  'translationSettingsAiPromptDefault': "Par défaut",
+  'translationSettingsAiPromptDescription':
+      "Modifiez les instructions envoyées à l’IA. Les langues source et cible, le contexte récent et le message actuel sont ajoutés automatiquement sous forme de données structurées.",
+  'translationSettingsAiPromptEmpty':
+      "Les instructions de traduction ne peuvent pas être vides.",
+  'translationSettingsAiPromptReset': "Rétablir les valeurs par défaut",
+  'translationSettingsAiPromptSave': "Enregistrer les instructions",
+  'translationSettingsAiSection': "Traduction IA",
+  'translationSettingsShowTranslateButton': "Afficher le bouton Traduire",
+  'translationSettingsDoNotTranslate': "Ne pas traduire",
+  'translationSettingsLanguageCount': "{value1} langues",
+  'translationSettingsNone': "Aucune",
   'translationSettingsTargetLanguage': "Langue cible",
+  'translationSettingsStandardSection': "Traduction standard",
   'translationSettingsTitle': "Traduction des messages",
+  'translationSettingsTranslateChats': "Traduire les discussions entières",
+  'chatTranslationShowOriginal': "Afficher l’original",
+  'chatTranslationTranslateTo': "Traduire en {value1}",
   'translationSystem': "Traduction système",
   'translationTelegram': "Traduction Telegram",
   'updateAction': "Mettre à jour",
