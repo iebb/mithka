@@ -438,7 +438,7 @@ class _MessageBubbleState extends State<MessageBubble>
             : CrossAxisAlignment.start,
         children: [
           _contentBody(outgoing),
-          if (_showTappedTimestamp && !alwaysShowTime) ...[
+          if (_showTappedTimestamp || alwaysShowTime) ...[
             const SizedBox(height: 3),
             Text(
               DateText.messageDetailLabel(message.date),
@@ -1003,10 +1003,7 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   Widget _withFloatingMeta(Widget child, bool outgoing) {
-    final alwaysShowTime =
-        widget.forceShowTimestamp ||
-        context.watch<ThemeController>().alwaysShowMessageTime;
-    final show = message.isEdited || outgoing || alwaysShowTime;
+    final show = message.isEdited || outgoing;
     if (!show) return child;
     return Stack(
       clipBehavior: Clip.none,
@@ -1019,9 +1016,6 @@ class _MessageBubbleState extends State<MessageBubble>
 
   Widget _floatingMeta(bool outgoing) {
     final c = context.colors;
-    final alwaysShowTime =
-        widget.forceShowTimestamp ||
-        context.watch<ThemeController>().alwaysShowMessageTime;
     final faint = outgoing
         ? _outgoingTextColor.withValues(alpha: 0.72)
         : c.textTertiary;
@@ -1038,14 +1032,6 @@ class _MessageBubbleState extends State<MessageBubble>
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (alwaysShowTime)
-                Text(
-                  DateText.messageDetailLabel(message.date),
-                  key: const ValueKey('messageInlineTimestamp'),
-                  style: TextStyle(fontSize: 9, height: 1, color: faint),
-                ),
-              if (alwaysShowTime && (message.isEdited || outgoing))
-                const SizedBox(width: 4),
               if (message.isEdited)
                 AppIcon(HeroAppIcons.pen, size: 13, color: faint),
               if (message.isEdited && outgoing) const SizedBox(width: 3),
@@ -1276,9 +1262,6 @@ class _MessageBubbleState extends State<MessageBubble>
 
   Widget _textBubble(String text, bool outgoing) {
     final c = context.colors;
-    final alwaysShowTime =
-        widget.forceShowTimestamp ||
-        context.watch<ThemeController>().alwaysShowMessageTime;
     final baseColor = outgoing ? _outgoingTextColor : _incomingTextColor;
     final linkColor = outgoing ? _outgoingTextColor : c.linkBlue;
     for (final r in _linkRecognizers) {
@@ -1290,13 +1273,9 @@ class _MessageBubbleState extends State<MessageBubble>
     return Container(
       key: ValueKey('messageTextBubble-${message.id}'),
       constraints: BoxConstraints(maxWidth: _bubbleMaxWidth()),
-      padding: alwaysShowTime
-          ? (emojiOnly
-                ? const EdgeInsets.fromLTRB(10, 7, 10, 18)
-                : const EdgeInsets.fromLTRB(12, 9, 12, 20))
-          : (emojiOnly
-                ? const EdgeInsets.symmetric(horizontal: 10, vertical: 7)
-                : const EdgeInsets.symmetric(horizontal: 12, vertical: 9)),
+      padding: emojiOnly
+          ? const EdgeInsets.symmetric(horizontal: 10, vertical: 7)
+          : const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       decoration: BoxDecoration(
         color: outgoing ? _outgoingBubbleColor : _incomingBubbleColor,
         borderRadius: _messageBorderRadius(6),

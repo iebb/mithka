@@ -2644,8 +2644,17 @@ const deMessages = <String, String>{
   'storyViewerViewersAndInteractions': "Zuschauer und Interaktionen",
   'telegramAiEditorAIWritingStyles': "KI-Schreibstile",
   'telegramAiEditorAddEmoji': "Emoji hinzufügen",
+  'telegramAiEditorCannotBeUndone':
+      "Dies kann nicht rückgängig gemacht werden.",
+  'telegramAiEditorChooseLanguage': "Sprache auswählen",
+  'telegramAiEditorCreateStyle': "KI-Stil erstellen",
+  'telegramAiEditorCustomStyle': "Benutzerdefinierter Stil",
+  'telegramAiEditorDeleteStyle': "Stil löschen",
+  'telegramAiEditorEditStyle': "KI-Stil bearbeiten",
+  'telegramAiEditorFix': "Korrigieren",
   'telegramAiEditorGeneratePrivatelyWithTelegram':
       "Privat mit Telegram generieren",
+  'telegramAiEditorKeepStyle': "Stil behalten",
   'telegramAiEditorManageCustomStyles': "Benutzerdefinierte Stile verwalten",
   'telegramAiEditorNoAIWritingStylesAreCurrentlyAvailable':
       "Derzeit sind keine KI-Schreibstile verfügbar.",
@@ -2653,9 +2662,18 @@ const deMessages = <String, String>{
       "Fügen Sie einen Stilnamen aus einem Link ein",
   'telegramAiEditorProofreadAndFixMistakes':
       "Korrektur lesen und Fehler beheben",
+  'telegramAiEditorOriginal': "Original",
+  'telegramAiEditorResult': "Ergebnis",
+  'telegramAiEditorRewrite': "Umschreiben",
+  'telegramAiEditorRewriteTitle': "KI-Umschreiben",
+  'telegramAiEditorSelectStyle': "Stil auswählen",
   'telegramAiEditorShowMeAsCreator': "Zeige mich als Schöpfer",
+  'telegramAiEditorStyle': "Stil",
   'telegramAiEditorStylePrompt': "Stilaufforderung",
   'telegramAiEditorTelegramAIEditor': "Telegram-KI-Editor",
+  'telegramAiEditorTelegramStyle': "Telegram-Stil",
+  'telegramAiEditorToLanguage': "Auf {value1}",
+  'telegramAiEditorTranslate': "Übersetzen",
   'telegramAiEditorTelegramProcessesAIEditorRequestsThroughCocoon':
       "Telegram verarbeitet AI-Editor-Anfragen über Cocoon. Die KI-Aktion ist in Secret Chats nicht verfügbar und Telegram erfordert nach dem kostenlosen Kontingent möglicherweise Premium.",
   'telegramAiEditorWritingStyle': "Schreibstil",

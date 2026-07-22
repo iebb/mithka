@@ -3205,24 +3205,43 @@ abstract final class AppStringKeys {
   static const telegramAiEditorAIWritingStyles =
       'telegramAiEditorAIWritingStyles';
   static const telegramAiEditorAddEmoji = 'telegramAiEditorAddEmoji';
+  static const telegramAiEditorCannotBeUndone =
+      'telegramAiEditorCannotBeUndone';
+  static const telegramAiEditorChooseLanguage =
+      'telegramAiEditorChooseLanguage';
+  static const telegramAiEditorCreateStyle = 'telegramAiEditorCreateStyle';
+  static const telegramAiEditorCustomStyle = 'telegramAiEditorCustomStyle';
+  static const telegramAiEditorDeleteStyle = 'telegramAiEditorDeleteStyle';
+  static const telegramAiEditorEditStyle = 'telegramAiEditorEditStyle';
+  static const telegramAiEditorFix = 'telegramAiEditorFix';
   static const telegramAiEditorGeneratePrivatelyWithTelegram =
       'telegramAiEditorGeneratePrivatelyWithTelegram';
   static const telegramAiEditorManageCustomStyles =
       'telegramAiEditorManageCustomStyles';
+  static const telegramAiEditorKeepStyle = 'telegramAiEditorKeepStyle';
   static const telegramAiEditorNoAIWritingStylesAreCurrentlyAvailable =
       'telegramAiEditorNoAIWritingStylesAreCurrentlyAvailable';
   static const telegramAiEditorPasteAStyleNameFromALink =
       'telegramAiEditorPasteAStyleNameFromALink';
   static const telegramAiEditorProofreadAndFixMistakes =
       'telegramAiEditorProofreadAndFixMistakes';
+  static const telegramAiEditorOriginal = 'telegramAiEditorOriginal';
+  static const telegramAiEditorResult = 'telegramAiEditorResult';
+  static const telegramAiEditorRewrite = 'telegramAiEditorRewrite';
+  static const telegramAiEditorRewriteTitle = 'telegramAiEditorRewriteTitle';
+  static const telegramAiEditorSelectStyle = 'telegramAiEditorSelectStyle';
   static const telegramAiEditorShowMeAsCreator =
       'telegramAiEditorShowMeAsCreator';
   static const telegramAiEditorStylePrompt = 'telegramAiEditorStylePrompt';
+  static const telegramAiEditorStyle = 'telegramAiEditorStyle';
   static const telegramAiEditorTelegramAIEditor =
       'telegramAiEditorTelegramAIEditor';
   static const telegramAiEditorTelegramProcessesAIEditorRequestsThroughCocoon =
       'telegramAiEditorTelegramProcessesAIEditorRequestsThroughCocoon';
   static const telegramAiEditorWritingStyle = 'telegramAiEditorWritingStyle';
+  static const telegramAiEditorTelegramStyle = 'telegramAiEditorTelegramStyle';
+  static const telegramAiEditorToLanguage = 'telegramAiEditorToLanguage';
+  static const telegramAiEditorTranslate = 'telegramAiEditorTranslate';
   static const telegramInvoiceCheckoutAddressLine2 =
       'telegramInvoiceCheckoutAddressLine2';
   static const telegramInvoiceCheckoutBillingCountryCode =

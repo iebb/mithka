@@ -117,6 +117,9 @@ MentionQuery? activeMentionQuery(String text, TextSelection selection) {
   );
 }
 
+bool isTelegramAiDraftEligible(String text) =>
+    text.trim().isNotEmpty && text.split('\n').length >= 2;
+
 typedef _ClipboardImage = ({Uint8List data, String mimeType});
 
 class _SendComposerIntent extends Intent {
@@ -200,6 +203,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
   final List<double> _recLevels = [];
   String? _recPath;
   late bool _hasText = vm.draft.trim().isNotEmpty;
+  late bool _aiDraftEligible = isTelegramAiDraftEligible(vm.draft);
   bool _replyKeyboardVisible = false;
   Timer? _mentionSearchTimer;
   MentionQuery? _mentionQuery;
@@ -294,8 +298,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
     // rebuild just the composer here — otherwise `hasText` stays stale and the
     // send button never appears while typing.
     final hasText = _controller.text.trim().isNotEmpty;
-    if (hasText != _hasText) {
+    final aiDraftEligible = isTelegramAiDraftEligible(_controller.text);
+    if (hasText != _hasText || aiDraftEligible != _aiDraftEligible) {
       _hasText = hasText;
+      _aiDraftEligible = aiDraftEligible;
       if (hasText) {
         _replyKeyboardVisible = false;
         _quickReplyContextVisible = false;
@@ -459,6 +465,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
       );
     }
     _hasText = _controller.text.trim().isNotEmpty;
+    _aiDraftEligible = isTelegramAiDraftEligible(_controller.text);
     if (_hasText) _quickReplyContextVisible = false;
     if (mounted) setState(() {});
   }
@@ -2619,72 +2626,86 @@ class _ChatInputBarState extends State<ChatInputBar> {
           ),
           if (hasText) ...[
             const SizedBox(width: 8),
-            if (vm.canUseAiComposition &&
-                _controller.text.split('\n').length > 3) ...[
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => unawaited(_openTelegramAiEditor()),
-                child: Container(
-                  width: 36,
-                  height: 36,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: c.searchFill,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(
-                      color: AppTheme.brand.withValues(alpha: 0.45),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (vm.canUseAiComposition && _aiDraftEligible) ...[
+                  Semantics(
+                    button: true,
+                    label: AppStringKeys.telegramAiEditorTelegramAIEditor.l10n(
+                      context,
+                    ),
+                    child: GestureDetector(
+                      key: const ValueKey('composerAiPrefixButton'),
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => unawaited(_openTelegramAiEditor()),
+                      child: Container(
+                        width: 36,
+                        height: 28,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: AppTheme.brand.withValues(alpha: 0.10),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: AppTheme.brand.withValues(alpha: 0.34),
+                            width: 0.75,
+                          ),
+                        ),
+                        child: Text(
+                          'AI',
+                          style: TextStyle(
+                            fontSize: 12,
+                            height: 1,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.brand,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
-                  child: Text(
-                    'AI',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
+                  const SizedBox(height: 6),
+                ],
+                GestureDetector(
+                  key: const ValueKey('composerSendButton'),
+                  onTap: () => unawaited(_sendCurrentText()),
+                  onLongPress: () => unawaited(_showTextSendOptions()),
+                  child: Container(
+                    width: vm.requiresPaidMessage ? 58 : 36,
+                    height: 36,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
                       color: AppTheme.brand,
+                      shape: BoxShape.circle,
                     ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-            ],
-            GestureDetector(
-              onTap: () => unawaited(_sendCurrentText()),
-              onLongPress: () => unawaited(_showTextSendOptions()),
-              child: Container(
-                width: vm.requiresPaidMessage ? 58 : 36,
-                height: 36,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: AppTheme.brand,
-                  shape: BoxShape.circle,
-                ),
-                child: vm.requiresPaidMessage
-                    ? Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const AppIcon(
-                            HeroAppIcons.solidStar,
-                            size: 14,
+                    child: vm.requiresPaidMessage
+                        ? Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const AppIcon(
+                                HeroAppIcons.solidStar,
+                                size: 14,
+                                color: Colors.white,
+                              ),
+                              const SizedBox(width: 3),
+                              Text(
+                                'x${vm.paidMessageStarCount}',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          )
+                        : const AppIcon(
+                            HeroAppIcons.solidPaperPlane,
+                            size: 17,
                             color: Colors.white,
                           ),
-                          const SizedBox(width: 3),
-                          Text(
-                            'x${vm.paidMessageStarCount}',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
-                      )
-                    : const AppIcon(
-                        HeroAppIcons.solidPaperPlane,
-                        size: 17,
-                        color: Colors.white,
-                      ),
-              ),
+                  ),
+                ),
+              ],
             ),
           ],
         ],
