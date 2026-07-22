@@ -109,14 +109,16 @@ void main() {
       HeroAppIcons.mobileScreenButton,
       HeroAppIcons.users,
       HeroAppIcons.expand,
-      HeroAppIcons.eye,
+      HeroAppIcons.tableCells,
       HeroAppIcons.font,
     ]) {
       expect(find.byIcon(icon.data), findsOneWidget, reason: '$icon is reused');
     }
   });
 
-  testWidgets('Display settings does not reuse row icons', (tester) async {
+  testWidgets('Interface size settings does not reuse row icons', (
+    tester,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(900, 1800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     SharedPreferences.setMockInitialValues({});
@@ -125,7 +127,7 @@ void main() {
     await tester.pumpWidget(
       ChangeNotifierProvider.value(
         value: controller,
-        child: _testApp(const DisplaySettingsView()),
+        child: _testApp(const InterfaceSizeSettingsView()),
       ),
     );
     await tester.pump();
@@ -143,6 +145,47 @@ void main() {
       expect(find.byIcon(icon.data), findsOneWidget, reason: '$icon is reused');
     }
     expect(find.text('Play Animated Status Emoji'), findsOneWidget);
+  });
+
+  testWidgets('font and interface sizes have separate live previews', (
+    tester,
+  ) async {
+    await _pumpAppearance(tester, themingEnabled: true);
+
+    final fontSizeRow = find.text('Font Size');
+    await tester.ensureVisible(fontSizeRow.first);
+    await tester.tap(fontSizeRow.first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Interface Size'), findsNothing);
+    expect(find.text('Mithka'), findsOneWidget);
+    expect(find.text('Saved Messages'), findsOneWidget);
+    expect(find.text('10:42'), findsOneWidget);
+
+    tester.state<NavigatorState>(find.byType(Navigator).first).pop();
+    await tester.pumpAndSettle();
+
+    final interfaceSizeRow = find.text('Interface Size');
+    await tester.ensureVisible(interfaceSizeRow.first);
+    await tester.tap(interfaceSizeRow.first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Font Size'), findsNothing);
+    expect(find.text('Saved Messages'), findsOneWidget);
+    expect(find.text('10:42'), findsOneWidget);
+    expect(find.text('Play Animated Status Emoji'), findsOneWidget);
+  });
+
+  test('Simplified Chinese names the interface size controls explicitly', () {
+    expect(AppStrings.tForLocale('zhHans', AppStringKeys.appearanceSize), '界面');
+    expect(
+      AppStrings.tForLocale('zhHans', AppStringKeys.appearanceFontSize),
+      '字体大小',
+    );
+    expect(
+      AppStrings.tForLocale('zhHans', AppStringKeys.appearanceInterfaceSize),
+      '界面大小',
+    );
   });
 
   testWidgets('theme-link prompt only enables theming after confirmation', (

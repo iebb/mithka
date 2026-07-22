@@ -25,6 +25,12 @@ mobile-native messaging interface.
 Mithka is available on the App Store:
 <https://apps.apple.com/us/app/mithka/id6783830742>
 
+Mithka is available on Google Play:
+<https://play.google.com/store/apps/details?id=ad.neko.mithka>
+
+Android beta builds are available through Google Play Open testing:
+<https://play.google.com/apps/testing/ad.neko.mithka>
+
 iOS beta builds are also available on TestFlight:
 <https://testflight.apple.com/join/tVC8WkbW>
 
@@ -104,19 +110,20 @@ debug signature is used. Neither the keystore nor `key.properties` is committed.
 
 `master` does not build Android packages. At 00:00 and 12:00 UTC each day,
 GitHub Actions merges new `master` commits into `nightly` and increments the
-app's patch version once; `nightly` publishes dated GitHub prereleases. Xcode
-Cloud keeps the same major/minor version but forces the iOS patch to `0`. Pushes
-to `release` publish dated stable GitHub releases. Google Play publishing is
-split into a separate guarded, manual-only workflow and is not triggered by
-release pushes.
+app's patch version once; `nightly` publishes dated GitHub prereleases and
+submits the signed AAB to Google Play Open testing. Xcode Cloud keeps the same
+major/minor version but forces the iOS patch to `0`. Pushes to `release` publish
+dated stable GitHub releases and submit the production AAB to Google Play
+through the same channel-aware workflow.
 `secrets.dart` is generated on the runner from the `TELEGRAM_API_ID` /
 `TELEGRAM_API_HASH` repository secrets.
 
 ## License & credits
 
-TDLib is © Telegram, used under its own license. This repository contains only
-original, independently-written code; it ships no third-party app's proprietary
-assets or trademarks.
+Mithka is licensed under the [BSD 3-Clause License](LICENSE).
+
+TDLib and the components under `third_party/` retain their own licenses. Mithka
+ships no third-party app's proprietary assets or trademarks.
 
 ## Star History
 <a href="https://www.star-history.com/?repos=iebb%2Fmithka&type=date&legend=top-left">

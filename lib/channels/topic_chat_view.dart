@@ -1128,13 +1128,7 @@ class _TopicPostRow extends StatelessWidget {
   }
 
   String get _displayText {
-    final text = post.message.text.trim();
-    if (text.startsWith('[') && text.endsWith(']')) return '';
-    if (post.message.document != null &&
-        text.startsWith(AppStringKeys.channelsFileAttachment)) {
-      return '';
-    }
-    return text;
+    return post.message.text.trim();
   }
 
   bool get _hasRenderableContent =>

@@ -2412,6 +2412,17 @@ class ChatViewModel extends ChangeNotifier {
     return true;
   }
 
+  /// Prevents an in-flight latest-history response from replacing the current
+  /// anchored window after the user takes control of the transcript.
+  ///
+  /// TDLib does not expose cancellation for an already-sent query, so the
+  /// generation check in [loadLatestHistory] discards its eventual response.
+  void invalidateLatestHistoryLoad() {
+    if (!_latestHistoryLoadInFlight) return;
+    _latestHistoryLoadInvalidated = true;
+    ++_historyWindowGeneration;
+  }
+
   // MARK: - Header
 
   Future<void> _loadChatHeader() async {

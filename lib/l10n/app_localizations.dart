@@ -251,10 +251,14 @@ abstract final class AppStringKeys {
   static const aiContextWindow = 'aiContextWindow';
   static const aiContextDetected = 'aiContextDetected';
   static const aiContextManual = 'aiContextManual';
+  static const aiEditModel = 'aiEditModel';
+  static const aiEditProvider = 'aiEditProvider';
   static const aiDeleteProvider = 'aiDeleteProvider';
   static const aiDeleteModel = 'aiDeleteModel';
   static const aiEnterModelManually = 'aiEnterModelManually';
   static const aiModelProvider = 'aiModelProvider';
+  static const aiModelCandidatesDescription = 'aiModelCandidatesDescription';
+  static const aiModelConfiguration = 'aiModelConfiguration';
   static const aiModels = 'aiModels';
   static const aiModelsFailed = 'aiModelsFailed';
   static const aiModelsLoaded = 'aiModelsLoaded';
@@ -326,6 +330,14 @@ abstract final class AppStringKeys {
   static const aiUnreadSummary = 'aiUnreadSummary';
   static const aiUnreadSummaryDescription = 'aiUnreadSummaryDescription';
   static const aiTokenContext = 'aiTokenContext';
+  static const aiTranslateUsing = 'aiTranslateUsing';
+  static const aiSummarizeUsing = 'aiSummarizeUsing';
+  static const aiTestFailed = 'aiTestFailed';
+  static const aiTestModel = 'aiTestModel';
+  static const aiTestPrompt = 'aiTestPrompt';
+  static const aiTestPromptDefault = 'aiTestPromptDefault';
+  static const aiTestPromptHint = 'aiTestPromptHint';
+  static const aiTestResponse = 'aiTestResponse';
   static const appearanceAddFont = 'appearanceAddFont';
   static const appearanceAddTextFont = 'appearanceAddTextFont';
   static const appearanceAlwaysShowMessageTime =
@@ -354,7 +366,6 @@ abstract final class AppStringKeys {
   static const appearanceColor = 'appearanceColor';
   static const appearanceDisableChatListSwipeActions =
       'appearanceDisableChatListSwipeActions';
-  static const appearanceDisplay = 'appearanceDisplay';
   static const appearanceSavedMessagesBookmarkView =
       'appearanceSavedMessagesBookmarkView';
   static const appearanceGestures = 'appearanceGestures';
@@ -413,8 +424,7 @@ abstract final class AppStringKeys {
       'appearanceShowGroupMemberTitles';
   static const appearanceShowPlainMemberRoleTags =
       'appearanceShowPlainMemberRoleTags';
-  static const appearanceShowPremiumNameColor =
-      'appearanceShowPremiumNameColor';
+  static const appearanceShowNameColors = 'appearanceShowNameColors';
   static const appearanceShowPremiumStatusEmoji =
       'appearanceShowPremiumStatusEmoji';
   static const appearanceShowUnreadChatCount = 'appearanceShowUnreadChatCount';

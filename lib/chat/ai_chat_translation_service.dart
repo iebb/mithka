@@ -26,13 +26,18 @@ class AiChatTranslationService {
   factory AiChatTranslationService.fromSettings(
     AiSettingsController settings, {
     String instructions = defaultAiTranslationPrompt,
-  }) => AiChatTranslationService(
-    providerMode: settings.provider,
-    endpoint: settings.openAiChatCompletionsUri,
-    model: settings.model,
-    apiKey: settings.apiKey,
-    instructions: instructions,
-  );
+  }) {
+    final configuration = settings.configurationForFeature(
+      AiFeature.translation,
+    );
+    return AiChatTranslationService(
+      providerMode: configuration.providerMode,
+      endpoint: configuration.endpoint,
+      model: configuration.model,
+      apiKey: configuration.apiKey,
+      instructions: instructions,
+    );
+  }
 
   final AiProviderMode providerMode;
   final Uri? endpoint;

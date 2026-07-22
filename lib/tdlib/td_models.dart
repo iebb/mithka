@@ -527,7 +527,7 @@ class ChatSummary {
   int archiveOrder; // > 0 when the chat is in the Archive list
   bool isMarkedUnread; // "标为未读" with no unread count
   String draftText; // unsent draft; shown as "[草稿]" prefix when non-empty
-  int? peerUserId; // private/secret chat peer, used for chat-list Premium UI
+  int? peerUserId; // private/secret chat peer, used for chat-list identity UI
   bool peerIsContact;
   String? peerPhoneNumber;
   bool peerIsPremium;
@@ -1354,7 +1354,7 @@ abstract final class TDParse {
     final contentText = rawService
         ? serviceText(content)
         : (content != null
-              ? messageText(content)
+              ? messageContentText(content)
               : telegramText(AppStringKeys.chatSearchMessageResultLabel));
     final text = restrictionReason ?? contentText;
 
@@ -1830,20 +1830,14 @@ abstract final class TDParse {
   static Map<String, dynamic>? formattedTextForContent(
     Map<String, dynamic>? content,
   ) {
-    switch (content?.type) {
-      case 'messageText':
-        return content?.obj('text');
-      case 'messageAnimation':
-      case 'messageAudio':
-      case 'messageDocument':
-      case 'messagePaidMedia':
-      case 'messagePhoto':
-      case 'messageVideo':
-      case 'messageVoiceNote':
-        return content?.obj('caption');
-      default:
-        return null;
-    }
+    if (content == null) return null;
+    if (content.type == 'messageText') return content.obj('text');
+
+    // TDLib uses the same formattedText `caption` field for every captionable
+    // attachment. Read it structurally instead of maintaining a media-type
+    // allowlist, so a newly introduced attachment type cannot regress into
+    // rendering its preview label as a caption.
+    return content.obj('caption');
   }
 
   static List<MessageTextEntity> messageTextEntities(
@@ -3535,6 +3529,18 @@ abstract final class TDParse {
         }
         return telegramText(AppStringKeys.chatSearchMessageResultLabel);
     }
+  }
+
+  /// User-authored text carried by a message, excluding localized preview
+  /// labels such as "Video", "Music", "GIF", or a generated file name.
+  ///
+  /// [messageText] intentionally retains those labels for chat-list/search
+  /// previews. Transcript messages must use this value so an absent caption is
+  /// represented as an empty string and can never be rendered as real text.
+  static String messageContentText(Map<String, dynamic> content) {
+    final formatted = formattedTextForContent(content);
+    if (formatted != null) return formatted.str('text') ?? '';
+    return messageText(content);
   }
 
   static String richMessageDisplayText(Map<String, dynamic> content) {

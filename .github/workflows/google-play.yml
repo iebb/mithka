@@ -1,20 +1,16 @@
-name: 📦 Google Play Release (Paused)
+name: 📦 Google Play Release
 
-# Automatic Google Play publishing is paused. This workflow is manual-only and
-# submits only when it is run from the release branch with the explicit
-# enable_submission confirmation checked.
+# Nightly builds go to Google Play's beta track (Open testing), while release
+# builds continue to go to Production. Manual runs are available from either
+# publishing branch.
 
 on:
+  push:
+    branches: [nightly, release]
   workflow_dispatch:
-    inputs:
-      enable_submission:
-        description: Enable the paused Google Play production submission
-        required: true
-        default: false
-        type: boolean
 
 concurrency:
-  group: google-play-production
+  group: google-play-${{ github.ref_name }}
   cancel-in-progress: false
 
 permissions:
@@ -27,7 +23,7 @@ env:
 jobs:
   prepare:
     name: Read release version
-    if: ${{ inputs.enable_submission && github.ref == 'refs/heads/release' }}
+    if: github.ref == 'refs/heads/nightly' || github.ref == 'refs/heads/release'
     runs-on: ubuntu-latest
     outputs:
       app_version: ${{ steps.version.outputs.app_version }}
@@ -36,6 +32,8 @@ jobs:
       build_stamp: ${{ steps.version.outputs.build_stamp }}
       release_date: ${{ steps.version.outputs.release_date }}
       short_sha: ${{ steps.version.outputs.short_sha }}
+      play_track: ${{ steps.version.outputs.play_track }}
+      release_name: ${{ steps.version.outputs.release_name }}
     steps:
       - uses: actions/checkout@v5
 
@@ -58,13 +56,30 @@ jobs:
           build_stamp="$(date -u '+%y%m%d%H')"
           release_date="$(date -u '+%Y-%m-%d')"
           short_sha="${GITHUB_SHA::7}"
+          branch_name="${GITHUB_REF_NAME:-${GITHUB_REF#refs/heads/}}"
+          case "$branch_name" in
+            nightly)
+              play_track="beta"
+              release_name="Mithka $app_version Beta · $release_date ($short_sha)"
+              ;;
+            release)
+              play_track="production"
+              release_name="Mithka $app_version · $release_date"
+              ;;
+            *)
+              echo "Unsupported Google Play branch: $branch_name" >&2
+              exit 1
+              ;;
+          esac
           echo "app_version=$app_version" >> "$GITHUB_OUTPUT"
           echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
           echo "play_version_code=$play_version_code" >> "$GITHUB_OUTPUT"
           echo "build_stamp=$build_stamp" >> "$GITHUB_OUTPUT"
           echo "release_date=$release_date" >> "$GITHUB_OUTPUT"
           echo "short_sha=$short_sha" >> "$GITHUB_OUTPUT"
-          echo "Google Play version: $app_version+$play_version_code"
+          echo "play_track=$play_track" >> "$GITHUB_OUTPUT"
+          echo "release_name=$release_name" >> "$GITHUB_OUTPUT"
+          echo "Google Play $play_track version: $app_version+$play_version_code"
 
   google-play:
     name: Publish AAB to Google Play
@@ -219,19 +234,19 @@ jobs:
       - name: Upload AAB artifact
         uses: actions/upload-artifact@v6
         with:
-          name: google-play-aab-${{ needs.prepare.outputs.app_version }}+${{ needs.prepare.outputs.version_code }}
+          name: google-play-aab-${{ needs.prepare.outputs.app_version }}+${{ needs.prepare.outputs.play_version_code }}
           path: build/app/outputs/bundle/release/app-release.aab
           if-no-files-found: error
           retention-days: 14
 
-      - name: Submit production release to Google Play
+      - name: Submit ${{ needs.prepare.outputs.play_track }} release to Google Play
         uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5
         with:
           serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: ad.neko.mithka
           releaseFiles: build/app/outputs/bundle/release/app-release.aab
-          tracks: production
+          tracks: ${{ needs.prepare.outputs.play_track }}
           status: completed
-          releaseName: Mithka ${{ needs.prepare.outputs.app_version }} · ${{ needs.prepare.outputs.release_date }}
+          releaseName: ${{ needs.prepare.outputs.release_name }}
           whatsNewDirectory: distribution/google-play/whatsnew
           changesNotSentForReview: false

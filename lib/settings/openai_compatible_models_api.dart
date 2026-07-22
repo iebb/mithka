@@ -208,6 +208,45 @@ class OpenAiCompatibleModelsApi {
     return model;
   }
 
+  Future<String> testModel({
+    required Uri chatCompletionsUri,
+    required String model,
+    required String prompt,
+    String? apiKey,
+  }) async {
+    final normalizedModel = model.trim();
+    final normalizedPrompt = prompt.trim();
+    if (normalizedModel.isEmpty || normalizedPrompt.isEmpty) {
+      throw const FormatException('A model and test prompt are required.');
+    }
+    final key = apiKey?.trim();
+    final response = await _httpClient
+        .post(
+          chatCompletionsUri,
+          headers: {
+            'accept': 'application/json',
+            'content-type': 'application/json',
+            if (key != null && key.isNotEmpty) 'authorization': 'Bearer $key',
+          },
+          body: jsonEncode({
+            'model': normalizedModel,
+            'messages': [
+              {'role': 'user', 'content': normalizedPrompt},
+            ],
+            'stream': false,
+          }),
+        )
+        .timeout(requestTimeout);
+    final body = utf8.decode(response.bodyBytes, allowMalformed: true);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw OpenAiCompatibleModelsException(
+        _errorMessage(body),
+        statusCode: response.statusCode,
+      );
+    }
+    return _completionText(body);
+  }
+
   void close() {
     if (_ownsHttpClient) _httpClient.close();
   }
@@ -230,5 +269,49 @@ class OpenAiCompatibleModelsApi {
     final compact = body.trim().replaceAll(RegExp(r'\s+'), ' ');
     if (compact.isEmpty) return 'The server rejected the model list request.';
     return compact.length <= 300 ? compact : '${compact.substring(0, 300)}…';
+  }
+
+  String _completionText(String body) {
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(body);
+    } on FormatException catch (error) {
+      throw OpenAiCompatibleModelsException(
+        'The model test returned invalid JSON: $error',
+      );
+    }
+    if (decoded is! Map || decoded['choices'] is! List) {
+      throw const OpenAiCompatibleModelsException(
+        'The model test response has no choices.',
+      );
+    }
+    final choices = decoded['choices'] as List;
+    if (choices.isEmpty || choices.first is! Map) {
+      throw const OpenAiCompatibleModelsException(
+        'The model test response has no choices.',
+      );
+    }
+    final message = (choices.first as Map)['message'];
+    if (message is! Map) {
+      throw const OpenAiCompatibleModelsException(
+        'The model test response has no message.',
+      );
+    }
+    final content = message['content'];
+    if (content is String && content.trim().isNotEmpty) {
+      return content.trim();
+    }
+    if (content is List) {
+      final text = content
+          .whereType<Map>()
+          .map((part) => part['text'])
+          .whereType<String>()
+          .join()
+          .trim();
+      if (text.isNotEmpty) return text;
+    }
+    throw const OpenAiCompatibleModelsException(
+      'The model test returned an empty response.',
+    );
   }
 }

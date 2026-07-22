@@ -16,12 +16,11 @@ List<Color> messageNameColorsForTheme(TelegramCloudTheme? theme) {
 Color messageNameColorForSender({
   required TelegramCloudTheme? theme,
   required int accentColorId,
-  required bool isPremium,
-  required bool showPremiumColors,
-  required Color premiumColorsDisabledFallback,
+  required bool showNameColors,
+  required Color nameColorsDisabledFallback,
 }) {
-  if (isPremium && !showPremiumColors) {
-    return premiumColorsDisabledFallback;
+  if (!showNameColors) {
+    return nameColorsDisabledFallback;
   }
   final colors = messageNameColorsForTheme(theme);
   final paletteIndex = accentColorId < 0 ? 0 : accentColorId % colors.length;

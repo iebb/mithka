@@ -6,6 +6,10 @@ class ChatAutoScrollPolicy {
 
   bool _preserveViewport;
 
+  /// After [requestReturnToBottom], ignore ballistic scroll updates that would
+  /// otherwise re-lock [preservesViewport] before the jump finishes.
+  bool _suppressViewportPreservation = false;
+
   bool get preservesViewport => _preserveViewport;
 
   void noteUserScroll({
@@ -14,14 +18,34 @@ class ChatAutoScrollPolicy {
   }) {
     if (isAtBottom) {
       _preserveViewport = false;
-    } else if (towardOlderMessages) {
+      _suppressViewportPreservation = false;
+      return;
+    }
+    if (_suppressViewportPreservation) return;
+    if (towardOlderMessages) {
       _preserveViewport = true;
     }
   }
 
-  void returnToBottom() => _preserveViewport = false;
+  /// Clear viewport lock (e.g. already at bottom). Does not suppress re-locking.
+  void returnToBottom() {
+    _preserveViewport = false;
+    _suppressViewportPreservation = false;
+  }
 
-  void noteMessageSent() => returnToBottom();
+  /// Explicit navigation to the latest edge. Ignores inertia-driven re-locks
+  /// until settled at bottom or [allowViewportPreservation].
+  void requestReturnToBottom() {
+    _preserveViewport = false;
+    _suppressViewportPreservation = true;
+  }
+
+  /// User took over the transcript; allow viewport locking again.
+  void allowViewportPreservation() {
+    _suppressViewportPreservation = false;
+  }
+
+  void noteMessageSent() => requestReturnToBottom();
 
   bool shouldFollowAppendedMessage({required bool wasNearBottom}) =>
       !_preserveViewport && wasNearBottom;
@@ -96,13 +120,22 @@ class ChatBottomFollowCoordinator {
     required double Function() latestExtent,
     required void Function() correct,
     required void Function() settled,
+    required void Function() abandoned,
     double epsilon = 0.5,
     int remainingFrames = 12,
     double? previousLatestExtent,
   }) {
-    if (remainingFrames <= 0) return;
+    if (!isCurrent(generation)) return;
+    if (remainingFrames <= 0) {
+      abandoned();
+      return;
+    }
     schedulePostFrame(() {
-      if (!isCurrent(generation) || !canFollow()) return;
+      if (!isCurrent(generation)) return;
+      if (!canFollow()) {
+        abandoned();
+        return;
+      }
       final currentLatestExtent = latestExtent();
       if (distanceToLatest() <= epsilon) {
         final extentIsStable =
@@ -120,6 +153,7 @@ class ChatBottomFollowCoordinator {
           latestExtent: latestExtent,
           correct: correct,
           settled: settled,
+          abandoned: abandoned,
           epsilon: epsilon,
           remainingFrames: remainingFrames - 1,
           previousLatestExtent: currentLatestExtent,
@@ -135,6 +169,7 @@ class ChatBottomFollowCoordinator {
         latestExtent: latestExtent,
         correct: correct,
         settled: settled,
+        abandoned: abandoned,
         epsilon: epsilon,
         remainingFrames: remainingFrames - 1,
         previousLatestExtent: currentLatestExtent,
