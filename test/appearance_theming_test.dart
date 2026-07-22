@@ -116,9 +116,7 @@ void main() {
     }
   });
 
-  testWidgets('Interface size settings does not reuse row icons', (
-    tester,
-  ) async {
+  testWidgets('Interface settings does not reuse row icons', (tester) async {
     await tester.binding.setSurfaceSize(const Size(900, 1800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     SharedPreferences.setMockInitialValues({});
@@ -127,24 +125,65 @@ void main() {
     await tester.pumpWidget(
       ChangeNotifierProvider.value(
         value: controller,
-        child: _testApp(const InterfaceSizeSettingsView()),
+        child: _testApp(const DisplaySettingsView()),
       ),
     );
     await tester.pump();
 
     for (final icon in const [
-      HeroAppIcons.flash,
+      HeroAppIcons.users,
+      HeroAppIcons.play,
       HeroAppIcons.eyeSlash,
       HeroAppIcons.listCheck,
       HeroAppIcons.idBadge,
-      HeroAppIcons.palette,
       HeroAppIcons.solidFaceSmile,
       HeroAppIcons.wandMagicSparkles,
-      HeroAppIcons.star,
     ]) {
       expect(find.byIcon(icon.data), findsOneWidget, reason: '$icon is reused');
     }
-    expect(find.text('Play Animated Status Emoji'), findsOneWidget);
+    expect(find.text('Interface'), findsOneWidget);
+    expect(find.text('Interface Size'), findsNothing);
+    expect(find.text('Play Animated Status Emoji'), findsNothing);
+    expect(find.text('Name colors'), findsNWidgets(2));
+  });
+
+  testWidgets('chat and chat-list name color pages use separate defaults', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(500, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final controller = ThemeController(prefs);
+
+    Future<void> pumpSurface(NameColorSettingsSurface surface) async {
+      await tester.pumpWidget(
+        ChangeNotifierProvider.value(
+          value: controller,
+          child: _testApp(NameColorSettingsView(surface: surface)),
+        ),
+      );
+      await tester.pump();
+    }
+
+    await pumpSurface(NameColorSettingsSurface.chat);
+    expect(find.text('Chat name colors'), findsOneWidget);
+    expect(find.text('Display color for'), findsOneWidget);
+    expect(find.text('Display status'), findsOneWidget);
+    expect(controller.chatNameColorAudience, NameColorAudience.allUsers);
+    expect(controller.chatStatusEmojiMode, StatusEmojiDisplayMode.static);
+
+    await tester.tap(find.text('Premium users'));
+    await tester.pump();
+    await tester.tap(find.text('Animated'));
+    await tester.pump();
+    expect(controller.chatNameColorAudience, NameColorAudience.premium);
+    expect(controller.chatStatusEmojiMode, StatusEmojiDisplayMode.animated);
+
+    await pumpSurface(NameColorSettingsSurface.chatList);
+    expect(find.text('Chat-list name colors'), findsOneWidget);
+    expect(controller.chatListNameColorAudience, NameColorAudience.premium);
+    expect(controller.chatListStatusEmojiMode, StatusEmojiDisplayMode.static);
   });
 
   testWidgets('font and interface sizes have separate live previews', (
@@ -173,7 +212,7 @@ void main() {
     expect(find.text('Font Size'), findsNothing);
     expect(find.text('Saved Messages'), findsOneWidget);
     expect(find.text('10:42'), findsOneWidget);
-    expect(find.text('Play Animated Status Emoji'), findsOneWidget);
+    expect(find.text('Play Animated Status Emoji'), findsNothing);
   });
 
   test('Simplified Chinese names the interface size controls explicitly', () {

@@ -126,6 +126,40 @@ enum ChatListSwipeBehavior {
   IconData get icon => _icon.data;
 }
 
+enum NameColorAudience {
+  premium(AppStringKeys.appearanceNameColorPremium, HeroAppIcons.star),
+  allUsers(AppStringKeys.appearanceNameColorAllUsers, HeroAppIcons.users),
+  nobody(AppStringKeys.appearanceNameColorNobody, HeroAppIcons.eyeSlash);
+
+  const NameColorAudience(this.label, this._icon);
+
+  final String label;
+  final AppIconData _icon;
+
+  IconData get icon => _icon.data;
+
+  bool shows({required bool isPremium}) => switch (this) {
+    NameColorAudience.premium => isPremium,
+    NameColorAudience.allUsers => true,
+    NameColorAudience.nobody => false,
+  };
+}
+
+enum StatusEmojiDisplayMode {
+  animated(AppStringKeys.appearanceStatusAnimated, HeroAppIcons.play),
+  static(AppStringKeys.appearanceStatusStatic, HeroAppIcons.image),
+  none(AppStringKeys.appearanceStatusNone, HeroAppIcons.eyeSlash);
+
+  const StatusEmojiDisplayMode(this.label, this._icon);
+
+  final String label;
+  final AppIconData _icon;
+
+  IconData get icon => _icon.data;
+  bool get visible => this != StatusEmojiDisplayMode.none;
+  bool get animate => this == StatusEmojiDisplayMode.animated;
+}
+
 enum ThreeFingerSwipeBehavior {
   switchFolders(AppStringKeys.gesturesSwitchFolders, HeroAppIcons.folder),
   switchAccounts(AppStringKeys.gesturesSwitchAccounts, HeroAppIcons.users),
@@ -964,11 +998,35 @@ class ThemeController extends ChangeNotifier {
     _hideSidebarPhone = _prefs.getBool(_hideSidebarPhoneKey) ?? false;
     _showMemberTags = _prefs.getBool(_memberTagsKey) ?? false;
     _showPlainMemberRoleTags = _prefs.getBool(_plainMemberRoleTagsKey) ?? false;
-    _showNameColors = _prefs.getBool(_nameColorsKey) ?? true;
-    _showPremiumEmojiStatus = _prefs.getBool(_premiumEmojiStatusKey) ?? true;
-    _showChatNameColors = _prefs.getBool(_chatNameColorsKey) ?? true;
-    _showChatPremiumEmojiStatus =
-        _prefs.getBool(_chatPremiumEmojiStatusKey) ?? true;
+    _chatListNameColorAudience = _storedNameColorAudience(
+      _chatListNameColorAudienceKey,
+      fallback: _prefs.getBool(_nameColorsKey) == false
+          ? NameColorAudience.nobody
+          : NameColorAudience.premium,
+    );
+    _chatNameColorAudience = _storedNameColorAudience(
+      _chatNameColorAudienceKey,
+      fallback: _prefs.getBool(_chatNameColorsKey) == false
+          ? NameColorAudience.nobody
+          : NameColorAudience.allUsers,
+    );
+    final legacyStatusAnimation = _prefs.getBool(_animateStatusEmojiKey);
+    _chatListStatusEmojiMode = _storedStatusEmojiMode(
+      _chatListStatusEmojiModeKey,
+      fallback: _prefs.getBool(_premiumEmojiStatusKey) == false
+          ? StatusEmojiDisplayMode.none
+          : legacyStatusAnimation == true
+          ? StatusEmojiDisplayMode.animated
+          : StatusEmojiDisplayMode.static,
+    );
+    _chatStatusEmojiMode = _storedStatusEmojiMode(
+      _chatStatusEmojiModeKey,
+      fallback: _prefs.getBool(_chatPremiumEmojiStatusKey) == false
+          ? StatusEmojiDisplayMode.none
+          : legacyStatusAnimation == true
+          ? StatusEmojiDisplayMode.animated
+          : StatusEmojiDisplayMode.static,
+    );
     _showSenderNameReadabilityPlate =
         _prefs.getBool(_senderNameReadabilityPlateKey) ?? false;
     _showMessageMetaIndicators =
@@ -1064,6 +1122,10 @@ class ThemeController extends ChangeNotifier {
   static const _premiumEmojiStatusKey = 'showPremiumEmojiStatus';
   static const _chatNameColorsKey = 'showChatPremiumNameColors';
   static const _chatPremiumEmojiStatusKey = 'showChatPremiumEmojiStatus';
+  static const _chatListNameColorAudienceKey = 'chatListNameColorAudience.v1';
+  static const _chatNameColorAudienceKey = 'chatNameColorAudience.v1';
+  static const _chatListStatusEmojiModeKey = 'chatListStatusEmojiMode.v1';
+  static const _chatStatusEmojiModeKey = 'chatStatusEmojiMode.v1';
   static const _senderNameReadabilityPlateKey =
       'showSenderNameReadabilityPlate';
   static const _messageMetaIndicatorsKey = 'showMessageMetaIndicators';
@@ -1119,10 +1181,11 @@ class ThemeController extends ChangeNotifier {
   bool _hideSidebarPhone = false;
   bool _showMemberTags = false;
   bool _showPlainMemberRoleTags = false;
-  bool _showNameColors = true;
-  bool _showPremiumEmojiStatus = true;
-  bool _showChatNameColors = true;
-  bool _showChatPremiumEmojiStatus = true;
+  NameColorAudience _chatListNameColorAudience = NameColorAudience.premium;
+  NameColorAudience _chatNameColorAudience = NameColorAudience.allUsers;
+  StatusEmojiDisplayMode _chatListStatusEmojiMode =
+      StatusEmojiDisplayMode.static;
+  StatusEmojiDisplayMode _chatStatusEmojiMode = StatusEmojiDisplayMode.static;
   bool _showSenderNameReadabilityPlate = false;
   bool _showMessageMetaIndicators = false;
   bool _alwaysShowMessageTime = false;
@@ -1311,10 +1374,17 @@ class ThemeController extends ChangeNotifier {
   bool get hideSidebarPhone => _hideSidebarPhone;
   bool get showMemberTags => _showMemberTags;
   bool get showPlainMemberRoleTags => _showPlainMemberRoleTags;
-  bool get showNameColors => _showNameColors;
-  bool get showPremiumEmojiStatus => _showPremiumEmojiStatus;
-  bool get showChatNameColors => _showChatNameColors;
-  bool get showChatPremiumEmojiStatus => _showChatPremiumEmojiStatus;
+  NameColorAudience get chatListNameColorAudience => _chatListNameColorAudience;
+  NameColorAudience get chatNameColorAudience => _chatNameColorAudience;
+  StatusEmojiDisplayMode get chatListStatusEmojiMode =>
+      _chatListStatusEmojiMode;
+  StatusEmojiDisplayMode get chatStatusEmojiMode => _chatStatusEmojiMode;
+  bool get showNameColors =>
+      _chatListNameColorAudience != NameColorAudience.nobody;
+  bool get showPremiumEmojiStatus => _chatListStatusEmojiMode.visible;
+  bool get showChatNameColors =>
+      _chatNameColorAudience != NameColorAudience.nobody;
+  bool get showChatPremiumEmojiStatus => _chatStatusEmojiMode.visible;
   bool get showSenderNameReadabilityPlate => _showSenderNameReadabilityPlate;
   bool get showMessageMetaIndicators => _showMessageMetaIndicators;
   bool get alwaysShowMessageTime => _alwaysShowMessageTime;
@@ -1338,6 +1408,36 @@ class ThemeController extends ChangeNotifier {
       _unreadBadgeOverflowMode;
   bool get capUnreadBadgeAt99 =>
       _unreadBadgeOverflowMode == UnreadBadgeOverflowMode.capped;
+
+  NameColorAudience _storedNameColorAudience(
+    String key, {
+    required NameColorAudience fallback,
+  }) {
+    final stored = _prefs.getString(key);
+    final value = NameColorAudience.values.firstWhere(
+      (audience) => audience.name == stored,
+      orElse: () => fallback,
+    );
+    if (stored != value.name) {
+      _prefs.setString(key, value.name);
+    }
+    return value;
+  }
+
+  StatusEmojiDisplayMode _storedStatusEmojiMode(
+    String key, {
+    required StatusEmojiDisplayMode fallback,
+  }) {
+    final stored = _prefs.getString(key);
+    final value = StatusEmojiDisplayMode.values.firstWhere(
+      (mode) => mode.name == stored,
+      orElse: () => fallback,
+    );
+    if (stored != value.name) {
+      _prefs.setString(key, value.name);
+    }
+    return value;
+  }
 
   /// App-wide text scale factor, applied at the root via MediaQuery.textScaler.
   double get fontScale => _fontScale;
@@ -1828,26 +1928,54 @@ class ThemeController extends ChangeNotifier {
   }
 
   set showNameColors(bool value) {
-    _showNameColors = value;
-    _prefs.setBool(_nameColorsKey, value);
-    notifyListeners();
+    chatListNameColorAudience = value
+        ? NameColorAudience.allUsers
+        : NameColorAudience.nobody;
   }
 
   set showPremiumEmojiStatus(bool value) {
-    _showPremiumEmojiStatus = value;
-    _prefs.setBool(_premiumEmojiStatusKey, value);
-    notifyListeners();
+    chatListStatusEmojiMode = value
+        ? StatusEmojiDisplayMode.static
+        : StatusEmojiDisplayMode.none;
   }
 
   set showChatNameColors(bool value) {
-    _showChatNameColors = value;
-    _prefs.setBool(_chatNameColorsKey, value);
-    notifyListeners();
+    chatNameColorAudience = value
+        ? NameColorAudience.allUsers
+        : NameColorAudience.nobody;
   }
 
   set showChatPremiumEmojiStatus(bool value) {
-    _showChatPremiumEmojiStatus = value;
-    _prefs.setBool(_chatPremiumEmojiStatusKey, value);
+    chatStatusEmojiMode = value
+        ? StatusEmojiDisplayMode.static
+        : StatusEmojiDisplayMode.none;
+  }
+
+  set chatListNameColorAudience(NameColorAudience value) {
+    if (_chatListNameColorAudience == value) return;
+    _chatListNameColorAudience = value;
+    _prefs.setString(_chatListNameColorAudienceKey, value.name);
+    notifyListeners();
+  }
+
+  set chatNameColorAudience(NameColorAudience value) {
+    if (_chatNameColorAudience == value) return;
+    _chatNameColorAudience = value;
+    _prefs.setString(_chatNameColorAudienceKey, value.name);
+    notifyListeners();
+  }
+
+  set chatListStatusEmojiMode(StatusEmojiDisplayMode value) {
+    if (_chatListStatusEmojiMode == value) return;
+    _chatListStatusEmojiMode = value;
+    _prefs.setString(_chatListStatusEmojiModeKey, value.name);
+    notifyListeners();
+  }
+
+  set chatStatusEmojiMode(StatusEmojiDisplayMode value) {
+    if (_chatStatusEmojiMode == value) return;
+    _chatStatusEmojiMode = value;
+    _prefs.setString(_chatStatusEmojiModeKey, value.name);
     notifyListeners();
   }
 

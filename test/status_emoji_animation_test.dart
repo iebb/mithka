@@ -64,4 +64,24 @@ void main() {
       isTrue,
     );
   });
+
+  testWidgets('chat surfaces can override the global animation preference', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({'animateStatusEmoji': true});
+    final prefs = await SharedPreferences.getInstance();
+    final theme = ThemeController(prefs);
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: theme,
+        child: const MaterialApp(home: StatusEmojiView(id: 0, animate: false)),
+      ),
+    );
+
+    expect(
+      tester.widget<CustomEmojiView>(find.byType(CustomEmojiView)).animate,
+      isFalse,
+    );
+  });
 }

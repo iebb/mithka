@@ -357,9 +357,12 @@ abstract final class AppStringKeys {
   static const appearanceChatFoldersMenu = 'appearanceChatFoldersMenu';
   static const appearanceChatFoldersTabs = 'appearanceChatFoldersTabs';
   static const appearanceChatList = 'appearanceChatList';
+  static const appearanceChatListNameColorsTitle =
+      'appearanceChatListNameColorsTitle';
   static const appearanceChatListFolderSwipeSwitching =
       'appearanceChatListFolderSwipeSwitching';
   static const appearanceChatView = 'appearanceChatView';
+  static const appearanceChatNameColorsTitle = 'appearanceChatNameColorsTitle';
   static const appearanceCleanableSize = 'appearanceCleanableSize';
   static const appearanceCleanUnusedFonts = 'appearanceCleanUnusedFonts';
   static const appearanceClearTextFonts = 'appearanceClearTextFonts';
@@ -407,6 +410,10 @@ abstract final class AppStringKeys {
   static const appearanceMergeConsecutiveImages =
       'appearanceMergeConsecutiveImages';
   static const appearanceMode = 'appearanceMode';
+  static const appearanceNameColorAllUsers = 'appearanceNameColorAllUsers';
+  static const appearanceNameColorAudience = 'appearanceNameColorAudience';
+  static const appearanceNameColorNobody = 'appearanceNameColorNobody';
+  static const appearanceNameColorPremium = 'appearanceNameColorPremium';
   static const appearanceMonospaceFont = 'appearanceMonospaceFont';
   static const appearanceNoCleanableFonts = 'appearanceNoCleanableFonts';
   static const appearanceNoDownloadedFontCache =
@@ -431,6 +438,10 @@ abstract final class AppStringKeys {
   static const appearanceSize = 'appearanceSize';
   static const appearanceSystem = 'appearanceSystem';
   static const appearanceSystemEmojiFont = 'appearanceSystemEmojiFont';
+  static const appearanceStatusAnimated = 'appearanceStatusAnimated';
+  static const appearanceStatusDisplay = 'appearanceStatusDisplay';
+  static const appearanceStatusNone = 'appearanceStatusNone';
+  static const appearanceStatusStatic = 'appearanceStatusStatic';
   static const appearanceTextFont = 'appearanceTextFont';
   static const appearanceTextFontOrderHint = 'appearanceTextFontOrderHint';
   static const appearanceTextFontUnsetHint = 'appearanceTextFontUnsetHint';

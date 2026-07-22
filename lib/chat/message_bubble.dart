@@ -405,13 +405,13 @@ class _MessageBubbleState extends State<MessageBubble>
     final senderNameColor = messageNameColorForSender(
       theme: cloudTheme,
       accentColorId: message.senderAccentColorId,
-      showNameColors: theme.showChatNameColors,
+      showNameColors: theme.chatNameColorAudience.shows(
+        isPremium: message.senderIsPremium,
+      ),
       nameColorsDisabledFallback: cloudTheme?.senderNameColor ?? c.linkBlue,
     );
-    final showPremiumStatus =
-        theme.showChatPremiumEmojiStatus &&
-        message.senderIsPremium &&
-        message.senderEmojiStatusId != 0;
+    final showStatus =
+        theme.chatStatusEmojiMode.visible && message.senderEmojiStatusId != 0;
     final senderTitle = message.senderTitle?.trim();
     final outgoingAvatarTitle = message.senderIsChat
         ? (message.senderName ?? widget.meName)
@@ -569,12 +569,13 @@ class _MessageBubbleState extends State<MessageBubble>
                                       : null,
                                 ),
                               ),
-                              if (showPremiumStatus) ...[
+                              if (showStatus) ...[
                                 const SizedBox(width: 3),
                                 StatusEmojiView(
                                   id: message.senderEmojiStatusId,
                                   size: 14,
                                   color: senderNameColor,
+                                  animate: theme.chatStatusEmojiMode.animate,
                                 ),
                               ],
                             ],
