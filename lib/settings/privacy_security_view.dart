@@ -296,7 +296,9 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
                     ),
                     _Row(
                       HeroAppIcons.phone,
-                      'Change Phone Number',
+                      AppStrings.t(
+                        AppStringKeys.accountSecurityChangePhoneNumber,
+                      ),
                       '',
                       () => _open(const ChangePhoneNumberView()),
                     ),
@@ -331,24 +333,29 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
                       ),
                     _Row(
                       HeroAppIcons.stopwatch,
-                      'Delete Account If Away For',
-                      '',
-                      () => _open(const AccountInactivityView()),
-                    ),
-                    _Row(
-                      HeroAppIcons.trash,
-                      AppStrings.t(AppStringKeys.privacyDeleteTelegramAccount),
-                      '',
-                      () => _open(const DeleteTelegramAccountView()),
-                    ),
-                    _Row(
-                      HeroAppIcons.stopwatch,
                       AppStringKeys.chatInfoAutoDeleteMessages,
                       '',
                       () => _open(const AutoDeleteView()),
                     ),
                   ],
                 ),
+                const SizedBox(height: 14),
+                _group(AppStrings.t(AppStringKeys.privacyDangerZone), [
+                  _Row(
+                    HeroAppIcons.stopwatch,
+                    AppStrings.t(
+                      AppStringKeys.accountSecurityDeleteAccountIfAwayFor,
+                    ),
+                    '',
+                    () => _open(const AccountInactivityView()),
+                  ),
+                  _Row(
+                    HeroAppIcons.trash,
+                    AppStrings.t(AppStringKeys.privacyDeleteTelegramAccount),
+                    '',
+                    () => _open(const DeleteTelegramAccountView()),
+                  ),
+                ], destructive: true),
               ],
             ),
           ),
@@ -357,16 +364,24 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
     );
   }
 
-  Widget _group(String title, List<_SettingsEntry> rows) {
+  Widget _group(
+    String title,
+    List<_SettingsEntry> rows, {
+    bool destructive = false,
+  }) {
     final c = context.colors;
     return Column(
+      key: destructive ? const ValueKey('privacy-danger-zone') : null,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
           padding: const EdgeInsets.only(left: 16, bottom: 6),
           child: Text(
             title,
-            style: TextStyle(fontSize: 13, color: c.textTertiary),
+            style: TextStyle(
+              fontSize: 13,
+              color: destructive ? AppTheme.tagRed : c.textTertiary,
+            ),
           ),
         ),
         Container(
@@ -387,7 +402,13 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: Row(
                         children: [
-                          AppIcon(row.icon, size: 20, color: AppTheme.brand),
+                          AppIcon(
+                            row.icon,
+                            size: 20,
+                            color: destructive
+                                ? AppTheme.tagRed
+                                : AppTheme.brand,
+                          ),
                           const SizedBox(width: 14),
                           Expanded(
                             child: Text(
@@ -396,7 +417,9 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 fontSize: 16,
-                                color: c.textPrimary,
+                                color: destructive
+                                    ? AppTheme.tagRed
+                                    : c.textPrimary,
                               ),
                             ),
                           ),

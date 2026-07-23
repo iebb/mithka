@@ -104,6 +104,7 @@ class TelegramLanguageController extends ChangeNotifier {
   }) {
     final controller = TelegramLanguageController._();
     controller._activePackId = activePackId;
+    controller._packs = _knownRemotePacks;
     controller._strings.addAll(strings);
     return controller;
   }
@@ -140,6 +141,9 @@ class TelegramLanguageController extends ChangeNotifier {
   String? get errorText => _errorText;
   String? get activePackId => _activePackId;
   List<TelegramLanguagePackOption> get packs => List.unmodifiable(_packs);
+
+  @visibleForTesting
+  String preferredPackIdForLocale(Locale locale) => _packIdForLocale(locale);
 
   Future<void> initialize(SharedPreferences prefs) async {
     if (_initialized) return;
@@ -233,7 +237,12 @@ class TelegramLanguageController extends ChangeNotifier {
     Map<String, Object?> placeholders,
   ) {
     final telegramKey = _telegramKeyForAppKey[appFallbackKey];
-    final template = telegramKey == null ? null : _strings[telegramKey];
+    final familiarOverride = _activePackId == _familiarChinesePackId
+        ? _familiarGlossaryOverrides[appFallbackKey]
+        : null;
+    final template =
+        familiarOverride ??
+        (telegramKey == null ? null : _strings[telegramKey]);
     if (template == null || template.trim().isEmpty) return null;
     final result = _interpolate(template, placeholders);
     return _hasUnresolvedPlaceholder(result) ? null : result;
@@ -291,7 +300,7 @@ class TelegramLanguageController extends ChangeNotifier {
   }
 
   Future<void> _loadAvailablePacks() async {
-    _packs = const [];
+    _packs = _knownRemotePacks;
     final response = await _query({
       '@type': 'getLocalizationTargetInfo',
       'only_local': false,
@@ -303,7 +312,7 @@ class TelegramLanguageController extends ChangeNotifier {
             .toList() ??
         <TelegramLanguagePackOption>[];
     if (packs.isEmpty) {
-      _packs = const [];
+      _packs = _knownRemotePacks;
       return;
     }
     packs.sort((a, b) {
@@ -311,7 +320,11 @@ class TelegramLanguageController extends ChangeNotifier {
       if (official != 0) return official;
       return a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase());
     });
-    _packs = packs;
+    final knownIds = _knownRemotePacks.map((pack) => pack.id).toSet();
+    _packs = [
+      ..._knownRemotePacks,
+      ...packs.where((pack) => !knownIds.contains(pack.id)),
+    ];
   }
 
   Future<void> _applyPack(String packId) async {
@@ -403,7 +416,7 @@ class TelegramLanguageController extends ChangeNotifier {
           locale.countryCode == 'MO';
       return traditional
           ? const ['zh-hant', 'zh-tw', 'zh-hk', 'zh']
-          : const ['zh-hans', 'zh-cn', 'zh'];
+          : const [_familiarChinesePackId, 'zh-hans', 'zh-cn', 'zh'];
     }
     return [locale.languageCode.toLowerCase()];
   }
@@ -506,6 +519,27 @@ extension _FirstOrNull<T> on Iterable<T> {
     return iterator.current;
   }
 }
+
+const _familiarChinesePackId = 'zhhanscn-qq';
+
+const _knownRemotePacks = <TelegramLanguagePackOption>[
+  TelegramLanguagePackOption(
+    id: _familiarChinesePackId,
+    baseLanguagePackId: 'zh-hans',
+    name: 'Familiar Chinese Glossary',
+    nativeName: '简体中文（熟悉术语）',
+    pluralCode: 'zh',
+    isOfficial: false,
+    isRtl: false,
+    isBeta: false,
+    isInstalled: true,
+  ),
+];
+
+const _familiarGlossaryOverrides = <String, String>{
+  AppStringKeys.archivedChatsGroupAssistant: '群助手',
+  AppStringKeys.appearanceArchivedChats: '群助手',
+};
 
 const _telegramPresenceKeys = <TelegramPresenceLabel, String>{
   TelegramPresenceLabel.online: 'Online',

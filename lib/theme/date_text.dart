@@ -43,7 +43,7 @@ class DateText {
     return _timeLabel(date);
   }
 
-  /// Full message timestamp shown on demand or in bubble metadata.
+  /// Full message timestamp shown beneath a message on demand or persistently.
   static String messageDetailLabel(int unix) {
     if (unix <= 0) return '';
     final date = DateTime.fromMillisecondsSinceEpoch(unix * 1000);

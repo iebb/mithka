@@ -105,12 +105,11 @@ import UserNotifications
   }
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
-    // Flutter creates the implicit engine before FlutterViewController runs it.
-    // Some plugins send an initial platform message during registration, so
-    // register after the engine has had a chance to launch on the main loop.
-    DispatchQueue.main.async { [weak self] in
-      self?.registerFlutterPluginsAndChannels(engineBridge)
-    }
+    // The engine is ready at this callback. Register synchronously so Dart
+    // cannot invoke a plugin between engine startup and the next main-loop
+    // turn; that race produced MissingPluginException reports from secure
+    // storage, MobileScanner, and platform channels.
+    registerFlutterPluginsAndChannels(engineBridge)
   }
 
   private func registerFlutterPluginsAndChannels(_ engineBridge: FlutterImplicitEngineBridge) {

@@ -403,7 +403,39 @@ class InterfaceSizeSettingsView extends StatelessWidget {
                 const AppearanceView()._interfaceSizeCard(context, theme),
                 const SizedBox(height: AppSpacing.xl),
                 const AppearanceView()._interfaceSizePreview(context, theme),
-                const SizedBox(height: AppSpacing.xl),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class DisplaySettingsView extends StatelessWidget {
+  const DisplaySettingsView({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final theme = context.watch<ThemeController>();
+    return Scaffold(
+      backgroundColor: c.groupedBackground,
+      body: Column(
+        children: [
+          NavHeader(
+            title: AppStrings.t(AppStringKeys.appearanceSize),
+            onBack: () => Navigator.of(context).pop(),
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                AppSpacing.xl,
+                AppSpacing.lg,
+                AppSpacing.section,
+              ),
+              children: [
                 _card(context, [
                   _toggleRow(
                     context,
@@ -418,13 +450,6 @@ class InterfaceSizeSettingsView extends StatelessWidget {
                     AppStrings.t(AppStringKeys.appearanceAnimateAvatars),
                     theme.animateAvatars,
                     (v) => theme.animateAvatars = v,
-                  ),
-                  _toggleRow(
-                    context,
-                    HeroAppIcons.flash.data,
-                    AppStrings.t(AppStringKeys.appearanceAnimateStatusEmoji),
-                    theme.animateStatusEmoji,
-                    (v) => theme.animateStatusEmoji = v,
                   ),
                   _toggleRow(
                     context,
@@ -462,21 +487,21 @@ class InterfaceSizeSettingsView extends StatelessWidget {
                     theme.groupImageMessages,
                     (v) => theme.groupImageMessages = v,
                   ),
-                  _toggleRow(
+                  _navigationRow(
                     context,
-                    HeroAppIcons.palette.data,
                     AppStrings.t(AppStringKeys.appearanceShowNameColors),
-                    theme.showChatNameColors,
-                    (v) => theme.showChatNameColors = v,
-                  ),
-                  _toggleRow(
-                    context,
-                    HeroAppIcons.solidFaceSmile.data,
-                    AppStrings.t(
-                      AppStringKeys.appearanceShowPremiumStatusEmoji,
+                    _nameColorSummary(
+                      theme.chatNameColorAudience,
+                      theme.chatStatusEmojiMode,
                     ),
-                    theme.showChatPremiumEmojiStatus,
-                    (v) => theme.showChatPremiumEmojiStatus = v,
+                    () => Navigator.of(context).push(
+                      PageRouteBuilder<void>(
+                        pageBuilder: (_, _, _) => const NameColorSettingsView(
+                          surface: NameColorSettingsSurface.chat,
+                        ),
+                      ),
+                    ),
+                    icon: HeroAppIcons.solidFaceSmile.data,
                   ),
                   _toggleRow(
                     context,
@@ -552,21 +577,21 @@ class InterfaceSizeSettingsView extends StatelessWidget {
                     theme.savedMessagesBookmarkView,
                     (v) => theme.savedMessagesBookmarkView = v,
                   ),
-                  _toggleRow(
+                  _navigationRow(
                     context,
-                    HeroAppIcons.wandMagicSparkles.data,
                     AppStrings.t(AppStringKeys.appearanceShowNameColors),
-                    theme.showNameColors,
-                    (v) => theme.showNameColors = v,
-                  ),
-                  _toggleRow(
-                    context,
-                    HeroAppIcons.star.data,
-                    AppStrings.t(
-                      AppStringKeys.appearanceShowPremiumStatusEmoji,
+                    _nameColorSummary(
+                      theme.chatListNameColorAudience,
+                      theme.chatListStatusEmojiMode,
                     ),
-                    theme.showPremiumEmojiStatus,
-                    (v) => theme.showPremiumEmojiStatus = v,
+                    () => Navigator.of(context).push(
+                      PageRouteBuilder<void>(
+                        pageBuilder: (_, _, _) => const NameColorSettingsView(
+                          surface: NameColorSettingsSurface.chatList,
+                        ),
+                      ),
+                    ),
+                    icon: HeroAppIcons.wandMagicSparkles.data,
                   ),
                 ]),
                 const SizedBox(height: AppSpacing.xl),
@@ -626,6 +651,101 @@ class InterfaceSizeSettingsView extends StatelessWidget {
     onTap,
     icon: icon,
   );
+
+  String _nameColorSummary(
+    NameColorAudience audience,
+    StatusEmojiDisplayMode status,
+  ) => '${AppStrings.t(audience.label)} · ${AppStrings.t(status.label)}';
+}
+
+enum NameColorSettingsSurface { chat, chatList }
+
+class NameColorSettingsView extends StatelessWidget {
+  const NameColorSettingsView({required this.surface, super.key});
+
+  final NameColorSettingsSurface surface;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final theme = context.watch<ThemeController>();
+    final isChatList = surface == NameColorSettingsSurface.chatList;
+    final audience = isChatList
+        ? theme.chatListNameColorAudience
+        : theme.chatNameColorAudience;
+    final status = isChatList
+        ? theme.chatListStatusEmojiMode
+        : theme.chatStatusEmojiMode;
+
+    return Scaffold(
+      backgroundColor: colors.groupedBackground,
+      body: Column(
+        children: [
+          NavHeader(
+            title: AppStrings.t(
+              isChatList
+                  ? AppStringKeys.appearanceChatListNameColorsTitle
+                  : AppStringKeys.appearanceChatNameColorsTitle,
+            ),
+            onBack: () => Navigator.of(context).pop(),
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                AppSpacing.xl,
+                AppSpacing.lg,
+                AppSpacing.section,
+              ),
+              children: [
+                const AppearanceView()._label(
+                  context,
+                  AppStrings.t(AppStringKeys.appearanceNameColorAudience),
+                ),
+                const AppearanceView()._card(context, [
+                  for (final option in NameColorAudience.values)
+                    const AppearanceView()._choiceRow(
+                      context,
+                      option.icon,
+                      option.label,
+                      audience == option,
+                      () {
+                        if (isChatList) {
+                          theme.chatListNameColorAudience = option;
+                        } else {
+                          theme.chatNameColorAudience = option;
+                        }
+                      },
+                    ),
+                ]),
+                const SizedBox(height: AppSpacing.xl),
+                const AppearanceView()._label(
+                  context,
+                  AppStrings.t(AppStringKeys.appearanceStatusDisplay),
+                ),
+                const AppearanceView()._card(context, [
+                  for (final option in StatusEmojiDisplayMode.values)
+                    const AppearanceView()._choiceRow(
+                      context,
+                      option.icon,
+                      option.label,
+                      status == option,
+                      () {
+                        if (isChatList) {
+                          theme.chatListStatusEmojiMode = option;
+                        } else {
+                          theme.chatStatusEmojiMode = option;
+                        }
+                      },
+                    ),
+                ]),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class ChatFolderSettingsView extends StatelessWidget {

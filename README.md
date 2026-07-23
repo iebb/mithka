@@ -22,17 +22,10 @@ mobile-native messaging interface.
 
 ## Availability
 
-Mithka is available on the App Store:
-<https://apps.apple.com/us/app/mithka/id6783830742>
-
-Mithka is available on Google Play:
-<https://play.google.com/store/apps/details?id=ad.neko.mithka>
-
-Android beta builds are available through Google Play Open testing:
-<https://play.google.com/apps/testing/ad.neko.mithka>
-
-iOS beta builds are also available on TestFlight:
-<https://testflight.apple.com/join/tVC8WkbW>
+| Platform | Beta | Release |
+| --- | --- | --- |
+| Android | [Google Play Open testing](https://play.google.com/apps/testing/ad.neko.mithka) | [Google Play](https://play.google.com/store/apps/details?id=ad.neko.mithka) |
+| iOS | [TestFlight](https://testflight.apple.com/join/tVC8WkbW) | [App Store](https://apps.apple.com/us/app/mithka/id6783830742) |
 
 ## The name
 

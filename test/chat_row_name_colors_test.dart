@@ -8,7 +8,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  testWidgets('normal users receive their assigned chat-list name color', (
+  testWidgets('chat-list name colors follow the selected audience', (
     tester,
   ) async {
     SharedPreferences.setMockInitialValues({});
@@ -43,9 +43,15 @@ void main() {
 
     Text title() => tester.widget<Text>(find.text('Normal user'));
 
+    expect(theme.chatListNameColorAudience, NameColorAudience.premium);
+    expect(title().style?.color, AppColors.light.textPrimary);
+
+    theme.chatListNameColorAudience = NameColorAudience.allUsers;
+    await tester.pump();
+
     expect(title().style?.color, const Color(0xFF955CDB));
 
-    theme.showNameColors = false;
+    theme.chatListNameColorAudience = NameColorAudience.nobody;
     await tester.pump();
 
     expect(title().style?.color, AppColors.light.textPrimary);
@@ -62,5 +68,29 @@ void main() {
 
     expect(theme.showNameColors, isFalse);
     expect(theme.showChatNameColors, isFalse);
+  });
+
+  test('chat and chat-list defaults persist independently', () async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final theme = ThemeController(preferences);
+    addTearDown(theme.dispose);
+
+    expect(theme.chatListNameColorAudience, NameColorAudience.premium);
+    expect(theme.chatListStatusEmojiMode, StatusEmojiDisplayMode.static);
+    expect(theme.chatNameColorAudience, NameColorAudience.allUsers);
+    expect(theme.chatStatusEmojiMode, StatusEmojiDisplayMode.static);
+
+    theme.chatListNameColorAudience = NameColorAudience.nobody;
+    theme.chatListStatusEmojiMode = StatusEmojiDisplayMode.animated;
+    theme.chatNameColorAudience = NameColorAudience.premium;
+    theme.chatStatusEmojiMode = StatusEmojiDisplayMode.none;
+
+    final restored = ThemeController(preferences);
+    addTearDown(restored.dispose);
+    expect(restored.chatListNameColorAudience, NameColorAudience.nobody);
+    expect(restored.chatListStatusEmojiMode, StatusEmojiDisplayMode.animated);
+    expect(restored.chatNameColorAudience, NameColorAudience.premium);
+    expect(restored.chatStatusEmojiMode, StatusEmojiDisplayMode.none);
   });
 }

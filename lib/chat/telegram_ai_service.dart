@@ -5,6 +5,9 @@ import 'package:flutter/foundation.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 
+typedef TelegramAiQuery =
+    Future<Map<String, dynamic>> Function(Map<String, dynamic> request);
+
 @immutable
 class TelegramAiFormattedText {
   const TelegramAiFormattedText({required this.text, this.entities = const []});
@@ -117,7 +120,8 @@ Map<String, dynamic> buildSummarizeMessageRequest({
 };
 
 class TelegramAiService extends ChangeNotifier {
-  TelegramAiService({TdClient? client}) : _client = client ?? TdClient.shared {
+  TelegramAiService({TdClient? client, this.queryOverride})
+    : _client = client ?? TdClient.shared {
     _applyStylesUpdate(_client.latestTextCompositionStylesUpdate);
     _subscription = _client.subscribe().listen((update) {
       if (update.type == 'updateTextCompositionStyles') {
@@ -127,6 +131,8 @@ class TelegramAiService extends ChangeNotifier {
   }
 
   final TdClient _client;
+  @visibleForTesting
+  final TelegramAiQuery? queryOverride;
   StreamSubscription<Map<String, dynamic>>? _subscription;
   List<TelegramAiStyle> _styles = const [];
   TelegramAiCapabilities? _capabilities;
@@ -141,6 +147,25 @@ class TelegramAiService extends ChangeNotifier {
         .map(TelegramAiStyle.fromTdJson)
         .where((style) => style.name.isNotEmpty)
         .toList(growable: false);
+    notifyListeners();
+  }
+
+  void _upsertStyle(TelegramAiStyle style) {
+    final index = _styles.indexWhere((item) => item.name == style.name);
+    if (index < 0) {
+      _styles = [style, ..._styles];
+    } else {
+      final updated = List<TelegramAiStyle>.of(_styles);
+      updated[index] = style;
+      _styles = updated;
+    }
+    notifyListeners();
+  }
+
+  void _removeLocalStyle(String name) {
+    final updated = _styles.where((item) => item.name != name).toList();
+    if (updated.length == _styles.length) return;
+    _styles = updated;
     notifyListeners();
   }
 
@@ -189,7 +214,7 @@ class TelegramAiService extends ChangeNotifier {
 
   Future<Map<String, dynamic>> _option(String name) async {
     try {
-      return await _client.query({'@type': 'getOption', 'name': name});
+      return await _queryTd({'@type': 'getOption', 'name': name});
     } catch (_) {
       return const {'@type': 'optionValueEmpty'};
     }
@@ -250,15 +275,19 @@ class TelegramAiService extends ChangeNotifier {
     required String prompt,
     int customEmojiId = 0,
     bool showCreator = false,
-  }) async => TelegramAiStyle.fromTdJson(
-    await _queryAi({
-      '@type': 'createTextCompositionStyle',
-      'title': title,
-      'custom_emoji_id': customEmojiId,
-      'prompt': prompt,
-      'show_creator': showCreator,
-    }),
-  );
+  }) async {
+    final style = TelegramAiStyle.fromTdJson(
+      await _queryAi({
+        '@type': 'createTextCompositionStyle',
+        'title': title,
+        'custom_emoji_id': customEmojiId,
+        'prompt': prompt,
+        'show_creator': showCreator,
+      }),
+    );
+    _upsertStyle(style);
+    return style;
+  }
 
   Future<TelegramAiStyle> editStyle({
     required String name,
@@ -266,30 +295,40 @@ class TelegramAiService extends ChangeNotifier {
     required String prompt,
     int customEmojiId = 0,
     bool showCreator = false,
-  }) async => TelegramAiStyle.fromTdJson(
-    await _queryAi({
-      '@type': 'editTextCompositionStyle',
-      'name': name,
-      'title': title,
-      'custom_emoji_id': customEmojiId,
-      'prompt': prompt,
-      'show_creator': showCreator,
-    }),
-  );
+  }) async {
+    final style = TelegramAiStyle.fromTdJson(
+      await _queryAi({
+        '@type': 'editTextCompositionStyle',
+        'name': name,
+        'title': title,
+        'custom_emoji_id': customEmojiId,
+        'prompt': prompt,
+        'show_creator': showCreator,
+      }),
+    );
+    _upsertStyle(style);
+    return style;
+  }
 
-  Future<void> deleteStyle(String name) =>
-      _ok({'@type': 'deleteTextCompositionStyle', 'name': name});
+  Future<void> deleteStyle(String name) async {
+    await _ok({'@type': 'deleteTextCompositionStyle', 'name': name});
+    _removeLocalStyle(name);
+  }
 
   Future<TelegramAiStyle> searchStyle(String name) async =>
       TelegramAiStyle.fromTdJson(
         await _queryAi({'@type': 'searchTextCompositionStyle', 'name': name}),
       );
 
-  Future<void> addStyle(String name) =>
-      _ok({'@type': 'addTextCompositionStyle', 'name': name});
+  Future<void> addStyle(String name, {TelegramAiStyle? style}) async {
+    await _ok({'@type': 'addTextCompositionStyle', 'name': name});
+    if (style != null) _upsertStyle(style);
+  }
 
-  Future<void> removeStyle(String name) =>
-      _ok({'@type': 'removeTextCompositionStyle', 'name': name});
+  Future<void> removeStyle(String name) async {
+    await _ok({'@type': 'removeTextCompositionStyle', 'name': name});
+    _removeLocalStyle(name);
+  }
 
   Future<TelegramAiFormattedText> _formatted(
     Map<String, dynamic> request,
@@ -301,7 +340,7 @@ class TelegramAiService extends ChangeNotifier {
 
   Future<Map<String, dynamic>> _queryAi(Map<String, dynamic> request) async {
     try {
-      return await _client.query(request);
+      return await _queryTd(request);
     } on TdError catch (error) {
       if (error.message.contains('AICOMPOSE_FLOOD_PREMIUM') ||
           error.message.contains('TONES_SAVED_TOO_MANY')) {
@@ -310,6 +349,9 @@ class TelegramAiService extends ChangeNotifier {
       rethrow;
     }
   }
+
+  Future<Map<String, dynamic>> _queryTd(Map<String, dynamic> request) =>
+      queryOverride?.call(request) ?? _client.query(request);
 
   @override
   void dispose() {

@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/communities/community_models.dart';
 import 'package:mithka/communities/community_view.dart';
+import 'package:mithka/components/photo_avatar.dart';
 import 'package:mithka/components/ui_components.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/settings/feature_settings_view.dart';
@@ -203,6 +204,21 @@ void main() {
       expect(find.text('CHATS YOU CAN VIEW'), findsOneWidget);
       expect(find.text('Public Announcements'), findsOneWidget);
       expect(find.text('Show as One Chat'), findsOneWidget);
+
+      final header = find.byKey(const ValueKey('community-header'));
+      final avatar = find.descendant(
+        of: header,
+        matching: find.byType(PhotoAvatar),
+      );
+      final title = find.text('Formula Paddock');
+      final count = find.text('2 chats');
+      expect(tester.getSize(header).height, 92);
+      expect(tester.getSize(avatar), const Size.square(64));
+      expect(tester.getTopLeft(title).dx, tester.getTopLeft(count).dx);
+      expect(
+        tester.getTopLeft(title).dx,
+        greaterThan(tester.getTopRight(avatar).dx),
+      );
 
       await tester.tap(find.byType(AppSwitch));
       await tester.pump();

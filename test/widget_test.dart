@@ -26,6 +26,7 @@ import 'package:mithka/chat/secret_chat_service.dart';
 import 'package:mithka/chat/sponsored_messages_cache.dart';
 import 'package:mithka/chat/sticker_item.dart';
 import 'package:mithka/chat/sticker_store.dart';
+import 'package:mithka/chat/telegram_ai_service.dart';
 import 'package:mithka/components/app_icons.dart';
 import 'package:mithka/components/keyboard_dismiss_on_tap.dart';
 import 'package:mithka/components/photo_avatar.dart';
@@ -817,6 +818,72 @@ void main() {
   });
 
   group('ChatInputBar', () {
+    testWidgets('shows two-line AI action above the send button', (
+      tester,
+    ) async {
+      final vm = _FocusTestChatViewModel()
+        ..aiCapabilities = const TelegramAiCapabilities(
+          tdlibVersion: 'test',
+          compositionSupported: true,
+          customStylesSupported: true,
+          summarySupported: true,
+          transcriptionSupported: true,
+          styleTitleMax: 64,
+          stylePromptMax: 1024,
+          addedStyleCountMax: 10,
+        );
+      addTearDown(vm.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.bottomCenter,
+              child: ChatInputBar(
+                vm: vm,
+                onStartCall: (_) {},
+                onMessageSent: () {},
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final field = find.byType(TextField).first;
+      final aiButton = find.byKey(const ValueKey('composerAiPrefixButton'));
+      expect(aiButton, findsNothing);
+
+      await tester.enterText(field, 'one\ntwo');
+      await tester.pump();
+
+      expect(aiButton, findsOneWidget);
+      final sendButton = find.byKey(const ValueKey('composerSendButton'));
+      expect(sendButton, findsOneWidget);
+      expect(
+        tester.getCenter(aiButton).dx,
+        greaterThan(tester.getRect(field).right),
+      );
+      expect(
+        tester.getCenter(aiButton).dx,
+        closeTo(tester.getCenter(sendButton).dx, 0.1),
+      );
+      expect(
+        tester.getCenter(aiButton).dy,
+        lessThan(tester.getCenter(sendButton).dy),
+      );
+
+      await tester.enterText(field, 'one');
+      await tester.pump();
+      expect(aiButton, findsNothing);
+    });
+
     test('builds awaitable sticker send requests', () {
       final vm = ChatViewModel(chatId: 42, title: 'Test', markReadOnOpen: false)
         ..paidMessageStarCount = 3;
@@ -1802,18 +1869,39 @@ void main() {
         find.byKey(const ValueKey('messageTappedTimestamp')),
         findsOneWidget,
       );
+      var bubbleRect = tester.getRect(
+        find.byKey(const ValueKey('messageTextBubble-2')),
+      );
+      var timestampRect = tester.getRect(
+        find.byKey(const ValueKey('messageTappedTimestamp')),
+      );
+      expect(timestampRect.top, greaterThan(bubbleRect.bottom));
+
+      await tester.tap(find.byKey(const ValueKey('messageTapTarget-2')));
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('messageTappedTimestamp')),
+        findsNothing,
+      );
 
       theme.alwaysShowMessageTime = true;
       addTearDown(theme.dispose);
       await pump();
       expect(
-        find.byKey(const ValueKey('messageInlineTimestamp')),
+        find.byKey(const ValueKey('messageTappedTimestamp')),
         findsOneWidget,
       );
       expect(
-        find.byKey(const ValueKey('messageTappedTimestamp')),
+        find.byKey(const ValueKey('messageInlineTimestamp')),
         findsNothing,
       );
+      bubbleRect = tester.getRect(
+        find.byKey(const ValueKey('messageTextBubble-2')),
+      );
+      timestampRect = tester.getRect(
+        find.byKey(const ValueKey('messageTappedTimestamp')),
+      );
+      expect(timestampRect.top, greaterThan(bubbleRect.bottom));
     });
 
     testWidgets('opens text selection through a double tap', (tester) async {

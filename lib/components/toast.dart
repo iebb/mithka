@@ -15,11 +15,11 @@ void showToast(
   BuildContext context,
   String message, {
   Duration visibleFor = const Duration(milliseconds: 1400),
-}) => showToastOverlay(
-  Overlay.of(context),
-  message.l10n(context),
-  visibleFor: visibleFor,
-);
+}) {
+  final overlay = Overlay.maybeOf(context, rootOverlay: true);
+  if (overlay == null) return;
+  showToastOverlay(overlay, message.l10n(context), visibleFor: visibleFor);
+}
 
 void showToastOverlay(
   OverlayState overlay,

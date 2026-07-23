@@ -1,8 +1,23 @@
+import 'dart:ui' show Locale;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/l10n/telegram_language_controller.dart';
 
 void main() {
+  test('prefers the familiar pack for Simplified Chinese', () {
+    final controller = TelegramLanguageController.test();
+
+    expect(
+      controller.preferredPackIdForLocale(
+        const Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hans'),
+      ),
+      'zhhanscn-qq',
+    );
+    expect(controller.packs.single.displayName, '简体中文（熟悉术语）');
+    expect(controller.packs.single.isOfficial, isFalse);
+  });
+
   test('falls back when a Telegram plural placeholder has no value', () {
     final controller = TelegramLanguageController.test(
       strings: const {'Members': '％1＄d members'},
@@ -28,7 +43,17 @@ void main() {
     );
   });
 
-  test('uses the selected language pack wording without app overrides', () {
+  test('familiar glossary keeps familiar archived-chat wording', () {
+    final controller = TelegramLanguageController.test(
+      activePackId: 'zhhanscn-qq',
+      strings: const {'ArchivedChats': '归档的聊天'},
+    );
+
+    expect(controller.text(AppStringKeys.archivedChatsGroupAssistant), '群助手');
+    expect(controller.text(AppStringKeys.appearanceArchivedChats), '群助手');
+  });
+
+  test('standard glossary uses the selected language pack wording', () {
     final controller = TelegramLanguageController.test(
       activePackId: 'zh-hans',
       strings: const {'ArchivedChats': '归档的聊天'},

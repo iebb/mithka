@@ -185,13 +185,17 @@ class _ChatPickerViewState extends State<ChatPickerView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    // The chat model can update while ListView is asking for children. Keep one
+    // snapshot for both itemCount and indexing so a shrinking list cannot
+    // surface a RangeError from a stale child request.
+    final filtered = _filtered;
     return Scaffold(
       backgroundColor: c.background,
       body: Column(
         children: [
           _header(),
           Expanded(
-            child: _filtered.isEmpty && widget.emptyText != null
+            child: filtered.isEmpty && widget.emptyText != null
                 ? Center(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -204,8 +208,8 @@ class _ChatPickerViewState extends State<ChatPickerView> {
                   )
                 : ListView.builder(
                     padding: EdgeInsets.zero,
-                    itemCount: _filtered.length,
-                    itemBuilder: (context, i) => _row(_filtered[i]),
+                    itemCount: filtered.length,
+                    itemBuilder: (context, i) => _row(filtered[i]),
                   ),
           ),
         ],

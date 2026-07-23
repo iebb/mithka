@@ -299,21 +299,21 @@ class _ProfileContactManagementViewState
   }
 
   Future<void> _choosePersonalChat() async {
-    final result = await Navigator.of(context).push<ChatPickerResult>(
+    final chat = await Navigator.of(context).push<ChatSummary>(
       MaterialPageRoute(
         builder: (_) => ChatPickerView(
           title: context.l10n.t(AppStringKeys.profileToolsChooseProfileChat),
         ),
       ),
     );
-    if (result == null || !mounted) return;
+    if (chat == null || !mounted) return;
     await _run(() async {
-      await _service.setPersonalChat(result.chat.id);
+      await _service.setPersonalChat(chat.id);
       _snapshot = ProfileContactSnapshot(
         needPhoneNumberPrivacyException:
             _snapshot.needPhoneNumberPrivacyException,
         note: _snapshot.note,
-        personalChatId: result.chat.id,
+        personalChatId: chat.id,
         personalPhotoId: _snapshot.personalPhotoId,
         currentPhotoId: _snapshot.currentPhotoId,
         publicPhotoId: _snapshot.publicPhotoId,

@@ -7,6 +7,7 @@ import '../components/app_icons.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../theme/app_theme.dart';
+import 'custom_emoji.dart';
 import 'telegram_ai_service.dart';
 
 Widget _aiTapLabel(
@@ -193,6 +194,9 @@ Future<T?> _aiChoiceSheet<T>(
       top: false,
       child: Container(
         margin: const EdgeInsets.all(10),
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.78,
+        ),
         decoration: BoxDecoration(
           color: c.card,
           borderRadius: BorderRadius.circular(18),
@@ -215,18 +219,28 @@ Future<T?> _aiChoiceSheet<T>(
                 ),
               ),
             ),
-            for (var index = 0; index < choices.length; index++) ...[
-              if (index > 0) Divider(height: 1, color: c.divider),
-              _aiRow(
-                sheetContext,
-                title: choices[index].$2,
-                subtitle: choices[index].$3,
-                trailing: choices[index].$1 == selected
-                    ? const AppIcon(HeroAppIcons.check, size: 20)
-                    : null,
-                onTap: () => Navigator.of(sheetContext).pop(choices[index].$1),
+            Flexible(
+              child: ListView.separated(
+                shrinkWrap: true,
+                padding: EdgeInsets.zero,
+                itemCount: choices.length,
+                separatorBuilder: (_, _) =>
+                    Divider(height: 1, color: c.divider),
+                itemBuilder: (context, index) => KeyedSubtree(
+                  key: ValueKey('aiChoice-${choices[index].$1}'),
+                  child: _aiRow(
+                    sheetContext,
+                    title: choices[index].$2,
+                    subtitle: choices[index].$3,
+                    trailing: choices[index].$1 == selected
+                        ? const AppIcon(HeroAppIcons.check, size: 20)
+                        : null,
+                    onTap: () =>
+                        Navigator.of(sheetContext).pop(choices[index].$1),
+                  ),
+                ),
               ),
-            ],
+            ),
           ],
         ),
       ),
@@ -248,28 +262,43 @@ class TelegramAiEditorView extends StatefulWidget {
   State<TelegramAiEditorView> createState() => _TelegramAiEditorViewState();
 }
 
+enum _TelegramAiMode { translate, style, fix }
+
 class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
   static const _languages = <String, String>{
-    '': 'Keep language',
     'en': 'English',
-    'ja': 'Japanese',
-    'zh-Hans': 'Simplified Chinese',
-    'zh-Hant': 'Traditional Chinese',
-    'ko': 'Korean',
-    'de': 'German',
-    'es': 'Spanish',
-    'fr': 'French',
+    'ja': '日本語',
+    'zh-Hans': '简体中文',
+    'zh-Hant': '繁體中文',
+    'ko': '한국어',
+    'de': 'Deutsch',
+    'es': 'Español',
+    'fr': 'Français',
   };
 
-  bool _proofread = true;
+  _TelegramAiMode _mode = _TelegramAiMode.style;
   bool _addEmojis = false;
   String _language = '';
   String _style = '';
   bool _working = false;
   TelegramAiFormattedText? _result;
 
+  bool get _canGenerate => switch (_mode) {
+    _TelegramAiMode.translate => _language.isNotEmpty,
+    _TelegramAiMode.style => _style.isNotEmpty || _addEmojis,
+    _TelegramAiMode.fix => true,
+  };
+
+  void _changeMode(_TelegramAiMode mode) {
+    if (_mode == mode) return;
+    setState(() {
+      _mode = mode;
+      _result = null;
+    });
+  }
+
   Future<void> _generate() async {
-    if (_working) return;
+    if (_working || !_canGenerate) return;
     if (widget.service.capabilitiesSnapshot?.compositionSupported != true) {
       showToast(
         context,
@@ -284,10 +313,12 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
     try {
       final result = await widget.service.compose(
         text: widget.source,
-        proofread: _proofread,
-        translateToLanguageCode: _language,
-        styleName: _style,
-        addEmojis: _addEmojis,
+        proofread: _mode == _TelegramAiMode.fix,
+        translateToLanguageCode: _mode == _TelegramAiMode.translate
+            ? _language
+            : '',
+        styleName: _mode == _TelegramAiMode.style ? _style : '',
+        addEmojis: _mode != _TelegramAiMode.fix && _addEmojis,
       );
       if (mounted) setState(() => _result = result);
     } catch (error) {
@@ -305,15 +336,8 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
       body: Column(
         children: [
           NavHeader(
-            title: AppStrings.t(AppStringKeys.telegramAiEditorTelegramAIEditor),
+            title: AppStrings.t(AppStringKeys.telegramAiEditorRewriteTitle),
             onBack: () => Navigator.of(context).pop(),
-            trailing: _aiTapLabel(
-              context,
-              label: AppStrings.t(AppStringKeys.composerFormatApply),
-              onTap: _result == null
-                  ? null
-                  : () => Navigator.of(context).pop(_result),
-            ),
           ),
           Expanded(
             child: AnimatedBuilder(
@@ -321,32 +345,25 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
               builder: (context, _) => ListView(
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 32),
                 children: [
-                  _textCard('Original', widget.source.text),
+                  _modePicker(),
+                  if (_mode != _TelegramAiMode.fix) ...[
+                    const SizedBox(height: 12),
+                    _modeOptions(),
+                  ],
                   const SizedBox(height: 12),
-                  _settingsCard(),
-                  const SizedBox(height: 12),
-                  if (_result != null) _textCard('Result', _result!.text),
-                  if (_result != null) const SizedBox(height: 12),
+                  _previewCard(),
+                  const SizedBox(height: 14),
                   _aiPrimaryButton(
                     context,
-                    label: AppStrings.t(
-                      AppStringKeys
-                          .telegramAiEditorGeneratePrivatelyWithTelegram,
-                    ),
-                    onTap: _working ? null : _generate,
+                    label: _primaryLabel,
+                    onTap: _working
+                        ? null
+                        : _result != null
+                        ? () => Navigator.of(context).pop(_result)
+                        : _canGenerate
+                        ? _generate
+                        : null,
                     working: _working,
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    AppStrings.t(
-                      AppStringKeys
-                          .telegramAiEditorTelegramProcessesAIEditorRequestsThroughCocoon,
-                    ),
-                    style: TextStyle(
-                      fontSize: 12,
-                      height: 1.35,
-                      color: c.textTertiary,
-                    ),
                   ),
                 ],
               ),
@@ -357,11 +374,261 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
     );
   }
 
-  Widget _textCard(String title, String value) {
+  String get _primaryLabel {
+    if (_result != null) {
+      return AppStrings.t(AppStringKeys.composerFormatApply);
+    }
+    return switch (_mode) {
+      _TelegramAiMode.translate => AppStrings.t(
+        AppStringKeys.telegramAiEditorTranslate,
+      ),
+      _TelegramAiMode.style => AppStrings.t(
+        _canGenerate
+            ? AppStringKeys.telegramAiEditorRewrite
+            : AppStringKeys.telegramAiEditorSelectStyle,
+      ),
+      _TelegramAiMode.fix => AppStrings.t(AppStringKeys.telegramAiEditorFix),
+    };
+  }
+
+  Widget _previewCard() {
     final c = context.colors;
     return Container(
       width: double.infinity,
+      decoration: BoxDecoration(
+        color: c.card,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: c.divider, width: 0.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _previewSection(
+            AppStrings.t(AppStringKeys.telegramAiEditorOriginal),
+            widget.source.text,
+            trailing: _mode == _TelegramAiMode.style
+                ? _inlineEmojiToggle()
+                : null,
+          ),
+          if (_result != null) ...[
+            Divider(height: 1, color: c.divider),
+            _previewSection(
+              _mode == _TelegramAiMode.translate && _language.isNotEmpty
+                  ? AppStrings.t(AppStringKeys.telegramAiEditorToLanguage, {
+                      'value1': _languages[_language] ?? _language,
+                    })
+                  : AppStrings.t(AppStringKeys.telegramAiEditorResult),
+              _result!.text,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _previewSection(String label, String value, {Widget? trailing}) {
+    final c = context.colors;
+    return Padding(
       padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: c.textSecondary,
+                  ),
+                ),
+              ),
+              ?trailing,
+            ],
+          ),
+          const SizedBox(height: 7),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 156),
+            child: SingleChildScrollView(
+              child: SelectableText(
+                value,
+                style: TextStyle(
+                  fontSize: 15,
+                  height: 1.38,
+                  color: c.textPrimary,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _inlineEmojiToggle() {
+    final c = context.colors;
+    return Semantics(
+      button: true,
+      selected: _addEmojis,
+      child: GestureDetector(
+        key: const ValueKey('telegramAiEmojify'),
+        behavior: HitTestBehavior.opaque,
+        onTap: () => setState(() {
+          _addEmojis = !_addEmojis;
+          _result = null;
+        }),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 2, 0, 2),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppIcon(
+                _addEmojis ? HeroAppIcons.circleCheck : HeroAppIcons.circle,
+                size: 18,
+                color: _addEmojis ? AppTheme.brand : c.textTertiary,
+              ),
+              const SizedBox(width: 5),
+              Text(
+                AppStrings.t(AppStringKeys.telegramAiEditorAddEmoji),
+                style: TextStyle(
+                  color: _addEmojis ? AppTheme.brand : c.textSecondary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _modePicker() {
+    final c = context.colors;
+    return Container(
+      height: 72,
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: c.textPrimary.withValues(alpha: 0.055),
+        borderRadius: BorderRadius.circular(28),
+      ),
+      child: Row(
+        children: [
+          _modeItem(
+            _TelegramAiMode.translate,
+            AppStrings.t(AppStringKeys.telegramAiEditorTranslate),
+            HeroAppIcons.language,
+          ),
+          _modeItem(
+            _TelegramAiMode.style,
+            AppStrings.t(AppStringKeys.telegramAiEditorStyle),
+            HeroAppIcons.wandMagicSparkles,
+          ),
+          _modeItem(
+            _TelegramAiMode.fix,
+            AppStrings.t(AppStringKeys.telegramAiEditorFix),
+            HeroAppIcons.circleCheck,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _modeItem(_TelegramAiMode mode, String label, AppIconData icon) {
+    final c = context.colors;
+    final selected = _mode == mode;
+    return Expanded(
+      child: Semantics(
+        button: true,
+        selected: selected,
+        child: GestureDetector(
+          key: ValueKey('telegramAiMode-${mode.name}'),
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _changeMode(mode),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: selected
+                  ? AppTheme.brand.withValues(alpha: 0.12)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                AppIcon(
+                  icon,
+                  size: 21,
+                  color: selected ? AppTheme.brand : c.textSecondary,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: selected ? AppTheme.brand : c.textSecondary,
+                    fontSize: 13,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _modeOptions() => switch (_mode) {
+    _TelegramAiMode.translate => _translationOptions(),
+    _TelegramAiMode.style => _styleOptions(),
+    _TelegramAiMode.fix => const SizedBox.shrink(),
+  };
+
+  Widget _translationOptions() {
+    final c = context.colors;
+    return Container(
+      decoration: BoxDecoration(
+        color: c.card,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: c.divider, width: 0.5),
+      ),
+      child: Column(
+        children: [
+          _aiRow(
+            context,
+            title: AppStrings.t(AppStringKeys.telegramAiEditorChooseLanguage),
+            subtitle: _languages[_language],
+            trailing: const AppIcon(HeroAppIcons.chevronRight, size: 18),
+            onTap: _chooseLanguage,
+          ),
+          Divider(height: 1, color: c.divider),
+          _aiToggleRow(
+            context,
+            title: AppStrings.t(AppStringKeys.telegramAiEditorAddEmoji),
+            value: _addEmojis,
+            onChanged: (value) => setState(() {
+              _addEmojis = value;
+              _result = null;
+            }),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _styleOptions() {
+    final c = context.colors;
+    final styles = widget.service.styles;
+    final supportsCustomStyles =
+        widget.service.capabilitiesSnapshot?.customStylesSupported == true;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 13, 14, 14),
       decoration: BoxDecoration(
         color: c.card,
         borderRadius: BorderRadius.circular(14),
@@ -371,125 +638,158 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            title,
+            AppStrings.t(AppStringKeys.telegramAiEditorWritingStyle),
             style: TextStyle(
-              fontSize: 12,
+              color: c.textPrimary,
+              fontSize: 15,
               fontWeight: FontWeight.w600,
-              color: c.textSecondary,
             ),
           ),
-          const SizedBox(height: 7),
-          SelectableText(
-            value,
-            style: TextStyle(fontSize: 15, height: 1.38, color: c.textPrimary),
+          const SizedBox(height: 11),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                if (supportsCustomStyles) ...[
+                  _styleChip(
+                    key: const ValueKey('telegramAiAddStyle'),
+                    label: AppStrings.t(AppStringKeys.imageEditAdd),
+                    selected: false,
+                    showAdd: true,
+                    onTap: _addStyle,
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                for (final style in styles) ...[
+                  _styleChip(
+                    key: ValueKey('telegramAiStyle-${style.name}'),
+                    label: style.title,
+                    selected: _style == style.name,
+                    leading: _styleIcon(style, selected: _style == style.name),
+                    onTap: () => setState(() {
+                      _style = _style == style.name ? '' : style.name;
+                      _result = null;
+                    }),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+              ],
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _settingsCard() {
+  Widget _styleChip({
+    required Key key,
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+    Widget? leading,
+    bool showAdd = false,
+  }) {
     final c = context.colors;
-    final styles = widget.service.styles;
-    final supportsCustomStyles =
-        widget.service.capabilitiesSnapshot?.customStylesSupported == true;
-    return Container(
-      decoration: BoxDecoration(
-        color: c.card,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: c.divider, width: 0.5),
-      ),
-      child: Column(
-        children: [
-          _aiToggleRow(
-            context,
-            title: AppStrings.t(
-              AppStringKeys.telegramAiEditorProofreadAndFixMistakes,
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: GestureDetector(
+        key: key,
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          height: 36,
+          padding: EdgeInsets.symmetric(horizontal: showAdd ? 11 : 13),
+          decoration: BoxDecoration(
+            color: selected
+                ? AppTheme.brand.withValues(alpha: 0.12)
+                : c.searchFill,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: selected
+                  ? AppTheme.brand.withValues(alpha: 0.60)
+                  : c.divider,
+              width: selected ? 1 : 0.5,
             ),
-            value: _proofread,
-            onChanged: (value) => setState(() => _proofread = value),
           ),
-          Divider(height: 1, color: c.divider),
-          _aiToggleRow(
-            context,
-            title: AppStrings.t(AppStringKeys.telegramAiEditorAddEmoji),
-            value: _addEmojis,
-            onChanged: (value) => setState(() => _addEmojis = value),
-          ),
-          Divider(height: 1, color: c.divider),
-          _aiRow(
-            context,
-            title: AppStrings.t(AppStringKeys.messageActionTranslate),
-            subtitle: _languages[_language],
-            trailing: const AppIcon(HeroAppIcons.chevronRight, size: 18),
-            onTap: _chooseLanguage,
-          ),
-          Divider(height: 1, color: c.divider),
-          _aiRow(
-            context,
-            title: AppStrings.t(AppStringKeys.telegramAiEditorWritingStyle),
-            subtitle: _style.isEmpty
-                ? 'Keep current style'
-                : styles
-                          .where((item) => item.name == _style)
-                          .map((item) => item.title)
-                          .firstOrNull ??
-                      _style,
-            trailing: const AppIcon(HeroAppIcons.chevronRight, size: 18),
-            onTap: () => _chooseStyle(styles),
-          ),
-          if (supportsCustomStyles) ...[
-            Divider(height: 1, color: c.divider),
-            _aiRow(
-              context,
-              leading: const AppIcon(HeroAppIcons.wandMagicSparkles, size: 20),
-              title: AppStrings.t(
-                AppStringKeys.telegramAiEditorManageCustomStyles,
-              ),
-              trailing: const AppIcon(HeroAppIcons.chevronRight, size: 18),
-              onTap: () => Navigator.of(context).push<void>(
-                MaterialPageRoute(
-                  builder: (_) => TelegramAiStylesView(service: widget.service),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (showAdd) ...[
+                AppIcon(HeroAppIcons.plus, size: 15, color: AppTheme.brand),
+                const SizedBox(width: 5),
+              ] else if (leading != null) ...[
+                leading,
+                const SizedBox(width: 6),
+              ],
+              Text(
+                label,
+                style: TextStyle(
+                  color: selected ? AppTheme.brand : c.textPrimary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
-            ),
-          ],
-        ],
+            ],
+          ),
+        ),
       ),
+    );
+  }
+
+  Widget _styleIcon(TelegramAiStyle style, {required bool selected}) {
+    final color = selected ? AppTheme.brand : context.colors.textSecondary;
+    return KeyedSubtree(
+      key: ValueKey('telegramAiStyleIcon-${style.name}'),
+      child: style.customEmojiId != 0
+          ? CustomEmojiView(id: style.customEmojiId, size: 19, color: color)
+          : AppIcon(HeroAppIcons.wandMagicSparkles, size: 17, color: color),
     );
   }
 
   Future<void> _chooseLanguage() async {
     final value = await _aiChoiceSheet<String>(
       context,
-      title: AppStrings.t(AppStringKeys.messageActionTranslate),
+      title: AppStrings.t(AppStringKeys.telegramAiEditorChooseLanguage),
       choices: [
         for (final entry in _languages.entries) (entry.key, entry.value, null),
       ],
       selected: _language,
     );
-    if (value != null && mounted) setState(() => _language = value);
+    if (value != null && mounted) {
+      setState(() {
+        _language = value;
+        _result = null;
+      });
+    }
   }
 
-  Future<void> _chooseStyle(List<TelegramAiStyle> styles) async {
-    final value = await _aiChoiceSheet<String>(
-      context,
-      title: AppStrings.t(AppStringKeys.telegramAiEditorWritingStyle),
-      choices: [
-        ('', 'Keep current style', null),
-        for (final style in styles)
-          (style.name, style.title, style.prompt.isEmpty ? null : style.prompt),
-      ],
-      selected: _style,
+  Future<void> _addStyle() async {
+    final added = await Navigator.of(context).push<TelegramAiStyle>(
+      MaterialPageRoute(
+        builder: (_) =>
+            TelegramAiStylesView(service: widget.service, pickOnAdd: true),
+      ),
     );
-    if (value != null && mounted) setState(() => _style = value);
+    if (added != null && mounted) {
+      setState(() {
+        _style = added.name;
+        _result = null;
+      });
+    }
   }
 }
 
 class TelegramAiStylesView extends StatefulWidget {
-  const TelegramAiStylesView({super.key, required this.service});
+  const TelegramAiStylesView({
+    super.key,
+    required this.service,
+    this.pickOnAdd = false,
+  });
 
   final TelegramAiService service;
+  final bool pickOnAdd;
 
   @override
   State<TelegramAiStylesView> createState() => _TelegramAiStylesViewState();
@@ -536,7 +836,11 @@ class _TelegramAiStylesViewState extends State<TelegramAiStylesView> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        style == null ? 'Create AI style' : 'Edit AI style',
+                        AppStrings.t(
+                          style == null
+                              ? AppStringKeys.telegramAiEditorCreateStyle
+                              : AppStringKeys.telegramAiEditorEditStyle,
+                        ),
                         style: TextStyle(
                           color: c.textPrimary,
                           fontSize: 18,
@@ -611,16 +915,16 @@ class _TelegramAiStylesViewState extends State<TelegramAiStylesView> {
     if (result == null || result.$1.isEmpty || result.$2.isEmpty || !mounted) {
       return;
     }
+    TelegramAiStyle? saved;
     await _run(() async {
       if (style == null) {
-        final created = await widget.service.createStyle(
+        saved = await widget.service.createStyle(
           title: result.$1,
           prompt: result.$2,
           showCreator: result.$3,
         );
-        await widget.service.addStyle(created.name);
       } else {
-        await widget.service.editStyle(
+        saved = await widget.service.editStyle(
           name: style.name,
           title: result.$1,
           prompt: result.$2,
@@ -629,16 +933,24 @@ class _TelegramAiStylesViewState extends State<TelegramAiStylesView> {
         );
       }
     });
+    if (saved != null && mounted && widget.pickOnAdd) {
+      Navigator.of(context).pop(saved);
+    }
   }
 
   Future<void> _install() async {
     final name = _search.text.trim();
     if (name.isEmpty) return;
+    TelegramAiStyle? installed;
     await _run(() async {
       final style = await widget.service.searchStyle(name);
-      await widget.service.addStyle(style.name);
+      await widget.service.addStyle(style.name, style: style);
+      installed = style;
       _search.clear();
     });
+    if (installed != null && mounted && widget.pickOnAdd) {
+      Navigator.of(context).pop(installed);
+    }
   }
 
   Future<void> _delete(TelegramAiStyle style) async {
@@ -647,9 +959,13 @@ class _TelegramAiStylesViewState extends State<TelegramAiStylesView> {
       title: AppStrings.t(AppStringKeys.passkeysDeleteMessage, {
         'value1': style.title,
       }),
-      choices: const [
-        (false, 'Keep style', null),
-        (true, 'Delete style', 'This cannot be undone.'),
+      choices: [
+        (false, AppStrings.t(AppStringKeys.telegramAiEditorKeepStyle), null),
+        (
+          true,
+          AppStrings.t(AppStringKeys.telegramAiEditorDeleteStyle),
+          AppStrings.t(AppStringKeys.telegramAiEditorCannotBeUndone),
+        ),
       ],
       selected: false,
     );
@@ -745,13 +1061,20 @@ class _TelegramAiStylesViewState extends State<TelegramAiStylesView> {
                         title: style.title,
                         subtitle: style.prompt.isEmpty
                             ? style.isCustom
-                                  ? 'Custom style'
-                                  : 'Telegram style'
+                                  ? AppStrings.t(
+                                      AppStringKeys.telegramAiEditorCustomStyle,
+                                    )
+                                  : AppStrings.t(
+                                      AppStringKeys
+                                          .telegramAiEditorTelegramStyle,
+                                    )
                             : style.prompt,
-                        onTap: style.isCreator
+                        onTap: widget.pickOnAdd
+                            ? () => Navigator.of(context).pop(style)
+                            : style.isCreator
                             ? () => _createOrEdit(style)
                             : null,
-                        trailing: style.isCustom
+                        trailing: style.isCustom && !widget.pickOnAdd
                             ? GestureDetector(
                                 behavior: HitTestBehavior.opaque,
                                 onTap: _working ? null : () => _delete(style),

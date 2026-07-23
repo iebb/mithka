@@ -50,12 +50,13 @@ class ChatRowView extends StatelessWidget {
     final bookmarkView =
         chat.isSavedMessages && theme.savedMessagesBookmarkView;
     final nameColor =
-        theme.showNameColors && chat.peerAccentColorId >= 0 && !bookmarkView
+        theme.chatListNameColorAudience.shows(isPremium: chat.peerIsPremium) &&
+            chat.peerAccentColorId >= 0 &&
+            !bookmarkView
         ? _accentColor(chat.peerAccentColorId)
         : c.textPrimary;
-    final showPremiumStatus =
-        theme.showPremiumEmojiStatus &&
-        chat.peerIsPremium &&
+    final showStatus =
+        theme.chatListStatusEmojiMode.visible &&
         chat.peerEmojiStatusId != 0 &&
         !bookmarkView;
     return Container(
@@ -99,12 +100,13 @@ class ChatRowView extends StatelessWidget {
                         ),
                       ),
                     ),
-                    if (showPremiumStatus) ...[
+                    if (showStatus) ...[
                       const SizedBox(width: AppSpacing.xs),
                       StatusEmojiView(
                         id: chat.peerEmojiStatusId,
                         size: 17,
                         color: nameColor,
+                        animate: theme.chatListStatusEmojiMode.animate,
                       ),
                     ],
                   ],
