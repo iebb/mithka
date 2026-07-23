@@ -34,6 +34,12 @@ void main() {
 
     expect(source, contains('options.tracesSampleRate = 0.02'));
     expect(
+      source,
+      contains('options.enableUIViewControllerTracing = false'),
+      reason:
+          'Sentry Cocoa automatic controller scanning crashes on affected iOS 16 devices',
+    );
+    expect(
       RegExp(r'options\\.tracesSampleRate\\s*=\\s*0\\.0\\s*;').hasMatch(source),
       isFalse,
     );

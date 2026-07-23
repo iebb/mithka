@@ -17,7 +17,6 @@ import 'package:flutter/services.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
-import '../app/pip_bounds_debug_overlay.dart';
 import '../app/video_split_controller.dart';
 import '../auth/telegram_country_names.dart';
 import '../call/call_manager.dart';
@@ -37,7 +36,6 @@ import '../settings/ai_settings_controller.dart';
 import '../settings/apple_pcc_api.dart';
 import '../settings/blocked_user_service.dart';
 import '../settings/business_tools_views.dart';
-import '../settings/developer_mode_controller.dart';
 import '../settings/keyword_blocker.dart';
 import '../settings/quick_reaction_settings_view.dart';
 import '../settings/sensitive_content_controller.dart';
@@ -889,7 +887,6 @@ class _ChatViewState extends State<ChatView> {
   static const _initialTargetAlignment = 0.30;
   static const _initialUnreadAlignment = 0.12;
   static const _pendingTranscriptOrderId = 0x7FFFFFFFFFFFFFFF;
-  static OverlayEntry? _globalPictureInPictureVideo;
   static final Map<int, _ChatScrollSnapshot> _sessionScrollSnapshots = {};
   static final ChatSessionCache _sessionCache = ChatSessionCache();
   late final ChatAutoScrollPolicy _autoScrollPolicy;
@@ -3269,10 +3266,6 @@ class _ChatViewState extends State<ChatView> {
       VideoSplitController.instance.play(session);
       return;
     }
-    if (VideoPiPController.instance.isOpen) {
-      VideoPiPController.instance.play(session);
-      return;
-    }
     Navigator.of(context).push(
       MaterialPageRoute(
         fullscreenDialog: true,
@@ -3331,248 +3324,13 @@ class _ChatViewState extends State<ChatView> {
       case VideoDisplayMode.fullscreen:
         break;
       case VideoDisplayMode.pictureInPicture:
-        _showVideoPictureInPicture(routeContext, session);
+        // iOS has already handed the player to AVPictureInPictureController.
+        // There is no app-level PiP overlay fallback.
         Navigator.of(routeContext).maybePop();
       case VideoDisplayMode.split:
         VideoSplitController.instance.play(session);
         Navigator.of(routeContext).maybePop();
     }
-  }
-
-  static void _showVideoPictureInPicture(
-    BuildContext context,
-    VideoSplitSession initialSession,
-  ) {
-    final pip = VideoPiPController.instance;
-    if (_globalPictureInPictureVideo != null) {
-      pip.play(initialSession);
-      return;
-    }
-    if (pip.isOpen) {
-      pip.play(initialSession);
-      return;
-    }
-    pip.play(initialSession);
-    _globalPictureInPictureVideo?.remove();
-    _globalPictureInPictureVideo = null;
-
-    final overlay = Overlay.of(context, rootOverlay: true);
-    final screen = MediaQuery.sizeOf(context);
-    const margin = 16.0;
-    var aspect = _sessionAspect(initialSession);
-    var boxWidth = (screen.width * 0.46).clamp(220.0, 360.0);
-    var boxHeight = (boxWidth / aspect).clamp(130.0, 260.0);
-    boxWidth = boxHeight * aspect;
-    var displayedVideoId = initialSession.video.id;
-    var offset = Offset(
-      screen.width - boxWidth - margin,
-      screen.height - boxHeight - MediaQuery.paddingOf(context).bottom - 110,
-    );
-
-    late final OverlayEntry entry;
-    void close() {
-      entry.remove();
-      if (_globalPictureInPictureVideo == entry) {
-        _globalPictureInPictureVideo = null;
-      }
-      if (pip.session?.video.id == displayedVideoId) {
-        pip.close();
-      }
-    }
-
-    entry = OverlayEntry(
-      builder: (overlayContext) => StatefulBuilder(
-        builder: (context, setOverlayState) {
-          final media = MediaQuery.sizeOf(context);
-          final padding = MediaQuery.paddingOf(context);
-          void clampFrame() {
-            final maxWidth = math.max(80.0, media.width - margin * 2);
-            final maxHeight = math.max(
-              80.0,
-              media.height - padding.top - padding.bottom - margin * 2,
-            );
-            if (boxWidth > maxWidth) {
-              boxWidth = maxWidth;
-              boxHeight = boxWidth / aspect;
-            }
-            if (boxHeight > maxHeight) {
-              boxHeight = maxHeight;
-              boxWidth = boxHeight * aspect;
-            }
-            final minX = math.min(margin, media.width - boxWidth);
-            final maxX = math.max(minX, media.width - boxWidth - margin);
-            final minY = math.min(
-              padding.top + margin,
-              media.height - boxHeight,
-            );
-            final maxY = math.max(
-              minY,
-              media.height - boxHeight - padding.bottom - margin,
-            );
-            offset = Offset(
-              offset.dx.clamp(minX, maxX),
-              offset.dy.clamp(minY, maxY),
-            );
-          }
-
-          void syncSession(VideoSplitSession session) {
-            if (session.video.id == displayedVideoId) return;
-            displayedVideoId = session.video.id;
-            aspect = _sessionAspect(session);
-            boxHeight = (boxWidth / aspect).clamp(110.0, media.height * 0.72);
-            boxWidth = boxHeight * aspect;
-            clampFrame();
-          }
-
-          void move(DragUpdateDetails details) {
-            setOverlayState(() {
-              offset += details.delta;
-              clampFrame();
-            });
-          }
-
-          void resizeFromCorner(
-            DragUpdateDetails details, {
-            required int horizontalSign,
-            required int verticalSign,
-          }) {
-            setOverlayState(() {
-              final oldWidth = boxWidth;
-              final oldHeight = boxHeight;
-              final minW = math.min(180.0, media.width - margin * 2);
-              final maxW = math.max(minW, media.width - margin * 2);
-              final widthFromX = boxWidth + details.delta.dx * horizontalSign;
-              final widthFromY =
-                  boxWidth + details.delta.dy * verticalSign * aspect;
-              final nextWidth =
-                  (widthFromX - boxWidth).abs() > (widthFromY - boxWidth).abs()
-                  ? widthFromX
-                  : widthFromY;
-              boxWidth = nextWidth.clamp(minW, maxW);
-              boxHeight = boxWidth / aspect;
-              if (boxHeight > media.height * 0.72) {
-                boxHeight = media.height * 0.72;
-                boxWidth = boxHeight * aspect;
-              }
-              if (boxHeight < 110) {
-                boxHeight = 110;
-                boxWidth = boxHeight * aspect;
-              }
-              if (horizontalSign < 0) {
-                offset = offset.translate(oldWidth - boxWidth, 0);
-              }
-              if (verticalSign < 0) {
-                offset = offset.translate(0, oldHeight - boxHeight);
-              }
-              clampFrame();
-            });
-          }
-
-          return AnimatedBuilder(
-            animation: pip,
-            builder: (context, _) {
-              final session = pip.session;
-              if (session == null) return const SizedBox.shrink();
-              syncSession(session);
-              clampFrame();
-              final showDebugBounds = context
-                  .watch<DeveloperModeController>()
-                  .showPiPBounds;
-              return Positioned(
-                left: offset.dx,
-                top: offset.dy,
-                width: boxWidth,
-                height: boxHeight,
-                child: Material(
-                  type: MaterialType.transparency,
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      Positioned.fill(
-                        child: GestureDetector(
-                          onPanUpdate: move,
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(14),
-                            child: VideoPlayerView(
-                              key: ValueKey(
-                                '${session.video.id}:${session.messageId ?? 0}',
-                              ),
-                              video: session.video,
-                              thumb: session.thumb,
-                              width: session.width,
-                              height: session.height,
-                              presentation:
-                                  VideoPlayerPresentation.pictureInPicture,
-                              compactControls: true,
-                              onClose: close,
-                              sourceChatId: session.chatId,
-                              messageId: session.messageId,
-                              previousVideo: session.queue.previous,
-                              nextVideo: session.queue.next,
-                              onNavigate: (delta) {
-                                final nextSession = session.moveBy(delta);
-                                if (nextSession != null) pip.play(nextSession);
-                              },
-                              currentMode: VideoDisplayMode.pictureInPicture,
-                              onSwitchMode: (mode) => _switchPiPSessionMode(
-                                context,
-                                close,
-                                mode,
-                                session,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      _PiPCornerHandle(
-                        alignment: Alignment.topLeft,
-                        onDrag: (details) => resizeFromCorner(
-                          details,
-                          horizontalSign: -1,
-                          verticalSign: -1,
-                        ),
-                      ),
-                      _PiPCornerHandle(
-                        alignment: Alignment.topRight,
-                        onDrag: (details) => resizeFromCorner(
-                          details,
-                          horizontalSign: 1,
-                          verticalSign: -1,
-                        ),
-                      ),
-                      _PiPCornerHandle(
-                        alignment: Alignment.bottomLeft,
-                        onDrag: (details) => resizeFromCorner(
-                          details,
-                          horizontalSign: -1,
-                          verticalSign: 1,
-                        ),
-                      ),
-                      _PiPCornerHandle(
-                        alignment: Alignment.bottomRight,
-                        onDrag: (details) => resizeFromCorner(
-                          details,
-                          horizontalSign: 1,
-                          verticalSign: 1,
-                        ),
-                      ),
-                      if (showDebugBounds)
-                        PiPBoundsDebugOverlay(
-                          offset: offset,
-                          size: Size(boxWidth, boxHeight),
-                          viewport: media,
-                        ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          );
-        },
-      ),
-    );
-    _globalPictureInPictureVideo = entry;
-    overlay.insert(entry);
   }
 
   void _openImage(ChatMessage message) {
@@ -8318,76 +8076,6 @@ class _TextSelectionAction extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-void _switchPiPSessionMode(
-  BuildContext context,
-  VoidCallback close,
-  VideoDisplayMode mode,
-  VideoSplitSession session,
-) {
-  if (mode == VideoDisplayMode.pictureInPicture) return;
-  final navigator = Navigator.of(context, rootNavigator: true);
-  close();
-  switch (mode) {
-    case VideoDisplayMode.pictureInPicture:
-      break;
-    case VideoDisplayMode.split:
-      VideoSplitController.instance.play(session);
-    case VideoDisplayMode.fullscreen:
-      navigator.push(
-        MaterialPageRoute(
-          fullscreenDialog: true,
-          builder: (routeContext) => VideoPlaylistPlayerView(
-            queue: session.queue,
-            onSwitchMode: (queue, nextMode) {
-              final currentSession = VideoSplitSession.fromQueue(queue);
-              switch (nextMode) {
-                case VideoDisplayMode.fullscreen:
-                  break;
-                case VideoDisplayMode.pictureInPicture:
-                  VideoPiPController.instance.play(currentSession);
-                  Navigator.of(routeContext).maybePop();
-                case VideoDisplayMode.split:
-                  VideoSplitController.instance.play(currentSession);
-                  Navigator.of(routeContext).maybePop();
-              }
-            },
-          ),
-        ),
-      );
-  }
-}
-
-double _sessionAspect(VideoSplitSession session) {
-  return (session.width != null &&
-          session.height != null &&
-          session.width! > 0 &&
-          session.height! > 0)
-      ? session.width! / session.height!
-      : 16 / 9;
-}
-
-class _PiPCornerHandle extends StatelessWidget {
-  const _PiPCornerHandle({required this.alignment, required this.onDrag});
-
-  final Alignment alignment;
-  final GestureDragUpdateCallback onDrag;
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned(
-      left: alignment.x < 0 ? -8 : null,
-      right: alignment.x > 0 ? -8 : null,
-      top: alignment.y < 0 ? -8 : null,
-      bottom: alignment.y > 0 ? -8 : null,
-      child: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onPanUpdate: onDrag,
-        child: const SizedBox(width: 44, height: 44),
       ),
     );
   }

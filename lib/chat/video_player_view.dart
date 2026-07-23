@@ -796,6 +796,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
         speed: _speed,
         muted: _volume <= 0.01,
         playing: c.value.isPlaying,
+        videoSize: c.value.size,
       ),
     );
   }
@@ -988,6 +989,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
         speed: _speed,
         muted: _volume <= 0.01,
         playing: c.value.isPlaying,
+        videoSize: c.value.size,
       );
     }
     if (!started) {
@@ -1009,6 +1011,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
         speed: _speed,
         muted: _volume <= 0.01,
         playing: c.value.isPlaying,
+        videoSize: c.value.size,
         playerId: c.fvpPlayerId,
         onStop: () async {
           if (SystemPictureInPicture.usesActivePlayer(id!)) {
@@ -1027,6 +1030,12 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
         showToast(context, AppStringKeys.videoPlayerPictureInPictureFailed);
       }
       return false;
+    }
+    if (SystemPictureInPicture.keepsFlutterPlayerInActivity) {
+      // Android PiP hosts this Activity. Keep the Flutter route and its video
+      // texture mounted so the system captures the active player, not chat.
+      if (mounted) setState(() => _controlsVisible = false);
+      return true;
     }
     _systemPiPUsesActivePlayer =
         id != null && SystemPictureInPicture.usesActivePlayer(id);
@@ -1067,6 +1076,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
       speed: _speed,
       muted: _volume <= 0.01,
       playing: c.value.isPlaying,
+      videoSize: c.value.size,
       playerId: c.fvpPlayerId,
       onStop: () async {
         if (SystemPictureInPicture.usesActivePlayer(id)) {

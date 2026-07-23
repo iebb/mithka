@@ -1,0 +1,21 @@
+name: system_picture_in_picture
+description: Mithka's included system Picture-in-Picture bridge.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.12.2
+  flutter: '>=3.22.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: ad.neko.mithka.system_picture_in_picture
+        pluginClass: SystemPictureInPicturePlugin
+      ios:
+        pluginClass: SystemPictureInPicturePlugin

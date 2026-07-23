@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 
-enum _PictureInPictureBackend { activeFvpPlayer, avPlayer }
+enum _PictureInPictureBackend { activeFvpPlayer, nativePlatform }
 
 class SystemPictureInPicture {
   SystemPictureInPicture._();
@@ -18,7 +18,11 @@ class SystemPictureInPicture {
   static final Map<String, _PictureInPictureBackend> _backendById = {};
   static bool _handlerAttached = false;
 
-  static bool get isSupportedPlatform => Platform.isIOS;
+  static bool get isSupportedPlatform => Platform.isIOS || Platform.isAndroid;
+
+  /// Android PiP hosts the existing Activity, including its Flutter texture.
+  /// iOS instead transfers playback to AVPictureInPictureController.
+  static bool get keepsFlutterPlayerInActivity => Platform.isAndroid;
 
   static Future<bool> isSupported() async {
     if (!isSupportedPlatform) return false;
@@ -42,6 +46,7 @@ class SystemPictureInPicture {
     required double speed,
     required bool muted,
     required bool playing,
+    required Size videoSize,
     int? playerId,
     Future<void> Function()? onStop,
   }) async {
@@ -53,6 +58,7 @@ class SystemPictureInPicture {
       speed: speed,
       muted: muted,
       playing: playing,
+      videoSize: videoSize,
       playerId: playerId,
       onStop: onStop,
     );
@@ -63,6 +69,7 @@ class SystemPictureInPicture {
       speed: speed,
       muted: muted,
       playing: playing,
+      videoSize: videoSize,
     );
     if (!started) {
       await cancelPrepared(id);
@@ -78,6 +85,7 @@ class SystemPictureInPicture {
     required double speed,
     required bool muted,
     required bool playing,
+    required Size videoSize,
     int? playerId,
     Future<void> Function()? onStop,
   }) async {
@@ -94,6 +102,8 @@ class SystemPictureInPicture {
               'speed': speed,
               'muted': muted,
               'playing': playing,
+              'width': videoSize.width,
+              'height': videoSize.height,
             }) ??
             false;
         if (prepared) {
@@ -111,10 +121,12 @@ class SystemPictureInPicture {
             'speed': speed,
             'muted': muted,
             'playing': playing,
+            'width': videoSize.width,
+            'height': videoSize.height,
           }) ??
           false;
       if (prepared) {
-        _backendById[id] = _PictureInPictureBackend.avPlayer;
+        _backendById[id] = _PictureInPictureBackend.nativePlatform;
       } else {
         _cleanupById.remove(id);
       }
@@ -131,6 +143,7 @@ class SystemPictureInPicture {
     required double speed,
     required bool muted,
     required bool playing,
+    required Size videoSize,
   }) async {
     if (!isSupportedPlatform) return false;
     _attachHandler();
@@ -144,6 +157,8 @@ class SystemPictureInPicture {
             'speed': speed,
             'muted': muted,
             'playing': playing,
+            'width': videoSize.width,
+            'height': videoSize.height,
           }) ??
           false;
     } catch (_) {
@@ -157,6 +172,7 @@ class SystemPictureInPicture {
     required double speed,
     required bool muted,
     required bool playing,
+    required Size videoSize,
   }) async {
     if (!isSupportedPlatform) return;
     _attachHandler();
@@ -170,6 +186,8 @@ class SystemPictureInPicture {
         'speed': speed,
         'muted': muted,
         'playing': playing,
+        'width': videoSize.width,
+        'height': videoSize.height,
       });
     } catch (_) {}
   }
