@@ -4,9 +4,12 @@ import 'package:flutter/foundation.dart';
 
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
+import '../tdlib/td_models.dart';
 
 typedef TelegramAiQuery =
     Future<Map<String, dynamic>> Function(Map<String, dynamic> request);
+
+const telegramAiReplyTranscriptMaxCharacters = 32768;
 
 @immutable
 class TelegramAiFormattedText {
@@ -68,6 +71,8 @@ class TelegramAiCapabilities {
   const TelegramAiCapabilities({
     required this.tdlibVersion,
     required this.compositionSupported,
+    this.richCompositionSupported = false,
+    this.replySupported = false,
     required this.customStylesSupported,
     required this.summarySupported,
     required this.transcriptionSupported,
@@ -78,6 +83,8 @@ class TelegramAiCapabilities {
 
   final String tdlibVersion;
   final bool compositionSupported;
+  final bool richCompositionSupported;
+  final bool replySupported;
   final bool customStylesSupported;
   final bool summarySupported;
   final bool transcriptionSupported;
@@ -118,6 +125,77 @@ Map<String, dynamic> buildSummarizeMessageRequest({
   'translate_to_language_code': translateToLanguageCode,
   'tone': tone,
 };
+
+Map<String, dynamic> buildComposeRichMessageWithAiRequest({
+  required String transcript,
+  required String customPrompt,
+  String translateToLanguageCode = '',
+  bool addEmojis = false,
+  int maxTranscriptCharacters = telegramAiReplyTranscriptMaxCharacters,
+}) {
+  if (maxTranscriptCharacters <= 0) {
+    throw ArgumentError.value(
+      maxTranscriptCharacters,
+      'maxTranscriptCharacters',
+      'must be greater than zero',
+    );
+  }
+  final boundedTranscript = _newestRunes(transcript, maxTranscriptCharacters);
+  if (boundedTranscript.trim().isEmpty) {
+    throw ArgumentError.value(transcript, 'transcript', 'must not be empty');
+  }
+  if (customPrompt.trim().isEmpty) {
+    throw ArgumentError.value(
+      customPrompt,
+      'customPrompt',
+      'must not be empty',
+    );
+  }
+  return {
+    '@type': 'composeRichMessageWithAi',
+    'message': {
+      '@type': 'inputRichMessage',
+      'source': {
+        '@type': 'richMessageSourceBlocks',
+        'blocks': [
+          {
+            '@type': 'inputPageBlockParagraph',
+            'text': {'@type': 'richTextPlain', 'text': boundedTranscript},
+          },
+        ],
+      },
+      'is_rtl': false,
+      'detect_automatic_blocks': false,
+    },
+    'translate_to_language_code': translateToLanguageCode,
+    'style_name': '',
+    'custom_prompt': customPrompt,
+    'add_emojis': addEmojis,
+  };
+}
+
+String _newestRunes(String value, int maximumCharacters) {
+  final runes = value.runes.toList(growable: false);
+  if (runes.length <= maximumCharacters) return value;
+  return String.fromCharCodes(runes.skip(runes.length - maximumCharacters));
+}
+
+bool _tdlibVersionAtLeast(String value, int major, int minor, int patch) {
+  final match = RegExp(r'^(\d+)\.(\d+)\.(\d+)').firstMatch(value.trim());
+  if (match == null) return false;
+  final current = [
+    int.parse(match.group(1)!),
+    int.parse(match.group(2)!),
+    int.parse(match.group(3)!),
+  ];
+  final required = [major, minor, patch];
+  for (var index = 0; index < current.length; index++) {
+    if (current[index] != required[index]) {
+      return current[index] > required[index];
+    }
+  }
+  return true;
+}
 
 class TelegramAiService extends ChangeNotifier {
   TelegramAiService({TdClient? client, this.queryOverride})
@@ -200,9 +278,12 @@ class TelegramAiService extends ChangeNotifier {
     final styleCountMax = _optionInt(values[3]);
     final transcriptionTrial = _optionInt(values[4]);
     final composition = promptMax > 0 || _styles.isNotEmpty;
+    final richComposition = _tdlibVersionAtLeast(version, 1, 8, 66);
     return TelegramAiCapabilities(
       tdlibVersion: version,
       compositionSupported: composition,
+      richCompositionSupported: richComposition,
+      replySupported: richComposition && composition,
       customStylesSupported: titleMax > 0 && promptMax > 0,
       summarySupported: composition,
       transcriptionSupported: transcriptionTrial >= 0,
@@ -269,6 +350,39 @@ class TelegramAiService extends ChangeNotifier {
       tone: tone,
     ),
   );
+
+  Future<TelegramAiFormattedText> createReply({
+    required String transcript,
+    required String prompt,
+    String translateToLanguageCode = '',
+    bool addEmojis = false,
+  }) async {
+    final available = await capabilities();
+    if (!available.replySupported) {
+      throw UnsupportedError(
+        'Telegram AI replies require TDLib 1.8.66 or newer and an '
+        'available Telegram AI composition service.',
+      );
+    }
+    final response = await _queryAi(
+      buildComposeRichMessageWithAiRequest(
+        transcript: transcript,
+        customPrompt: prompt,
+        translateToLanguageCode: translateToLanguageCode,
+        addEmojis: addEmojis,
+      ),
+    );
+    final content = <String, dynamic>{
+      '@type': 'messageRichMessage',
+      'message': response,
+    };
+    return TelegramAiFormattedText(
+      text: TDParse.richMessageDisplayText(content),
+      entities: TDParse.messageTextEntities(
+        content,
+      ).map((entity) => entity.toTdJson()).toList(growable: false),
+    );
+  }
 
   Future<TelegramAiStyle> createStyle({
     required String title,

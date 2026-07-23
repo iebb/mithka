@@ -261,6 +261,8 @@ class _TranslationSettingsViewState extends State<TranslationSettingsView> {
                       AiModelCandidateKind.appleOnDevice =>
                         HeroAppIcons.cpuChip,
                       AiModelCandidateKind.server => HeroAppIcons.cube,
+                      AiModelCandidateKind.telegramCocoon =>
+                        HeroAppIcons.wandMagicSparkles,
                     },
                     title: AppStringKeys.aiTranslateUsing.l10n(context),
                     trailing: _aiModelLabel(
@@ -525,6 +527,8 @@ class _TranslationSettingsViewState extends State<TranslationSettingsView> {
         AiModelCandidateKind.appleOnDevice =>
           AppStringKeys.aiProviderAppleOnDevice.l10n(context),
         AiModelCandidateKind.server => candidate.model,
+        AiModelCandidateKind.telegramCocoon =>
+          AppStringKeys.aiProviderTelegramCocoon.l10n(context),
       };
 
   void _showIgnoredLanguagesPicker(BuildContext context) {

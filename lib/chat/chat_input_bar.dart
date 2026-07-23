@@ -21,6 +21,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:provider/provider.dart';
 
 import '../components/app_dialog.dart';
 import '../components/app_icons.dart';
@@ -31,6 +32,8 @@ import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/telegram_language_controller.dart';
 import '../media/app_asset_picker.dart';
+import '../settings/ai_settings_controller.dart';
+import '../settings/apple_pcc_api.dart';
 import '../settings/business_service.dart';
 import '../settings/rich_message_relay_config.dart';
 import '../settings/rich_message_relay_view.dart';
@@ -39,6 +42,7 @@ import '../tdlib/td_client.dart';
 import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
+import 'ai_reply_service.dart';
 import 'audio_search_view.dart';
 import 'bot_button_presentation.dart';
 import 'bot_platform_service.dart';
@@ -994,6 +998,114 @@ class _ChatInputBarState extends State<ChatInputBar> {
     _focus.requestFocus();
   }
 
+  bool _canOfferAiReply(ChatMessage target, AiSettingsController? settings) {
+    if (settings?.initialized != true ||
+        vm.isSecretChat ||
+        vm.hasProtectedContent ||
+        target.isService ||
+        target.isContentRestricted ||
+        target.text.trim().isEmpty) {
+      return false;
+    }
+    return switch (settings!.replyModelCandidate.kind) {
+      AiModelCandidateKind.telegramCocoon =>
+        vm.aiCapabilities?.replySupported == true,
+      AiModelCandidateKind.applePcc ||
+      AiModelCandidateKind.appleOnDevice ||
+      AiModelCandidateKind.server => settings.isConfiguredForFeature(
+        AiFeature.reply,
+      ),
+    };
+  }
+
+  Future<void> _openAiReplyEditor(ChatMessage target) async {
+    final settings = context.read<AiSettingsController?>();
+    if (!_canOfferAiReply(target, settings)) {
+      showToast(context, AppStringKeys.aiReplyUnavailable.l10n(context));
+      return;
+    }
+
+    final configuration = settings!.configurationForFeature(AiFeature.reply);
+    final (draftText, draftEntities) = _controller.toFormatted();
+    final AiReplyRequest request;
+    try {
+      request = AiReplyRequest.fromChatMessages(
+        chatTitle: vm.peerTitle,
+        currentUserName: vm.meName,
+        target: target,
+        visibleMessages: vm.messages,
+        currentDraft: draftText,
+        outputLanguageCode: Localizations.localeOf(context).toLanguageTag(),
+      );
+    } on AiReplyException catch (error) {
+      showToast(context, error.message);
+      return;
+    }
+
+    final AiReplyProvider provider;
+    final String providerLabel;
+    switch (configuration.candidate.kind) {
+      case AiModelCandidateKind.telegramCocoon:
+        provider = TelegramCocoonAiReplyProvider(service: vm.telegramAi);
+        providerLabel = AppStringKeys.aiProviderTelegramCocoon.l10n(context);
+      case AiModelCandidateKind.applePcc:
+        provider = AppleAiReplyProvider(api: ApplePccApi());
+        providerLabel = AppStringKeys.aiProviderApplePcc.l10n(context);
+      case AiModelCandidateKind.appleOnDevice:
+        provider = AppleAiReplyProvider(
+          api: ApplePccApi(),
+          model: AppleAiModel.onDevice,
+        );
+        providerLabel = AppStringKeys.aiProviderAppleOnDevice.l10n(context);
+      case AiModelCandidateKind.server:
+        final endpoint = configuration.endpoint;
+        if (endpoint == null || configuration.model.isEmpty) {
+          showToast(context, AppStringKeys.aiReplyUnavailable.l10n(context));
+          return;
+        }
+        provider = HostedAiReplyProvider(
+          endpoint: endpoint,
+          model: configuration.model,
+          endpointStyle: configuration.endpointStyle,
+          apiKey: configuration.apiKey,
+        );
+        final providerName =
+            configuration.candidate.serverProvider?.name.trim() ?? '';
+        providerLabel = providerName.isEmpty
+            ? configuration.model
+            : '$providerName · ${configuration.model}';
+    }
+
+    final targetMessageId = target.id;
+    TelegramAiFormattedText? result;
+    try {
+      result = await Navigator.of(context).push<TelegramAiFormattedText>(
+        MaterialPageRoute(
+          builder: (_) => TelegramAiEditorView(
+            service: vm.telegramAi,
+            source: TelegramAiFormattedText(
+              text: draftText,
+              entities: draftEntities,
+            ),
+            replyProvider: provider,
+            replyRequest: request,
+            replyProviderLabel: providerLabel,
+            startInReplyMode: true,
+          ),
+        ),
+      );
+    } finally {
+      if (provider case final HostedAiReplyProvider hosted) hosted.close();
+    }
+    if (!mounted || result == null) return;
+    if (vm.replyTo?.id != targetMessageId) {
+      showToast(context, AppStringKeys.aiReplyStale.l10n(context));
+      return;
+    }
+    _controller.setFormattedText(result.text, result.entities);
+    _focus.requestFocus();
+  }
+
   Future<void> _showTextSendOptions() async {
     final configuration = await showMessageSendOptionsSheet(
       context,
@@ -1174,6 +1286,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final aiSettings = context.watch<AiSettingsController?>();
     final replyKeyboard = _activeReplyKeyboard();
     final replyKeyboardPanelVisible =
         replyKeyboard != null && _replyKeyboardVisible && !_hasText;
@@ -1191,7 +1304,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (vm.replyTo != null) _replyBanner(vm.replyTo!),
+              if (vm.replyTo != null)
+                _replyBanner(vm.replyTo!, aiSettings: aiSettings),
               if (_inlineBotLoading || _inlineBotResults != null)
                 _inlineBotResultMenu()
               else if (_mentionCandidates.isNotEmpty)
@@ -1441,8 +1555,12 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   // MARK: - Reply banner
 
-  Widget _replyBanner(ChatMessage m) {
+  Widget _replyBanner(
+    ChatMessage m, {
+    required AiSettingsController? aiSettings,
+  }) {
     final c = context.colors;
+    final showAiReply = _canOfferAiReply(m, aiSettings);
     return Padding(
       padding: const EdgeInsets.only(left: 12, right: 12, top: 8),
       child: Container(
@@ -1463,6 +1581,32 @@ class _ChatInputBarState extends State<ChatInputBar> {
               ),
             ),
             const SizedBox(width: 8),
+            if (showAiReply) ...[
+              Semantics(
+                button: true,
+                label: AppStringKeys.aiReplyAction.l10n(context),
+                child: GestureDetector(
+                  key: const ValueKey('composerAiReplyButton'),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => unawaited(_openAiReplyEditor(m)),
+                  child: Container(
+                    width: 28,
+                    height: 28,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: AppTheme.brand.withValues(alpha: 0.11),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: AppIcon(
+                      HeroAppIcons.wandMagicSparkles,
+                      size: 16,
+                      color: AppTheme.brand,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
             GestureDetector(
               onTap: () => vm.setReply(null),
               child: AppIcon(

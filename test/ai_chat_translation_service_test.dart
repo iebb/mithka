@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:mithka/chat/ai_chat_translation_service.dart';
+import 'package:mithka/settings/ai_endpoint_style.dart';
 import 'package:mithka/settings/ai_settings_controller.dart';
 import 'package:mithka/settings/apple_pcc_api.dart';
 import 'package:mithka/settings/translation_api.dart';
@@ -143,6 +144,92 @@ void main() {
       expect(messages.last['content'], contains('"current_text":"Hello"'));
     },
   );
+
+  test(
+    'OpenAI Responses translation uses input and text JSON format',
+    () async {
+      late http.Request captured;
+      final client = MockClient((request) async {
+        captured = request;
+        return http.Response(
+          jsonEncode({
+            'output': [
+              {
+                'type': 'message',
+                'content': [
+                  {'type': 'output_text', 'text': '{"translation":"Hola"}'},
+                ],
+              },
+            ],
+          }),
+          200,
+        );
+      });
+      final service = AiChatTranslationService(
+        providerMode: AiProviderMode.openAiCompatible,
+        endpoint: Uri.parse('https://example.test/v1/responses'),
+        endpointStyle: AiEndpointStyle.openAiResponses,
+        model: 'response-model',
+        apiKey: 'secret',
+        httpClient: client,
+      );
+
+      final result = await service.translate(
+        text: 'Hello',
+        sourceLanguageCode: 'en',
+        targetLanguageCode: 'es',
+        targetLanguageName: 'Spanish',
+      );
+
+      expect(result, 'Hola');
+      final body = jsonDecode(captured.body) as Map<String, dynamic>;
+      expect(body['instructions'], contains('Do not answer'));
+      expect(body['input'], contains('"current_text":"Hello"'));
+      expect(body['store'], isFalse);
+      expect(body['text'], {
+        'format': {'type': 'json_object'},
+      });
+      expect(body, isNot(contains('messages')));
+    },
+  );
+
+  test('Anthropic translation uses native headers and message shape', () async {
+    late http.Request captured;
+    final client = MockClient((request) async {
+      captured = request;
+      return http.Response(
+        jsonEncode({
+          'content': [
+            {'type': 'text', 'text': '{"translation":"Salut"}'},
+          ],
+        }),
+        200,
+      );
+    });
+    final service = AiChatTranslationService(
+      providerMode: AiProviderMode.openAiCompatible,
+      endpoint: Uri.parse('https://api.anthropic.com/v1/messages'),
+      endpointStyle: AiEndpointStyle.anthropicMessages,
+      model: 'claude-test',
+      apiKey: 'anthropic-key',
+      httpClient: client,
+    );
+
+    final result = await service.translate(
+      text: 'Hello',
+      sourceLanguageCode: 'en',
+      targetLanguageCode: 'fr',
+      targetLanguageName: 'French',
+    );
+
+    expect(result, 'Salut');
+    expect(captured.headers['x-api-key'], 'anthropic-key');
+    expect(captured.headers['anthropic-version'], '2023-06-01');
+    final body = jsonDecode(captured.body) as Map<String, dynamic>;
+    expect(body['system'], contains('Do not answer'));
+    expect(body['max_tokens'], 4096);
+    expect((body['messages'] as List).single['content'], contains('Hello'));
+  });
 
   test(
     'Apple translation uses the selected model and structured prompt',

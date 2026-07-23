@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:mithka/settings/ai_endpoint_style.dart';
 import 'package:mithka/settings/openai_compatible_models_api.dart';
 
 void main() {
@@ -177,6 +178,110 @@ void main() {
         ],
         'stream': false,
       });
+    },
+  );
+
+  test('tests a model through the OpenAI Responses API', () async {
+    late http.Request captured;
+    final api = OpenAiCompatibleModelsApi(
+      httpClient: MockClient((request) async {
+        captured = request;
+        return http.Response(
+          jsonEncode({
+            'output': [
+              {
+                'type': 'message',
+                'content': [
+                  {'type': 'output_text', 'text': 'Responses works'},
+                ],
+              },
+            ],
+          }),
+          200,
+        );
+      }),
+    );
+
+    final response = await api.testModel(
+      chatCompletionsUri: Uri.parse('https://ai.example/v1/responses'),
+      endpointStyle: AiEndpointStyle.openAiResponses,
+      model: 'response-model',
+      prompt: 'Say hello',
+      apiKey: 'secret',
+    );
+
+    expect(response, 'Responses works');
+    expect(captured.url.path, '/v1/responses');
+    final body = jsonDecode(captured.body) as Map<String, dynamic>;
+    expect(body['input'], 'Say hello');
+    expect(body, isNot(contains('messages')));
+  });
+
+  test('uses Anthropic model discovery authentication', () async {
+    late http.Request captured;
+    final api = OpenAiCompatibleModelsApi(
+      httpClient: MockClient((request) async {
+        captured = request;
+        return http.Response(
+          jsonEncode({
+            'data': [
+              {'id': 'claude-test'},
+            ],
+          }),
+          200,
+        );
+      }),
+    );
+
+    final models = await api.listModels(
+      chatCompletionsUri: Uri.parse('https://api.anthropic.com/v1/messages'),
+      endpointStyle: AiEndpointStyle.anthropicMessages,
+      apiKey: 'anthropic-key',
+    );
+
+    expect(captured.url.path, '/v1/models');
+    expect(captured.headers['x-api-key'], 'anthropic-key');
+    expect(captured.headers['anthropic-version'], '2023-06-01');
+    expect(captured.headers, isNot(contains('authorization')));
+    expect(models.single.id, 'claude-test');
+  });
+
+  test(
+    'parses Ollama model tags and skips unsupported detail lookup',
+    () async {
+      late http.Request captured;
+      final api = OpenAiCompatibleModelsApi(
+        httpClient: MockClient((request) async {
+          captured = request;
+          return http.Response(
+            jsonEncode({
+              'models': [
+                {'name': 'gemma3:4b'},
+                {'model': 'qwen3:8b'},
+              ],
+            }),
+            200,
+          );
+        }),
+      );
+      const style = AiEndpointStyle.ollamaChat;
+      final endpoint = Uri.parse('http://localhost:11434/api/chat');
+
+      final models = await api.listModels(
+        chatCompletionsUri: endpoint,
+        endpointStyle: style,
+      );
+
+      expect(captured.url.path, '/api/tags');
+      expect(models.map((model) => model.id), ['gemma3:4b', 'qwen3:8b']);
+      expect(
+        await api.retrieveModel(
+          chatCompletionsUri: endpoint,
+          endpointStyle: style,
+          modelId: 'gemma3:4b',
+        ),
+        isNull,
+      );
     },
   );
 }

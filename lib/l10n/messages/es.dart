@@ -120,7 +120,7 @@ const esMessages = <String, String>{
   'apiCredentialsTitle': "Credenciales de API personalizadas",
   'apiCredentialsUserAgent': "Agente de usuario de TDLib",
   'aiInvalidEndpoint':
-      "Usa una URL HTTPS que termine en /v1/chat/completions. HTTP solo se permite para localhost.",
+      "Usa una URL HTTPS que coincida con el estilo de API seleccionado. HTTP solo se permite para localhost.",
   'aiInvalidModel':
       "Introduce un modelo y una cantidad válida de tokens de contexto.",
   'aiAddModel': "Añadir modelo",
@@ -139,6 +139,11 @@ const esMessages = <String, String>{
       "Apple Private Cloud Compute, el modelo local de Apple y los modelos de servidor guardados se pueden elegir por separado para traducir o resumir.",
   'aiModelConfiguration': "Configuración de modelos",
   'aiModels': "Modelos",
+  'aiEndpointStyle': "Estilo de API",
+  'aiEndpointStyleAnthropicMessages': "Mensajes de Anthropic",
+  'aiEndpointStyleOllamaChat': "Chat de Ollama",
+  'aiEndpointStyleOpenAiChatCompletions': "Chat Completions de OpenAI",
+  'aiEndpointStyleOpenAiResponses': "Responses de OpenAI",
   'aiModelsFailed':
       "No se pudieron cargar los modelos. Revisa el punto de conexión y la clave de API.",
   'aiModelsLoaded': "Se cargaron {value1} modelos",
@@ -151,6 +156,23 @@ const esMessages = <String, String>{
   'aiTokenContext': "Ventana de contexto de {value1}K tokens",
   'aiTranslateUsing': "Traducir con",
   'aiSummarizeUsing': "Resumir con",
+  'aiReplyAction': "Escribir una respuesta con IA",
+  'aiReplyDraftReply': "Borrador de respuesta",
+  'aiReplyGenerate': "Generar respuesta",
+  'aiReplyGuidance': "Indicaciones (opcional)",
+  'aiReplyGuidanceHint':
+      "Por ejemplo: mostrarte de acuerdo con calidez y preguntar a qué hora",
+  'aiReplyMode': "Responder",
+  'aiReplyPrivacyNote':
+      "El fragmento visible de la conversación se envía a {value1}. El resultado permanece en tu borrador.",
+  'aiReplyReplyingTo': "En respuesta a {value1}",
+  'aiReplyStale':
+      "El mensaje al que respondías cambió, por lo que no se aplicó el borrador generado.",
+  'aiReplyTitle': "Respuesta con IA",
+  'aiReplyUnavailable':
+      "La respuesta con IA no está disponible para este mensaje.",
+  'aiReplyUseReply': "Usar respuesta",
+  'aiReplyUsing': "Responder con",
   'aiTestFailed': "La prueba del modelo falló.",
   'aiTestModel': "Probar modelo",
   'aiTestPrompt': "Mensaje de prueba",
@@ -168,6 +190,7 @@ const esMessages = <String, String>{
   'aiProcessingMode': "Modo de procesamiento",
   'aiProviderApplePcc': "Apple Private Cloud Compute",
   'aiProviderAppleOnDevice': "Modelo de Apple en el dispositivo",
+  'aiProviderTelegramCocoon': "Telegram Cocoon",
   'aiProviderOpenAiCompatible': "Servidor personalizado",
   'aiProviderName': "Nombre",
   'aiProviderNameHint': "Mi proveedor de IA",

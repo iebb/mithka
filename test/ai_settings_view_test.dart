@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:mithka/components/ui_components.dart';
 import 'package:mithka/l10n/app_localizations.dart';
+import 'package:mithka/settings/ai_endpoint_style.dart';
 import 'package:mithka/settings/ai_settings_controller.dart';
 import 'package:mithka/settings/ai_settings_view.dart';
 import 'package:mithka/settings/apple_pcc_api.dart';
@@ -46,7 +47,7 @@ void main() {
           if (request.method == 'POST') {
             modelTestPayload = jsonDecode(request.body) as Map<String, dynamic>;
             return http.Response(
-              '{"choices":[{"message":{"content":"Hello from the model"}}]}',
+              '{"output":[{"type":"message","content":[{"type":"output_text","text":"Hello from the model"}]}]}',
               200,
             );
           }
@@ -86,10 +87,20 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    final replyUsingLabel = AppStrings.tForLocale(
+      'en',
+      AppStringKeys.aiReplyUsing,
+    );
+    final telegramCocoonLabel = AppStrings.tForLocale(
+      'en',
+      AppStringKeys.aiProviderTelegramCocoon,
+    );
+
     expect(find.text('AI Settings'), findsOneWidget);
     expect(find.text('Model Configuration'), findsOneWidget);
     expect(find.text('Translate using'), findsOneWidget);
     expect(find.text('Summarize using'), findsOneWidget);
+    expect(find.text(replyUsingLabel), findsOneWidget);
     expect(tester.widget<AppSwitch>(find.byType(AppSwitch)).value, isFalse);
 
     await tester.tap(find.byType(SettingsSwitchRow));
@@ -111,9 +122,14 @@ void main() {
     expect(fields, findsNWidgets(3));
     expect(tester.widget<TextField>(fields.at(2)).obscureText, isTrue);
     await tester.enterText(fields.at(0), 'Summary Provider');
+    expect(find.text('OpenAI Chat Completions'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('aiEndpointStyleRow')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OpenAI Responses'));
+    await tester.pumpAndSettle();
     await tester.enterText(
       fields.at(1),
-      'https://summary.example/v1/chat/completions',
+      'https://summary.example/v1/responses',
     );
     await tester.enterText(fields.at(2), 'sk-user-owned');
     await tester.scrollUntilVisible(
@@ -126,6 +142,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(settings.serverProviders, hasLength(1));
+    expect(
+      settings.serverProviders.single.endpointStyle,
+      AiEndpointStyle.openAiResponses,
+    );
     expect(settings.modelProfiles, isEmpty);
     expect(find.text('Summary Provider'), findsOneWidget);
 
@@ -135,6 +155,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Apple Private Cloud Compute'), findsOneWidget);
     expect(find.text('Apple On-Device Model'), findsOneWidget);
+    expect(find.text(telegramCocoonLabel), findsNothing);
     expect(find.byKey(const ValueKey('aiAddModelCard')), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('aiAddModelCard')));
     await tester.pumpAndSettle();
@@ -175,10 +196,7 @@ void main() {
     expect(find.text('Response'), findsOneWidget);
     expect(find.text('Hello from the model'), findsOneWidget);
     expect(modelTestPayload?['model'], 'summary-model');
-    expect(
-      (modelTestPayload?['messages'] as List).single['content'],
-      'Reply with a friendly greeting',
-    );
+    expect(modelTestPayload?['input'], 'Reply with a friendly greeting');
     await tester.scrollUntilVisible(
       find.text('Save Model'),
       250,
@@ -200,11 +218,36 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(SettingsRow, 'Translate using'));
     await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byType(BottomSheet),
+        matching: find.text(telegramCocoonLabel),
+      ),
+      findsNothing,
+    );
     await tester.tap(find.text('summary-model').last);
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(SettingsRow, 'Summarize using'));
     await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byType(BottomSheet),
+        matching: find.text(telegramCocoonLabel),
+      ),
+      findsNothing,
+    );
     await tester.tap(find.text('Apple On-Device Model').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(SettingsRow, replyUsingLabel));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byType(BottomSheet),
+        matching: find.text(telegramCocoonLabel),
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.text(telegramCocoonLabel).last);
     await tester.pumpAndSettle();
 
     expect(
@@ -214,6 +257,10 @@ void main() {
     expect(
       settings.summaryModelCandidate.kind,
       AiModelCandidateKind.appleOnDevice,
+    );
+    expect(
+      settings.replyModelCandidate.kind,
+      AiModelCandidateKind.telegramCocoon,
     );
     expect(settings.isConfiguredForFeature(AiFeature.translation), isTrue);
     expect(settings.isConfiguredForFeature(AiFeature.summary), isTrue);

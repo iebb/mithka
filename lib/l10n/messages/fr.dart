@@ -122,7 +122,7 @@ const frMessages = <String, String>{
   'apiCredentialsTitle': "Identifiants d’API personnalisés",
   'apiCredentialsUserAgent': "Agent utilisateur TDLib",
   'aiInvalidEndpoint':
-      "Utilisez une URL HTTPS se terminant par /v1/chat/completions. HTTP n’est autorisé que pour localhost.",
+      "Utilisez une URL HTTPS correspondant au style d’API sélectionné. HTTP n’est autorisé que pour localhost.",
   'aiInvalidModel':
       "Saisissez un modèle et un nombre valide de jetons de contexte.",
   'aiAddModel': "Ajouter un modèle",
@@ -141,6 +141,11 @@ const frMessages = <String, String>{
       "Apple Private Cloud Compute, le modèle Apple sur l’appareil et les modèles serveur enregistrés peuvent être choisis séparément pour traduire ou résumer.",
   'aiModelConfiguration': "Configuration des modèles",
   'aiModels': "Modèles",
+  'aiEndpointStyle': "Style d’API",
+  'aiEndpointStyleAnthropicMessages': "Messages Anthropic",
+  'aiEndpointStyleOllamaChat': "Chat Ollama",
+  'aiEndpointStyleOpenAiChatCompletions': "Chat Completions OpenAI",
+  'aiEndpointStyleOpenAiResponses': "Responses OpenAI",
   'aiModelsFailed':
       "Impossible de charger les modèles. Vérifiez le point de terminaison et la clé API.",
   'aiModelsLoaded': "{value1} modèles chargés",
@@ -153,6 +158,22 @@ const frMessages = <String, String>{
   'aiTokenContext': "Fenêtre de contexte de {value1}K jetons",
   'aiTranslateUsing': "Traduire avec",
   'aiSummarizeUsing': "Résumer avec",
+  'aiReplyAction': "Rédiger une réponse avec l’IA",
+  'aiReplyDraftReply': "Brouillon de réponse",
+  'aiReplyGenerate': "Générer une réponse",
+  'aiReplyGuidance': "Consignes (facultatif)",
+  'aiReplyGuidanceHint':
+      "Par exemple : accepter chaleureusement et demander à quelle heure",
+  'aiReplyMode': "Répondre",
+  'aiReplyPrivacyNote':
+      "L’extrait visible de la conversation est envoyé à {value1}. Le résultat reste dans votre brouillon.",
+  'aiReplyReplyingTo': "Réponse à {value1}",
+  'aiReplyStale':
+      "Le message auquel vous répondiez a changé. Le brouillon généré n’a donc pas été appliqué.",
+  'aiReplyTitle': "Réponse IA",
+  'aiReplyUnavailable': "La réponse IA n’est pas disponible pour ce message.",
+  'aiReplyUseReply': "Utiliser la réponse",
+  'aiReplyUsing': "Répondre avec",
   'aiTestFailed': "Le test du modèle a échoué.",
   'aiTestModel': "Tester le modèle",
   'aiTestPrompt': "Message de test",
@@ -170,6 +191,7 @@ const frMessages = <String, String>{
   'aiProcessingMode': "Mode de traitement",
   'aiProviderApplePcc': "Apple Private Cloud Compute",
   'aiProviderAppleOnDevice': "Modèle Apple sur l’appareil",
+  'aiProviderTelegramCocoon': "Telegram Cocoon",
   'aiProviderOpenAiCompatible': "Serveur personnalisé",
   'aiProviderName': "Nom",
   'aiProviderNameHint': "Mon fournisseur IA",

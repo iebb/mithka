@@ -1,17 +1,19 @@
-name: 🚀 Android Releases
+name: 🚀 Multi-platform Releases
 
-# Builds per-ABI **release** APKs from nightly/release. Each ABI
+# Builds per-ABI Android APKs and Windows, macOS, and Linux desktop archives
+# from nightly/release. Each Android ABI
 # (arm64-v8a, armeabi-v7a) builds in its OWN parallel matrix job and downloads
-# the latest prebuilt native TDLib (tdjson) asset from iebb/mithka-tdjson. A
-# final job creates the version tag from pubspec.yaml and publishes all the APKs:
-# nightly creates a dated pre-release, release creates a dated stable release.
+# the pinned prebuilt native TDLib (tdjson) asset from iebb/mithka-tdjson. A
+# desktop job compiles the same pinned, patched TDLib source for its host OS.
+# A final job creates the version tag from pubspec.yaml and publishes every
+# package: nightly creates a dated pre-release, release creates a stable release.
 # Before 2026-08-01 UTC, each ABI publishes only a compatibility APK whose
 # version code is the normal YYMMDDHH code plus 2000; it is valid for all users.
 # The standard APK remains an internal source/fallback and is published only if
 # compatibility packaging fails. From 2026-08-01 UTC, only standard APKs are
 # produced.
 #
-# master never builds APKs. The twice-daily sync workflow merges new master
+# master never builds release packages. The twice-daily sync workflow merges new master
 # commits into nightly, increments the patch version once, and dispatches this
 # workflow.
 #
@@ -27,9 +29,15 @@ on:
   push:
     branches: [nightly, release]
   workflow_dispatch:
+    inputs:
+      desktop_test_only:
+        description: Build desktop artifacts without Android or a GitHub release
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
-  group: release-apk-${{ github.ref }}
+  group: release-packages-${{ github.ref }}
   cancel-in-progress: ${{ github.ref == 'refs/heads/nightly' }}
 
 permissions:
@@ -39,6 +47,7 @@ permissions:
 env:
   # Keep each Mithka release reproducible by pinning an immutable TDLib build.
   TDJSON_RELEASE_TAG: tdlib-1.8.66-1b08c83bc078-rebuild-29623073124-1
+  TDJSON_UPSTREAM_SHA: 1b08c83bc07888e4b0a6150d36c1364ff03cf930
 
 jobs:
   prepare:
@@ -63,6 +72,8 @@ jobs:
 
       - name: Read version from pubspec.yaml
         id: version
+        env:
+          DESKTOP_TEST_ONLY: ${{ inputs.desktop_test_only }}
         run: |
           raw_version="$(awk '/^version:/ { print $2; exit }' pubspec.yaml)"
           test -n "$raw_version"
@@ -83,7 +94,15 @@ jobs:
           fi
           short_sha="${GITHUB_SHA::7}"
           branch_name="${GITHUB_REF_NAME:-${GITHUB_REF#refs/heads/}}"
-          case "$branch_name" in
+          if [ "$DESKTOP_TEST_ONLY" = "true" ]; then
+            release_tag="desktop-test-${app_version}-${release_date}-${short_sha}"
+            release_name="Mithka $app_version desktop test ($short_sha)"
+            release_channel="desktop test"
+            artifact_label="${app_version}-desktop-test-${release_date}-${short_sha}"
+            prerelease="true"
+            make_latest="false"
+          else
+            case "$branch_name" in
             nightly)
               release_tag="v${app_version}-nightly.${release_date}.${short_sha}"
               release_name="v${app_version} Nightly ${release_title_date} (${short_sha})"
@@ -104,7 +123,8 @@ jobs:
               echo "Unsupported release branch: $branch_name" >&2
               exit 1
               ;;
-          esac
+            esac
+          fi
           echo "app_version=$app_version" >> "$GITHUB_OUTPUT"
           echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
           echo "build_stamp=$build_stamp" >> "$GITHUB_OUTPUT"
@@ -131,6 +151,7 @@ jobs:
 
   build:
     name: Build ${{ matrix.abi }} APK
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.desktop_test_only }}
     needs: prepare
     runs-on: ubuntu-latest
     strategy:
@@ -595,34 +616,276 @@ jobs:
           echo "### Compatibility APK publication warning" >> "$GITHUB_STEP_SUMMARY"
           echo "The ${{ matrix.abi }} compatibility APK failed to publish, but the standard APK was uploaded and will still be released." >> "$GITHUB_STEP_SUMMARY"
 
+  build-desktop:
+    name: Build ${{ matrix.label }}
+    needs: prepare
+    runs-on: ${{ matrix.os }}
+    env:
+      FVP_DEPS_URL: https://github.com/wang-bin/mdk-sdk/releases/download/v0.36.0
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux
+            label: Linux x64
+            os: ubuntu-24.04
+            architecture: x64
+            library: libtdjson.so
+            archive_extension: tar.gz
+          - platform: macos
+            label: macOS universal
+            os: macos-15
+            architecture: universal
+            library: libtdjson.dylib
+            archive_extension: zip
+          - platform: windows
+            label: Windows x64
+            os: windows-2022
+            architecture: x64
+            library: tdjson.dll
+            archive_extension: zip
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check out pinned Mithka TDLib patches
+        uses: actions/checkout@v5
+        with:
+          repository: iebb/mithka-tdjson
+          ref: ${{ env.TDJSON_RELEASE_TAG }}
+          path: .tdlib-helper
+
+      - name: Normalize Windows TDLib patch line endings
+        if: matrix.platform == 'windows'
+        shell: bash
+        run: sed -i 's/\r$//' .tdlib-helper/patches/*.patch
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.2'
+          channel: stable
+          cache: true
+
+      - name: Install Linux build dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang cmake gperf libcurl4-openssl-dev libgtk-3-dev liblzma-dev \
+            libsecret-1-dev libssl-dev ninja-build pkg-config zlib1g-dev
+
+      - name: Install macOS build dependencies
+        if: matrix.platform == 'macos'
+        run: brew install cmake ninja
+
+      - name: Install Windows native dependencies
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install `
+            gperf:x64-windows openssl:x64-windows-static zlib:x64-windows-static
+          $gperfTools = "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\tools\gperf"
+          if (-not (Test-Path "$gperfTools\gperf.exe")) {
+            throw "vcpkg did not install gperf.exe"
+          }
+          $gperfTools | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Restore desktop TDLib cache
+        id: tdlib_cache
+        uses: actions/cache/restore@v5
+        with:
+          path: .tdlib-build/desktop-${{ matrix.platform }}
+          key: tdjson-${{ matrix.platform }}-${{ matrix.architecture }}-${{ env.TDJSON_RELEASE_TAG }}-${{ hashFiles('scripts/build-tdjson-desktop.sh') }}
+
+      - name: Build patched desktop TDLib
+        shell: bash
+        env:
+          NATIVE_HELPER_ROOT: .tdlib-helper
+          TD_COMMIT: ${{ env.TDJSON_UPSTREAM_SHA }}
+          TD_BUILD_JOBS: '2'
+        run: |
+          scripts/build-tdjson-desktop.sh \
+            "${{ matrix.platform }}" \
+            "native-libs/${{ matrix.library }}"
+
+      - name: Save desktop TDLib cache
+        if: steps.tdlib_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: .tdlib-build/desktop-${{ matrix.platform }}
+          key: tdjson-${{ matrix.platform }}-${{ matrix.architecture }}-${{ env.TDJSON_RELEASE_TAG }}-${{ hashFiles('scripts/build-tdjson-desktop.sh') }}
+
+      - name: Resolve Flutter dependencies
+        run: flutter pub get
+
+      - name: Write secrets.dart
+        shell: bash
+        env:
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+        run: |
+          mkdir -p lib/config
+          cat > lib/config/secrets.dart <<EOF
+          class Secrets {
+            static const int apiId = ${TELEGRAM_API_ID:-0};
+            static const String apiHash = '${TELEGRAM_API_HASH}';
+            static bool get isConfigured => apiId != 0 && apiHash.isNotEmpty;
+          }
+          EOF
+
+      - name: Refresh macOS CocoaPods specs
+        if: matrix.platform == 'macos'
+        working-directory: macos
+        run: pod install --repo-update
+
+      - name: Build Linux release
+        if: matrix.platform == 'linux'
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        run: |
+          flutter build linux --release \
+            --build-name="${{ needs.prepare.outputs.app_version }}" \
+            --build-number="${{ needs.prepare.outputs.build_stamp }}" \
+            --dart-define="GIT_COMMIT=${{ needs.prepare.outputs.short_sha }}" \
+            --dart-define="CI_BUILD_STAMP=${{ needs.prepare.outputs.build_stamp }}" \
+            --dart-define="SENTRY_DSN=$SENTRY_DSN"
+
+      - name: Build macOS release
+        if: matrix.platform == 'macos'
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        run: |
+          flutter build macos --release \
+            --build-name="${{ needs.prepare.outputs.app_version }}" \
+            --build-number="${{ needs.prepare.outputs.build_stamp }}" \
+            --dart-define="GIT_COMMIT=${{ needs.prepare.outputs.short_sha }}" \
+            --dart-define="CI_BUILD_STAMP=${{ needs.prepare.outputs.build_stamp }}" \
+            --dart-define="SENTRY_DSN=$SENTRY_DSN"
+
+      - name: Build Windows release
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        run: |
+          flutter build windows --release `
+            --build-name="${{ needs.prepare.outputs.app_version }}" `
+            --build-number="${{ needs.prepare.outputs.build_stamp }}" `
+            --dart-define="GIT_COMMIT=${{ needs.prepare.outputs.short_sha }}" `
+            --dart-define="CI_BUILD_STAMP=${{ needs.prepare.outputs.build_stamp }}" `
+            --dart-define="SENTRY_DSN=$env:SENTRY_DSN"
+
+      - name: Package Linux release
+        if: matrix.platform == 'linux'
+        run: |
+          bundle="build/linux/x64/release/bundle"
+          install -m 0755 native-libs/libtdjson.so "$bundle/lib/libtdjson.so"
+          nm -D "$bundle/lib/libtdjson.so" | grep ' td_create_client_id$'
+          if ldd "$bundle/lib/libtdjson.so" | grep -q 'not found'; then
+            ldd "$bundle/lib/libtdjson.so" >&2
+            exit 1
+          fi
+          mkdir -p dist/package/Mithka
+          cp -R "$bundle/." dist/package/Mithka/
+          tar -C dist/package -czf \
+            "dist/mithka-${{ needs.prepare.outputs.artifact_label }}-linux-x64.tar.gz" \
+            Mithka
+
+      - name: Package macOS release
+        if: matrix.platform == 'macos'
+        run: |
+          app="build/macos/Build/Products/Release/Mithka.app"
+          frameworks="$app/Contents/Frameworks"
+          install -m 0755 native-libs/libtdjson.dylib \
+            "$frameworks/libtdjson.dylib"
+          test "$(lipo -archs "$frameworks/libtdjson.dylib" | tr ' ' '\n' | sort | tr '\n' ' ')" = "arm64 x86_64 "
+          if otool -L "$frameworks/libtdjson.dylib" | grep -q '/opt/homebrew\|/usr/local'; then
+            otool -L "$frameworks/libtdjson.dylib" >&2
+            exit 1
+          fi
+          codesign --force --sign - "$frameworks/libtdjson.dylib"
+          codesign --force --sign - \
+            --entitlements macos/Runner/Release.entitlements "$app"
+          codesign --verify --deep --strict "$app"
+          mkdir -p dist
+          ditto -c -k --keepParent "$app" \
+            "dist/mithka-${{ needs.prepare.outputs.artifact_label }}-macos-universal.zip"
+
+      - name: Package Windows release
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $bundle = "build\windows\x64\runner\Release"
+          Copy-Item "native-libs\tdjson.dll" "$bundle\tdjson.dll"
+          Add-Type -TypeDefinition @'
+          using System;
+          using System.Runtime.InteropServices;
+          public static class NativeLibraryCheck {
+            [DllImport("kernel32", SetLastError = true, CharSet = CharSet.Unicode)]
+            public static extern IntPtr LoadLibrary(string path);
+            [DllImport("kernel32", SetLastError = true)]
+            public static extern IntPtr GetProcAddress(IntPtr module, string name);
+            [DllImport("kernel32", SetLastError = true)]
+            public static extern bool FreeLibrary(IntPtr module);
+          }
+          '@
+          $module = [NativeLibraryCheck]::LoadLibrary((Resolve-Path "$bundle\tdjson.dll"))
+          if ($module -eq [IntPtr]::Zero) {
+            throw "Could not load packaged tdjson.dll: $([Runtime.InteropServices.Marshal]::GetLastWin32Error())"
+          }
+          $requiredSymbols = @(
+            "td_create_client_id",
+            "td_mithka_export_session_string",
+            "td_mithka_import_session_string",
+            "td_mithka_last_error",
+            "td_mithka_set_transfer_boost"
+          )
+          foreach ($symbol in $requiredSymbols) {
+            if ([NativeLibraryCheck]::GetProcAddress($module, $symbol) -eq [IntPtr]::Zero) {
+              throw "Packaged tdjson.dll does not export $symbol"
+            }
+          }
+          [void][NativeLibraryCheck]::FreeLibrary($module)
+          New-Item -ItemType Directory -Force dist\package | Out-Null
+          Copy-Item $bundle dist\package\Mithka -Recurse
+          Compress-Archive -Path dist\package\Mithka `
+            -DestinationPath "dist\mithka-${{ needs.prepare.outputs.artifact_label }}-windows-x64.zip"
+
+      - name: Upload desktop artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: desktop-${{ matrix.platform }}-${{ needs.prepare.outputs.release_date }}
+          path: dist/mithka-${{ needs.prepare.outputs.artifact_label }}-${{ matrix.platform }}-${{ matrix.architecture }}.${{ matrix.archive_extension }}
+          if-no-files-found: error
+
   release:
     name: Publish GitHub Release
-    needs: [prepare, build]
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.desktop_test_only }}
+    needs: [prepare, build, build-desktop]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      - name: Download all ABI APKs
+      - name: Download all release packages
         uses: actions/download-artifact@v7
         with:
-          path: apks
+          path: release-assets
           merge-multiple: true
 
       - name: Verify and list artifacts
         env:
           PRODUCE_COMPAT_APK: ${{ needs.prepare.outputs.produce_compat_apk }}
         run: |
-          ls -lhR apks
+          ls -lhR release-assets
           standard_apk_count="$(
-            find apks -maxdepth 1 -type f \
+            find release-assets -maxdepth 1 -type f \
               -name '*-release.apk' ! -name '*-compat-release.apk' \
               | wc -l \
               | tr -d ' '
           )"
           compat_apk_count="$(
-            find apks -maxdepth 1 -type f -name '*-compat-release.apk' \
+            find release-assets -maxdepth 1 -type f -name '*-compat-release.apk' \
               | wc -l \
               | tr -d ' '
           )"
@@ -633,7 +896,7 @@ jobs:
           fi
           for abi in arm64-v8a armeabi-v7a; do
             abi_apk_count="$(
-              find apks -maxdepth 1 -type f -name "*-${abi}-vc*-release.apk" \
+              find release-assets -maxdepth 1 -type f -name "*-${abi}-vc*-release.apk" \
                 | wc -l \
                 | tr -d ' '
             )"
@@ -647,6 +910,20 @@ jobs:
             echo "Only standard APKs may be published from 2026-08-01 UTC" >&2
             exit 1
           fi
+          for desktop_asset in \
+            '*-windows-x64.zip' \
+            '*-macos-universal.zip' \
+            '*-linux-x64.tar.gz'; do
+            desktop_asset_count="$(
+              find release-assets -maxdepth 1 -type f -name "$desktop_asset" \
+                | wc -l \
+                | tr -d ' '
+            )"
+            if [ "$desktop_asset_count" -ne 1 ]; then
+              echo "Expected exactly one $desktop_asset package, found $desktop_asset_count" >&2
+              exit 1
+            fi
+          done
           echo "STANDARD_APK_COUNT=$standard_apk_count" >> "$GITHUB_ENV"
           echo "COMPAT_APK_COUNT=$compat_apk_count" >> "$GITHUB_ENV"
           echo "Standard APKs: $standard_apk_count"
@@ -767,13 +1044,17 @@ jobs:
               echo "- **English:** Only the standard APK is produced from 2026-08-01 UTC. The temporary compatibility APK is no longer generated. Choose the APK matching your device ABI."
               echo "- **中文：** 从 2026-08-01 UTC 起仅生成标准 APK，不再生成临时兼容 APK。请选择与设备 ABI 匹配的 APK。"
             fi
+            echo
+            echo "## Desktop / 桌面端"
+            echo "- **English:** Windows x64, universal macOS (Apple silicon and Intel), and Linux x64 archives include the pinned TDLib runtime. The macOS archive is ad-hoc signed and not notarized."
+            echo "- **中文：** Windows x64、通用 macOS（Apple 芯片和 Intel）及 Linux x64 压缩包均包含固定版本的 TDLib 运行库。macOS 压缩包使用临时签名，未经公证。"
             if [ "$PRERELEASE" = "true" ]; then
               echo
               echo "**Full changelog:** [$compare_label]($compare_url)"
             fi
           } >> release-notes.md
 
-      - name: Remove old APK assets
+      - name: Remove old Mithka package assets
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
@@ -782,7 +1063,7 @@ jobs:
             exit 0
           fi
           gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' \
-            | grep '^mithka-.*-release\.apk$' \
+            | grep -E '^mithka-.*\.(apk|zip|tar\.gz)$' \
             | while read -r asset; do
                 gh release delete-asset "$RELEASE_TAG" "$asset" --yes
               done
@@ -796,7 +1077,7 @@ jobs:
           prerelease: ${{ needs.prepare.outputs.prerelease }}
           make_latest: ${{ needs.prepare.outputs.make_latest }}
           body_path: release-notes.md
-          files: apks/*.apk
+          files: release-assets/*
           fail_on_unmatched_files: true
 
       - name: Notify Telegram channel
@@ -837,7 +1118,7 @@ jobs:
               f"🚀 Mithka {os.environ['RELEASE_CHANNEL']} "
               f"{os.environ['RELEASE_TAG']} · {os.environ['RELEASE_DATE']}"
           )
-          footer = f"APKs: {os.environ['RELEASE_URL']}"
+          footer = f"Downloads: {os.environ['RELEASE_URL']}"
           summary = "\n".join(summary_lines)
           if summary:
               # Telegram accepts at most 4096 characters. Leave extra room for
