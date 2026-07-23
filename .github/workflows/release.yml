@@ -682,7 +682,12 @@ jobs:
         shell: pwsh
         run: |
           & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install `
-            openssl:x64-windows-static zlib:x64-windows-static
+            gperf:x64-windows openssl:x64-windows-static zlib:x64-windows-static
+          $gperfTools = "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\tools\gperf"
+          if (-not (Test-Path "$gperfTools\gperf.exe")) {
+            throw "vcpkg did not install gperf.exe"
+          }
+          $gperfTools | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Restore desktop TDLib cache
         id: tdlib_cache
