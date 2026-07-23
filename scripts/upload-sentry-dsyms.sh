@@ -19,7 +19,13 @@ if [[ -z "${SENTRY_AUTH_TOKEN:-}" ]]; then
 fi
 
 SENTRY_ORG="${SENTRY_ORG:-nekoko}"
-SENTRY_PROJECT="${SENTRY_PROJECT:-10}"
+# `debug-files upload` addresses projects by slug. Xcode Cloud previously used
+# this project's numeric ID (10), so preserve that environment configuration by
+# normalizing it before invoking sentry-cli.
+SENTRY_PROJECT="${SENTRY_PROJECT:-mithka}"
+if [[ "$SENTRY_PROJECT" == "10" ]]; then
+  SENTRY_PROJECT="mithka"
+fi
 SENTRY_URL="${SENTRY_URL:-https://sentry.nekoko.it}"
 
 if [[ -z "$SENTRY_PROJECT" ]]; then
