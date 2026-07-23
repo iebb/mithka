@@ -620,6 +620,8 @@ jobs:
     name: Build ${{ matrix.label }}
     needs: prepare
     runs-on: ${{ matrix.os }}
+    env:
+      FVP_DEPS_URL: https://github.com/wang-bin/mdk-sdk/releases/download/v0.36.0
     strategy:
       fail-fast: false
       matrix:
@@ -668,8 +670,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            clang cmake gperf libgtk-3-dev liblzma-dev libsecret-1-dev \
-            libssl-dev ninja-build pkg-config zlib1g-dev
+            clang cmake gperf libcurl4-openssl-dev libgtk-3-dev liblzma-dev \
+            libsecret-1-dev libssl-dev ninja-build pkg-config zlib1g-dev
 
       - name: Install macOS build dependencies
         if: matrix.platform == 'macos'
@@ -682,8 +684,9 @@ jobs:
           & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install `
             openssl:x64-windows-static zlib:x64-windows-static
 
-      - name: Cache desktop TDLib
-        uses: actions/cache@v5
+      - name: Restore desktop TDLib cache
+        id: tdlib_cache
+        uses: actions/cache/restore@v5
         with:
           path: .tdlib-build/desktop-${{ matrix.platform }}
           key: tdjson-${{ matrix.platform }}-${{ matrix.architecture }}-${{ env.TDJSON_RELEASE_TAG }}-${{ hashFiles('scripts/build-tdjson-desktop.sh') }}
@@ -698,6 +701,13 @@ jobs:
           scripts/build-tdjson-desktop.sh \
             "${{ matrix.platform }}" \
             "native-libs/${{ matrix.library }}"
+
+      - name: Save desktop TDLib cache
+        if: steps.tdlib_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: .tdlib-build/desktop-${{ matrix.platform }}
+          key: tdjson-${{ matrix.platform }}-${{ matrix.architecture }}-${{ env.TDJSON_RELEASE_TAG }}-${{ hashFiles('scripts/build-tdjson-desktop.sh') }}
 
       - name: Resolve Flutter dependencies
         run: flutter pub get
