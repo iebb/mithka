@@ -1,7 +1,7 @@
 name: mithka
 description: "Mithka — a cross-platform Telegram client (Flutter), built on TDLib."
 publish_to: 'none'
-version: 0.7.14+281
+version: 0.7.15+281
 
 environment:
   sdk: ^3.12.2
@@ -68,6 +68,8 @@ dependencies:
   video_compress: ^3.1.4
   video_thumbnail_gen: ^0.6.3
   fvp: ^0.37.2
+  system_picture_in_picture:
+    path: third_party/system_picture_in_picture
   flutter_local_notifications: ^22.0.1
   google_fonts: ^8.1.0
   firebase_core: ^4.11.0
