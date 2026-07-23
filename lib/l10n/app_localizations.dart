@@ -357,9 +357,12 @@ abstract final class AppStringKeys {
   static const appearanceChatFoldersMenu = 'appearanceChatFoldersMenu';
   static const appearanceChatFoldersTabs = 'appearanceChatFoldersTabs';
   static const appearanceChatList = 'appearanceChatList';
+  static const appearanceChatListNameColorsTitle =
+      'appearanceChatListNameColorsTitle';
   static const appearanceChatListFolderSwipeSwitching =
       'appearanceChatListFolderSwipeSwitching';
   static const appearanceChatView = 'appearanceChatView';
+  static const appearanceChatNameColorsTitle = 'appearanceChatNameColorsTitle';
   static const appearanceCleanableSize = 'appearanceCleanableSize';
   static const appearanceCleanUnusedFonts = 'appearanceCleanUnusedFonts';
   static const appearanceClearTextFonts = 'appearanceClearTextFonts';
@@ -407,6 +410,10 @@ abstract final class AppStringKeys {
   static const appearanceMergeConsecutiveImages =
       'appearanceMergeConsecutiveImages';
   static const appearanceMode = 'appearanceMode';
+  static const appearanceNameColorAllUsers = 'appearanceNameColorAllUsers';
+  static const appearanceNameColorAudience = 'appearanceNameColorAudience';
+  static const appearanceNameColorNobody = 'appearanceNameColorNobody';
+  static const appearanceNameColorPremium = 'appearanceNameColorPremium';
   static const appearanceMonospaceFont = 'appearanceMonospaceFont';
   static const appearanceNoCleanableFonts = 'appearanceNoCleanableFonts';
   static const appearanceNoDownloadedFontCache =
@@ -431,6 +438,10 @@ abstract final class AppStringKeys {
   static const appearanceSize = 'appearanceSize';
   static const appearanceSystem = 'appearanceSystem';
   static const appearanceSystemEmojiFont = 'appearanceSystemEmojiFont';
+  static const appearanceStatusAnimated = 'appearanceStatusAnimated';
+  static const appearanceStatusDisplay = 'appearanceStatusDisplay';
+  static const appearanceStatusNone = 'appearanceStatusNone';
+  static const appearanceStatusStatic = 'appearanceStatusStatic';
   static const appearanceTextFont = 'appearanceTextFont';
   static const appearanceTextFontOrderHint = 'appearanceTextFontOrderHint';
   static const appearanceTextFontUnsetHint = 'appearanceTextFontUnsetHint';
@@ -1794,6 +1805,7 @@ abstract final class AppStringKeys {
   static const privacyBlockedUsersEmpty = 'privacyBlockedUsersEmpty';
   static const privacyCalls = 'privacyCalls';
   static const privacyCurrentDevice = 'privacyCurrentDevice';
+  static const privacyDangerZone = 'privacyDangerZone';
   static const privacyDeleteTelegramAccount = 'privacyDeleteTelegramAccount';
   static const privacyDeleteTelegramAccountMessage =
       'privacyDeleteTelegramAccountMessage';
@@ -2682,6 +2694,8 @@ abstract final class AppStringKeys {
       'accountSecurityConfirmNewPassword';
   static const accountSecurityCurrentPassword =
       'accountSecurityCurrentPassword';
+  static const accountSecurityDeleteAccountIfAwayFor =
+      'accountSecurityDeleteAccountIfAwayFor';
   static const accountSecurityDeleteAccount = 'accountSecurityDeleteAccount';
   static const accountSecurityDeleteAccountVariant2 =
       'accountSecurityDeleteAccountVariant2';
@@ -3191,24 +3205,43 @@ abstract final class AppStringKeys {
   static const telegramAiEditorAIWritingStyles =
       'telegramAiEditorAIWritingStyles';
   static const telegramAiEditorAddEmoji = 'telegramAiEditorAddEmoji';
+  static const telegramAiEditorCannotBeUndone =
+      'telegramAiEditorCannotBeUndone';
+  static const telegramAiEditorChooseLanguage =
+      'telegramAiEditorChooseLanguage';
+  static const telegramAiEditorCreateStyle = 'telegramAiEditorCreateStyle';
+  static const telegramAiEditorCustomStyle = 'telegramAiEditorCustomStyle';
+  static const telegramAiEditorDeleteStyle = 'telegramAiEditorDeleteStyle';
+  static const telegramAiEditorEditStyle = 'telegramAiEditorEditStyle';
+  static const telegramAiEditorFix = 'telegramAiEditorFix';
   static const telegramAiEditorGeneratePrivatelyWithTelegram =
       'telegramAiEditorGeneratePrivatelyWithTelegram';
   static const telegramAiEditorManageCustomStyles =
       'telegramAiEditorManageCustomStyles';
+  static const telegramAiEditorKeepStyle = 'telegramAiEditorKeepStyle';
   static const telegramAiEditorNoAIWritingStylesAreCurrentlyAvailable =
       'telegramAiEditorNoAIWritingStylesAreCurrentlyAvailable';
   static const telegramAiEditorPasteAStyleNameFromALink =
       'telegramAiEditorPasteAStyleNameFromALink';
   static const telegramAiEditorProofreadAndFixMistakes =
       'telegramAiEditorProofreadAndFixMistakes';
+  static const telegramAiEditorOriginal = 'telegramAiEditorOriginal';
+  static const telegramAiEditorResult = 'telegramAiEditorResult';
+  static const telegramAiEditorRewrite = 'telegramAiEditorRewrite';
+  static const telegramAiEditorRewriteTitle = 'telegramAiEditorRewriteTitle';
+  static const telegramAiEditorSelectStyle = 'telegramAiEditorSelectStyle';
   static const telegramAiEditorShowMeAsCreator =
       'telegramAiEditorShowMeAsCreator';
   static const telegramAiEditorStylePrompt = 'telegramAiEditorStylePrompt';
+  static const telegramAiEditorStyle = 'telegramAiEditorStyle';
   static const telegramAiEditorTelegramAIEditor =
       'telegramAiEditorTelegramAIEditor';
   static const telegramAiEditorTelegramProcessesAIEditorRequestsThroughCocoon =
       'telegramAiEditorTelegramProcessesAIEditorRequestsThroughCocoon';
   static const telegramAiEditorWritingStyle = 'telegramAiEditorWritingStyle';
+  static const telegramAiEditorTelegramStyle = 'telegramAiEditorTelegramStyle';
+  static const telegramAiEditorToLanguage = 'telegramAiEditorToLanguage';
+  static const telegramAiEditorTranslate = 'telegramAiEditorTranslate';
   static const telegramInvoiceCheckoutAddressLine2 =
       'telegramInvoiceCheckoutAddressLine2';
   static const telegramInvoiceCheckoutBillingCountryCode =

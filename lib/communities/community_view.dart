@@ -354,40 +354,52 @@ class _CommunityViewState extends State<CommunityView> {
   Widget _communityHeader() {
     final c = context.colors;
     return Container(
-      padding: const EdgeInsets.fromLTRB(18, 20, 18, 18),
+      key: const ValueKey('community-header'),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         color: c.card,
         borderRadius: BorderRadius.circular(14),
       ),
-      child: Column(
+      child: Row(
         children: [
           PhotoAvatar(
             title: widget.community.name,
             photo: widget.community.photo,
-            size: 76,
+            size: 64,
             square: true,
           ),
-          const SizedBox(height: 12),
-          Text(
-            widget.community.name,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: AppTextSize.title,
-              fontWeight: FontWeight.w700,
-              color: c.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 5),
-          Text(
-            AppStrings.t(AppStringKeys.communityChatCount, {
-              'value1': {
-                ..._currentChats.map((chat) => chat.id),
-                ..._currentViewableChats.map((chat) => chat.id),
-              }.length,
-            }),
-            style: TextStyle(
-              fontSize: AppTextSize.callout,
-              color: c.textTertiary,
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.community.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.left,
+                  style: TextStyle(
+                    fontSize: AppTextSize.title,
+                    fontWeight: FontWeight.w700,
+                    color: c.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  AppStrings.t(AppStringKeys.communityChatCount, {
+                    'value1': {
+                      ..._currentChats.map((chat) => chat.id),
+                      ..._currentViewableChats.map((chat) => chat.id),
+                    }.length,
+                  }),
+                  textAlign: TextAlign.left,
+                  style: TextStyle(
+                    fontSize: AppTextSize.callout,
+                    color: c.textTertiary,
+                  ),
+                ),
+              ],
             ),
           ),
         ],

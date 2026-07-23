@@ -25,6 +25,71 @@ void main() {
     );
   });
 
+  test(
+    'custom styles update locally without adding a new style twice',
+    () async {
+      final requests = <Map<String, dynamic>>[];
+      final service = TelegramAiService(
+        queryOverride: (request) async {
+          requests.add(Map<String, dynamic>.of(request));
+          return switch (request['@type']) {
+            'createTextCompositionStyle' => _styleJson(
+              name: 'formal',
+              title: request['title'] as String,
+              prompt: request['prompt'] as String,
+              isCreator: true,
+            ),
+            'editTextCompositionStyle' => _styleJson(
+              name: request['name'] as String,
+              title: request['title'] as String,
+              prompt: request['prompt'] as String,
+              isCreator: true,
+            ),
+            'addTextCompositionStyle' ||
+            'deleteTextCompositionStyle' ||
+            'removeTextCompositionStyle' => {'@type': 'ok'},
+            _ => throw StateError('Unexpected request: $request'),
+          };
+        },
+      );
+      addTearDown(service.dispose);
+
+      final created = await service.createStyle(
+        title: 'Formal',
+        prompt: 'Rewrite formally.',
+      );
+      expect(created.name, 'formal');
+      expect(service.styles.single.title, 'Formal');
+      expect(requests.map((request) => request['@type']), [
+        'createTextCompositionStyle',
+      ]);
+
+      await service.editStyle(
+        name: created.name,
+        title: 'Very Formal',
+        prompt: 'Rewrite very formally.',
+      );
+      expect(service.styles.single.title, 'Very Formal');
+
+      const shared = TelegramAiStyle(
+        name: 'friendly',
+        title: 'Friendly',
+        customEmojiId: 0,
+        isCustom: true,
+        isCreator: false,
+        installCount: 8,
+        prompt: 'Rewrite warmly.',
+        creatorUserId: 42,
+      );
+      await service.addStyle(shared.name, style: shared);
+      expect(service.styles.map((style) => style.name), ['friendly', 'formal']);
+
+      await service.removeStyle(shared.name);
+      await service.deleteStyle(created.name);
+      expect(service.styles, isEmpty);
+    },
+  );
+
   test('AI summary request includes chat, message, translation and tone', () {
     expect(
       buildSummarizeMessageRequest(
@@ -92,3 +157,20 @@ void main() {
     expect(message.videoNoteTranscriptionPending, isFalse);
   });
 }
+
+Map<String, dynamic> _styleJson({
+  required String name,
+  required String title,
+  required String prompt,
+  required bool isCreator,
+}) => {
+  '@type': 'textCompositionStyle',
+  'name': name,
+  'custom_emoji_id': 0,
+  'title': title,
+  'is_custom': true,
+  'is_creator': isCreator,
+  'install_count': 1,
+  'prompt': prompt,
+  'creator_user_id': isCreator ? 1 : 0,
+};

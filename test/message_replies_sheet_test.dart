@@ -108,7 +108,7 @@ void main() {
 
     expect(find.byType(MessageBubble), findsNWidgets(2));
     expect(
-      find.byKey(const ValueKey('messageInlineTimestamp')),
+      find.byKey(const ValueKey('messageTappedTimestamp')),
       findsNWidgets(2),
     );
     expect(find.text('[Video]'), findsNothing);

@@ -436,25 +436,10 @@ class AiModelListView extends StatelessWidget {
                         candidate: candidates[index],
                       ),
                     ],
-                    const InsetDivider(leadingInset: 56),
-                    SettingsRow(
-                      title: AppStringKeys.aiAddModel.l10n(context),
-                      value: settings.serverProviders.isEmpty
-                          ? AppStringKeys.aiAddProviderFirst.l10n(context)
-                          : '',
-                      leading: SettingsIconTile(
-                        icon: HeroAppIcons.circlePlus,
-                        backgroundColor: settings.serverProviders.isEmpty
-                            ? c.textTertiary
-                            : const Color(0xFF20A45B),
-                      ),
-                      onTap: settings.serverProviders.isEmpty
-                          ? null
-                          : () => _push(context, const AiModelEditorView()),
-                      showChevron: settings.serverProviders.isNotEmpty,
-                    ),
                   ],
                 ),
+                const SizedBox(height: AppSpacing.sm),
+                _addModelCard(context, settings),
                 _note(
                   context,
                   AppStringKeys.aiModelCandidatesDescription.l10n(context),
@@ -486,6 +471,86 @@ class AiModelListView extends StatelessWidget {
       showChevron: profile != null,
     );
   }
+
+  Widget _addModelCard(BuildContext context, AiSettingsController settings) {
+    final c = context.colors;
+    final enabled = settings.serverProviders.isNotEmpty;
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      child: GestureDetector(
+        key: const ValueKey('aiAddModelCard'),
+        behavior: HitTestBehavior.opaque,
+        onTap: enabled ? () => _push(context, const AiModelEditorView()) : null,
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 160),
+          opacity: enabled ? 1 : 0.58,
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.lg,
+              vertical: AppSpacing.md,
+            ),
+            decoration: BoxDecoration(
+              color: enabled ? AppTheme.brand.withValues(alpha: 0.08) : c.card,
+              borderRadius: BorderRadius.circular(AppRadius.card),
+              border: Border.all(
+                color: enabled
+                    ? AppTheme.brand.withValues(alpha: 0.24)
+                    : c.divider,
+                width: 0.8,
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: enabled ? const Color(0xFF20A45B) : c.textTertiary,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const AppIcon(
+                    HeroAppIcons.circlePlus,
+                    size: 21,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        AppStringKeys.aiAddModel.l10n(context),
+                        style: AppTextStyle.body(
+                          enabled ? c.textPrimary : c.textTertiary,
+                          weight: AppTextWeight.semibold,
+                        ),
+                      ),
+                      if (!enabled) ...[
+                        const SizedBox(height: AppSpacing.xxs),
+                        Text(
+                          AppStringKeys.aiAddProviderFirst.l10n(context),
+                          style: AppTextStyle.footnote(c.textTertiary),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (enabled)
+                  AppIcon(
+                    HeroAppIcons.chevronRight,
+                    size: AppIconSize.chevron,
+                    color: c.textTertiary,
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class AiModelEditorView extends StatefulWidget {
@@ -505,9 +570,13 @@ class _AiModelEditorViewState extends State<AiModelEditorView> {
   bool _contextDetected = false;
   bool _saving = false;
   bool _loadingModels = false;
+  bool _modelsLoadFailed = false;
+  bool _manualModelEntry = false;
   bool _testingModel = false;
   bool _testFailed = false;
   String? _testResponse;
+  String? _autoDiscoveryProviderId;
+  int _discoveryGeneration = 0;
 
   @override
   void initState() {
@@ -529,6 +598,17 @@ class _AiModelEditorViewState extends State<AiModelEditorView> {
     if (_testPrompt.text.isEmpty) {
       _testPrompt.text = AppStringKeys.aiTestPromptDefault.l10n(context);
     }
+    final settings = context.read<AiSettingsController>();
+    _providerId ??= settings.serverProviders.firstOrNull?.id;
+    final providerId = _providerId;
+    if (providerId != null && _autoDiscoveryProviderId != providerId) {
+      _autoDiscoveryProviderId = providerId;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _providerId == providerId) {
+          unawaited(_loadModels(settings));
+        }
+      });
+    }
   }
 
   @override
@@ -543,7 +623,6 @@ class _AiModelEditorViewState extends State<AiModelEditorView> {
   Widget build(BuildContext context) {
     final c = context.colors;
     final settings = context.watch<AiSettingsController>();
-    _providerId ??= settings.serverProviders.firstOrNull?.id;
     final provider = settings.serverProviders
         .where((item) => item.id == _providerId)
         .firstOrNull;
@@ -587,8 +666,8 @@ class _AiModelEditorViewState extends State<AiModelEditorView> {
                   ],
                 ),
                 const SizedBox(height: AppSpacing.sm),
-                if (provider != null && provider.availableModels.isNotEmpty)
-                  _modelPicker(context, settings, provider)
+                if (provider != null)
+                  _modelDiscoveryCard(context, settings, provider)
                 else
                   _inputField(
                     context,
@@ -640,18 +719,6 @@ class _AiModelEditorViewState extends State<AiModelEditorView> {
                 const SizedBox(height: AppSpacing.lg),
                 _actionButton(
                   context,
-                  label: AppStringKeys.aiRefreshModels.l10n(context),
-                  saving: _loadingModels,
-                  onTap: provider == null ? null : () => _loadModels(settings),
-                  backgroundColor: c.card,
-                  foregroundColor: provider == null
-                      ? c.textTertiary
-                      : AppTheme.brand,
-                  borderColor: c.divider,
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                _actionButton(
-                  context,
                   label: AppStringKeys.aiSaveModel.l10n(context),
                   saving: _saving,
                   onTap: _save,
@@ -694,38 +761,141 @@ class _AiModelEditorViewState extends State<AiModelEditorView> {
       ),
     );
     if (selected == null || !mounted) return;
+    final providerChanged = selected.id != _providerId;
     setState(() {
       _providerId = selected.id;
-      if (selected.availableModels.isNotEmpty &&
-          !selected.availableModels.any(
-            (model) => model.id == _model.text.trim(),
-          )) {
+      _modelsLoadFailed = false;
+      _manualModelEntry = false;
+      if (providerChanged) {
         _model.clear();
         _contextWindow.text = '${AiModelProfile.defaultContextWindowTokens}';
         _contextDetected = false;
       }
     });
+    _autoDiscoveryProviderId = selected.id;
+    unawaited(_loadModels(settings));
   }
 
-  Widget _modelPicker(
+  Widget _modelDiscoveryCard(
     BuildContext context,
     AiSettingsController settings,
     AiServerProvider provider,
-  ) => SettingsCard(
-    children: [
-      SettingsRow(
-        title: AppStringKeys.aiServerModel.l10n(context),
-        value: _model.text.trim().isEmpty
-            ? AppStringKeys.aiServerModelHint.l10n(context)
-            : _model.text.trim(),
-        leading: const SettingsIconTile(
-          icon: HeroAppIcons.cube,
-          backgroundColor: Color(0xFF7467F0),
+  ) {
+    final models = provider.availableModels;
+    final hasDiscoveryRow =
+        models.isNotEmpty || _loadingModels || _modelsLoadFailed;
+    return Column(
+      key: const ValueKey('aiModelDiscoveryCard'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SettingsCard(
+          children: [
+            if (models.isNotEmpty)
+              SettingsRow(
+                key: const ValueKey('aiDiscoveredModelSelector'),
+                title: AppStringKeys.aiServerModel.l10n(context),
+                value: _model.text.trim().isEmpty
+                    ? AppStringKeys.aiServerModelHint.l10n(context)
+                    : _model.text.trim(),
+                leading: const SettingsIconTile(
+                  icon: HeroAppIcons.cube,
+                  backgroundColor: Color(0xFF7467F0),
+                ),
+                onTap: () => _pickAvailableModel(settings, provider),
+              ),
+            if (models.isNotEmpty && (_loadingModels || _modelsLoadFailed))
+              const InsetDivider(leadingInset: 56),
+            if (_loadingModels)
+              SettingsRow(
+                key: const ValueKey('aiModelDiscoveryLoading'),
+                title: AppStringKeys.aiModels.l10n(context),
+                value: provider.name,
+                leading: const SettingsIconTile(
+                  icon: HeroAppIcons.arrowsRotate,
+                  backgroundColor: Color(0xFF3478F6),
+                ),
+                trailing: const AppActivityIndicator(size: 17),
+                showChevron: false,
+              )
+            else if (_modelsLoadFailed)
+              _modelDiscoveryErrorRow(context, settings),
+            if (hasDiscoveryRow) const InsetDivider(leadingInset: 56),
+            SettingsRow(
+              key: const ValueKey('aiEnterModelManually'),
+              title: AppStringKeys.aiEnterModelManually.l10n(context),
+              leading: const SettingsIconTile(
+                icon: HeroAppIcons.penToSquare,
+                backgroundColor: Color(0xFF8E7BFF),
+              ),
+              onTap: () =>
+                  setState(() => _manualModelEntry = !_manualModelEntry),
+              trailing: AppIcon(
+                _manualModelEntry
+                    ? HeroAppIcons.chevronUp
+                    : HeroAppIcons.chevronDown,
+                size: AppIconSize.chevron,
+                color: context.colors.textTertiary,
+              ),
+              showChevron: false,
+            ),
+          ],
         ),
-        onTap: () => _pickAvailableModel(settings, provider),
+        if (_manualModelEntry) ...[
+          const SizedBox(height: AppSpacing.sm),
+          _inputField(
+            context,
+            controller: _model,
+            icon: HeroAppIcons.cube,
+            label: AppStringKeys.aiServerModel.l10n(context),
+            hint: AppStringKeys.aiServerModelHint.l10n(context),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _modelDiscoveryErrorRow(
+    BuildContext context,
+    AiSettingsController settings,
+  ) {
+    final c = context.colors;
+    return GestureDetector(
+      key: const ValueKey('aiModelDiscoveryError'),
+      behavior: HitTestBehavior.opaque,
+      onTap: () => unawaited(_loadModels(settings)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppMetric.settingsLeadingInset,
+          AppSpacing.sm,
+          AppMetric.settingsTrailingInset,
+          AppSpacing.sm,
+        ),
+        child: Row(
+          children: [
+            const SettingsIconTile(
+              icon: HeroAppIcons.triangleExclamation,
+              backgroundColor: Color(0xFFDC3C3C),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Text(
+                AppStringKeys.aiModelsFailed.l10n(context),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: AppTextStyle.footnote(c.textSecondary),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            AppIcon(
+              HeroAppIcons.arrowsRotate,
+              size: AppIconSize.md,
+              color: AppTheme.brand,
+            ),
+          ],
+        ),
       ),
-    ],
-  );
+    );
+  }
 
   Future<void> _pickAvailableModel(
     AiSettingsController settings,
@@ -738,28 +908,41 @@ class _AiModelEditorViewState extends State<AiModelEditorView> {
 
   Future<void> _loadModels(AiSettingsController settings) async {
     final providerId = _providerId;
-    if (providerId == null || _loadingModels) return;
-    setState(() => _loadingModels = true);
+    if (providerId == null) return;
+    final generation = ++_discoveryGeneration;
+    setState(() {
+      _loadingModels = true;
+      _modelsLoadFailed = false;
+    });
     try {
       final models = await settings.refreshModelsForProvider(providerId);
-      if (!mounted) return;
-      showToast(
-        context,
-        context.l10n.t(AppStringKeys.aiModelsLoaded, {'value1': models.length}),
-      );
-      final selected = await _pickDiscoveredModel(models);
-      if (selected == null || !mounted) return;
-      final provider = settings.serverProviders
-          .where((item) => item.id == providerId)
+      if (!mounted || generation != _discoveryGeneration) return;
+      final currentModel = _model.text.trim();
+      final selected = models
+          .where((model) => model.id == currentModel)
           .firstOrNull;
-      if (provider == null) return;
-      await _applyDiscoveredModel(settings, provider, selected);
+      setState(() {
+        _loadingModels = false;
+        _modelsLoadFailed = false;
+        _manualModelEntry =
+            models.isEmpty || (currentModel.isNotEmpty && selected == null);
+        final contextTokens = selected?.contextWindowTokens;
+        if (contextTokens != null) {
+          _contextWindow.text = '$contextTokens';
+          _contextDetected = true;
+        }
+      });
     } on Object {
-      if (mounted) {
-        showToast(context, AppStringKeys.aiModelsFailed.l10n(context));
-      }
+      if (!mounted || generation != _discoveryGeneration) return;
+      setState(() {
+        _loadingModels = false;
+        _modelsLoadFailed = true;
+        if (_model.text.trim().isEmpty) _manualModelEntry = true;
+      });
     } finally {
-      if (mounted) setState(() => _loadingModels = false);
+      if (mounted && generation == _discoveryGeneration && _loadingModels) {
+        setState(() => _loadingModels = false);
+      }
     }
   }
 
@@ -807,6 +990,7 @@ class _AiModelEditorViewState extends State<AiModelEditorView> {
     }
     if (!mounted) return;
     setState(() {
+      _manualModelEntry = false;
       _model.text = details.id;
       final contextTokens = details.contextWindowTokens;
       if (contextTokens != null) _contextWindow.text = '$contextTokens';

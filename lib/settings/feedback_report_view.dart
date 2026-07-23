@@ -38,7 +38,7 @@ class _FeedbackReportViewState extends State<FeedbackReportView> {
     final message = _controller.text.trim();
     if (message.isEmpty || _sending) return;
     setState(() => _sending = true);
-    final overlay = Overlay.of(context);
+    final overlay = Overlay.maybeOf(context, rootOverlay: true);
     try {
       final id = await Sentry.captureFeedback(SentryFeedback(message: message));
       if (!mounted) return;
@@ -48,11 +48,13 @@ class _FeedbackReportViewState extends State<FeedbackReportView> {
         return;
       }
       final shortId = id.toString().substring(0, 8);
-      showToastOverlay(
-        overlay,
-        AppStrings.t(AppStringKeys.feedbackReportSent, {'value1': shortId}),
-        visibleFor: const Duration(seconds: 3),
-      );
+      if (overlay != null) {
+        showToastOverlay(
+          overlay,
+          AppStrings.t(AppStringKeys.feedbackReportSent, {'value1': shortId}),
+          visibleFor: const Duration(seconds: 3),
+        );
+      }
       Navigator.of(context).pop();
     } catch (_) {
       if (!mounted) return;

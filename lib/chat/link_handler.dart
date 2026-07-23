@@ -2016,7 +2016,7 @@ Future<void> _addTextCompositionStyle(BuildContext context, String name) async {
       message: style.prompt,
       confirmText: AppStrings.t(AppStringKeys.confirmContinue),
     );
-    if (accepted) await service.addStyle(style.name);
+    if (accepted) await service.addStyle(style.name, style: style);
   } finally {
     service.dispose();
   }

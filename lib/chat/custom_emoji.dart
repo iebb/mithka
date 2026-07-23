@@ -263,20 +263,29 @@ class StatusEmojiView extends StatelessWidget {
     required this.id,
     this.size = 20,
     this.color,
+    this.animate,
   });
 
   final int id;
   final double size;
   final Color? color;
+  final bool? animate;
 
   @override
   Widget build(BuildContext context) {
-    var animate = true;
-    try {
-      animate = context.watch<ThemeController>().animateStatusEmoji;
-    } on ProviderNotFoundException catch (_) {
-      // Standalone previews without the app provider keep normal playback.
+    var shouldAnimate = animate ?? true;
+    if (animate == null) {
+      try {
+        shouldAnimate = context.watch<ThemeController>().animateStatusEmoji;
+      } on ProviderNotFoundException catch (_) {
+        // Standalone previews without the app provider keep normal playback.
+      }
     }
-    return CustomEmojiView(id: id, size: size, color: color, animate: animate);
+    return CustomEmojiView(
+      id: id,
+      size: size,
+      color: color,
+      animate: shouldAnimate,
+    );
   }
 }

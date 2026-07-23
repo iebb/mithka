@@ -27,6 +27,7 @@ void main() {
     final preferences = await SharedPreferences.getInstance();
     String? secureKey;
     Map<String, dynamic>? modelTestPayload;
+    var modelListRequests = 0;
     final settings = AiSettingsController(
       preferences,
       pccApi: ApplePccApi(
@@ -49,6 +50,7 @@ void main() {
               200,
             );
           }
+          modelListRequests += 1;
           return http.Response(
             '{"data":[{"id":"summary-model","context_window_tokens":131072}]}',
             200,
@@ -133,18 +135,28 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Apple Private Cloud Compute'), findsOneWidget);
     expect(find.text('Apple On-Device Model'), findsOneWidget);
-    await tester.tap(find.text('Add Model'));
+    expect(find.byKey(const ValueKey('aiAddModelCard')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('aiAddModelCard')));
     await tester.pumpAndSettle();
     expect(find.text('Summary Provider'), findsOneWidget);
-    expect(find.byType(TextField), findsNWidgets(3));
-    await tester.tap(find.text('Load Models'));
-    await tester.pump(const Duration(milliseconds: 300));
-    Navigator.of(tester.element(find.text('summary-model'))).pop(
-      const OpenAiCompatibleModelInfo(
-        id: 'summary-model',
-        contextWindowTokens: 131072,
-      ),
+    expect(find.text('Load Models'), findsNothing);
+    expect(modelListRequests, 1);
+    expect(
+      find.byKey(const ValueKey('aiDiscoveredModelSelector')),
+      findsOneWidget,
     );
+    expect(find.byType(TextField), findsNWidgets(2));
+
+    await tester.tap(find.byKey(const ValueKey('aiEnterModelManually')));
+    await tester.pumpAndSettle();
+    expect(find.byType(TextField), findsNWidgets(3));
+    await tester.tap(find.byKey(const ValueKey('aiEnterModelManually')));
+    await tester.pumpAndSettle();
+    expect(find.byType(TextField), findsNWidgets(2));
+
+    await tester.tap(find.byKey(const ValueKey('aiDiscoveredModelSelector')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('summary-model'));
     await tester.pumpAndSettle();
 
     expect(find.byType(TextField), findsNWidgets(2));
