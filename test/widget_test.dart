@@ -33,6 +33,8 @@ import 'package:mithka/components/photo_avatar.dart';
 import 'package:mithka/components/ui_components.dart';
 import 'package:mithka/l10n/app_locale_controller.dart';
 import 'package:mithka/l10n/app_localizations.dart';
+import 'package:mithka/settings/ai_settings_controller.dart';
+import 'package:mithka/settings/apple_pcc_api.dart';
 import 'package:mithka/settings/country_message_filter.dart';
 import 'package:mithka/settings/keyword_blocker.dart';
 import 'package:mithka/settings/translation_controller.dart';
@@ -818,6 +820,97 @@ void main() {
   });
 
   group('ChatInputBar', () {
+    testWidgets('opens Telegram Cocoon reply mode from the reply banner', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final theme = ThemeController(preferences);
+      addTearDown(theme.dispose);
+      final settings = AiSettingsController(
+        preferences,
+        pccApi: ApplePccApi(
+          invokeMethod: (_, _) async => {
+            'available': false,
+            'sdkAvailable': false,
+          },
+        ),
+        secureRead: (_) async => null,
+        secureWrite: (_, _) async {},
+      );
+      await settings.initialize();
+      addTearDown(settings.dispose);
+
+      final target = ChatMessage(
+        id: 7,
+        isOutgoing: false,
+        text: 'Can you join at three?',
+        date: 1,
+        senderName: 'Alice',
+        contentType: 'messageText',
+      );
+      final vm =
+          ChatViewModel(
+              chatId: 1,
+              title: 'Project',
+              markReadOnOpen: false,
+              sessionMessages: [target],
+            )
+            ..aiCapabilities = const TelegramAiCapabilities(
+              tdlibVersion: '1.8.66',
+              compositionSupported: true,
+              richCompositionSupported: true,
+              replySupported: true,
+              customStylesSupported: true,
+              summarySupported: true,
+              transcriptionSupported: true,
+              styleTitleMax: 64,
+              stylePromptMax: 1024,
+              addedStyleCountMax: 10,
+            )
+            ..setReply(target);
+      addTearDown(vm.dispose);
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<ThemeController>.value(value: theme),
+            ChangeNotifierProvider<AiSettingsController>.value(value: settings),
+          ],
+          child: MaterialApp(
+            locale: const Locale('en'),
+            localizationsDelegates: const [
+              AppLocalizations.delegate,
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: Align(
+                alignment: Alignment.bottomCenter,
+                child: ChatInputBar(
+                  vm: vm,
+                  onStartCall: (_) {},
+                  onMessageSent: () {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final action = find.byKey(const ValueKey('composerAiReplyButton'));
+      expect(action, findsOneWidget);
+      await tester.tap(action);
+      await tester.pumpAndSettle();
+
+      expect(find.text('AI Reply'), findsOneWidget);
+      expect(find.text('Replying to Alice'), findsOneWidget);
+      expect(find.textContaining('Telegram Cocoon'), findsOneWidget);
+      expect(find.text('Generate Reply'), findsOneWidget);
+    });
+
     testWidgets('shows two-line AI action above the send button', (
       tester,
     ) async {

@@ -69,6 +69,7 @@ android/app/src/main/jniLibs/
 **/tdjson.xcframework/
 **/TgVoipWebrtc.xcframework/
 .tdlib-build/
+/native-libs/
 
 # One-time working notes (not part of the app)
 /CLAUDE.md

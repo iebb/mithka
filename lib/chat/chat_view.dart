@@ -32,6 +32,7 @@ import '../media/app_asset_picker.dart';
 import '../moments/story_viewer_view.dart';
 import '../notifications/notification_controller.dart';
 import '../profile/profile_detail_view.dart';
+import '../settings/ai_endpoint_style.dart';
 import '../settings/ai_settings_controller.dart';
 import '../settings/apple_pcc_api.dart';
 import '../settings/blocked_user_service.dart';
@@ -5242,6 +5243,7 @@ class _ChatViewState extends State<ChatView> {
     final configuration = settings!.configurationForFeature(AiFeature.summary);
     final providerMode = configuration.providerMode;
     final endpoint = configuration.endpoint;
+    final endpointStyle = configuration.endpointStyle;
     final model = configuration.model;
     final apiKey = configuration.apiKey;
     final hostedContextSize =
@@ -5260,6 +5262,7 @@ class _ChatViewState extends State<ChatView> {
     final session = _createUnreadSummarySession(
       providerMode: providerMode,
       endpoint: endpoint,
+      endpointStyle: endpointStyle,
       model: model,
       apiKey: apiKey,
       hostedContextSize: hostedContextSize,
@@ -5292,6 +5295,7 @@ class _ChatViewState extends State<ChatView> {
   _UnreadSummarySession _createUnreadSummarySession({
     required AiProviderMode providerMode,
     required Uri? endpoint,
+    required AiEndpointStyle endpointStyle,
     required String model,
     required String apiKey,
     required int? hostedContextSize,
@@ -5395,6 +5399,7 @@ class _ChatViewState extends State<ChatView> {
           serverBaseUri: endpoint,
           model: model.trim(),
           apiKey: apiKey,
+          endpointStyle: endpointStyle,
         );
         return _UnreadSummarySession(
           UnreadChatSummaryService(
@@ -5406,7 +5411,7 @@ class _ChatViewState extends State<ChatView> {
             maxChunkTokenEstimate: tokenBudget.payloadTokens,
             maxChunkTimeGapSeconds: 0,
             trustedInstructions: unreadChatSummaryCompactTrustedInstructions,
-            providerCode: 'openai_compatible/$model',
+            providerCode: '${endpointStyle.storageValue}/$model',
             contextWindowTokens: contextWindow,
             outputLanguage: outputLanguage,
             initialPromptTokenEstimate: tokenBudget.initialPromptTokens,

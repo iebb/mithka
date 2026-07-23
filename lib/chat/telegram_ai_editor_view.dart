@@ -7,6 +7,7 @@ import '../components/app_icons.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../theme/app_theme.dart';
+import 'ai_reply_service.dart';
 import 'custom_emoji.dart';
 import 'telegram_ai_service.dart';
 
@@ -142,10 +143,11 @@ Widget _aiToggleRow(
   required String title,
   required bool value,
   required ValueChanged<bool> onChanged,
+  bool enabled = true,
 }) => _aiRow(
   context,
   title: title,
-  onTap: () => onChanged(!value),
+  onTap: enabled ? () => onChanged(!value) : null,
   trailing: AnimatedContainer(
     duration: const Duration(milliseconds: 180),
     curve: Curves.easeOut,
@@ -253,16 +255,24 @@ class TelegramAiEditorView extends StatefulWidget {
     super.key,
     required this.service,
     required this.source,
+    this.replyProvider,
+    this.replyRequest,
+    this.replyProviderLabel = '',
+    this.startInReplyMode = false,
   });
 
   final TelegramAiService service;
   final TelegramAiFormattedText source;
+  final AiReplyProvider? replyProvider;
+  final AiReplyRequest? replyRequest;
+  final String replyProviderLabel;
+  final bool startInReplyMode;
 
   @override
   State<TelegramAiEditorView> createState() => _TelegramAiEditorViewState();
 }
 
-enum _TelegramAiMode { translate, style, fix }
+enum _TelegramAiMode { reply, translate, style, fix }
 
 class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
   static const _languages = <String, String>{
@@ -276,30 +286,55 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
     'fr': 'Français',
   };
 
-  _TelegramAiMode _mode = _TelegramAiMode.style;
+  late _TelegramAiMode _mode;
+  late final TextEditingController _replyGuidance;
   bool _addEmojis = false;
   String _language = '';
   String _style = '';
+  String? _expandedStylePromptName;
   bool _working = false;
   TelegramAiFormattedText? _result;
 
+  bool get _hasReplyMode =>
+      widget.replyProvider != null && widget.replyRequest != null;
+
+  @override
+  void initState() {
+    super.initState();
+    _mode = widget.startInReplyMode && _hasReplyMode
+        ? _TelegramAiMode.reply
+        : _TelegramAiMode.style;
+    _replyGuidance = TextEditingController(
+      text: widget.replyRequest?.guidance ?? '',
+    );
+  }
+
+  @override
+  void dispose() {
+    _replyGuidance.dispose();
+    super.dispose();
+  }
+
   bool get _canGenerate => switch (_mode) {
+    _TelegramAiMode.reply => _hasReplyMode,
     _TelegramAiMode.translate => _language.isNotEmpty,
     _TelegramAiMode.style => _style.isNotEmpty || _addEmojis,
     _TelegramAiMode.fix => true,
   };
 
   void _changeMode(_TelegramAiMode mode) {
-    if (_mode == mode) return;
+    if (_working || _mode == mode) return;
     setState(() {
       _mode = mode;
+      _expandedStylePromptName = null;
       _result = null;
     });
   }
 
   Future<void> _generate() async {
     if (_working || !_canGenerate) return;
-    if (widget.service.capabilitiesSnapshot?.compositionSupported != true) {
+    if (_mode != _TelegramAiMode.reply &&
+        widget.service.capabilitiesSnapshot?.compositionSupported != true) {
       showToast(
         context,
         AppStrings.t(
@@ -311,15 +346,19 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
     }
     setState(() => _working = true);
     try {
-      final result = await widget.service.compose(
-        text: widget.source,
-        proofread: _mode == _TelegramAiMode.fix,
-        translateToLanguageCode: _mode == _TelegramAiMode.translate
-            ? _language
-            : '',
-        styleName: _mode == _TelegramAiMode.style ? _style : '',
-        addEmojis: _mode != _TelegramAiMode.fix && _addEmojis,
-      );
+      final result = _mode == _TelegramAiMode.reply
+          ? await widget.replyProvider!.generate(
+              widget.replyRequest!.copyWith(guidance: _replyGuidance.text),
+            )
+          : await widget.service.compose(
+              text: widget.source,
+              proofread: _mode == _TelegramAiMode.fix,
+              translateToLanguageCode: _mode == _TelegramAiMode.translate
+                  ? _language
+                  : '',
+              styleName: _mode == _TelegramAiMode.style ? _style : '',
+              addEmojis: _mode != _TelegramAiMode.fix && _addEmojis,
+            );
       if (mounted) setState(() => _result = result);
     } catch (error) {
       if (mounted) showToast(context, error.toString());
@@ -336,7 +375,11 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
       body: Column(
         children: [
           NavHeader(
-            title: AppStrings.t(AppStringKeys.telegramAiEditorRewriteTitle),
+            title: AppStrings.t(
+              _mode == _TelegramAiMode.reply
+                  ? AppStringKeys.aiReplyTitle
+                  : AppStringKeys.telegramAiEditorRewriteTitle,
+            ),
             onBack: () => Navigator.of(context).pop(),
           ),
           Expanded(
@@ -376,9 +419,14 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
 
   String get _primaryLabel {
     if (_result != null) {
-      return AppStrings.t(AppStringKeys.composerFormatApply);
+      return AppStrings.t(
+        _mode == _TelegramAiMode.reply
+            ? AppStringKeys.aiReplyUseReply
+            : AppStringKeys.composerFormatApply,
+      );
     }
     return switch (_mode) {
+      _TelegramAiMode.reply => AppStrings.t(AppStringKeys.aiReplyGenerate),
       _TelegramAiMode.translate => AppStrings.t(
         AppStringKeys.telegramAiEditorTranslate,
       ),
@@ -393,6 +441,7 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
 
   Widget _previewCard() {
     final c = context.colors;
+    final replyTarget = widget.replyRequest?.target;
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -404,8 +453,14 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _previewSection(
-            AppStrings.t(AppStringKeys.telegramAiEditorOriginal),
-            widget.source.text,
+            _mode == _TelegramAiMode.reply
+                ? AppStrings.t(AppStringKeys.aiReplyReplyingTo, {
+                    'value1': replyTarget?.speaker ?? '',
+                  })
+                : AppStrings.t(AppStringKeys.telegramAiEditorOriginal),
+            _mode == _TelegramAiMode.reply
+                ? replyTarget?.text ?? ''
+                : widget.source.text,
             trailing: _mode == _TelegramAiMode.style
                 ? _inlineEmojiToggle()
                 : null,
@@ -417,7 +472,11 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
                   ? AppStrings.t(AppStringKeys.telegramAiEditorToLanguage, {
                       'value1': _languages[_language] ?? _language,
                     })
-                  : AppStrings.t(AppStringKeys.telegramAiEditorResult),
+                  : AppStrings.t(
+                      _mode == _TelegramAiMode.reply
+                          ? AppStringKeys.aiReplyDraftReply
+                          : AppStringKeys.telegramAiEditorResult,
+                    ),
               _result!.text,
             ),
           ],
@@ -471,14 +530,17 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
     final c = context.colors;
     return Semantics(
       button: true,
+      enabled: !_working,
       selected: _addEmojis,
       child: GestureDetector(
         key: const ValueKey('telegramAiEmojify'),
         behavior: HitTestBehavior.opaque,
-        onTap: () => setState(() {
-          _addEmojis = !_addEmojis;
-          _result = null;
-        }),
+        onTap: _working
+            ? null
+            : () => setState(() {
+                _addEmojis = !_addEmojis;
+                _result = null;
+              }),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(10, 2, 0, 2),
           child: Row(
@@ -516,6 +578,12 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
       ),
       child: Row(
         children: [
+          if (_hasReplyMode)
+            _modeItem(
+              _TelegramAiMode.reply,
+              AppStrings.t(AppStringKeys.aiReplyMode),
+              HeroAppIcons.reply,
+            ),
           _modeItem(
             _TelegramAiMode.translate,
             AppStrings.t(AppStringKeys.telegramAiEditorTranslate),
@@ -539,14 +607,16 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
   Widget _modeItem(_TelegramAiMode mode, String label, AppIconData icon) {
     final c = context.colors;
     final selected = _mode == mode;
+    final enabled = !_working;
     return Expanded(
       child: Semantics(
         button: true,
+        enabled: enabled,
         selected: selected,
         child: GestureDetector(
           key: ValueKey('telegramAiMode-${mode.name}'),
           behavior: HitTestBehavior.opaque,
-          onTap: () => _changeMode(mode),
+          onTap: enabled ? () => _changeMode(mode) : null,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
             curve: Curves.easeOut,
@@ -585,10 +655,61 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
   }
 
   Widget _modeOptions() => switch (_mode) {
+    _TelegramAiMode.reply => _replyOptions(),
     _TelegramAiMode.translate => _translationOptions(),
     _TelegramAiMode.style => _styleOptions(),
     _TelegramAiMode.fix => const SizedBox.shrink(),
   };
+
+  Widget _replyOptions() {
+    final c = context.colors;
+    final provider = widget.replyProviderLabel.trim();
+    return Container(
+      key: const ValueKey('aiReplyOptions'),
+      padding: const EdgeInsets.fromLTRB(14, 13, 14, 14),
+      decoration: BoxDecoration(
+        color: c.card,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: c.divider, width: 0.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            AppStrings.t(AppStringKeys.aiReplyGuidance),
+            style: TextStyle(
+              color: c.textPrimary,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 9),
+          TextField(
+            key: const ValueKey('aiReplyGuidanceField'),
+            controller: _replyGuidance,
+            enabled: !_working,
+            minLines: 2,
+            maxLines: 5,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: InputDecoration(
+              hintText: AppStrings.t(AppStringKeys.aiReplyGuidanceHint),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            AppStrings.t(AppStringKeys.aiReplyPrivacyNote, {
+              'value1': provider,
+            }),
+            style: TextStyle(
+              color: c.textSecondary,
+              fontSize: 12,
+              height: 1.35,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _translationOptions() {
     final c = context.colors;
@@ -605,13 +726,14 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
             title: AppStrings.t(AppStringKeys.telegramAiEditorChooseLanguage),
             subtitle: _languages[_language],
             trailing: const AppIcon(HeroAppIcons.chevronRight, size: 18),
-            onTap: _chooseLanguage,
+            onTap: _working ? null : _chooseLanguage,
           ),
           Divider(height: 1, color: c.divider),
           _aiToggleRow(
             context,
             title: AppStrings.t(AppStringKeys.telegramAiEditorAddEmoji),
             value: _addEmojis,
+            enabled: !_working,
             onChanged: (value) => setState(() {
               _addEmojis = value;
               _result = null;
@@ -625,6 +747,14 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
   Widget _styleOptions() {
     final c = context.colors;
     final styles = widget.service.styles;
+    TelegramAiStyle? selectedStyle;
+    for (final style in styles) {
+      if (style.name == _style) {
+        selectedStyle = style;
+        break;
+      }
+    }
+    final selectedPrompt = selectedStyle?.prompt.trim() ?? '';
     final supportsCustomStyles =
         widget.service.capabilitiesSnapshot?.customStylesSupported == true;
     return Container(
@@ -656,7 +786,7 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
                     label: AppStrings.t(AppStringKeys.imageEditAdd),
                     selected: false,
                     showAdd: true,
-                    onTap: _addStyle,
+                    onTap: _working ? null : _addStyle,
                   ),
                   const SizedBox(width: 8),
                 ],
@@ -666,16 +796,24 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
                     label: style.title,
                     selected: _style == style.name,
                     leading: _styleIcon(style, selected: _style == style.name),
-                    onTap: () => setState(() {
-                      _style = _style == style.name ? '' : style.name;
-                      _result = null;
-                    }),
+                    onTap: _working
+                        ? null
+                        : () => setState(() {
+                            _style = _style == style.name ? '' : style.name;
+                            _expandedStylePromptName = null;
+                            _result = null;
+                          }),
                   ),
                   const SizedBox(width: 8),
                 ],
               ],
             ),
           ),
+          if (selectedStyle != null && selectedPrompt.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Divider(height: 1, color: c.divider),
+            _stylePromptDisclosure(selectedStyle, selectedPrompt),
+          ],
         ],
       ),
     );
@@ -685,13 +823,14 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
     required Key key,
     required String label,
     required bool selected,
-    required VoidCallback onTap,
+    required VoidCallback? onTap,
     Widget? leading,
     bool showAdd = false,
   }) {
     final c = context.colors;
     return Semantics(
       button: true,
+      enabled: onTap != null,
       selected: selected,
       child: GestureDetector(
         key: key,
@@ -738,6 +877,81 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
     );
   }
 
+  Widget _stylePromptDisclosure(TelegramAiStyle style, String prompt) {
+    final c = context.colors;
+    final expanded = _expandedStylePromptName == style.name;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Semantics(
+          button: true,
+          expanded: expanded,
+          child: GestureDetector(
+            key: ValueKey('telegramAiStylePromptToggle-${style.name}'),
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setState(() {
+              _expandedStylePromptName = expanded ? null : style.name;
+            }),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      AppStrings.t(AppStringKeys.telegramAiEditorStylePrompt),
+                      style: TextStyle(
+                        color: c.textSecondary,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  AppIcon(
+                    expanded
+                        ? HeroAppIcons.chevronUp
+                        : HeroAppIcons.chevronDown,
+                    size: 16,
+                    color: c.textTertiary,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: expanded
+              ? Container(
+                  key: ValueKey('telegramAiStylePromptBody-${style.name}'),
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: c.groupedBackground,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: c.divider, width: 0.5),
+                  ),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 144),
+                    child: SingleChildScrollView(
+                      child: SelectableText(
+                        prompt,
+                        style: TextStyle(
+                          color: c.textSecondary,
+                          fontSize: 13,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                  ),
+                )
+              : const SizedBox(width: double.infinity),
+        ),
+      ],
+    );
+  }
+
   Widget _styleIcon(TelegramAiStyle style, {required bool selected}) {
     final color = selected ? AppTheme.brand : context.colors.textSecondary;
     return KeyedSubtree(
@@ -749,6 +963,7 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
   }
 
   Future<void> _chooseLanguage() async {
+    if (_working) return;
     final value = await _aiChoiceSheet<String>(
       context,
       title: AppStrings.t(AppStringKeys.telegramAiEditorChooseLanguage),
@@ -766,6 +981,7 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
   }
 
   Future<void> _addStyle() async {
+    if (_working) return;
     final added = await Navigator.of(context).push<TelegramAiStyle>(
       MaterialPageRoute(
         builder: (_) =>
@@ -775,6 +991,7 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
     if (added != null && mounted) {
       setState(() {
         _style = added.name;
+        _expandedStylePromptName = null;
         _result = null;
       });
     }
