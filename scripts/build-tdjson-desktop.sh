@@ -101,7 +101,7 @@ for patch_name in \
   mithka-installed-cloud-themes.patch \
   mithka-community-full-info.patch \
   mithka-transfer-boost.patch; do
-  patch_file="$HELPER_ROOT/patches/$patch_name"
+  patch_file="$(cd "$HELPER_ROOT/patches" && pwd)/$patch_name"
   echo "Applying $patch_name"
   git -C "$TD_SOURCE" apply --unidiff-zero --check "$patch_file"
   git -C "$TD_SOURCE" apply --unidiff-zero "$patch_file"
