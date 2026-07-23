@@ -16,8 +16,10 @@
 		3D4E5902AB7F165C43F64F26 /* MithkaWhite.icon in Resources */ = {isa = PBXBuildFile; fileRef = E55FCC0A5626166720397D1F /* MithkaWhite.icon */; };
 		51156E1E98CF8CB399FD4072 /* MithkaPixel.icon in Resources */ = {isa = PBXBuildFile; fileRef = C145FCC43A8CB4B5D827E2D6 /* MithkaPixel.icon */; };
 		56461556E6B04081CB084252 /* Pods_RunnerTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 175A52FD9B996D21E7E5A1EC /* Pods_RunnerTests.framework */; };
+		6C64635A15B20F2FFA6AF6FB /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 52A009A067E9DA34DF0021A0 /* Foundation.framework */; };
 		74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74858FAE1ED2DC5600515810 /* AppDelegate.swift */; };
 		7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */; };
+		8092FDF4748B19657BE593AF /* NotificationCommunicationContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = B02F5C04823E6F1B8B4DC318 /* NotificationCommunicationContent.swift */; };
 		8CE983C32FEBFF5D00D0A469 /* Pengram.icon in Resources */ = {isa = PBXBuildFile; fileRef = 8CE983C22FEBFF5D00D0A469 /* Pengram.icon */; };
 		97C146FC1CF9000F007C117D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FA1CF9000F007C117D /* Main.storyboard */; };
 		97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000F007C117D /* Assets.xcassets */; };
@@ -30,8 +32,11 @@
 		9A4F20EC31E1000100000001 /* ApplePCCBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4F20EB31E1000100000001 /* ApplePCCBridge.swift */; };
 		A685F7A8DE8A8339A7CFE48A /* RunnerUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8FADD48E0FE94429FDE1912 /* RunnerUITests.swift */; };
 		B005C7BA5D2714CB149B4B95 /* MithkaBlue.icon in Resources */ = {isa = PBXBuildFile; fileRef = 0CC7151EAA772074B2F1F159 /* MithkaBlue.icon */; };
+		B45E6836D8D2D05AB2676E08 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB5790DB6BBC8220D67CE86B /* NotificationService.swift */; };
 		BD06D3B4F53874C98C6D9618 /* tdjson.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 7AF24ACBEB1466595B72E2DD /* tdjson.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		C5B0C022A4F08FF23637352C /* NotificationCommunicationContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = B02F5C04823E6F1B8B4DC318 /* NotificationCommunicationContent.swift */; };
 		C77C2C471C478DA557C449E0 /* MithkaPurple.icon in Resources */ = {isa = PBXBuildFile; fileRef = A257B729519AB240FBD5E29F /* MithkaPurple.icon */; };
+		EC5A464C2E585460A7FC0495 /* NotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = F1053565C108E047425E7C1F /* NotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -41,6 +46,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 97C146ED1CF9000F007C117D;
 			remoteInfo = Runner;
+		};
+		8EA449FC155A143A6F467DE1 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 97C146E61CF9000F007C117D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = CE9B1312FBCA8AFB61E03CDB;
+			remoteInfo = NotificationService;
 		};
 		E2D68C5593A8C49A7C6CE6AB /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -52,6 +64,17 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
+		060440F4DF40895B4853B38F /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				EC5A464C2E585460A7FC0495 /* NotificationService.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		9705A1C41CF9048500538489 /* Embed Frameworks */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -70,6 +93,7 @@
 		1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GeneratedPluginRegistrant.h; sourceTree = "<group>"; };
 		1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = GeneratedPluginRegistrant.m; sourceTree = "<group>"; };
 		175A52FD9B996D21E7E5A1EC /* Pods_RunnerTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_RunnerTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		1ED9B4C897BC119465283076 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		2DC6AA611D5B8296E49BFFC0 /* Pods-RunnerTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.debug.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.debug.xcconfig"; sourceTree = "<group>"; };
 		331C807B294A618700263BE5 /* RunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunnerTests.swift; sourceTree = "<group>"; };
 		331C8081294A63A400263BE5 /* RunnerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RunnerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -99,12 +123,16 @@
 		9A4F20EB31E1000100000001 /* ApplePCCBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ApplePCCBridge.swift; sourceTree = "<group>"; };
 		9AE1F80607B45379F5468F27 /* Pods-Runner.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.debug.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"; sourceTree = "<group>"; };
 		A257B729519AB240FBD5E29F /* MithkaPurple.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaPurple.icon; sourceTree = "<group>"; };
+		B02F5C04823E6F1B8B4DC318 /* NotificationCommunicationContent.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NotificationCommunicationContent.swift; sourceTree = "<group>"; };
 		C145FCC43A8CB4B5D827E2D6 /* MithkaPixel.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaPixel.icon; sourceTree = "<group>"; };
+		D20D61E8E4A929586A940D51 /* NotificationService.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = NotificationService.entitlements; sourceTree = "<group>"; };
 		D63327C430C801C0174C8CDD /* Pods-Runner.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.profile.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.profile.xcconfig"; sourceTree = "<group>"; };
+		DB5790DB6BBC8220D67CE86B /* NotificationService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
 		E55FCC0A5626166720397D1F /* MithkaWhite.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaWhite.icon; sourceTree = "<group>"; };
 		ED8D718BAAB68DA0BBCAA176 /* Pods-Runner.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.release.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"; sourceTree = "<group>"; };
 		EE10E6CFEEFDE38592ABA806 /* Pods-RunnerTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.release.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.release.xcconfig"; sourceTree = "<group>"; };
 		EFF89E330D2D2A54C6DE0C80 /* Pods-RunnerTests.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.profile.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.profile.xcconfig"; sourceTree = "<group>"; };
+		F1053565C108E047425E7C1F /* NotificationService.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		F4C386C258DAFED2D9C5A120 /* RunnerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; name = RunnerUITests.xctest; path = RunnerUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F8FADD48E0FE94429FDE1912 /* RunnerUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RunnerUITests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -115,6 +143,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				3710E08FDCA600E100CD4F88 /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		44E08A4C059233BC5E868E0B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6C64635A15B20F2FFA6AF6FB /* Foundation.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -138,6 +174,17 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		26D1AFF4D17C41600908E87B /* NotificationService */ = {
+			isa = PBXGroup;
+			children = (
+				DB5790DB6BBC8220D67CE86B /* NotificationService.swift */,
+				1ED9B4C897BC119465283076 /* Info.plist */,
+				D20D61E8E4A929586A940D51 /* NotificationService.entitlements */,
+			);
+			name = NotificationService;
+			path = NotificationService;
+			sourceTree = "<group>";
+		};
 		331C8082294A63A400263BE5 /* RunnerTests */ = {
 			isa = PBXGroup;
 			children = (
@@ -176,6 +223,7 @@
 				CFFBCA7D541D2548B6919989 /* Frameworks */,
 				E0A445C3AA6A613EA2B5CBF2 /* Pods */,
 				58A8BF37A222A722C6007F34 /* RunnerUITests */,
+				26D1AFF4D17C41600908E87B /* NotificationService */,
 			);
 			sourceTree = "<group>";
 		};
@@ -185,6 +233,7 @@
 				97C146EE1CF9000F007C117D /* Runner.app */,
 				331C8081294A63A400263BE5 /* RunnerTests.xctest */,
 				F4C386C258DAFED2D9C5A120 /* RunnerUITests.xctest */,
+				F1053565C108E047425E7C1F /* NotificationService.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -214,6 +263,7 @@
 				0CC7151EAA772074B2F1F159 /* MithkaBlue.icon */,
 				A257B729519AB240FBD5E29F /* MithkaPurple.icon */,
 				C145FCC43A8CB4B5D827E2D6 /* MithkaPixel.icon */,
+				B02F5C04823E6F1B8B4DC318 /* NotificationCommunicationContent.swift */,
 			);
 			path = Runner;
 			sourceTree = "<group>";
@@ -301,6 +351,7 @@
 				97C146EC1CF9000F007C117D /* Resources */,
 				5F21B8A92FEE7A5800F10001 /* Copy Firebase config if available */,
 				9705A1C41CF9048500538489 /* Embed Frameworks */,
+				060440F4DF40895B4853B38F /* Embed Foundation Extensions */,
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
 				5E54E8582FECB8F0007D5001 /* Package tdjson dSYM */,
 				7A0B7FAF96F54D11A04FBB76 /* Upload Sentry dSYMs */,
@@ -310,11 +361,29 @@
 			buildRules = (
 			);
 			dependencies = (
+				8833BFB8677232CA5564100F /* PBXTargetDependency */,
 			);
 			name = Runner;
 			productName = Runner;
 			productReference = 97C146EE1CF9000F007C117D /* Runner.app */;
 			productType = "com.apple.product-type.application";
+		};
+		CE9B1312FBCA8AFB61E03CDB /* NotificationService */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CE66C5A670FE881991B0EAF4 /* Build configuration list for PBXNativeTarget "NotificationService" */;
+			buildPhases = (
+				8A3CC892DE9E47C1FDAAC0EA /* Sources */,
+				44E08A4C059233BC5E868E0B /* Frameworks */,
+				7DAEE8138BC8CA2E27B2AF59 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = NotificationService;
+			productName = NotificationService;
+			productReference = F1053565C108E047425E7C1F /* NotificationService.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -334,10 +403,27 @@
 						CreatedOnToolsVersion = 7.3.1;
 						LastSwiftMigration = 1100;
 						SystemCapabilities = {
+							com.apple.ApplicationGroups.iOS = {
+								enabled = 1;
+							};
 							com.apple.BackgroundModes = {
 								enabled = 1;
 							};
 							com.apple.Push = {
+								enabled = 1;
+							};
+							com.apple.Siri = {
+								enabled = 1;
+							};
+						};
+					};
+					CE9B1312FBCA8AFB61E03CDB = {
+						CreatedOnToolsVersion = 26.0;
+						SystemCapabilities = {
+							com.apple.ApplicationGroups.iOS = {
+								enabled = 1;
+							};
+							com.apple.Siri = {
 								enabled = 1;
 							};
 						};
@@ -360,12 +446,20 @@
 				97C146ED1CF9000F007C117D /* Runner */,
 				331C8080294A63A400263BE5 /* RunnerTests */,
 				7E185FF3DAB034683BE5749C /* RunnerUITests */,
+				CE9B1312FBCA8AFB61E03CDB /* NotificationService */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		331C807F294A63A400263BE5 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7DAEE8138BC8CA2E27B2AF59 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -572,6 +666,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		8A3CC892DE9E47C1FDAAC0EA /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B45E6836D8D2D05AB2676E08 /* NotificationService.swift in Sources */,
+				C5B0C022A4F08FF23637352C /* NotificationCommunicationContent.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		97C146EA1CF9000F007C117D /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -585,6 +688,7 @@
 				9A4F20EC31E1000100000001 /* ApplePCCBridge.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 				7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */,
+				8092FDF4748B19657BE593AF /* NotificationCommunicationContent.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -603,6 +707,12 @@
 			isa = PBXTargetDependency;
 			target = 97C146ED1CF9000F007C117D /* Runner */;
 			targetProxy = 331C8085294A63A400263BE5 /* PBXContainerItemProxy */;
+		};
+		8833BFB8677232CA5564100F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = NotificationService;
+			target = CE9B1312FBCA8AFB61E03CDB /* NotificationService */;
+			targetProxy = 8EA449FC155A143A6F467DE1 /* PBXContainerItemProxy */;
 		};
 		93904544FCF7EE0B99308CF6 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -696,6 +806,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
 				DEVELOPMENT_TEAM = 7P8CLHDH5G;
 				EMBEDDED_CONTENT_CONTAINS_SWIFT = YES;
@@ -822,6 +933,29 @@
 				WRAPPER_EXTENSION = xctest;
 			};
 			name = Profile;
+		};
+		745A21E8F2DA8F131DC81BDA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 9740EEB31CF90195004384FC /* Generated.xcconfig */;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = NotificationService/NotificationService.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
+				DEVELOPMENT_TEAM = 7P8CLHDH5G;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NotificationService/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = "$(FLUTTER_BUILD_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = ad.neko.mithka.NotificationService;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
 		};
 		74817F027A52E6ED4F05258D /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -973,6 +1107,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
 				DEVELOPMENT_TEAM = 7P8CLHDH5G;
 				EMBEDDED_CONTENT_CONTAINS_SWIFT = YES;
@@ -1011,6 +1146,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
 				DEVELOPMENT_TEAM = 7P8CLHDH5G;
 				EMBEDDED_CONTENT_CONTAINS_SWIFT = YES;
@@ -1039,6 +1175,54 @@
 				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Release;
+		};
+		B550F13CAFB52A039AA3F8B6 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 9740EEB31CF90195004384FC /* Generated.xcconfig */;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = NotificationService/NotificationService.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
+				DEVELOPMENT_TEAM = 7P8CLHDH5G;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NotificationService/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = "$(FLUTTER_BUILD_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = ad.neko.mithka.NotificationService;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		C27D450AB8BF2AA59335D2A3 /* Profile */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 9740EEB31CF90195004384FC /* Generated.xcconfig */;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = NotificationService/NotificationService.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
+				DEVELOPMENT_TEAM = 7P8CLHDH5G;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NotificationService/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = "$(FLUTTER_BUILD_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = ad.neko.mithka.NotificationService;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Profile;
 		};
 /* End XCBuildConfiguration section */
 
@@ -1079,6 +1263,16 @@
 				97C147061CF9000F007C117D /* Debug */,
 				97C147071CF9000F007C117D /* Release */,
 				249021D4217E4FDB00AE95B9 /* Profile */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CE66C5A670FE881991B0EAF4 /* Build configuration list for PBXNativeTarget "NotificationService" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B550F13CAFB52A039AA3F8B6 /* Release */,
+				745A21E8F2DA8F131DC81BDA /* Debug */,
+				C27D450AB8BF2AA59335D2A3 /* Profile */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

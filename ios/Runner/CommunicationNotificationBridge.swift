@@ -14,6 +14,7 @@ struct CommunicationNotificationRequest {
   let groupConversation: Bool
   let playSound: Bool
   let chatIconPath: String?
+  let chatId: Int64?
 
   init?(arguments: Any?) {
     guard
@@ -36,6 +37,7 @@ struct CommunicationNotificationRequest {
     groupConversation = arguments["group_conversation"] as? Bool ?? false
     playSound = arguments["play_sound"] as? Bool ?? true
     chatIconPath = arguments["chat_icon_path"] as? String
+    chatId = (arguments["chat_id"] as? NSNumber)?.int64Value
   }
 
   func baseContent() -> UNMutableNotificationContent {
@@ -52,51 +54,38 @@ struct CommunicationNotificationRequest {
   }
 
   func messageIntent() -> INSendMessageIntent {
-    let avatar = chatIconImage()
-    let senderHandle = INPersonHandle(
-      value: "mithka-chat:\(conversationIdentifier)",
-      type: .unknown
-    )
-    let sender = INPerson(
-      personHandle: senderHandle,
-      nameComponents: nil,
-      displayName: senderName,
-      image: groupConversation ? nil : avatar,
-      contactIdentifier: nil,
-      customIdentifier: "mithka-chat:\(conversationIdentifier)",
-      isMe: false,
-      suggestionType: .none
-    )
-    let groupName = groupConversation
-      ? INSpeakableString(spokenPhrase: title)
-      : nil
-    let intent = INSendMessageIntent(
-      recipients: nil,
-      outgoingMessageType: .outgoingMessageText,
-      content: body,
-      speakableGroupName: groupName,
-      conversationIdentifier: conversationIdentifier,
-      serviceName: "Mithka",
-      sender: sender,
-      attachments: nil
-    )
-    if groupConversation, let avatar {
-      intent.setImage(avatar, forParameterNamed: \.speakableGroupName)
-    }
-    return intent
+    information().messageIntent()
   }
 
-  private func chatIconImage() -> INImage? {
+  func information() -> CommunicationNotificationInformation {
+    CommunicationNotificationInformation(
+      title: title,
+      body: body,
+      conversationIdentifier: conversationIdentifier,
+      senderName: senderName,
+      groupConversation: groupConversation,
+      avatarData: chatIconData()
+    )
+  }
+
+  private func chatIconData() -> Data? {
     guard
       let chatIconPath,
-      !chatIconPath.isEmpty,
+      !chatIconPath.isEmpty
+    else {
+      return nil
+    }
+    if let chatId {
+      return NotificationAvatarStore.cacheAvatar(at: chatIconPath, chatId: chatId)
+    }
+    guard
       let data = try? Data(contentsOf: URL(fileURLWithPath: chatIconPath)),
       !data.isEmpty,
       UIImage(data: data) != nil
     else {
       return nil
     }
-    return INImage(imageData: data)
+    return data
   }
 }
 
@@ -120,6 +109,25 @@ final class CommunicationNotificationBridge {
   }
 
   private func handle(call: FlutterMethodCall, result: @escaping FlutterResult) {
+    if call.method == "cacheChatIcon" {
+      guard
+        let arguments = call.arguments as? [String: Any],
+        let chatId = arguments["chat_id"] as? NSNumber,
+        let path = arguments["chat_icon_path"] as? String,
+        !path.isEmpty
+      else {
+        result(
+          FlutterError(
+            code: "invalid_notification_avatar",
+            message: "A chat id and avatar path are required.",
+            details: nil
+          )
+        )
+        return
+      }
+      result(NotificationAvatarStore.cacheAvatar(at: path, chatId: chatId.int64Value) != nil)
+      return
+    }
     guard call.method == "show" else {
       result(FlutterMethodNotImplemented)
       return
@@ -137,21 +145,9 @@ final class CommunicationNotificationBridge {
 
     Task { @MainActor in
       let content = request.baseContent()
-      let intent = request.messageIntent()
-      let interaction = INInteraction(intent: intent, response: nil)
-      interaction.direction = .incoming
-
-      do {
-        try await interaction.donate()
-      } catch {
-        // Donation improves Focus and suggestion behavior, but a transient
-        // donation failure must not discard an otherwise valid chat avatar.
-        NSLog("Mithka communication notification donation failed: %@", error.localizedDescription)
-      }
-
       let deliveredContent: UNNotificationContent
       do {
-        deliveredContent = try content.updating(from: intent)
+        deliveredContent = try await request.information().enrichedContent(from: content)
       } catch {
         NSLog("Mithka communication notification enrichment failed: %@", error.localizedDescription)
         deliveredContent = content
