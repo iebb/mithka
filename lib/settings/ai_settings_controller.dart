@@ -185,9 +185,9 @@ class AiModelProfile {
   }
 }
 
-enum AiFeature { translation, summary }
+enum AiFeature { translation, summary, reply }
 
-enum AiModelCandidateKind { applePcc, appleOnDevice, server }
+enum AiModelCandidateKind { applePcc, appleOnDevice, server, telegramCocoon }
 
 @immutable
 class AiModelCandidate {
@@ -210,6 +210,12 @@ class AiModelCandidate {
         kind: AiModelCandidateKind.appleOnDevice,
       );
 
+  const AiModelCandidate.telegramCocoon()
+    : this._(
+        id: AiSettingsController.telegramCocoonModelCandidateId,
+        kind: AiModelCandidateKind.telegramCocoon,
+      );
+
   factory AiModelCandidate.server({
     required AiModelProfile profile,
     required AiServerProvider provider,
@@ -229,6 +235,9 @@ class AiModelCandidate {
     AiModelCandidateKind.applePcc => AiProviderMode.applePcc,
     AiModelCandidateKind.appleOnDevice => AiProviderMode.appleOnDevice,
     AiModelCandidateKind.server => AiProviderMode.openAiCompatible,
+    AiModelCandidateKind.telegramCocoon => throw UnsupportedError(
+      'Telegram Cocoon is a reply-only specialized provider.',
+    ),
   };
 
   String get model => profile?.model ?? '';
@@ -296,8 +305,11 @@ class AiSettingsController extends ChangeNotifier {
       'ai.feature.translation.model_candidate.v1';
   static const summaryModelCandidatePreferenceKey =
       'ai.feature.summary.model_candidate.v1';
+  static const replyModelCandidatePreferenceKey =
+      'ai.feature.reply.model_candidate.v1';
   static const applePccModelCandidateId = 'builtin:apple_pcc';
   static const appleOnDeviceModelCandidateId = 'builtin:apple_on_device';
+  static const telegramCocoonModelCandidateId = 'builtin:telegram_cocoon';
   static const openAiChatCompletionsPath = '/v1/chat/completions';
 
   static const _secureStorage = FlutterSecureStorage();
@@ -321,6 +333,7 @@ class AiSettingsController extends ChangeNotifier {
   String? _activeModelProfileId;
   String _translationModelCandidateId = applePccModelCandidateId;
   String _summaryModelCandidateId = applePccModelCandidateId;
+  String _replyModelCandidateId = telegramCocoonModelCandidateId;
   final Map<String, String> _profileApiKeys = {};
   ApplePccCapabilities? _pccCapabilities;
 
@@ -364,14 +377,40 @@ class AiSettingsController extends ChangeNotifier {
         AiModelCandidate.server(profile: profile, provider: provider),
   ]);
 
+  List<AiModelCandidate> modelCandidatesForFeature(AiFeature feature) =>
+      switch (feature) {
+        AiFeature.translation || AiFeature.summary => modelCandidates,
+        AiFeature.reply => List.unmodifiable([
+          const AiModelCandidate.telegramCocoon(),
+          ...modelCandidates,
+        ]),
+      };
+
   String get translationModelCandidateId => _translationModelCandidateId;
   String get summaryModelCandidateId => _summaryModelCandidateId;
+  String get replyModelCandidateId => _replyModelCandidateId;
   AiModelCandidate get translationModelCandidate =>
       modelCandidateById(_translationModelCandidateId) ??
       const AiModelCandidate.applePcc();
   AiModelCandidate get summaryModelCandidate =>
       modelCandidateById(_summaryModelCandidateId) ??
       const AiModelCandidate.applePcc();
+  AiModelCandidate get replyModelCandidate =>
+      modelCandidateByIdForFeature(AiFeature.reply, _replyModelCandidateId) ??
+      const AiModelCandidate.telegramCocoon();
+
+  String modelCandidateIdForFeature(AiFeature feature) => switch (feature) {
+    AiFeature.translation => _translationModelCandidateId,
+    AiFeature.summary => _summaryModelCandidateId,
+    AiFeature.reply => _replyModelCandidateId,
+  };
+
+  AiModelCandidate modelCandidateForFeature(AiFeature feature) =>
+      switch (feature) {
+        AiFeature.translation => translationModelCandidate,
+        AiFeature.summary => summaryModelCandidate,
+        AiFeature.reply => replyModelCandidate,
+      };
 
   AiModelCandidate? modelCandidateById(String? id) {
     if (id == null) return null;
@@ -381,11 +420,19 @@ class AiSettingsController extends ChangeNotifier {
     return null;
   }
 
+  AiModelCandidate? modelCandidateByIdForFeature(
+    AiFeature feature,
+    String? id,
+  ) {
+    if (id == null) return null;
+    for (final candidate in modelCandidatesForFeature(feature)) {
+      if (candidate.id == id) return candidate;
+    }
+    return null;
+  }
+
   AiFeatureModelConfiguration configurationForFeature(AiFeature feature) {
-    final candidate = switch (feature) {
-      AiFeature.translation => translationModelCandidate,
-      AiFeature.summary => summaryModelCandidate,
-    };
+    final candidate = modelCandidateForFeature(feature);
     final provider = candidate.serverProvider;
     Uri? endpoint;
     if (provider != null) {
@@ -409,6 +456,7 @@ class AiSettingsController extends ChangeNotifier {
         AiModelCandidateKind.appleOnDevice =>
           _pccCapabilities?.onDeviceContextSize,
         AiModelCandidateKind.server => candidate.contextWindowTokens,
+        AiModelCandidateKind.telegramCocoon => null,
       },
     );
   }
@@ -423,6 +471,7 @@ class AiSettingsController extends ChangeNotifier {
         _pccCapabilities?.onDeviceAvailable == true,
       AiModelCandidateKind.server =>
         configuration.model.isNotEmpty && configuration.endpoint != null,
+      AiModelCandidateKind.telegramCocoon => true,
     };
   }
 
@@ -558,15 +607,26 @@ class AiSettingsController extends ChangeNotifier {
     final storedSummaryCandidate = _preferences.getString(
       summaryModelCandidatePreferenceKey,
     );
+    final storedReplyCandidate = _preferences.getString(
+      replyModelCandidatePreferenceKey,
+    );
     _translationModelCandidateId =
         modelCandidateById(storedTranslationCandidate)?.id ?? legacyCandidateId;
     _summaryModelCandidateId =
         modelCandidateById(storedSummaryCandidate)?.id ?? legacyCandidateId;
+    _replyModelCandidateId =
+        modelCandidateByIdForFeature(
+          AiFeature.reply,
+          storedReplyCandidate,
+        )?.id ??
+        telegramCocoonModelCandidateId;
     final migratedFeatureSelections =
         storedTranslationCandidate == null ||
         storedSummaryCandidate == null ||
+        storedReplyCandidate == null ||
         storedTranslationCandidate != _translationModelCandidateId ||
-        storedSummaryCandidate != _summaryModelCandidateId;
+        storedSummaryCandidate != _summaryModelCandidateId ||
+        storedReplyCandidate != _replyModelCandidateId;
 
     final keyResults = await Future.wait(
       _serverProviders.map((provider) async {
@@ -625,17 +685,16 @@ class AiSettingsController extends ChangeNotifier {
     AiFeature feature,
     String candidateId,
   ) async {
-    if (modelCandidateById(candidateId) == null) return;
-    final current = switch (feature) {
-      AiFeature.translation => _translationModelCandidateId,
-      AiFeature.summary => _summaryModelCandidateId,
-    };
+    if (modelCandidateByIdForFeature(feature, candidateId) == null) return;
+    final current = modelCandidateIdForFeature(feature);
     if (current == candidateId) return;
     switch (feature) {
       case AiFeature.translation:
         _translationModelCandidateId = candidateId;
       case AiFeature.summary:
         _summaryModelCandidateId = candidateId;
+      case AiFeature.reply:
+        _replyModelCandidateId = candidateId;
     }
     await _persistFeatureModelSelections();
     notifyListeners();
@@ -1260,6 +1319,10 @@ class AiSettingsController extends ChangeNotifier {
       summaryModelCandidatePreferenceKey,
       _summaryModelCandidateId,
     );
+    await _preferences.setString(
+      replyModelCandidatePreferenceKey,
+      _replyModelCandidateId,
+    );
   }
 
   void _removeOrphanedModels() {
@@ -1289,6 +1352,10 @@ class AiSettingsController extends ChangeNotifier {
     }
     if (modelCandidateById(_summaryModelCandidateId) == null) {
       _summaryModelCandidateId = applePccModelCandidateId;
+    }
+    if (modelCandidateByIdForFeature(AiFeature.reply, _replyModelCandidateId) ==
+        null) {
+      _replyModelCandidateId = telegramCocoonModelCandidateId;
     }
   }
 

@@ -139,6 +139,15 @@ class _AiSettingsViewState extends State<AiSettingsView> {
                             icon: HeroAppIcons.listCheck,
                             color: const Color(0xFF7467F0),
                           ),
+                          const InsetDivider(leadingInset: 56),
+                          _featureModelRow(
+                            context,
+                            settings: settings,
+                            feature: AiFeature.reply,
+                            title: AppStringKeys.aiReplyUsing.l10n(context),
+                            icon: HeroAppIcons.reply,
+                            color: const Color(0xFF229ED9),
+                          ),
                         ],
                       ),
                     ],
@@ -157,9 +166,7 @@ class _AiSettingsViewState extends State<AiSettingsView> {
     required AppIconData icon,
     required Color color,
   }) {
-    final candidate = feature == AiFeature.translation
-        ? settings.translationModelCandidate
-        : settings.summaryModelCandidate;
+    final candidate = settings.modelCandidateForFeature(feature);
     return SettingsRow(
       title: title,
       value: _candidateLabel(context, candidate),
@@ -1128,15 +1135,13 @@ Future<void> _showFeatureModelPicker(
   required AiSettingsController settings,
   required AiFeature feature,
 }) async {
-  final selectedId = feature == AiFeature.translation
-      ? settings.translationModelCandidateId
-      : settings.summaryModelCandidateId;
+  final selectedId = settings.modelCandidateIdForFeature(feature);
   await showModalBottomSheet<void>(
     context: context,
     backgroundColor: Colors.transparent,
     builder: (sheetContext) => _PickerCard(
       children: [
-        for (final candidate in settings.modelCandidates)
+        for (final candidate in settings.modelCandidatesForFeature(feature))
           _pickerRow(
             sheetContext,
             icon: _candidateIcon(candidate),
@@ -1243,6 +1248,8 @@ String _candidateLabel(BuildContext context, AiModelCandidate candidate) =>
       AiModelCandidateKind.appleOnDevice =>
         AppStringKeys.aiProviderAppleOnDevice.l10n(context),
       AiModelCandidateKind.server => candidate.model,
+      AiModelCandidateKind.telegramCocoon =>
+        AppStringKeys.aiProviderTelegramCocoon.l10n(context),
     };
 
 String _endpointStyleLabel(BuildContext context, AiEndpointStyle style) =>
@@ -1276,6 +1283,7 @@ String _candidateDetail(
   ),
   AiModelCandidateKind.server =>
     '${candidate.serverProvider?.name ?? ''} · ${(candidate.contextWindowTokens ?? 0) ~/ 1024}K',
+  AiModelCandidateKind.telegramCocoon => '',
 };
 
 String _appleCandidateDetail(
@@ -1299,12 +1307,14 @@ AppIconData _candidateIcon(AiModelCandidate candidate) =>
       AiModelCandidateKind.applePcc => HeroAppIcons.cloud,
       AiModelCandidateKind.appleOnDevice => HeroAppIcons.cpuChip,
       AiModelCandidateKind.server => HeroAppIcons.cube,
+      AiModelCandidateKind.telegramCocoon => HeroAppIcons.wandMagicSparkles,
     };
 
 Color _candidateColor(AiModelCandidate candidate) => switch (candidate.kind) {
   AiModelCandidateKind.applePcc => const Color(0xFF7467F0),
   AiModelCandidateKind.appleOnDevice => const Color(0xFF16A085),
   AiModelCandidateKind.server => const Color(0xFF3478F6),
+  AiModelCandidateKind.telegramCocoon => const Color(0xFF229ED9),
 };
 
 Future<T?> _push<T>(BuildContext context, Widget view) =>

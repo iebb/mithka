@@ -40,6 +40,18 @@ void main() {
       expect(controller.isConfiguredForCurrentProvider, isFalse);
       expect(controller.modelCandidates, hasLength(2));
       expect(
+        controller.modelCandidatesForFeature(AiFeature.translation),
+        hasLength(2),
+      );
+      expect(
+        controller.modelCandidatesForFeature(AiFeature.summary),
+        hasLength(2),
+      );
+      expect(
+        controller.modelCandidatesForFeature(AiFeature.reply),
+        hasLength(3),
+      );
+      expect(
         controller.translationModelCandidate.kind,
         AiModelCandidateKind.applePcc,
       );
@@ -47,7 +59,101 @@ void main() {
         controller.summaryModelCandidate.kind,
         AiModelCandidateKind.applePcc,
       );
+      expect(
+        controller.replyModelCandidate.kind,
+        AiModelCandidateKind.telegramCocoon,
+      );
+      expect(controller.isConfiguredForFeature(AiFeature.reply), isTrue);
     });
+
+    test(
+      'scopes Telegram Cocoon to replies and persists a reply choice',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final preferences = await SharedPreferences.getInstance();
+        final controller = AiSettingsController(
+          preferences,
+          pccApi: _pccApi(available: false),
+          secureRead: (_) async => null,
+          secureWrite: (_, _) async {},
+        );
+        await controller.initialize();
+
+        expect(
+          controller.modelCandidates
+              .where(
+                (candidate) =>
+                    candidate.kind == AiModelCandidateKind.telegramCocoon,
+              )
+              .isEmpty,
+          isTrue,
+        );
+        expect(
+          controller
+              .modelCandidatesForFeature(AiFeature.translation)
+              .where(
+                (candidate) =>
+                    candidate.kind == AiModelCandidateKind.telegramCocoon,
+              )
+              .isEmpty,
+          isTrue,
+        );
+        expect(
+          controller
+              .modelCandidatesForFeature(AiFeature.summary)
+              .where(
+                (candidate) =>
+                    candidate.kind == AiModelCandidateKind.telegramCocoon,
+              )
+              .isEmpty,
+          isTrue,
+        );
+        expect(
+          controller.modelCandidatesForFeature(AiFeature.reply).first.kind,
+          AiModelCandidateKind.telegramCocoon,
+        );
+
+        await controller.setFeatureModelCandidate(
+          AiFeature.translation,
+          AiSettingsController.telegramCocoonModelCandidateId,
+        );
+        await controller.setFeatureModelCandidate(
+          AiFeature.summary,
+          AiSettingsController.telegramCocoonModelCandidateId,
+        );
+        expect(
+          controller.translationModelCandidate.kind,
+          AiModelCandidateKind.applePcc,
+        );
+        expect(
+          controller.summaryModelCandidate.kind,
+          AiModelCandidateKind.applePcc,
+        );
+
+        await controller.setFeatureModelCandidate(
+          AiFeature.reply,
+          AiSettingsController.appleOnDeviceModelCandidateId,
+        );
+        expect(
+          preferences.getString(
+            AiSettingsController.replyModelCandidatePreferenceKey,
+          ),
+          AiSettingsController.appleOnDeviceModelCandidateId,
+        );
+
+        final restored = AiSettingsController(
+          preferences,
+          pccApi: _pccApi(available: false),
+          secureRead: (_) async => null,
+          secureWrite: (_, _) async {},
+        );
+        await restored.initialize();
+        expect(
+          restored.replyModelCandidate.kind,
+          AiModelCandidateKind.appleOnDevice,
+        );
+      },
+    );
 
     test(
       'persists independent translation and summary model choices',

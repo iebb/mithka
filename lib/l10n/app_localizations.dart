@@ -284,6 +284,7 @@ abstract final class AppStringKeys {
   static const aiProcessingMode = 'aiProcessingMode';
   static const aiProviderApplePcc = 'aiProviderApplePcc';
   static const aiProviderAppleOnDevice = 'aiProviderAppleOnDevice';
+  static const aiProviderTelegramCocoon = 'aiProviderTelegramCocoon';
   static const aiProviderOpenAiCompatible = 'aiProviderOpenAiCompatible';
   static const aiProviderName = 'aiProviderName';
   static const aiProviderNameHint = 'aiProviderNameHint';
@@ -340,6 +341,19 @@ abstract final class AppStringKeys {
   static const aiTokenContext = 'aiTokenContext';
   static const aiTranslateUsing = 'aiTranslateUsing';
   static const aiSummarizeUsing = 'aiSummarizeUsing';
+  static const aiReplyAction = 'aiReplyAction';
+  static const aiReplyDraftReply = 'aiReplyDraftReply';
+  static const aiReplyGenerate = 'aiReplyGenerate';
+  static const aiReplyGuidance = 'aiReplyGuidance';
+  static const aiReplyGuidanceHint = 'aiReplyGuidanceHint';
+  static const aiReplyMode = 'aiReplyMode';
+  static const aiReplyPrivacyNote = 'aiReplyPrivacyNote';
+  static const aiReplyReplyingTo = 'aiReplyReplyingTo';
+  static const aiReplyStale = 'aiReplyStale';
+  static const aiReplyTitle = 'aiReplyTitle';
+  static const aiReplyUnavailable = 'aiReplyUnavailable';
+  static const aiReplyUseReply = 'aiReplyUseReply';
+  static const aiReplyUsing = 'aiReplyUsing';
   static const aiTestFailed = 'aiTestFailed';
   static const aiTestModel = 'aiTestModel';
   static const aiTestPrompt = 'aiTestPrompt';

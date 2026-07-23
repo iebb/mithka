@@ -87,10 +87,20 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    final replyUsingLabel = AppStrings.tForLocale(
+      'en',
+      AppStringKeys.aiReplyUsing,
+    );
+    final telegramCocoonLabel = AppStrings.tForLocale(
+      'en',
+      AppStringKeys.aiProviderTelegramCocoon,
+    );
+
     expect(find.text('AI Settings'), findsOneWidget);
     expect(find.text('Model Configuration'), findsOneWidget);
     expect(find.text('Translate using'), findsOneWidget);
     expect(find.text('Summarize using'), findsOneWidget);
+    expect(find.text(replyUsingLabel), findsOneWidget);
     expect(tester.widget<AppSwitch>(find.byType(AppSwitch)).value, isFalse);
 
     await tester.tap(find.byType(SettingsSwitchRow));
@@ -145,6 +155,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Apple Private Cloud Compute'), findsOneWidget);
     expect(find.text('Apple On-Device Model'), findsOneWidget);
+    expect(find.text(telegramCocoonLabel), findsNothing);
     expect(find.byKey(const ValueKey('aiAddModelCard')), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('aiAddModelCard')));
     await tester.pumpAndSettle();
@@ -207,11 +218,36 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(SettingsRow, 'Translate using'));
     await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byType(BottomSheet),
+        matching: find.text(telegramCocoonLabel),
+      ),
+      findsNothing,
+    );
     await tester.tap(find.text('summary-model').last);
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(SettingsRow, 'Summarize using'));
     await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byType(BottomSheet),
+        matching: find.text(telegramCocoonLabel),
+      ),
+      findsNothing,
+    );
     await tester.tap(find.text('Apple On-Device Model').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(SettingsRow, replyUsingLabel));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byType(BottomSheet),
+        matching: find.text(telegramCocoonLabel),
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.text(telegramCocoonLabel).last);
     await tester.pumpAndSettle();
 
     expect(
@@ -221,6 +257,10 @@ void main() {
     expect(
       settings.summaryModelCandidate.kind,
       AiModelCandidateKind.appleOnDevice,
+    );
+    expect(
+      settings.replyModelCandidate.kind,
+      AiModelCandidateKind.telegramCocoon,
     );
     expect(settings.isConfiguredForFeature(AiFeature.translation), isTrue);
     expect(settings.isConfiguredForFeature(AiFeature.summary), isTrue);

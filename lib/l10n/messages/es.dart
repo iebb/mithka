@@ -156,6 +156,23 @@ const esMessages = <String, String>{
   'aiTokenContext': "Ventana de contexto de {value1}K tokens",
   'aiTranslateUsing': "Traducir con",
   'aiSummarizeUsing': "Resumir con",
+  'aiReplyAction': "Escribir una respuesta con IA",
+  'aiReplyDraftReply': "Borrador de respuesta",
+  'aiReplyGenerate': "Generar respuesta",
+  'aiReplyGuidance': "Indicaciones (opcional)",
+  'aiReplyGuidanceHint':
+      "Por ejemplo: mostrarte de acuerdo con calidez y preguntar a qué hora",
+  'aiReplyMode': "Responder",
+  'aiReplyPrivacyNote':
+      "El fragmento visible de la conversación se envía a {value1}. El resultado permanece en tu borrador.",
+  'aiReplyReplyingTo': "En respuesta a {value1}",
+  'aiReplyStale':
+      "El mensaje al que respondías cambió, por lo que no se aplicó el borrador generado.",
+  'aiReplyTitle': "Respuesta con IA",
+  'aiReplyUnavailable':
+      "La respuesta con IA no está disponible para este mensaje.",
+  'aiReplyUseReply': "Usar respuesta",
+  'aiReplyUsing': "Responder con",
   'aiTestFailed': "La prueba del modelo falló.",
   'aiTestModel': "Probar modelo",
   'aiTestPrompt': "Mensaje de prueba",
@@ -173,6 +190,7 @@ const esMessages = <String, String>{
   'aiProcessingMode': "Modo de procesamiento",
   'aiProviderApplePcc': "Apple Private Cloud Compute",
   'aiProviderAppleOnDevice': "Modelo de Apple en el dispositivo",
+  'aiProviderTelegramCocoon': "Telegram Cocoon",
   'aiProviderOpenAiCompatible': "Servidor personalizado",
   'aiProviderName': "Nombre",
   'aiProviderNameHint': "Mi proveedor de IA",
