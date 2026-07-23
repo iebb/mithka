@@ -253,7 +253,10 @@ class _PublicDiscoveryViewState extends State<PublicDiscoveryView> {
     final confirmed = await confirmDialog(
       context,
       title: AppStrings.t(AppStringKeys.publicDiscoveryPaidPublicSearch),
-      message: 'Telegram requires $count Stars for this search.',
+      message: AppStrings.t(
+        AppStringKeys.publicDiscoveryThisSearchCostsValue1TelegramStars,
+        {'value1': count},
+      ),
       confirmText: AppStrings.t(
         AppStringKeys.publicDiscoverySearchForValue1Stars,
         {'value1': count},

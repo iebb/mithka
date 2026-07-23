@@ -38,4 +38,12 @@ void main() {
     expect(appDelegate, isNot(contains('SystemPictureInPictureBridge')));
     expect(mainActivity, isNot(contains('SystemPictureInPicturePlugin')));
   });
+
+  test('display mode control opens split screen directly', () {
+    final player = File('lib/chat/video_player_view.dart').readAsStringSync();
+
+    expect(player, contains('message: AppStringKeys.videoPlayerSplitScreen'));
+    expect(player, contains('callback(VideoDisplayMode.split);'));
+    expect(player, isNot(contains('PopupMenuButton<VideoDisplayMode>')));
+  });
 }

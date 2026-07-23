@@ -900,9 +900,11 @@ class _StripeCardEntryViewState extends State<StripeCardEntryView> {
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                const _StatusCard(
-                  message:
-                      'Your card number and security code are sent directly to Stripe and are never sent to Telegram.',
+                _StatusCard(
+                  message: AppStrings.t(
+                    AppStringKeys
+                        .telegramInvoiceCheckoutPaymentDetailsAreSentDirectlyToTheSelected,
+                  ),
                   error: false,
                 ),
                 const SizedBox(height: 14),

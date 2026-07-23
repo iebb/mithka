@@ -2779,82 +2779,12 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   Widget _modeSwitchButton({double size = 50}) {
     final callback = widget.onSwitchMode;
     if (callback == null) return const SizedBox.shrink();
-    return PopupMenuButton<VideoDisplayMode>(
-      tooltip: AppStringKeys.videoPlayerToggleDisplayMode.l10n(context),
-      color: const Color(0xFF1C1C1E),
-      onOpened: () {
-        setState(() => _controlsVisible = true);
-        _hideTimer?.cancel();
-      },
-      onCanceled: _scheduleHide,
-      onSelected: (mode) {
-        if (mode != widget.currentMode) {
-          unawaited(_selectDisplayMode(mode, callback));
-        }
+    return Tooltip(
+      message: AppStringKeys.videoPlayerSplitScreen.l10n(context),
+      child: _roundIconButton(HeroAppIcons.tableColumns.data, () {
+        callback(VideoDisplayMode.split);
         _scheduleHide();
-      },
-      itemBuilder: (_) => [
-        _modeItem(
-          VideoDisplayMode.fullscreen,
-          AppStringKeys.videoPlayerFullscreen,
-        ),
-        _modeItem(
-          VideoDisplayMode.pictureInPicture,
-          AppStringKeys.videoPlayerPictureInPicture,
-        ),
-        _modeItem(VideoDisplayMode.split, AppStringKeys.videoPlayerSplitScreen),
-      ],
-      child: SizedBox(
-        width: size,
-        height: size,
-        child: Center(
-          child: AppIcon(
-            HeroAppIcons.tableColumns,
-            color: Colors.white.withValues(alpha: 0.92),
-            size: size * 0.5,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _selectDisplayMode(
-    VideoDisplayMode mode,
-    ValueChanged<VideoDisplayMode> callback,
-  ) async {
-    if (mode == VideoDisplayMode.pictureInPicture) {
-      await _enterPictureInPicture();
-      return;
-    }
-    if (!mounted) return;
-    callback(mode);
-  }
-
-  PopupMenuItem<VideoDisplayMode> _modeItem(
-    VideoDisplayMode mode,
-    String label,
-  ) {
-    return PopupMenuItem<VideoDisplayMode>(
-      value: mode,
-      child: Row(
-        children: [
-          SizedBox(
-            width: 20,
-            child: mode == widget.currentMode
-                ? const AppIcon(
-                    HeroAppIcons.check,
-                    size: 14,
-                    color: Colors.white,
-                  )
-                : null,
-          ),
-          const SizedBox(width: 8),
-          Text(
-            label.l10n(context),
-            style: const TextStyle(color: Colors.white),
-          ),
-        ],
-      ),
+      }, size: size),
     );
   }
 

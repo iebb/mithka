@@ -21,6 +21,7 @@ class IOSCommunicationNotificationBridge {
     required String payload,
     required bool groupConversation,
     required bool playSound,
+    required int chatId,
     String? chatIconPath,
   }) => channel.invokeMethod<void>('show', {
     'id': id,
@@ -31,7 +32,26 @@ class IOSCommunicationNotificationBridge {
     'payload': payload,
     'group_conversation': groupConversation,
     'play_sound': playSound,
+    'chat_id': chatId,
     if (chatIconPath != null && chatIconPath.isNotEmpty)
       'chat_icon_path': chatIconPath,
   });
+
+  Future<bool> cacheChatIcon({
+    required int chatId,
+    required String path,
+  }) async {
+    if (path.isEmpty) return false;
+    try {
+      return await channel.invokeMethod<bool>('cacheChatIcon', {
+            'chat_id': chatId,
+            'chat_icon_path': path,
+          }) ??
+          false;
+    } on MissingPluginException {
+      return false;
+    } on PlatformException {
+      return false;
+    }
+  }
 }

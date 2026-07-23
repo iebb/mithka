@@ -30,6 +30,7 @@ void main() {
         payload: '{"chat_id":-100123,"message_id":8}',
         groupConversation: true,
         playSound: false,
+        chatId: -100123,
         chatIconPath: '/tmp/family.jpg',
       );
 
@@ -43,6 +44,7 @@ void main() {
         'payload': '{"chat_id":-100123,"message_id":8}',
         'group_conversation': true,
         'play_sound': false,
+        'chat_id': -100123,
         'chat_icon_path': '/tmp/family.jpg',
       });
     },
@@ -71,8 +73,34 @@ void main() {
       payload: '{"chat_id":99}',
       groupConversation: false,
       playSound: true,
+      chatId: 99,
     );
 
     expect((received?.arguments as Map)['chat_icon_path'], isNull);
+  });
+
+  test('native iOS bridge caches a chat avatar for remote pushes', () async {
+    const channel = MethodChannel('mithka/test_communication_avatar_cache');
+    const bridge = IOSCommunicationNotificationBridge(channel: channel);
+    MethodCall? received;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          received = call;
+          return true;
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null),
+    );
+
+    expect(
+      await bridge.cacheChatIcon(chatId: -100123, path: '/tmp/family.jpg'),
+      isTrue,
+    );
+    expect(received?.method, 'cacheChatIcon');
+    expect(received?.arguments, {
+      'chat_id': -100123,
+      'chat_icon_path': '/tmp/family.jpg',
+    });
   });
 }

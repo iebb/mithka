@@ -277,6 +277,19 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
 
     final messageText = _notificationText(content);
     if (KeywordBlocker.shared.matches(messageText)) return;
+    String? preparedIOSChatIconPath;
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      preparedIOSChatIconPath = await _notificationChatIconPath(chat, clientId);
+      final path = preparedIOSChatIconPath;
+      if (path != null) {
+        unawaited(
+          _iosCommunicationNotifications.cacheChatIcon(
+            chatId: chatId,
+            path: path,
+          ),
+        );
+      }
+    }
     final surface = notificationSurfaceFor(
       lifecycleState: _state,
       inAppBannersEnabled: _inAppBannersEnabled,
@@ -375,7 +388,9 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
       'title': chatTitle,
       'account_slot': _client.slotForClient(clientId),
     });
-    final chatIconPath = await _notificationChatIconPath(latestChat, clientId);
+    final chatIconPath =
+        preparedIOSChatIconPath ??
+        await _notificationChatIconPath(latestChat, clientId);
     final groupConversation = switch (TDParse.chatKind(latestChat)) {
       ChatKind.group || ChatKind.channel => true,
       _ => false,
@@ -397,6 +412,7 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
           payload: payload,
           groupConversation: groupConversation,
           playSound: latestEffective.soundEnabled,
+          chatId: chatId,
           chatIconPath: chatIconPath,
         );
         return;

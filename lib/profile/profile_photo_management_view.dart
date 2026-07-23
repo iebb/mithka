@@ -168,7 +168,7 @@ class _ProfilePhotoManagementViewState
     final confirmed = await confirmDialog(
       context,
       title: AppStrings.t(AppStringKeys.profilePhotoDeleteTitle),
-      message: 'This removes the photo from your profile history.',
+      message: AppStrings.t(AppStringKeys.profilePhotoDeleteMessage),
       confirmText: AppStrings.t(AppStringKeys.chatDelete),
       destructive: true,
     );
