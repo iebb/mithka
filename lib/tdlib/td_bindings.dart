@@ -7,6 +7,9 @@
 //
 //   • Android  → libtdjson.so   (bundled in jniLibs, opened by name)
 //   • iOS      → tdjson.framework (embedded in Runner.app/Frameworks)
+//   • macOS    → libtdjson.dylib (embedded in Mithka.app/Contents/Frameworks)
+//   • Windows  → tdjson.dll (next to the app executable)
+//   • Linux    → libtdjson.so (in the bundle's lib directory)
 //
 //  The returned `char*` from td_receive / td_execute is owned by tdjson's
 //  thread-local storage and must NOT be freed; we copy it to a Dart string
@@ -160,12 +163,17 @@ class TdBindings {
     if (Platform.isAndroid) {
       return DynamicLibrary.open('libtdjson.so');
     }
-    if (Platform.isIOS || Platform.isMacOS) {
+    if (Platform.isIOS) {
       try {
         return DynamicLibrary.open('tdjson.framework/tdjson');
       } on ArgumentError {
         return DynamicLibrary.process();
       }
+    }
+    if (Platform.isMacOS) {
+      return DynamicLibrary.open(
+        '@executable_path/../Frameworks/libtdjson.dylib',
+      );
     }
     if (Platform.isWindows) return DynamicLibrary.open('tdjson.dll');
     return DynamicLibrary.open('libtdjson.so');

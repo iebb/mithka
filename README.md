@@ -1,6 +1,7 @@
 # Mithka
 
-A cross-platform (iOS + Android) Telegram client built with **Flutter** on top of
+A cross-platform Telegram client for Android, iOS, Windows, macOS, and Linux,
+built with **Flutter** on top of
 **[TDLib](https://core.telegram.org/tdlib)** via FFI, with a dense,
 mobile-native messaging interface.
 
@@ -26,6 +27,9 @@ mobile-native messaging interface.
 | --- | --- | --- |
 | Android | [Google Play Open testing](https://play.google.com/apps/testing/ad.neko.mithka) | [Google Play](https://play.google.com/store/apps/details?id=ad.neko.mithka) |
 | iOS | [TestFlight](https://testflight.apple.com/join/tVC8WkbW) | [App Store](https://apps.apple.com/us/app/mithka/id6783830742) |
+| Windows | [GitHub prereleases](https://github.com/iebb/mithka/releases?q=prerelease%3Atrue) | [Latest GitHub release](https://github.com/iebb/mithka/releases/latest) |
+| macOS | [GitHub prereleases](https://github.com/iebb/mithka/releases?q=prerelease%3Atrue) | [Latest GitHub release](https://github.com/iebb/mithka/releases/latest) |
+| Linux | [GitHub prereleases](https://github.com/iebb/mithka/releases?q=prerelease%3Atrue) | [Latest GitHub release](https://github.com/iebb/mithka/releases/latest) |
 
 ## The name
 
@@ -68,9 +72,11 @@ class Secrets {
 ```
 
 The TDLib native library is prepared with helper scripts (output is git-ignored).
-CI downloads the latest prebuilt Android and iOS artifacts from
+CI downloads pinned prebuilt Android and iOS artifacts from
 [`iebb/mithka-tdjson`](https://github.com/iebb/mithka-tdjson). The Android
-source-build script is kept for local fallback/debug builds.
+source-build script is kept for local fallback/debug builds. Desktop release
+jobs compile the matching pinned and patched TDLib source, cache it per OS, and
+bundle the native library with each app archive.
 
 ```bash
 # Android local fallback (per ABI) — produces android/app/src/main/jniLibs/<abi>/libtdjson.so
@@ -78,6 +84,9 @@ scripts/build-tdjson-android.sh arm64-v8a
 
 # iOS — downloads ios/tdjson/tdjson.xcframework consumed by the Runner
 scripts/build-tdjson-ios.sh
+
+# Desktop — writes the library to the requested path (linux, macos, or windows)
+scripts/build-tdjson-desktop.sh macos /tmp/libtdjson.dylib
 ```
 
 Then run:
@@ -101,12 +110,13 @@ debug signature is used. Neither the keystore nor `key.properties` is committed.
 
 ## CI
 
-`master` does not build Android packages. At 00:00 and 12:00 UTC each day,
+`master` does not build release packages. At 00:00 and 12:00 UTC each day,
 GitHub Actions merges new `master` commits into `nightly` and increments the
-app's patch version once; `nightly` publishes dated GitHub prereleases and
+app's patch version once; `nightly` publishes dated Android, Windows, macOS,
+and Linux GitHub prereleases and
 submits the signed AAB to Google Play Open testing. Xcode Cloud keeps the same
 major/minor version but forces the iOS patch to `0`. Pushes to `release` publish
-dated stable GitHub releases and submit the production AAB to Google Play
+dated stable multi-platform GitHub releases and submit the production AAB to Google Play
 through the same channel-aware workflow.
 `secrets.dart` is generated on the runner from the `TELEGRAM_API_ID` /
 `TELEGRAM_API_HASH` repository secrets.
