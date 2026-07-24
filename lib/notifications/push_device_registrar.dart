@@ -30,7 +30,7 @@ class PushDeviceRegistrar {
     _channel.setMethodCallHandler(_handleNativeMethod);
     _sub = _client.subscribe().listen(_handleTdUpdate);
     _accountSub = _client.subscribeActiveSlotChanges().listen((_) {
-      if (_preferences.allAccounts) return;
+      if (_preferences.accountMode != NotificationAccountMode.current) return;
       _lastRegistrationSignature = null;
       unawaited(_registerIfPossible());
     });
@@ -81,7 +81,15 @@ class PushDeviceRegistrar {
     if (token == null || _registering) return;
     _registering = true;
     try {
-      final usersByClient = await _readyUsersByClient();
+      final readyUsersByClient = await _readyUsersByClient();
+      final usersByClient = <int, int>{
+        for (final entry in readyUsersByClient.entries)
+          if (_preferences.receivesNotificationsFrom(
+            userId: entry.value,
+            isActiveAccount: entry.key == _client.activeClientId,
+          ))
+            entry.key: entry.value,
+      };
       if (usersByClient.isEmpty) return;
       final userIds = usersByClient.values.toSet().toList()..sort();
       final signature = '$token|$kDebugMode|${userIds.join(',')}';
@@ -114,10 +122,7 @@ class PushDeviceRegistrar {
 
   Future<Map<int, int>> _readyUsersByClient() async {
     final usersByClient = <int, int>{};
-    final slots = _preferences.allAccounts
-        ? _client.configuredSlots
-        : [_client.activeSlot];
-    for (final slot in slots) {
+    for (final slot in _client.configuredSlots) {
       final clientId = _client.clientId(slot);
       if (clientId == null) continue;
       try {

@@ -189,7 +189,7 @@ class _AiSettingsViewState extends State<AiSettingsView> {
       title: title,
       value: _candidateLabel(context, candidate),
       leading: SettingsIconTile(icon: icon, backgroundColor: color),
-      onTap: () => _showFeatureModelPicker(
+      onTap: () => showAiFeatureModelPicker(
         context,
         settings: settings,
         feature: feature,
@@ -1265,31 +1265,47 @@ class _AiModelEditorViewState extends State<AiModelEditorView> {
   }
 }
 
-Future<void> _showFeatureModelPicker(
+/// Shows the shared model selector for an AI feature and returns the model the
+/// user selected. A dismissed sheet leaves the current selection unchanged.
+Future<AiModelCandidate?> showAiFeatureModelPicker(
   BuildContext context, {
   required AiSettingsController settings,
   required AiFeature feature,
 }) async {
   final selectedId = settings.modelCandidateIdForFeature(feature);
-  await showModalBottomSheet<void>(
+  return showModalBottomSheet<AiModelCandidate>(
     context: context,
     backgroundColor: Colors.transparent,
-    builder: (sheetContext) => _PickerCard(
-      children: [
-        for (final candidate in settings.modelCandidatesForFeature(feature))
-          _pickerRow(
-            sheetContext,
-            icon: _candidateIcon(candidate),
-            color: _candidateColor(candidate),
-            title: _candidateLabel(sheetContext, candidate),
-            value: _candidateDetail(sheetContext, settings, candidate),
-            selected: candidate.id == selectedId,
-            onTap: () async {
-              await settings.setFeatureModelCandidate(feature, candidate.id);
-              if (sheetContext.mounted) Navigator.of(sheetContext).pop();
-            },
-          ),
-      ],
+    builder: (sheetContext) => KeyedSubtree(
+      key: ValueKey('aiFeatureModelPicker-${feature.name}'),
+      child: _PickerCard(
+        children: [
+          for (final candidate in settings.modelCandidatesForFeature(feature))
+            _pickerRow(
+              sheetContext,
+              key: ValueKey(
+                'aiFeatureModelOption-${feature.name}-${candidate.id}',
+              ),
+              selectedIndicatorKey: ValueKey(
+                'aiFeatureModelSelected-${feature.name}-${candidate.id}',
+              ),
+              icon: _candidateIcon(candidate),
+              color: _candidateColor(candidate),
+              title: _candidateLabel(sheetContext, candidate),
+              value: _candidateDetail(sheetContext, settings, candidate),
+              selected: candidate.id == selectedId,
+              onTap: () async {
+                await settings.setFeatureModelCandidate(feature, candidate.id);
+                if (!sheetContext.mounted ||
+                    settings.modelCandidateIdForFeature(feature) !=
+                        candidate.id) {
+                  return;
+                }
+                Navigator.of(sheetContext).pop(candidate);
+              },
+            ),
+        ],
+      ),
     ),
   );
 }
@@ -1326,6 +1342,8 @@ class _PickerCard extends StatelessWidget {
 
 Widget _pickerRow(
   BuildContext context, {
+  Key? key,
+  Key? selectedIndicatorKey,
   required AppIconData icon,
   required Color color,
   required String title,
@@ -1334,41 +1352,57 @@ Widget _pickerRow(
   required VoidCallback onTap,
 }) {
   final c = context.colors;
-  return GestureDetector(
-    behavior: HitTestBehavior.opaque,
+  return Semantics(
+    button: true,
+    selected: selected,
+    inMutuallyExclusiveGroup: true,
+    label: title,
+    value: value,
     onTap: onTap,
-    child: ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: 62),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Row(
-          children: [
-            SettingsIconTile(icon: icon, backgroundColor: color),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTextStyle.body(c.textPrimary),
+    child: ExcludeSemantics(
+      child: GestureDetector(
+        key: key,
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 62),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                SettingsIconTile(icon: icon, backgroundColor: color),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyle.body(c.textPrimary),
+                      ),
+                      if (value.isNotEmpty)
+                        Text(
+                          value,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTextStyle.caption(c.textSecondary),
+                        ),
+                    ],
                   ),
-                  if (value.isNotEmpty)
-                    Text(
-                      value,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTextStyle.caption(c.textSecondary),
-                    ),
-                ],
-              ),
+                ),
+                if (selected)
+                  AppIcon(
+                    HeroAppIcons.check,
+                    key: selectedIndicatorKey,
+                    size: 18,
+                    color: AppTheme.brand,
+                  ),
+              ],
             ),
-            if (selected)
-              AppIcon(HeroAppIcons.check, size: 18, color: AppTheme.brand),
-          ],
+          ),
         ),
       ),
     ),

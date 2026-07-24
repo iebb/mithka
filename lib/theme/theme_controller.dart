@@ -19,7 +19,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../chat/quick_reaction_choice.dart';
 import '../components/app_icons.dart';
 import 'app_theme.dart';
+import 'custom_message_bubble_background.dart';
 import 'emoji_font_catalog.dart';
+import 'message_bubble_background.dart';
 import 'system_font_catalog.dart';
 import 'telegram_cloud_theme.dart';
 
@@ -855,12 +857,20 @@ enum AppMonospaceFontChoice {
 }
 
 class ThemeController extends ChangeNotifier {
-  ThemeController(this._prefs, {int initialAccountSlot = 0})
-    : _activeAccountSlot = initialAccountSlot {
+  ThemeController(
+    this._prefs, {
+    int initialAccountSlot = 0,
+    int? initialAccountUserId,
+  }) : _activeAccountSlot = initialAccountSlot,
+       _activeAccountUserId = initialAccountUserId {
     // Theming existed unconditionally before this preference was introduced,
     // so both new installs and migrated users retain the established behavior.
     _themingEnabled = _prefs.getBool(_themingEnabledKey) ?? true;
     _usePerAccountTheming = _prefs.getBool(_usePerAccountThemingKey) ?? false;
+    final initialUserId = _activeAccountUserId;
+    if (_usePerAccountTheming && initialUserId != null) {
+      _migrateLegacyAccountTheme(_activeAccountSlot, initialUserId);
+    }
     _mode = AppearanceMode.values.firstWhere(
       (m) => m.name == _prefs.getString(_scopedThemeKey(_modeKey)),
       orElse: () => AppearanceMode.system,
@@ -902,6 +912,13 @@ class ThemeController extends ChangeNotifier {
     );
     _useTelegramThemeForUi =
         _prefs.getBool(_scopedThemeKey(_useTelegramThemeForUiKey)) ?? false;
+    _customMessageBubbleBackground = _decodeCustomMessageBubbleBackground(
+      _scopedThemeKey(_customMessageBubbleBackgroundKey),
+    );
+    _messageBubbleBackground = MessageBubbleBackground.fromStorage(
+      _prefs.getString(_scopedThemeKey(_messageBubbleBackgroundKey)),
+    );
+    _repairMissingCustomMessageBubble();
     if (!hasCloudTheme) {
       _useTelegramThemeForUi = false;
       _prefs.setBool(_scopedThemeKey(_useTelegramThemeForUiKey), false);
@@ -1082,6 +1099,9 @@ class ThemeController extends ChangeNotifier {
   static const _darkCloudThemeKey = 'telegramCloudThemeDark';
   static const _installedCloudThemesKey = 'installedTelegramCloudThemes';
   static const _useTelegramThemeForUiKey = 'useTelegramThemeForUi';
+  static const _messageBubbleBackgroundKey = 'messageBubbleBackground.v1';
+  static const _customMessageBubbleBackgroundKey =
+      'customMessageBubbleBackground.v1';
   static const _usePerAccountThemingKey = 'usePerAccountTheming';
   static const _preCloudThemeModeKey = 'preTelegramCloudThemeMode';
   static const _preCloudThemeBrandKey = 'preTelegramCloudThemeBrand';
@@ -1151,6 +1171,7 @@ class ThemeController extends ChangeNotifier {
 
   final SharedPreferences _prefs;
   int _activeAccountSlot;
+  int? _activeAccountUserId;
   late bool _usePerAccountTheming;
   late bool _themingEnabled;
   late AppearanceMode _mode;
@@ -1159,6 +1180,8 @@ class ThemeController extends ChangeNotifier {
   TelegramCloudTheme? _darkCloudTheme;
   late List<TelegramCloudTheme> _installedCloudThemes;
   late bool _useTelegramThemeForUi;
+  late MessageBubbleBackground _messageBubbleBackground;
+  CustomMessageBubbleBackground? _customMessageBubbleBackground;
   late AppFontChoice _fontChoice;
   late AppFontChoice _cjkFontChoice;
   late String _customPrimaryFontFamily;
@@ -1224,12 +1247,66 @@ class ThemeController extends ChangeNotifier {
       WidgetsBinding.instance.platformDispatcher.platformBrightness,
   });
   bool get useTelegramThemeForUi => _themingEnabled && _useTelegramThemeForUi;
+  MessageBubbleBackground get messageBubbleBackground =>
+      _messageBubbleBackground;
+  MessageBubbleBackground get effectiveMessageBubbleBackground =>
+      _themingEnabled
+      ? _messageBubbleBackground
+      : MessageBubbleBackground.standard;
+  CustomMessageBubbleBackground? get customMessageBubbleBackground =>
+      _customMessageBubbleBackground;
+  MessageBubbleBackgroundSpec get messageBubbleBackgroundSpec =>
+      MessageBubbleBackgroundSpec.resolve(
+        _messageBubbleBackground,
+        custom: _customMessageBubbleBackground,
+      );
+  MessageBubbleBackgroundSpec get effectiveMessageBubbleBackgroundSpec =>
+      _themingEnabled
+      ? messageBubbleBackgroundSpec
+      : MessageBubbleBackgroundSpec.standard;
+  MessageBubbleBackgroundSpec messageBubbleBackgroundSpecFor(
+    MessageBubbleBackground selection,
+  ) => MessageBubbleBackgroundSpec.resolve(
+    selection,
+    custom: _customMessageBubbleBackground,
+  );
   bool get usePerAccountTheming => _usePerAccountTheming;
 
-  String _scopedThemeKey(String key, [int? accountSlot]) =>
-      _usePerAccountTheming
-      ? '$key.account.${accountSlot ?? _activeAccountSlot}'
-      : key;
+  String _scopedThemeKey(String key) {
+    if (!_usePerAccountTheming) return key;
+    final userId = _activeAccountUserId;
+    return userId == null
+        ? '$key.account.$_activeAccountSlot'
+        : '$key.account.user.$userId';
+  }
+
+  void _migrateLegacyAccountTheme(int slot, int userId) {
+    for (final key in const [
+      _modeKey,
+      _brandKey,
+      _cloudThemeKey,
+      _lightCloudThemeKey,
+      _darkCloudThemeKey,
+      _useTelegramThemeForUiKey,
+      _messageBubbleBackgroundKey,
+      _customMessageBubbleBackgroundKey,
+    ]) {
+      final legacyKey = '$key.account.$slot';
+      final identityKey = '$key.account.user.$userId';
+      final value = _prefs.get(legacyKey);
+      if (value == null) continue;
+      if (!_prefs.containsKey(identityKey)) {
+        if (value is bool) {
+          _prefs.setBool(identityKey, value);
+        } else if (value is int) {
+          _prefs.setInt(identityKey, value);
+        } else if (value is String) {
+          _prefs.setString(identityKey, value);
+        }
+      }
+      _prefs.remove(legacyKey);
+    }
+  }
 
   TelegramCloudTheme? _decodeTheme(String key) {
     try {
@@ -1239,6 +1316,40 @@ class ThemeController extends ChangeNotifier {
           : TelegramCloudTheme.fromJson(jsonDecode(encoded));
     } catch (_) {
       return null;
+    }
+  }
+
+  CustomMessageBubbleBackground? _decodeCustomMessageBubbleBackground(
+    String key,
+  ) {
+    try {
+      final encoded = _prefs.getString(key);
+      if (encoded == null) return null;
+      final decoded = jsonDecode(encoded);
+      if (decoded is! Map) return null;
+      return CustomMessageBubbleBackground.fromJson(
+        Map<String, dynamic>.from(decoded),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _repairMissingCustomMessageBubble() {
+    final custom = _customMessageBubbleBackground;
+    if (custom == null) {
+      _prefs.remove(_scopedThemeKey(_customMessageBubbleBackgroundKey));
+    } else if (!custom.fileExists) {
+      _customMessageBubbleBackground = null;
+      _prefs.remove(_scopedThemeKey(_customMessageBubbleBackgroundKey));
+    }
+    if (_messageBubbleBackground == MessageBubbleBackground.custom &&
+        _customMessageBubbleBackground == null) {
+      _messageBubbleBackground = MessageBubbleBackground.standard;
+      _prefs.setString(
+        _scopedThemeKey(_messageBubbleBackgroundKey),
+        MessageBubbleBackground.standard.name,
+      );
     }
   }
 
@@ -1255,6 +1366,13 @@ class ThemeController extends ChangeNotifier {
     _darkCloudTheme = _decodeTheme(_scopedThemeKey(_darkCloudThemeKey));
     _useTelegramThemeForUi =
         _prefs.getBool(_scopedThemeKey(_useTelegramThemeForUiKey)) ?? false;
+    _customMessageBubbleBackground = _decodeCustomMessageBubbleBackground(
+      _scopedThemeKey(_customMessageBubbleBackgroundKey),
+    );
+    _messageBubbleBackground = MessageBubbleBackground.fromStorage(
+      _prefs.getString(_scopedThemeKey(_messageBubbleBackgroundKey)),
+    );
+    _repairMissingCustomMessageBubble();
     if (!hasCloudTheme) _useTelegramThemeForUi = false;
     AppTheme.applyBrand(_brandColor);
   }
@@ -1262,13 +1380,28 @@ class ThemeController extends ChangeNotifier {
   void _persistScopedThemeSettings() {
     _prefs.setString(_scopedThemeKey(_modeKey), _mode.name);
     _prefs.setInt(_scopedThemeKey(_brandKey), _brandColor.toARGB32());
+    _prefs.setString(
+      _scopedThemeKey(_messageBubbleBackgroundKey),
+      _messageBubbleBackground.name,
+    );
+    final custom = _customMessageBubbleBackground;
+    if (custom == null) {
+      _prefs.remove(_scopedThemeKey(_customMessageBubbleBackgroundKey));
+    } else {
+      _prefs.setString(
+        _scopedThemeKey(_customMessageBubbleBackgroundKey),
+        jsonEncode(custom.toJson()),
+      );
+    }
     _persistCloudThemes();
   }
 
-  void setActiveAccountSlot(int value) {
-    if (_activeAccountSlot == value) return;
+  void setActiveAccountSlot(int value, {int? userId}) {
+    if (_activeAccountSlot == value && _activeAccountUserId == userId) return;
     _activeAccountSlot = value;
+    _activeAccountUserId = userId;
     if (!_usePerAccountTheming) return;
+    if (userId != null) _migrateLegacyAccountTheme(value, userId);
     _loadScopedThemeSettings();
     notifyListeners();
   }
@@ -1280,6 +1413,8 @@ class ThemeController extends ChangeNotifier {
     final light = _lightCloudTheme;
     final dark = _darkCloudTheme;
     final useForUi = _useTelegramThemeForUi;
+    final bubbleBackground = _messageBubbleBackground;
+    final customBubbleBackground = _customMessageBubbleBackground;
     _usePerAccountTheming = value;
     _prefs.setBool(_usePerAccountThemingKey, value);
     if (value) {
@@ -1288,13 +1423,19 @@ class ThemeController extends ChangeNotifier {
           _prefs.containsKey(_scopedThemeKey(_brandKey)) ||
           _prefs.containsKey(_scopedThemeKey(_lightCloudThemeKey)) ||
           _prefs.containsKey(_scopedThemeKey(_darkCloudThemeKey)) ||
-          _prefs.containsKey(_scopedThemeKey(_useTelegramThemeForUiKey));
+          _prefs.containsKey(_scopedThemeKey(_useTelegramThemeForUiKey)) ||
+          _prefs.containsKey(_scopedThemeKey(_messageBubbleBackgroundKey)) ||
+          _prefs.containsKey(
+            _scopedThemeKey(_customMessageBubbleBackgroundKey),
+          );
       if (!accountHasSelection) {
         _mode = mode;
         _brandColor = brand;
         _lightCloudTheme = light;
         _darkCloudTheme = dark;
         _useTelegramThemeForUi = useForUi;
+        _messageBubbleBackground = bubbleBackground;
+        _customMessageBubbleBackground = customBubbleBackground;
         _persistScopedThemeSettings();
       } else {
         _loadScopedThemeSettings();
@@ -1573,6 +1714,50 @@ class ThemeController extends ChangeNotifier {
 
   set useTelegramThemeForUi(bool value) {
     _setUseTelegramThemeForUi(value, notify: true);
+  }
+
+  set messageBubbleBackground(MessageBubbleBackground value) {
+    if (value == MessageBubbleBackground.custom &&
+        _customMessageBubbleBackground == null) {
+      return;
+    }
+    if (_messageBubbleBackground == value) return;
+    _messageBubbleBackground = value;
+    _prefs.setString(_scopedThemeKey(_messageBubbleBackgroundKey), value.name);
+    notifyListeners();
+  }
+
+  void installCustomMessageBubbleBackground(
+    CustomMessageBubbleBackground value,
+  ) {
+    _customMessageBubbleBackground = value;
+    _messageBubbleBackground = MessageBubbleBackground.custom;
+    _prefs.setString(
+      _scopedThemeKey(_customMessageBubbleBackgroundKey),
+      jsonEncode(value.toJson()),
+    );
+    _prefs.setString(
+      _scopedThemeKey(_messageBubbleBackgroundKey),
+      MessageBubbleBackground.custom.name,
+    );
+    notifyListeners();
+  }
+
+  void clearCustomMessageBubbleBackground() {
+    if (_customMessageBubbleBackground == null &&
+        _messageBubbleBackground != MessageBubbleBackground.custom) {
+      return;
+    }
+    _customMessageBubbleBackground = null;
+    _prefs.remove(_scopedThemeKey(_customMessageBubbleBackgroundKey));
+    if (_messageBubbleBackground == MessageBubbleBackground.custom) {
+      _messageBubbleBackground = MessageBubbleBackground.standard;
+      _prefs.setString(
+        _scopedThemeKey(_messageBubbleBackgroundKey),
+        MessageBubbleBackground.standard.name,
+      );
+    }
+    notifyListeners();
   }
 
   void _setUseTelegramThemeForUi(bool value, {required bool notify}) {

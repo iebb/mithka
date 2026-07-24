@@ -60,7 +60,7 @@ class _TdVideoStreamServer {
     } catch (_) {}
 
     if (_path == null || _path!.isEmpty || _total <= 0) {
-      await _startContinuousDownload(0);
+      await _primePlaybackRange(0, _chunkSize);
     }
     if (_total <= 0) {
       try {
@@ -72,9 +72,6 @@ class _TdVideoStreamServer {
       } catch (_) {}
     }
     if (_total <= 0) return null;
-    if (!_downloadComplete && _continuousDownloadOffset == null) {
-      await _startContinuousDownload(0);
-    }
 
     _server = await HttpServer.bind(
       InternetAddress.loopbackIPv4,
@@ -110,6 +107,25 @@ class _TdVideoStreamServer {
 
   void startBackgroundDownload() {
     unawaited(_startContinuousDownload(0));
+  }
+
+  /// Creates TDLib's partial file using a bounded request. Keeping the first
+  /// request finite is important when transfer boost is enabled: an unlimited
+  /// download can have many large parts in flight, and changing that same
+  /// download to a playback range forces TDLib to cancel those parts before it
+  /// can serve the player.
+  Future<void> _primePlaybackRange(int offset, int length) async {
+    try {
+      final file = await TdClient.shared.query({
+        '@type': 'downloadFile',
+        'file_id': fileId,
+        'priority': 32,
+        'offset': offset,
+        'limit': length,
+        'synchronous': false,
+      });
+      _updateFileInfo(file);
+    } catch (_) {}
   }
 
   void _updateFileInfo(Map<String, dynamic> file) {
@@ -295,13 +311,9 @@ class _TdVideoStreamServer {
       final file = await _downloadPlaybackRange(start, length);
       if (file != null) _updateFileInfo(file);
       if (_path == null || _path!.isEmpty) {
-        await _startContinuousDownload(start);
+        await _primePlaybackRange(start, length);
       }
-      final readable = await _waitForReadableRange(start, end);
-      if (!_downloadComplete && start != 0) {
-        unawaited(_startContinuousDownload(0));
-      }
-      return readable;
+      return _waitForReadableRange(start, end);
     } catch (_) {
       return _waitForReadableRange(start, end);
     }
@@ -374,6 +386,8 @@ enum VideoPlayerPresentation { fullscreen, embedded, pictureInPicture }
 enum VideoDisplayMode { fullscreen, pictureInPicture, split }
 
 enum _PlayerGesture { brightness, volume, seek, changeVideo, skipTenSeconds }
+
+enum _PlayerGestureSide { left, right }
 
 class _VideoControlsLayout {
   const _VideoControlsLayout({
@@ -544,6 +558,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   int _lastSystemPiPSyncMs = -1;
   bool _wakelockActive = false;
   _PlayerGesture? _activeGesture;
+  _PlayerGestureSide? _activeGestureSide;
   Offset? _gestureOrigin;
   double _gestureStartValue = 0;
   double _gestureValue = 0;
@@ -553,7 +568,12 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   int _gestureNavigationDelta = 0;
   VideoHorizontalSwipeAction _horizontalSwipeAction =
       VideoHorizontalSwipeAction.adjustProgress;
+  VideoVerticalSwipeAction _leftVerticalSwipeAction =
+      VideoVerticalSwipeAction.brightness;
+  VideoVerticalSwipeAction _rightVerticalSwipeAction =
+      VideoVerticalSwipeAction.volume;
   VideoCompletionAction _completionAction = VideoCompletionAction.prompt;
+  late final Future<PlayerBrightnessSession?> _brightnessSession;
   bool _completionHandled = false;
   bool _showCompletionPrompt = false;
   final GlobalKey _scrubberKey = GlobalKey(debugLabel: 'video-scrubber');
@@ -578,6 +598,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   @override
   void initState() {
     super.initState();
+    _brightnessSession = PlayerBrightnessSession.capture();
     if (widget.initialMuted) _volume = 0;
     unawaited(_loadPlaybackPreferences());
     _load();
@@ -588,6 +609,8 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     if (!mounted) return;
     setState(() {
       _horizontalSwipeAction = preferences.horizontalSwipeAction;
+      _leftVerticalSwipeAction = preferences.leftVerticalSwipeAction;
+      _rightVerticalSwipeAction = preferences.rightVerticalSwipeAction;
       _completionAction = preferences.completionAction;
     });
   }
@@ -1117,6 +1140,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   }
 
   void _close() {
+    unawaited(_restorePlayerBrightness());
     if (_wakelockActive) {
       _wakelockActive = false;
       unawaited(ScreenWakelock.disable());
@@ -1132,6 +1156,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
 
   @override
   void dispose() {
+    unawaited(_restorePlayerBrightness());
     if (_wakelockActive) {
       _wakelockActive = false;
       unawaited(ScreenWakelock.disable());
@@ -1158,6 +1183,11 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
       TdFileCenter.shared.cancelDownload(widget.video.id);
     }
     super.dispose();
+  }
+
+  Future<void> _restorePlayerBrightness() async {
+    final session = await _brightnessSession;
+    await session?.restore();
   }
 
   @override
@@ -1192,7 +1222,11 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
               widget.presentation != VideoPlayerPresentation.pictureInPicture)
             _topTechnicalInfo(_debugText(c)),
           if (ready && _controlsVisible) ..._controls(c),
-          if (ready && _activeGesture != null) _gestureIndicator(c),
+          if (ready && _gestureIndicatorReady)
+            _activeGesture == _PlayerGesture.brightness ||
+                    _activeGesture == _PlayerGesture.volume
+                ? _sideLevelIndicator()
+                : _gestureIndicator(c),
           if (ready && _showCompletionPrompt) _completionPrompt(),
           if (!ready || _controlsVisible)
             widget.presentation == VideoPlayerPresentation.pictureInPicture &&
@@ -1213,6 +1247,10 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
 
   bool get _supportsPlaybackGestures =>
       widget.presentation == VideoPlayerPresentation.fullscreen;
+
+  bool get _gestureIndicatorReady =>
+      _activeGesture != null &&
+      (_activeGesture != _PlayerGesture.brightness || _gestureBrightnessReady);
 
   void _startPlaybackGesture(
     DragStartDetails details,
@@ -1240,6 +1278,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     if (gesture == null) {
       if (math.max(delta.dx.abs(), delta.dy.abs()) < 12) return;
       if (delta.dx.abs() > delta.dy.abs()) {
+        _activeGestureSide = null;
         gesture = switch (_horizontalSwipeAction) {
           VideoHorizontalSwipeAction.disabled => null,
           VideoHorizontalSwipeAction.adjustProgress => _PlayerGesture.seek,
@@ -1249,9 +1288,19 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
         };
         if (gesture == null) return;
       } else {
-        gesture = origin.dx < size.width / 2
-            ? _PlayerGesture.brightness
-            : _PlayerGesture.volume;
+        final isLeftSide = origin.dx < size.width / 2;
+        _activeGestureSide = isLeftSide
+            ? _PlayerGestureSide.left
+            : _PlayerGestureSide.right;
+        final action = isLeftSide
+            ? _leftVerticalSwipeAction
+            : _rightVerticalSwipeAction;
+        gesture = switch (action) {
+          VideoVerticalSwipeAction.disabled => null,
+          VideoVerticalSwipeAction.brightness => _PlayerGesture.brightness,
+          VideoVerticalSwipeAction.volume => _PlayerGesture.volume,
+        };
+        if (gesture == null) return;
       }
       if (gesture == _PlayerGesture.brightness) {
         unawaited(_beginBrightnessGesture());
@@ -1279,7 +1328,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
           0.01,
           1.0,
         );
-        unawaited(PlayerBrightness.set(_gestureValue));
+        unawaited(_setPlayerBrightness(_gestureValue));
       case _PlayerGesture.changeVideo:
         final threshold = (size.width * 0.14).clamp(56.0, 120.0);
         _gestureNavigationDelta = delta.dx.abs() < threshold
@@ -1306,6 +1355,8 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   }
 
   Future<void> _beginBrightnessGesture() async {
+    final session = await _brightnessSession;
+    if (session == null) return;
     final current = await PlayerBrightness.current();
     if (!mounted ||
         _activeGesture != _PlayerGesture.brightness ||
@@ -1317,6 +1368,11 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
       _gestureValue = current;
       _gestureBrightnessReady = true;
     });
+  }
+
+  Future<void> _setPlayerBrightness(double value) async {
+    final session = await _brightnessSession;
+    await session?.set(value);
   }
 
   void _finishPlaybackGesture(VideoPlayerController controller) {
@@ -1341,6 +1397,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     if (!mounted) return;
     setState(() {
       _activeGesture = null;
+      _activeGestureSide = null;
       _gestureOrigin = null;
       _gestureNavigationDelta = 0;
     });
@@ -1405,6 +1462,76 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _sideLevelIndicator() {
+    final gesture = _activeGesture!;
+    final side = _activeGestureSide ?? _PlayerGestureSide.right;
+    final value = _gestureValue.clamp(0.0, 1.0);
+    final icon = gesture == _PlayerGesture.brightness
+        ? HeroAppIcons.sun
+        : value <= 0.01
+        ? HeroAppIcons.volumeXmark
+        : HeroAppIcons.volumeHigh;
+    return SafeArea(
+      child: Align(
+        alignment: side == _PlayerGestureSide.left
+            ? Alignment.centerLeft
+            : Alignment.centerRight,
+        child: IgnorePointer(
+          child: Container(
+            width: 52,
+            height: 164,
+            margin: const EdgeInsets.symmetric(horizontal: 18),
+            padding: const EdgeInsets.fromLTRB(10, 13, 10, 11),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.72),
+              borderRadius: BorderRadius.circular(26),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+            ),
+            child: Column(
+              children: [
+                AppIcon(icon, color: Colors.white, size: 21),
+                const SizedBox(height: 10),
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: SizedBox(
+                      width: 8,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          ColoredBox(
+                            color: Colors.white.withValues(alpha: 0.18),
+                          ),
+                          Align(
+                            alignment: Alignment.bottomCenter,
+                            child: FractionallySizedBox(
+                              widthFactor: 1,
+                              heightFactor: value,
+                              child: const ColoredBox(color: Colors.white),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '${(value * 100).round()}%',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

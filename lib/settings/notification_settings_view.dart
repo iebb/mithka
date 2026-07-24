@@ -8,7 +8,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../auth/account_store.dart';
 import '../components/app_icons.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
@@ -255,6 +257,30 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
     );
   }
 
+  void _openAccountSelection() {
+    final accounts = context.read<AccountStore>();
+    Navigator.of(context).push(
+      PageRouteBuilder<void>(
+        pageBuilder: (_, _, _) => _AccountNotificationSelectionView(
+          accounts: List<AccountSummary>.from(accounts.summaries),
+          activeSlot: accounts.activeSlot,
+        ),
+      ),
+    );
+  }
+
+  String get _accountSelectionSummary {
+    return switch (_preferences.accountMode) {
+      NotificationAccountMode.all => AppStringKeys.notificationAllAccounts.l10n(
+        context,
+      ),
+      NotificationAccountMode.current =>
+        AppStringKeys.notificationCurrentAccount.l10n(context),
+      NotificationAccountMode.selected =>
+        AppStringKeys.notificationSelectedAccounts.l10n(context),
+    };
+  }
+
   String get _storySummary {
     return switch (storyNotificationMode(_settings[_private])) {
       StoryNotificationMode.topFive => AppStrings.t(
@@ -313,18 +339,18 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
                       ),
                     ),
                     _card([
-                      _plainSwitchRow(
-                        AppStrings.t(AppStringKeys.notificationAllAccounts),
-                        _preferences.allAccounts,
-                        _preferences.setAllAccounts,
+                      _navigationRow(
+                        icon: HeroAppIcons.users,
+                        color: const Color(0xFF3295F6),
+                        title: AppStrings.t(AppStringKeys.notificationAccounts),
+                        subtitle: '',
+                        value: _accountSelectionSummary,
+                        onTap: _openAccountSelection,
                       ),
                     ]),
                     _footnote(
                       AppStrings.t(
-                        _preferences.allAccounts
-                            ? AppStringKeys.notificationAllAccountsDescription
-                            : AppStringKeys
-                                  .notificationAllAccountsDescriptionOff,
+                        AppStringKeys.notificationAccountSelectionDescription,
                       ),
                     ),
                   ],
@@ -565,6 +591,139 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _AccountNotificationSelectionView extends StatefulWidget {
+  const _AccountNotificationSelectionView({
+    required this.accounts,
+    required this.activeSlot,
+  });
+
+  final List<AccountSummary> accounts;
+  final int activeSlot;
+
+  @override
+  State<_AccountNotificationSelectionView> createState() =>
+      _AccountNotificationSelectionViewState();
+}
+
+class _AccountNotificationSelectionViewState
+    extends State<_AccountNotificationSelectionView> {
+  final NotificationPreferences _preferences = NotificationPreferences.shared;
+
+  @override
+  void initState() {
+    super.initState();
+    _preferences.addListener(_preferencesChanged);
+  }
+
+  @override
+  void dispose() {
+    _preferences.removeListener(_preferencesChanged);
+    super.dispose();
+  }
+
+  void _preferencesChanged() {
+    if (mounted) setState(() {});
+  }
+
+  int? get _activeUserId {
+    for (final account in widget.accounts) {
+      if (account.slot == widget.activeSlot) return account.userId;
+    }
+    return null;
+  }
+
+  Future<void> _selectMode(NotificationAccountMode mode) async {
+    if (mode == NotificationAccountMode.selected) {
+      final availableIds = widget.accounts
+          .map((account) => account.userId)
+          .toSet();
+      if (_preferences.selectedAccountIds.intersection(availableIds).isEmpty) {
+        final activeUserId = _activeUserId;
+        if (activeUserId != null) {
+          await _preferences.setSelectedAccountIds([activeUserId]);
+        }
+      }
+    }
+    await _preferences.setAccountMode(
+      mode,
+      defaultSelectedAccountIds: [?_activeUserId],
+    );
+  }
+
+  Future<void> _setAccountEnabled(int userId, bool enabled) async {
+    final selected = _preferences.selectedAccountIds.toSet();
+    if (enabled) {
+      selected.add(userId);
+    } else {
+      final availableSelected = widget.accounts
+          .where((account) => selected.contains(account.userId))
+          .length;
+      if (availableSelected <= 1) return;
+      selected.remove(userId);
+    }
+    await _preferences.setSelectedAccountIds(selected);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final mode = _preferences.accountMode;
+    return _NotificationDetailScaffold(
+      title: AppStrings.t(AppStringKeys.notificationShowNotificationsFrom),
+      children: [
+        _NotificationCard(
+          children: [
+            _NotificationChoiceRow(
+              title: AppStrings.t(AppStringKeys.notificationAllAccounts),
+              selected: mode == NotificationAccountMode.all,
+              onTap: () => unawaited(_selectMode(NotificationAccountMode.all)),
+            ),
+            const InsetDivider(leadingInset: 16),
+            _NotificationChoiceRow(
+              title: AppStrings.t(AppStringKeys.notificationCurrentAccount),
+              selected: mode == NotificationAccountMode.current,
+              onTap: () =>
+                  unawaited(_selectMode(NotificationAccountMode.current)),
+            ),
+            const InsetDivider(leadingInset: 16),
+            _NotificationChoiceRow(
+              title: AppStrings.t(AppStringKeys.notificationSelectedAccounts),
+              selected: mode == NotificationAccountMode.selected,
+              onTap: () =>
+                  unawaited(_selectMode(NotificationAccountMode.selected)),
+            ),
+          ],
+        ),
+        if (mode == NotificationAccountMode.selected) ...[
+          _NotificationSectionTitle(
+            AppStrings.t(AppStringKeys.notificationAccounts),
+          ),
+          _NotificationCard(
+            children: [
+              for (var index = 0; index < widget.accounts.length; index++) ...[
+                _NotificationSwitchRow(
+                  title: widget.accounts[index].name,
+                  subtitle: widget.accounts[index].phone,
+                  value: _preferences.selectedAccountIds.contains(
+                    widget.accounts[index].userId,
+                  ),
+                  onChanged: (enabled) => unawaited(
+                    _setAccountEnabled(widget.accounts[index].userId, enabled),
+                  ),
+                ),
+                if (index != widget.accounts.length - 1)
+                  const InsetDivider(leadingInset: 16),
+              ],
+            ],
+          ),
+          _NotificationFootnote(
+            AppStrings.t(AppStringKeys.notificationSelectedAccountsDescription),
+          ),
+        ],
+      ],
     );
   }
 }

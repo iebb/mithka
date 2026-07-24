@@ -25,6 +25,8 @@ const frMessages = <String, String>{
   'accountBackupCopyPyrogramTitle': "Copier la session Pyrogram ?",
   'accountBackupCreate': "Sauvegarder le compte actuel dans Keychain",
   'accountBackupDeleteInvalidSession': "Supprimer la session enregistrée",
+  'accountBackupDeleteLocalMessage':
+      "Cette action supprime de cet appareil la sauvegarde locale. La session Telegram n’est pas révoquée.",
   'accountBackupDeleteMessage':
       "Cette action supprime la session de la sauvegarde cloud. La session Telegram n’est pas révoquée.",
   'accountBackupDeleteTitle': "Supprimer la session enregistrée ?",
@@ -64,7 +66,11 @@ const frMessages = <String, String>{
       "Cette action importe la session enregistrée comme nouveau compte. La session doit toujours être active sur les serveurs Telegram.",
   'accountBackupRestoreTitle': "Restaurer la session enregistrée ?",
   'accountBackupSaved': "Session enregistrée ({value1})",
+  'accountBackupSaveOnDevice': "Enregistrer une sauvegarde sur cet appareil",
   'accountBackupSessions': "Sessions enregistrées",
+  'accountBackupStorageAndroid': "Sauvegarde Android",
+  'accountBackupStorageICloud': "Trousseau iCloud",
+  'accountBackupStorageOnDevice': "Sur cet appareil",
   'accountBackupTitle': "Sauvegarde des comptes",
   'accountBackupUserId': "ID utilisateur : {value1}",
   'accountBackupLoginAndroid': "Sauvegarder ce compte avec Android Backup",
@@ -75,6 +81,8 @@ const frMessages = <String, String>{
       "Seule la session d’autorisation TDLib est stockée dans Android Backup. Les messages, médias, journaux et caches ne sont pas sauvegardés.",
   'accountBackupNoticeICloud':
       "Seule la session d’autorisation TDLib est stockée dans le trousseau iCloud. Les messages, médias, journaux et caches ne sont pas sauvegardés.",
+  'accountBackupNoticeWithLocal':
+      "Les sauvegardes cloud peuvent suivre une sauvegarde chiffrée de l’appareil. Une sauvegarde enregistrée sur cet appareil reste séparée et n’est jamais synchronisée. Seule la session d’autorisation TDLib est stockée, sans messages, médias, journaux ni caches.",
   'accountBackupUnavailable':
       "La sauvegarde des comptes n’est pas disponible sur cet appareil ou cette distribution.",
   'mithkaProActive': "Mithka Pro est actif",
@@ -133,6 +141,11 @@ const frMessages = <String, String>{
   'aiContextManual': "Non indiqué ; vérifiez manuellement",
   'aiEditModel': "Modifier le modèle",
   'aiEditProvider': "Modifier le fournisseur",
+  'aiEndpointStyle': "Style d’API",
+  'aiEndpointStyleAnthropicMessages': "Messages Anthropic",
+  'aiEndpointStyleOllamaChat': "Chat Ollama",
+  'aiEndpointStyleOpenAiChatCompletions': "Chat Completions OpenAI",
+  'aiEndpointStyleOpenAiResponses': "Responses OpenAI",
   'aiDeleteProvider': "Supprimer le fournisseur",
   'aiDeleteModel': "Supprimer le modèle sélectionné",
   'aiEnterModelManually': "Saisir le modèle manuellement",
@@ -141,11 +154,6 @@ const frMessages = <String, String>{
       "Apple Private Cloud Compute, le modèle Apple sur l’appareil et les modèles serveur enregistrés peuvent être choisis séparément pour traduire ou résumer.",
   'aiModelConfiguration': "Configuration des modèles",
   'aiModels': "Modèles",
-  'aiEndpointStyle': "Style d’API",
-  'aiEndpointStyleAnthropicMessages': "Messages Anthropic",
-  'aiEndpointStyleOllamaChat': "Chat Ollama",
-  'aiEndpointStyleOpenAiChatCompletions': "Chat Completions OpenAI",
-  'aiEndpointStyleOpenAiResponses': "Responses OpenAI",
   'aiModelsFailed':
       "Impossible de charger les modèles. Vérifiez le point de terminaison et la clé API.",
   'aiModelsLoaded': "{value1} modèles chargés",
@@ -165,6 +173,12 @@ const frMessages = <String, String>{
   'aiReplyGuidanceHint':
       "Par exemple : accepter chaleureusement et demander à quelle heure",
   'aiReplyMode': "Répondre",
+  'aiReplyProcessChecking':
+      "Recherche de détails pertinents dans le contexte antérieur.",
+  'aiReplyProcessReading': "Lecture des messages récents et du message ciblé.",
+  'aiReplyProcessTitle': "Préparation de la réponse IA",
+  'aiReplyProcessWriting':
+      "Rédaction d’une réponse prête à envoyer dans votre style.",
   'aiReplyPrivacyNote':
       "L’extrait visible de la conversation est envoyé à {value1}. Le résultat reste dans votre brouillon.",
   'aiReplyReplyingTo': "Réponse à {value1}",
@@ -315,6 +329,7 @@ const frMessages = <String, String>{
   'appearanceManage': "Gérer",
   'appearanceMergeConsecutiveImages': "Regrouper les albums multimédias",
   'appearanceMode': "Mode",
+  'appearanceMessageBubbles': "Bulles de message",
   'appearanceMonospaceFont': "Police monospace",
   'appearanceNoCleanableFonts': "Rien à nettoyer",
   'appearanceNoDownloadedFontCache': "Aucun cache de police téléchargé.",
@@ -740,6 +755,7 @@ const frMessages = <String, String>{
   'chatUserDoingAction': "{value1} {value2}",
   'chatUserFallbackName': "Utilisateur {value1}",
   'chatUserLeftGroup': "{value1} a quitté le groupe",
+  'chatUserBoostedGroup': "{value1} a boosté ce groupe",
   'chatUsersJoinedGroup': "{value1}{value2} a rejoint le groupe",
   'chatUserTyping': "{value1} écrit…",
   'chatVideoPlaceholder': "[Vidéo]",
@@ -1224,14 +1240,40 @@ const frMessages = <String, String>{
   'messageBubbleCallDuration': "Durée de l’appel {value1}",
   'messageBubbleCallMissed': "Appel manqué",
   'messageBubbleCallNoAnswer': "Aucune réponse",
+  'messageBubbleDefault': "Par défaut",
+  'messageBubbleMoonlitViolet': "Violet au clair de lune",
+  'messageBubblePurpleFolded': "Violet plié",
+  'messageBubbleCreamCharms': "Breloques crème",
+  'messageBubbleCustom': "PNG personnalisé",
+  'messageBubbleCustomImport': "Importer un PNG",
+  'messageBubbleCustomReplace': "Remplacer le PNG",
+  'messageBubbleCustomRemove': "Supprimer le PNG personnalisé",
+  'messageBubbleCustomDescription':
+      "Utilisez un petit PNG contenant les quatre coins protégés. L’unique ligne centrale et l’unique colonne centrale s’étirent avec le message.",
+  'messageBubbleCustomInvalidPng': "Choisissez un fichier PNG valide.",
+  'messageBubbleCustomTooSmall': "Le PNG doit mesurer au moins 3 × 3 pixels.",
+  'messageBubbleCustomTooLarge':
+      "Le PNG est trop grand. Utilisez une image de 2048 × 2048 pixels maximum.",
+  'messageBubbleCustomImportFailed':
+      "La bulle personnalisée n’a pas pu être importée.",
+  'messageBubbleCustomRemoveTitle': "Supprimer la bulle personnalisée ?",
+  'messageBubbleCustomRemoveMessage':
+      "Le PNG importé sera supprimé des choix de bulles.",
+  'messageBubblePreviewLong':
+      "La bulle grandit proprement avec chaque ligne du message.",
+  'messageBubblePreviewShort': "Bonjour !",
+  'messageBubbleStretchDescription':
+      "La bulle est divisée selon ses lignes centrales. Les pixels du milieu s’étirent tandis que les quatre coins décorés gardent leur forme.",
   'messageBubbleCollapse': "Réduire",
   'messageBubbleExpandQuote': "Développer la citation",
   'messageBubbleForwardedFrom': "Transféré de {value1}",
   'messageBubbleTranslating': "Traduction…",
   'messageRepliesEmpty': "Aucune réponse pour le moment",
+  'messageLeaveAComment': "Laisser un commentaire",
   'messageRepliesTitle': "Réponses",
   'messageRepliesUnavailable':
       "Les réponses ne sont pas disponibles pour ce message",
+  'messageViewInChat': "Voir dans le chat",
   'miniAppCannotStart': "La Mini App ne peut pas démarrer pour le moment",
   'miniAppClose': "Fermer la Mini App",
   'miniAppNoMatches': "Aucune Mini App correspondante",
@@ -1346,12 +1388,16 @@ const frMessages = <String, String>{
   'myAlbumNoPhotos': "Aucune photo",
   'netemoMusicLabel': "Netemo music",
   'notificationAllAccounts': "Tous les comptes",
+  'notificationAccounts': "Comptes",
+  'notificationAccountSelectionDescription':
+      "Choisissez tous les comptes, le compte actuellement actif ou certains comptes.",
   'notificationAllAccountsDescription':
       "Recevoir les notifications de tous vos comptes connectés.",
   'notificationAllAccountsDescriptionOff':
       "Activez cette option pour recevoir les notifications de tous vos comptes.",
   'notificationAllStories': "Toutes les stories",
   'notificationChannels': "Chaînes",
+  'notificationCurrentAccount': "Compte actuel",
   'notificationException': "{value1} exception",
   'notificationExceptions': "{value1} exceptions",
   'notificationGroupMessages': "Discussions de groupe",
@@ -1375,6 +1421,9 @@ const frMessages = <String, String>{
   'notificationReactionMessages': "Messages",
   'notificationReactions': "Réactions",
   'notificationShowNotificationsFrom': "Afficher les notifications de",
+  'notificationSelectedAccounts': "Comptes sélectionnés",
+  'notificationSelectedAccountsDescription':
+      "Choisissez les comptes autorisés à envoyer des notifications. Au moins un compte doit rester sélectionné.",
   'notificationSound': "Son",
   'notificationStories': "Stories",
   'notificationStoryPoster': "Afficher l’auteur de la story",
@@ -2006,8 +2055,12 @@ const frMessages = <String, String>{
   'videoPlaybackFinishedReplay': "Reprendre depuis le début",
   'videoPlaybackFinishedReturnToChat': "Retourner au chat",
   'videoPlaybackHorizontalSwipe': "Balayage horizontal",
+  'videoPlaybackLeftVerticalSwipe': "Balayage vertical à gauche",
+  'videoPlaybackRightVerticalSwipe': "Balayage vertical à droite",
   'videoPlaybackSettingsTitle': "Lecture vidéo",
+  'videoPlaybackSwipeAdjustBrightness': "Régler la luminosité",
   'videoPlaybackSwipeAdjustProgress': "Régler la progression",
+  'videoPlaybackSwipeAdjustVolume': "Régler le volume",
   'videoPlaybackSwipeChangeVideo': "Vidéo suivante / précédente",
   'videoPlaybackSwipeDisabled': "Désactiver",
   'videoPlaybackSwipeSkipTenSeconds': "Avancer / reculer de 10 secondes",

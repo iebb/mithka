@@ -70,6 +70,31 @@ void main() {
     );
   });
 
+  test('Responses reasoning output never becomes visible response text', () {
+    expect(
+      AiEndpointStyle.openAiResponses.responseText({
+        'output': [
+          {
+            'type': 'reasoning',
+            'content': [
+              {
+                'type': 'reasoning_text',
+                'text': 'Private analysis about the reply target.',
+              },
+            ],
+          },
+          {
+            'type': 'message',
+            'content': [
+              {'type': 'output_text', 'text': '{"reply":"Visible reply"}'},
+            ],
+          },
+        ],
+      }),
+      '{"reply":"Visible reply"}',
+    );
+  });
+
   test('uses native authentication and bodies for Anthropic and Ollama', () {
     final anthropicHeaders = AiEndpointStyle.anthropicMessages.requestHeaders(
       ' secret ',
@@ -129,6 +154,205 @@ void main() {
     }
   });
 
+  test('maps a strict JSON schema to every endpoint dialect', () {
+    const schema = <String, Object?>{
+      'type': 'object',
+      'properties': {
+        'reply': {'type': 'string'},
+      },
+      'required': ['reply'],
+      'additionalProperties': false,
+    };
+
+    final chat = AiEndpointStyle.openAiChatCompletions.requestBody(
+      model: 'chat-model',
+      instructions: 'Reply.',
+      input: 'Hello',
+      stream: true,
+      jsonResponseSchema: schema,
+      jsonResponseName: 'ai_reply',
+    );
+    expect(chat['response_format'], {
+      'type': 'json_schema',
+      'json_schema': {'name': 'ai_reply', 'strict': true, 'schema': schema},
+    });
+
+    final responses = AiEndpointStyle.openAiResponses.requestBody(
+      model: 'responses-model',
+      instructions: 'Reply.',
+      input: 'Hello',
+      stream: true,
+      jsonResponseSchema: schema,
+      jsonResponseName: 'ai_reply',
+    );
+    expect(responses['text'], {
+      'format': {
+        'type': 'json_schema',
+        'name': 'ai_reply',
+        'strict': true,
+        'schema': schema,
+      },
+    });
+
+    final anthropic = AiEndpointStyle.anthropicMessages.requestBody(
+      model: 'claude-model',
+      instructions: 'Reply.',
+      input: 'Hello',
+      stream: true,
+      jsonResponseSchema: schema,
+    );
+    expect(anthropic['output_config'], {
+      'format': {'type': 'json_schema', 'schema': schema},
+    });
+
+    final ollama = AiEndpointStyle.ollamaChat.requestBody(
+      model: 'ollama-model',
+      instructions: 'Reply.',
+      input: 'Hello',
+      stream: true,
+      jsonResponseSchema: schema,
+    );
+    expect(ollama['format'], schema);
+  });
+
+  test('strict JSON schema fallbacks retain a structured boundary', () {
+    const schema = <String, Object?>{'type': 'object'};
+    final chat = AiEndpointStyle.openAiChatCompletions.requestBody(
+      model: 'chat-model',
+      instructions: 'Reply.',
+      input: 'Hello',
+      stream: true,
+      jsonResponseSchema: schema,
+    );
+    final chatJson = AiEndpointStyle.openAiChatCompletions.withoutOptionalField(
+      chat,
+      'Unsupported response_format json_schema',
+    );
+    expect(chatJson['response_format'], {'type': 'json_object'});
+    expect(
+      AiEndpointStyle.openAiChatCompletions.withoutOptionalField(
+        chatJson,
+        'Unsupported response_format',
+      ),
+      isNot(contains('response_format')),
+    );
+
+    final ollama = AiEndpointStyle.ollamaChat.requestBody(
+      model: 'ollama-model',
+      instructions: 'Reply.',
+      input: 'Hello',
+      stream: true,
+      jsonResponseSchema: schema,
+    );
+    final ollamaJson = AiEndpointStyle.ollamaChat.withoutOptionalField(
+      ollama,
+      'format schema unsupported',
+    );
+    expect(ollamaJson['format'], 'json');
+  });
+
+  test(
+    'opaque upstream errors peel compatibility fields without disabling stream',
+    () {
+      const schema = <String, Object?>{'type': 'object'};
+      final original = AiEndpointStyle.openAiChatCompletions.withFunctionTools(
+        AiEndpointStyle.openAiChatCompletions.requestBody(
+          model: 'deepseek-test',
+          instructions: 'Reply.',
+          input: 'Hello',
+          stream: true,
+          disableThinking: true,
+          jsonResponseSchema: schema,
+        ),
+        [_chatContextTool],
+      );
+      const opaqueError =
+          'Error from provider (Console): Upstream request failed';
+
+      final jsonObject = AiEndpointStyle.openAiChatCompletions
+          .withoutOptionalField(original, opaqueError);
+      expect(jsonObject['response_format'], {'type': 'json_object'});
+      expect(jsonObject['tools'], isNotNull);
+      expect(jsonObject['thinking'], isNotNull);
+      expect(jsonObject['stream'], isTrue);
+
+      final withoutTools = AiEndpointStyle.openAiChatCompletions
+          .withoutOptionalField(jsonObject, opaqueError);
+      expect(withoutTools, isNot(contains('tools')));
+      expect(withoutTools['thinking'], isNotNull);
+      expect(withoutTools['stream'], isTrue);
+
+      final withoutThinking = AiEndpointStyle.openAiChatCompletions
+          .withoutOptionalField(withoutTools, opaqueError);
+      expect(withoutThinking, isNot(contains('thinking')));
+      expect(withoutThinking['stream'], isTrue);
+
+      final promptOnly = AiEndpointStyle.openAiChatCompletions
+          .withoutOptionalField(withoutThinking, opaqueError);
+      expect(promptOnly, isNot(contains('response_format')));
+      expect(promptOnly['stream'], isTrue);
+    },
+  );
+
+  test('opaque fallbacks eventually reach prompt-only JSON for every API', () {
+    const schema = <String, Object?>{'type': 'object'};
+    const opaqueError = 'Upstream request failed';
+
+    Map<String, Object?> peel(
+      AiEndpointStyle style,
+      Map<String, Object?> body,
+    ) {
+      var current = body;
+      for (var attempt = 0; attempt < 8; attempt++) {
+        final next = style.withoutOptionalField(current, opaqueError);
+        if (identical(next, current)) return current;
+        current = next;
+      }
+      fail('Opaque fallback did not converge for ${style.storageValue}');
+    }
+
+    for (final style in AiEndpointStyle.values) {
+      var body = style.requestBody(
+        model: 'test-model',
+        instructions: 'Return JSON.',
+        input: 'Hello',
+        stream: true,
+        reasoningEffort: 'low',
+        disableThinking: true,
+        jsonResponseSchema: schema,
+      );
+      body = style.withFunctionTools(body, [_chatContextTool]);
+      final compatible = peel(style, body);
+
+      expect(compatible, isNot(contains('tools')), reason: style.storageValue);
+      switch (style) {
+        case AiEndpointStyle.openAiChatCompletions:
+          expect(
+            compatible,
+            isNot(contains('response_format')),
+            reason: style.storageValue,
+          );
+          expect(compatible, isNot(contains('thinking')));
+          expect(compatible, isNot(contains('reasoning_effort')));
+          expect(compatible['stream'], isTrue);
+        case AiEndpointStyle.openAiResponses:
+          expect(
+            compatible,
+            isNot(contains('text')),
+            reason: style.storageValue,
+          );
+          expect(compatible, isNot(contains('reasoning')));
+          expect(compatible['stream'], isTrue);
+        case AiEndpointStyle.anthropicMessages:
+          expect(compatible, isNot(contains('output_config')));
+          expect(compatible['stream'], isFalse);
+        case AiEndpointStyle.ollamaChat:
+          expect(compatible, isNot(contains('format')));
+          expect(compatible['stream'], isTrue);
+      }
+    }
+  });
+
   test('stream deltas preserve whitespace-only chunks', () {
     expect(
       AiEndpointStyle.openAiResponses.streamDelta({
@@ -149,6 +373,100 @@ void main() {
         'message': {'content': ' '},
       }),
       ' ',
+    );
+  });
+
+  test('Anthropic thinking stays internal while text remains visible', () {
+    final stream = AiEndpointStreamAccumulator(
+      AiEndpointStyle.anthropicMessages,
+    );
+    stream.add({
+      'type': 'message_start',
+      'message': {'role': 'assistant', 'content': <Object?>[]},
+    });
+    stream.add({
+      'type': 'content_block_start',
+      'index': 0,
+      'content_block': {'type': 'thinking', 'thinking': ''},
+    });
+    expect(
+      stream.add({
+        'type': 'content_block_delta',
+        'index': 0,
+        'delta': {'type': 'thinking_delta', 'thinking': 'Private analysis.'},
+      }),
+      isEmpty,
+    );
+    expect(
+      stream.add({
+        'type': 'content_block_delta',
+        'index': 0,
+        'delta': {'type': 'signature_delta', 'signature': 'signed'},
+      }),
+      isEmpty,
+    );
+    stream.add({
+      'type': 'content_block_start',
+      'index': 1,
+      'content_block': {'type': 'text', 'text': ''},
+    });
+    expect(
+      stream.add({
+        'type': 'content_block_delta',
+        'index': 1,
+        'delta': {'type': 'text_delta', 'text': '{"reply":"Visible reply"}'},
+      }),
+      '{"reply":"Visible reply"}',
+    );
+    stream.add({
+      'type': 'message_delta',
+      'delta': {'stop_reason': 'end_turn'},
+    });
+    stream.add({'type': 'message_stop'});
+
+    final content = stream.envelope['content']! as List<Object?>;
+    expect(content.first, {
+      'type': 'thinking',
+      'thinking': 'Private analysis.',
+      'signature': 'signed',
+    });
+    expect(stream.text, '{"reply":"Visible reply"}');
+    expect(
+      AiEndpointStyle.anthropicMessages.responseText(stream.envelope),
+      '{"reply":"Visible reply"}',
+    );
+  });
+
+  test('Ollama thinking stays internal while text remains visible', () {
+    final stream = AiEndpointStreamAccumulator(AiEndpointStyle.ollamaChat);
+    expect(
+      stream.add({
+        'message': {
+          'role': 'assistant',
+          'thinking': 'Private analysis.',
+          'content': '',
+        },
+        'done': false,
+      }),
+      isEmpty,
+    );
+    expect(
+      stream.add({
+        'message': {
+          'role': 'assistant',
+          'content': '{"reply":"Visible reply"}',
+        },
+        'done': true,
+      }),
+      '{"reply":"Visible reply"}',
+    );
+
+    final message = stream.envelope['message']! as Map<String, Object?>;
+    expect(message['thinking'], 'Private analysis.');
+    expect(message['content'], '{"reply":"Visible reply"}');
+    expect(
+      AiEndpointStyle.ollamaChat.responseText(stream.envelope),
+      '{"reply":"Visible reply"}',
     );
   });
 
@@ -459,7 +777,10 @@ void main() {
       stream.add({
         'choices': [
           {
-            'delta': {'role': 'assistant'},
+            'delta': {
+              'role': 'assistant',
+              'reasoning_content': 'Private planning.',
+            },
           },
         ],
       }),
@@ -522,6 +843,9 @@ void main() {
 
     expect(stream.text, 'I can check.');
     expect(style.responseText(stream.envelope), 'I can check.');
+    final message =
+        ((stream.envelope['choices'] as List).single as Map)['message'] as Map;
+    expect(message['reasoning_content'], 'Private planning.');
     expect(stream.hasToolCalls, isTrue);
     final calls = style.functionToolCalls(stream.envelope);
     expect(calls, hasLength(1));
@@ -532,6 +856,25 @@ void main() {
       (stream.envelope['choices'] as List).single['finish_reason'],
       'tool_calls',
     );
+    expect(stream.isComplete, isTrue);
+  });
+
+  test('preserves a streamed Chat refusal without exposing it as text', () {
+    const style = AiEndpointStyle.openAiChatCompletions;
+    final stream = AiEndpointStreamAccumulator(style);
+
+    stream.add({
+      'choices': [
+        {
+          'delta': {'refusal': 'I cannot help with that.'},
+          'finish_reason': 'stop',
+        },
+      ],
+    });
+
+    expect(stream.text, isEmpty);
+    expect(style.responseText(stream.envelope), isNull);
+    expect(style.refusalText(stream.envelope), 'I cannot help with that.');
     expect(stream.isComplete, isTrue);
   });
 
@@ -628,6 +971,59 @@ void main() {
       expect(style.responseText(stream.envelope), 'July 30 works.');
     },
   );
+
+  test('treats an incomplete Responses event as terminal', () {
+    const style = AiEndpointStyle.openAiResponses;
+    final stream = AiEndpointStreamAccumulator(style);
+
+    stream.add({
+      'type': 'response.output_item.done',
+      'output_index': 0,
+      'item': {
+        'type': 'reasoning',
+        'id': 'reasoning-only',
+        'summary': <Object?>[],
+      },
+    });
+    stream.add({
+      'type': 'response.incomplete',
+      'response': {
+        'id': 'response-incomplete',
+        'status': 'incomplete',
+        'incomplete_details': {'reason': 'max_tokens'},
+        'output': <Object?>[],
+      },
+    });
+
+    expect(stream.isComplete, isTrue);
+    expect(style.outputLimitReached(stream.envelope), isTrue);
+    expect((stream.envelope['output'] as List).single, {
+      'type': 'reasoning',
+      'id': 'reasoning-only',
+      'summary': <Object?>[],
+    });
+  });
+
+  test('preserves Responses text when a terminal envelope omits output', () {
+    const style = AiEndpointStyle.openAiResponses;
+    final stream = AiEndpointStreamAccumulator(style);
+
+    stream.add({
+      'type': 'response.output_text.delta',
+      'delta': 'Visible streamed reply.',
+    });
+    stream.add({
+      'type': 'response.completed',
+      'response': {
+        'id': 'response-completed',
+        'status': 'completed',
+        'output': <Object?>[],
+      },
+    });
+
+    expect(stream.isComplete, isTrue);
+    expect(style.responseText(stream.envelope), 'Visible streamed reply.');
+  });
 
   test('assembles indexed Anthropic text and fragmented tool input', () {
     const style = AiEndpointStyle.anthropicMessages;
@@ -828,6 +1224,34 @@ void main() {
     expect(compatible, contains('tools'));
     expect(compatible, isNot(contains('tool_choice')));
     expect(body['tool_choice'], 'auto');
+  });
+
+  test('detects output budget exhaustion for every endpoint dialect', () {
+    expect(
+      AiEndpointStyle.openAiChatCompletions.outputLimitReached({
+        'choices': [
+          {'finish_reason': 'length'},
+        ],
+      }),
+      isTrue,
+    );
+    expect(
+      AiEndpointStyle.openAiResponses.outputLimitReached({
+        'status': 'incomplete',
+        'incomplete_details': {'reason': 'max_tokens'},
+      }),
+      isTrue,
+    );
+    expect(
+      AiEndpointStyle.anthropicMessages.outputLimitReached({
+        'stop_reason': 'max_tokens',
+      }),
+      isTrue,
+    );
+    expect(
+      AiEndpointStyle.ollamaChat.outputLimitReached({'done_reason': 'length'}),
+      isTrue,
+    );
   });
 }
 

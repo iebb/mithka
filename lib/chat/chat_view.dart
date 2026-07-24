@@ -98,12 +98,24 @@ import 'shared_contact_sheet.dart';
 import 'sticker_set_detail_view.dart';
 import 'sticker_viewer.dart';
 import 'telegram_mini_app_view.dart';
+import 'telegram_rich_text.dart';
 import 'transcript_pivot_partition.dart';
 import 'unread_chat_summary_models.dart';
 import 'unread_chat_summary_service.dart';
 import 'unread_chat_summary_view.dart';
 import 'video_playback_queue.dart';
 import 'video_player_view.dart';
+
+@visibleForTesting
+ChatMessage selectMediaAlbumInteractionOwner(List<ChatMessage> group) {
+  for (final message in group) {
+    if (message.hasCommentThread || message.hasActualReplies) return message;
+  }
+  for (final message in group) {
+    if (message.reactions.isNotEmpty) return message;
+  }
+  return group.first;
+}
 
 class _MessageDeleteOptions {
   const _MessageDeleteOptions({
@@ -2943,6 +2955,7 @@ class _ChatViewState extends State<ChatView> {
       onOpenReply: _scrollToMessage,
       onOpenComments: _openMessageComments,
       showCommentAttachment: _vm.isChannel,
+      channelHasLinkedDiscussion: _vm.hasLinkedDiscussion,
       onOpenImage: _openImage,
       onOpenSticker: _openSticker,
       onPlayVideo: _playVideo,
@@ -3373,6 +3386,7 @@ class _ChatViewState extends State<ChatView> {
       onButtonTap: _pressMessageButton,
       onBotCommandTap: _sendCommand,
       onHashtagTap: _openHashtagSearch,
+      onViewInChat: _scrollToMessage,
     );
   }
 
@@ -4652,13 +4666,20 @@ class _ChatViewState extends State<ChatView> {
   }
 
   Color? _effectiveOutgoingColor() {
+    if (!context.watch<ThemeController>().themingEnabled) {
+      return AppTheme.bubbleOutgoing;
+    }
     final chatColor = _resolvedChatThemeStyle?.outgoingColor;
     return chatColor ?? _resolvedCloudTheme?.outgoingColor;
   }
 
-  Color? _effectiveOutgoingTextColor() =>
-      _resolvedChatThemeStyle?.outgoingTextColor ??
-      _resolvedCloudTheme?.outgoingTextColor;
+  Color? _effectiveOutgoingTextColor() {
+    if (!context.watch<ThemeController>().themingEnabled) {
+      return AppTheme.bubbleOutgoingText;
+    }
+    return _resolvedChatThemeStyle?.outgoingTextColor ??
+        _resolvedCloudTheme?.outgoingTextColor;
+  }
 
   Color? _effectiveIncomingColor() =>
       _resolvedChatThemeStyle?.incomingColor ??
@@ -7012,19 +7033,13 @@ class _ChatViewState extends State<ChatView> {
   }
 
   ChatMessage _mediaAlbumInteractionOwner(List<ChatMessage> group) {
-    for (final message in group) {
-      if (message.commentCount > 0 ||
-          message.hasActualReplies ||
-          message.reactions.isNotEmpty) {
-        return message;
-      }
-    }
-    return group.first;
+    return selectMediaAlbumInteractionOwner(group);
   }
 
   Widget _imageGroupBubble(List<ChatMessage> group) {
     final c = context.colors;
     final first = group.first;
+    final interactionOwner = _mediaAlbumInteractionOwner(group);
     final outgoing = first.isOutgoing;
     final avatarTitle = outgoing
         ? (first.senderIsChat ? (first.senderName ?? _vm.meName) : _vm.meName)
@@ -7063,6 +7078,7 @@ class _ChatViewState extends State<ChatView> {
           group,
           outgoing,
           captionMessage,
+          interactionOwner,
           maxWidth: _messageMediaMaxWidth(chatWidth),
         );
         final Widget body = outgoing
@@ -7112,7 +7128,8 @@ class _ChatViewState extends State<ChatView> {
   Widget _imageGroupGallery(
     List<ChatMessage> group,
     bool outgoing,
-    ChatMessage? captionMessage, {
+    ChatMessage? captionMessage,
+    ChatMessage interactionOwner, {
     required double maxWidth,
   }) {
     final c = context.colors;
@@ -7127,6 +7144,12 @@ class _ChatViewState extends State<ChatView> {
     final incomingTextColor =
         _effectiveIncomingTextColor() ?? c.bubbleIncomingText;
     final visible = group.take(9).toList();
+    final showComments =
+        _vm.isChannel &&
+        !interactionOwner.isContentRestricted &&
+        (interactionOwner.hasCommentThread ||
+            interactionOwner.commentCount > 0 ||
+            (_vm.hasLinkedDiscussion && !interactionOwner.isService));
     const padding = 4.0;
     final layout = buildTelegramMediaAlbumLayout(
       items: [
@@ -7142,57 +7165,146 @@ class _ChatViewState extends State<ChatView> {
       minRowHeight: 82,
       maxRowHeight: 230,
     );
-    return Container(
-      constraints: BoxConstraints(maxWidth: layout.width + padding * 2),
-      padding: const EdgeInsets.all(padding),
-      decoration: BoxDecoration(
-        color: outgoing ? outgoingColor : themedIncoming ?? c.bubbleIncoming,
-        borderRadius: BorderRadius.circular(8),
-        border: outgoing ? null : Border.all(color: c.divider, width: 0.5),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            width: layout.width,
-            height: layout.height,
-            child: Stack(
-              children: [
-                for (var i = 0; i < visible.length; i++)
-                  Positioned.fromRect(
-                    rect: layout.tiles[i],
-                    child: _imageGroupTile(
-                      visible[i],
-                      width: layout.tiles[i].width,
-                      height: layout.tiles[i].height,
-                      extraCount: i == visible.length - 1
-                          ? math.max(0, group.length - visible.length)
-                          : 0,
+    final width = layout.width + padding * 2;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          constraints: BoxConstraints(maxWidth: width),
+          padding: const EdgeInsets.all(padding),
+          decoration: BoxDecoration(
+            color: outgoing
+                ? outgoingColor
+                : themedIncoming ?? c.bubbleIncoming,
+            borderRadius: showComments
+                ? const BorderRadius.only(
+                    topLeft: Radius.circular(8),
+                    topRight: Radius.circular(8),
+                    bottomRight: Radius.circular(8),
+                  )
+                : BorderRadius.circular(8),
+            border: outgoing ? null : Border.all(color: c.divider, width: 0.5),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: layout.width,
+                height: layout.height,
+                child: Stack(
+                  children: [
+                    for (var i = 0; i < visible.length; i++)
+                      Positioned.fromRect(
+                        rect: layout.tiles[i],
+                        child: _imageGroupTile(
+                          visible[i],
+                          width: layout.tiles[i].width,
+                          height: layout.tiles[i].height,
+                          extraCount: i == visible.length - 1
+                              ? math.max(0, group.length - visible.length)
+                              : 0,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              if (captionMessage != null)
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: outgoing
+                      ? () => unawaited(_editMessageText(captionMessage))
+                      : null,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(6, 7, 6, 3),
+                    child: TelegramRichText(
+                      text: _albumCaption(captionMessage),
+                      entities: captionMessage.textEntities,
+                      style: TextStyle(
+                        fontSize: 15,
+                        height: 1.25,
+                        color: outgoing ? outgoingTextColor : incomingTextColor,
+                      ),
+                      linkColor: outgoing ? outgoingTextColor : c.linkBlue,
+                      onBotCommandTap: _sendCommand,
+                      onHashtagTap: _openHashtagSearch,
+                      onMentionTap: _openUserProfile,
                     ),
                   ),
-              ],
-            ),
+                ),
+            ],
           ),
-          if (captionMessage != null)
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: outgoing
-                  ? () => unawaited(_editMessageText(captionMessage))
-                  : null,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(6, 7, 6, 3),
-                child: Text(
-                  _albumCaption(captionMessage),
-                  style: TextStyle(
-                    fontSize: 15,
-                    height: 1.25,
-                    color: outgoing ? outgoingTextColor : incomingTextColor,
-                  ),
+        ),
+        if (showComments)
+          _imageAlbumCommentsAttachment(
+            interactionOwner,
+            outgoing: outgoing,
+            width: width,
+            backgroundColor: outgoing
+                ? outgoingColor
+                : themedIncoming ?? c.bubbleIncoming,
+            outgoingTextColor: outgoingTextColor,
+          ),
+      ],
+    );
+  }
+
+  Widget _imageAlbumCommentsAttachment(
+    ChatMessage message, {
+    required bool outgoing,
+    required double width,
+    required Color backgroundColor,
+    required Color outgoingTextColor,
+  }) {
+    final c = context.colors;
+    final count = message.commentCount;
+    final label = count == 0
+        ? AppStrings.t(AppStringKeys.messageLeaveAComment)
+        : AppStrings.t(AppStringKeys.momentsCommentCount, {'value1': count});
+    final foreground = outgoing ? outgoingTextColor : c.textPrimary;
+    final accent = outgoing
+        ? outgoingTextColor.withValues(alpha: 0.72)
+        : c.linkBlue;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _openMessageComments(message),
+      child: Container(
+        key: ValueKey('messageCommentsAttachment-${message.id}'),
+        width: width,
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          borderRadius: const BorderRadius.only(
+            bottomLeft: Radius.circular(12),
+            bottomRight: Radius.circular(12),
+          ),
+          border: Border.all(
+            color: outgoing
+                ? outgoingTextColor.withValues(alpha: 0.12)
+                : c.divider.withValues(alpha: 0.7),
+            width: 0.5,
+          ),
+        ),
+        child: Row(
+          children: [
+            AppIcon(HeroAppIcons.comments, size: 18, color: accent),
+            const SizedBox(width: 7),
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: foreground,
                 ),
               ),
             ),
-        ],
+            AppIcon(HeroAppIcons.chevronRight, size: 17, color: accent),
+          ],
+        ),
       ),
     );
   }

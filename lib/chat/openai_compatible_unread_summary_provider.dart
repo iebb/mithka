@@ -367,13 +367,7 @@ class OpenAiCompatibleUnreadSummaryProvider
   String? get _effectiveReasoningEffort {
     final configured = reasoningEffort?.trim();
     if (configured != null && configured.isNotEmpty) return configured;
-    final normalizedModel = model.toLowerCase();
-    if (RegExp(
-      r'(^|[/_.-])(deepseek|reasoner|reasoning|thinking|o1|o3|o4)([/_.-]|$)',
-    ).hasMatch(normalizedModel)) {
-      return 'low';
-    }
-    return null;
+    return inferredAiReasoningEffort(model);
   }
 
   String _completionContent(String body) {

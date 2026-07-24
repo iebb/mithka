@@ -33,6 +33,7 @@ import '../components/ui_components.dart';
 import '../l10n/telegram_language_controller.dart';
 import '../media/app_asset_picker.dart';
 import '../settings/ai_settings_controller.dart';
+import '../settings/ai_settings_view.dart';
 import '../settings/apple_pcc_api.dart';
 import '../settings/business_service.dart';
 import '../settings/rich_message_relay_config.dart';
@@ -133,6 +134,7 @@ typedef AiReplyStreamingGenerator =
     Future<TelegramAiFormattedText> Function(
       AiReplyRequest request, {
       required AiReplyDraftCallback onDraft,
+      AiReplyProgressCallback? onProgress,
     });
 
 class _AiReplyContextSnapshot {
@@ -346,6 +348,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
   _AiReplyContextSnapshot? _aiReplyWorkingContextSnapshot;
   bool _applyingAiReplyDraft = false;
   AiReplyProvider? _activeAiReplyProvider;
+  List<AiReplyProgressPhase> _aiReplyProgressPhases = const [];
+  bool _aiReplyProgressExpanded = false;
   ChatViewModel get vm => widget.vm;
 
   bool get _canUseQuickReplies =>
@@ -418,7 +422,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
     final applyingAiReplyDraft = _applyingAiReplyDraft;
     if (!applyingAiReplyDraft) {
       _composerRevision++;
-      _invalidateAiReplyGeneration();
+      _invalidateAiReplyGeneration(clearProgress: true);
     }
     final (text, entities) = _controller.toFormatted();
     vm.setDraft(_controller.text, formattedText: text, entities: entities);
@@ -1259,8 +1263,14 @@ class _ChatInputBarState extends State<ChatInputBar> {
     );
   }
 
-  void _invalidateAiReplyGeneration({bool discardGeneratedDraft = false}) {
-    if (_aiReplyWorkingTargetId == null && _activeAiReplyProvider == null) {
+  void _invalidateAiReplyGeneration({
+    bool discardGeneratedDraft = false,
+    bool clearProgress = false,
+  }) {
+    final shouldClearProgress = clearProgress || discardGeneratedDraft;
+    if (_aiReplyWorkingTargetId == null &&
+        _activeAiReplyProvider == null &&
+        (!shouldClearProgress || _aiReplyProgressPhases.isEmpty)) {
       return;
     }
     _aiReplyGeneration++;
@@ -1281,13 +1291,37 @@ class _ChatInputBarState extends State<ChatInputBar> {
         _applyingAiReplyDraft = false;
       }
     }
+    if (shouldClearProgress) {
+      _aiReplyProgressPhases = const [];
+      _aiReplyProgressExpanded = false;
+    }
     if (mounted) setState(() {});
+  }
+
+  void _recordAiReplyProgress(
+    AiReplyProgressPhase phase, {
+    required int generation,
+  }) {
+    if (!mounted || generation != _aiReplyGeneration) return;
+    if (_aiReplyProgressPhases.contains(phase)) return;
+    final wasEmpty = _aiReplyProgressPhases.isEmpty;
+    setState(() {
+      _aiReplyProgressPhases = [..._aiReplyProgressPhases, phase];
+    });
+    if (wasEmpty) _notifyComposerGeometryChanged();
+  }
+
+  void _notifyComposerGeometryChanged() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.onPanelGeometryChanged?.call();
+    });
   }
 
   bool _isAiReplyGenerationCurrent({
     required int generation,
     required ChatViewModel requestVm,
     required AiSettingsController settings,
+    required String modelCandidateId,
     required ChatMessage target,
     required int targetMessageId,
     required bool usesExplicitTarget,
@@ -1298,6 +1332,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
       mounted &&
       generation == _aiReplyGeneration &&
       identical(vm, requestVm) &&
+      settings.replyModelCandidate.id == modelCandidateId &&
       (widget.aiReplyHistoryLoader != null || vm.canShareAiReplyContext) &&
       _canOfferAiReply(target, settings) &&
       _isCurrentAiReplyTarget(
@@ -1313,6 +1348,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
     required int generation,
     required ChatViewModel requestVm,
     required AiSettingsController settings,
+    required String modelCandidateId,
     required ChatMessage target,
     required int targetMessageId,
     required bool usesExplicitTarget,
@@ -1324,6 +1360,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
       generation: generation,
       requestVm: requestVm,
       settings: settings,
+      modelCandidateId: modelCandidateId,
       target: target,
       targetMessageId: targetMessageId,
       usesExplicitTarget: usesExplicitTarget,
@@ -1380,7 +1417,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
     return true;
   }
 
-  Future<void> _generateAiReply(ChatMessage target) async {
+  Future<void> _generateAiReply(
+    ChatMessage target, {
+    String? requiredModelCandidateId,
+  }) async {
     if (_aiReplyWorkingTargetId == target.id) return;
     final usesExplicitTarget = vm.replyTo?.id == target.id;
     if (!_isCurrentAiReplyTargetWithoutFingerprint(
@@ -1397,12 +1437,20 @@ class _ChatInputBarState extends State<ChatInputBar> {
     }
 
     final configuration = settings!.configurationForFeature(AiFeature.reply);
+    final modelCandidateId = configuration.candidate.id;
+    if (requiredModelCandidateId != null &&
+        modelCandidateId != requiredModelCandidateId) {
+      showToast(context, AppStringKeys.aiReplyUnavailable.l10n(context));
+      return;
+    }
     final (draftText, _) = _controller.toFormatted();
     final AiReplyRequest request;
     try {
       request = AiReplyRequest.fromChatMessages(
         chatTitle: vm.peerTitle,
         currentUserName: vm.meName,
+        currentUserId: vm.meId,
+        currentUserUsernames: vm.meUsernames,
         target: target,
         visibleMessages: vm.messages,
         isGroupChat: vm.isGroup,
@@ -1460,7 +1508,12 @@ class _ChatInputBarState extends State<ChatInputBar> {
       _aiReplyWorkingTargetFingerprint = targetFingerprint;
       _aiReplyWorkingContextSnapshot = initialContextSnapshot;
       _activeAiReplyProvider = provider;
+      _aiReplyProgressPhases = const [
+        AiReplyProgressPhase.readingRecentMessages,
+      ];
+      _aiReplyProgressExpanded = false;
     });
+    _notifyComposerGeometryChanged();
     try {
       var groundedRequest = request;
       try {
@@ -1474,6 +1527,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
         generation: generation,
         requestVm: requestVm,
         settings: settings,
+        modelCandidateId: modelCandidateId,
         target: target,
         targetMessageId: targetMessageId,
         usesExplicitTarget: usesExplicitTarget,
@@ -1493,6 +1547,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
         generation: generation,
         requestVm: requestVm,
         settings: settings,
+        modelCandidateId: modelCandidateId,
         target: target,
         targetMessageId: targetMessageId,
         usesExplicitTarget: usesExplicitTarget,
@@ -1505,11 +1560,19 @@ class _ChatInputBarState extends State<ChatInputBar> {
         applyDraft(draft);
       }
 
+      void onProgress(AiReplyProgressPhase phase) {
+        _recordAiReplyProgress(phase, generation: generation);
+      }
+
       late final TelegramAiFormattedText result;
       var revealCompletedResult = false;
       final streamingGenerator = widget.aiReplyStreamingGenerator;
       if (streamingGenerator != null) {
-        result = await streamingGenerator(groundedRequest, onDraft: onDraft);
+        result = await streamingGenerator(
+          groundedRequest,
+          onDraft: onDraft,
+          onProgress: onProgress,
+        );
       } else if (widget.aiReplyGenerator case final generator?) {
         result = await generator(groundedRequest);
         revealCompletedResult = true;
@@ -1517,11 +1580,13 @@ class _ChatInputBarState extends State<ChatInputBar> {
         result = await streaming.generateStreaming(
           groundedRequest,
           onDraft: onDraft,
+          onProgress: onProgress,
         );
       } else {
         result = await provider!.generate(groundedRequest);
         revealCompletedResult = true;
       }
+      onProgress(AiReplyProgressPhase.writingReply);
       if (revealCompletedResult &&
           !await _revealCompletedAiReply(result, applyDraft: applyDraft)) {
         return;
@@ -1532,6 +1597,11 @@ class _ChatInputBarState extends State<ChatInputBar> {
       _focus.requestFocus();
     } catch (error) {
       if (mounted && generation == _aiReplyGeneration) {
+        setState(() {
+          _aiReplyProgressPhases = const [];
+          _aiReplyProgressExpanded = false;
+        });
+        _notifyComposerGeometryChanged();
         showToast(
           context,
           error is AiReplyException ? error.message : error.toString(),
@@ -3027,183 +3097,205 @@ class _ChatInputBarState extends State<ChatInputBar> {
             ),
           ],
           Expanded(
-            child: Container(
-              key: const ValueKey('composerTextInputBox'),
-              decoration: BoxDecoration(
-                color: c.searchFill,
-                borderRadius: BorderRadius.circular(18),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-              child: Row(
-                children: [
-                  if (vm.canChooseMessageSender && sender != null) ...[
-                    GestureDetector(
-                      key: const ValueKey('composerSenderPicker'),
-                      behavior: HitTestBehavior.opaque,
-                      onTap: _showSenderPicker,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          PhotoAvatar(
-                            title: sender.title,
-                            photo: sender.photo,
-                            size: 28,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (_aiReplyProgressPhases.isNotEmpty) ...[
+                  _aiReplyProgressDisclosure(isWorking: aiReplyWorking),
+                  const SizedBox(height: 4),
+                ],
+                Container(
+                  key: const ValueKey('composerTextInputBox'),
+                  decoration: BoxDecoration(
+                    color: c.searchFill,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 9,
+                  ),
+                  child: Row(
+                    crossAxisAlignment: hasText
+                        ? CrossAxisAlignment.end
+                        : CrossAxisAlignment.center,
+                    children: [
+                      if (vm.canChooseMessageSender && sender != null) ...[
+                        GestureDetector(
+                          key: const ValueKey('composerSenderPicker'),
+                          behavior: HitTestBehavior.opaque,
+                          onTap: _showSenderPicker,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              PhotoAvatar(
+                                title: sender.title,
+                                photo: sender.photo,
+                                size: 28,
+                              ),
+                              const SizedBox(width: 2),
+                              AppIcon(
+                                HeroAppIcons.chevronDown,
+                                size: 16,
+                                color: c.textTertiary,
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 2),
-                          AppIcon(
-                            HeroAppIcons.chevronDown,
-                            size: 16,
-                            color: c.textTertiary,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                  ],
-                  Expanded(
-                    child: Shortcuts(
-                      shortcuts: const {
-                        SingleActivator(LogicalKeyboardKey.enter):
-                            _SendComposerIntent(),
-                        SingleActivator(LogicalKeyboardKey.numpadEnter):
-                            _SendComposerIntent(),
-                      },
-                      child: Actions(
-                        actions: {
-                          PasteTextIntent: CallbackAction<PasteTextIntent>(
-                            onInvoke: (_) {
-                              unawaited(_handlePaste());
-                              return null;
-                            },
-                          ),
-                          _SendComposerIntent:
-                              CallbackAction<_SendComposerIntent>(
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      Expanded(
+                        child: Shortcuts(
+                          shortcuts: const {
+                            SingleActivator(LogicalKeyboardKey.enter):
+                                _SendComposerIntent(),
+                            SingleActivator(LogicalKeyboardKey.numpadEnter):
+                                _SendComposerIntent(),
+                          },
+                          child: Actions(
+                            actions: {
+                              PasteTextIntent: CallbackAction<PasteTextIntent>(
                                 onInvoke: (_) {
-                                  unawaited(_sendCurrentText());
+                                  unawaited(_handlePaste());
                                   return null;
                                 },
                               ),
-                        },
-                        child: TextField(
-                          controller: _controller,
-                          focusNode: _focus,
-                          onTap: _handleEmptyInputTap,
-                          minLines: 1,
-                          maxLines: 4,
-                          keyboardType: TextInputType.multiline,
-                          textInputAction: Platform.isIOS
-                              ? TextInputAction.newline
-                              : TextInputAction.send,
-                          onSubmitted: Platform.isIOS
-                              ? null
-                              : (_) => unawaited(_sendCurrentText()),
-                          style: TextStyle(fontSize: 16, color: c.textPrimary),
-                          contentInsertionConfiguration:
-                              ContentInsertionConfiguration(
-                                allowedMimeTypes: _imageMimeTypes,
-                                onContentInserted: _handleInsertedContent,
+                              _SendComposerIntent:
+                                  CallbackAction<_SendComposerIntent>(
+                                    onInvoke: (_) {
+                                      unawaited(_sendCurrentText());
+                                      return null;
+                                    },
+                                  ),
+                            },
+                            child: TextField(
+                              controller: _controller,
+                              focusNode: _focus,
+                              onTap: _handleEmptyInputTap,
+                              minLines: 1,
+                              maxLines: 4,
+                              keyboardType: TextInputType.multiline,
+                              textInputAction: Platform.isIOS
+                                  ? TextInputAction.newline
+                                  : TextInputAction.send,
+                              onSubmitted: Platform.isIOS
+                                  ? null
+                                  : (_) => unawaited(_sendCurrentText()),
+                              style: TextStyle(
+                                fontSize: 15,
+                                color: c.textPrimary,
                               ),
-                          contextMenuBuilder:
-                              (
-                                BuildContext context,
-                                EditableTextState editableTextState,
-                              ) {
-                                ContextMenuButtonItem? originalPaste;
-                                final items = <ContextMenuButtonItem>[];
-                                for (final item
-                                    in editableTextState
-                                        .contextMenuButtonItems) {
-                                  if (item.type ==
-                                      ContextMenuButtonType.paste) {
-                                    originalPaste = item;
-                                  } else {
-                                    items.add(item);
-                                  }
-                                }
-                                final paste = ContextMenuButtonItem(
-                                  type: ContextMenuButtonType.paste,
-                                  label:
-                                      originalPaste?.label ??
-                                      AppStringKeys
-                                          .accountBackupLoadPyrogramPaste
-                                          .l10n(context),
-                                  onPressed: () =>
-                                      unawaited(_handlePaste(originalPaste)),
-                                );
-                                final copyIndex = items.indexWhere(
-                                  (item) =>
-                                      item.type == ContextMenuButtonType.copy,
-                                );
-                                final pasteIndex = copyIndex < 0
-                                    ? 0
-                                    : copyIndex + 1;
-                                items.insert(pasteIndex, paste);
-                                final selection = _controller.selection;
-                                if (selection.isValid &&
-                                    !selection.isCollapsed) {
-                                  items.insert(
-                                    pasteIndex + 1,
-                                    ContextMenuButtonItem(
-                                      label: AppStringKeys.composerFormat.l10n(
-                                        context,
-                                      ),
+                              contentInsertionConfiguration:
+                                  ContentInsertionConfiguration(
+                                    allowedMimeTypes: _imageMimeTypes,
+                                    onContentInserted: _handleInsertedContent,
+                                  ),
+                              contextMenuBuilder:
+                                  (
+                                    BuildContext context,
+                                    EditableTextState editableTextState,
+                                  ) {
+                                    ContextMenuButtonItem? originalPaste;
+                                    final items = <ContextMenuButtonItem>[];
+                                    for (final item
+                                        in editableTextState
+                                            .contextMenuButtonItems) {
+                                      if (item.type ==
+                                          ContextMenuButtonType.paste) {
+                                        originalPaste = item;
+                                      } else {
+                                        items.add(item);
+                                      }
+                                    }
+                                    final paste = ContextMenuButtonItem(
+                                      type: ContextMenuButtonType.paste,
+                                      label:
+                                          originalPaste?.label ??
+                                          AppStringKeys
+                                              .accountBackupLoadPyrogramPaste
+                                              .l10n(context),
                                       onPressed: () => unawaited(
-                                        _showComposerFormatMenu(
-                                          editableTextState,
-                                        ),
+                                        _handlePaste(originalPaste),
                                       ),
-                                    ),
-                                  );
-                                }
-                                return AdaptiveTextSelectionToolbar.buttonItems(
-                                  anchors: editableTextState.contextMenuAnchors,
-                                  buttonItems: items,
-                                );
-                              },
-                          decoration: InputDecoration(
-                            hintText: AppStringKeys.chatMessageInputPlaceholder
-                                .l10n(context),
-                            border: InputBorder.none,
-                            isCollapsed: true,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  if (!hasText && replyKeyboard != null)
-                    Semantics(
-                      button: true,
-                      label: _replyKeyboardVisible
-                          ? 'Hide bot keyboard'
-                          : 'Show bot keyboard',
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: _toggleReplyKeyboard,
-                        child: SizedBox(
-                          width: 32,
-                          height: 24,
-                          child: Center(
-                            child: AppIcon(
-                              _replyKeyboardVisible
-                                  ? HeroAppIcons.chevronDown
-                                  : HeroAppIcons.tableCells,
-                              size: _replyKeyboardVisible ? 22 : 23,
-                              color: c.textSecondary,
+                                    );
+                                    final copyIndex = items.indexWhere(
+                                      (item) =>
+                                          item.type ==
+                                          ContextMenuButtonType.copy,
+                                    );
+                                    final pasteIndex = copyIndex < 0
+                                        ? 0
+                                        : copyIndex + 1;
+                                    items.insert(pasteIndex, paste);
+                                    final selection = _controller.selection;
+                                    if (selection.isValid &&
+                                        !selection.isCollapsed) {
+                                      items.insert(
+                                        pasteIndex + 1,
+                                        ContextMenuButtonItem(
+                                          label: AppStringKeys.composerFormat
+                                              .l10n(context),
+                                          onPressed: () => unawaited(
+                                            _showComposerFormatMenu(
+                                              editableTextState,
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                    return AdaptiveTextSelectionToolbar.buttonItems(
+                                      anchors:
+                                          editableTextState.contextMenuAnchors,
+                                      buttonItems: items,
+                                    );
+                                  },
+                              decoration: InputDecoration(
+                                hintText: AppStringKeys
+                                    .chatMessageInputPlaceholder
+                                    .l10n(context),
+                                border: InputBorder.none,
+                                isCollapsed: true,
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                  if (!hasText && vm.messageAutoDeleteTime > 0) ...[
-                    const SizedBox(width: 4),
-                    _autoDeleteInputIndicator(),
-                  ],
-                  if (showAiReply) ...[
-                    const SizedBox(width: 4),
-                    _aiReplyInputButton(replyTarget),
-                  ],
-                ],
-              ),
+                      if (!hasText && replyKeyboard != null)
+                        Semantics(
+                          button: true,
+                          label: _replyKeyboardVisible
+                              ? 'Hide bot keyboard'
+                              : 'Show bot keyboard',
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: _toggleReplyKeyboard,
+                            child: SizedBox(
+                              width: 32,
+                              height: 24,
+                              child: Center(
+                                child: AppIcon(
+                                  _replyKeyboardVisible
+                                      ? HeroAppIcons.chevronDown
+                                      : HeroAppIcons.tableCells,
+                                  size: _replyKeyboardVisible ? 22 : 23,
+                                  color: c.textSecondary,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      if (!hasText && vm.messageAutoDeleteTime > 0) ...[
+                        const SizedBox(width: 4),
+                        _autoDeleteInputIndicator(),
+                      ],
+                      if (showAiReply) ...[
+                        const SizedBox(width: 4),
+                        _aiReplyInputButton(replyTarget),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
           if (hasText) ...[
@@ -3223,24 +3315,21 @@ class _ChatInputBarState extends State<ChatInputBar> {
                       onTap: () => unawaited(_openTelegramAiEditor()),
                       child: Container(
                         width: 36,
-                        height: 28,
+                        height: 36,
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
                           color: AppTheme.brand.withValues(alpha: 0.10),
-                          borderRadius: BorderRadius.circular(14),
+                          shape: BoxShape.circle,
                           border: Border.all(
                             color: AppTheme.brand.withValues(alpha: 0.34),
                             width: 0.75,
                           ),
                         ),
-                        child: Text(
-                          'AI',
-                          style: TextStyle(
-                            fontSize: 12,
-                            height: 1,
-                            fontWeight: FontWeight.w700,
-                            color: AppTheme.brand,
-                          ),
+                        child: AppIcon(
+                          HeroAppIcons.palette,
+                          key: const ValueKey('composerAiStyleIcon'),
+                          size: 19,
+                          color: AppTheme.brand,
                         ),
                       ),
                     ),
@@ -3328,28 +3417,200 @@ class _ChatInputBarState extends State<ChatInputBar> {
     );
   }
 
+  Widget _aiReplyProgressDisclosure({required bool isWorking}) {
+    final c = context.colors;
+    final expanded = _aiReplyProgressExpanded;
+    return AnimatedSize(
+      key: const ValueKey('composerAiReplyProcess'),
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.topCenter,
+      onEnd: () => widget.onPanelGeometryChanged?.call(),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Color.alphaBlend(
+            AppTheme.brand.withValues(alpha: 0.06),
+            c.searchFill,
+          ),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: AppTheme.brand.withValues(alpha: 0.18),
+            width: 0.6,
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Semantics(
+              button: true,
+              expanded: expanded,
+              label: AppStringKeys.aiReplyProcessTitle.l10n(context),
+              value: isWorking
+                  ? AppStringKeys.topicChatLoading.l10n(context)
+                  : null,
+              child: GestureDetector(
+                key: const ValueKey('composerAiReplyProcessToggle'),
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  setState(() {
+                    _aiReplyProgressExpanded = !_aiReplyProgressExpanded;
+                  });
+                  _notifyComposerGeometryChanged();
+                },
+                child: SizedBox(
+                  height: 34,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    child: Row(
+                      children: [
+                        ExcludeSemantics(
+                          child: AppIcon(
+                            HeroAppIcons.wandMagicSparkles,
+                            size: 14,
+                            color: AppTheme.brand,
+                          ),
+                        ),
+                        const SizedBox(width: 7),
+                        Expanded(
+                          child: Text(
+                            AppStringKeys.aiReplyProcessTitle.l10n(context),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 13,
+                              height: 1.1,
+                              fontWeight: FontWeight.w600,
+                              color: c.textPrimary,
+                            ),
+                          ),
+                        ),
+                        if (isWorking) ...[
+                          const SizedBox(width: 8),
+                          ExcludeSemantics(
+                            child: AppActivityIndicator(
+                              size: 13,
+                              color: AppTheme.brand,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(width: 7),
+                        ExcludeSemantics(
+                          child: AppIcon(
+                            expanded
+                                ? HeroAppIcons.chevronUp
+                                : HeroAppIcons.chevronDown,
+                            size: 15,
+                            color: c.textTertiary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            if (expanded) ...[
+              Container(height: 0.6, color: c.divider.withValues(alpha: 0.55)),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 132),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 9),
+                  child: Column(
+                    key: const ValueKey('composerAiReplyProcessDetails'),
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (final (index, phase)
+                          in _aiReplyProgressPhases.indexed) ...[
+                        if (index > 0) const SizedBox(height: 7),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: 5,
+                              height: 5,
+                              margin: const EdgeInsets.only(top: 5, right: 8),
+                              decoration: BoxDecoration(
+                                color: AppTheme.brand,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            Expanded(
+                              child: Text(
+                                _aiReplyProgressLabel(phase),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  height: 1.35,
+                                  color: c.textSecondary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _aiReplyProgressLabel(AiReplyProgressPhase phase) => switch (phase) {
+    AiReplyProgressPhase.readingRecentMessages =>
+      AppStringKeys.aiReplyProcessReading.l10n(context),
+    AiReplyProgressPhase.checkingEarlierContext =>
+      AppStringKeys.aiReplyProcessChecking.l10n(context),
+    AiReplyProgressPhase.writingReply =>
+      AppStringKeys.aiReplyProcessWriting.l10n(context),
+  };
+
+  Future<void> _showAiReplyModelPicker(ChatMessage target) async {
+    if (_aiReplyWorkingTargetId != null) return;
+    final settings = context.read<AiSettingsController?>();
+    if (settings?.initialized != true) {
+      showToast(context, AppStringKeys.aiReplyUnavailable.l10n(context));
+      return;
+    }
+    final candidate = await showAiFeatureModelPicker(
+      context,
+      settings: settings!,
+      feature: AiFeature.reply,
+    );
+    if (!mounted || candidate == null) return;
+    await _generateAiReply(target, requiredModelCandidateId: candidate.id);
+  }
+
   Widget _aiReplyInputButton(ChatMessage target) {
     final working = _aiReplyWorkingTargetId == target.id;
     return Semantics(
       button: true,
+      liveRegion: working,
       label: working
           ? AppStringKeys.confirmCancel.l10n(context)
           : AppStringKeys.aiReplyAction.l10n(context),
+      value: working ? AppStringKeys.topicChatLoading.l10n(context) : null,
       child: GestureDetector(
         key: const ValueKey('composerAiReplyButton'),
         behavior: HitTestBehavior.opaque,
         onTap: working
-            ? _invalidateAiReplyGeneration
+            ? () => _invalidateAiReplyGeneration(clearProgress: true)
             : () => unawaited(_generateAiReply(target)),
+        onLongPress: working
+            ? null
+            : () => unawaited(_showAiReplyModelPicker(target)),
         child: SizedBox(
           width: 32,
           height: 28,
           child: Center(
             child: working
-                ? AppActivityIndicator(
-                    key: const ValueKey('composerAiReplyProgress'),
-                    size: 17,
-                    color: AppTheme.brand,
+                ? const ExcludeSemantics(
+                    child: _AiReplyThinkingIndicator(
+                      key: ValueKey('composerAiReplyProgress'),
+                    ),
                   )
                 : AppIcon(
                     HeroAppIcons.wandMagicSparkles,
@@ -5390,6 +5651,87 @@ class _ChatInputBarState extends State<ChatInputBar> {
     StickerStore.shared.loadIfNeeded();
     EmojiStore.shared.loadIfNeeded();
   }
+}
+
+class _AiReplyThinkingIndicator extends StatefulWidget {
+  const _AiReplyThinkingIndicator({super.key});
+
+  @override
+  State<_AiReplyThinkingIndicator> createState() =>
+      _AiReplyThinkingIndicatorState();
+}
+
+class _AiReplyThinkingIndicatorState extends State<_AiReplyThinkingIndicator>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _animation = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _animation.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: _animation,
+    builder: (context, _) {
+      final pulse = (math.sin(_animation.value * math.pi * 2) + 1) / 2;
+      return Transform.scale(
+        scale: 0.96 + pulse * 0.05,
+        child: SizedBox(
+          width: 24,
+          height: 24,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppTheme.brand.withValues(alpha: 0.10 + pulse * 0.06),
+              border: Border.all(
+                color: AppTheme.brand.withValues(alpha: 0.24),
+                width: 0.75,
+              ),
+            ),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                AppIcon(
+                  HeroAppIcons.wandMagicSparkles,
+                  size: 14,
+                  color: AppTheme.brand,
+                ),
+                Positioned.fill(
+                  child: Transform.rotate(
+                    key: const ValueKey('composerAiReplyOrbit'),
+                    angle: _animation.value * math.pi * 2,
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: Container(
+                        width: 5,
+                        height: 5,
+                        margin: const EdgeInsets.only(top: 1),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: AppTheme.brand,
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppTheme.brand.withValues(alpha: 0.36),
+                              blurRadius: 3,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    },
+  );
 }
 
 class _RelaySendingOverlay extends StatefulWidget {

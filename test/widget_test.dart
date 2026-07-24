@@ -852,6 +852,8 @@ void main() {
       int messageAutoDeleteTime = 0,
       bool targetIsOutgoing = false,
       bool? telegramReplySupported = true,
+      bool appleOnDeviceAvailable = false,
+      VoidCallback? onMessageSent,
       List<ChatMessage> leadingMessages = const [],
       List<ChatMessage> trailingMessages = const [],
       int targetId = 7,
@@ -866,6 +868,12 @@ void main() {
           invokeMethod: (_, _) async => {
             'available': false,
             'sdkAvailable': false,
+            'onDeviceSdkAvailable': appleOnDeviceAvailable,
+            'onDeviceAvailable': appleOnDeviceAvailable,
+            'onDeviceReason': appleOnDeviceAvailable
+                ? 'available'
+                : 'unavailable',
+            if (appleOnDeviceAvailable) 'onDeviceContextSize': 4096,
           },
         ),
         secureRead: (_) async => null,
@@ -970,7 +978,7 @@ void main() {
                 child: ChatInputBar(
                   vm: vm,
                   onStartCall: (_) {},
-                  onMessageSent: () {},
+                  onMessageSent: onMessageSent ?? () {},
                   aiReplyGenerator: generator,
                   aiReplyStreamingGenerator: streamingGenerator,
                   aiReplyHistoryLoader:
@@ -1001,6 +1009,7 @@ void main() {
         requestCount++;
         return result.future;
       });
+      vm.meUsernames = const {'nekoko14'};
 
       final action = find.byKey(const ValueKey('composerAiReplyButton'));
       final inputBox = find.byKey(const ValueKey('composerTextInputBox'));
@@ -1045,9 +1054,144 @@ void main() {
       expect(vm.draft, 'I can join at three.');
       expect(vm.replyTo, isNull);
       expect(capturedRequest?.targetMessageId, target.id);
+      expect(capturedRequest?.currentUserUsernames, contains('nekoko14'));
       expect(requestCount, 1);
       expect(action, findsNothing);
       expect(find.byKey(const ValueKey('composerSendButton')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('composerAiReplyProgress')),
+        findsNothing,
+      );
+    });
+
+    testWidgets(
+      'long press opens the Reply model selector without generating',
+      (tester) async {
+        var generationCount = 0;
+        await pumpAiReplyComposer(tester, (_) async {
+          generationCount++;
+          return const TelegramAiFormattedText(text: 'Generated reply');
+        });
+
+        final action = find.byKey(const ValueKey('composerAiReplyButton'));
+        await tester.longPress(action);
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const ValueKey('aiFeatureModelPicker-reply')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(
+            const ValueKey(
+              'aiFeatureModelOption-reply-builtin:telegram_cocoon',
+            ),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(
+            const ValueKey('aiFeatureModelOption-reply-builtin:apple_pcc'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(
+            const ValueKey(
+              'aiFeatureModelOption-reply-builtin:apple_on_device',
+            ),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(
+            const ValueKey(
+              'aiFeatureModelSelected-reply-builtin:telegram_cocoon',
+            ),
+          ),
+          findsOneWidget,
+        );
+        expect(generationCount, 0);
+        expect(
+          find.byKey(const ValueKey('composerAiReplyProgress')),
+          findsNothing,
+        );
+
+        await tester.tapAt(const Offset(8, 8));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const ValueKey('aiFeatureModelPicker-reply')),
+          findsNothing,
+        );
+        expect(generationCount, 0);
+      },
+    );
+
+    testWidgets('selected Reply model is persisted and used for generation', (
+      tester,
+    ) async {
+      const channel = MethodChannel(ApplePccApi.channelName);
+      MethodCall? summarizeCall;
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+        call,
+      ) async {
+        if (call.method != 'summarize') return null;
+        summarizeCall = call;
+        return const {
+          'text': 'I can join at three.',
+          'provider': 'apple_on_device',
+        };
+      });
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          channel,
+          null,
+        ),
+      );
+      var sentCount = 0;
+      await pumpAiReplyComposer(
+        tester,
+        null,
+        appleOnDeviceAvailable: true,
+        onMessageSent: () => sentCount++,
+      );
+
+      final action = find.byKey(const ValueKey('composerAiReplyButton'));
+      final settings = Provider.of<AiSettingsController>(
+        tester.element(action),
+        listen: false,
+      );
+      await tester.longPress(action);
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(
+          const ValueKey('aiFeatureModelOption-reply-builtin:apple_on_device'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        settings.replyModelCandidateId,
+        AiSettingsController.appleOnDeviceModelCandidateId,
+      );
+      final preferences = await SharedPreferences.getInstance();
+      expect(
+        preferences.getString(
+          AiSettingsController.replyModelCandidatePreferenceKey,
+        ),
+        AiSettingsController.appleOnDeviceModelCandidateId,
+      );
+      expect(summarizeCall?.method, 'summarize');
+      expect(
+        (summarizeCall?.arguments as Map<Object?, Object?>)['modelMode'],
+        AppleAiModel.onDevice.bridgeValue,
+      );
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        'I can join at three.',
+      );
+      expect(sentCount, 0);
       expect(
         find.byKey(const ValueKey('composerAiReplyProgress')),
         findsNothing,
@@ -1244,7 +1388,11 @@ void main() {
           tester,
           null,
           streamingGenerator:
-              (request, {required AiReplyDraftCallback onDraft}) {
+              (
+                request, {
+                required AiReplyDraftCallback onDraft,
+                AiReplyProgressCallback? onProgress,
+              }) {
                 emitDraft = onDraft;
                 return result.future;
               },
@@ -1304,6 +1452,85 @@ void main() {
       },
     );
 
+    testWidgets(
+      'keeps generic AI phases collapsed above the send-ready draft',
+      (tester) async {
+        late AiReplyDraftCallback emitDraft;
+        late AiReplyProgressCallback emitProgress;
+        final result = Completer<TelegramAiFormattedText>();
+        var sentCount = 0;
+        final (vm, _) = await pumpAiReplyComposer(
+          tester,
+          null,
+          streamingGenerator:
+              (
+                request, {
+                required AiReplyDraftCallback onDraft,
+                AiReplyProgressCallback? onProgress,
+              }) {
+                emitDraft = onDraft;
+                emitProgress = onProgress!;
+                return result.future;
+              },
+          onMessageSent: () => sentCount++,
+        );
+
+        await tester.tap(find.byKey(const ValueKey('composerAiReplyButton')));
+        await tester.pump();
+
+        final process = find.byKey(const ValueKey('composerAiReplyProcess'));
+        final details = find.byKey(
+          const ValueKey('composerAiReplyProcessDetails'),
+        );
+        expect(process, findsOneWidget);
+        expect(details, findsNothing);
+        expect(vm.draft, isEmpty);
+
+        emitProgress(AiReplyProgressPhase.checkingEarlierContext);
+        await tester.pump();
+        expect(vm.draft, isEmpty);
+        await tester.tap(
+          find.byKey(const ValueKey('composerAiReplyProcessToggle')),
+        );
+        await tester.pump(const Duration(milliseconds: 220));
+
+        expect(details, findsOneWidget);
+        expect(
+          find.text('Reviewing recent messages and the reply target.'),
+          findsOneWidget,
+        );
+        expect(
+          find.text('Checking earlier chat context for relevant details.'),
+          findsOneWidget,
+        );
+        expect(
+          tester.widget<TextField>(find.byType(TextField)).controller!.text,
+          isEmpty,
+        );
+
+        emitProgress(AiReplyProgressPhase.writingReply);
+        emitDraft(const TelegramAiFormattedText(text: 'Direct reply'));
+        result.complete(const TelegramAiFormattedText(text: 'Direct reply'));
+        await tester.pumpAndSettle();
+
+        expect(
+          tester.widget<TextField>(find.byType(TextField)).controller!.text,
+          'Direct reply',
+        );
+        expect(
+          find.text('Writing a send-ready response in your voice.'),
+          findsOneWidget,
+        );
+        expect(process, findsOneWidget);
+        expect(sentCount, 0);
+
+        await tester.enterText(find.byType(TextField), 'My edit');
+        await tester.pumpAndSettle();
+        expect(process, findsNothing);
+        expect(sentCount, 0);
+      },
+    );
+
     testWidgets('typing after a streamed draft rejects later AI chunks', (
       tester,
     ) async {
@@ -1312,10 +1539,15 @@ void main() {
       await pumpAiReplyComposer(
         tester,
         null,
-        streamingGenerator: (request, {required AiReplyDraftCallback onDraft}) {
-          emitDraft = onDraft;
-          return result.future;
-        },
+        streamingGenerator:
+            (
+              request, {
+              required AiReplyDraftCallback onDraft,
+              AiReplyProgressCallback? onProgress,
+            }) {
+              emitDraft = onDraft;
+              return result.future;
+            },
       );
 
       await tester.tap(find.byKey(const ValueKey('composerAiReplyButton')));
@@ -1349,10 +1581,15 @@ void main() {
       await pumpAiReplyComposer(
         tester,
         null,
-        streamingGenerator: (request, {required AiReplyDraftCallback onDraft}) {
-          emitDraft = onDraft;
-          return result.future;
-        },
+        streamingGenerator:
+            (
+              request, {
+              required AiReplyDraftCallback onDraft,
+              AiReplyProgressCallback? onProgress,
+            }) {
+              emitDraft = onDraft;
+              return result.future;
+            },
       );
 
       await tester.tap(find.byKey(const ValueKey('composerAiReplyButton')));
@@ -1679,7 +1916,11 @@ void main() {
           null,
           isGroup: true,
           streamingGenerator:
-              (request, {required AiReplyDraftCallback onDraft}) {
+              (
+                request, {
+                required AiReplyDraftCallback onDraft,
+                AiReplyProgressCallback? onProgress,
+              }) {
                 emitDraft = onDraft;
                 return result.future;
               },
@@ -1743,10 +1984,15 @@ void main() {
         tester,
         null,
         leadingMessages: [contextMessage],
-        streamingGenerator: (request, {required AiReplyDraftCallback onDraft}) {
-          emitDraft = onDraft;
-          return result.future;
-        },
+        streamingGenerator:
+            (
+              request, {
+              required AiReplyDraftCallback onDraft,
+              AiReplyProgressCallback? onProgress,
+            }) {
+              emitDraft = onDraft;
+              return result.future;
+            },
       );
 
       await tester.tap(find.byKey(const ValueKey('composerAiReplyButton')));
@@ -1833,10 +2079,34 @@ void main() {
       final action = find.byKey(const ValueKey('composerAiReplyButton'));
       await tester.tap(action);
       await tester.pump();
-      expect(
-        find.byKey(const ValueKey('composerAiReplyProgress')),
-        findsOneWidget,
+      final progress = find.byKey(const ValueKey('composerAiReplyProgress'));
+      expect(progress, findsOneWidget);
+      final thinkingIcon = find.descendant(
+        of: progress,
+        matching: find.byType(AppIcon),
       );
+      expect(thinkingIcon, findsOneWidget);
+      expect(
+        tester.widget<AppIcon>(thinkingIcon).icon,
+        HeroAppIcons.wandMagicSparkles,
+      );
+      expect(
+        find.descendant(
+          of: progress,
+          matching: find.byType(CircularProgressIndicator),
+        ),
+        findsNothing,
+      );
+      final orbit = find.byKey(const ValueKey('composerAiReplyOrbit'));
+      final beforeRotation = List<double>.of(
+        tester.widget<Transform>(orbit).transform.storage,
+      );
+      await tester.pump(const Duration(milliseconds: 225));
+      final afterRotation = List<double>.of(
+        tester.widget<Transform>(orbit).transform.storage,
+      );
+      expect(afterRotation, isNot(equals(beforeRotation)));
+      expect(tester.widget<GestureDetector>(action).onLongPress, isNull);
 
       await tester.tap(action);
       await tester.pump();
@@ -1893,6 +2163,38 @@ void main() {
       expect(
         tester.getCenter(autoDelete).dx,
         lessThan(tester.getCenter(ai).dx),
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('bottom-aligns the sender identity beside wrapped text', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await pumpAiReplyComposer(
+        tester,
+        (_) async => const TelegramAiFormattedText(text: 'Generated reply'),
+        includeSenderOptions: true,
+      );
+
+      final field = find.byType(TextField);
+      final sender = find.byKey(const ValueKey('composerSenderPicker'));
+      await tester.enterText(
+        field,
+        'This longer message wraps across several lines in the narrow input.',
+      );
+      await tester.pump();
+
+      expect(
+        tester.getSize(field).height,
+        greaterThan(tester.getSize(sender).height),
+      );
+      expect(
+        tester.getRect(sender).bottom,
+        closeTo(tester.getRect(field).bottom, 0.1),
       );
       expect(tester.takeException(), isNull);
     });
@@ -2073,7 +2375,7 @@ void main() {
       );
     });
 
-    testWidgets('shows two-line AI action above the send button', (
+    testWidgets('shows a circular style action above the send button', (
       tester,
     ) async {
       final vm = _FocusTestChatViewModel()
@@ -2121,6 +2423,12 @@ void main() {
       expect(aiButton, findsOneWidget);
       final sendButton = find.byKey(const ValueKey('composerSendButton'));
       expect(sendButton, findsOneWidget);
+      expect(tester.getSize(aiButton), const Size.square(36));
+      final styleIcon = tester.widget<AppIcon>(
+        find.byKey(const ValueKey('composerAiStyleIcon')),
+      );
+      expect(styleIcon.icon, HeroAppIcons.palette);
+      expect(styleIcon.size, 19);
       expect(
         tester.getCenter(aiButton).dx,
         greaterThan(tester.getRect(field).right),

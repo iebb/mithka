@@ -1553,17 +1553,21 @@ private final class LiveCommunicationBridge: NSObject, ConversationManagerDelega
 }
 
 private final class AccountSessionBackupKeychain {
-  private let service: String
+  private let syncedService: String
+  private let localService: String
 
   init() {
     let bundleId = Bundle.main.bundleIdentifier ?? "ad.neko.mithka"
-    self.service = "\(bundleId).sessionsbackup"
+    self.syncedService = "\(bundleId).sessionsbackup"
+    self.localService = "\(bundleId).sessionsbackup.local"
   }
 
   func handle(call: FlutterMethodCall, result: FlutterResult) {
     do {
       switch call.method {
       case "isSupported":
+        result(true)
+      case "isLocalStorageSupported":
         result(true)
       case "saveSession":
         guard
@@ -1574,10 +1578,14 @@ private final class AccountSessionBackupKeychain {
         else {
           throw AccountSessionBackupError.invalidArguments
         }
-        try saveSession(id: id, data: data.data)
+        try saveSession(id: id, data: data.data, storage: storage(for: call))
         result(nil)
       case "getAllSessions":
-        result(try getAllSessions().map { FlutterStandardTypedData(bytes: $0) })
+        result(
+          try getAllSessions(storage: storage(for: call)).map {
+            FlutterStandardTypedData(bytes: $0)
+          }
+        )
       case "deleteSession":
         guard
           let args = call.arguments as? [String: Any],
@@ -1586,10 +1594,10 @@ private final class AccountSessionBackupKeychain {
         else {
           throw AccountSessionBackupError.invalidArguments
         }
-        try deleteSession(id: id)
+        try deleteSession(id: id, storage: storage(for: call))
         result(nil)
       case "deleteAllSessions":
-        try deleteAllSessions()
+        try deleteAllSessions(storage: storage(for: call))
         result(nil)
       default:
         result(FlutterMethodNotImplemented)
@@ -1605,37 +1613,62 @@ private final class AccountSessionBackupKeychain {
     }
   }
 
-  private func saveSession(id: String, data: Data) throws {
-    try saveSession(id: id, data: data, synchronizable: true)
+  private enum Storage: String {
+    case synced
+    case local
   }
 
-  private func saveSession(id: String, data: Data, synchronizable: Bool) throws {
+  private func storage(for call: FlutterMethodCall) -> Storage {
+    guard
+      let args = call.arguments as? [String: Any],
+      let value = args["storage"] as? String
+    else {
+      return .synced
+    }
+    return Storage(rawValue: value) ?? .synced
+  }
+
+  private func saveSession(id: String, data: Data, storage: Storage) throws {
+    try saveSession(
+      id: id,
+      data: data,
+      service: storage == .local ? localService : syncedService,
+      synchronizable: storage == .local ? false : true,
+      accessibility: storage == .local
+        ? kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        : kSecAttrAccessibleWhenUnlocked
+    )
+  }
+
+  private func saveSession(
+    id: String,
+    data: Data,
+    service: String,
+    synchronizable: Bool,
+    accessibility: CFString
+  ) throws {
     var query: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
       kSecAttrService as String: service,
       kSecAttrAccount as String: id,
       kSecValueData as String: data,
-      kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked
+      kSecAttrAccessible as String: accessibility,
+      kSecAttrSynchronizable as String: synchronizable
     ]
-    if synchronizable {
-      query[kSecAttrSynchronizable as String] = true
-    }
 
     let status = SecItemAdd(query as CFDictionary, nil)
     if status == errSecDuplicateItem {
       var updateQuery: [String: Any] = [
         kSecClass as String: kSecClassGenericPassword,
         kSecAttrService as String: service,
-        kSecAttrAccount as String: id
+        kSecAttrAccount as String: id,
+        kSecAttrSynchronizable as String: synchronizable
       ]
-      if synchronizable {
-        updateQuery[kSecAttrSynchronizable as String] = true
-      }
       let updateStatus = SecItemUpdate(
         updateQuery as CFDictionary,
         [
           kSecValueData as String: data,
-          kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked
+          kSecAttrAccessible as String: accessibility
         ] as CFDictionary
       )
       guard updateStatus == errSecSuccess else {
@@ -1646,16 +1679,25 @@ private final class AccountSessionBackupKeychain {
     }
   }
 
-  private func getAllSessions() throws -> [Data] {
+  private func getAllSessions(storage: Storage) throws -> [Data] {
+    if storage == .local {
+      return try getAllSessions(service: localService, synchronizable: false)
+    }
     do {
-      return try getAllSessions(synchronizable: kSecAttrSynchronizableAny)
+      return try getAllSessions(
+        service: syncedService,
+        synchronizable: kSecAttrSynchronizableAny
+      )
     } catch AccountSessionBackupError.keychain(let status)
       where isSynchronizableUnsupported(status) {
-      return try getAllSessions(synchronizable: nil)
+      return try getAllSessions(service: syncedService, synchronizable: nil)
     }
   }
 
-  private func getAllSessions(synchronizable: CFString?) throws -> [Data] {
+  private func getAllSessions(
+    service: String,
+    synchronizable: Any?
+  ) throws -> [Data] {
     var query: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
       kSecAttrService as String: service,
@@ -1676,16 +1718,28 @@ private final class AccountSessionBackupKeychain {
     return result as? [Data] ?? []
   }
 
-  private func deleteSession(id: String) throws {
+  private func deleteSession(id: String, storage: Storage) throws {
+    if storage == .local {
+      try deleteSession(id: id, service: localService, synchronizable: false)
+      return
+    }
     do {
-      try deleteSession(id: id, synchronizable: kSecAttrSynchronizableAny)
+      try deleteSession(
+        id: id,
+        service: syncedService,
+        synchronizable: kSecAttrSynchronizableAny
+      )
     } catch AccountSessionBackupError.keychain(let status)
       where isSynchronizableUnsupported(status) {
-      try deleteSession(id: id, synchronizable: nil)
+      try deleteSession(id: id, service: syncedService, synchronizable: nil)
     }
   }
 
-  private func deleteSession(id: String, synchronizable: CFString?) throws {
+  private func deleteSession(
+    id: String,
+    service: String,
+    synchronizable: Any?
+  ) throws {
     var query: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
       kSecAttrService as String: service,
@@ -1700,16 +1754,26 @@ private final class AccountSessionBackupKeychain {
     }
   }
 
-  private func deleteAllSessions() throws {
+  private func deleteAllSessions(storage: Storage) throws {
+    if storage == .local {
+      try deleteAllSessions(service: localService, synchronizable: false)
+      return
+    }
     do {
-      try deleteAllSessions(synchronizable: kSecAttrSynchronizableAny)
+      try deleteAllSessions(
+        service: syncedService,
+        synchronizable: kSecAttrSynchronizableAny
+      )
     } catch AccountSessionBackupError.keychain(let status)
       where isSynchronizableUnsupported(status) {
-      try deleteAllSessions(synchronizable: nil)
+      try deleteAllSessions(service: syncedService, synchronizable: nil)
     }
   }
 
-  private func deleteAllSessions(synchronizable: CFString?) throws {
+  private func deleteAllSessions(
+    service: String,
+    synchronizable: Any?
+  ) throws {
     var query: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
       kSecAttrService as String: service

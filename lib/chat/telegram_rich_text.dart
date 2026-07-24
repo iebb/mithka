@@ -171,6 +171,8 @@ class _TelegramRichTextState extends State<TelegramRichText> {
       maxLines: widget.maxLines,
       overflow: widget.overflow,
       onBotCommandTap: widget.onBotCommandTap,
+      onHashtagTap: widget.onHashtagTap,
+      onMentionTap: widget.onMentionTap,
     );
   }
 

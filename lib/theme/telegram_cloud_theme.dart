@@ -28,6 +28,42 @@ typedef TelegramThemeQuery =
 typedef TelegramThemeFilePath = Future<String?> Function(int fileId);
 typedef TelegramThemeSupportDirectory = Future<Directory> Function();
 
+Color _distinctPinnedRowColor({
+  required Color background,
+  required Color candidate,
+  required Color accent,
+  required bool isDark,
+}) {
+  int channel(int value, int shift) => (value >> shift) & 0xFF;
+  final backgroundValue = background.toARGB32();
+  final candidateValue = candidate.toARGB32();
+  final difference = [16, 8, 0]
+      .map(
+        (shift) =>
+            (channel(backgroundValue, shift) - channel(candidateValue, shift))
+                .abs(),
+      )
+      .reduce((largest, value) => value > largest ? value : largest);
+  if (difference >= 6) return candidate;
+
+  var tint = accent;
+  final accentValue = accent.toARGB32();
+  final accentDifference = [16, 8, 0]
+      .map(
+        (shift) =>
+            (channel(backgroundValue, shift) - channel(accentValue, shift))
+                .abs(),
+      )
+      .reduce((largest, value) => value > largest ? value : largest);
+  if (accentDifference < 12) {
+    tint = isDark ? const Color(0xFFFFFFFF) : const Color(0xFF000000);
+  }
+  return Color.alphaBlend(
+    tint.withValues(alpha: isDark ? 0.07 : 0.045),
+    background,
+  );
+}
+
 enum TelegramThemeSemanticColor {
   background,
   basicAccent,
@@ -490,9 +526,15 @@ class TelegramCloudTheme {
         _wallpaperColor() ??
         value(TelegramThemeSemanticColor.chatBackground, base.chatBackground);
     final accent = value(TelegramThemeSemanticColor.accent, accentColor);
+    final pinnedRow = _distinctPinnedRowColor(
+      background: background,
+      candidate: value(TelegramThemeSemanticColor.pinnedRow, background),
+      accent: accent,
+      isDark: isDark,
+    );
     return base.copyWith(
       background: background,
-      pinnedRow: value(TelegramThemeSemanticColor.pinnedRow, background),
+      pinnedRow: pinnedRow,
       listHeaderTint: value(
         TelegramThemeSemanticColor.listHeaderTint,
         background,
@@ -1130,7 +1172,6 @@ List<int> _outgoingFromPalette(Map<String, int> palette) {
     'chat.message.outgoing.bubble.withWp.gradientBg',
     'chat.message.outgoing.bubble.withoutWp.gradientBg',
     'bubbleBackgroundGradient_outgoing',
-    'msgOutBgSelected',
   ]);
   return second == null || second == first ? [first] : [first, second];
 }

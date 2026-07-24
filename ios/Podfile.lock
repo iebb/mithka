@@ -83,10 +83,10 @@ PODS:
   - flutter_secure_storage_darwin (10.0.0):
     - Flutter
     - FlutterMacOS
-  - flutter_sound (9.30.0):
+  - flutter_sound (9.28.0):
     - Flutter
-    - flutter_sound_core (= 9.30.0)
-  - flutter_sound_core (9.30.0)
+    - flutter_sound_core (= 9.28.0)
+  - flutter_sound_core (9.28.0)
   - fvp (0.36.1):
     - Flutter
     - FlutterMacOS
@@ -351,8 +351,8 @@ SPEC CHECKSUMS:
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
   flutter_local_notifications: 643a3eda1ce1c0599413ca31672536d423dee214
   flutter_secure_storage_darwin: acdb3f316ed05a3e68f856e0353b133eec373a23
-  flutter_sound: d95194f6476c9ad211d22b3a414d852c12c7ca44
-  flutter_sound_core: 7f2626d249d3a57bfa6da892ef7e22d234482c1a
+  flutter_sound: b9236a5875299aaa4cef1690afd2f01d52a3f890
+  flutter_sound_core: 427465f72d07ab8c3edbe8ffdde709ddacd3763c
   fvp: c0e43db0c89f963d9862800e3b89155c320719dc
   geolocator_apple: ab36aa0e8b7d7a2d7639b3b4e48308394e8cef5e
   GoogleAdsOnDeviceConversion: e3b71da24ff4cf01cf520756ac1c2b93c07b86ff

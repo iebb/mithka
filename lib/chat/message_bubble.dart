@@ -32,6 +32,7 @@ import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
+import '../theme/message_bubble_background.dart';
 import '../theme/message_name_colors.dart';
 import '../theme/theme_controller.dart';
 import 'animated_sticker_view.dart';
@@ -45,6 +46,7 @@ import 'looping_video_view.dart';
 import 'message_action_menu.dart';
 import 'message_special_content.dart';
 import 'music_player_controller.dart';
+import 'stretchable_message_bubble_background.dart';
 import 'video_sticker_view.dart';
 import 'voice_audio.dart';
 
@@ -77,6 +79,7 @@ class MessageBubble extends StatefulWidget {
     this.onHashtagTap,
     this.onOpenComments,
     this.showCommentAttachment = false,
+    this.channelHasLinkedDiscussion = false,
     this.onToggleReaction,
     this.onShowReactionUsers,
     this.onRedial,
@@ -128,6 +131,7 @@ class MessageBubble extends StatefulWidget {
   final ValueChanged<String>? onHashtagTap;
   final ValueChanged<ChatMessage>? onOpenComments;
   final bool showCommentAttachment;
+  final bool channelHasLinkedDiscussion;
   final ValueChanged<MessageReaction>? onToggleReaction;
   final void Function(ChatMessage message, MessageReaction reaction)?
   onShowReactionUsers;
@@ -262,25 +266,41 @@ class _MessageBubbleState extends State<MessageBubble>
 
   ChatMessage get message => widget.message;
 
-  Color get _outgoingBubbleColor =>
-      widget.outgoingBubbleColor ?? AppTheme.bubbleOutgoing;
+  MessageBubbleBackgroundSpec get _bubbleBackgroundStyle =>
+      context.watch<ThemeController>().effectiveMessageBubbleBackgroundSpec;
 
-  Color get _outgoingTextColor =>
-      widget.outgoingBubbleTextColor ??
-      (_outgoingBubbleColor.computeLuminance() > 0.64
-          ? const Color(0xFF171717)
-          : AppTheme.bubbleOutgoingText);
+  Color get _outgoingBubbleColor =>
+      _bubbleBackgroundStyle.backgroundColor ??
+      widget.outgoingBubbleColor ??
+      AppTheme.bubbleOutgoing;
+
+  Color get _outgoingTextColor {
+    if (!context.watch<ThemeController>().themingEnabled) {
+      return AppTheme.bubbleOutgoingText;
+    }
+    return _bubbleBackgroundStyle.foregroundColor ??
+        widget.outgoingBubbleTextColor ??
+        (_outgoingBubbleColor.computeLuminance() > 0.64
+            ? const Color(0xFF171717)
+            : AppTheme.bubbleOutgoingText);
+  }
 
   Color get _incomingBubbleColor =>
-      widget.incomingBubbleColor ?? context.colors.bubbleIncoming;
+      _bubbleBackgroundStyle.backgroundColor ??
+      widget.incomingBubbleColor ??
+      context.colors.bubbleIncoming;
 
   Color get _incomingTextColor =>
-      widget.incomingBubbleTextColor ?? context.colors.bubbleIncomingText;
+      _bubbleBackgroundStyle.foregroundColor ??
+      widget.incomingBubbleTextColor ??
+      context.colors.bubbleIncomingText;
 
   bool get _showsAttachedComments =>
       !message.isContentRestricted &&
       widget.showCommentAttachment &&
-      message.commentCount > 0;
+      (message.hasCommentThread ||
+          message.commentCount > 0 ||
+          (widget.channelHasLinkedDiscussion && !message.isService));
 
   BorderRadius _messageBorderRadius(
     double radius, {
@@ -294,6 +314,28 @@ class _MessageBubbleState extends State<MessageBubble>
           ? Radius.zero
           : corner,
       bottomRight: corner,
+    );
+  }
+
+  Widget _bubbleBackground({
+    Key? key,
+    required bool outgoing,
+    required Widget child,
+    required EdgeInsetsGeometry padding,
+    required BorderRadius borderRadius,
+    BoxConstraints constraints = const BoxConstraints(),
+  }) {
+    return StretchableMessageBubbleBackground(
+      key: key,
+      background: _bubbleBackgroundStyle,
+      fallbackColor: outgoing ? _outgoingBubbleColor : _incomingBubbleColor,
+      fallbackBorderRadius: borderRadius,
+      fallbackPadding: padding,
+      fallbackBorder: outgoing
+          ? null
+          : Border.all(color: context.colors.divider, width: 0.5),
+      constraints: constraints,
+      child: child,
     );
   }
 
@@ -1069,30 +1111,28 @@ class _MessageBubbleState extends State<MessageBubble>
         ),
       if (showComments) _commentThreadRow(outgoing),
     ];
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: outgoing
-          ? CrossAxisAlignment.end
-          : CrossAxisAlignment.start,
-      children: [
-        body,
-        for (var index = 0; index < extras.length; index++) ...[
-          if (index == 0 && showSuggestedPost) const SizedBox(height: 6),
-          extras[index],
+    return IntrinsicWidth(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          body,
+          for (var index = 0; index < extras.length; index++) ...[
+            if (index == 0 && showSuggestedPost) const SizedBox(height: 6),
+            extras[index],
+          ],
         ],
-      ],
+      ),
     );
   }
 
   Widget _commentThreadRow(bool outgoing) {
     final c = context.colors;
     final count = message.commentCount;
-    final label = AppStrings.t(AppStringKeys.momentsCommentCount, {
-      'value1': count,
-    });
-    final bg = outgoing
-        ? _outgoingTextColor.withValues(alpha: 0.16)
-        : c.card.withValues(alpha: 0.92);
+    final label = count == 0
+        ? AppStrings.t(AppStringKeys.messageLeaveAComment)
+        : AppStrings.t(AppStringKeys.momentsCommentCount, {'value1': count});
+    final bg = outgoing ? _outgoingBubbleColor : _incomingBubbleColor;
     final fg = outgoing ? _outgoingTextColor : c.textPrimary;
     final sub = outgoing
         ? _outgoingTextColor.withValues(alpha: 0.72)
@@ -1100,45 +1140,42 @@ class _MessageBubbleState extends State<MessageBubble>
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => widget.onOpenComments?.call(message),
-      child: ConstrainedBox(
+      child: Container(
         constraints: BoxConstraints(maxWidth: _bubbleMaxWidth()),
-        child: Container(
-          key: ValueKey('messageCommentsAttachment-${message.id}'),
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: const BorderRadius.only(
-              bottomLeft: Radius.circular(12),
-              bottomRight: Radius.circular(12),
-            ),
-            border: Border.all(
-              color: outgoing
-                  ? _outgoingTextColor.withValues(alpha: 0.12)
-                  : c.divider.withValues(alpha: 0.7),
-              width: 0.5,
-            ),
+        key: ValueKey('messageCommentsAttachment-${message.id}'),
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: const BorderRadius.only(
+            bottomLeft: Radius.circular(12),
+            bottomRight: Radius.circular(12),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AppIcon(HeroAppIcons.comments, size: 18, color: sub),
-              const SizedBox(width: 7),
-              Flexible(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: fg,
-                    decoration: TextDecoration.none,
-                  ),
+          border: Border.all(
+            color: outgoing
+                ? _outgoingTextColor.withValues(alpha: 0.12)
+                : c.divider.withValues(alpha: 0.7),
+            width: 0.5,
+          ),
+        ),
+        child: Row(
+          children: [
+            AppIcon(HeroAppIcons.comments, size: 18, color: sub),
+            const SizedBox(width: 7),
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: fg,
+                  decoration: TextDecoration.none,
                 ),
               ),
-              AppIcon(HeroAppIcons.chevronRight, size: 17, color: sub),
-            ],
-          ),
+            ),
+            AppIcon(HeroAppIcons.chevronRight, size: 17, color: sub),
+          ],
         ),
       ),
     );
@@ -1213,14 +1250,11 @@ class _MessageBubbleState extends State<MessageBubble>
   Widget _diceBubble(bool outgoing) {
     final c = context.colors;
     final value = message.diceValue;
-    return Container(
+    return _bubbleBackground(
+      outgoing: outgoing,
       constraints: BoxConstraints(maxWidth: _bubbleMaxWidth()),
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 11),
-      decoration: BoxDecoration(
-        color: outgoing ? _outgoingBubbleColor : _incomingBubbleColor,
-        borderRadius: _messageBorderRadius(10),
-        border: outgoing ? null : Border.all(color: c.divider, width: 0.5),
-      ),
+      borderRadius: _messageBorderRadius(10),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -1263,24 +1297,25 @@ class _MessageBubbleState extends State<MessageBubble>
   Widget _textBubble(String text, bool outgoing) {
     final c = context.colors;
     final baseColor = outgoing ? _outgoingTextColor : _incomingTextColor;
-    final linkColor = outgoing ? _outgoingTextColor : c.linkBlue;
+    final linkColor = _bubbleBackgroundStyle.isDecorative
+        ? baseColor
+        : outgoing
+        ? _outgoingTextColor
+        : c.linkBlue;
     for (final r in _linkRecognizers) {
       r.dispose();
     }
     _linkRecognizers.clear();
     final emojiOnly = _isEmojiOnlyText(text);
-    final textFontSize = emojiOnly ? 34.0 : 16.0;
-    return Container(
+    final textFontSize = emojiOnly ? 34.0 : 15.0;
+    return _bubbleBackground(
       key: ValueKey('messageTextBubble-${message.id}'),
+      outgoing: outgoing,
       constraints: BoxConstraints(maxWidth: _bubbleMaxWidth()),
       padding: emojiOnly
           ? const EdgeInsets.symmetric(horizontal: 10, vertical: 7)
           : const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-      decoration: BoxDecoration(
-        color: outgoing ? _outgoingBubbleColor : _incomingBubbleColor,
-        borderRadius: _messageBorderRadius(6),
-        border: outgoing ? null : Border.all(color: c.divider, width: 0.5),
-      ),
+      borderRadius: _messageBorderRadius(6),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -2850,7 +2885,6 @@ class _MessageBubbleState extends State<MessageBubble>
   /// 未接听 / 已拒绝). Tapping the bubble places the same kind of call again
   /// (点击重拨). The glyph sits toward the bubble's outer edge like profile.
   Widget _callBubble(bool outgoing) {
-    final c = context.colors;
     final isVideo = message.callIsVideo;
     final connected = message.callDuration > 0;
     final baseColor = outgoing ? _outgoingTextColor : _incomingTextColor;
@@ -2886,19 +2920,16 @@ class _MessageBubbleState extends State<MessageBubble>
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => widget.onRedial?.call(isVideo),
-      child: Container(
+      child: _bubbleBackground(
+        outgoing: outgoing,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: outgoing ? _outgoingBubbleColor : _incomingBubbleColor,
-          borderRadius: _messageBorderRadius(6),
-          border: outgoing ? null : Border.all(color: c.divider, width: 0.5),
-        ),
+        borderRadius: _messageBorderRadius(6),
         // Call glyph always on the left of the status, both directions.
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              isVideo ? HeroAppIcons.video.data : HeroAppIcons.phone.data,
+            AppIcon(
+              isVideo ? HeroAppIcons.video : HeroAppIcons.phone,
               size: 18,
               color: accent,
             ),
@@ -4103,10 +4134,13 @@ class _MessageBubbleState extends State<MessageBubble>
 
   Widget _voiceBubble(MessageVoice voice, bool outgoing) {
     final c = context.colors;
-    final fg = outgoing ? _outgoingTextColor : AppTheme.brand;
-    final track = outgoing
-        ? _outgoingTextColor.withValues(alpha: 0.35)
-        : AppTheme.brand.withValues(alpha: 0.25);
+    final decorative = _bubbleBackgroundStyle.isDecorative;
+    final fg = outgoing
+        ? _outgoingTextColor
+        : decorative
+        ? _incomingTextColor
+        : AppTheme.brand;
+    final track = fg.withValues(alpha: outgoing ? 0.35 : 0.25);
     return AnimatedBuilder(
       animation: _voice,
       builder: (context, _) {
@@ -4123,16 +4157,13 @@ class _MessageBubbleState extends State<MessageBubble>
         final timeText = played
             ? _durationString(_voice.position.inSeconds)
             : _durationString(voice.duration);
-        return Container(
-          width: 210,
+        return _bubbleBackground(
+          outgoing: outgoing,
+          constraints: const BoxConstraints.tightFor(width: 210),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-          decoration: BoxDecoration(
-            color: outgoing ? _outgoingBubbleColor : _incomingBubbleColor,
-            borderRadius: _messageBorderRadius(
-              6,
-              directlyAttached: _caption() == null,
-            ),
-            border: outgoing ? null : Border.all(color: c.divider, width: 0.5),
+          borderRadius: _messageBorderRadius(
+            6,
+            directlyAttached: _caption() == null,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -4232,6 +4263,8 @@ class _MessageBubbleState extends State<MessageBubble>
                             : FontWeight.w700,
                         color: outgoing
                             ? _outgoingTextColor.withValues(alpha: 0.9)
+                            : decorative
+                            ? _incomingTextColor.withValues(alpha: 0.9)
                             : c.textSecondary,
                       ),
                     ),
@@ -4266,6 +4299,8 @@ class _MessageBubbleState extends State<MessageBubble>
                             height: 1.25,
                             color: outgoing
                                 ? _outgoingTextColor.withValues(alpha: 0.88)
+                                : decorative
+                                ? _incomingTextColor.withValues(alpha: 0.88)
                                 : c.textSecondary,
                           ),
                         ),

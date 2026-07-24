@@ -13,6 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../chat/custom_emoji.dart';
 import '../chat/emoji_store.dart';
+import '../notifications/notification_preferences.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -50,6 +51,7 @@ class AccountStore extends ChangeNotifier {
         final state = u.obj('authorization_state');
         if (state?.type == 'authorizationStateReady') {
           unawaited(_removePendingSessionReplacementSource());
+          unawaited(refresh());
         }
         return;
       }
@@ -91,6 +93,12 @@ class AccountStore extends ChangeNotifier {
 
   int get activeSlot => _activeSlot;
   List<AccountSummary> get summaries => _summaries;
+  int? get activeUserId {
+    for (final summary in _summaries) {
+      if (summary.slot == _activeSlot) return summary.userId;
+    }
+    return null;
+  }
 
   void _activeAccountChanged() {
     CustomEmojiCenter.shared.reset();
@@ -321,6 +329,7 @@ class AccountStore extends ChangeNotifier {
       await TdClient.shared.deleteSlotData(slot);
       if (userId != null) {
         await AccountBackupService.shared.deleteAccountId('$userId');
+        await NotificationPreferences.shared.removeAccount(userId);
       }
       notifyListeners();
       auth.reloadAuthState();
@@ -342,6 +351,7 @@ class AccountStore extends ChangeNotifier {
     await TdClient.shared.deleteSlotData(slot);
     if (userId != null) {
       await AccountBackupService.shared.deleteAccountId('$userId');
+      await NotificationPreferences.shared.removeAccount(userId);
     }
     notifyListeners();
     await refresh();
@@ -399,6 +409,7 @@ class AccountStore extends ChangeNotifier {
     await TdClient.shared.deleteSlotData(slot);
     if (userId != null) {
       await AccountBackupService.shared.deleteAccountId('$userId');
+      await NotificationPreferences.shared.removeAccount(userId);
     }
     await refresh();
   }

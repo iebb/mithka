@@ -1,5 +1,18 @@
 import 'dart:convert';
 
+bool isDeepSeekAiModel(String model) =>
+    RegExp(r'(^|[/_.-])deepseek([/_.-]|$)').hasMatch(model.toLowerCase());
+
+String? inferredAiReasoningEffort(String model) {
+  final normalizedModel = model.toLowerCase();
+  if (RegExp(
+    r'(^|[/_.-])(deepseek|reasoner|reasoning|thinking|o1|o3|o4)([/_.-]|$)',
+  ).hasMatch(normalizedModel)) {
+    return 'low';
+  }
+  return null;
+}
+
 class AiFunctionToolDefinition {
   const AiFunctionToolDefinition({
     required this.name,
@@ -145,7 +158,10 @@ enum AiEndpointStyle {
     required String input,
     required bool stream,
     String? reasoningEffort,
+    bool disableThinking = false,
     bool useJsonResponseFormat = false,
+    Map<String, Object?>? jsonResponseSchema,
+    String jsonResponseName = 'structured_response',
     int? maximumOutputTokens,
   }) {
     final normalizedReasoningEffort = reasoningEffort?.trim();
@@ -165,7 +181,18 @@ enum AiEndpointStyle {
         'max_tokens': ?normalizedMaximumOutputTokens,
         if (normalizedReasoningEffort?.isNotEmpty == true)
           'reasoning_effort': normalizedReasoningEffort,
-        if (useJsonResponseFormat) 'response_format': {'type': 'json_object'},
+        if (disableThinking) 'thinking': {'type': 'disabled'},
+        if (jsonResponseSchema != null)
+          'response_format': {
+            'type': 'json_schema',
+            'json_schema': {
+              'name': jsonResponseName,
+              'strict': true,
+              'schema': jsonResponseSchema,
+            },
+          }
+        else if (useJsonResponseFormat)
+          'response_format': {'type': 'json_object'},
       },
       AiEndpointStyle.openAiResponses => <String, Object?>{
         'model': model,
@@ -176,7 +203,16 @@ enum AiEndpointStyle {
         'max_output_tokens': ?normalizedMaximumOutputTokens,
         if (normalizedReasoningEffort?.isNotEmpty == true)
           'reasoning': {'effort': normalizedReasoningEffort},
-        if (useJsonResponseFormat)
+        if (jsonResponseSchema != null)
+          'text': {
+            'format': {
+              'type': 'json_schema',
+              'name': jsonResponseName,
+              'strict': true,
+              'schema': jsonResponseSchema,
+            },
+          }
+        else if (useJsonResponseFormat)
           'text': {
             'format': {'type': 'json_object'},
           },
@@ -189,6 +225,10 @@ enum AiEndpointStyle {
         ],
         'max_tokens': normalizedMaximumOutputTokens ?? 4096,
         'stream': stream,
+        if (jsonResponseSchema != null)
+          'output_config': {
+            'format': {'type': 'json_schema', 'schema': jsonResponseSchema},
+          },
       },
       AiEndpointStyle.ollamaChat => <String, Object?>{
         'model': model,
@@ -200,7 +240,10 @@ enum AiEndpointStyle {
         'stream': stream,
         if (normalizedMaximumOutputTokens != null)
           'options': {'num_predict': normalizedMaximumOutputTokens},
-        if (useJsonResponseFormat) 'format': 'json',
+        if (jsonResponseSchema != null)
+          'format': jsonResponseSchema
+        else if (useJsonResponseFormat)
+          'format': 'json',
       },
     };
   }
@@ -426,9 +469,18 @@ enum AiEndpointStyle {
             message.contains('reasoning effort')) {
           changed = compatible.remove('reasoning_effort') != null || changed;
         }
+        if (message.contains('thinking')) {
+          changed = compatible.remove('thinking') != null || changed;
+        }
         if (message.contains('response_format') ||
             message.contains('response format')) {
-          changed = compatible.remove('response_format') != null || changed;
+          final format = compatible['response_format'];
+          if (format is Map && format['type'] == 'json_schema') {
+            compatible['response_format'] = const {'type': 'json_object'};
+            changed = true;
+          } else {
+            changed = compatible.remove('response_format') != null || changed;
+          }
         }
         break;
       case AiEndpointStyle.openAiResponses:
@@ -440,34 +492,157 @@ enum AiEndpointStyle {
           changed = compatible.remove('reasoning') != null || changed;
         }
         if (message.contains('text') || message.contains('format')) {
-          changed = compatible.remove('text') != null || changed;
+          final text = compatible['text'];
+          final format = text is Map ? text['format'] : null;
+          if (format is Map && format['type'] == 'json_schema') {
+            compatible['text'] = const {
+              'format': {'type': 'json_object'},
+            };
+            changed = true;
+          } else {
+            changed = compatible.remove('text') != null || changed;
+          }
         }
         if (message.contains('store')) {
           changed = compatible.remove('store') != null || changed;
         }
         break;
       case AiEndpointStyle.anthropicMessages:
+        if (message.contains('output_config') ||
+            message.contains('output config') ||
+            message.contains('format') ||
+            message.contains('schema')) {
+          changed = compatible.remove('output_config') != null || changed;
+        }
         break;
       case AiEndpointStyle.ollamaChat:
         if (message.contains('num_predict') || message.contains('max tokens')) {
           changed = compatible.remove('options') != null || changed;
         }
         if (message.contains('format')) {
-          changed = compatible.remove('format') != null || changed;
+          final format = compatible['format'];
+          if (format is Map) {
+            compatible['format'] = 'json';
+            changed = true;
+          } else {
+            changed = compatible.remove('format') != null || changed;
+          }
         }
         break;
     }
-    if (message.contains('stream') && compatible['stream'] == true) {
+    if (_mentionsStreamParameter(message) && compatible['stream'] == true) {
       compatible['stream'] = false;
       changed = true;
     }
+    if (!changed && _isOpaqueCompatibilityFailure(message)) {
+      switch (this) {
+        case AiEndpointStyle.openAiChatCompletions:
+          final format = compatible['response_format'];
+          if (format is Map && format['type'] == 'json_schema') {
+            compatible['response_format'] = const {'type': 'json_object'};
+            changed = true;
+          } else if (compatible.containsKey('tools')) {
+            compatible.remove('tools');
+            compatible.remove('tool_choice');
+            compatible.remove('parallel_tool_calls');
+            changed = true;
+          } else if (compatible.containsKey('thinking')) {
+            compatible.remove('thinking');
+            changed = true;
+          } else if (compatible.containsKey('reasoning_effort')) {
+            compatible.remove('reasoning_effort');
+            changed = true;
+          } else if (format is Map && format['type'] == 'json_object') {
+            compatible.remove('response_format');
+            changed = true;
+          }
+          break;
+        case AiEndpointStyle.openAiResponses:
+          final text = compatible['text'];
+          final format = text is Map ? text['format'] : null;
+          if (format is Map && format['type'] == 'json_schema') {
+            compatible['text'] = const {
+              'format': {'type': 'json_object'},
+            };
+            changed = true;
+          } else if (compatible.containsKey('tools')) {
+            compatible.remove('tools');
+            compatible.remove('tool_choice');
+            compatible.remove('parallel_tool_calls');
+            changed = true;
+          } else if (compatible.containsKey('reasoning')) {
+            compatible.remove('reasoning');
+            changed = true;
+          } else if (format is Map && format['type'] == 'json_object') {
+            compatible.remove('text');
+            changed = true;
+          }
+          break;
+        case AiEndpointStyle.anthropicMessages:
+          if (compatible.containsKey('output_config')) {
+            compatible.remove('output_config');
+            changed = true;
+          } else if (compatible.containsKey('tools')) {
+            compatible.remove('tools');
+            compatible.remove('tool_choice');
+            changed = true;
+          } else if (compatible['stream'] == true) {
+            compatible['stream'] = false;
+            changed = true;
+          }
+          break;
+        case AiEndpointStyle.ollamaChat:
+          final format = compatible['format'];
+          if (format is Map) {
+            compatible['format'] = 'json';
+            changed = true;
+          } else if (compatible.containsKey('tools')) {
+            compatible.remove('tools');
+            compatible.remove('tool_choice');
+            changed = true;
+          } else if (compatible.containsKey('format')) {
+            compatible.remove('format');
+            changed = true;
+          }
+          break;
+      }
+    }
     return changed ? compatible : body;
+  }
+
+  bool outputLimitReached(Map<dynamic, dynamic> envelope) {
+    switch (this) {
+      case AiEndpointStyle.openAiChatCompletions:
+        final choices = envelope['choices'];
+        if (choices is! List || choices.isEmpty || choices.first is! Map) {
+          return false;
+        }
+        final finishReason = (choices.first as Map)['finish_reason'];
+        return finishReason == 'length' || finishReason == 'max_tokens';
+      case AiEndpointStyle.openAiResponses:
+        final response = envelope['response'] is Map
+            ? envelope['response'] as Map
+            : envelope;
+        final incompleteDetails = response['incomplete_details'];
+        final reason = incompleteDetails is Map
+            ? incompleteDetails['reason']
+            : null;
+        return response['status'] == 'incomplete' &&
+            (reason == 'max_output_tokens' ||
+                reason == 'max_tokens' ||
+                reason == 'length');
+      case AiEndpointStyle.anthropicMessages:
+        return envelope['stop_reason'] == 'max_tokens';
+      case AiEndpointStyle.ollamaChat:
+        return envelope['done_reason'] == 'length' ||
+            envelope['done_reason'] == 'max_tokens';
+    }
   }
 
   String? responseText(Map<dynamic, dynamic> envelope) => switch (this) {
     AiEndpointStyle.openAiChatCompletions => _chatCompletionText(envelope),
     AiEndpointStyle.openAiResponses => _responsesText(envelope),
-    AiEndpointStyle.anthropicMessages => _contentPartsText(envelope['content']),
+    AiEndpointStyle.anthropicMessages => _anthropicText(envelope['content']),
     AiEndpointStyle.ollamaChat =>
       _messageText(envelope['message']) ??
           _nonEmptyString(envelope['response']),
@@ -480,7 +655,9 @@ enum AiEndpointStyle {
           ? _streamString(event['delta'])
           : '',
     AiEndpointStyle.anthropicMessages =>
-      event['type'] == 'content_block_delta' && event['delta'] is Map
+      event['type'] == 'content_block_delta' &&
+              event['delta'] is Map &&
+              (event['delta'] as Map)['type'] == 'text_delta'
           ? _streamString((event['delta'] as Map)['text'])
           : '',
     AiEndpointStyle.ollamaChat =>
@@ -527,6 +704,15 @@ enum AiEndpointStyle {
   }
 }
 
+bool _mentionsStreamParameter(String message) =>
+    RegExp(r'(^|[^a-z])stream(?:ing|_options)?([^a-z]|$)').hasMatch(message);
+
+bool _isOpaqueCompatibilityFailure(String message) =>
+    message.contains('upstream request failed') ||
+    message.contains('invalid request error') ||
+    message.trim() == 'invalid request' ||
+    message.trim() == 'bad request';
+
 /// Accumulates one streamed assistant turn into the same provider-native
 /// envelope accepted by [AiEndpointStyle.functionToolCalls] and
 /// [AiEndpointStyle.toolContinuationBody].
@@ -546,19 +732,21 @@ class AiEndpointStreamAccumulator {
   bool get isComplete => switch (style) {
     AiEndpointStyle.openAiChatCompletions =>
       _chatTransportDone || _chatFinishReason != null,
-    AiEndpointStyle.openAiResponses => _completedResponsesEnvelope != null,
+    AiEndpointStyle.openAiResponses => _terminalResponsesEnvelope != null,
     AiEndpointStyle.anthropicMessages => _anthropicMessageStopped,
     AiEndpointStyle.ollamaChat => _ollamaEnvelope['done'] == true,
   };
 
   final Map<int, _StreamingToolCall> _chatToolCalls = {};
   String _chatRole = 'assistant';
+  final StringBuffer _chatReasoning = StringBuffer();
+  final StringBuffer _chatRefusal = StringBuffer();
   String? _chatFinishReason;
   bool _chatTransportDone = false;
 
   final Map<int, Map<String, Object?>> _responsesOutput = {};
   final Map<String, int> _responsesOutputIndexesById = {};
-  Map<String, Object?>? _completedResponsesEnvelope;
+  Map<String, Object?>? _terminalResponsesEnvelope;
 
   final Map<int, Map<String, Object?>> _anthropicContent = {};
   final Map<int, StringBuffer> _anthropicInputFragments = {};
@@ -569,6 +757,7 @@ class AiEndpointStreamAccumulator {
   final Map<int, _StreamingToolCall> _ollamaToolCalls = {};
   Map<String, Object?> _ollamaEnvelope = {};
   String _ollamaRole = 'assistant';
+  final StringBuffer _ollamaThinking = StringBuffer();
 
   /// Adds a provider stream event and returns its newly visible text delta.
   String add(Map<dynamic, dynamic> event) {
@@ -610,6 +799,14 @@ class AiEndpointStreamAccumulator {
     if (delta is Map) {
       final role = delta['role'];
       if (role is String && role.isNotEmpty) _chatRole = role;
+      final reasoning = delta['reasoning_content'];
+      if (reasoning is String && reasoning.isNotEmpty) {
+        _chatReasoning.write(reasoning);
+      }
+      final refusal = delta['refusal'];
+      if (refusal is String && refusal.isNotEmpty) {
+        _chatRefusal.write(refusal);
+      }
       _mergeStreamingToolCalls(
         _chatToolCalls,
         delta['tool_calls'],
@@ -620,6 +817,14 @@ class AiEndpointStreamAccumulator {
     if (message is Map) {
       final role = message['role'];
       if (role is String && role.isNotEmpty) _chatRole = role;
+      final reasoning = message['reasoning_content'];
+      if (reasoning is String && reasoning.isNotEmpty) {
+        _chatReasoning.write(reasoning);
+      }
+      final refusal = message['refusal'];
+      if (refusal is String && refusal.isNotEmpty) {
+        _chatRefusal.write(refusal);
+      }
       _mergeStreamingToolCalls(
         _chatToolCalls,
         message['tool_calls'],
@@ -633,6 +838,9 @@ class AiEndpointStreamAccumulator {
     final message = <String, Object?>{
       'role': _chatRole,
       'content': text.isEmpty ? null : text,
+      if (_chatReasoning.isNotEmpty)
+        'reasoning_content': _chatReasoning.toString(),
+      if (_chatRefusal.isNotEmpty) 'refusal': _chatRefusal.toString(),
       if (_chatToolCalls.isNotEmpty)
         'tool_calls': [
           for (final entry
@@ -654,10 +862,11 @@ class AiEndpointStreamAccumulator {
 
   String _addResponses(Map<dynamic, dynamic> event) {
     final type = event['type'];
-    if (type == 'response.completed' && event['response'] is Map) {
-      final completed = _jsonMap(event['response'] as Map);
-      _completedResponsesEnvelope = completed;
-      if (_text.isEmpty) return style.responseText(completed) ?? '';
+    if ((type == 'response.completed' || type == 'response.incomplete') &&
+        event['response'] is Map) {
+      final terminal = _jsonMap(event['response'] as Map);
+      _terminalResponsesEnvelope = terminal;
+      if (_text.isEmpty) return style.responseText(terminal) ?? '';
       return '';
     }
 
@@ -732,18 +941,26 @@ class AiEndpointStreamAccumulator {
   }
 
   Map<String, Object?> get _responsesEnvelope {
-    final completed = _completedResponsesEnvelope;
-    if (completed != null) return _jsonMap(completed);
-    final output = <Object?>[
-      for (final entry
-          in _responsesOutput.entries.toList()
-            ..sort((left, right) => left.key.compareTo(right.key)))
-        _jsonMap(entry.value),
-    ];
+    final terminal = _terminalResponsesEnvelope;
+    final envelope = terminal == null
+        ? <String, Object?>{}
+        : _jsonMap(terminal);
+    final terminalOutput = envelope['output'];
+    final output = terminalOutput is List
+        ? List<Object?>.of(terminalOutput)
+        : <Object?>[];
+    if (output.isEmpty) {
+      output.addAll([
+        for (final entry
+            in _responsesOutput.entries.toList()
+              ..sort((left, right) => left.key.compareTo(right.key)))
+          _jsonMap(entry.value),
+      ]);
+    }
     final messageIndex = output.indexWhere(
       (item) => item is Map && item['type'] == 'message',
     );
-    if (text.isNotEmpty) {
+    if (text.isNotEmpty && style.responseText({'output': output}) == null) {
       final content = <Object?>[
         {'type': 'output_text', 'text': text},
       ];
@@ -756,13 +973,15 @@ class AiEndpointStreamAccumulator {
       } else {
         final message = _jsonMap(output[messageIndex] as Map);
         final existingContent = message['content'];
-        if (existingContent is! List || existingContent.isEmpty) {
-          message['content'] = content;
-        }
+        message['content'] = [
+          if (existingContent is List) ...existingContent,
+          ...content,
+        ];
         output[messageIndex] = message;
       }
     }
-    return {'output': output};
+    envelope['output'] = output;
+    return envelope;
   }
 
   String _addAnthropic(Map<dynamic, dynamic> event) {
@@ -792,6 +1011,28 @@ class AiEndpointStreamAccumulator {
           _anthropicInputFragments
               .putIfAbsent(index, StringBuffer.new)
               .write(fragment);
+        }
+        return '';
+      }
+      if (delta['type'] == 'thinking_delta') {
+        final thinking = delta['thinking'];
+        if (thinking is String && thinking.isNotEmpty) {
+          final block = _anthropicContent.putIfAbsent(
+            index,
+            () => {'type': 'thinking', 'thinking': ''},
+          );
+          block['thinking'] = '${block['thinking'] ?? ''}$thinking';
+        }
+        return '';
+      }
+      if (delta['type'] == 'signature_delta') {
+        final signature = delta['signature'];
+        if (signature is String && signature.isNotEmpty) {
+          final block = _anthropicContent.putIfAbsent(
+            index,
+            () => {'type': 'thinking', 'thinking': ''},
+          );
+          block['signature'] = '${block['signature'] ?? ''}$signature';
         }
         return '';
       }
@@ -860,6 +1101,10 @@ class AiEndpointStreamAccumulator {
     if (message is Map) {
       final role = message['role'];
       if (role is String && role.isNotEmpty) _ollamaRole = role;
+      final thinking = message['thinking'];
+      if (thinking is String && thinking.isNotEmpty) {
+        _ollamaThinking.write(thinking);
+      }
       _mergeStreamingToolCalls(
         _ollamaToolCalls,
         message['tool_calls'],
@@ -874,6 +1119,7 @@ class AiEndpointStreamAccumulator {
     'message': {
       'role': _ollamaRole,
       'content': text,
+      if (_ollamaThinking.isNotEmpty) 'thinking': _ollamaThinking.toString(),
       if (_ollamaToolCalls.isNotEmpty)
         'tool_calls': [
           for (final entry
@@ -1097,8 +1343,31 @@ String? _responsesText(Map<dynamic, dynamic> envelope) {
   if (output is! List) return null;
   final buffer = StringBuffer();
   for (final item in output.whereType<Map>()) {
-    final text = _contentPartsText(item['content']);
+    if (item['type'] != 'message') continue;
+    final text = _responsesOutputText(item['content']);
     if (text != null) buffer.write(text);
+  }
+  return _nonEmptyString(buffer.toString());
+}
+
+String? _responsesOutputText(Object? content) {
+  if (content is! List) return null;
+  final buffer = StringBuffer();
+  for (final part in content.whereType<Map>()) {
+    if (part['type'] != 'output_text') continue;
+    final text = part['text'];
+    if (text is String) buffer.write(text);
+  }
+  return _nonEmptyString(buffer.toString());
+}
+
+String? _anthropicText(Object? content) {
+  if (content is! List) return null;
+  final buffer = StringBuffer();
+  for (final block in content.whereType<Map>()) {
+    if (block['type'] != 'text') continue;
+    final text = block['text'];
+    if (text is String) buffer.write(text);
   }
   return _nonEmptyString(buffer.toString());
 }
