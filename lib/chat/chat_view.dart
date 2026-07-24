@@ -4665,13 +4665,20 @@ class _ChatViewState extends State<ChatView> {
   }
 
   Color? _effectiveOutgoingColor() {
+    if (!context.watch<ThemeController>().themingEnabled) {
+      return AppTheme.bubbleOutgoing;
+    }
     final chatColor = _resolvedChatThemeStyle?.outgoingColor;
     return chatColor ?? _resolvedCloudTheme?.outgoingColor;
   }
 
-  Color? _effectiveOutgoingTextColor() =>
-      _resolvedChatThemeStyle?.outgoingTextColor ??
-      _resolvedCloudTheme?.outgoingTextColor;
+  Color? _effectiveOutgoingTextColor() {
+    if (!context.watch<ThemeController>().themingEnabled) {
+      return AppTheme.bubbleOutgoingText;
+    }
+    return _resolvedChatThemeStyle?.outgoingTextColor ??
+        _resolvedCloudTheme?.outgoingTextColor;
+  }
 
   Color? _effectiveIncomingColor() =>
       _resolvedChatThemeStyle?.incomingColor ??

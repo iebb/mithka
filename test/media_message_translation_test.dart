@@ -19,9 +19,13 @@ void main() {
     List<ChatMessage> groupedMedia = const <ChatMessage>[],
     bool showCommentAttachment = false,
     bool channelHasLinkedDiscussion = false,
+    bool themingEnabled = true,
     ValueChanged<ChatMessage>? onLongPress,
   }) async {
-    SharedPreferences.setMockInitialValues({'groupImageMessages': true});
+    SharedPreferences.setMockInitialValues({
+      'groupImageMessages': true,
+      'appearanceThemingEnabled': themingEnabled,
+    });
     final preferences = await SharedPreferences.getInstance();
     final theme = ThemeController(preferences);
     addTearDown(theme.dispose);
@@ -268,12 +272,42 @@ void main() {
       tester.getRect(commentsFinder).width,
       tester.getRect(messageFinder).width,
     );
+    final commentRow = tester.widget<Row>(
+      find.descendant(of: commentsFinder, matching: find.byType(Row)),
+    );
+    expect(commentRow.mainAxisSize, MainAxisSize.max);
+    expect(
+      find.descendant(of: commentsFinder, matching: find.byType(Expanded)),
+      findsOneWidget,
+    );
     final comments = tester.widget<Container>(commentsFinder);
     final expectedBackground = tester
         .element(messageFinder)
         .colors
         .bubbleIncoming;
     expect((comments.decoration! as BoxDecoration).color, expectedBackground);
+  });
+
+  testWidgets('outgoing bubble stays white on blue when theming is off', (
+    tester,
+  ) async {
+    final message = ChatMessage(
+      id: 14,
+      isOutgoing: true,
+      text: 'Own message',
+      date: 1,
+      contentType: 'messageText',
+    );
+
+    await pumpBubble(tester, message, themingEnabled: false);
+
+    final richText = tester.widget<RichText>(
+      find.descendant(
+        of: find.byKey(const ValueKey('messageTextBubble-14')),
+        matching: find.byType(RichText),
+      ),
+    );
+    expect(richText.text.style?.color, AppTheme.bubbleOutgoingText);
   });
 
   testWidgets('captionless media labels never render as captions', (

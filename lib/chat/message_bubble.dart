@@ -267,11 +267,15 @@ class _MessageBubbleState extends State<MessageBubble>
   Color get _outgoingBubbleColor =>
       widget.outgoingBubbleColor ?? AppTheme.bubbleOutgoing;
 
-  Color get _outgoingTextColor =>
-      widget.outgoingBubbleTextColor ??
-      (_outgoingBubbleColor.computeLuminance() > 0.64
-          ? const Color(0xFF171717)
-          : AppTheme.bubbleOutgoingText);
+  Color get _outgoingTextColor {
+    if (!context.watch<ThemeController>().themingEnabled) {
+      return AppTheme.bubbleOutgoingText;
+    }
+    return widget.outgoingBubbleTextColor ??
+        (_outgoingBubbleColor.computeLuminance() > 0.64
+            ? const Color(0xFF171717)
+            : AppTheme.bubbleOutgoingText);
+  }
 
   Color get _incomingBubbleColor =>
       widget.incomingBubbleColor ?? context.colors.bubbleIncoming;
@@ -1120,11 +1124,10 @@ class _MessageBubbleState extends State<MessageBubble>
           ),
         ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
             AppIcon(HeroAppIcons.comments, size: 18, color: sub),
             const SizedBox(width: 7),
-            Flexible(
+            Expanded(
               child: Text(
                 label,
                 maxLines: 1,
@@ -1269,7 +1272,7 @@ class _MessageBubbleState extends State<MessageBubble>
     }
     _linkRecognizers.clear();
     final emojiOnly = _isEmojiOnlyText(text);
-    final textFontSize = emojiOnly ? 34.0 : 16.0;
+    final textFontSize = emojiOnly ? 34.0 : 15.0;
     return Container(
       key: ValueKey('messageTextBubble-${message.id}'),
       constraints: BoxConstraints(maxWidth: _bubbleMaxWidth()),

@@ -3182,7 +3182,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
                                   ? null
                                   : (_) => unawaited(_sendCurrentText()),
                               style: TextStyle(
-                                fontSize: 16,
+                                fontSize: 15,
                                 color: c.textPrimary,
                               ),
                               contentInsertionConfiguration:
