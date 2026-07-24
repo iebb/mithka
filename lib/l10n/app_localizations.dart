@@ -347,6 +347,10 @@ abstract final class AppStringKeys {
   static const aiReplyGuidance = 'aiReplyGuidance';
   static const aiReplyGuidanceHint = 'aiReplyGuidanceHint';
   static const aiReplyMode = 'aiReplyMode';
+  static const aiReplyProcessChecking = 'aiReplyProcessChecking';
+  static const aiReplyProcessReading = 'aiReplyProcessReading';
+  static const aiReplyProcessTitle = 'aiReplyProcessTitle';
+  static const aiReplyProcessWriting = 'aiReplyProcessWriting';
   static const aiReplyPrivacyNote = 'aiReplyPrivacyNote';
   static const aiReplyReplyingTo = 'aiReplyReplyingTo';
   static const aiReplyStale = 'aiReplyStale';

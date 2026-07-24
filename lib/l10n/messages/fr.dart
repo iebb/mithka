@@ -165,6 +165,12 @@ const frMessages = <String, String>{
   'aiReplyGuidanceHint':
       "Par exemple : accepter chaleureusement et demander à quelle heure",
   'aiReplyMode': "Répondre",
+  'aiReplyProcessChecking':
+      "Recherche de détails pertinents dans le contexte antérieur.",
+  'aiReplyProcessReading': "Lecture des messages récents et du message ciblé.",
+  'aiReplyProcessTitle': "Préparation de la réponse IA",
+  'aiReplyProcessWriting':
+      "Rédaction d’une réponse prête à envoyer dans votre style.",
   'aiReplyPrivacyNote':
       "L’extrait visible de la conversation est envoyé à {value1}. Le résultat reste dans votre brouillon.",
   'aiReplyReplyingTo': "Réponse à {value1}",

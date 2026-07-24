@@ -161,6 +161,13 @@ const deMessages = <String, String>{
   'aiReplyGuidanceHint':
       "Zum Beispiel: herzlich zustimmen und nach der Uhrzeit fragen",
   'aiReplyMode': "Antworten",
+  'aiReplyProcessChecking':
+      "Frühere Chatnachrichten werden auf relevante Details geprüft.",
+  'aiReplyProcessReading':
+      "Aktuelle Nachrichten und das Antwortziel werden geprüft.",
+  'aiReplyProcessTitle': "KI-Antwortvorgang",
+  'aiReplyProcessWriting':
+      "Eine sendefertige Antwort in deinem Stil wird verfasst.",
   'aiReplyPrivacyNote':
       "Der sichtbare Gesprächsausschnitt wird an {value1} gesendet. Das Ergebnis bleibt in deinem Entwurf.",
   'aiReplyReplyingTo': "Antwort auf {value1}",

@@ -104,6 +104,152 @@ void main() {
     );
   });
 
+  test('group reply prioritizes direct mentions of the account owner', () {
+    final messages = <ChatMessage>[
+      _chatMessage(
+        id: 1,
+        text: 'Owner, can you answer this directly?',
+        senderName: 'Bob',
+        senderId: 22,
+        textEntities: const [
+          MessageTextEntity(
+            offset: 0,
+            length: 5,
+            type: 'textEntityTypeMentionName',
+            userId: 99,
+          ),
+        ],
+      ),
+      for (var id = 2; id <= 40; id++)
+        _chatMessage(
+          id: id,
+          text: 'Ordinary group message $id',
+          senderName: id.isEven ? 'Alice' : 'Bob',
+          senderId: id.isEven ? 11 : 22,
+        ),
+    ];
+
+    final request = AiReplyRequest.fromChatMessages(
+      chatTitle: 'Project group',
+      currentUserName: 'Owner',
+      currentUserId: 99,
+      target: messages.last,
+      visibleMessages: messages,
+      isGroupChat: true,
+    );
+
+    final mention = request.messages.singleWhere((message) => message.id == 1);
+    expect(mention.mentionsCurrentUser, isTrue);
+    expect(
+      mention.toJson(targetMessageId: request.targetMessageId),
+      containsPair('mentions_current_user', true),
+    );
+    expect(
+      request.telegramTranscript,
+      contains('[MENTIONS ACCOUNT OWNER] [OTHER] Bob:'),
+    );
+    expect(aiReplyTrustedInstructions, contains('priority direct addresses'));
+  });
+
+  test('read username mentions remain priority without unread state', () {
+    final mention = _chatMessage(
+      id: 1,
+      text: '@Nekoko14 can you answer this?',
+      senderName: 'Bob',
+      senderId: 22,
+      textEntities: const [
+        MessageTextEntity(offset: 0, length: 9, type: 'textEntityTypeMention'),
+      ],
+    );
+
+    final request = AiReplyRequest.fromChatMessages(
+      chatTitle: 'Project group',
+      currentUserName: 'Will',
+      currentUserId: 99,
+      currentUserUsernames: const {'nekoko14'},
+      target: mention,
+      visibleMessages: [mention],
+      isGroupChat: true,
+    );
+
+    expect(request.target.mentionsCurrentUser, isTrue);
+  });
+
+  test('ordinary display-name prose is not treated as a direct mention', () {
+    final message = _chatMessage(
+      id: 1,
+      text: 'Will this work without a restart?',
+      senderName: 'Bob',
+      senderId: 22,
+    );
+
+    final request = AiReplyRequest.fromChatMessages(
+      chatTitle: 'Project group',
+      currentUserName: 'Will',
+      currentUserId: 99,
+      currentUserUsernames: const {'nekoko14'},
+      target: message,
+      visibleMessages: [message],
+      isGroupChat: true,
+    );
+
+    expect(request.target.mentionsCurrentUser, isFalse);
+  });
+
+  test('group mention priority keeps nearby and owner resolution context', () {
+    final messages = <ChatMessage>[
+      for (var id = 1; id <= 30; id++)
+        _chatMessage(
+          id: id,
+          text: 'Owner mention $id',
+          senderName: 'Bob',
+          senderId: 22,
+          textEntities: const [
+            MessageTextEntity(
+              offset: 0,
+              length: 5,
+              type: 'textEntityTypeMentionName',
+              userId: 99,
+            ),
+          ],
+        ),
+      _chatMessage(
+        id: 31,
+        text: 'Already handled the newest mention.',
+        isOutgoing: true,
+        senderName: 'Owner',
+        senderId: 99,
+        replyToMessageId: 30,
+      ),
+      for (var id = 90; id <= 100; id++)
+        _chatMessage(
+          id: id,
+          text: 'Nearby target context $id',
+          senderName: 'Alice',
+          senderId: 11,
+        ),
+    ];
+
+    final request = AiReplyRequest.fromChatMessages(
+      chatTitle: 'Busy project group',
+      currentUserName: 'Owner',
+      currentUserId: 99,
+      target: messages.last,
+      visibleMessages: messages,
+      isGroupChat: true,
+    );
+    final selectedIds = request.messages.map((message) => message.id).toSet();
+
+    expect(selectedIds, containsAll(<int>[25, 26, 27, 28, 29, 30]));
+    expect(selectedIds, contains(31), reason: 'owner resolution is preserved');
+    expect(
+      selectedIds,
+      contains(99),
+      reason: 'near-target context is preserved',
+    );
+    expect(selectedIds, isNot(contains(1)));
+  });
+
   test(
     'group reply assigns collision-free request-scoped anonymous aliases',
     () {
@@ -518,6 +664,42 @@ void main() {
     );
   });
 
+  test('structured reply stream exposes only the decoded reply field', () {
+    const full =
+        '{"internal":"The reply target is private",'
+        '"reply":"Hello \\"there\\n\\uD83D\\uDE00"}';
+    final decoder = AiReplyStructuredStreamDecoder();
+    final replyStart = full.indexOf('Hello') + 'Hello'.length;
+    final highSurrogateSplit = full.indexOf(r'\uD83D') + 4;
+
+    decoder.replace(full.substring(0, replyStart));
+    expect(decoder.reply, 'Hello');
+    decoder.replace(full.substring(0, highSurrogateSplit));
+    expect(decoder.reply, 'Hello "there\n');
+    decoder.replace(full);
+
+    expect(decoder.reply, 'Hello "there\n😀');
+    expect(decoder.reply, isNot(contains('reply target')));
+    expect(decoder.finish().text, 'Hello "there\n😀');
+  });
+
+  test('structured reply stream rejects unstructured analysis', () {
+    final decoder = AiReplyStructuredStreamDecoder()
+      ..replace('The reply target is Alice, so I should answer briefly.');
+
+    expect(decoder.reply, isEmpty);
+    expect(
+      decoder.finish,
+      throwsA(
+        isA<AiReplyException>().having(
+          (error) => error.message,
+          'message',
+          contains('send-ready reply'),
+        ),
+      ),
+    );
+  });
+
   test(
     'Apple reply keeps instructions separate from untrusted context',
     () async {
@@ -558,8 +740,19 @@ void main() {
         expect(request.headers['authorization'], 'Bearer secret');
         body = jsonDecode(request.body) as Map<String, dynamic>;
         return http.Response(
-          '{"output":[{"type":"message","content":'
-          '[{"type":"output_text","text":"Happy to help."}]}]}',
+          jsonEncode({
+            'output': [
+              {
+                'type': 'message',
+                'content': [
+                  {
+                    'type': 'output_text',
+                    'text': jsonEncode({'reply': 'Happy to help.'}),
+                  },
+                ],
+              },
+            ],
+          }),
           200,
         );
       }),
@@ -569,10 +762,14 @@ void main() {
 
     expect(result.text, 'Happy to help.');
     expect(body?['model'], 'reply-model');
-    expect(body?['instructions'], aiReplyTrustedInstructions.trim());
+    expect(body?['instructions'], aiReplyHostedInstructions.trim());
     expect(body?['input'], contains('"target_message_id":"7"'));
     expect(body?['stream'], isTrue);
     expect(body?['max_output_tokens'], 4096);
+    expect(
+      (body?['text'] as Map?)?['format'],
+      containsPair('type', 'json_schema'),
+    );
     expect(body, isNot(contains('reasoning')));
     final logEvents = logLines
         .map((line) => jsonDecode(line) as Map<String, dynamic>)
@@ -613,13 +810,13 @@ void main() {
     await client.requestReceived.future;
 
     expect(client.requestBody?['stream'], isTrue);
-    client.addChatCompletionDelta('I can');
+    client.addChatCompletionDelta('{"reply":"I can');
     await Future<void>.delayed(Duration.zero);
 
     expect(drafts.map((draft) => draft.text), contains('I can'));
     expect(completed, isFalse);
 
-    client.addChatCompletionDelta(' join at three.');
+    client.addChatCompletionDelta(' join at three."}');
     client.finish();
     final result = await completion;
 
@@ -668,7 +865,7 @@ void main() {
             {
               'choices': [
                 {
-                  'delta': {'content': 'A concise visible reply.'},
+                  'delta': {'content': '{"reply":"A concise visible reply."}'},
                   'finish_reason': null,
                 },
               ],
@@ -705,6 +902,118 @@ void main() {
       expect(drafts.join(), isNot(contains('Hidden reasoning')));
     },
   );
+
+  test('hosted Anthropic reply streams text without drafting thinking', () async {
+    final logLines = <String>[];
+    Map<String, dynamic>? requestBody;
+    final provider = HostedAiReplyProvider(
+      endpoint: Uri.parse('https://api.example/v1/messages'),
+      model: 'claude-test',
+      endpointStyle: AiEndpointStyle.anthropicMessages,
+      aiLogger: AiStdoutLogger(sink: logLines.add),
+      httpClient: MockClient((request) async {
+        requestBody = jsonDecode(request.body) as Map<String, dynamic>;
+        final events = <Map<String, Object?>>[
+          {
+            'type': 'message_start',
+            'message': {'role': 'assistant', 'content': <Object?>[]},
+          },
+          {
+            'type': 'content_block_start',
+            'index': 0,
+            'content_block': {'type': 'thinking', 'thinking': ''},
+          },
+          {
+            'type': 'content_block_delta',
+            'index': 0,
+            'delta': {
+              'type': 'thinking_delta',
+              'thinking': 'Private Anthropic reasoning.',
+            },
+          },
+          {
+            'type': 'content_block_delta',
+            'index': 0,
+            'delta': {'type': 'signature_delta', 'signature': 'signed'},
+          },
+          {'type': 'content_block_stop', 'index': 0},
+          {
+            'type': 'content_block_start',
+            'index': 1,
+            'content_block': {'type': 'text', 'text': ''},
+          },
+          {
+            'type': 'content_block_delta',
+            'index': 1,
+            'delta': {
+              'type': 'text_delta',
+              'text': '{"reply":"Anthropic visible reply."}',
+            },
+          },
+          {'type': 'content_block_stop', 'index': 1},
+          {
+            'type': 'message_delta',
+            'delta': {'stop_reason': 'end_turn'},
+          },
+          {'type': 'message_stop'},
+        ];
+        return http.Response(
+          '${events.map((event) => 'data: ${jsonEncode(event)}').join('\n\n')}\n\n',
+          200,
+          headers: {'content-type': 'text/event-stream'},
+        );
+      }),
+    );
+    addTearDown(provider.close);
+    final drafts = <String>[];
+
+    final result = await provider.generateStreaming(
+      _request(),
+      onDraft: (draft) => drafts.add(draft.text),
+    );
+
+    expect(result.text, 'Anthropic visible reply.');
+    expect(drafts.last, 'Anthropic visible reply.');
+    expect(drafts.join(), isNot(contains('Private Anthropic reasoning.')));
+    expect(requestBody?['output_config'], isNotNull);
+    expect(logLines.join(), contains('Private Anthropic reasoning.'));
+  });
+
+  test('hosted Ollama reply streams text without drafting thinking', () async {
+    final logLines = <String>[];
+    final provider = HostedAiReplyProvider(
+      endpoint: Uri.parse('http://localhost:11434/api/chat'),
+      model: 'qwen-test',
+      endpointStyle: AiEndpointStyle.ollamaChat,
+      aiLogger: AiStdoutLogger(sink: logLines.add),
+      httpClient: MockClient(
+        (_) async => http.Response(
+          '${jsonEncode({
+            'message': {'role': 'assistant', 'thinking': 'Private Ollama reasoning.', 'content': ''},
+            'done': false,
+          })}\n'
+          '${jsonEncode({
+            'message': {'role': 'assistant', 'content': '{"reply":"Ollama visible reply."}'},
+            'done': true,
+          })}\n',
+          200,
+          headers: {'content-type': 'application/x-ndjson'},
+        ),
+      ),
+    );
+    addTearDown(provider.close);
+    final drafts = <String>[];
+
+    final result = await provider.generateStreaming(
+      _request(),
+      onDraft: (draft) => drafts.add(draft.text),
+    );
+
+    expect(result.text, 'Ollama visible reply.');
+    expect(drafts.last, 'Ollama visible reply.');
+    expect(drafts.join(), isNot(contains('Private Ollama reasoning.')));
+    expect(logLines.join(), contains('Private Ollama reasoning.'));
+  });
 
   test('hosted reasoning reply reports an exhausted output budget', () async {
     final provider = HostedAiReplyProvider(
@@ -816,8 +1125,17 @@ void main() {
           );
         }
         return http.Response(
-          '{"choices":[{"message":{"role":"assistant",'
-          '"content":"Compatible reply."},"finish_reason":"stop"}]}',
+          jsonEncode({
+            'choices': [
+              {
+                'message': {
+                  'role': 'assistant',
+                  'content': jsonEncode({'reply': 'Compatible reply.'}),
+                },
+                'finish_reason': 'stop',
+              },
+            ],
+          }),
           200,
         );
       }),
@@ -848,8 +1166,17 @@ void main() {
           );
         }
         return http.Response(
-          '{"choices":[{"message":{"role":"assistant",'
-          '"content":"Compatible reply."},"finish_reason":"stop"}]}',
+          jsonEncode({
+            'choices': [
+              {
+                'message': {
+                  'role': 'assistant',
+                  'content': jsonEncode({'reply': 'Compatible reply.'}),
+                },
+                'finish_reason': 'stop',
+              },
+            ],
+          }),
           200,
         );
       }),
@@ -864,6 +1191,74 @@ void main() {
     expect(requestBodies.last, isNot(contains('thinking')));
     expect(requestBodies.last['max_tokens'], 4096);
   });
+
+  test(
+    'hosted reply reaches prompt-only JSON after opaque proxy errors',
+    () async {
+      final requestBodies = <Map<String, dynamic>>[];
+      final provider = HostedAiReplyProvider(
+        endpoint: Uri.parse('https://api.example/v1/chat/completions'),
+        model: 'deepseek-v4-flash',
+        endpointStyle: AiEndpointStyle.openAiChatCompletions,
+        httpClient: MockClient((request) async {
+          requestBodies.add(jsonDecode(request.body) as Map<String, dynamic>);
+          if (requestBodies.length < 5) {
+            return http.Response(
+              '{"error":{"message":"Upstream request failed"}}',
+              400,
+            );
+          }
+          return http.Response(
+            jsonEncode({
+              'choices': [
+                {
+                  'message': {
+                    'role': 'assistant',
+                    'content': jsonEncode({'reply': 'Compatible reply.'}),
+                  },
+                  'finish_reason': 'stop',
+                },
+              ],
+            }),
+            200,
+          );
+        }),
+      );
+      addTearDown(provider.close);
+      final request = AiReplyRequest(
+        chatTitle: 'Chat',
+        targetMessageId: 7,
+        messages: const [
+          AiReplyMessage(
+            id: 7,
+            speaker: 'Alice',
+            isCurrentUser: false,
+            text: 'Can you make the meeting?',
+          ),
+        ],
+        historyLoader:
+            ({
+              required beforeMessageId,
+              required query,
+              required limit,
+            }) async => const AiReplyChatHistoryPage(
+              messages: <ChatMessage>[],
+              hasMore: false,
+            ),
+      );
+
+      final result = await provider.generate(request);
+
+      expect(result.text, 'Compatible reply.');
+      expect(requestBodies, hasLength(5));
+      expect(requestBodies[0]['response_format'], isNotNull);
+      expect(requestBodies[1]['response_format'], {'type': 'json_object'});
+      expect(requestBodies[2], isNot(contains('tools')));
+      expect(requestBodies[3], isNot(contains('thinking')));
+      expect(requestBodies[4], isNot(contains('response_format')));
+      expect(requestBodies.every((body) => body['stream'] == true), isTrue);
+    },
+  );
 
   test(
     'hosted reply streams mislabeled SSE drafts before completion',
@@ -889,7 +1284,7 @@ void main() {
           )
           .whenComplete(() => completed = true);
       await client.requestReceived.future;
-      client.addChatCompletionDelta('Visible before EOF');
+      client.addChatCompletionDelta('{"reply":"Visible before EOF"}');
       await Future<void>.delayed(Duration.zero);
 
       expect(drafts, contains('Visible before EOF'));
@@ -929,7 +1324,7 @@ void main() {
       await client.requestReceived.future;
       client.addRawEvent({
         'type': 'response.output_text.delta',
-        'delta': 'Visible before EOF',
+        'delta': '{"reply":"Visible before EOF"}',
       });
       await Future<void>.delayed(Duration.zero);
 
@@ -944,7 +1339,10 @@ void main() {
               'type': 'message',
               'role': 'assistant',
               'content': [
-                {'type': 'output_text', 'text': 'Visible before EOF'},
+                {
+                  'type': 'output_text',
+                  'text': '{"reply":"Visible before EOF"}',
+                },
               ],
             },
           ],
@@ -959,7 +1357,7 @@ void main() {
   );
 
   test(
-    'hosted reply retains a partial draft but rejects premature Chat EOF',
+    'hosted reply removes a partial draft after premature Chat EOF',
     () async {
       final client = _ControlledAiReplyStreamingClient();
       addTearDown(client.close);
@@ -977,7 +1375,7 @@ void main() {
         onDraft: (draft) => drafts.add(draft.text),
       );
       await client.requestReceived.future;
-      client.addChatCompletionDelta('Useful but incomplete');
+      client.addChatCompletionDelta('{"reply":"Useful but incomplete');
       await Future<void>.delayed(Duration.zero);
       client.interrupt();
 
@@ -991,7 +1389,8 @@ void main() {
           ),
         ),
       );
-      expect(drafts.last, 'Useful but incomplete');
+      expect(drafts, contains('Useful but incomplete'));
+      expect(drafts.last, isEmpty);
     },
   );
 
@@ -1004,7 +1403,7 @@ void main() {
         endpointStyle: AiEndpointStyle.openAiResponses,
         httpClient: MockClient(
           (_) async => http.Response(
-            'data: ${jsonEncode({'type': 'response.output_text.delta', 'delta': 'Partial'})}\n\n',
+            'data: ${jsonEncode({'type': 'response.output_text.delta', 'delta': '{"reply":"Partial'})}\n\n',
             200,
             headers: {'content-type': 'text/event-stream'},
           ),
@@ -1020,7 +1419,8 @@ void main() {
         ),
         throwsA(isA<AiReplyException>()),
       );
-      expect(drafts.last, 'Partial');
+      expect(drafts, contains('Partial'));
+      expect(drafts.last, isEmpty);
     },
   );
 
@@ -1033,7 +1433,7 @@ void main() {
         (_) async => http.Response(
           [
             'data: {"choices":[',
-            'data: {"delta":{"content":"Framed reply"},"finish_reason":"stop"}]}',
+            'data: {"delta":{"content":"{\\"reply\\":\\"Framed reply\\"}"},"finish_reason":"stop"}]}',
             '',
           ].join('\n'),
           200,
@@ -1058,7 +1458,7 @@ void main() {
       endpointStyle: AiEndpointStyle.openAiResponses,
       httpClient: MockClient(
         (_) async => http.Response(
-          'data: ${jsonEncode({'type': 'response.output_text.delta', 'delta': 'Partial'})}\n\n',
+          'data: ${jsonEncode({'type': 'response.output_text.delta', 'delta': '{"reply":"Partial'})}\n\n',
           200,
           headers: {'content-type': 'application/json'},
         ),
@@ -1066,8 +1466,12 @@ void main() {
     );
     addTearDown(provider.close);
 
+    final drafts = <String>[];
     await expectLater(
-      provider.generateStreaming(_request(), onDraft: (_) {}),
+      provider.generateStreaming(
+        _request(),
+        onDraft: (draft) => drafts.add(draft.text),
+      ),
       throwsA(
         isA<AiReplyException>().having(
           (error) => error.message,
@@ -1076,6 +1480,8 @@ void main() {
         ),
       ),
     );
+    expect(drafts, contains('Partial'));
+    expect(drafts.last, isEmpty);
   });
 
   test('hosted reply accepts a completed mislabeled SSE frame', () async {
@@ -1088,7 +1494,7 @@ void main() {
           'data: ${jsonEncode({
             'choices': [
               {
-                'delta': {'content': 'Complete fallback'},
+                'delta': {'content': '{"reply":"Complete fallback"}'},
                 'finish_reason': 'stop',
               },
             ],
@@ -1171,9 +1577,9 @@ void main() {
         }
         return http.Response(
           [
-            'data: ${jsonEncode({'type': 'response.output_text.delta', 'delta': '3 PM '})}',
+            'data: ${jsonEncode({'type': 'response.output_text.delta', 'delta': '{"reply":"3 PM '})}',
             '',
-            'data: ${jsonEncode({'type': 'response.output_text.delta', 'delta': 'works.'})}',
+            'data: ${jsonEncode({'type': 'response.output_text.delta', 'delta': 'works."}'})}',
             '',
             'data: ${jsonEncode({
               'type': 'response.completed',
@@ -1183,7 +1589,7 @@ void main() {
                     'type': 'message',
                     'role': 'assistant',
                     'content': [
-                      {'type': 'output_text', 'text': '3 PM works.'},
+                      {'type': 'output_text', 'text': '{"reply":"3 PM works."}'},
                     ],
                   },
                 ],
@@ -1236,8 +1642,19 @@ void main() {
           );
         }
         return http.Response(
-          '{"output":[{"type":"message","content":'
-          '[{"type":"output_text","text":"Fallback reply"}]}]}',
+          jsonEncode({
+            'output': [
+              {
+                'type': 'message',
+                'content': [
+                  {
+                    'type': 'output_text',
+                    'text': jsonEncode({'reply': 'Fallback reply'}),
+                  },
+                ],
+              },
+            ],
+          }),
           200,
         );
       }),
@@ -1358,8 +1775,19 @@ void main() {
             );
           }
           return http.Response(
-            '{"output":[{"type":"message","content":'
-            '[{"type":"output_text","text":"3 PM tomorrow works."}]}]}',
+            jsonEncode({
+              'output': [
+                {
+                  'type': 'message',
+                  'content': [
+                    {
+                      'type': 'output_text',
+                      'text': jsonEncode({'reply': '3 PM tomorrow works.'}),
+                    },
+                  ],
+                },
+              ],
+            }),
             200,
           );
         }),
@@ -1462,8 +1890,19 @@ void main() {
             );
           }
           return http.Response(
-            '{"output":[{"type":"message","content":'
-            '[{"type":"output_text","text":"Sakura Hall works."}]}]}',
+            jsonEncode({
+              'output': [
+                {
+                  'type': 'message',
+                  'content': [
+                    {
+                      'type': 'output_text',
+                      'text': jsonEncode({'reply': 'Sakura Hall works.'}),
+                    },
+                  ],
+                },
+              ],
+            }),
             200,
           );
         }),
@@ -1572,6 +2011,7 @@ ChatMessage _chatMessage({
   int? replyToMessageId,
   int? senderId,
   bool senderIsChat = false,
+  List<MessageTextEntity> textEntities = const [],
 }) => ChatMessage(
   id: id,
   isOutgoing: isOutgoing,
@@ -1585,6 +2025,7 @@ ChatMessage _chatMessage({
   replyToMessageId: replyToMessageId,
   senderId: senderId,
   senderIsChat: senderIsChat,
+  textEntities: textEntities,
 );
 
 class _ControlledAiReplyStreamingClient extends http.BaseClient {

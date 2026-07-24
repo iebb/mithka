@@ -224,6 +224,7 @@ class ChatViewModel extends ChangeNotifier {
   int? peerSupergroupId;
   String meName = AppStrings.t(AppStringKeys.chatMeLabel);
   int? meId;
+  Set<String> meUsernames = const <String>{};
   TdFileRef? mePhoto;
   String draft = '';
   String _draftFormattedText = '';
@@ -535,6 +536,17 @@ class ChatViewModel extends ChangeNotifier {
       meId = me.int64('id');
       final name = TDParse.userName(me);
       if (name.isNotEmpty) meName = name;
+      final usernames = me.obj('usernames');
+      final active = usernames?['active_usernames'];
+      final editable = usernames?.str('editable_username');
+      meUsernames = Set.unmodifiable({
+        if (active is List)
+          for (final username in active.whereType<String>())
+            if (username.trim().isNotEmpty)
+              username.trim().replaceFirst('@', '').toLowerCase(),
+        if (editable?.trim().isNotEmpty == true)
+          editable!.trim().replaceFirst('@', '').toLowerCase(),
+      });
       mePhoto = TDParse.smallPhoto(me.obj('profile_photo'));
       notifyListeners();
     } catch (_) {}

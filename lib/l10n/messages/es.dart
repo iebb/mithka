@@ -163,6 +163,13 @@ const esMessages = <String, String>{
   'aiReplyGuidanceHint':
       "Por ejemplo: mostrarte de acuerdo con calidez y preguntar a qué hora",
   'aiReplyMode': "Responder",
+  'aiReplyProcessChecking':
+      "Comprobando el contexto anterior del chat para encontrar detalles relevantes.",
+  'aiReplyProcessReading':
+      "Revisando los mensajes recientes y el mensaje de destino.",
+  'aiReplyProcessTitle': "Proceso de respuesta con IA",
+  'aiReplyProcessWriting':
+      "Escribiendo una respuesta lista para enviar con tu estilo.",
   'aiReplyPrivacyNote':
       "El fragmento visible de la conversación se envía a {value1}. El resultado permanece en tu borrador.",
   'aiReplyReplyingTo': "En respuesta a {value1}",

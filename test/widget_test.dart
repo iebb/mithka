@@ -1009,6 +1009,7 @@ void main() {
         requestCount++;
         return result.future;
       });
+      vm.meUsernames = const {'nekoko14'};
 
       final action = find.byKey(const ValueKey('composerAiReplyButton'));
       final inputBox = find.byKey(const ValueKey('composerTextInputBox'));
@@ -1053,6 +1054,7 @@ void main() {
       expect(vm.draft, 'I can join at three.');
       expect(vm.replyTo, isNull);
       expect(capturedRequest?.targetMessageId, target.id);
+      expect(capturedRequest?.currentUserUsernames, contains('nekoko14'));
       expect(requestCount, 1);
       expect(action, findsNothing);
       expect(find.byKey(const ValueKey('composerSendButton')), findsOneWidget);
@@ -1386,7 +1388,11 @@ void main() {
           tester,
           null,
           streamingGenerator:
-              (request, {required AiReplyDraftCallback onDraft}) {
+              (
+                request, {
+                required AiReplyDraftCallback onDraft,
+                AiReplyProgressCallback? onProgress,
+              }) {
                 emitDraft = onDraft;
                 return result.future;
               },
@@ -1446,6 +1452,85 @@ void main() {
       },
     );
 
+    testWidgets(
+      'keeps generic AI phases collapsed above the send-ready draft',
+      (tester) async {
+        late AiReplyDraftCallback emitDraft;
+        late AiReplyProgressCallback emitProgress;
+        final result = Completer<TelegramAiFormattedText>();
+        var sentCount = 0;
+        final (vm, _) = await pumpAiReplyComposer(
+          tester,
+          null,
+          streamingGenerator:
+              (
+                request, {
+                required AiReplyDraftCallback onDraft,
+                AiReplyProgressCallback? onProgress,
+              }) {
+                emitDraft = onDraft;
+                emitProgress = onProgress!;
+                return result.future;
+              },
+          onMessageSent: () => sentCount++,
+        );
+
+        await tester.tap(find.byKey(const ValueKey('composerAiReplyButton')));
+        await tester.pump();
+
+        final process = find.byKey(const ValueKey('composerAiReplyProcess'));
+        final details = find.byKey(
+          const ValueKey('composerAiReplyProcessDetails'),
+        );
+        expect(process, findsOneWidget);
+        expect(details, findsNothing);
+        expect(vm.draft, isEmpty);
+
+        emitProgress(AiReplyProgressPhase.checkingEarlierContext);
+        await tester.pump();
+        expect(vm.draft, isEmpty);
+        await tester.tap(
+          find.byKey(const ValueKey('composerAiReplyProcessToggle')),
+        );
+        await tester.pump(const Duration(milliseconds: 220));
+
+        expect(details, findsOneWidget);
+        expect(
+          find.text('Reviewing recent messages and the reply target.'),
+          findsOneWidget,
+        );
+        expect(
+          find.text('Checking earlier chat context for relevant details.'),
+          findsOneWidget,
+        );
+        expect(
+          tester.widget<TextField>(find.byType(TextField)).controller!.text,
+          isEmpty,
+        );
+
+        emitProgress(AiReplyProgressPhase.writingReply);
+        emitDraft(const TelegramAiFormattedText(text: 'Direct reply'));
+        result.complete(const TelegramAiFormattedText(text: 'Direct reply'));
+        await tester.pumpAndSettle();
+
+        expect(
+          tester.widget<TextField>(find.byType(TextField)).controller!.text,
+          'Direct reply',
+        );
+        expect(
+          find.text('Writing a send-ready response in your voice.'),
+          findsOneWidget,
+        );
+        expect(process, findsOneWidget);
+        expect(sentCount, 0);
+
+        await tester.enterText(find.byType(TextField), 'My edit');
+        await tester.pumpAndSettle();
+        expect(process, findsNothing);
+        expect(sentCount, 0);
+      },
+    );
+
     testWidgets('typing after a streamed draft rejects later AI chunks', (
       tester,
     ) async {
@@ -1454,10 +1539,15 @@ void main() {
       await pumpAiReplyComposer(
         tester,
         null,
-        streamingGenerator: (request, {required AiReplyDraftCallback onDraft}) {
-          emitDraft = onDraft;
-          return result.future;
-        },
+        streamingGenerator:
+            (
+              request, {
+              required AiReplyDraftCallback onDraft,
+              AiReplyProgressCallback? onProgress,
+            }) {
+              emitDraft = onDraft;
+              return result.future;
+            },
       );
 
       await tester.tap(find.byKey(const ValueKey('composerAiReplyButton')));
@@ -1491,10 +1581,15 @@ void main() {
       await pumpAiReplyComposer(
         tester,
         null,
-        streamingGenerator: (request, {required AiReplyDraftCallback onDraft}) {
-          emitDraft = onDraft;
-          return result.future;
-        },
+        streamingGenerator:
+            (
+              request, {
+              required AiReplyDraftCallback onDraft,
+              AiReplyProgressCallback? onProgress,
+            }) {
+              emitDraft = onDraft;
+              return result.future;
+            },
       );
 
       await tester.tap(find.byKey(const ValueKey('composerAiReplyButton')));
@@ -1821,7 +1916,11 @@ void main() {
           null,
           isGroup: true,
           streamingGenerator:
-              (request, {required AiReplyDraftCallback onDraft}) {
+              (
+                request, {
+                required AiReplyDraftCallback onDraft,
+                AiReplyProgressCallback? onProgress,
+              }) {
                 emitDraft = onDraft;
                 return result.future;
               },
@@ -1885,10 +1984,15 @@ void main() {
         tester,
         null,
         leadingMessages: [contextMessage],
-        streamingGenerator: (request, {required AiReplyDraftCallback onDraft}) {
-          emitDraft = onDraft;
-          return result.future;
-        },
+        streamingGenerator:
+            (
+              request, {
+              required AiReplyDraftCallback onDraft,
+              AiReplyProgressCallback? onProgress,
+            }) {
+              emitDraft = onDraft;
+              return result.future;
+            },
       );
 
       await tester.tap(find.byKey(const ValueKey('composerAiReplyButton')));

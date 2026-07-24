@@ -228,6 +228,11 @@ const enMessages = <String, String>{
   'aiReplyGuidance': "Guidance (optional)",
   'aiReplyGuidanceHint': "For example: agree warmly and ask what time",
   'aiReplyMode': "Reply",
+  'aiReplyProcessChecking':
+      "Checking earlier chat context for relevant details.",
+  'aiReplyProcessReading': "Reviewing recent messages and the reply target.",
+  'aiReplyProcessTitle': "AI reply process",
+  'aiReplyProcessWriting': "Writing a send-ready response in your voice.",
   'aiReplyPrivacyNote':
       "The visible conversation excerpt is sent to {value1}. The result stays in your draft.",
   'aiReplyReplyingTo': "Replying to {value1}",
