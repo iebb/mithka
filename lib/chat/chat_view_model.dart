@@ -192,6 +192,7 @@ class ChatViewModel extends ChangeNotifier {
   }) : _accountClientId = TdClient.shared.activeClientId,
        _accountSlot = TdClient.shared.activeSlot,
        peerTitle = title {
+    _historyAnchorMessageId = initialMessageId ?? sessionAnchorMessageId;
     if (sessionMessages != null && sessionMessages.isNotEmpty) {
       _allMessages = List<ChatMessage>.from(sessionMessages);
       messages = List<ChatMessage>.from(sessionMessages);
@@ -209,6 +210,8 @@ class ChatViewModel extends ChangeNotifier {
   final int? initialMessageId;
   final int? sessionAnchorMessageId;
   final bool markReadOnOpen;
+  int? _historyAnchorMessageId;
+  int? get historyAnchorMessageId => _historyAnchorMessageId;
 
   List<ChatMessage> messages = [];
   List<ChatMessage> _allMessages = [];
@@ -379,11 +382,8 @@ class ChatViewModel extends ChangeNotifier {
   bool get canSendWhenOnline => !isGroup && !peerIsBot;
   List<AvailableMessageEffect> availableMessageEffects = const [];
   MessageSendConfiguration? _nextSendConfiguration;
-  String get inputPlaceholder => messageAutoDeleteTime > 0
-      ? AppStrings.t(AppStringKeys.chatAutoDeleteCountdown, {
-          'value1': TDParse.formatDuration(messageAutoDeleteTime),
-        })
-      : AppStrings.t(AppStringKeys.chatMessageInputPlaceholder);
+  String get inputPlaceholder =>
+      AppStrings.t(AppStringKeys.chatMessageInputPlaceholder);
 
   final Map<int, _SenderInfo> _senderCache = {};
   final Set<int> _resolvingSenders = {};
@@ -2640,6 +2640,7 @@ class ChatViewModel extends ChangeNotifier {
       ++_historyWindowGeneration;
       ++_historyWindowRevision;
       anchoredHistory = false;
+      _historyAnchorMessageId = null;
       _pendingScrollToId = null;
       _hasOlderHistory = fetched.isNotEmpty;
       _historyReachesLatest = true;
@@ -3370,6 +3371,7 @@ class ChatViewModel extends ChangeNotifier {
 
   Future<void> _loadInitialLatestHistory() async {
     anchoredHistory = false;
+    _historyAnchorMessageId = null;
     final localLoaded = await _fetchHistory(0, 0, 40, onlyLocal: true);
     if (!localLoaded) {
       await _fetchHistory(0, 0, 40);
@@ -3448,6 +3450,7 @@ class ChatViewModel extends ChangeNotifier {
     }
     _hasOlderHistory = true;
     anchoredHistory = true;
+    _historyAnchorMessageId = messageId;
     if (scrollToTarget) _pendingScrollToId = messageId;
     _mergeHistoryWindow(
       batch,
@@ -3970,6 +3973,7 @@ class ChatViewModel extends ChangeNotifier {
         messages = [];
         _hasOlderHistory = false;
         anchoredHistory = false;
+        _historyAnchorMessageId = null;
         _historyReachesLatest = true;
         _knownLatestMessageId = 0;
         _pendingScrollToId = null;

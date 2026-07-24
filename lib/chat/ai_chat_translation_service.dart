@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../settings/ai_endpoint_style.dart';
 import '../settings/ai_settings_controller.dart';
+import '../settings/ai_stdout_logger.dart';
 import '../settings/ai_translation_prompt.dart';
 import '../settings/apple_pcc_api.dart';
 import '../settings/translation_api.dart';
@@ -19,10 +20,12 @@ class AiChatTranslationService {
     String instructions = defaultAiTranslationPrompt,
     ApplePccApi? appleApi,
     http.Client? httpClient,
+    AiStdoutLogger? aiLogger,
     this.requestTimeout = const Duration(seconds: 60),
   }) : instructions = buildAiTranslationInstructions(instructions),
        _appleApi = appleApi ?? ApplePccApi(),
        _httpClient = httpClient ?? http.Client(),
+       _aiLogger = aiLogger ?? aiStdoutLogger,
        _ownsHttpClient = httpClient == null;
 
   factory AiChatTranslationService.fromSettings(
@@ -51,6 +54,7 @@ class AiChatTranslationService {
   final Duration requestTimeout;
   final ApplePccApi _appleApi;
   final http.Client _httpClient;
+  final AiStdoutLogger _aiLogger;
   final bool _ownsHttpClient;
 
   Future<String> translate({
@@ -150,9 +154,55 @@ class AiChatTranslationService {
     Uri uri,
     Map<String, String> headers,
     Map<String, Object?> body,
-  ) => _httpClient
-      .post(uri, headers: headers, body: jsonEncode(body))
-      .timeout(requestTimeout);
+  ) async {
+    final provider = '${endpointStyle.storageValue}/$model';
+    const operation = 'translation';
+    final correlationId = _aiLogger.newCorrelationId(provider);
+    final payload = <String, Object?>{
+      'method': 'POST',
+      'endpoint': {
+        'scheme': uri.scheme,
+        'host': uri.host,
+        if (uri.hasPort) 'port': uri.port,
+        'path': uri.path,
+      },
+      'body': body,
+    };
+    _aiLogger.request(
+      correlationId: correlationId,
+      provider: provider,
+      operation: operation,
+      payload: payload,
+      secrets: [apiKey],
+    );
+    try {
+      final response = await _httpClient
+          .post(uri, headers: headers, body: jsonEncode(body))
+          .timeout(requestTimeout);
+      _aiLogger.response(
+        correlationId: correlationId,
+        provider: provider,
+        operation: operation,
+        result: {
+          'status_code': response.statusCode,
+          'body': utf8.decode(response.bodyBytes, allowMalformed: true),
+        },
+        secrets: [apiKey],
+      );
+      return response;
+    } catch (error, stackTrace) {
+      _aiLogger.error(
+        correlationId: correlationId,
+        provider: provider,
+        operation: operation,
+        error: error,
+        payload: payload,
+        stackTrace: stackTrace,
+        secrets: [apiKey],
+      );
+      rethrow;
+    }
+  }
 
   void dispose() {
     if (_ownsHttpClient) _httpClient.close();

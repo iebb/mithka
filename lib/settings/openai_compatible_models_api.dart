@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'ai_endpoint_style.dart';
+import 'ai_stdout_logger.dart';
 
 class OpenAiCompatibleModelInfo {
   const OpenAiCompatibleModelInfo({required this.id, this.contextWindowTokens});
@@ -84,11 +85,14 @@ class OpenAiCompatibleModelsException implements Exception {
 class OpenAiCompatibleModelsApi {
   OpenAiCompatibleModelsApi({
     http.Client? httpClient,
+    AiStdoutLogger? aiLogger,
     this.requestTimeout = const Duration(seconds: 20),
   }) : _httpClient = httpClient ?? http.Client(),
+       _aiLogger = aiLogger ?? aiStdoutLogger,
        _ownsHttpClient = httpClient == null;
 
   final http.Client _httpClient;
+  final AiStdoutLogger _aiLogger;
   final bool _ownsHttpClient;
   final Duration requestTimeout;
 
@@ -219,21 +223,63 @@ class OpenAiCompatibleModelsApi {
     if (normalizedModel.isEmpty || normalizedPrompt.isEmpty) {
       throw const FormatException('A model and test prompt are required.');
     }
-    final response = await _httpClient
-        .post(
-          endpointStyle.requestUriFor(chatCompletionsUri),
-          headers: endpointStyle.requestHeaders(apiKey),
-          body: jsonEncode(
-            endpointStyle.requestBody(
-              model: normalizedModel,
-              instructions: '',
-              input: normalizedPrompt,
-              stream: false,
-            ),
-          ),
-        )
-        .timeout(requestTimeout);
+    final uri = endpointStyle.requestUriFor(chatCompletionsUri);
+    final requestBody = endpointStyle.requestBody(
+      model: normalizedModel,
+      instructions: '',
+      input: normalizedPrompt,
+      stream: false,
+    );
+    final provider = '${endpointStyle.storageValue}/$normalizedModel';
+    const operation = 'model_test';
+    final correlationId = _aiLogger.newCorrelationId(provider);
+    final requestPayload = <String, Object?>{
+      'method': 'POST',
+      'endpoint': {
+        'scheme': uri.scheme,
+        'host': uri.host,
+        if (uri.hasPort) 'port': uri.port,
+        'path': uri.path,
+      },
+      'body': requestBody,
+    };
+    final secrets = <String>[?apiKey];
+    _aiLogger.request(
+      correlationId: correlationId,
+      provider: provider,
+      operation: operation,
+      payload: requestPayload,
+      secrets: secrets,
+    );
+    late final http.Response response;
+    try {
+      response = await _httpClient
+          .post(
+            uri,
+            headers: endpointStyle.requestHeaders(apiKey),
+            body: jsonEncode(requestBody),
+          )
+          .timeout(requestTimeout);
+    } catch (error, stackTrace) {
+      _aiLogger.error(
+        correlationId: correlationId,
+        provider: provider,
+        operation: operation,
+        error: error,
+        payload: requestPayload,
+        stackTrace: stackTrace,
+        secrets: secrets,
+      );
+      rethrow;
+    }
     final body = utf8.decode(response.bodyBytes, allowMalformed: true);
+    _aiLogger.response(
+      correlationId: correlationId,
+      provider: provider,
+      operation: operation,
+      result: {'status_code': response.statusCode, 'body': body},
+      secrets: secrets,
+    );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw OpenAiCompatibleModelsException(
         _errorMessage(body),

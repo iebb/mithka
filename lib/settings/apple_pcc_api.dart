@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import 'ai_stdout_logger.dart';
+
 typedef ApplePccMethodInvoker =
     Future<Object?> Function(String method, Object? arguments);
 
@@ -186,12 +188,15 @@ class ApplePccApi {
     ApplePccMethodInvoker? invokeMethod,
     this.timeout = const Duration(seconds: 5),
     this.summaryTimeout = const Duration(minutes: 2),
-  }) : _invokeMethod = invokeMethod ?? _defaultInvokeMethod;
+    AiStdoutLogger? aiLogger,
+  }) : _invokeMethod = invokeMethod ?? _defaultInvokeMethod,
+       _aiLogger = aiLogger ?? aiStdoutLogger;
 
   static const channelName = 'mithka/apple_ai';
   static const _channel = MethodChannel(channelName);
 
   final ApplePccMethodInvoker _invokeMethod;
+  final AiStdoutLogger _aiLogger;
   final Duration timeout;
   final Duration summaryTimeout;
   static var _requestSerial = 0;
@@ -244,58 +249,84 @@ class ApplePccApi {
       'reasoningLevel': reasoningLevel.name,
       'maximumResponseTokens': ?maximumResponseTokens,
     };
-    final value = await _invokeMethod('summarize', arguments).timeout(
-      summaryTimeout,
-      onTimeout: () {
-        unawaited(_cancelSummary(requestId));
+    final provider = model.bridgeValue;
+    const operation = 'summarize';
+    _aiLogger.request(
+      correlationId: requestId,
+      provider: provider,
+      operation: operation,
+      payload: arguments,
+    );
+    try {
+      final value = await _invokeMethod(operation, arguments).timeout(
+        summaryTimeout,
+        onTimeout: () {
+          unawaited(_cancelSummary(requestId));
+          throw PlatformException(
+            code: model == AppleAiModel.privateCloudCompute
+                ? 'pcc_timeout'
+                : 'on_device_timeout',
+            message: model == AppleAiModel.privateCloudCompute
+                ? 'Private Cloud Compute summarization timed out.'
+                : 'The on-device model summarization timed out.',
+            details: {
+              'reason': 'request_timeout',
+              'model_mode': model.bridgeValue,
+            },
+          );
+        },
+      );
+      _aiLogger.response(
+        correlationId: requestId,
+        provider: provider,
+        operation: operation,
+        result: value,
+      );
+      if (value is! Map) {
         throw PlatformException(
-          code: model == AppleAiModel.privateCloudCompute
-              ? 'pcc_timeout'
-              : 'on_device_timeout',
-          message: model == AppleAiModel.privateCloudCompute
-              ? 'Private Cloud Compute summarization timed out.'
-              : 'The on-device model summarization timed out.',
-          details: {
-            'reason': 'request_timeout',
-            'model_mode': model.bridgeValue,
-          },
+          code: 'pcc_invalid_response',
+          message: 'Private Cloud Compute returned an invalid response.',
         );
-      },
-    );
-    if (value is! Map) {
-      throw PlatformException(
-        code: 'pcc_invalid_response',
-        message: 'Private Cloud Compute returned an invalid response.',
+      }
+      final values = <String, Object?>{
+        for (final entry in value.entries) '${entry.key}': entry.value,
+      };
+      final text = values['text']?.toString().trim() ?? '';
+      if (text.isEmpty) {
+        throw PlatformException(
+          code: 'pcc_invalid_response',
+          message: 'Private Cloud Compute returned an empty summary.',
+        );
+      }
+      return ApplePccSummaryResult(
+        text: text,
+        provider: values['provider']?.toString() ?? 'apple_pcc',
+        contextSize: ApplePccCapabilities._int(values['contextSize']),
+        inputTokenCount: ApplePccCapabilities._int(values['inputTokenCount']),
+        initialPromptTokenCount: ApplePccCapabilities._int(
+          values['initialPromptTokenCount'],
+        ),
+        userPromptTokenCount: ApplePccCapabilities._int(
+          values['userPromptTokenCount'],
+        ),
+        frameworkOverheadTokenCount: ApplePccCapabilities._int(
+          values['frameworkOverheadTokenCount'],
+        ),
+        responseTokenCount: ApplePccCapabilities._int(
+          values['responseTokenCount'],
+        ),
       );
-    }
-    final values = <String, Object?>{
-      for (final entry in value.entries) '${entry.key}': entry.value,
-    };
-    final text = values['text']?.toString().trim() ?? '';
-    if (text.isEmpty) {
-      throw PlatformException(
-        code: 'pcc_invalid_response',
-        message: 'Private Cloud Compute returned an empty summary.',
+    } catch (error, stackTrace) {
+      _aiLogger.error(
+        correlationId: requestId,
+        provider: provider,
+        operation: operation,
+        error: error,
+        payload: arguments,
+        stackTrace: stackTrace,
       );
+      rethrow;
     }
-    return ApplePccSummaryResult(
-      text: text,
-      provider: values['provider']?.toString() ?? 'apple_pcc',
-      contextSize: ApplePccCapabilities._int(values['contextSize']),
-      inputTokenCount: ApplePccCapabilities._int(values['inputTokenCount']),
-      initialPromptTokenCount: ApplePccCapabilities._int(
-        values['initialPromptTokenCount'],
-      ),
-      userPromptTokenCount: ApplePccCapabilities._int(
-        values['userPromptTokenCount'],
-      ),
-      frameworkOverheadTokenCount: ApplePccCapabilities._int(
-        values['frameworkOverheadTokenCount'],
-      ),
-      responseTokenCount: ApplePccCapabilities._int(
-        values['responseTokenCount'],
-      ),
-    );
   }
 
   static Future<Object?> _defaultInvokeMethod(

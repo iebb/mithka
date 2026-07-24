@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../settings/ai_stdout_logger.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -198,8 +199,12 @@ bool _tdlibVersionAtLeast(String value, int major, int minor, int patch) {
 }
 
 class TelegramAiService extends ChangeNotifier {
-  TelegramAiService({TdClient? client, this.queryOverride})
-    : _client = client ?? TdClient.shared {
+  TelegramAiService({
+    TdClient? client,
+    this.queryOverride,
+    AiStdoutLogger? aiLogger,
+  }) : _client = client ?? TdClient.shared,
+       _aiLogger = aiLogger ?? aiStdoutLogger {
     _applyStylesUpdate(_client.latestTextCompositionStylesUpdate);
     _subscription = _client.subscribe().listen((update) {
       if (update.type == 'updateTextCompositionStyles') {
@@ -209,6 +214,7 @@ class TelegramAiService extends ChangeNotifier {
   }
 
   final TdClient _client;
+  final AiStdoutLogger _aiLogger;
   @visibleForTesting
   final TelegramAiQuery? queryOverride;
   StreamSubscription<Map<String, dynamic>>? _subscription;
@@ -453,11 +459,36 @@ class TelegramAiService extends ChangeNotifier {
   }
 
   Future<Map<String, dynamic>> _queryAi(Map<String, dynamic> request) async {
+    const provider = 'telegram_cocoon';
+    final operation = request['@type']?.toString() ?? 'unknown';
+    final correlationId = _aiLogger.newCorrelationId(provider);
+    _aiLogger.request(
+      correlationId: correlationId,
+      provider: provider,
+      operation: operation,
+      payload: request,
+    );
     try {
-      return await _queryTd(request);
-    } on TdError catch (error) {
-      if (error.message.contains('AICOMPOSE_FLOOD_PREMIUM') ||
-          error.message.contains('TONES_SAVED_TOO_MANY')) {
+      final response = await _queryTd(request);
+      _aiLogger.response(
+        correlationId: correlationId,
+        provider: provider,
+        operation: operation,
+        result: response,
+      );
+      return response;
+    } catch (error, stackTrace) {
+      _aiLogger.error(
+        correlationId: correlationId,
+        provider: provider,
+        operation: operation,
+        error: error,
+        payload: request,
+        stackTrace: stackTrace,
+      );
+      if (error is TdError &&
+          (error.message.contains('AICOMPOSE_FLOOD_PREMIUM') ||
+              error.message.contains('TONES_SAVED_TOO_MANY'))) {
         throw const TelegramAiPremiumRequired();
       }
       rethrow;

@@ -1152,14 +1152,17 @@ class _ChatInputBarState extends State<ChatInputBar> {
     _focus.requestFocus();
   }
 
+  bool _isAiReplyTargetEligible(ChatMessage target) {
+    return !vm.isSecretChat &&
+        !vm.hasProtectedContent &&
+        !target.isService &&
+        !target.isContentRestricted &&
+        !target.blockedByUser &&
+        target.text.trim().isNotEmpty;
+  }
+
   bool _canOfferAiReply(ChatMessage target, AiSettingsController? settings) {
-    if (settings?.initialized != true ||
-        vm.isSecretChat ||
-        vm.hasProtectedContent ||
-        target.isService ||
-        target.isContentRestricted ||
-        target.blockedByUser ||
-        target.text.trim().isEmpty) {
+    if (settings?.initialized != true || !_isAiReplyTargetEligible(target)) {
       return false;
     }
     return switch (settings!.replyModelCandidate.kind) {
@@ -1174,16 +1177,34 @@ class _ChatInputBarState extends State<ChatInputBar> {
   }
 
   ChatMessage? _contextualAiReplyTarget() {
-    if (vm.anchoredHistory) return null;
+    final anchorId = vm.anchoredHistory ? vm.historyAnchorMessageId : null;
+    if (anchorId != null) {
+      final anchor = vm.messages
+          .where((message) => message.id == anchorId)
+          .firstOrNull;
+      if (anchor != null) {
+        final safeAnchor =
+            anchor.id > 0 &&
+            !anchor.isService &&
+            !anchor.isContentRestricted &&
+            !anchor.blockedByUser &&
+            anchor.text.trim().isNotEmpty;
+        if (safeAnchor && (!anchor.isOutgoing || vm.isGroup)) return anchor;
+        if (!vm.isGroup) return null;
+      }
+    }
+    ChatMessage? groupFallback;
     for (final message in vm.messages.reversed) {
       if (message.isService) continue;
-      final eligible =
+      final safeText =
           message.id > 0 &&
-          !message.isOutgoing &&
           !message.isContentRestricted &&
           !message.blockedByUser &&
           message.text.trim().isNotEmpty;
-      if (eligible) return message;
+      if (safeText) {
+        groupFallback ??= message;
+        if (!message.isOutgoing) return message;
+      }
       // In a busy group, keep looking for the newest participant message even
       // if the account owner or an ineligible message was posted afterwards.
       // Private chats retain the stronger "already answered" behavior.
@@ -1191,7 +1212,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
         return null;
       }
     }
-    return null;
+    // Group and channel composers also support drafting the next message when
+    // the visible context only contains posts sent by the account owner or the
+    // currently selected sender identity.
+    return groupFallback;
   }
 
   ChatMessage? _currentAiReplyTarget() =>
@@ -2960,7 +2984,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
     final showAiReply =
         (!hasText || aiReplyWorking) &&
         replyTarget != null &&
-        _canOfferAiReply(replyTarget, aiSettings);
+        _isAiReplyTargetEligible(replyTarget);
     final sender = vm.selectedMessageSender;
     final botMenu = vm.botMenu;
     final menuWebApp = botMenu?.isWebApp == true ? botMenu : null;
@@ -3014,6 +3038,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
                 children: [
                   if (vm.canChooseMessageSender && sender != null) ...[
                     GestureDetector(
+                      key: const ValueKey('composerSenderPicker'),
                       behavior: HitTestBehavior.opaque,
                       onTap: _showSenderPicker,
                       child: Row(
@@ -3136,7 +3161,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
                                 );
                               },
                           decoration: InputDecoration(
-                            hintText: vm.inputPlaceholder,
+                            hintText: AppStringKeys.chatMessageInputPlaceholder
+                                .l10n(context),
                             border: InputBorder.none,
                             isCollapsed: true,
                           ),
@@ -3168,6 +3194,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
                         ),
                       ),
                     ),
+                  if (!hasText && vm.messageAutoDeleteTime > 0) ...[
+                    const SizedBox(width: 4),
+                    _autoDeleteInputIndicator(),
+                  ],
                   if (showAiReply) ...[
                     const SizedBox(width: 4),
                     _aiReplyInputButton(replyTarget),
@@ -3267,6 +3297,33 @@ class _ChatInputBarState extends State<ChatInputBar> {
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _autoDeleteInputIndicator() {
+    final label = AppLocalizations.of(context).t(
+      AppStringKeys.chatAutoDeleteCountdown,
+      {'value1': TDParse.formatDuration(vm.messageAutoDeleteTime)},
+    );
+    return Semantics(
+      key: const ValueKey('composerAutoDeleteIndicator'),
+      button: true,
+      label: label,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => showToast(context, label),
+        child: SizedBox(
+          width: 28,
+          height: 28,
+          child: Center(
+            child: AppIcon(
+              HeroAppIcons.stopwatch,
+              size: 18,
+              color: context.colors.textTertiary,
+            ),
+          ),
+        ),
       ),
     );
   }

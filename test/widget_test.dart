@@ -101,6 +101,7 @@ class _FocusTestChatViewModel extends ChatViewModel {
   _FocusTestChatViewModel({
     super.title = 'Test',
     super.sessionMessages = const [],
+    super.sessionAnchorMessageId,
   }) : super(chatId: 1, markReadOnOpen: false);
 
   @override
@@ -842,12 +843,17 @@ void main() {
       AiReplyStreamingGenerator? streamingGenerator,
       AiReplyChatHistoryLoader? historyLoader,
       bool includeReplyKeyboard = false,
+      bool includeSenderOptions = false,
       bool useExplicitReplyTarget = false,
       bool includeLatestOutgoingMessage = false,
       bool anchoredHistory = false,
       bool isGroup = false,
       String? aiReplyPrompt,
+      int messageAutoDeleteTime = 0,
+      bool targetIsOutgoing = false,
+      bool? telegramReplySupported = true,
       List<ChatMessage> leadingMessages = const [],
+      List<ChatMessage> trailingMessages = const [],
       int targetId = 7,
     }) async {
       SharedPreferences.setMockInitialValues({});
@@ -873,7 +879,7 @@ void main() {
 
       final target = ChatMessage(
         id: targetId,
-        isOutgoing: false,
+        isOutgoing: targetIsOutgoing,
         text: 'Can you join at three?',
         date: 1,
         senderName: 'Alice',
@@ -896,6 +902,7 @@ void main() {
               sessionMessages: [
                 ...leadingMessages,
                 target,
+                ...trailingMessages,
                 if (includeLatestOutgoingMessage)
                   ChatMessage(
                     id: targetId + 1,
@@ -905,21 +912,40 @@ void main() {
                     contentType: 'messageText',
                   ),
               ],
+              sessionAnchorMessageId: anchoredHistory ? targetId : null,
             )
-            ..aiCapabilities = const TelegramAiCapabilities(
-              tdlibVersion: '1.8.66',
-              compositionSupported: true,
-              richCompositionSupported: true,
-              replySupported: true,
-              customStylesSupported: true,
-              summarySupported: true,
-              transcriptionSupported: true,
-              styleTitleMax: 64,
-              stylePromptMax: 1024,
-              addedStyleCountMax: 10,
-            )
-            ..isGroup = isGroup;
+            ..aiCapabilities = telegramReplySupported == null
+                ? null
+                : TelegramAiCapabilities(
+                    tdlibVersion: '1.8.66',
+                    compositionSupported: true,
+                    richCompositionSupported: true,
+                    replySupported: telegramReplySupported,
+                    customStylesSupported: true,
+                    summarySupported: true,
+                    transcriptionSupported: true,
+                    styleTitleMax: 64,
+                    stylePromptMax: 1024,
+                    addedStyleCountMax: 10,
+                  )
+            ..isGroup = isGroup
+            ..messageAutoDeleteTime = messageAutoDeleteTime;
       vm.anchoredHistory = anchoredHistory;
+      if (includeSenderOptions) {
+        vm.availableMessageSenders = const [
+          MessageSenderOption(
+            sender: {'@type': 'messageSenderUser', 'user_id': 1},
+            id: 1,
+            title: 'Me',
+          ),
+          MessageSenderOption(
+            sender: {'@type': 'messageSenderChat', 'chat_id': 2},
+            id: 2,
+            title: 'Project',
+          ),
+        ];
+        vm.selectedMessageSender = vm.availableMessageSenders.first;
+      }
       if (useExplicitReplyTarget) vm.setReply(target);
       addTearDown(vm.dispose);
 
@@ -1025,6 +1051,116 @@ void main() {
       expect(
         find.byKey(const ValueKey('composerAiReplyProgress')),
         findsNothing,
+      );
+    });
+
+    testWidgets(
+      'shows auto-delete as a gray icon before AI without replacing the hint',
+      (tester) async {
+        final (vm, _) = await pumpAiReplyComposer(
+          tester,
+          (_) async => const TelegramAiFormattedText(text: 'Generated reply'),
+          messageAutoDeleteTime: 7 * 24 * 60 * 60,
+        );
+
+        final inputBox = find.byKey(const ValueKey('composerTextInputBox'));
+        final autoDelete = find.byKey(
+          const ValueKey('composerAutoDeleteIndicator'),
+        );
+        final ai = find.byKey(const ValueKey('composerAiReplyButton'));
+        final field = tester.widget<TextField>(find.byType(TextField));
+
+        expect(field.decoration?.hintText, 'Message…');
+        expect(autoDelete, findsOneWidget);
+        expect(
+          find.bySemanticsLabel(
+            'Message will be automatically deleted in 7 days',
+          ),
+          findsOneWidget,
+        );
+        expect(find.descendant(of: inputBox, matching: autoDelete), findsOne);
+        expect(ai, findsOneWidget);
+        expect(
+          tester.getCenter(autoDelete).dx,
+          lessThan(tester.getCenter(ai).dx),
+        );
+        final icon = tester.widget<AppIcon>(
+          find.descendant(of: autoDelete, matching: find.byType(AppIcon)),
+        );
+        expect(icon.icon, HeroAppIcons.stopwatch);
+        expect(icon.size, 18);
+        expect(icon.color, AppColors.light.textTertiary);
+        expect(
+          tester
+              .widget<GestureDetector>(
+                find.descendant(
+                  of: autoDelete,
+                  matching: find.byType(GestureDetector),
+                ),
+              )
+              .onTap,
+          isNotNull,
+        );
+
+        await tester.enterText(find.byType(TextField), 'Draft');
+        await tester.pump();
+        expect(autoDelete, findsNothing);
+        await tester.enterText(find.byType(TextField), '');
+        await tester.pump();
+        expect(autoDelete, findsOneWidget);
+
+        vm.messageAutoDeleteTime = 0;
+        vm.notifyListeners();
+        await tester.pump();
+
+        expect(autoDelete, findsNothing);
+        expect(
+          tester.widget<TextField>(find.byType(TextField)).decoration?.hintText,
+          'Message…',
+        );
+        expect(ai, findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'keeps AI Reply visible while Cocoon capability discovery is pending',
+      (tester) async {
+        await pumpAiReplyComposer(
+          tester,
+          (_) async => const TelegramAiFormattedText(text: 'Generated reply'),
+          telegramReplySupported: null,
+        );
+
+        expect(
+          find.byKey(const ValueKey('composerAiReplyButton')),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets('group can draft after only outgoing sender messages', (
+      tester,
+    ) async {
+      AiReplyRequest? capturedRequest;
+      await pumpAiReplyComposer(
+        tester,
+        (request) async {
+          capturedRequest = request;
+          return const TelegramAiFormattedText(text: 'A natural follow-up.');
+        },
+        isGroup: true,
+        targetIsOutgoing: true,
+      );
+
+      final action = find.byKey(const ValueKey('composerAiReplyButton'));
+      expect(action, findsOneWidget);
+      await tester.tap(action);
+      await tester.pumpAndSettle();
+
+      expect(capturedRequest?.targetMessageId, 7);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        'A natural follow-up.',
       );
     });
 
@@ -1651,16 +1787,37 @@ void main() {
       );
     });
 
-    testWidgets('hides contextual AI Reply in anchored history', (
+    testWidgets('anchors contextual AI Reply to the visible group message', (
       tester,
     ) async {
+      int? generatedTargetId;
       await pumpAiReplyComposer(
         tester,
-        (_) async => const TelegramAiFormattedText(text: 'Generated reply'),
+        (request) async {
+          generatedTargetId = request.targetMessageId;
+          return const TelegramAiFormattedText(text: 'Generated reply');
+        },
         anchoredHistory: true,
+        isGroup: true,
+        trailingMessages: [
+          ChatMessage(
+            id: 8,
+            isOutgoing: false,
+            text: 'Newer loaded but offscreen message',
+            date: 2,
+            senderName: 'Bob',
+            contentType: 'messageText',
+          ),
+        ],
       );
 
-      expect(find.byKey(const ValueKey('composerAiReplyButton')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('composerAiReplyButton')),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const ValueKey('composerAiReplyButton')));
+      await tester.pumpAndSettle();
+      expect(generatedTargetId, 7);
     });
 
     testWidgets('lets the in-input progress control cancel AI generation', (
@@ -1711,15 +1868,31 @@ void main() {
         tester,
         (_) async => const TelegramAiFormattedText(text: 'Generated reply'),
         includeReplyKeyboard: true,
+        includeSenderOptions: true,
+        messageAutoDeleteTime: 7 * 24 * 60 * 60,
       );
 
+      final sender = find.byKey(const ValueKey('composerSenderPicker'));
       final keyboard = find.bySemanticsLabel('Show bot keyboard');
+      final autoDelete = find.byKey(
+        const ValueKey('composerAutoDeleteIndicator'),
+      );
       final ai = find.byKey(const ValueKey('composerAiReplyButton'));
+      expect(sender, findsOneWidget);
       expect(keyboard, findsOneWidget);
+      expect(autoDelete, findsOneWidget);
       expect(ai, findsOneWidget);
       expect(
-        tester.getCenter(ai).dx,
-        greaterThan(tester.getCenter(keyboard).dx),
+        tester.getCenter(sender).dx,
+        lessThan(tester.getCenter(keyboard).dx),
+      );
+      expect(
+        tester.getCenter(keyboard).dx,
+        lessThan(tester.getCenter(autoDelete).dx),
+      );
+      expect(
+        tester.getCenter(autoDelete).dx,
+        lessThan(tester.getCenter(ai).dx),
       );
       expect(tester.takeException(), isNull);
     });

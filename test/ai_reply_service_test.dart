@@ -7,6 +7,7 @@ import 'package:http/testing.dart';
 import 'package:mithka/chat/ai_reply_service.dart';
 import 'package:mithka/chat/telegram_ai_service.dart';
 import 'package:mithka/settings/ai_endpoint_style.dart';
+import 'package:mithka/settings/ai_stdout_logger.dart';
 import 'package:mithka/settings/apple_pcc_api.dart';
 import 'package:mithka/tdlib/td_models.dart';
 
@@ -544,11 +545,13 @@ void main() {
 
   test('hosted reply uses the selected endpoint dialect', () async {
     Map<String, dynamic>? body;
+    final logLines = <String>[];
     final provider = HostedAiReplyProvider(
       endpoint: Uri.parse('https://api.example/v1/responses'),
       model: 'reply-model',
       endpointStyle: AiEndpointStyle.openAiResponses,
       apiKey: 'secret',
+      aiLogger: AiStdoutLogger(sink: logLines.add),
       httpClient: MockClient((request) async {
         expect(request.url.path, '/v1/responses');
         expect(request.headers['authorization'], 'Bearer secret');
@@ -569,16 +572,34 @@ void main() {
     expect(body?['input'], contains('"target_message_id":"7"'));
     expect(body?['stream'], isTrue);
     expect(body?['max_output_tokens'], 700);
+    final logEvents = logLines
+        .map((line) => jsonDecode(line) as Map<String, dynamic>)
+        .toList();
+    expect(logEvents.map((event) => event['event']), [
+      'ai.request',
+      'ai.response',
+    ]);
+    expect(
+      ((logEvents.first['payload'] as Map)['body'] as Map)['input'],
+      contains('"target_message_id":"7"'),
+    );
+    expect(
+      (logEvents.last['result'] as Map)['body'],
+      contains('Happy to help'),
+    );
+    expect(logLines.join(), isNot(contains('secret')));
   });
 
   test('hosted reply publishes SSE drafts before completion', () async {
     final client = _ControlledAiReplyStreamingClient();
+    final logLines = <String>[];
     addTearDown(client.close);
     final provider = HostedAiReplyProvider(
       endpoint: Uri.parse('https://api.example/v1/chat/completions'),
       model: 'streaming-reply-model',
       endpointStyle: AiEndpointStyle.openAiChatCompletions,
       httpClient: client,
+      aiLogger: AiStdoutLogger(sink: logLines.add),
     );
     addTearDown(provider.close);
     final drafts = <TelegramAiFormattedText>[];
@@ -603,6 +624,21 @@ void main() {
     expect(result.text, 'I can join at three.');
     expect(drafts.last.text, 'I can join at three.');
     expect(completed, isTrue);
+    final logEvents = logLines
+        .map((line) => jsonDecode(line) as Map<String, dynamic>)
+        .toList();
+    expect(logEvents.first['event'], 'ai.request');
+    expect(
+      logEvents.where((event) => event['operation'] == 'reply.stream_event'),
+      hasLength(3),
+    );
+    expect(logEvents.last['event'], 'ai.response');
+    expect(logEvents.last['operation'], 'reply');
+    expect((logEvents.last['result'] as Map)['complete'], isTrue);
+    expect(
+      logEvents.map((event) => event['correlation_id']).toSet(),
+      hasLength(1),
+    );
   });
 
   test(
