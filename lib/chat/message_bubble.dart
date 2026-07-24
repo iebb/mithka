@@ -77,6 +77,7 @@ class MessageBubble extends StatefulWidget {
     this.onHashtagTap,
     this.onOpenComments,
     this.showCommentAttachment = false,
+    this.channelHasLinkedDiscussion = false,
     this.onToggleReaction,
     this.onShowReactionUsers,
     this.onRedial,
@@ -128,6 +129,7 @@ class MessageBubble extends StatefulWidget {
   final ValueChanged<String>? onHashtagTap;
   final ValueChanged<ChatMessage>? onOpenComments;
   final bool showCommentAttachment;
+  final bool channelHasLinkedDiscussion;
   final ValueChanged<MessageReaction>? onToggleReaction;
   final void Function(ChatMessage message, MessageReaction reaction)?
   onShowReactionUsers;
@@ -280,7 +282,9 @@ class _MessageBubbleState extends State<MessageBubble>
   bool get _showsAttachedComments =>
       !message.isContentRestricted &&
       widget.showCommentAttachment &&
-      message.commentCount > 0;
+      (message.hasCommentThread ||
+          message.commentCount > 0 ||
+          (widget.channelHasLinkedDiscussion && !message.isService));
 
   BorderRadius _messageBorderRadius(
     double radius, {
@@ -1069,30 +1073,28 @@ class _MessageBubbleState extends State<MessageBubble>
         ),
       if (showComments) _commentThreadRow(outgoing),
     ];
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: outgoing
-          ? CrossAxisAlignment.end
-          : CrossAxisAlignment.start,
-      children: [
-        body,
-        for (var index = 0; index < extras.length; index++) ...[
-          if (index == 0 && showSuggestedPost) const SizedBox(height: 6),
-          extras[index],
+    return IntrinsicWidth(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          body,
+          for (var index = 0; index < extras.length; index++) ...[
+            if (index == 0 && showSuggestedPost) const SizedBox(height: 6),
+            extras[index],
+          ],
         ],
-      ],
+      ),
     );
   }
 
   Widget _commentThreadRow(bool outgoing) {
     final c = context.colors;
     final count = message.commentCount;
-    final label = AppStrings.t(AppStringKeys.momentsCommentCount, {
-      'value1': count,
-    });
-    final bg = outgoing
-        ? _outgoingTextColor.withValues(alpha: 0.16)
-        : c.card.withValues(alpha: 0.92);
+    final label = count == 0
+        ? AppStrings.t(AppStringKeys.messageLeaveAComment)
+        : AppStrings.t(AppStringKeys.momentsCommentCount, {'value1': count});
+    final bg = outgoing ? _outgoingBubbleColor : _incomingBubbleColor;
     final fg = outgoing ? _outgoingTextColor : c.textPrimary;
     final sub = outgoing
         ? _outgoingTextColor.withValues(alpha: 0.72)
@@ -1100,45 +1102,43 @@ class _MessageBubbleState extends State<MessageBubble>
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => widget.onOpenComments?.call(message),
-      child: ConstrainedBox(
+      child: Container(
         constraints: BoxConstraints(maxWidth: _bubbleMaxWidth()),
-        child: Container(
-          key: ValueKey('messageCommentsAttachment-${message.id}'),
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: const BorderRadius.only(
-              bottomLeft: Radius.circular(12),
-              bottomRight: Radius.circular(12),
-            ),
-            border: Border.all(
-              color: outgoing
-                  ? _outgoingTextColor.withValues(alpha: 0.12)
-                  : c.divider.withValues(alpha: 0.7),
-              width: 0.5,
-            ),
+        key: ValueKey('messageCommentsAttachment-${message.id}'),
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: const BorderRadius.only(
+            bottomLeft: Radius.circular(12),
+            bottomRight: Radius.circular(12),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AppIcon(HeroAppIcons.comments, size: 18, color: sub),
-              const SizedBox(width: 7),
-              Flexible(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: fg,
-                    decoration: TextDecoration.none,
-                  ),
+          border: Border.all(
+            color: outgoing
+                ? _outgoingTextColor.withValues(alpha: 0.12)
+                : c.divider.withValues(alpha: 0.7),
+            width: 0.5,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AppIcon(HeroAppIcons.comments, size: 18, color: sub),
+            const SizedBox(width: 7),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: fg,
+                  decoration: TextDecoration.none,
                 ),
               ),
-              AppIcon(HeroAppIcons.chevronRight, size: 17, color: sub),
-            ],
-          ),
+            ),
+            AppIcon(HeroAppIcons.chevronRight, size: 17, color: sub),
+          ],
         ),
       ),
     );

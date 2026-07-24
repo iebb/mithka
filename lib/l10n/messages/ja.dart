@@ -1129,6 +1129,7 @@ const jaMessages = <String, String>{
   'messageBubbleForwardedFrom': "{value1} から転送",
   'messageBubbleTranslating': "翻訳中…",
   'messageRepliesEmpty': "返信はまだありません",
+  'messageLeaveAComment': "コメントを残す",
   'messageRepliesTitle': "返信",
   'messageRepliesUnavailable': "このメッセージの返信は表示できません",
   'miniAppCannotStart': "Mini App を現在起動できません",

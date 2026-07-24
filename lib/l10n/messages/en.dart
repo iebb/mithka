@@ -1266,6 +1266,7 @@ const enMessages = <String, String>{
   'messageBubbleForwardedFrom': "Forwarded from {value1}",
   'messageBubbleTranslating': "Translating…",
   'messageRepliesEmpty': "No replies yet",
+  'messageLeaveAComment': "Leave a comment",
   'messageRepliesTitle': "Replies",
   'messageRepliesUnavailable': "Replies are not available for this message",
   'miniAppCannotStart': "Mini App can't be launched right now",

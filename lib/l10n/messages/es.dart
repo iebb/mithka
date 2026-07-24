@@ -1223,6 +1223,7 @@ const esMessages = <String, String>{
   'messageBubbleForwardedFrom': "Reenviado de {value1}",
   'messageBubbleTranslating': "Traduciendo…",
   'messageRepliesEmpty': "Aún no hay respuestas",
+  'messageLeaveAComment': "Deja un comentario",
   'messageRepliesTitle': "Respuestas",
   'messageRepliesUnavailable':
       "Las respuestas no están disponibles para este mensaje",

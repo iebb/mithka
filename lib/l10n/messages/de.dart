@@ -1229,6 +1229,7 @@ const deMessages = <String, String>{
   'messageBubbleForwardedFrom': "Weitergeleitet von {value1}",
   'messageBubbleTranslating': "Wird übersetzt…",
   'messageRepliesEmpty': "Noch keine Antworten",
+  'messageLeaveAComment': "Kommentar hinterlassen",
   'messageRepliesTitle': "Antworten",
   'messageRepliesUnavailable':
       "Antworten sind für diese Nachricht nicht verfügbar",

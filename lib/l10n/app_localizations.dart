@@ -1634,6 +1634,7 @@ abstract final class AppStringKeys {
   static const messageBubbleForwardedFrom = 'messageBubbleForwardedFrom';
   static const messageBubbleTranslating = 'messageBubbleTranslating';
   static const messageRepliesEmpty = 'messageRepliesEmpty';
+  static const messageLeaveAComment = 'messageLeaveAComment';
   static const messageRepliesTitle = 'messageRepliesTitle';
   static const messageRepliesUnavailable = 'messageRepliesUnavailable';
   static const miniAppCannotStart = 'miniAppCannotStart';

@@ -260,6 +260,7 @@ class ChatViewModel extends ChangeNotifier {
   bool joinByRequest = false; // joining needs approval → "申请加入"
   bool joinRequested = false; // a join request was sent (awaiting approval)
   bool isChannel = false; // broadcast channel (members can't post)
+  bool hasLinkedDiscussion = false;
   bool isDirectMessagesGroup = false;
   bool isAdministeredDirectMessagesGroup = false;
   bool isMuted =
@@ -2746,6 +2747,7 @@ class ChatViewModel extends ChangeNotifier {
     canJoin = false;
     joinByRequest = false;
     isChannel = false;
+    hasLinkedDiscussion = false;
     isDirectMessagesGroup = false;
     isAdministeredDirectMessagesGroup = false;
     canDeleteMessagesBySender = false;
@@ -2957,6 +2959,8 @@ class ChatViewModel extends ChangeNotifier {
         'supergroup_id': supergroupId,
       });
       memberCount = full.integer('member_count') ?? memberCount;
+      hasLinkedDiscussion =
+          isChannel && (full.int64('linked_chat_id') ?? 0) != 0;
       _setPaidMessageStarCount(_paidMessageStars(full), notify: false);
       notifyListeners();
     } catch (_) {}
@@ -4064,9 +4068,10 @@ class ChatViewModel extends ChangeNotifier {
 
       case 'updateSupergroupFullInfo':
         if (update.int64('supergroup_id') != peerSupergroupId) return;
-        _setPaidMessageStarCount(
-          _paidMessageStars(update.obj('supergroup_full_info') ?? update),
-        );
+        final fullInfo = update.obj('supergroup_full_info') ?? update;
+        hasLinkedDiscussion =
+            isChannel && (fullInfo.int64('linked_chat_id') ?? 0) != 0;
+        _setPaidMessageStarCount(_paidMessageStars(fullInfo));
 
       case 'updateUserStatus':
         if (isGroup || update.int64('user_id') != peerUserId) return;
@@ -4097,11 +4102,26 @@ class ChatViewModel extends ChangeNotifier {
         if (mid == null) return;
         final targets = _messageRefs(mid);
         if (targets.isNotEmpty) {
+          final interactionInfo = update.obj('interaction_info');
+          final replyInfo = interactionInfo?.obj('reply_info');
           final reactions = TDParse.reactionsFrom({
-            'interaction_info': update.obj('interaction_info'),
+            'interaction_info': interactionInfo,
           });
           for (final message in targets) {
             message.reactions = reactions;
+            message.viewCount = interactionInfo?.integer('view_count') ?? 0;
+            message.forwardCount =
+                interactionInfo?.integer('forward_count') ?? 0;
+            if (!message.isContentRestricted) {
+              message.hasCommentThread = replyInfo != null;
+              message.commentCount =
+                  replyInfo?.integer('reply_count') ??
+                  replyInfo?.integer('comment_count') ??
+                  0;
+              message.lastCommentMessageId = replyInfo?.int64(
+                'last_message_id',
+              );
+            }
           }
           notifyListeners();
         }
@@ -4970,6 +4990,11 @@ class ChatViewModel extends ChangeNotifier {
   @visibleForTesting
   void applySenderUserUpdateForTesting(Map<String, dynamic> user) {
     _applySenderUserUpdate(user);
+  }
+
+  @visibleForTesting
+  void applyLiveUpdateForTesting(Map<String, dynamic> update) {
+    _handle(update);
   }
 
   void _applySenderUserUpdate(Map<String, dynamic> user) {

@@ -1130,6 +1130,7 @@ const koMessages = <String, String>{
   'messageBubbleForwardedFrom': "{value1}에서 전달됨",
   'messageBubbleTranslating': "번역 중…",
   'messageRepliesEmpty': "아직 답글이 없습니다",
+  'messageLeaveAComment': "댓글 남기기",
   'messageRepliesTitle': "답글",
   'messageRepliesUnavailable': "이 메시지의 답글을 볼 수 없습니다",
   'miniAppCannotStart': "지금은 Mini App을 실행할 수 없습니다",

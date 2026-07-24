@@ -1108,6 +1108,7 @@ const zhHantMessages = <String, String>{
   'messageBubbleForwardedFrom': "轉寄自 {value1}",
   'messageBubbleTranslating': "正在翻譯…",
   'messageRepliesEmpty': "暫無回覆",
+  'messageLeaveAComment': "發表評論",
   'messageRepliesTitle': "回覆",
   'messageRepliesUnavailable': "這則訊息暫不能查看回覆",
   'miniAppCannotStart': "Mini App 暫時無法啟動",

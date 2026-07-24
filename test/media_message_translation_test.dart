@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/message_bubble.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/tdlib/td_models.dart';
+import 'package:mithka/theme/app_theme.dart';
 import 'package:mithka/theme/theme_controller.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -17,6 +18,7 @@ void main() {
     ChatMessage message, {
     List<ChatMessage> groupedMedia = const <ChatMessage>[],
     bool showCommentAttachment = false,
+    bool channelHasLinkedDiscussion = false,
     ValueChanged<ChatMessage>? onLongPress,
   }) async {
     SharedPreferences.setMockInitialValues({'groupImageMessages': true});
@@ -38,6 +40,7 @@ void main() {
               peerTitle: 'Test',
               isGroup: false,
               showCommentAttachment: showCommentAttachment,
+              channelHasLinkedDiscussion: channelHasLinkedDiscussion,
               onLongPress: onLongPress == null
                   ? null
                   : (message, _, _) => onLongPress(message),
@@ -232,6 +235,45 @@ void main() {
     expect(commentsRadius.topRight, Radius.zero);
     expect(commentsRadius.bottomLeft, const Radius.circular(12));
     expect(commentsRadius.bottomRight, const Radius.circular(12));
+  });
+
+  testWidgets('linked channel discussion stays visible before first comment', (
+    tester,
+  ) async {
+    final message = ChatMessage(
+      id: 13,
+      isOutgoing: false,
+      text: 'Channel post',
+      date: 1,
+      contentType: 'messageText',
+    );
+
+    await pumpBubble(
+      tester,
+      message,
+      showCommentAttachment: true,
+      channelHasLinkedDiscussion: true,
+    );
+
+    expect(
+      find.byKey(const ValueKey('messageCommentsAttachment-13')),
+      findsOneWidget,
+    );
+    expect(find.text('Leave a comment'), findsOneWidget);
+    final messageFinder = find.byKey(const ValueKey('messageTextBubble-13'));
+    final commentsFinder = find.byKey(
+      const ValueKey('messageCommentsAttachment-13'),
+    );
+    expect(
+      tester.getRect(commentsFinder).width,
+      tester.getRect(messageFinder).width,
+    );
+    final comments = tester.widget<Container>(commentsFinder);
+    final expectedBackground = tester
+        .element(messageFinder)
+        .colors
+        .bubbleIncoming;
+    expect((comments.decoration! as BoxDecoration).color, expectedBackground);
   });
 
   testWidgets('captionless media labels never render as captions', (

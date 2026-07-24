@@ -1106,6 +1106,7 @@ const zhHansMessages = <String, String>{
   'messageBubbleForwardedFrom': "转发自 {value1}",
   'messageBubbleTranslating': "正在翻译…",
   'messageRepliesEmpty': "暂无回复",
+  'messageLeaveAComment': "发表评论",
   'messageRepliesTitle': "回复",
   'messageRepliesUnavailable': "这条消息暂不能查看回复",
   'miniAppCannotStart': "Mini App 暂时无法启动",

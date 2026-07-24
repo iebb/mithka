@@ -1229,6 +1229,7 @@ const frMessages = <String, String>{
   'messageBubbleForwardedFrom': "Transféré de {value1}",
   'messageBubbleTranslating': "Traduction…",
   'messageRepliesEmpty': "Aucune réponse pour le moment",
+  'messageLeaveAComment': "Laisser un commentaire",
   'messageRepliesTitle': "Réponses",
   'messageRepliesUnavailable':
       "Les réponses ne sont pas disponibles pour ce message",
