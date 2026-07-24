@@ -140,6 +140,7 @@ class AiReplyRequest {
     this.contextWindowTokens,
     Map<String, String>? groupSpeakerAliases,
   }) : _groupSpeakerAliases = groupSpeakerAliases ?? <String, String>{},
+       maximumOutputTokens = _maximumOutputTokenBudget(contextWindowTokens),
        contextMessageTokenBudget = _contextTokenBudget(
          contextWindowTokens: contextWindowTokens,
          isGroupChat: isGroupChat,
@@ -163,6 +164,7 @@ class AiReplyRequest {
   static const groupContextToolResultLimit = 12;
   static const contextToolResultCharacters = 6000;
   static const groupContextToolResultCharacters = 10000;
+  static const defaultMaximumOutputTokens = 4096;
 
   final String chatTitle;
   final int targetMessageId;
@@ -178,6 +180,7 @@ class AiReplyRequest {
   final int? historyBeforeMessageId;
   final int? searchBeforeMessageId;
   final int? contextWindowTokens;
+  final int maximumOutputTokens;
   final int contextMessageTokenBudget;
   final Map<String, String> _groupSpeakerAliases;
 
@@ -706,9 +709,19 @@ class AiReplyRequest {
         _estimatedTextTokens(guidance) +
         512 + // Request envelope and per-message JSON metadata.
         512 + // Current-chat function tool definition and result framing.
-        700 + // Concise reply output allowance.
+        _maximumOutputTokenBudget(contextWindowTokens) +
+        // Concise reply output allowance.
         256; // Provider and tokenizer safety margin.
     return math.max(256, math.min(maximum, contextWindowTokens - fixedTokens));
+  }
+
+  static int _maximumOutputTokenBudget(int? contextWindowTokens) {
+    if (contextWindowTokens == null || contextWindowTokens <= 0) {
+      return defaultMaximumOutputTokens;
+    }
+    return (contextWindowTokens ~/ 4)
+        .clamp(512, defaultMaximumOutputTokens)
+        .toInt();
   }
 
   static int _estimatedTextTokens(String value) =>
@@ -868,12 +881,19 @@ class HostedAiReplyProvider
     required AiReplyDraftCallback onDraft,
   }) async {
     final groundedRequest = await _withBestAvailableContext(request);
+    final disableThinking =
+        endpointStyle == AiEndpointStyle.openAiChatCompletions &&
+        isDeepSeekAiModel(model);
     var body = endpointStyle.requestBody(
       model: model,
       instructions: aiReplyTrustedInstructions,
       input: groundedRequest.hostedInput,
       stream: true,
-      maximumOutputTokens: 700,
+      reasoningEffort: disableThinking
+          ? null
+          : inferredAiReasoningEffort(model),
+      disableThinking: disableThinking,
+      maximumOutputTokens: groundedRequest.maximumOutputTokens,
     );
     if (groundedRequest.historyLoader != null) {
       body = endpointStyle.withFunctionTools(body, const [_aiReplyContextTool]);
@@ -961,6 +981,12 @@ class HostedAiReplyProvider
       }
       final text = endpointStyle.responseText(decoded);
       if (text == null) {
+        if (endpointStyle.outputLimitReached(decoded)) {
+          throw const AiReplyException(
+            'The reply model used its entire output budget before returning '
+            'reply text. Try again or select a faster model.',
+          );
+        }
         throw const AiReplyException('The reply model returned no text.');
       }
       final result = _normalizedReply(text);

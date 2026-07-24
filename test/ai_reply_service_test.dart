@@ -172,6 +172,7 @@ void main() {
     );
 
     expect(request.contextMessageTokenBudget, lessThan(4096));
+    expect(request.maximumOutputTokens, 1024);
     expect(
       request.contextMessageTokenBudget,
       lessThan(AiReplyRequest.groupMaximumContextTokens),
@@ -571,7 +572,8 @@ void main() {
     expect(body?['instructions'], aiReplyTrustedInstructions.trim());
     expect(body?['input'], contains('"target_message_id":"7"'));
     expect(body?['stream'], isTrue);
-    expect(body?['max_output_tokens'], 700);
+    expect(body?['max_output_tokens'], 4096);
+    expect(body, isNot(contains('reasoning')));
     final logEvents = logLines
         .map((line) => jsonDecode(line) as Map<String, dynamic>)
         .toList();
@@ -639,6 +641,228 @@ void main() {
       logEvents.map((event) => event['correlation_id']).toSet(),
       hasLength(1),
     );
+  });
+
+  test(
+    'hosted DeepSeek reply disables thinking without drafting hidden reasoning',
+    () async {
+      Map<String, dynamic>? requestBody;
+      final provider = HostedAiReplyProvider(
+        endpoint: Uri.parse('https://api.example/v1/chat/completions'),
+        model: 'deepseek-v4-flash',
+        endpointStyle: AiEndpointStyle.openAiChatCompletions,
+        httpClient: MockClient((request) async {
+          requestBody = jsonDecode(request.body) as Map<String, dynamic>;
+          final events = [
+            {
+              'choices': [
+                {
+                  'delta': {
+                    'content': null,
+                    'reasoning_content': 'Hidden reasoning',
+                  },
+                  'finish_reason': null,
+                },
+              ],
+            },
+            {
+              'choices': [
+                {
+                  'delta': {'content': 'A concise visible reply.'},
+                  'finish_reason': null,
+                },
+              ],
+            },
+            {
+              'choices': [
+                {
+                  'delta': {'content': ''},
+                  'finish_reason': 'stop',
+                },
+              ],
+            },
+          ];
+          return http.Response(
+            '${events.map((event) => 'data: ${jsonEncode(event)}').join('\n\n')}\n\ndata: [DONE]\n\n',
+            200,
+            headers: {'content-type': 'text/event-stream'},
+          );
+        }),
+      );
+      addTearDown(provider.close);
+      final drafts = <String>[];
+
+      final result = await provider.generateStreaming(
+        _request(),
+        onDraft: (draft) => drafts.add(draft.text),
+      );
+
+      expect(result.text, 'A concise visible reply.');
+      expect(requestBody?['max_tokens'], 4096);
+      expect(requestBody?['thinking'], {'type': 'disabled'});
+      expect(requestBody, isNot(contains('reasoning_effort')));
+      expect(drafts.last, 'A concise visible reply.');
+      expect(drafts.join(), isNot(contains('Hidden reasoning')));
+    },
+  );
+
+  test('hosted reasoning reply reports an exhausted output budget', () async {
+    final provider = HostedAiReplyProvider(
+      endpoint: Uri.parse('https://api.example/v1/chat/completions'),
+      model: 'deepseek-v4-flash',
+      endpointStyle: AiEndpointStyle.openAiChatCompletions,
+      httpClient: MockClient(
+        (_) async => http.Response(
+          'data: ${jsonEncode({
+            'choices': [
+              {
+                'delta': {'content': null, 'reasoning_content': 'Hidden reasoning'},
+                'finish_reason': null,
+              },
+            ],
+          })}\n\n'
+          'data: ${jsonEncode({
+            'choices': [
+              {
+                'delta': {'content': ''},
+                'finish_reason': 'length',
+              },
+            ],
+          })}\n\n'
+          'data: [DONE]\n\n',
+          200,
+          headers: {'content-type': 'text/event-stream'},
+        ),
+      ),
+    );
+    addTearDown(provider.close);
+    final drafts = <String>[];
+
+    await expectLater(
+      provider.generateStreaming(
+        _request(),
+        onDraft: (draft) => drafts.add(draft.text),
+      ),
+      throwsA(
+        isA<AiReplyException>().having(
+          (error) => error.message,
+          'message',
+          contains('entire output budget'),
+        ),
+      ),
+    );
+    expect(drafts, isEmpty);
+  });
+
+  test('hosted Responses reply reports an incomplete output budget', () async {
+    final provider = HostedAiReplyProvider(
+      endpoint: Uri.parse('https://api.example/v1/responses'),
+      model: 'o3-mini',
+      endpointStyle: AiEndpointStyle.openAiResponses,
+      httpClient: MockClient(
+        (_) async => http.Response(
+          'data: ${jsonEncode({
+            'type': 'response.output_item.done',
+            'output_index': 0,
+            'item': {'type': 'reasoning', 'id': 'reasoning-only', 'summary': <Object?>[]},
+          })}\n\n'
+          'data: ${jsonEncode({
+            'type': 'response.incomplete',
+            'response': {
+              'id': 'response-incomplete',
+              'status': 'incomplete',
+              'incomplete_details': {'reason': 'max_tokens'},
+              'output': [
+                {'type': 'reasoning', 'id': 'reasoning-only', 'summary': <Object?>[]},
+              ],
+            },
+          })}\n\n',
+          200,
+          headers: {'content-type': 'text/event-stream'},
+        ),
+      ),
+    );
+    addTearDown(provider.close);
+    final drafts = <String>[];
+
+    await expectLater(
+      provider.generateStreaming(
+        _request(),
+        onDraft: (draft) => drafts.add(draft.text),
+      ),
+      throwsA(
+        isA<AiReplyException>().having(
+          (error) => error.message,
+          'message',
+          contains('entire output budget'),
+        ),
+      ),
+    );
+    expect(drafts, isEmpty);
+  });
+
+  test('hosted reasoning reply removes an unsupported effort field', () async {
+    final requestBodies = <Map<String, dynamic>>[];
+    final provider = HostedAiReplyProvider(
+      endpoint: Uri.parse('https://api.example/v1/chat/completions'),
+      model: 'o3-mini',
+      endpointStyle: AiEndpointStyle.openAiChatCompletions,
+      httpClient: MockClient((request) async {
+        requestBodies.add(jsonDecode(request.body) as Map<String, dynamic>);
+        if (requestBodies.length == 1) {
+          return http.Response(
+            '{"error":{"message":"Unsupported parameter: reasoning_effort"}}',
+            400,
+          );
+        }
+        return http.Response(
+          '{"choices":[{"message":{"role":"assistant",'
+          '"content":"Compatible reply."},"finish_reason":"stop"}]}',
+          200,
+        );
+      }),
+    );
+    addTearDown(provider.close);
+
+    final result = await provider.generate(_request());
+
+    expect(result.text, 'Compatible reply.');
+    expect(requestBodies, hasLength(2));
+    expect(requestBodies.first['reasoning_effort'], 'low');
+    expect(requestBodies.last, isNot(contains('reasoning_effort')));
+    expect(requestBodies.last['max_tokens'], 4096);
+  });
+
+  test('hosted DeepSeek reply removes an unsupported thinking field', () async {
+    final requestBodies = <Map<String, dynamic>>[];
+    final provider = HostedAiReplyProvider(
+      endpoint: Uri.parse('https://api.example/v1/chat/completions'),
+      model: 'deepseek-v4-flash',
+      endpointStyle: AiEndpointStyle.openAiChatCompletions,
+      httpClient: MockClient((request) async {
+        requestBodies.add(jsonDecode(request.body) as Map<String, dynamic>);
+        if (requestBodies.length == 1) {
+          return http.Response(
+            '{"error":{"message":"Unsupported parameter: thinking"}}',
+            400,
+          );
+        }
+        return http.Response(
+          '{"choices":[{"message":{"role":"assistant",'
+          '"content":"Compatible reply."},"finish_reason":"stop"}]}',
+          200,
+        );
+      }),
+    );
+    addTearDown(provider.close);
+
+    final result = await provider.generate(_request());
+
+    expect(result.text, 'Compatible reply.');
+    expect(requestBodies, hasLength(2));
+    expect(requestBodies.first['thinking'], {'type': 'disabled'});
+    expect(requestBodies.last, isNot(contains('thinking')));
+    expect(requestBodies.last['max_tokens'], 4096);
   });
 
   test(

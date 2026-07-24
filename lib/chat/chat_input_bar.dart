@@ -33,6 +33,7 @@ import '../components/ui_components.dart';
 import '../l10n/telegram_language_controller.dart';
 import '../media/app_asset_picker.dart';
 import '../settings/ai_settings_controller.dart';
+import '../settings/ai_settings_view.dart';
 import '../settings/apple_pcc_api.dart';
 import '../settings/business_service.dart';
 import '../settings/rich_message_relay_config.dart';
@@ -1288,6 +1289,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
     required int generation,
     required ChatViewModel requestVm,
     required AiSettingsController settings,
+    required String modelCandidateId,
     required ChatMessage target,
     required int targetMessageId,
     required bool usesExplicitTarget,
@@ -1298,6 +1300,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
       mounted &&
       generation == _aiReplyGeneration &&
       identical(vm, requestVm) &&
+      settings.replyModelCandidate.id == modelCandidateId &&
       (widget.aiReplyHistoryLoader != null || vm.canShareAiReplyContext) &&
       _canOfferAiReply(target, settings) &&
       _isCurrentAiReplyTarget(
@@ -1313,6 +1316,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
     required int generation,
     required ChatViewModel requestVm,
     required AiSettingsController settings,
+    required String modelCandidateId,
     required ChatMessage target,
     required int targetMessageId,
     required bool usesExplicitTarget,
@@ -1324,6 +1328,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
       generation: generation,
       requestVm: requestVm,
       settings: settings,
+      modelCandidateId: modelCandidateId,
       target: target,
       targetMessageId: targetMessageId,
       usesExplicitTarget: usesExplicitTarget,
@@ -1380,7 +1385,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
     return true;
   }
 
-  Future<void> _generateAiReply(ChatMessage target) async {
+  Future<void> _generateAiReply(
+    ChatMessage target, {
+    String? requiredModelCandidateId,
+  }) async {
     if (_aiReplyWorkingTargetId == target.id) return;
     final usesExplicitTarget = vm.replyTo?.id == target.id;
     if (!_isCurrentAiReplyTargetWithoutFingerprint(
@@ -1397,6 +1405,12 @@ class _ChatInputBarState extends State<ChatInputBar> {
     }
 
     final configuration = settings!.configurationForFeature(AiFeature.reply);
+    final modelCandidateId = configuration.candidate.id;
+    if (requiredModelCandidateId != null &&
+        modelCandidateId != requiredModelCandidateId) {
+      showToast(context, AppStringKeys.aiReplyUnavailable.l10n(context));
+      return;
+    }
     final (draftText, _) = _controller.toFormatted();
     final AiReplyRequest request;
     try {
@@ -1474,6 +1488,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
         generation: generation,
         requestVm: requestVm,
         settings: settings,
+        modelCandidateId: modelCandidateId,
         target: target,
         targetMessageId: targetMessageId,
         usesExplicitTarget: usesExplicitTarget,
@@ -1493,6 +1508,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
         generation: generation,
         requestVm: requestVm,
         settings: settings,
+        modelCandidateId: modelCandidateId,
         target: target,
         targetMessageId: targetMessageId,
         usesExplicitTarget: usesExplicitTarget,
@@ -3328,28 +3344,49 @@ class _ChatInputBarState extends State<ChatInputBar> {
     );
   }
 
+  Future<void> _showAiReplyModelPicker(ChatMessage target) async {
+    if (_aiReplyWorkingTargetId != null) return;
+    final settings = context.read<AiSettingsController?>();
+    if (settings?.initialized != true) {
+      showToast(context, AppStringKeys.aiReplyUnavailable.l10n(context));
+      return;
+    }
+    final candidate = await showAiFeatureModelPicker(
+      context,
+      settings: settings!,
+      feature: AiFeature.reply,
+    );
+    if (!mounted || candidate == null) return;
+    await _generateAiReply(target, requiredModelCandidateId: candidate.id);
+  }
+
   Widget _aiReplyInputButton(ChatMessage target) {
     final working = _aiReplyWorkingTargetId == target.id;
     return Semantics(
       button: true,
+      liveRegion: working,
       label: working
           ? AppStringKeys.confirmCancel.l10n(context)
           : AppStringKeys.aiReplyAction.l10n(context),
+      value: working ? AppStringKeys.topicChatLoading.l10n(context) : null,
       child: GestureDetector(
         key: const ValueKey('composerAiReplyButton'),
         behavior: HitTestBehavior.opaque,
         onTap: working
             ? _invalidateAiReplyGeneration
             : () => unawaited(_generateAiReply(target)),
+        onLongPress: working
+            ? null
+            : () => unawaited(_showAiReplyModelPicker(target)),
         child: SizedBox(
           width: 32,
           height: 28,
           child: Center(
             child: working
-                ? AppActivityIndicator(
-                    key: const ValueKey('composerAiReplyProgress'),
-                    size: 17,
-                    color: AppTheme.brand,
+                ? const ExcludeSemantics(
+                    child: _AiReplyThinkingIndicator(
+                      key: ValueKey('composerAiReplyProgress'),
+                    ),
                   )
                 : AppIcon(
                     HeroAppIcons.wandMagicSparkles,
@@ -5390,6 +5427,87 @@ class _ChatInputBarState extends State<ChatInputBar> {
     StickerStore.shared.loadIfNeeded();
     EmojiStore.shared.loadIfNeeded();
   }
+}
+
+class _AiReplyThinkingIndicator extends StatefulWidget {
+  const _AiReplyThinkingIndicator({super.key});
+
+  @override
+  State<_AiReplyThinkingIndicator> createState() =>
+      _AiReplyThinkingIndicatorState();
+}
+
+class _AiReplyThinkingIndicatorState extends State<_AiReplyThinkingIndicator>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _animation = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _animation.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: _animation,
+    builder: (context, _) {
+      final pulse = (math.sin(_animation.value * math.pi * 2) + 1) / 2;
+      return Transform.scale(
+        scale: 0.96 + pulse * 0.05,
+        child: SizedBox(
+          width: 24,
+          height: 24,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppTheme.brand.withValues(alpha: 0.10 + pulse * 0.06),
+              border: Border.all(
+                color: AppTheme.brand.withValues(alpha: 0.24),
+                width: 0.75,
+              ),
+            ),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                AppIcon(
+                  HeroAppIcons.wandMagicSparkles,
+                  size: 14,
+                  color: AppTheme.brand,
+                ),
+                Positioned.fill(
+                  child: Transform.rotate(
+                    key: const ValueKey('composerAiReplyOrbit'),
+                    angle: _animation.value * math.pi * 2,
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: Container(
+                        width: 5,
+                        height: 5,
+                        margin: const EdgeInsets.only(top: 1),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: AppTheme.brand,
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppTheme.brand.withValues(alpha: 0.36),
+                              blurRadius: 3,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    },
+  );
 }
 
 class _RelaySendingOverlay extends StatefulWidget {

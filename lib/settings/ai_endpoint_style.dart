@@ -1,5 +1,18 @@
 import 'dart:convert';
 
+bool isDeepSeekAiModel(String model) =>
+    RegExp(r'(^|[/_.-])deepseek([/_.-]|$)').hasMatch(model.toLowerCase());
+
+String? inferredAiReasoningEffort(String model) {
+  final normalizedModel = model.toLowerCase();
+  if (RegExp(
+    r'(^|[/_.-])(deepseek|reasoner|reasoning|thinking|o1|o3|o4)([/_.-]|$)',
+  ).hasMatch(normalizedModel)) {
+    return 'low';
+  }
+  return null;
+}
+
 class AiFunctionToolDefinition {
   const AiFunctionToolDefinition({
     required this.name,
@@ -145,6 +158,7 @@ enum AiEndpointStyle {
     required String input,
     required bool stream,
     String? reasoningEffort,
+    bool disableThinking = false,
     bool useJsonResponseFormat = false,
     int? maximumOutputTokens,
   }) {
@@ -165,6 +179,7 @@ enum AiEndpointStyle {
         'max_tokens': ?normalizedMaximumOutputTokens,
         if (normalizedReasoningEffort?.isNotEmpty == true)
           'reasoning_effort': normalizedReasoningEffort,
+        if (disableThinking) 'thinking': {'type': 'disabled'},
         if (useJsonResponseFormat) 'response_format': {'type': 'json_object'},
       },
       AiEndpointStyle.openAiResponses => <String, Object?>{
@@ -426,6 +441,9 @@ enum AiEndpointStyle {
             message.contains('reasoning effort')) {
           changed = compatible.remove('reasoning_effort') != null || changed;
         }
+        if (message.contains('thinking')) {
+          changed = compatible.remove('thinking') != null || changed;
+        }
         if (message.contains('response_format') ||
             message.contains('response format')) {
           changed = compatible.remove('response_format') != null || changed;
@@ -462,6 +480,35 @@ enum AiEndpointStyle {
       changed = true;
     }
     return changed ? compatible : body;
+  }
+
+  bool outputLimitReached(Map<dynamic, dynamic> envelope) {
+    switch (this) {
+      case AiEndpointStyle.openAiChatCompletions:
+        final choices = envelope['choices'];
+        if (choices is! List || choices.isEmpty || choices.first is! Map) {
+          return false;
+        }
+        final finishReason = (choices.first as Map)['finish_reason'];
+        return finishReason == 'length' || finishReason == 'max_tokens';
+      case AiEndpointStyle.openAiResponses:
+        final response = envelope['response'] is Map
+            ? envelope['response'] as Map
+            : envelope;
+        final incompleteDetails = response['incomplete_details'];
+        final reason = incompleteDetails is Map
+            ? incompleteDetails['reason']
+            : null;
+        return response['status'] == 'incomplete' &&
+            (reason == 'max_output_tokens' ||
+                reason == 'max_tokens' ||
+                reason == 'length');
+      case AiEndpointStyle.anthropicMessages:
+        return envelope['stop_reason'] == 'max_tokens';
+      case AiEndpointStyle.ollamaChat:
+        return envelope['done_reason'] == 'length' ||
+            envelope['done_reason'] == 'max_tokens';
+    }
   }
 
   String? responseText(Map<dynamic, dynamic> envelope) => switch (this) {
@@ -546,19 +593,21 @@ class AiEndpointStreamAccumulator {
   bool get isComplete => switch (style) {
     AiEndpointStyle.openAiChatCompletions =>
       _chatTransportDone || _chatFinishReason != null,
-    AiEndpointStyle.openAiResponses => _completedResponsesEnvelope != null,
+    AiEndpointStyle.openAiResponses => _terminalResponsesEnvelope != null,
     AiEndpointStyle.anthropicMessages => _anthropicMessageStopped,
     AiEndpointStyle.ollamaChat => _ollamaEnvelope['done'] == true,
   };
 
   final Map<int, _StreamingToolCall> _chatToolCalls = {};
   String _chatRole = 'assistant';
+  final StringBuffer _chatReasoning = StringBuffer();
+  final StringBuffer _chatRefusal = StringBuffer();
   String? _chatFinishReason;
   bool _chatTransportDone = false;
 
   final Map<int, Map<String, Object?>> _responsesOutput = {};
   final Map<String, int> _responsesOutputIndexesById = {};
-  Map<String, Object?>? _completedResponsesEnvelope;
+  Map<String, Object?>? _terminalResponsesEnvelope;
 
   final Map<int, Map<String, Object?>> _anthropicContent = {};
   final Map<int, StringBuffer> _anthropicInputFragments = {};
@@ -610,6 +659,14 @@ class AiEndpointStreamAccumulator {
     if (delta is Map) {
       final role = delta['role'];
       if (role is String && role.isNotEmpty) _chatRole = role;
+      final reasoning = delta['reasoning_content'];
+      if (reasoning is String && reasoning.isNotEmpty) {
+        _chatReasoning.write(reasoning);
+      }
+      final refusal = delta['refusal'];
+      if (refusal is String && refusal.isNotEmpty) {
+        _chatRefusal.write(refusal);
+      }
       _mergeStreamingToolCalls(
         _chatToolCalls,
         delta['tool_calls'],
@@ -620,6 +677,14 @@ class AiEndpointStreamAccumulator {
     if (message is Map) {
       final role = message['role'];
       if (role is String && role.isNotEmpty) _chatRole = role;
+      final reasoning = message['reasoning_content'];
+      if (reasoning is String && reasoning.isNotEmpty) {
+        _chatReasoning.write(reasoning);
+      }
+      final refusal = message['refusal'];
+      if (refusal is String && refusal.isNotEmpty) {
+        _chatRefusal.write(refusal);
+      }
       _mergeStreamingToolCalls(
         _chatToolCalls,
         message['tool_calls'],
@@ -633,6 +698,9 @@ class AiEndpointStreamAccumulator {
     final message = <String, Object?>{
       'role': _chatRole,
       'content': text.isEmpty ? null : text,
+      if (_chatReasoning.isNotEmpty)
+        'reasoning_content': _chatReasoning.toString(),
+      if (_chatRefusal.isNotEmpty) 'refusal': _chatRefusal.toString(),
       if (_chatToolCalls.isNotEmpty)
         'tool_calls': [
           for (final entry
@@ -654,10 +722,11 @@ class AiEndpointStreamAccumulator {
 
   String _addResponses(Map<dynamic, dynamic> event) {
     final type = event['type'];
-    if (type == 'response.completed' && event['response'] is Map) {
-      final completed = _jsonMap(event['response'] as Map);
-      _completedResponsesEnvelope = completed;
-      if (_text.isEmpty) return style.responseText(completed) ?? '';
+    if ((type == 'response.completed' || type == 'response.incomplete') &&
+        event['response'] is Map) {
+      final terminal = _jsonMap(event['response'] as Map);
+      _terminalResponsesEnvelope = terminal;
+      if (_text.isEmpty) return style.responseText(terminal) ?? '';
       return '';
     }
 
@@ -732,18 +801,26 @@ class AiEndpointStreamAccumulator {
   }
 
   Map<String, Object?> get _responsesEnvelope {
-    final completed = _completedResponsesEnvelope;
-    if (completed != null) return _jsonMap(completed);
-    final output = <Object?>[
-      for (final entry
-          in _responsesOutput.entries.toList()
-            ..sort((left, right) => left.key.compareTo(right.key)))
-        _jsonMap(entry.value),
-    ];
+    final terminal = _terminalResponsesEnvelope;
+    final envelope = terminal == null
+        ? <String, Object?>{}
+        : _jsonMap(terminal);
+    final terminalOutput = envelope['output'];
+    final output = terminalOutput is List
+        ? List<Object?>.of(terminalOutput)
+        : <Object?>[];
+    if (output.isEmpty) {
+      output.addAll([
+        for (final entry
+            in _responsesOutput.entries.toList()
+              ..sort((left, right) => left.key.compareTo(right.key)))
+          _jsonMap(entry.value),
+      ]);
+    }
     final messageIndex = output.indexWhere(
       (item) => item is Map && item['type'] == 'message',
     );
-    if (text.isNotEmpty) {
+    if (text.isNotEmpty && style.responseText({'output': output}) == null) {
       final content = <Object?>[
         {'type': 'output_text', 'text': text},
       ];
@@ -756,13 +833,15 @@ class AiEndpointStreamAccumulator {
       } else {
         final message = _jsonMap(output[messageIndex] as Map);
         final existingContent = message['content'];
-        if (existingContent is! List || existingContent.isEmpty) {
-          message['content'] = content;
-        }
+        message['content'] = [
+          if (existingContent is List) ...existingContent,
+          ...content,
+        ];
         output[messageIndex] = message;
       }
     }
-    return {'output': output};
+    envelope['output'] = output;
+    return envelope;
   }
 
   String _addAnthropic(Map<dynamic, dynamic> event) {

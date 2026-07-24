@@ -459,7 +459,10 @@ void main() {
       stream.add({
         'choices': [
           {
-            'delta': {'role': 'assistant'},
+            'delta': {
+              'role': 'assistant',
+              'reasoning_content': 'Private planning.',
+            },
           },
         ],
       }),
@@ -522,6 +525,9 @@ void main() {
 
     expect(stream.text, 'I can check.');
     expect(style.responseText(stream.envelope), 'I can check.');
+    final message =
+        ((stream.envelope['choices'] as List).single as Map)['message'] as Map;
+    expect(message['reasoning_content'], 'Private planning.');
     expect(stream.hasToolCalls, isTrue);
     final calls = style.functionToolCalls(stream.envelope);
     expect(calls, hasLength(1));
@@ -532,6 +538,25 @@ void main() {
       (stream.envelope['choices'] as List).single['finish_reason'],
       'tool_calls',
     );
+    expect(stream.isComplete, isTrue);
+  });
+
+  test('preserves a streamed Chat refusal without exposing it as text', () {
+    const style = AiEndpointStyle.openAiChatCompletions;
+    final stream = AiEndpointStreamAccumulator(style);
+
+    stream.add({
+      'choices': [
+        {
+          'delta': {'refusal': 'I cannot help with that.'},
+          'finish_reason': 'stop',
+        },
+      ],
+    });
+
+    expect(stream.text, isEmpty);
+    expect(style.responseText(stream.envelope), isNull);
+    expect(style.refusalText(stream.envelope), 'I cannot help with that.');
     expect(stream.isComplete, isTrue);
   });
 
@@ -628,6 +653,59 @@ void main() {
       expect(style.responseText(stream.envelope), 'July 30 works.');
     },
   );
+
+  test('treats an incomplete Responses event as terminal', () {
+    const style = AiEndpointStyle.openAiResponses;
+    final stream = AiEndpointStreamAccumulator(style);
+
+    stream.add({
+      'type': 'response.output_item.done',
+      'output_index': 0,
+      'item': {
+        'type': 'reasoning',
+        'id': 'reasoning-only',
+        'summary': <Object?>[],
+      },
+    });
+    stream.add({
+      'type': 'response.incomplete',
+      'response': {
+        'id': 'response-incomplete',
+        'status': 'incomplete',
+        'incomplete_details': {'reason': 'max_tokens'},
+        'output': <Object?>[],
+      },
+    });
+
+    expect(stream.isComplete, isTrue);
+    expect(style.outputLimitReached(stream.envelope), isTrue);
+    expect((stream.envelope['output'] as List).single, {
+      'type': 'reasoning',
+      'id': 'reasoning-only',
+      'summary': <Object?>[],
+    });
+  });
+
+  test('preserves Responses text when a terminal envelope omits output', () {
+    const style = AiEndpointStyle.openAiResponses;
+    final stream = AiEndpointStreamAccumulator(style);
+
+    stream.add({
+      'type': 'response.output_text.delta',
+      'delta': 'Visible streamed reply.',
+    });
+    stream.add({
+      'type': 'response.completed',
+      'response': {
+        'id': 'response-completed',
+        'status': 'completed',
+        'output': <Object?>[],
+      },
+    });
+
+    expect(stream.isComplete, isTrue);
+    expect(style.responseText(stream.envelope), 'Visible streamed reply.');
+  });
 
   test('assembles indexed Anthropic text and fragmented tool input', () {
     const style = AiEndpointStyle.anthropicMessages;
@@ -828,6 +906,34 @@ void main() {
     expect(compatible, contains('tools'));
     expect(compatible, isNot(contains('tool_choice')));
     expect(body['tool_choice'], 'auto');
+  });
+
+  test('detects output budget exhaustion for every endpoint dialect', () {
+    expect(
+      AiEndpointStyle.openAiChatCompletions.outputLimitReached({
+        'choices': [
+          {'finish_reason': 'length'},
+        ],
+      }),
+      isTrue,
+    );
+    expect(
+      AiEndpointStyle.openAiResponses.outputLimitReached({
+        'status': 'incomplete',
+        'incomplete_details': {'reason': 'max_tokens'},
+      }),
+      isTrue,
+    );
+    expect(
+      AiEndpointStyle.anthropicMessages.outputLimitReached({
+        'stop_reason': 'max_tokens',
+      }),
+      isTrue,
+    );
+    expect(
+      AiEndpointStyle.ollamaChat.outputLimitReached({'done_reason': 'length'}),
+      isTrue,
+    );
   });
 }
 
