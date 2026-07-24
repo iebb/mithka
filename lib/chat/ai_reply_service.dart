@@ -977,7 +977,10 @@ class HostedAiReplyProvider
         contentType.contains('application/x-ndjson') ||
         contentType.contains('application/stream+json') ||
         (endpointStyle == AiEndpointStyle.ollamaChat && body['stream'] == true);
-    if (!isEventStream && !isJsonLineStream) {
+    final streamRequested = body['stream'] == true;
+    if (!isEventStream &&
+        !isJsonLineStream &&
+        (!isSuccessful || !streamRequested)) {
       final responseBody = await response.stream
           .timeout(streamIdleTimeout)
           .transform(utf8.decoder)
@@ -990,21 +993,11 @@ class HostedAiReplyProvider
 
     final raw = StringBuffer();
     final accumulator = AiEndpointStreamAccumulator(endpointStyle);
+    var detectedEventStream = isEventStream;
+    var detectedJsonLineStream = isJsonLineStream;
+    var recognizedStream = isEventStream || isJsonLineStream;
     var lastReportedText = '';
-    void consumeEventData(String rawData) {
-      final data = rawData.trim();
-      if (data.isEmpty) return;
-      if (data == '[DONE]') {
-        accumulator.markDataDone();
-        return;
-      }
-      final Object? decoded;
-      try {
-        decoded = jsonDecode(data);
-      } on FormatException {
-        return;
-      }
-      if (decoded is! Map) return;
+    void consumeDecodedEvent(Map<dynamic, dynamic> decoded) {
       final error = endpointStyle.errorMessage(decoded);
       if (error != null && error.trim().isNotEmpty) {
         throw AiReplyException(error.trim());
@@ -1029,11 +1022,56 @@ class HostedAiReplyProvider
       onDraft(TelegramAiFormattedText(text: accumulated));
     }
 
+    void consumeEventData(String rawData) {
+      final data = rawData.trim();
+      if (data.isEmpty) return;
+      if (data == '[DONE]') {
+        accumulator.markDataDone();
+        return;
+      }
+      final Object? decoded;
+      try {
+        decoded = jsonDecode(data);
+      } on FormatException {
+        return;
+      }
+      if (decoded is! Map) return;
+      consumeDecodedEvent(decoded);
+    }
+
     final eventDataLines = <String>[];
     void flushEventFrame() {
       if (eventDataLines.isEmpty) return;
       consumeEventData(eventDataLines.join('\n'));
       eventDataLines.clear();
+    }
+
+    void consumeEventStreamLine(String rawLine) {
+      if (rawLine.trim().isEmpty) {
+        flushEventFrame();
+        return;
+      }
+      final line = rawLine.trimLeft();
+      if (!line.startsWith('data:')) return;
+      var value = line.substring(5);
+      if (value.startsWith(' ')) value = value.substring(1);
+      eventDataLines.add(value);
+    }
+
+    bool sniffJsonLineStream(String rawLine) {
+      final data = rawLine.trim();
+      if (data.isEmpty) return false;
+      final Object? decoded;
+      try {
+        decoded = jsonDecode(data);
+      } on FormatException {
+        return false;
+      }
+      if (decoded is! Map || !_looksLikeStreamEvent(decoded)) return false;
+      detectedJsonLineStream = true;
+      recognizedStream = true;
+      consumeDecodedEvent(decoded);
+      return true;
     }
 
     await for (final rawLine
@@ -1043,22 +1081,29 @@ class HostedAiReplyProvider
             .transform(const LineSplitter())) {
       raw.writeln(rawLine);
       if (!isSuccessful) continue;
-      if (isEventStream) {
-        if (rawLine.trim().isEmpty) {
-          flushEventFrame();
-          continue;
-        }
-        final line = rawLine.trimLeft();
-        if (!line.startsWith('data:')) continue;
-        var value = line.substring(5);
-        if (value.startsWith(' ')) value = value.substring(1);
-        eventDataLines.add(value);
+      if (detectedEventStream) {
+        consumeEventStreamLine(rawLine);
         continue;
       }
-      consumeEventData(rawLine);
+      if (detectedJsonLineStream) {
+        consumeEventData(rawLine);
+        continue;
+      }
+      if (streamRequested) {
+        final line = rawLine.trimLeft();
+        if (line.startsWith('data:') ||
+            line.startsWith('event:') ||
+            line.startsWith(':')) {
+          detectedEventStream = true;
+          recognizedStream = true;
+          consumeEventStreamLine(rawLine);
+          continue;
+        }
+        if (sniffJsonLineStream(rawLine)) continue;
+      }
     }
-    if (isSuccessful && isEventStream) flushEventFrame();
-    if (isSuccessful && !accumulator.isComplete) {
+    if (isSuccessful && detectedEventStream) flushEventFrame();
+    if (isSuccessful && recognizedStream && !accumulator.isComplete) {
       throw const AiReplyException(
         'The reply stream ended before completion. The partial draft was kept.',
       );
@@ -1066,7 +1111,7 @@ class HostedAiReplyProvider
     return _AiReplyHttpResponse(
       statusCode: response.statusCode,
       body: raw.toString(),
-      envelope: isSuccessful ? accumulator.envelope : null,
+      envelope: isSuccessful && recognizedStream ? accumulator.envelope : null,
     );
   }
 

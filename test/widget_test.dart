@@ -1029,6 +1029,77 @@ void main() {
     });
 
     testWidgets(
+      'progressively reveals a completed one-shot AI reply in the input',
+      (tester) async {
+        final result = Completer<TelegramAiFormattedText>();
+        final (vm, _) = await pumpAiReplyComposer(tester, (_) => result.future);
+        const completedText =
+            'I can join at three, bring the revised notes, and confirm the '
+            'room with everyone before the meeting starts.';
+
+        await tester.tap(find.byKey(const ValueKey('composerAiReplyButton')));
+        await tester.pump();
+        result.complete(
+          const TelegramAiFormattedText(
+            text: completedText,
+            entities: [
+              {
+                '@type': 'textEntity',
+                'offset': 0,
+                'length': 1,
+                'type': {'@type': 'textEntityTypeBold'},
+              },
+            ],
+          ),
+        );
+        await tester.pump();
+
+        final partial = tester
+            .widget<TextField>(find.byType(TextField))
+            .controller!
+            .text;
+        expect(partial, isNotEmpty);
+        expect(completedText, startsWith(partial));
+        expect(partial, isNot(completedText));
+        expect(vm.draft, partial);
+        expect(
+          find.byKey(const ValueKey('composerAiReplyProgress')),
+          findsOneWidget,
+        );
+        expect(
+          tester
+              .widget<GestureDetector>(
+                find.byKey(const ValueKey('composerSendButton')),
+              )
+              .onTap,
+          isNull,
+        );
+
+        await tester.pumpAndSettle();
+
+        final controller =
+            tester.widget<TextField>(find.byType(TextField)).controller!
+                as EmojiTextEditingController;
+        final (text, entities) = controller.toFormatted();
+        expect(text, completedText);
+        expect(entities.single['type'], {'@type': 'textEntityTypeBold'});
+        expect(vm.draft, completedText);
+        expect(
+          find.byKey(const ValueKey('composerAiReplyProgress')),
+          findsNothing,
+        );
+        expect(
+          tester
+              .widget<GestureDetector>(
+                find.byKey(const ValueKey('composerSendButton')),
+              )
+              .onTap,
+          isNotNull,
+        );
+      },
+    );
+
+    testWidgets(
       'streams a partial AI reply into the composer and keeps progress visible',
       (tester) async {
         late AiReplyDraftCallback emitDraft;

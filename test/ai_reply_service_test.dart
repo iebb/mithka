@@ -606,6 +606,99 @@ void main() {
   });
 
   test(
+    'hosted reply streams mislabeled SSE drafts before completion',
+    () async {
+      final client = _ControlledAiReplyStreamingClient(
+        contentType: 'application/json',
+      );
+      addTearDown(client.close);
+      final provider = HostedAiReplyProvider(
+        endpoint: Uri.parse('https://api.example/v1/chat/completions'),
+        model: 'streaming-reply-model',
+        endpointStyle: AiEndpointStyle.openAiChatCompletions,
+        httpClient: client,
+      );
+      addTearDown(provider.close);
+      final drafts = <String>[];
+      var completed = false;
+
+      final completion = provider
+          .generateStreaming(
+            _request(),
+            onDraft: (draft) => drafts.add(draft.text),
+          )
+          .whenComplete(() => completed = true);
+      await client.requestReceived.future;
+      client.addChatCompletionDelta('Visible before EOF');
+      await Future<void>.delayed(Duration.zero);
+
+      expect(drafts, contains('Visible before EOF'));
+      expect(completed, isFalse);
+
+      client.finish();
+      final result = await completion;
+
+      expect(result.text, 'Visible before EOF');
+      expect(completed, isTrue);
+    },
+  );
+
+  test(
+    'hosted reply streams mislabeled NDJSON drafts before completion',
+    () async {
+      final client = _ControlledAiReplyStreamingClient(
+        contentType: 'application/json',
+      );
+      addTearDown(client.close);
+      final provider = HostedAiReplyProvider(
+        endpoint: Uri.parse('https://api.example/v1/responses'),
+        model: 'streaming-reply-model',
+        endpointStyle: AiEndpointStyle.openAiResponses,
+        httpClient: client,
+      );
+      addTearDown(provider.close);
+      final drafts = <String>[];
+      var completed = false;
+
+      final completion = provider
+          .generateStreaming(
+            _request(),
+            onDraft: (draft) => drafts.add(draft.text),
+          )
+          .whenComplete(() => completed = true);
+      await client.requestReceived.future;
+      client.addRawEvent({
+        'type': 'response.output_text.delta',
+        'delta': 'Visible before EOF',
+      });
+      await Future<void>.delayed(Duration.zero);
+
+      expect(drafts, contains('Visible before EOF'));
+      expect(completed, isFalse);
+
+      client.addRawEvent({
+        'type': 'response.completed',
+        'response': {
+          'output': [
+            {
+              'type': 'message',
+              'role': 'assistant',
+              'content': [
+                {'type': 'output_text', 'text': 'Visible before EOF'},
+              ],
+            },
+          ],
+        },
+      });
+      client.closeResponse();
+      final result = await completion;
+
+      expect(result.text, 'Visible before EOF');
+      expect(completed, isTrue);
+    },
+  );
+
+  test(
     'hosted reply retains a partial draft but rejects premature Chat EOF',
     () async {
       final client = _ControlledAiReplyStreamingClient();
@@ -719,7 +812,7 @@ void main() {
         isA<AiReplyException>().having(
           (error) => error.message,
           'message',
-          contains('invalid JSON'),
+          contains('ended before completion'),
         ),
       ),
     );
@@ -1235,6 +1328,9 @@ ChatMessage _chatMessage({
 );
 
 class _ControlledAiReplyStreamingClient extends http.BaseClient {
+  _ControlledAiReplyStreamingClient({this.contentType = 'text/event-stream'});
+
+  final String contentType;
   final requestReceived = Completer<void>();
   final _response = StreamController<List<int>>();
   Map<String, dynamic>? requestBody;
@@ -1247,26 +1343,36 @@ class _ControlledAiReplyStreamingClient extends http.BaseClient {
     return http.StreamedResponse(
       _response.stream,
       200,
-      headers: {'content-type': 'text/event-stream'},
+      headers: {'content-type': contentType},
     );
   }
 
   void addChatCompletionDelta(String content) {
-    _response.add(
-      utf8.encode(
-        'data: ${jsonEncode({
-          'choices': [
-            {
-              'delta': {'content': content},
-            },
-          ],
-        })}\n\n',
-      ),
+    addRaw(
+      'data: ${jsonEncode({
+        'choices': [
+          {
+            'delta': {'content': content},
+          },
+        ],
+      })}\n\n',
     );
   }
 
   void finish() {
-    _response.add(utf8.encode('data: [DONE]\n\n'));
+    addRaw('data: [DONE]\n\n');
+    closeResponse();
+  }
+
+  void addRawEvent(Map<String, Object?> event) {
+    addRaw('${jsonEncode(event)}\n');
+  }
+
+  void addRaw(String value) {
+    _response.add(utf8.encode(value));
+  }
+
+  void closeResponse() {
     unawaited(_response.close());
   }
 

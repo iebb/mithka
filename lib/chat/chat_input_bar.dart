@@ -1323,6 +1323,39 @@ class _ChatInputBarState extends State<ChatInputBar> {
     return true;
   }
 
+  Future<bool> _revealCompletedAiReply(
+    TelegramAiFormattedText result, {
+    required bool Function(TelegramAiFormattedText draft) applyDraft,
+  }) async {
+    final characters = result.text.characters.toList(growable: false);
+    if (characters.length < 2) return true;
+
+    // Telegram Cocoon and Apple's native model bridge currently return one
+    // completed value rather than transport-level deltas. Reveal those replies
+    // through the same composer path so every AI Reply provider has consistent
+    // incremental input feedback. Keep the animation bounded for long replies
+    // and apply the provider's formatted entities only with the final value.
+    const maximumFrames = 48;
+    const frameDuration = Duration(milliseconds: 12);
+    final charactersPerFrame = math.max(
+      1,
+      (characters.length / maximumFrames).ceil(),
+    );
+    final buffer = StringBuffer();
+    var offset = 0;
+    while (offset < characters.length) {
+      final end = math.min(characters.length, offset + charactersPerFrame);
+      buffer.writeAll(characters.getRange(offset, end));
+      offset = end;
+      if (offset == characters.length) break;
+      if (!applyDraft(TelegramAiFormattedText(text: buffer.toString()))) {
+        return false;
+      }
+      await Future<void>.delayed(frameDuration);
+    }
+    return true;
+  }
+
   Future<void> _generateAiReply(ChatMessage target) async {
     if (_aiReplyWorkingTargetId == target.id) return;
     final usesExplicitTarget = vm.replyTo?.id == target.id;
@@ -1431,37 +1464,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
         groundedRequest,
       );
       _aiReplyWorkingContextSnapshot = contextSnapshot;
-      void onDraft(TelegramAiFormattedText draft) {
-        _applyAiReplyDraft(
-          draft,
-          generation: generation,
-          requestVm: requestVm,
-          settings: settings,
-          target: target,
-          targetMessageId: targetMessageId,
-          usesExplicitTarget: usesExplicitTarget,
-          targetFingerprint: targetFingerprint,
-          draftRevision: draftRevision,
-          contextSnapshot: contextSnapshot,
-        );
-      }
-
-      final TelegramAiFormattedText result;
-      final streamingGenerator = widget.aiReplyStreamingGenerator;
-      if (streamingGenerator != null) {
-        result = await streamingGenerator(groundedRequest, onDraft: onDraft);
-      } else if (widget.aiReplyGenerator case final generator?) {
-        result = await generator(groundedRequest);
-      } else if (provider case final StreamingAiReplyProvider streaming) {
-        result = await streaming.generateStreaming(
-          groundedRequest,
-          onDraft: onDraft,
-        );
-      } else {
-        result = await provider!.generate(groundedRequest);
-      }
-      if (!_applyAiReplyDraft(
-        result,
+      bool applyDraft(TelegramAiFormattedText draft) => _applyAiReplyDraft(
+        draft,
         generation: generation,
         requestVm: requestVm,
         settings: settings,
@@ -1471,7 +1475,34 @@ class _ChatInputBarState extends State<ChatInputBar> {
         targetFingerprint: targetFingerprint,
         draftRevision: draftRevision,
         contextSnapshot: contextSnapshot,
-      )) {
+      );
+
+      void onDraft(TelegramAiFormattedText draft) {
+        applyDraft(draft);
+      }
+
+      late final TelegramAiFormattedText result;
+      var revealCompletedResult = false;
+      final streamingGenerator = widget.aiReplyStreamingGenerator;
+      if (streamingGenerator != null) {
+        result = await streamingGenerator(groundedRequest, onDraft: onDraft);
+      } else if (widget.aiReplyGenerator case final generator?) {
+        result = await generator(groundedRequest);
+        revealCompletedResult = true;
+      } else if (provider case final StreamingAiReplyProvider streaming) {
+        result = await streaming.generateStreaming(
+          groundedRequest,
+          onDraft: onDraft,
+        );
+      } else {
+        result = await provider!.generate(groundedRequest);
+        revealCompletedResult = true;
+      }
+      if (revealCompletedResult &&
+          !await _revealCompletedAiReply(result, applyDraft: applyDraft)) {
+        return;
+      }
+      if (!applyDraft(result)) {
         return;
       }
       _focus.requestFocus();
