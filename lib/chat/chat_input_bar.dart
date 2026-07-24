@@ -147,6 +147,7 @@ class ChatInputBar extends StatefulWidget {
     this.quickReplySender,
     this.onVoicePanelOpenedForTesting,
     this.aiReplyGenerator,
+    this.aiReplyHistoryLoader,
   });
   final ChatViewModel vm;
   final FutureOr<void> Function(bool isVideo) onStartCall;
@@ -164,6 +165,8 @@ class ChatInputBar extends StatefulWidget {
   final VoidCallback? onVoicePanelOpenedForTesting;
   @visibleForTesting
   final AiReplyGenerator? aiReplyGenerator;
+  @visibleForTesting
+  final AiReplyChatHistoryLoader? aiReplyHistoryLoader;
 
   @override
   State<ChatInputBar> createState() => _ChatInputBarState();
@@ -1145,6 +1148,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
         visibleMessages: vm.messages,
         currentDraft: draftText,
         outputLanguageCode: Localizations.localeOf(context).toLanguageTag(),
+        historyLoader: widget.aiReplyHistoryLoader ?? vm.loadAiReplyContext,
       );
     } on AiReplyException catch (error) {
       showToast(context, error.message);
@@ -1190,9 +1194,30 @@ class _ChatInputBarState extends State<ChatInputBar> {
     });
     late final TelegramAiFormattedText result;
     try {
+      var groundedRequest = request;
+      try {
+        groundedRequest = await request.withEarlierContext();
+      } on AiReplyPrivacyException {
+        rethrow;
+      } catch (_) {
+        groundedRequest = request.copyWith(contextExpanded: true);
+      }
+      if (!mounted ||
+          generation != _aiReplyGeneration ||
+          !identical(vm, requestVm) ||
+          (widget.aiReplyHistoryLoader == null && !vm.canShareAiReplyContext) ||
+          !_canOfferAiReply(target, settings) ||
+          !_isCurrentAiReplyTarget(
+            targetMessageId,
+            usesExplicitTarget: usesExplicitTarget,
+            fingerprint: targetFingerprint,
+          ) ||
+          _composerRevision != draftRevision) {
+        return;
+      }
       result =
-          await (widget.aiReplyGenerator?.call(request) ??
-              provider!.generate(request));
+          await (widget.aiReplyGenerator?.call(groundedRequest) ??
+              provider!.generate(groundedRequest));
     } catch (error) {
       if (mounted && generation == _aiReplyGeneration) {
         showToast(

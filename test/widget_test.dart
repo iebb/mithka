@@ -831,6 +831,7 @@ void main() {
     Future<(_FocusTestChatViewModel, ChatMessage)> pumpAiReplyComposer(
       WidgetTester tester,
       AiReplyGenerator generator, {
+      AiReplyChatHistoryLoader? historyLoader,
       bool includeReplyKeyboard = false,
       bool useExplicitReplyTarget = false,
       bool includeLatestOutgoingMessage = false,
@@ -927,6 +928,13 @@ void main() {
                   onStartCall: (_) {},
                   onMessageSent: () {},
                   aiReplyGenerator: generator,
+                  aiReplyHistoryLoader:
+                      historyLoader ??
+                      ({
+                        required beforeMessageId,
+                        required query,
+                        required limit,
+                      }) async => const AiReplyChatHistoryPage.empty(),
                 ),
               ),
             ),
@@ -1000,6 +1008,216 @@ void main() {
         findsNothing,
       );
     });
+
+    testWidgets(
+      'AI reply history eagerly grounds generation with older messages',
+      (tester) async {
+        AiReplyRequest? capturedRequest;
+        int? capturedBeforeMessageId;
+        String? capturedQuery;
+        int? capturedLimit;
+        var generatorCalls = 0;
+        final olderMessages = [
+          ChatMessage(
+            id: 4,
+            isOutgoing: false,
+            text: 'The launch is still planned for Friday.',
+            date: 4,
+            senderName: 'Alice',
+            contentType: 'messageText',
+          ),
+          ChatMessage(
+            id: 5,
+            isOutgoing: true,
+            text: 'Friday works for me.',
+            date: 5,
+            contentType: 'messageText',
+          ),
+        ];
+        final (_, target) = await pumpAiReplyComposer(
+          tester,
+          (request) async {
+            capturedRequest = request;
+            generatorCalls++;
+            return const TelegramAiFormattedText(
+              text: 'Yes, I can join at three.',
+            );
+          },
+          historyLoader:
+              ({
+                required beforeMessageId,
+                required query,
+                required limit,
+              }) async {
+                capturedBeforeMessageId = beforeMessageId;
+                capturedQuery = query;
+                capturedLimit = limit;
+                return AiReplyChatHistoryPage(
+                  messages: olderMessages,
+                  hasMore: false,
+                );
+              },
+        );
+
+        await tester.tap(find.byKey(const ValueKey('composerAiReplyButton')));
+        await tester.pumpAndSettle();
+
+        expect(generatorCalls, 1);
+        expect(capturedBeforeMessageId, target.id);
+        expect(capturedQuery, isEmpty);
+        expect(capturedLimit, AiReplyRequest.earlierContextFetchLimit);
+        expect(capturedRequest?.contextExpanded, isTrue);
+        expect(capturedRequest?.contextComplete, isTrue);
+        expect(capturedRequest?.messages.map((message) => message.id), [
+          4,
+          5,
+          target.id,
+        ]);
+        expect(
+          capturedRequest?.messages
+              .firstWhere((message) => message.id == 5)
+              .isCurrentUser,
+          isTrue,
+        );
+        expect(
+          tester.widget<TextField>(find.byType(TextField)).controller!.text,
+          'Yes, I can join at three.',
+        );
+      },
+    );
+
+    testWidgets(
+      'AI reply history loading stops before generation when the user types',
+      (tester) async {
+        final history = Completer<AiReplyChatHistoryPage>();
+        var historyCalls = 0;
+        var generatorCalls = 0;
+        await pumpAiReplyComposer(
+          tester,
+          (_) async {
+            generatorCalls++;
+            return const TelegramAiFormattedText(text: 'Generated reply');
+          },
+          historyLoader:
+              ({required beforeMessageId, required query, required limit}) {
+                historyCalls++;
+                return history.future;
+              },
+        );
+
+        await tester.tap(find.byKey(const ValueKey('composerAiReplyButton')));
+        await tester.pump();
+        expect(historyCalls, 1);
+        expect(generatorCalls, 0);
+        expect(
+          find.byKey(const ValueKey('composerAiReplyProgress')),
+          findsOneWidget,
+        );
+
+        await tester.enterText(find.byType(TextField), 'My own draft');
+        await tester.pump();
+        expect(
+          find.byKey(const ValueKey('composerAiReplyProgress')),
+          findsNothing,
+        );
+
+        history.complete(const AiReplyChatHistoryPage.empty());
+        await tester.pumpAndSettle();
+
+        expect(generatorCalls, 0);
+        expect(
+          tester.widget<TextField>(find.byType(TextField)).controller!.text,
+          'My own draft',
+        );
+      },
+    );
+
+    testWidgets(
+      'AI reply history loading stops before generation when the target changes',
+      (tester) async {
+        final history = Completer<AiReplyChatHistoryPage>();
+        var historyCalls = 0;
+        var generatorCalls = 0;
+        final (vm, _) = await pumpAiReplyComposer(
+          tester,
+          (_) async {
+            generatorCalls++;
+            return const TelegramAiFormattedText(text: 'Generated reply');
+          },
+          useExplicitReplyTarget: true,
+          historyLoader:
+              ({required beforeMessageId, required query, required limit}) {
+                historyCalls++;
+                return history.future;
+              },
+        );
+
+        await tester.tap(find.byKey(const ValueKey('composerAiReplyButton')));
+        await tester.pump();
+        expect(historyCalls, 1);
+        expect(generatorCalls, 0);
+
+        final replacement = ChatMessage(
+          id: 8,
+          isOutgoing: false,
+          text: 'Actually, can you join at four?',
+          date: 2,
+          senderName: 'Alice',
+          contentType: 'messageText',
+        );
+        vm.setReply(replacement);
+        await tester.pump();
+        expect(
+          find.byKey(const ValueKey('composerAiReplyProgress')),
+          findsNothing,
+        );
+
+        history.complete(const AiReplyChatHistoryPage.empty());
+        await tester.pumpAndSettle();
+
+        expect(generatorCalls, 0);
+        expect(vm.replyTo, same(replacement));
+        expect(
+          tester.widget<TextField>(find.byType(TextField)).controller!.text,
+          isEmpty,
+        );
+      },
+    );
+
+    testWidgets(
+      'AI reply does not generate when blocked-user privacy cannot be verified',
+      (tester) async {
+        var generatorCalls = 0;
+        await pumpAiReplyComposer(
+          tester,
+          (_) async {
+            generatorCalls++;
+            return const TelegramAiFormattedText(text: 'Generated reply');
+          },
+          historyLoader:
+              ({
+                required beforeMessageId,
+                required query,
+                required limit,
+              }) async =>
+                  throw const AiReplyPrivacyException('Block list unavailable'),
+        );
+
+        await tester.tap(find.byKey(const ValueKey('composerAiReplyButton')));
+        await tester.pumpAndSettle();
+
+        expect(generatorCalls, 0);
+        expect(
+          tester.widget<TextField>(find.byType(TextField)).controller!.text,
+          isEmpty,
+        );
+        expect(
+          find.byKey(const ValueKey('composerAiReplyProgress')),
+          findsNothing,
+        );
+        await tester.pump(const Duration(seconds: 2));
+      },
+    );
 
     testWidgets('hides contextual AI Reply after the user has answered', (
       tester,

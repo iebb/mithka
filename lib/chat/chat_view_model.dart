@@ -24,6 +24,7 @@ import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../tdlib/td_requests.dart';
 import '../tdlib/td_user_index.dart';
+import 'ai_reply_service.dart';
 import 'chat_first_contact_info.dart';
 import 'chat_message_merge.dart';
 import 'chat_unread_progress.dart';
@@ -175,6 +176,9 @@ class _DraftMention {
 }
 
 class ChatViewModel extends ChangeNotifier {
+  static const int _maximumAiReplyContextMessages = 64;
+  static const int _maximumAiReplySearchCharacters = 160;
+
   ChatViewModel({
     required this.chatId,
     required String title,
@@ -185,7 +189,9 @@ class ChatViewModel extends ChangeNotifier {
     bool sessionAnchoredHistory = false,
     ChatFirstContactInfo? sessionFirstContactInfo,
     ChatMessage? seedMessage,
-  }) : peerTitle = title {
+  }) : _accountClientId = TdClient.shared.activeClientId,
+       _accountSlot = TdClient.shared.activeSlot,
+       peerTitle = title {
     if (sessionMessages != null && sessionMessages.isNotEmpty) {
       _allMessages = List<ChatMessage>.from(sessionMessages);
       messages = List<ChatMessage>.from(sessionMessages);
@@ -282,6 +288,10 @@ class ChatViewModel extends ChangeNotifier {
   SponsoredMessagesSnapshot? sponsoredMessages;
 
   final TdClient _client = TdClient.shared;
+  final int _accountClientId;
+  final int _accountSlot;
+  Future<Set<String>>? _aiReplyBlockedSenderKeysFuture;
+  int _aiReplyBlockedSenderRevision = 0;
   late final TelegramAiService telegramAi = TelegramAiService(client: _client);
   TelegramAiCapabilities? aiCapabilities;
   static final SponsoredMessagesCache _sponsoredMessagesCache =
@@ -2305,6 +2315,254 @@ class ChatViewModel extends ChangeNotifier {
 
   // MARK: - Paging
 
+  /// Loads a bounded, read-only slice of older messages for an AI reply.
+  ///
+  /// Unlike [loadOlder] and [loadAroundMessage], this never merges messages
+  /// into the transcript, moves the history window, or marks anything read.
+  /// The TDLib client is captured with the view model so an account switch
+  /// can't redirect a colliding chat id to another account while the request
+  /// is in flight. [beforeMessageId] is an exclusive cursor; zero starts from
+  /// the latest message available to TDLib.
+  Future<AiReplyChatHistoryPage> loadAiReplyContext({
+    required int beforeMessageId,
+    required String query,
+    required int limit,
+  }) async {
+    _requireAiReplyContextAccess();
+    final blockedSenderKeys = await _aiReplyBlockedSenderKeys();
+    _requireAiReplyContextAccess();
+
+    final boundedBeforeMessageId = math.max(0, beforeMessageId);
+    final boundedLimit = math.min(
+      _maximumAiReplyContextMessages,
+      math.max(1, limit),
+    );
+    // TDLib includes from_message_id at offset zero. Ask for one extra item so
+    // an exclusive cursor can still return the requested number of messages.
+    final requestLimit = boundedBeforeMessageId > 0
+        ? boundedLimit + 1
+        : boundedLimit;
+    final boundedQuery = _boundedAiReplySearchQuery(query);
+    final request = boundedQuery.isEmpty
+        ? <String, dynamic>{
+            '@type': 'getChatHistory',
+            'chat_id': chatId,
+            'from_message_id': boundedBeforeMessageId,
+            'offset': 0,
+            'limit': requestLimit,
+            'only_local': false,
+          }
+        : <String, dynamic>{
+            '@type': 'searchChatMessages',
+            'chat_id': chatId,
+            'query': boundedQuery,
+            'sender_id': null,
+            'from_message_id': boundedBeforeMessageId,
+            'offset': 0,
+            'limit': requestLimit,
+            'filter': {'@type': 'searchMessagesFilterEmpty'},
+          };
+
+    final Map<String, dynamic> response;
+    try {
+      response = await _client.queryTo(request, _accountClientId);
+    } catch (_) {
+      _requireAiReplyContextAccess();
+      return AiReplyChatHistoryPage(
+        messages: const [],
+        hasMore: true,
+        blockedSenderKeys: blockedSenderKeys,
+      );
+    }
+    _requireAiReplyContextAccess();
+
+    final messagesById = <int, ChatMessage>{};
+    final rawMessages =
+        response.objects('messages') ?? const <Map<String, dynamic>>[];
+    for (final raw in rawMessages) {
+      final message = TDParse.message(raw);
+      if (message == null ||
+          message.id <= 0 ||
+          (message.chatId != null && message.chatId != chatId) ||
+          (boundedBeforeMessageId > 0 &&
+              message.id >= boundedBeforeMessageId) ||
+          !_canShareMessageWithAi(message, blockedSenderKeys)) {
+        continue;
+      }
+      _hydrateAiReplySenderName(message);
+      messagesById[message.id] = message;
+      if (messagesById.length >= boundedLimit) break;
+    }
+
+    final result = messagesById.values.toList()
+      ..sort(compareChatMessagesChronologically);
+    final searchNextMessageId = response.int64('next_from_message_id');
+    // TDLib may return fewer messages than requested without reaching the
+    // beginning of chat history. Search responses expose an explicit cursor;
+    // plain history does not, so only an empty page proves exhaustion there.
+    final hasMore = boundedQuery.isNotEmpty
+        ? searchNextMessageId == null
+              ? rawMessages.isNotEmpty
+              : searchNextMessageId != 0
+        : rawMessages.isNotEmpty;
+    return AiReplyChatHistoryPage(
+      messages: List.unmodifiable(result),
+      hasMore: hasMore,
+      blockedSenderKeys: blockedSenderKeys,
+    );
+  }
+
+  bool get _canLoadAiReplyContext =>
+      !_isDisposed &&
+      !isSecretChat &&
+      !hasProtectedContent &&
+      _accountClientId > 0 &&
+      _client.activeClientId == _accountClientId &&
+      _client.activeSlot == _accountSlot;
+
+  bool get canShareAiReplyContext => _canLoadAiReplyContext;
+
+  void _requireAiReplyContextAccess() {
+    if (_canLoadAiReplyContext) return;
+    throw const AiReplyPrivacyException(
+      'AI Reply context is no longer available for this account.',
+    );
+  }
+
+  Future<Set<String>> _aiReplyBlockedSenderKeys() async {
+    final existing = _aiReplyBlockedSenderKeysFuture;
+    if (existing != null) return existing;
+    final revision = _aiReplyBlockedSenderRevision;
+    final future = () async {
+      final result = await _fetchAiReplyBlockedSenderKeys();
+      if (revision != _aiReplyBlockedSenderRevision) {
+        return _aiReplyBlockedSenderKeys();
+      }
+      return result;
+    }();
+    _aiReplyBlockedSenderKeysFuture = future;
+    try {
+      return await future;
+    } catch (_) {
+      if (identical(_aiReplyBlockedSenderKeysFuture, future)) {
+        _aiReplyBlockedSenderKeysFuture = null;
+      }
+      rethrow;
+    }
+  }
+
+  Future<Set<String>> _fetchAiReplyBlockedSenderKeys() async {
+    try {
+      const pageLimit = 100;
+      const maximumPages = 100;
+      final blocked = <String>{};
+      var offset = 0;
+      for (var page = 0; page < maximumPages; page++) {
+        _requireAiReplyContextAccess();
+        final response = await _client.queryTo({
+          '@type': 'getBlockedMessageSenders',
+          'block_list': {'@type': 'blockListMain'},
+          'offset': offset,
+          'limit': pageLimit,
+        }, _accountClientId);
+        _requireAiReplyContextAccess();
+        final senders =
+            response.objects('senders') ?? const <Map<String, dynamic>>[];
+        for (final raw in senders) {
+          final sender = raw.obj('sender') ?? raw;
+          final type = sender.type;
+          final senderId = switch (type) {
+            'messageSenderUser' => sender.int64('user_id'),
+            'messageSenderChat' => sender.int64('chat_id'),
+            _ => null,
+          };
+          final key = aiReplySenderKey(
+            senderId: senderId,
+            senderIsChat: type == 'messageSenderChat',
+          );
+          if (key != null) blocked.add(key);
+        }
+        // TDLib documents total_count as approximate, so it cannot safely
+        // prove that every blocked sender was checked. A short page is the
+        // only successful termination signal for this privacy gate.
+        if (senders.length < pageLimit) {
+          return Set.unmodifiable(blocked);
+        }
+        offset += senders.length;
+      }
+      throw const AiReplyPrivacyException(
+        'The blocked-user list is too large to verify safely for AI Reply.',
+      );
+    } on AiReplyPrivacyException {
+      rethrow;
+    } catch (_) {
+      throw const AiReplyPrivacyException(
+        'Could not verify blocked users safely for AI Reply.',
+      );
+    }
+  }
+
+  String _boundedAiReplySearchQuery(String value) {
+    final trimmed = value.trim();
+    final runes = trimmed.runes.toList(growable: false);
+    if (runes.length <= _maximumAiReplySearchCharacters) return trimmed;
+    return String.fromCharCodes(runes.take(_maximumAiReplySearchCharacters));
+  }
+
+  bool _canShareMessageWithAi(
+    ChatMessage message,
+    Set<String> blockedSenderKeys,
+  ) {
+    if (message.isService ||
+        message.isContentRestricted ||
+        message.blockedByUser ||
+        message.text.trim().isEmpty) {
+      return false;
+    }
+    if (message.isOutgoing) return true;
+
+    final senderId = message.senderId;
+    if (senderId != null && _blockedSenderIds.contains(senderId)) return false;
+    final keywordBlocker = KeywordBlocker.shared;
+    if (keywordBlocker.isSenderBlocked(senderId) ||
+        keywordBlocker.matches(message.text)) {
+      return false;
+    }
+    final senderKey = aiReplySenderKey(
+      senderId: senderId,
+      senderIsChat: message.senderIsChat,
+    );
+    return senderKey == null || !blockedSenderKeys.contains(senderKey);
+  }
+
+  void _hydrateAiReplySenderName(ChatMessage message) {
+    if (message.senderName?.trim().isNotEmpty ?? false) return;
+    if (message.isOutgoing && !message.senderIsChat) {
+      message.senderName = meName;
+      return;
+    }
+
+    final senderId = message.senderId;
+    final cached = senderId == null ? null : _senderCache[senderId];
+    if (cached != null && cached.name.trim().isNotEmpty) {
+      message.senderName = cached.name;
+      return;
+    }
+    if (senderId != null && senderId > 0 && !message.senderIsChat) {
+      final user = TdUserIndex.shared.userFor(_accountSlot, senderId);
+      if (user != null) {
+        final name = TDParse.userName(user).trim();
+        if (name.isNotEmpty) {
+          message.senderName = name;
+          return;
+        }
+      }
+    }
+    if (!isGroup && !message.isOutgoing && peerTitle.trim().isNotEmpty) {
+      message.senderName = peerTitle.trim();
+    }
+  }
+
   Future<bool> loadOlder() async {
     if (!canLoadOlder) return false;
     _isLoadingOlder = true;
@@ -3854,6 +4112,8 @@ class ChatViewModel extends ChangeNotifier {
       case 'updateBlockMessageSender':
         // Invalidate blocked-user cache so the hide-on-block toggle
         // takes effect immediately without app restart.
+        _aiReplyBlockedSenderKeysFuture = null;
+        _aiReplyBlockedSenderRevision++;
         if (BlockedUserService.shared.enabled) {
           unawaited(
             BlockedUserService.shared.loadBlockedUsers().then((_) {
