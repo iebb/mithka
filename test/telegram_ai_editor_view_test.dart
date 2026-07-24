@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mithka/chat/ai_reply_service.dart';
 import 'package:mithka/chat/telegram_ai_editor_view.dart';
 import 'package:mithka/chat/telegram_ai_service.dart';
 import 'package:mithka/l10n/app_localizations.dart';
@@ -158,71 +157,6 @@ void main() {
     );
   });
 
-  testWidgets('AI Reply starts in reply mode and keeps output as a draft', (
-    tester,
-  ) async {
-    SharedPreferences.setMockInitialValues({});
-    final preferences = await SharedPreferences.getInstance();
-    final theme = ThemeController(preferences);
-    addTearDown(theme.dispose);
-    final service = TelegramAiService(
-      queryOverride: (_) async => const {'@type': 'ok'},
-    );
-    addTearDown(service.dispose);
-    final provider = _FakeReplyProvider();
-
-    await tester.pumpWidget(
-      ChangeNotifierProvider<ThemeController>.value(
-        value: theme,
-        child: MaterialApp(
-          locale: const Locale('en'),
-          localizationsDelegates: const [
-            AppLocalizations.delegate,
-            GlobalMaterialLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-          ],
-          supportedLocales: AppLocalizations.supportedLocales,
-          home: TelegramAiEditorView(
-            service: service,
-            source: const TelegramAiFormattedText(text: 'Existing draft'),
-            replyProvider: provider,
-            replyRequest: const AiReplyRequest(
-              chatTitle: 'Project',
-              targetMessageId: 9,
-              messages: [
-                AiReplyMessage(
-                  id: 9,
-                  speaker: 'Alice',
-                  isCurrentUser: false,
-                  text: 'Can you join at three?',
-                ),
-              ],
-            ),
-            replyProviderLabel: 'Test provider',
-            startInReplyMode: true,
-          ),
-        ),
-      ),
-    );
-
-    expect(find.text('AI Reply'), findsOneWidget);
-    expect(find.byKey(const ValueKey('aiReplyOptions')), findsOneWidget);
-    expect(find.text('Replying to Alice'), findsOneWidget);
-    expect(find.textContaining('Test provider'), findsOneWidget);
-
-    await tester.enterText(
-      find.byKey(const ValueKey('aiReplyGuidanceField')),
-      'Keep it warm',
-    );
-    await tester.tap(find.text('Generate Reply'));
-    await tester.pumpAndSettle();
-
-    expect(provider.lastRequest?.guidance, 'Keep it warm');
-    expect(find.text('I can join at three.'), findsOneWidget);
-    expect(find.text('Use Reply'), findsOneWidget);
-  });
-
   test('Simplified Chinese editor labels contain no broken placeholders', () {
     expect(
       AppStrings.tForLocale('zhHans', AppStringKeys.telegramAiEditorAddEmoji),
@@ -248,19 +182,6 @@ void main() {
       expect(value, isNot(contains('%1')));
     }
   });
-}
-
-class _FakeReplyProvider implements AiReplyProvider {
-  AiReplyRequest? lastRequest;
-
-  @override
-  String get code => 'test';
-
-  @override
-  Future<TelegramAiFormattedText> generate(AiReplyRequest request) async {
-    lastRequest = request;
-    return const TelegramAiFormattedText(text: 'I can join at three.');
-  }
 }
 
 Map<String, dynamic> _option(String name) => switch (name) {

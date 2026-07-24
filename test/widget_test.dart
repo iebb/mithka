@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/intl.dart';
+import 'package:mithka/chat/ai_reply_service.dart';
 import 'package:mithka/chat/chat_input_bar.dart';
 import 'package:mithka/chat/chat_message_merge.dart';
 import 'package:mithka/chat/chat_view_model.dart';
@@ -97,8 +98,10 @@ Future<MusicPlayerController> _pumpMusicPlayerBar(WidgetTester tester) async {
 }
 
 class _FocusTestChatViewModel extends ChatViewModel {
-  _FocusTestChatViewModel()
-    : super(chatId: 1, title: 'Test', markReadOnOpen: false);
+  _FocusTestChatViewModel({
+    super.title = 'Test',
+    super.sessionMessages = const [],
+  }) : super(chatId: 1, markReadOnOpen: false);
 
   @override
   void sendTyping() {}
@@ -820,8 +823,9 @@ void main() {
   });
 
   group('ChatInputBar', () {
-    testWidgets('opens Telegram Cocoon reply mode from the reply banner', (
-      tester,
+    Future<(ChatViewModel, ChatMessage)> pumpAiReplyComposer(
+      WidgetTester tester,
+      AiReplyGenerator generator,
     ) async {
       SharedPreferences.setMockInitialValues({});
       final preferences = await SharedPreferences.getInstance();
@@ -850,12 +854,7 @@ void main() {
         contentType: 'messageText',
       );
       final vm =
-          ChatViewModel(
-              chatId: 1,
-              title: 'Project',
-              markReadOnOpen: false,
-              sessionMessages: [target],
-            )
+          _FocusTestChatViewModel(title: 'Project', sessionMessages: [target])
             ..aiCapabilities = const TelegramAiCapabilities(
               tdlibVersion: '1.8.66',
               compositionSupported: true,
@@ -893,6 +892,7 @@ void main() {
                   vm: vm,
                   onStartCall: (_) {},
                   onMessageSent: () {},
+                  aiReplyGenerator: generator,
                 ),
               ),
             ),
@@ -900,15 +900,166 @@ void main() {
         ),
       );
 
+      return (vm, target);
+    }
+
+    testWidgets('places an AI reply directly in the chat input', (
+      tester,
+    ) async {
+      final result = Completer<TelegramAiFormattedText>();
+      AiReplyRequest? capturedRequest;
+      var requestCount = 0;
+      final (vm, target) = await pumpAiReplyComposer(tester, (request) {
+        capturedRequest = request;
+        requestCount++;
+        return result.future;
+      });
+
       final action = find.byKey(const ValueKey('composerAiReplyButton'));
       expect(action, findsOneWidget);
       await tester.tap(action);
+      await tester.pump();
+
+      expect(
+        find.byKey(const ValueKey('composerAiReplyProgress')),
+        findsOneWidget,
+      );
+      expect(find.text('AI Reply'), findsNothing);
+
+      await tester.tap(action);
+      await tester.pump();
+      expect(requestCount, 1);
+
+      result.complete(
+        const TelegramAiFormattedText(
+          text: 'I can join at three.',
+          entities: [
+            {
+              '@type': 'textEntity',
+              'offset': 0,
+              'length': 1,
+              'type': {'@type': 'textEntityTypeBold'},
+            },
+          ],
+        ),
+      );
       await tester.pumpAndSettle();
 
-      expect(find.text('AI Reply'), findsOneWidget);
-      expect(find.text('Replying to Alice'), findsOneWidget);
-      expect(find.textContaining('Telegram Cocoon'), findsOneWidget);
-      expect(find.text('Generate Reply'), findsOneWidget);
+      final field = tester.widget<TextField>(find.byType(TextField));
+      final controller = field.controller! as EmojiTextEditingController;
+      final (text, entities) = controller.toFormatted();
+      expect(field.controller!.text, 'I can join at three.');
+      expect(text, 'I can join at three.');
+      expect(entities, hasLength(1));
+      expect(entities.single['type'], {'@type': 'textEntityTypeBold'});
+      expect(vm.draft, 'I can join at three.');
+      expect(vm.replyTo, same(target));
+      expect(capturedRequest?.targetMessageId, target.id);
+      expect(
+        find.byKey(const ValueKey('composerAiReplyProgress')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('does not overwrite text typed while an AI reply is running', (
+      tester,
+    ) async {
+      final result = Completer<TelegramAiFormattedText>();
+      await pumpAiReplyComposer(tester, (_) => result.future);
+
+      await tester.tap(find.byKey(const ValueKey('composerAiReplyButton')));
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('composerAiReplyProgress')),
+        findsOneWidget,
+      );
+
+      await tester.enterText(find.byType(TextField), 'My own draft');
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('composerAiReplyProgress')),
+        findsNothing,
+      );
+
+      result.complete(
+        const TelegramAiFormattedText(text: 'Late generated reply'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        'My own draft',
+      );
+    });
+
+    testWidgets('does not apply an AI reply after the reply target changes', (
+      tester,
+    ) async {
+      final result = Completer<TelegramAiFormattedText>();
+      final (vm, _) = await pumpAiReplyComposer(tester, (_) => result.future);
+
+      await tester.tap(find.byKey(const ValueKey('composerAiReplyButton')));
+      await tester.pump();
+      final replacement = ChatMessage(
+        id: 8,
+        isOutgoing: false,
+        text: 'What about four?',
+        date: 2,
+        senderName: 'Alice',
+        contentType: 'messageText',
+      );
+      vm.setReply(replacement);
+      await tester.pump();
+
+      result.complete(
+        const TelegramAiFormattedText(text: 'Stale generated reply'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        isEmpty,
+      );
+      expect(vm.replyTo, same(replacement));
+    });
+
+    testWidgets('keeps the draft intact and allows retry after AI failure', (
+      tester,
+    ) async {
+      var requestCount = 0;
+      await pumpAiReplyComposer(tester, (_) {
+        requestCount++;
+        if (requestCount == 1) {
+          return Future<TelegramAiFormattedText>.error(
+            const AiReplyException('Reply failed'),
+          );
+        }
+        return Future.value(
+          const TelegramAiFormattedText(text: 'Reply after retry'),
+        );
+      });
+
+      final action = find.byKey(const ValueKey('composerAiReplyButton'));
+      await tester.tap(action);
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        isEmpty,
+      );
+      expect(
+        find.byKey(const ValueKey('composerAiReplyProgress')),
+        findsNothing,
+      );
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+
+      await tester.tap(action);
+      await tester.pumpAndSettle();
+      expect(requestCount, 2);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        'Reply after retry',
+      );
     });
 
     testWidgets('shows two-line AI action above the send button', (

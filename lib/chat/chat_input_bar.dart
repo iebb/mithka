@@ -126,6 +126,9 @@ bool isTelegramAiDraftEligible(String text) =>
 
 typedef _ClipboardImage = ({Uint8List data, String mimeType});
 
+typedef AiReplyGenerator =
+    Future<TelegramAiFormattedText> Function(AiReplyRequest request);
+
 class _SendComposerIntent extends Intent {
   const _SendComposerIntent();
 }
@@ -143,6 +146,7 @@ class ChatInputBar extends StatefulWidget {
     this.quickReplyLoader,
     this.quickReplySender,
     this.onVoicePanelOpenedForTesting,
+    this.aiReplyGenerator,
   });
   final ChatViewModel vm;
   final FutureOr<void> Function(bool isVideo) onStartCall;
@@ -158,6 +162,8 @@ class ChatInputBar extends StatefulWidget {
   final Future<void> Function(int chatId, int shortcutId)? quickReplySender;
   @visibleForTesting
   final VoidCallback? onVoicePanelOpenedForTesting;
+  @visibleForTesting
+  final AiReplyGenerator? aiReplyGenerator;
 
   @override
   State<ChatInputBar> createState() => _ChatInputBarState();
@@ -227,6 +233,9 @@ class _ChatInputBarState extends State<ChatInputBar> {
   bool _quickReplyContextVisible = false;
   int? _quickReplySendingId;
   List<BusinessQuickReplyShortcut> _quickReplies = const [];
+  int _composerRevision = 0;
+  int _aiReplyGeneration = 0;
+  int? _aiReplyWorkingTargetId;
   ChatViewModel get vm => widget.vm;
 
   bool get _canUseQuickReplies =>
@@ -296,6 +305,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   DateTime? _lastTyping;
   void _onTextChanged() {
+    _composerRevision++;
+    _invalidateAiReplyGeneration();
     final (text, entities) = _controller.toFormatted();
     vm.setDraft(_controller.text, formattedText: text, entities: entities);
     // setDraft doesn't notify (it would rebuild the whole chat per keystroke), so
@@ -460,6 +471,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
   }
 
   void _syncFromVm() {
+    final workingTargetId = _aiReplyWorkingTargetId;
+    if (workingTargetId != null && vm.replyTo?.id != workingTargetId) {
+      _invalidateAiReplyGeneration();
+    }
     final composing = _controller.value.composing;
     final editing = _focus.hasFocus || composing.isValid;
     if (!editing && vm.draft != _controller.text) {
@@ -491,6 +506,9 @@ class _ChatInputBarState extends State<ChatInputBar> {
   @override
   void didUpdateWidget(ChatInputBar oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.vm, widget.vm)) {
+      _invalidateAiReplyGeneration();
+    }
     if (oldWidget.quickRepliesEnabled && !widget.quickRepliesEnabled) {
       _quickReplyContextVisible = false;
     } else if (!oldWidget.quickRepliesEnabled &&
@@ -503,6 +521,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   @override
   void dispose() {
+    _aiReplyGeneration++;
+    _aiReplyWorkingTargetId = null;
     vm.removeListener(_syncFromVm);
     EmojiStore.shared.removeListener(_onStore);
     StickerStore.shared.removeListener(_onStore);
@@ -1018,7 +1038,15 @@ class _ChatInputBarState extends State<ChatInputBar> {
     };
   }
 
-  Future<void> _openAiReplyEditor(ChatMessage target) async {
+  void _invalidateAiReplyGeneration() {
+    if (_aiReplyWorkingTargetId == null) return;
+    _aiReplyGeneration++;
+    _aiReplyWorkingTargetId = null;
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _generateAiReply(ChatMessage target) async {
+    if (_aiReplyWorkingTargetId == target.id) return;
     final settings = context.read<AiSettingsController?>();
     if (!_canOfferAiReply(target, settings)) {
       showToast(context, AppStringKeys.aiReplyUnavailable.l10n(context));
@@ -1026,7 +1054,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
     }
 
     final configuration = settings!.configurationForFeature(AiFeature.reply);
-    final (draftText, draftEntities) = _controller.toFormatted();
+    final (draftText, _) = _controller.toFormatted();
     final AiReplyRequest request;
     try {
       request = AiReplyRequest.fromChatMessages(
@@ -1042,63 +1070,64 @@ class _ChatInputBarState extends State<ChatInputBar> {
       return;
     }
 
-    final AiReplyProvider provider;
-    final String providerLabel;
-    switch (configuration.candidate.kind) {
-      case AiModelCandidateKind.telegramCocoon:
-        provider = TelegramCocoonAiReplyProvider(service: vm.telegramAi);
-        providerLabel = AppStringKeys.aiProviderTelegramCocoon.l10n(context);
-      case AiModelCandidateKind.applePcc:
-        provider = AppleAiReplyProvider(api: ApplePccApi());
-        providerLabel = AppStringKeys.aiProviderApplePcc.l10n(context);
-      case AiModelCandidateKind.appleOnDevice:
-        provider = AppleAiReplyProvider(
-          api: ApplePccApi(),
-          model: AppleAiModel.onDevice,
-        );
-        providerLabel = AppStringKeys.aiProviderAppleOnDevice.l10n(context);
-      case AiModelCandidateKind.server:
-        final endpoint = configuration.endpoint;
-        if (endpoint == null || configuration.model.isEmpty) {
-          showToast(context, AppStringKeys.aiReplyUnavailable.l10n(context));
-          return;
-        }
-        provider = HostedAiReplyProvider(
-          endpoint: endpoint,
-          model: configuration.model,
-          endpointStyle: configuration.endpointStyle,
-          apiKey: configuration.apiKey,
-        );
-        final providerName =
-            configuration.candidate.serverProvider?.name.trim() ?? '';
-        providerLabel = providerName.isEmpty
-            ? configuration.model
-            : '$providerName · ${configuration.model}';
+    AiReplyProvider? provider;
+    if (widget.aiReplyGenerator == null) {
+      switch (configuration.candidate.kind) {
+        case AiModelCandidateKind.telegramCocoon:
+          provider = TelegramCocoonAiReplyProvider(service: vm.telegramAi);
+        case AiModelCandidateKind.applePcc:
+          provider = AppleAiReplyProvider(api: ApplePccApi());
+        case AiModelCandidateKind.appleOnDevice:
+          provider = AppleAiReplyProvider(
+            api: ApplePccApi(),
+            model: AppleAiModel.onDevice,
+          );
+        case AiModelCandidateKind.server:
+          final endpoint = configuration.endpoint;
+          if (endpoint == null || configuration.model.isEmpty) {
+            showToast(context, AppStringKeys.aiReplyUnavailable.l10n(context));
+            return;
+          }
+          provider = HostedAiReplyProvider(
+            endpoint: endpoint,
+            model: configuration.model,
+            endpointStyle: configuration.endpointStyle,
+            apiKey: configuration.apiKey,
+          );
+      }
     }
 
     final targetMessageId = target.id;
-    TelegramAiFormattedText? result;
+    final requestVm = vm;
+    final draftRevision = _composerRevision;
+    final generation = ++_aiReplyGeneration;
+    setState(() => _aiReplyWorkingTargetId = targetMessageId);
+    late final TelegramAiFormattedText result;
     try {
-      result = await Navigator.of(context).push<TelegramAiFormattedText>(
-        MaterialPageRoute(
-          builder: (_) => TelegramAiEditorView(
-            service: vm.telegramAi,
-            source: TelegramAiFormattedText(
-              text: draftText,
-              entities: draftEntities,
-            ),
-            replyProvider: provider,
-            replyRequest: request,
-            replyProviderLabel: providerLabel,
-            startInReplyMode: true,
-          ),
-        ),
-      );
+      result =
+          await (widget.aiReplyGenerator?.call(request) ??
+              provider!.generate(request));
+    } catch (error) {
+      if (mounted && generation == _aiReplyGeneration) {
+        showToast(
+          context,
+          error is AiReplyException ? error.message : error.toString(),
+        );
+      }
+      return;
     } finally {
       if (provider case final HostedAiReplyProvider hosted) hosted.close();
+      if (mounted && generation == _aiReplyGeneration) {
+        setState(() => _aiReplyWorkingTargetId = null);
+      }
     }
-    if (!mounted || result == null) return;
-    if (vm.replyTo?.id != targetMessageId) {
+    if (!mounted ||
+        generation != _aiReplyGeneration ||
+        !identical(vm, requestVm)) {
+      return;
+    }
+    if (vm.replyTo?.id != targetMessageId ||
+        _composerRevision != draftRevision) {
       showToast(context, AppStringKeys.aiReplyStale.l10n(context));
       return;
     }
@@ -1561,6 +1590,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
   }) {
     final c = context.colors;
     final showAiReply = _canOfferAiReply(m, aiSettings);
+    final aiReplyWorking = _aiReplyWorkingTargetId == m.id;
     return Padding(
       padding: const EdgeInsets.only(left: 12, right: 12, top: 8),
       child: Container(
@@ -1584,11 +1614,14 @@ class _ChatInputBarState extends State<ChatInputBar> {
             if (showAiReply) ...[
               Semantics(
                 button: true,
+                enabled: !aiReplyWorking,
                 label: AppStringKeys.aiReplyAction.l10n(context),
                 child: GestureDetector(
                   key: const ValueKey('composerAiReplyButton'),
                   behavior: HitTestBehavior.opaque,
-                  onTap: () => unawaited(_openAiReplyEditor(m)),
+                  onTap: aiReplyWorking
+                      ? null
+                      : () => unawaited(_generateAiReply(m)),
                   child: Container(
                     width: 28,
                     height: 28,
@@ -1597,11 +1630,17 @@ class _ChatInputBarState extends State<ChatInputBar> {
                       color: AppTheme.brand.withValues(alpha: 0.11),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: AppIcon(
-                      HeroAppIcons.wandMagicSparkles,
-                      size: 16,
-                      color: AppTheme.brand,
-                    ),
+                    child: aiReplyWorking
+                        ? AppActivityIndicator(
+                            key: const ValueKey('composerAiReplyProgress'),
+                            size: 16,
+                            color: AppTheme.brand,
+                          )
+                        : AppIcon(
+                            HeroAppIcons.wandMagicSparkles,
+                            size: 16,
+                            color: AppTheme.brand,
+                          ),
                   ),
                 ),
               ),
