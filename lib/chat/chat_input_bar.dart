@@ -236,6 +236,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
   int _composerRevision = 0;
   int _aiReplyGeneration = 0;
   int? _aiReplyWorkingTargetId;
+  bool? _aiReplyWorkingUsesExplicitTarget;
+  int? _aiReplyWorkingTargetFingerprint;
   ChatViewModel get vm => widget.vm;
 
   bool get _canUseQuickReplies =>
@@ -472,7 +474,16 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   void _syncFromVm() {
     final workingTargetId = _aiReplyWorkingTargetId;
-    if (workingTargetId != null && vm.replyTo?.id != workingTargetId) {
+    final workingUsesExplicitTarget = _aiReplyWorkingUsesExplicitTarget;
+    final workingTargetFingerprint = _aiReplyWorkingTargetFingerprint;
+    if (workingTargetId != null &&
+        (workingUsesExplicitTarget == null ||
+            workingTargetFingerprint == null ||
+            !_isCurrentAiReplyTarget(
+              workingTargetId,
+              usesExplicitTarget: workingUsesExplicitTarget,
+              fingerprint: workingTargetFingerprint,
+            ))) {
       _invalidateAiReplyGeneration();
     }
     final composing = _controller.value.composing;
@@ -523,6 +534,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
   void dispose() {
     _aiReplyGeneration++;
     _aiReplyWorkingTargetId = null;
+    _aiReplyWorkingUsesExplicitTarget = null;
+    _aiReplyWorkingTargetFingerprint = null;
     vm.removeListener(_syncFromVm);
     EmojiStore.shared.removeListener(_onStore);
     StickerStore.shared.removeListener(_onStore);
@@ -1024,6 +1037,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
         vm.hasProtectedContent ||
         target.isService ||
         target.isContentRestricted ||
+        target.blockedByUser ||
         target.text.trim().isEmpty) {
       return false;
     }
@@ -1038,15 +1052,82 @@ class _ChatInputBarState extends State<ChatInputBar> {
     };
   }
 
+  ChatMessage? _contextualAiReplyTarget() {
+    if (vm.anchoredHistory) return null;
+    for (final message in vm.messages.reversed) {
+      if (message.isService) continue;
+      if (message.id <= 0 ||
+          message.isOutgoing ||
+          message.isContentRestricted ||
+          message.blockedByUser ||
+          message.text.trim().isEmpty) {
+        return null;
+      }
+      return message;
+    }
+    return null;
+  }
+
+  ChatMessage? _currentAiReplyTarget() =>
+      vm.replyTo ?? _contextualAiReplyTarget();
+
+  bool _isCurrentAiReplyTarget(
+    int targetMessageId, {
+    required bool usesExplicitTarget,
+    required int fingerprint,
+  }) {
+    final ChatMessage? current;
+    if (usesExplicitTarget) {
+      current = vm.replyTo;
+    } else {
+      if (vm.replyTo != null) return false;
+      current = _contextualAiReplyTarget();
+    }
+    return current?.id == targetMessageId &&
+        _aiReplyTargetFingerprint(current!) == fingerprint;
+  }
+
+  int _aiReplyTargetFingerprint(ChatMessage target) => Object.hash(
+    target.id,
+    target.isOutgoing,
+    target.isService,
+    target.isContentRestricted,
+    target.blockedByUser,
+    target.senderName,
+    target.text,
+  );
+
+  bool _isCurrentAiReplyTargetWithoutFingerprint(
+    ChatMessage target, {
+    required bool usesExplicitTarget,
+  }) {
+    final fingerprint = _aiReplyTargetFingerprint(target);
+    return _isCurrentAiReplyTarget(
+      target.id,
+      usesExplicitTarget: usesExplicitTarget,
+      fingerprint: fingerprint,
+    );
+  }
+
   void _invalidateAiReplyGeneration() {
     if (_aiReplyWorkingTargetId == null) return;
     _aiReplyGeneration++;
     _aiReplyWorkingTargetId = null;
+    _aiReplyWorkingUsesExplicitTarget = null;
+    _aiReplyWorkingTargetFingerprint = null;
     if (mounted) setState(() {});
   }
 
   Future<void> _generateAiReply(ChatMessage target) async {
     if (_aiReplyWorkingTargetId == target.id) return;
+    final usesExplicitTarget = vm.replyTo?.id == target.id;
+    if (!_isCurrentAiReplyTargetWithoutFingerprint(
+      target,
+      usesExplicitTarget: usesExplicitTarget,
+    )) {
+      showToast(context, AppStringKeys.aiReplyStale.l10n(context));
+      return;
+    }
     final settings = context.read<AiSettingsController?>();
     if (!_canOfferAiReply(target, settings)) {
       showToast(context, AppStringKeys.aiReplyUnavailable.l10n(context));
@@ -1098,10 +1179,15 @@ class _ChatInputBarState extends State<ChatInputBar> {
     }
 
     final targetMessageId = target.id;
+    final targetFingerprint = _aiReplyTargetFingerprint(target);
     final requestVm = vm;
     final draftRevision = _composerRevision;
     final generation = ++_aiReplyGeneration;
-    setState(() => _aiReplyWorkingTargetId = targetMessageId);
+    setState(() {
+      _aiReplyWorkingTargetId = targetMessageId;
+      _aiReplyWorkingUsesExplicitTarget = usesExplicitTarget;
+      _aiReplyWorkingTargetFingerprint = targetFingerprint;
+    });
     late final TelegramAiFormattedText result;
     try {
       result =
@@ -1118,7 +1204,11 @@ class _ChatInputBarState extends State<ChatInputBar> {
     } finally {
       if (provider case final HostedAiReplyProvider hosted) hosted.close();
       if (mounted && generation == _aiReplyGeneration) {
-        setState(() => _aiReplyWorkingTargetId = null);
+        setState(() {
+          _aiReplyWorkingTargetId = null;
+          _aiReplyWorkingUsesExplicitTarget = null;
+          _aiReplyWorkingTargetFingerprint = null;
+        });
       }
     }
     if (!mounted ||
@@ -1126,7 +1216,11 @@ class _ChatInputBarState extends State<ChatInputBar> {
         !identical(vm, requestVm)) {
       return;
     }
-    if (vm.replyTo?.id != targetMessageId ||
+    if (!_isCurrentAiReplyTarget(
+          targetMessageId,
+          usesExplicitTarget: usesExplicitTarget,
+          fingerprint: targetFingerprint,
+        ) ||
         _composerRevision != draftRevision) {
       showToast(context, AppStringKeys.aiReplyStale.l10n(context));
       return;
@@ -2559,7 +2653,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
   }) {
     final c = context.colors;
     final hasText = _hasText;
-    final replyTarget = vm.replyTo;
+    final replyTarget = _currentAiReplyTarget();
     final showAiReply =
         !hasText &&
         replyTarget != null &&

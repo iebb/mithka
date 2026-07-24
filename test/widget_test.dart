@@ -114,6 +114,11 @@ class _FocusTestChatViewModel extends ChatViewModel {
   }) {
     draft = value;
   }
+
+  void appendMessage(ChatMessage message) {
+    messages = [...messages, message];
+    notifyListeners();
+  }
 }
 
 class _ControlledMediaChatViewModel extends ChatViewModel {
@@ -823,10 +828,13 @@ void main() {
   });
 
   group('ChatInputBar', () {
-    Future<(ChatViewModel, ChatMessage)> pumpAiReplyComposer(
+    Future<(_FocusTestChatViewModel, ChatMessage)> pumpAiReplyComposer(
       WidgetTester tester,
       AiReplyGenerator generator, {
       bool includeReplyKeyboard = false,
+      bool useExplicitReplyTarget = false,
+      bool includeLatestOutgoingMessage = false,
+      bool anchoredHistory = false,
     }) async {
       SharedPreferences.setMockInitialValues({});
       final preferences = await SharedPreferences.getInstance();
@@ -866,7 +874,20 @@ void main() {
             : const [],
       );
       final vm =
-          _FocusTestChatViewModel(title: 'Project', sessionMessages: [target])
+          _FocusTestChatViewModel(
+              title: 'Project',
+              sessionMessages: [
+                target,
+                if (includeLatestOutgoingMessage)
+                  ChatMessage(
+                    id: 8,
+                    isOutgoing: true,
+                    text: 'I already answered.',
+                    date: 2,
+                    contentType: 'messageText',
+                  ),
+              ],
+            )
             ..aiCapabilities = const TelegramAiCapabilities(
               tdlibVersion: '1.8.66',
               compositionSupported: true,
@@ -878,8 +899,9 @@ void main() {
               styleTitleMax: 64,
               stylePromptMax: 1024,
               addedStyleCountMax: 10,
-            )
-            ..setReply(target);
+            );
+      vm.anchoredHistory = anchoredHistory;
+      if (useExplicitReplyTarget) vm.setReply(target);
       addTearDown(vm.dispose);
 
       await tester.pumpWidget(
@@ -968,7 +990,7 @@ void main() {
       expect(entities, hasLength(1));
       expect(entities.single['type'], {'@type': 'textEntityTypeBold'});
       expect(vm.draft, 'I can join at three.');
-      expect(vm.replyTo, same(target));
+      expect(vm.replyTo, isNull);
       expect(capturedRequest?.targetMessageId, target.id);
       expect(requestCount, 1);
       expect(action, findsNothing);
@@ -977,6 +999,30 @@ void main() {
         find.byKey(const ValueKey('composerAiReplyProgress')),
         findsNothing,
       );
+    });
+
+    testWidgets('hides contextual AI Reply after the user has answered', (
+      tester,
+    ) async {
+      await pumpAiReplyComposer(
+        tester,
+        (_) async => const TelegramAiFormattedText(text: 'Generated reply'),
+        includeLatestOutgoingMessage: true,
+      );
+
+      expect(find.byKey(const ValueKey('composerAiReplyButton')), findsNothing);
+    });
+
+    testWidgets('hides contextual AI Reply in anchored history', (
+      tester,
+    ) async {
+      await pumpAiReplyComposer(
+        tester,
+        (_) async => const TelegramAiFormattedText(text: 'Generated reply'),
+        anchoredHistory: true,
+      );
+
+      expect(find.byKey(const ValueKey('composerAiReplyButton')), findsNothing);
     });
 
     testWidgets('lets the in-input progress control cancel AI generation', (
@@ -1083,7 +1129,11 @@ void main() {
       tester,
     ) async {
       final result = Completer<TelegramAiFormattedText>();
-      final (vm, _) = await pumpAiReplyComposer(tester, (_) => result.future);
+      final (vm, _) = await pumpAiReplyComposer(
+        tester,
+        (_) => result.future,
+        useExplicitReplyTarget: true,
+      );
 
       await tester.tap(find.byKey(const ValueKey('composerAiReplyButton')));
       await tester.pump();
@@ -1108,6 +1158,69 @@ void main() {
         isEmpty,
       );
       expect(vm.replyTo, same(replacement));
+    });
+
+    testWidgets('discards a contextual reply when a newer message arrives', (
+      tester,
+    ) async {
+      final result = Completer<TelegramAiFormattedText>();
+      final (vm, _) = await pumpAiReplyComposer(tester, (_) => result.future);
+
+      await tester.tap(find.byKey(const ValueKey('composerAiReplyButton')));
+      await tester.pump();
+      vm.appendMessage(
+        ChatMessage(
+          id: 8,
+          isOutgoing: false,
+          text: 'Actually, can you join at four?',
+          date: 2,
+          senderName: 'Alice',
+          contentType: 'messageText',
+        ),
+      );
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('composerAiReplyProgress')),
+        findsNothing,
+      );
+
+      result.complete(
+        const TelegramAiFormattedText(text: 'Stale generated reply'),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        isEmpty,
+      );
+      expect(
+        find.byKey(const ValueKey('composerAiReplyButton')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('discards contextual generation when explicit Reply starts', (
+      tester,
+    ) async {
+      final result = Completer<TelegramAiFormattedText>();
+      final (vm, target) = await pumpAiReplyComposer(
+        tester,
+        (_) => result.future,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('composerAiReplyButton')));
+      await tester.pump();
+      vm.setReply(target);
+      await tester.pump();
+
+      result.complete(
+        const TelegramAiFormattedText(text: 'Stale contextual reply'),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        isEmpty,
+      );
+      expect(vm.replyTo, same(target));
     });
 
     testWidgets('keeps the draft intact and allows retry after AI failure', (
