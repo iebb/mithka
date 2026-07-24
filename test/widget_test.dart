@@ -825,8 +825,9 @@ void main() {
   group('ChatInputBar', () {
     Future<(ChatViewModel, ChatMessage)> pumpAiReplyComposer(
       WidgetTester tester,
-      AiReplyGenerator generator,
-    ) async {
+      AiReplyGenerator generator, {
+      bool includeReplyKeyboard = false,
+    }) async {
       SharedPreferences.setMockInitialValues({});
       final preferences = await SharedPreferences.getInstance();
       final theme = ThemeController(preferences);
@@ -852,6 +853,17 @@ void main() {
         date: 1,
         senderName: 'Alice',
         contentType: 'messageText',
+        buttonRows: includeReplyKeyboard
+            ? const [
+                [
+                  MessageButton(
+                    text: 'Reply option',
+                    type: 'keyboardButtonTypeText',
+                    isReplyKeyboard: true,
+                  ),
+                ],
+              ]
+            : const [],
       );
       final vm =
           _FocusTestChatViewModel(title: 'Project', sessionMessages: [target])
@@ -903,7 +915,7 @@ void main() {
       return (vm, target);
     }
 
-    testWidgets('places an AI reply directly in the chat input', (
+    testWidgets('shows AI Reply inside an empty input and inserts its draft', (
       tester,
     ) async {
       final result = Completer<TelegramAiFormattedText>();
@@ -916,7 +928,14 @@ void main() {
       });
 
       final action = find.byKey(const ValueKey('composerAiReplyButton'));
+      final inputBox = find.byKey(const ValueKey('composerTextInputBox'));
       expect(action, findsOneWidget);
+      expect(find.descendant(of: inputBox, matching: action), findsOneWidget);
+      expect(tester.widget<GestureDetector>(action).child, isA<SizedBox>());
+      expect(
+        tester.getCenter(action).dx,
+        greaterThan(tester.getCenter(find.byType(TextField)).dx),
+      );
       await tester.tap(action);
       await tester.pump();
 
@@ -925,10 +944,6 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('AI Reply'), findsNothing);
-
-      await tester.tap(action);
-      await tester.pump();
-      expect(requestCount, 1);
 
       result.complete(
         const TelegramAiFormattedText(
@@ -955,10 +970,74 @@ void main() {
       expect(vm.draft, 'I can join at three.');
       expect(vm.replyTo, same(target));
       expect(capturedRequest?.targetMessageId, target.id);
+      expect(requestCount, 1);
+      expect(action, findsNothing);
+      expect(find.byKey(const ValueKey('composerSendButton')), findsOneWidget);
       expect(
         find.byKey(const ValueKey('composerAiReplyProgress')),
         findsNothing,
       );
+    });
+
+    testWidgets('lets the in-input progress control cancel AI generation', (
+      tester,
+    ) async {
+      final result = Completer<TelegramAiFormattedText>();
+      var requestCount = 0;
+      await pumpAiReplyComposer(tester, (_) {
+        requestCount++;
+        return result.future;
+      });
+
+      final action = find.byKey(const ValueKey('composerAiReplyButton'));
+      await tester.tap(action);
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('composerAiReplyProgress')),
+        findsOneWidget,
+      );
+
+      await tester.tap(action);
+      await tester.pump();
+      expect(requestCount, 1);
+      expect(
+        find.byKey(const ValueKey('composerAiReplyProgress')),
+        findsNothing,
+      );
+
+      result.complete(
+        const TelegramAiFormattedText(text: 'Canceled generated reply'),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        isEmpty,
+      );
+      expect(action, findsOneWidget);
+    });
+
+    testWidgets('keeps AI rightmost beside a bot keyboard on a narrow input', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await pumpAiReplyComposer(
+        tester,
+        (_) async => const TelegramAiFormattedText(text: 'Generated reply'),
+        includeReplyKeyboard: true,
+      );
+
+      final keyboard = find.bySemanticsLabel('Show bot keyboard');
+      final ai = find.byKey(const ValueKey('composerAiReplyButton'));
+      expect(keyboard, findsOneWidget);
+      expect(ai, findsOneWidget);
+      expect(
+        tester.getCenter(ai).dx,
+        greaterThan(tester.getCenter(keyboard).dx),
+      );
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('does not overwrite text typed while an AI reply is running', (
@@ -976,6 +1055,7 @@ void main() {
 
       await tester.enterText(find.byType(TextField), 'My own draft');
       await tester.pump();
+      expect(find.byKey(const ValueKey('composerAiReplyButton')), findsNothing);
       expect(
         find.byKey(const ValueKey('composerAiReplyProgress')),
         findsNothing,
@@ -989,6 +1069,13 @@ void main() {
       expect(
         tester.widget<TextField>(find.byType(TextField)).controller!.text,
         'My own draft',
+      );
+
+      await tester.enterText(find.byType(TextField), '');
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('composerAiReplyButton')),
+        findsOneWidget,
       );
     });
 

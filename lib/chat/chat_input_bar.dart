@@ -1333,15 +1333,14 @@ class _ChatInputBarState extends State<ChatInputBar> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (vm.replyTo != null)
-                _replyBanner(vm.replyTo!, aiSettings: aiSettings),
+              if (vm.replyTo != null) _replyBanner(vm.replyTo!),
               if (_inlineBotLoading || _inlineBotResults != null)
                 _inlineBotResultMenu()
               else if (_mentionCandidates.isNotEmpty)
                 _mentionMenu()
               else if (_quickReplyContextVisible && _quickReplies.isNotEmpty)
                 _quickReplyContextMenu(),
-              _inputRow(replyKeyboard),
+              _inputRow(replyKeyboard, aiSettings: aiSettings),
               if (replyKeyboardPanelVisible)
                 _replyKeyboardPanel(replyKeyboard)
               else
@@ -1584,13 +1583,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   // MARK: - Reply banner
 
-  Widget _replyBanner(
-    ChatMessage m, {
-    required AiSettingsController? aiSettings,
-  }) {
+  Widget _replyBanner(ChatMessage m) {
     final c = context.colors;
-    final showAiReply = _canOfferAiReply(m, aiSettings);
-    final aiReplyWorking = _aiReplyWorkingTargetId == m.id;
     return Padding(
       padding: const EdgeInsets.only(left: 12, right: 12, top: 8),
       child: Container(
@@ -1611,41 +1605,6 @@ class _ChatInputBarState extends State<ChatInputBar> {
               ),
             ),
             const SizedBox(width: 8),
-            if (showAiReply) ...[
-              Semantics(
-                button: true,
-                enabled: !aiReplyWorking,
-                label: AppStringKeys.aiReplyAction.l10n(context),
-                child: GestureDetector(
-                  key: const ValueKey('composerAiReplyButton'),
-                  behavior: HitTestBehavior.opaque,
-                  onTap: aiReplyWorking
-                      ? null
-                      : () => unawaited(_generateAiReply(m)),
-                  child: Container(
-                    width: 28,
-                    height: 28,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: AppTheme.brand.withValues(alpha: 0.11),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: aiReplyWorking
-                        ? AppActivityIndicator(
-                            key: const ValueKey('composerAiReplyProgress'),
-                            size: 16,
-                            color: AppTheme.brand,
-                          )
-                        : AppIcon(
-                            HeroAppIcons.wandMagicSparkles,
-                            size: 16,
-                            color: AppTheme.brand,
-                          ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-            ],
             GestureDetector(
               onTap: () => vm.setReply(null),
               child: AppIcon(
@@ -2594,9 +2553,17 @@ class _ChatInputBarState extends State<ChatInputBar> {
     );
   }
 
-  Widget _inputRow(_ReplyKeyboard? replyKeyboard) {
+  Widget _inputRow(
+    _ReplyKeyboard? replyKeyboard, {
+    required AiSettingsController? aiSettings,
+  }) {
     final c = context.colors;
     final hasText = _hasText;
+    final replyTarget = vm.replyTo;
+    final showAiReply =
+        !hasText &&
+        replyTarget != null &&
+        _canOfferAiReply(replyTarget, aiSettings);
     final sender = vm.selectedMessageSender;
     final botMenu = vm.botMenu;
     final menuWebApp = botMenu?.isWebApp == true ? botMenu : null;
@@ -2640,6 +2607,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
           ],
           Expanded(
             child: Container(
+              key: const ValueKey('composerTextInputBox'),
               decoration: BoxDecoration(
                 color: c.searchFill,
                 borderRadius: BorderRadius.circular(18),
@@ -2803,6 +2771,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
                         ),
                       ),
                     ),
+                  if (showAiReply) ...[
+                    const SizedBox(width: 4),
+                    _aiReplyInputButton(replyTarget),
+                  ],
                 ],
               ),
             ),
@@ -2892,6 +2864,40 @@ class _ChatInputBarState extends State<ChatInputBar> {
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _aiReplyInputButton(ChatMessage target) {
+    final working = _aiReplyWorkingTargetId == target.id;
+    return Semantics(
+      button: true,
+      label: working
+          ? AppStringKeys.confirmCancel.l10n(context)
+          : AppStringKeys.aiReplyAction.l10n(context),
+      child: GestureDetector(
+        key: const ValueKey('composerAiReplyButton'),
+        behavior: HitTestBehavior.opaque,
+        onTap: working
+            ? _invalidateAiReplyGeneration
+            : () => unawaited(_generateAiReply(target)),
+        child: SizedBox(
+          width: 32,
+          height: 28,
+          child: Center(
+            child: working
+                ? AppActivityIndicator(
+                    key: const ValueKey('composerAiReplyProgress'),
+                    size: 17,
+                    color: AppTheme.brand,
+                  )
+                : AppIcon(
+                    HeroAppIcons.wandMagicSparkles,
+                    size: 19,
+                    color: AppTheme.brand,
+                  ),
+          ),
+        ),
       ),
     );
   }
