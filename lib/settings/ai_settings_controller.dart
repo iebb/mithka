@@ -9,6 +9,12 @@ import 'ai_endpoint_style.dart';
 import 'apple_pcc_api.dart';
 import 'openai_compatible_models_api.dart';
 
+const defaultAiReplyPrompt = '''
+Reply naturally and concisely in my usual tone. Address the latest question or
+request directly. In groups, keep participant identities clear and avoid
+unnecessary replies.
+''';
+
 enum AiProviderMode {
   applePcc('apple_pcc'),
   appleOnDevice('apple_on_device'),
@@ -307,6 +313,8 @@ class AiSettingsController extends ChangeNotifier {
       'ai.feature.summary.model_candidate.v1';
   static const replyModelCandidatePreferenceKey =
       'ai.feature.reply.model_candidate.v1';
+  static const replyPromptPreferenceKey = 'ai.feature.reply.prompt.v1';
+  static const replyPromptMaximumCharacters = 1000;
   static const applePccModelCandidateId = 'builtin:apple_pcc';
   static const appleOnDeviceModelCandidateId = 'builtin:apple_on_device';
   static const telegramCocoonModelCandidateId = 'builtin:telegram_cocoon';
@@ -334,6 +342,7 @@ class AiSettingsController extends ChangeNotifier {
   String _translationModelCandidateId = applePccModelCandidateId;
   String _summaryModelCandidateId = applePccModelCandidateId;
   String _replyModelCandidateId = telegramCocoonModelCandidateId;
+  String _replyPrompt = defaultAiReplyPrompt.trim();
   final Map<String, String> _profileApiKeys = {};
   ApplePccCapabilities? _pccCapabilities;
 
@@ -389,6 +398,9 @@ class AiSettingsController extends ChangeNotifier {
   String get translationModelCandidateId => _translationModelCandidateId;
   String get summaryModelCandidateId => _summaryModelCandidateId;
   String get replyModelCandidateId => _replyModelCandidateId;
+  String get aiReplyPrompt => _replyPrompt;
+  bool get hasCustomAiReplyPrompt =>
+      _replyPrompt != defaultAiReplyPrompt.trim();
   AiModelCandidate get translationModelCandidate =>
       modelCandidateById(_translationModelCandidateId) ??
       const AiModelCandidate.applePcc();
@@ -535,6 +547,9 @@ class AiSettingsController extends ChangeNotifier {
     _enabled = _preferences.getBool(enabledPreferenceKey) ?? false;
     _provider = AiProviderMode.fromStorage(
       _preferences.getString(providerPreferenceKey),
+    );
+    _replyPrompt = _normalizeReplyPrompt(
+      _preferences.getString(replyPromptPreferenceKey),
     );
     _serverProviders = _readStoredProviders();
     _modelProfiles = _readStoredModels();
@@ -699,6 +714,20 @@ class AiSettingsController extends ChangeNotifier {
     await _persistFeatureModelSelections();
     notifyListeners();
   }
+
+  Future<void> setAiReplyPrompt(String value) async {
+    final normalized = _normalizeReplyPrompt(value);
+    if (_replyPrompt == normalized) return;
+    _replyPrompt = normalized;
+    if (normalized == defaultAiReplyPrompt.trim()) {
+      await _preferences.remove(replyPromptPreferenceKey);
+    } else {
+      await _preferences.setString(replyPromptPreferenceKey, normalized);
+    }
+    notifyListeners();
+  }
+
+  Future<void> resetAiReplyPrompt() => setAiReplyPrompt(defaultAiReplyPrompt);
 
   Future<List<OpenAiCompatibleModelInfo>> discoverModels({
     required String endpoint,
@@ -1384,6 +1413,14 @@ class AiSettingsController extends ChangeNotifier {
       if (model.id == id) return model;
     }
     return null;
+  }
+
+  static String _normalizeReplyPrompt(String? value) {
+    final trimmed = value?.trim() ?? '';
+    if (trimmed.isEmpty) return defaultAiReplyPrompt.trim();
+    final runes = trimmed.runes.toList(growable: false);
+    if (runes.length <= replyPromptMaximumCharacters) return trimmed;
+    return String.fromCharCodes(runes.take(replyPromptMaximumCharacters));
   }
 
   static String _profileKey(String profileId) =>

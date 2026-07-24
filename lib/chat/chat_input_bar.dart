@@ -129,6 +129,105 @@ typedef _ClipboardImage = ({Uint8List data, String mimeType});
 typedef AiReplyGenerator =
     Future<TelegramAiFormattedText> Function(AiReplyRequest request);
 
+typedef AiReplyStreamingGenerator =
+    Future<TelegramAiFormattedText> Function(
+      AiReplyRequest request, {
+      required AiReplyDraftCallback onDraft,
+    });
+
+class _AiReplyContextSnapshot {
+  const _AiReplyContextSnapshot({
+    required this.chatTitle,
+    required this.currentUserName,
+    required this.isGroup,
+    required this.isSecretChat,
+    required this.hasProtectedContent,
+    required this.selectedMessageFingerprints,
+    required this.tailFingerprints,
+  });
+
+  static const _tailLength = 8;
+
+  final String chatTitle;
+  final String currentUserName;
+  final bool isGroup;
+  final bool isSecretChat;
+  final bool hasProtectedContent;
+  final Map<int, int> selectedMessageFingerprints;
+  final List<int> tailFingerprints;
+
+  factory _AiReplyContextSnapshot.capture(
+    ChatViewModel vm,
+    AiReplyRequest request,
+  ) {
+    final selectedIds = {for (final message in request.messages) message.id};
+    return _AiReplyContextSnapshot(
+      chatTitle: vm.peerTitle,
+      currentUserName: vm.meName,
+      isGroup: vm.isGroup,
+      isSecretChat: vm.isSecretChat,
+      hasProtectedContent: vm.hasProtectedContent,
+      selectedMessageFingerprints: {
+        for (final message in vm.messages)
+          if (selectedIds.contains(message.id))
+            message.id: _messageFingerprint(message),
+      },
+      tailFingerprints: [
+        for (final message in vm.messages.skip(
+          math.max(0, vm.messages.length - _tailLength),
+        ))
+          _messageFingerprint(message),
+      ],
+    );
+  }
+
+  bool matches(ChatViewModel vm) {
+    if (chatTitle != vm.peerTitle ||
+        currentUserName != vm.meName ||
+        isGroup != vm.isGroup ||
+        isSecretChat != vm.isSecretChat ||
+        hasProtectedContent != vm.hasProtectedContent) {
+      return false;
+    }
+    var matchedSelectedMessages = 0;
+    for (final message in vm.messages) {
+      final expected = selectedMessageFingerprints[message.id];
+      if (expected == null) continue;
+      if (_messageFingerprint(message) != expected) return false;
+      matchedSelectedMessages++;
+    }
+    if (matchedSelectedMessages != selectedMessageFingerprints.length) {
+      return false;
+    }
+    final currentTail = vm.messages.skip(
+      math.max(0, vm.messages.length - _tailLength),
+    );
+    var index = 0;
+    for (final message in currentTail) {
+      if (index >= tailFingerprints.length ||
+          _messageFingerprint(message) != tailFingerprints[index]) {
+        return false;
+      }
+      index++;
+    }
+    return index == tailFingerprints.length;
+  }
+
+  static int _messageFingerprint(ChatMessage message) => Object.hash(
+    message.id,
+    message.isOutgoing,
+    message.isService,
+    message.isContentRestricted,
+    message.blockedByUser,
+    message.senderName,
+    message.senderId,
+    message.senderIsChat,
+    message.replyToMessageId,
+    message.date,
+    message.text,
+  );
+}
+
 class _SendComposerIntent extends Intent {
   const _SendComposerIntent();
 }
@@ -147,6 +246,7 @@ class ChatInputBar extends StatefulWidget {
     this.quickReplySender,
     this.onVoicePanelOpenedForTesting,
     this.aiReplyGenerator,
+    this.aiReplyStreamingGenerator,
     this.aiReplyHistoryLoader,
   });
   final ChatViewModel vm;
@@ -165,6 +265,8 @@ class ChatInputBar extends StatefulWidget {
   final VoidCallback? onVoicePanelOpenedForTesting;
   @visibleForTesting
   final AiReplyGenerator? aiReplyGenerator;
+  @visibleForTesting
+  final AiReplyStreamingGenerator? aiReplyStreamingGenerator;
   @visibleForTesting
   final AiReplyChatHistoryLoader? aiReplyHistoryLoader;
 
@@ -241,6 +343,9 @@ class _ChatInputBarState extends State<ChatInputBar> {
   int? _aiReplyWorkingTargetId;
   bool? _aiReplyWorkingUsesExplicitTarget;
   int? _aiReplyWorkingTargetFingerprint;
+  _AiReplyContextSnapshot? _aiReplyWorkingContextSnapshot;
+  bool _applyingAiReplyDraft = false;
+  AiReplyProvider? _activeAiReplyProvider;
   ChatViewModel get vm => widget.vm;
 
   bool get _canUseQuickReplies =>
@@ -310,8 +415,11 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   DateTime? _lastTyping;
   void _onTextChanged() {
-    _composerRevision++;
-    _invalidateAiReplyGeneration();
+    final applyingAiReplyDraft = _applyingAiReplyDraft;
+    if (!applyingAiReplyDraft) {
+      _composerRevision++;
+      _invalidateAiReplyGeneration();
+    }
     final (text, entities) = _controller.toFormatted();
     vm.setDraft(_controller.text, formattedText: text, entities: entities);
     // setDraft doesn't notify (it would rebuild the whole chat per keystroke), so
@@ -328,6 +436,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
       }
       if (mounted) setState(() {});
     }
+    if (applyingAiReplyDraft) return;
     _updateMentionSuggestions();
     _queueInlineBotResults();
     final now = DateTime.now();
@@ -479,15 +588,18 @@ class _ChatInputBarState extends State<ChatInputBar> {
     final workingTargetId = _aiReplyWorkingTargetId;
     final workingUsesExplicitTarget = _aiReplyWorkingUsesExplicitTarget;
     final workingTargetFingerprint = _aiReplyWorkingTargetFingerprint;
+    final workingContextSnapshot = _aiReplyWorkingContextSnapshot;
     if (workingTargetId != null &&
         (workingUsesExplicitTarget == null ||
             workingTargetFingerprint == null ||
+            workingContextSnapshot == null ||
+            !workingContextSnapshot.matches(vm) ||
             !_isCurrentAiReplyTarget(
               workingTargetId,
               usesExplicitTarget: workingUsesExplicitTarget,
               fingerprint: workingTargetFingerprint,
             ))) {
-      _invalidateAiReplyGeneration();
+      _invalidateAiReplyGeneration(discardGeneratedDraft: true);
     }
     final composing = _controller.value.composing;
     final editing = _focus.hasFocus || composing.isValid;
@@ -521,7 +633,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
   void didUpdateWidget(ChatInputBar oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.vm, widget.vm)) {
-      _invalidateAiReplyGeneration();
+      _invalidateAiReplyGeneration(discardGeneratedDraft: true);
     }
     if (oldWidget.quickRepliesEnabled && !widget.quickRepliesEnabled) {
       _quickReplyContextVisible = false;
@@ -536,9 +648,14 @@ class _ChatInputBarState extends State<ChatInputBar> {
   @override
   void dispose() {
     _aiReplyGeneration++;
+    if (_activeAiReplyProvider case final HostedAiReplyProvider hosted) {
+      hosted.close();
+    }
+    _activeAiReplyProvider = null;
     _aiReplyWorkingTargetId = null;
     _aiReplyWorkingUsesExplicitTarget = null;
     _aiReplyWorkingTargetFingerprint = null;
+    _aiReplyWorkingContextSnapshot = null;
     vm.removeListener(_syncFromVm);
     EmojiStore.shared.removeListener(_onStore);
     StickerStore.shared.removeListener(_onStore);
@@ -975,6 +1092,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
   }
 
   Future<void> _sendCurrentText() async {
+    if (_aiReplyWorkingTargetId != null) return;
     if (_controller.text.trim().isEmpty) return;
     final (text, entities) = _controller.toFormatted();
     final lengthTier = telegramMessageLengthTier(text);
@@ -1059,14 +1177,19 @@ class _ChatInputBarState extends State<ChatInputBar> {
     if (vm.anchoredHistory) return null;
     for (final message in vm.messages.reversed) {
       if (message.isService) continue;
-      if (message.id <= 0 ||
-          message.isOutgoing ||
-          message.isContentRestricted ||
-          message.blockedByUser ||
-          message.text.trim().isEmpty) {
+      final eligible =
+          message.id > 0 &&
+          !message.isOutgoing &&
+          !message.isContentRestricted &&
+          !message.blockedByUser &&
+          message.text.trim().isNotEmpty;
+      if (eligible) return message;
+      // In a busy group, keep looking for the newest participant message even
+      // if the account owner or an ineligible message was posted afterwards.
+      // Private chats retain the stronger "already answered" behavior.
+      if (!vm.isGroup) {
         return null;
       }
-      return message;
     }
     return null;
   }
@@ -1112,13 +1235,92 @@ class _ChatInputBarState extends State<ChatInputBar> {
     );
   }
 
-  void _invalidateAiReplyGeneration() {
-    if (_aiReplyWorkingTargetId == null) return;
+  void _invalidateAiReplyGeneration({bool discardGeneratedDraft = false}) {
+    if (_aiReplyWorkingTargetId == null && _activeAiReplyProvider == null) {
+      return;
+    }
     _aiReplyGeneration++;
     _aiReplyWorkingTargetId = null;
     _aiReplyWorkingUsesExplicitTarget = null;
     _aiReplyWorkingTargetFingerprint = null;
+    _aiReplyWorkingContextSnapshot = null;
+    final activeProvider = _activeAiReplyProvider;
+    _activeAiReplyProvider = null;
+    if (activeProvider case final HostedAiReplyProvider hosted) {
+      hosted.close();
+    }
+    if (discardGeneratedDraft && _controller.text.isNotEmpty) {
+      _applyingAiReplyDraft = true;
+      try {
+        _controller.setFormattedText('', const []);
+      } finally {
+        _applyingAiReplyDraft = false;
+      }
+    }
     if (mounted) setState(() {});
+  }
+
+  bool _isAiReplyGenerationCurrent({
+    required int generation,
+    required ChatViewModel requestVm,
+    required AiSettingsController settings,
+    required ChatMessage target,
+    required int targetMessageId,
+    required bool usesExplicitTarget,
+    required int targetFingerprint,
+    required int draftRevision,
+    required _AiReplyContextSnapshot contextSnapshot,
+  }) =>
+      mounted &&
+      generation == _aiReplyGeneration &&
+      identical(vm, requestVm) &&
+      (widget.aiReplyHistoryLoader != null || vm.canShareAiReplyContext) &&
+      _canOfferAiReply(target, settings) &&
+      _isCurrentAiReplyTarget(
+        targetMessageId,
+        usesExplicitTarget: usesExplicitTarget,
+        fingerprint: targetFingerprint,
+      ) &&
+      contextSnapshot.matches(vm) &&
+      _composerRevision == draftRevision;
+
+  bool _applyAiReplyDraft(
+    TelegramAiFormattedText draft, {
+    required int generation,
+    required ChatViewModel requestVm,
+    required AiSettingsController settings,
+    required ChatMessage target,
+    required int targetMessageId,
+    required bool usesExplicitTarget,
+    required int targetFingerprint,
+    required int draftRevision,
+    required _AiReplyContextSnapshot contextSnapshot,
+  }) {
+    if (!_isAiReplyGenerationCurrent(
+      generation: generation,
+      requestVm: requestVm,
+      settings: settings,
+      target: target,
+      targetMessageId: targetMessageId,
+      usesExplicitTarget: usesExplicitTarget,
+      targetFingerprint: targetFingerprint,
+      draftRevision: draftRevision,
+      contextSnapshot: contextSnapshot,
+    )) {
+      if (mounted && generation == _aiReplyGeneration) {
+        _invalidateAiReplyGeneration(
+          discardGeneratedDraft: _composerRevision == draftRevision,
+        );
+      }
+      return false;
+    }
+    _applyingAiReplyDraft = true;
+    try {
+      _controller.setFormattedText(draft.text, draft.entities);
+    } finally {
+      _applyingAiReplyDraft = false;
+    }
+    return true;
   }
 
   Future<void> _generateAiReply(ChatMessage target) async {
@@ -1146,8 +1348,11 @@ class _ChatInputBarState extends State<ChatInputBar> {
         currentUserName: vm.meName,
         target: target,
         visibleMessages: vm.messages,
+        isGroupChat: vm.isGroup,
         currentDraft: draftText,
+        guidance: settings.aiReplyPrompt,
         outputLanguageCode: Localizations.localeOf(context).toLanguageTag(),
+        contextWindowTokens: configuration.contextWindowTokens,
         historyLoader: widget.aiReplyHistoryLoader ?? vm.loadAiReplyContext,
       );
     } on AiReplyException catch (error) {
@@ -1156,7 +1361,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
     }
 
     AiReplyProvider? provider;
-    if (widget.aiReplyGenerator == null) {
+    if (widget.aiReplyGenerator == null &&
+        widget.aiReplyStreamingGenerator == null) {
       switch (configuration.candidate.kind) {
         case AiModelCandidateKind.telegramCocoon:
           provider = TelegramCocoonAiReplyProvider(service: vm.telegramAi);
@@ -1186,13 +1392,18 @@ class _ChatInputBarState extends State<ChatInputBar> {
     final targetFingerprint = _aiReplyTargetFingerprint(target);
     final requestVm = vm;
     final draftRevision = _composerRevision;
+    final initialContextSnapshot = _AiReplyContextSnapshot.capture(
+      requestVm,
+      request,
+    );
     final generation = ++_aiReplyGeneration;
     setState(() {
       _aiReplyWorkingTargetId = targetMessageId;
       _aiReplyWorkingUsesExplicitTarget = usesExplicitTarget;
       _aiReplyWorkingTargetFingerprint = targetFingerprint;
+      _aiReplyWorkingContextSnapshot = initialContextSnapshot;
+      _activeAiReplyProvider = provider;
     });
-    late final TelegramAiFormattedText result;
     try {
       var groundedRequest = request;
       try {
@@ -1202,22 +1413,68 @@ class _ChatInputBarState extends State<ChatInputBar> {
       } catch (_) {
         groundedRequest = request.copyWith(contextExpanded: true);
       }
-      if (!mounted ||
-          generation != _aiReplyGeneration ||
-          !identical(vm, requestVm) ||
-          (widget.aiReplyHistoryLoader == null && !vm.canShareAiReplyContext) ||
-          !_canOfferAiReply(target, settings) ||
-          !_isCurrentAiReplyTarget(
-            targetMessageId,
-            usesExplicitTarget: usesExplicitTarget,
-            fingerprint: targetFingerprint,
-          ) ||
-          _composerRevision != draftRevision) {
+      if (!_isAiReplyGenerationCurrent(
+        generation: generation,
+        requestVm: requestVm,
+        settings: settings,
+        target: target,
+        targetMessageId: targetMessageId,
+        usesExplicitTarget: usesExplicitTarget,
+        targetFingerprint: targetFingerprint,
+        draftRevision: draftRevision,
+        contextSnapshot: initialContextSnapshot,
+      )) {
         return;
       }
-      result =
-          await (widget.aiReplyGenerator?.call(groundedRequest) ??
-              provider!.generate(groundedRequest));
+      final contextSnapshot = _AiReplyContextSnapshot.capture(
+        requestVm,
+        groundedRequest,
+      );
+      _aiReplyWorkingContextSnapshot = contextSnapshot;
+      void onDraft(TelegramAiFormattedText draft) {
+        _applyAiReplyDraft(
+          draft,
+          generation: generation,
+          requestVm: requestVm,
+          settings: settings,
+          target: target,
+          targetMessageId: targetMessageId,
+          usesExplicitTarget: usesExplicitTarget,
+          targetFingerprint: targetFingerprint,
+          draftRevision: draftRevision,
+          contextSnapshot: contextSnapshot,
+        );
+      }
+
+      final TelegramAiFormattedText result;
+      final streamingGenerator = widget.aiReplyStreamingGenerator;
+      if (streamingGenerator != null) {
+        result = await streamingGenerator(groundedRequest, onDraft: onDraft);
+      } else if (widget.aiReplyGenerator case final generator?) {
+        result = await generator(groundedRequest);
+      } else if (provider case final StreamingAiReplyProvider streaming) {
+        result = await streaming.generateStreaming(
+          groundedRequest,
+          onDraft: onDraft,
+        );
+      } else {
+        result = await provider!.generate(groundedRequest);
+      }
+      if (!_applyAiReplyDraft(
+        result,
+        generation: generation,
+        requestVm: requestVm,
+        settings: settings,
+        target: target,
+        targetMessageId: targetMessageId,
+        usesExplicitTarget: usesExplicitTarget,
+        targetFingerprint: targetFingerprint,
+        draftRevision: draftRevision,
+        contextSnapshot: contextSnapshot,
+      )) {
+        return;
+      }
+      _focus.requestFocus();
     } catch (error) {
       if (mounted && generation == _aiReplyGeneration) {
         showToast(
@@ -1228,30 +1485,18 @@ class _ChatInputBarState extends State<ChatInputBar> {
       return;
     } finally {
       if (provider case final HostedAiReplyProvider hosted) hosted.close();
+      if (identical(_activeAiReplyProvider, provider)) {
+        _activeAiReplyProvider = null;
+      }
       if (mounted && generation == _aiReplyGeneration) {
         setState(() {
           _aiReplyWorkingTargetId = null;
           _aiReplyWorkingUsesExplicitTarget = null;
           _aiReplyWorkingTargetFingerprint = null;
+          _aiReplyWorkingContextSnapshot = null;
         });
       }
     }
-    if (!mounted ||
-        generation != _aiReplyGeneration ||
-        !identical(vm, requestVm)) {
-      return;
-    }
-    if (!_isCurrentAiReplyTarget(
-          targetMessageId,
-          usesExplicitTarget: usesExplicitTarget,
-          fingerprint: targetFingerprint,
-        ) ||
-        _composerRevision != draftRevision) {
-      showToast(context, AppStringKeys.aiReplyStale.l10n(context));
-      return;
-    }
-    _controller.setFormattedText(result.text, result.entities);
-    _focus.requestFocus();
   }
 
   Future<void> _showTextSendOptions() async {
@@ -2679,8 +2924,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
     final c = context.colors;
     final hasText = _hasText;
     final replyTarget = _currentAiReplyTarget();
+    final aiReplyWorking =
+        replyTarget != null && _aiReplyWorkingTargetId == replyTarget.id;
     final showAiReply =
-        !hasText &&
+        (!hasText || aiReplyWorking) &&
         replyTarget != null &&
         _canOfferAiReply(replyTarget, aiSettings);
     final sender = vm.selectedMessageSender;
@@ -2941,14 +3188,20 @@ class _ChatInputBarState extends State<ChatInputBar> {
                 ],
                 GestureDetector(
                   key: const ValueKey('composerSendButton'),
-                  onTap: () => unawaited(_sendCurrentText()),
-                  onLongPress: () => unawaited(_showTextSendOptions()),
+                  onTap: _aiReplyWorkingTargetId != null
+                      ? null
+                      : () => unawaited(_sendCurrentText()),
+                  onLongPress: _aiReplyWorkingTargetId != null
+                      ? null
+                      : () => unawaited(_showTextSendOptions()),
                   child: Container(
                     width: vm.requiresPaidMessage ? 58 : 36,
                     height: 36,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: AppTheme.brand,
+                      color: _aiReplyWorkingTargetId != null
+                          ? AppTheme.brand.withValues(alpha: 0.42)
+                          : AppTheme.brand,
                       shape: BoxShape.circle,
                     ),
                     child: vm.requiresPaidMessage

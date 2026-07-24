@@ -692,6 +692,73 @@ void main() {
         AiEndpointStyle.openAiResponses,
       );
     });
+
+    test('AI reply prompt persists, bounds Unicode, and resets', () async {
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final controller = AiSettingsController(
+        preferences,
+        pccApi: _pccApi(available: false),
+        secureRead: (_) async => null,
+        secureWrite: (_, _) async {},
+      );
+      await controller.initialize();
+
+      expect(controller.aiReplyPrompt, defaultAiReplyPrompt.trim());
+      expect(controller.hasCustomAiReplyPrompt, isFalse);
+      expect(
+        preferences.containsKey(AiSettingsController.replyPromptPreferenceKey),
+        isFalse,
+      );
+
+      const customPrompt =
+          '  Reply warmly, preserve emoji, and ask one short follow-up.  ';
+      await controller.setAiReplyPrompt(customPrompt);
+      expect(
+        controller.aiReplyPrompt,
+        'Reply warmly, preserve emoji, and ask one short follow-up.',
+      );
+      expect(controller.hasCustomAiReplyPrompt, isTrue);
+      expect(
+        preferences.getString(AiSettingsController.replyPromptPreferenceKey),
+        controller.aiReplyPrompt,
+      );
+
+      final restored = AiSettingsController(
+        preferences,
+        pccApi: _pccApi(available: false),
+        secureRead: (_) async => null,
+        secureWrite: (_, _) async {},
+      );
+      await restored.initialize();
+      expect(restored.aiReplyPrompt, controller.aiReplyPrompt);
+      expect(restored.hasCustomAiReplyPrompt, isTrue);
+
+      final oversized = List.filled(
+        AiSettingsController.replyPromptMaximumCharacters + 1,
+        '🦊',
+      ).join();
+      await restored.setAiReplyPrompt(oversized);
+      expect(
+        restored.aiReplyPrompt.runes.length,
+        AiSettingsController.replyPromptMaximumCharacters,
+      );
+      expect(
+        preferences
+            .getString(AiSettingsController.replyPromptPreferenceKey)!
+            .runes
+            .length,
+        AiSettingsController.replyPromptMaximumCharacters,
+      );
+
+      await restored.resetAiReplyPrompt();
+      expect(restored.aiReplyPrompt, defaultAiReplyPrompt.trim());
+      expect(restored.hasCustomAiReplyPrompt, isFalse);
+      expect(
+        preferences.containsKey(AiSettingsController.replyPromptPreferenceKey),
+        isFalse,
+      );
+    });
   });
 
   group('hosted AI endpoint validation', () {

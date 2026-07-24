@@ -110,6 +110,48 @@ void main() {
     );
   });
 
+  test('maps an explicit output token cap to every endpoint dialect', () {
+    for (final style in AiEndpointStyle.values) {
+      final body = style.requestBody(
+        model: 'reply-model',
+        instructions: 'Reply briefly.',
+        input: 'Hello',
+        stream: true,
+        maximumOutputTokens: 700,
+      );
+      final configuredLimit = switch (style) {
+        AiEndpointStyle.openAiChatCompletions => body['max_tokens'],
+        AiEndpointStyle.openAiResponses => body['max_output_tokens'],
+        AiEndpointStyle.anthropicMessages => body['max_tokens'],
+        AiEndpointStyle.ollamaChat => (body['options'] as Map)['num_predict'],
+      };
+      expect(configuredLimit, 700, reason: style.storageValue);
+    }
+  });
+
+  test('stream deltas preserve whitespace-only chunks', () {
+    expect(
+      AiEndpointStyle.openAiResponses.streamDelta({
+        'type': 'response.output_text.delta',
+        'delta': ' ',
+      }),
+      ' ',
+    );
+    expect(
+      AiEndpointStyle.anthropicMessages.streamDelta({
+        'type': 'content_block_delta',
+        'delta': {'type': 'text_delta', 'text': '\n'},
+      }),
+      '\n',
+    );
+    expect(
+      AiEndpointStyle.ollamaChat.streamDelta({
+        'message': {'content': ' '},
+      }),
+      ' ',
+    );
+  });
+
   test('serializes function tools for every endpoint dialect', () {
     final base = <String, Object?>{'model': 'reply-model'};
 
@@ -406,6 +448,313 @@ void main() {
     ]);
     expect(continued['tools'], original['tools']);
     expect(original['messages'], hasLength(2));
+  });
+
+  test('accumulates streamed Chat Completion text and fragmented tools', () {
+    const style = AiEndpointStyle.openAiChatCompletions;
+    final stream = AiEndpointStreamAccumulator(style);
+    expect(stream.isComplete, isFalse);
+
+    expect(
+      stream.add({
+        'choices': [
+          {
+            'delta': {'role': 'assistant'},
+          },
+        ],
+      }),
+      isEmpty,
+    );
+    expect(
+      stream.add({
+        'choices': [
+          {
+            'delta': {'content': 'I can '},
+          },
+        ],
+      }),
+      'I can ',
+    );
+    expect(
+      stream.add({
+        'choices': [
+          {
+            'delta': {'content': 'check.'},
+          },
+        ],
+      }),
+      'check.',
+    );
+    stream.add({
+      'choices': [
+        {
+          'delta': {
+            'tool_calls': [
+              {
+                'index': 0,
+                'id': 'call-chat-stream',
+                'type': 'function',
+                'function': {
+                  'name': 'get_chat_context',
+                  'arguments': '{"query":"meeting',
+                },
+              },
+            ],
+          },
+        },
+      ],
+    });
+    stream.add({
+      'choices': [
+        {
+          'delta': {
+            'tool_calls': [
+              {
+                'index': 0,
+                'function': {'arguments': ' time"}'},
+              },
+            ],
+          },
+          'finish_reason': 'tool_calls',
+        },
+      ],
+    });
+
+    expect(stream.text, 'I can check.');
+    expect(style.responseText(stream.envelope), 'I can check.');
+    expect(stream.hasToolCalls, isTrue);
+    final calls = style.functionToolCalls(stream.envelope);
+    expect(calls, hasLength(1));
+    expect(calls.single.id, 'call-chat-stream');
+    expect(calls.single.name, 'get_chat_context');
+    expect(calls.single.arguments, {'query': 'meeting time'});
+    expect(
+      (stream.envelope['choices'] as List).single['finish_reason'],
+      'tool_calls',
+    );
+    expect(stream.isComplete, isTrue);
+  });
+
+  test(
+    'accumulates Responses tools and prefers the completed response envelope',
+    () {
+      const style = AiEndpointStyle.openAiResponses;
+      final stream = AiEndpointStreamAccumulator(style);
+      stream.add({
+        'type': 'response.output_item.done',
+        'output_index': 0,
+        'item': {
+          'type': 'reasoning',
+          'id': 'reasoning-stream',
+          'summary': <Object?>[],
+        },
+      });
+      stream.add({
+        'type': 'response.output_item.added',
+        'output_index': 1,
+        'item': {
+          'type': 'function_call',
+          'id': 'function-stream',
+          'call_id': 'call-responses-stream',
+          'name': 'get_chat_context',
+          'arguments': '',
+        },
+      });
+      stream.add({
+        'type': 'response.function_call_arguments.delta',
+        'output_index': 1,
+        'item_id': 'function-stream',
+        'delta': '{"query":"release',
+      });
+      stream.add({
+        'type': 'response.function_call_arguments.delta',
+        'output_index': 1,
+        'item_id': 'function-stream',
+        'delta': ' date"}',
+      });
+      expect(
+        stream.add({
+          'type': 'response.output_text.delta',
+          'delta': 'July 30 works.',
+        }),
+        'July 30 works.',
+      );
+
+      expect(stream.hasToolCalls, isTrue);
+      expect(style.functionToolCalls(stream.envelope).single.arguments, {
+        'query': 'release date',
+      });
+      expect((stream.envelope['output'] as List).first, {
+        'type': 'reasoning',
+        'id': 'reasoning-stream',
+        'summary': <Object?>[],
+      });
+
+      final completed = <String, Object?>{
+        'id': 'response-stream',
+        'output': [
+          {
+            'type': 'reasoning',
+            'id': 'reasoning-authoritative',
+            'summary': <Object?>[],
+          },
+          {
+            'type': 'function_call',
+            'id': 'function-stream',
+            'call_id': 'call-responses-stream',
+            'name': 'get_chat_context',
+            'arguments': '{"query":"release date"}',
+          },
+          {
+            'type': 'message',
+            'role': 'assistant',
+            'content': [
+              {'type': 'output_text', 'text': 'July 30 works.'},
+            ],
+          },
+        ],
+      };
+      expect(
+        stream.add({'type': 'response.completed', 'response': completed}),
+        isEmpty,
+      );
+
+      expect(stream.envelope, completed);
+      expect(stream.isComplete, isTrue);
+      expect(
+        (stream.envelope['output'] as List).first,
+        containsPair('id', 'reasoning-authoritative'),
+      );
+      expect(style.responseText(stream.envelope), 'July 30 works.');
+    },
+  );
+
+  test('assembles indexed Anthropic text and fragmented tool input', () {
+    const style = AiEndpointStyle.anthropicMessages;
+    final stream = AiEndpointStreamAccumulator(style);
+    stream.add({
+      'type': 'message_start',
+      'message': {
+        'id': 'message-anthropic-stream',
+        'role': 'assistant',
+        'content': <Object?>[],
+      },
+    });
+    stream.add({
+      'type': 'content_block_start',
+      'index': 0,
+      'content_block': {'type': 'text', 'text': ''},
+    });
+    expect(
+      stream.add({
+        'type': 'content_block_delta',
+        'index': 0,
+        'delta': {'type': 'text_delta', 'text': 'I will check.'},
+      }),
+      'I will check.',
+    );
+    stream.add({
+      'type': 'content_block_start',
+      'index': 1,
+      'content_block': {
+        'type': 'tool_use',
+        'id': 'toolu-anthropic-stream',
+        'name': 'get_chat_context',
+        'input': <String, Object?>{},
+      },
+    });
+    stream.add({
+      'type': 'content_block_delta',
+      'index': 1,
+      'delta': {
+        'type': 'input_json_delta',
+        'partial_json': '{"query":"meeting',
+      },
+    });
+    stream.add({
+      'type': 'content_block_delta',
+      'index': 1,
+      'delta': {'type': 'input_json_delta', 'partial_json': ' time"}'},
+    });
+    stream.add({'type': 'content_block_stop', 'index': 1});
+    stream.add({
+      'type': 'message_delta',
+      'delta': {'stop_reason': 'tool_use'},
+    });
+    expect(stream.isComplete, isFalse);
+    stream.add({'type': 'message_stop'});
+
+    expect(stream.text, 'I will check.');
+    expect(style.responseText(stream.envelope), 'I will check.');
+    expect(stream.envelope['stop_reason'], 'tool_use');
+    final content = stream.envelope['content'] as List;
+    expect(content.map((block) => block['type']), ['text', 'tool_use']);
+    final calls = style.functionToolCalls(stream.envelope);
+    expect(calls, hasLength(1));
+    expect(calls.single.id, 'toolu-anthropic-stream');
+    expect(calls.single.arguments, {'query': 'meeting time'});
+    expect(stream.isComplete, isTrue);
+  });
+
+  test('accumulates Ollama text and fragmented tool arguments', () {
+    const style = AiEndpointStyle.ollamaChat;
+    final stream = AiEndpointStreamAccumulator(style);
+
+    expect(
+      stream.add({
+        'model': 'qwen-test',
+        'message': {'role': 'assistant', 'content': 'Let me '},
+        'done': false,
+      }),
+      'Let me ',
+    );
+    expect(
+      stream.add({
+        'model': 'qwen-test',
+        'message': {'role': 'assistant', 'content': 'check.'},
+        'done': false,
+      }),
+      'check.',
+    );
+    stream.add({
+      'model': 'qwen-test',
+      'message': {
+        'role': 'assistant',
+        'content': '',
+        'tool_calls': [
+          {
+            'function': {
+              'index': 0,
+              'name': 'get_chat_',
+              'arguments': '{"query":"addr',
+            },
+          },
+        ],
+      },
+      'done': false,
+    });
+    stream.add({
+      'model': 'qwen-test',
+      'message': {
+        'role': 'assistant',
+        'content': '',
+        'tool_calls': [
+          {
+            'function': {'index': 0, 'name': 'context', 'arguments': 'ess"}'},
+          },
+        ],
+      },
+      'done': true,
+    });
+
+    expect(stream.text, 'Let me check.');
+    expect(style.responseText(stream.envelope), 'Let me check.');
+    expect(stream.envelope['done'], isTrue);
+    expect(stream.isComplete, isTrue);
+    final calls = style.functionToolCalls(stream.envelope);
+    expect(calls, hasLength(1));
+    expect(calls.single.name, 'get_chat_context');
+    expect(calls.single.arguments, {'query': 'address'});
   });
 
   test('compatibility fallback strips unsupported tool fields', () {
