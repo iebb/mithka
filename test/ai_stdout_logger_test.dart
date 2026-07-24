@@ -7,6 +7,46 @@ import 'package:mithka/settings/ai_stdout_logger.dart';
 import 'package:mithka/settings/apple_pcc_api.dart';
 
 void main() {
+  test('chunks long terminal events without losing any JSON content', () {
+    final original = jsonEncode({
+      'event': 'ai.request',
+      'correlation_id': 'request-42',
+      'provider': 'test/provider',
+      'operation': 'reply',
+      'payload': {'prompt': List.filled(180, '完整上下文 with spaces').join(' · ')},
+    });
+
+    final terminalLines = AiStdoutLogger.terminalLinesForTesting(original);
+
+    expect(terminalLines.length, greaterThan(1));
+    expect(
+      terminalLines,
+      everyElement(
+        predicate<String>(
+          (line) => utf8.encode(line).length < 900,
+          'stays below the simulator stdout truncation boundary',
+        ),
+      ),
+    );
+    final chunks = terminalLines
+        .map((line) => jsonDecode(line) as Map<String, dynamic>)
+        .toList();
+    expect(chunks.map((chunk) => chunk['event']).toSet(), {'ai.stdout.chunk'});
+    expect(chunks.map((chunk) => chunk['source_event']).toSet(), {
+      'ai.request',
+    });
+    expect(chunks.map((chunk) => chunk['correlation_id']).toSet(), {
+      'request-42',
+    });
+    expect(chunks.map((chunk) => chunk['chunk_index']), [
+      for (var index = 1; index <= chunks.length; index++) index,
+    ]);
+    expect(chunks.map((chunk) => chunk['chunk_count']).toSet(), {
+      chunks.length,
+    });
+    expect(chunks.map((chunk) => chunk['data']).join(), original);
+  });
+
   test('writes complete correlated JSON lines and redacts credentials', () {
     final lines = <String>[];
     const configuredSecret = 'configured-secret-value';

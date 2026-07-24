@@ -156,7 +156,70 @@ class AiStdoutLogger {
     return result;
   }
 
-  static void _defaultSink(String line) => debugPrintSynchronously(line);
+  @visibleForTesting
+  static List<String> terminalLinesForTesting(String line) =>
+      _terminalLines(line);
+
+  static void _defaultSink(String line) {
+    for (final terminalLine in _terminalLines(line)) {
+      debugPrintSynchronously(terminalLine);
+    }
+  }
+
+  /// iOS truncates oversized stdout records. Preserve the complete JSON event
+  /// as ordered, individually valid JSON chunk records below that limit.
+  static List<String> _terminalLines(String line) {
+    if (utf8.encode(line).length <= 900) return [line];
+    final chunks = _splitByUtf8Bytes(line, 240);
+    String? sourceEvent;
+    String? correlationId;
+    String? provider;
+    String? operation;
+    try {
+      final decoded = jsonDecode(line);
+      if (decoded is Map) {
+        sourceEvent = decoded['event']?.toString();
+        correlationId = decoded['correlation_id']?.toString();
+        provider = decoded['provider']?.toString();
+        operation = decoded['operation']?.toString();
+      }
+    } on FormatException {
+      // The logger emits JSON, but retain lossless fallback chunking if a
+      // custom caller gives the default sink malformed input.
+    }
+    return [
+      for (var index = 0; index < chunks.length; index++)
+        jsonEncode({
+          'event': 'ai.stdout.chunk',
+          'source_event': ?sourceEvent,
+          'correlation_id': ?correlationId,
+          'provider': ?provider,
+          'operation': ?operation,
+          'chunk_index': index + 1,
+          'chunk_count': chunks.length,
+          'data': chunks[index],
+        }),
+    ];
+  }
+
+  static List<String> _splitByUtf8Bytes(String value, int maximumBytes) {
+    final chunks = <String>[];
+    var buffer = StringBuffer();
+    var byteCount = 0;
+    for (final rune in value.runes) {
+      final character = String.fromCharCode(rune);
+      final characterBytes = utf8.encode(character).length;
+      if (byteCount > 0 && byteCount + characterBytes > maximumBytes) {
+        chunks.add(buffer.toString());
+        buffer = StringBuffer();
+        byteCount = 0;
+      }
+      buffer.write(character);
+      byteCount += characterBytes;
+    }
+    if (buffer.isNotEmpty) chunks.add(buffer.toString());
+    return chunks;
+  }
 }
 
 final AiStdoutLogger aiStdoutLogger = AiStdoutLogger();
