@@ -25,6 +25,8 @@ const esMessages = <String, String>{
   'accountBackupCopyPyrogramTitle': "¿Copiar sesión de Pyrogram?",
   'accountBackupCreate': "Guardar cuenta actual en Keychain",
   'accountBackupDeleteInvalidSession': "Eliminar sesión guardada",
+  'accountBackupDeleteLocalMessage':
+      "Esto elimina de este dispositivo la copia guardada solo localmente. La sesión de Telegram no se revoca.",
   'accountBackupDeleteMessage':
       "Esto elimina la sesión de la copia en la nube. La sesión de Telegram no se revocará.",
   'accountBackupDeleteTitle': "¿Eliminar sesión guardada?",
@@ -63,7 +65,11 @@ const esMessages = <String, String>{
       "Esto importa la sesión guardada como una cuenta nueva. La sesión aún debe estar activa en los servidores de Telegram.",
   'accountBackupRestoreTitle': "¿Restaurar sesión guardada?",
   'accountBackupSaved': "Sesión guardada ({value1})",
+  'accountBackupSaveOnDevice': "Guardar una copia en este dispositivo",
   'accountBackupSessions': "Sesiones guardadas",
+  'accountBackupStorageAndroid': "Copia de Android",
+  'accountBackupStorageICloud': "Llavero de iCloud",
+  'accountBackupStorageOnDevice': "En este dispositivo",
   'accountBackupTitle': "Copia de seguridad de cuentas",
   'accountBackupUserId': "ID de usuario: {value1}",
   'accountBackupLoginAndroid': "Guardar esta cuenta en Android Backup",
@@ -74,6 +80,8 @@ const esMessages = <String, String>{
       "Solo se guarda la sesión de autorización de TDLib en Android Backup. Los mensajes, archivos multimedia, registros y cachés no se guardan.",
   'accountBackupNoticeICloud':
       "Solo se guarda la sesión de autorización de TDLib en el llavero de iCloud. Los mensajes, archivos multimedia, registros y cachés no se guardan.",
+  'accountBackupNoticeWithLocal':
+      "Las copias en la nube pueden transferirse con una copia cifrada del dispositivo. Una copia guardada en este dispositivo se mantiene separada y nunca se sincroniza. Solo se guarda la sesión de autorización de TDLib; no se guardan mensajes, archivos multimedia, registros ni cachés.",
   'accountBackupUnavailable':
       "La copia de seguridad de cuentas no está disponible en este dispositivo o distribución.",
   'mithkaProActive': "Mithka Pro está activo",
@@ -131,6 +139,11 @@ const esMessages = <String, String>{
   'aiContextManual': "No indicado; compruébalo manualmente",
   'aiEditModel': "Editar modelo",
   'aiEditProvider': "Editar proveedor",
+  'aiEndpointStyle': "Estilo de API",
+  'aiEndpointStyleAnthropicMessages': "Mensajes de Anthropic",
+  'aiEndpointStyleOllamaChat': "Chat de Ollama",
+  'aiEndpointStyleOpenAiChatCompletions': "Chat Completions de OpenAI",
+  'aiEndpointStyleOpenAiResponses': "Responses de OpenAI",
   'aiDeleteProvider': "Eliminar proveedor",
   'aiDeleteModel': "Eliminar modelo seleccionado",
   'aiEnterModelManually': "Introducir modelo manualmente",
@@ -139,11 +152,6 @@ const esMessages = <String, String>{
       "Apple Private Cloud Compute, el modelo local de Apple y los modelos de servidor guardados se pueden elegir por separado para traducir o resumir.",
   'aiModelConfiguration': "Configuración de modelos",
   'aiModels': "Modelos",
-  'aiEndpointStyle': "Estilo de API",
-  'aiEndpointStyleAnthropicMessages': "Mensajes de Anthropic",
-  'aiEndpointStyleOllamaChat': "Chat de Ollama",
-  'aiEndpointStyleOpenAiChatCompletions': "Chat Completions de OpenAI",
-  'aiEndpointStyleOpenAiResponses': "Responses de OpenAI",
   'aiModelsFailed':
       "No se pudieron cargar los modelos. Revisa el punto de conexión y la clave de API.",
   'aiModelsLoaded': "Se cargaron {value1} modelos",
@@ -322,6 +330,7 @@ const esMessages = <String, String>{
   'appearanceManage': "Gestionar",
   'appearanceMergeConsecutiveImages': "Agrupar álbumes multimedia",
   'appearanceMode': "Modo",
+  'appearanceMessageBubbles': "Burbujas de mensaje",
   'appearanceMonospaceFont': "Fuente monoespaciada",
   'appearanceNoCleanableFonts': "Nada para limpiar",
   'appearanceNoDownloadedFontCache': "No hay caché de fuentes descargadas.",
@@ -742,6 +751,7 @@ const esMessages = <String, String>{
   'chatUserDoingAction': "{value1} está {value2}",
   'chatUserFallbackName': "Usuario {value1}",
   'chatUserLeftGroup': "{value1} salió del grupo",
+  'chatUserBoostedGroup': "{value1} impulsó este grupo",
   'chatUsersJoinedGroup': "{value1}{value2} se unieron al grupo",
   'chatUserTyping': "{value1} está escribiendo…",
   'chatVideoPlaceholder': "[Vídeo]",
@@ -1225,6 +1235,30 @@ const esMessages = <String, String>{
   'messageBubbleCallDuration': "Duración de la llamada: {value1}",
   'messageBubbleCallMissed': "Perdida",
   'messageBubbleCallNoAnswer': "Sin respuesta",
+  'messageBubbleDefault': "Predeterminado",
+  'messageBubbleMoonlitViolet': "Violeta lunar",
+  'messageBubblePurpleFolded': "Pliegue púrpura",
+  'messageBubbleCreamCharms': "Amuletos crema",
+  'messageBubbleCustom': "PNG personalizado",
+  'messageBubbleCustomImport': "Importar PNG",
+  'messageBubbleCustomReplace': "Sustituir PNG",
+  'messageBubbleCustomRemove': "Eliminar PNG personalizado",
+  'messageBubbleCustomDescription':
+      "Usa un PNG pequeño con las cuatro esquinas protegidas. La única fila central y la única columna central se estiran con el mensaje.",
+  'messageBubbleCustomInvalidPng': "Elige un archivo PNG válido.",
+  'messageBubbleCustomTooSmall': "El PNG debe tener al menos 3 × 3 píxeles.",
+  'messageBubbleCustomTooLarge':
+      "El PNG es demasiado grande. Usa una imagen de hasta 2048 × 2048 píxeles.",
+  'messageBubbleCustomImportFailed':
+      "No se pudo importar la burbuja personalizada.",
+  'messageBubbleCustomRemoveTitle': "¿Eliminar la burbuja personalizada?",
+  'messageBubbleCustomRemoveMessage':
+      "El PNG importado se eliminará de las opciones de burbuja.",
+  'messageBubblePreviewLong':
+      "La burbuja crece con cada línea del mensaje sin deformarse.",
+  'messageBubblePreviewShort': "¡Hola!",
+  'messageBubbleStretchDescription':
+      "La burbuja se divide por sus líneas centrales. Los píxeles del centro se estiran y las cuatro esquinas decoradas conservan su forma.",
   'messageBubbleCollapse': "Contraer",
   'messageBubbleExpandQuote': "Expandir cita",
   'messageBubbleForwardedFrom': "Reenviado de {value1}",
@@ -1234,6 +1268,7 @@ const esMessages = <String, String>{
   'messageRepliesTitle': "Respuestas",
   'messageRepliesUnavailable':
       "Las respuestas no están disponibles para este mensaje",
+  'messageViewInChat': "Ver en el chat",
   'miniAppCannotStart': "La Mini App no se puede iniciar ahora mismo",
   'miniAppClose': "Cerrar la Mini App",
   'miniAppNoMatches': "No hay Mini Apps coincidentes",
@@ -1346,12 +1381,16 @@ const esMessages = <String, String>{
   'myAlbumNoPhotos': "Aún no hay fotos",
   'netemoMusicLabel': "Netemo music",
   'notificationAllAccounts': "Todas las cuentas",
+  'notificationAccounts': "Cuentas",
+  'notificationAccountSelectionDescription':
+      "Elige todas las cuentas, la cuenta actual o un conjunto específico de cuentas.",
   'notificationAllAccountsDescription':
       "Recibe notificaciones de todas tus cuentas conectadas.",
   'notificationAllAccountsDescriptionOff':
       "Activa esta opción para recibir notificaciones de todas tus cuentas.",
   'notificationAllStories': "Todas las historias",
   'notificationChannels': "Canales",
+  'notificationCurrentAccount': "Cuenta actual",
   'notificationException': "{value1} excepción",
   'notificationExceptions': "{value1} excepciones",
   'notificationGroupMessages': "Chats de grupo",
@@ -1375,6 +1414,9 @@ const esMessages = <String, String>{
   'notificationReactionMessages': "Mensajes",
   'notificationReactions': "Reacciones",
   'notificationShowNotificationsFrom': "Mostrar notificaciones de",
+  'notificationSelectedAccounts': "Cuentas seleccionadas",
+  'notificationSelectedAccountsDescription':
+      "Elige las cuentas que pueden enviar notificaciones. Debe quedar al menos una seleccionada.",
   'notificationSound': "Sonido",
   'notificationStories': "Historias",
   'notificationStoryPoster': "Mostrar autor de la historia",
@@ -2003,8 +2045,12 @@ const esMessages = <String, String>{
   'videoPlaybackFinishedReplay': "Reiniciar desde el principio",
   'videoPlaybackFinishedReturnToChat': "Volver al chat",
   'videoPlaybackHorizontalSwipe': "Deslizamiento horizontal",
+  'videoPlaybackLeftVerticalSwipe': "Deslizamiento vertical izquierdo",
+  'videoPlaybackRightVerticalSwipe': "Deslizamiento vertical derecho",
   'videoPlaybackSettingsTitle': "Reproducción de vídeo",
+  'videoPlaybackSwipeAdjustBrightness': "Ajustar brillo",
   'videoPlaybackSwipeAdjustProgress': "Ajustar progreso",
+  'videoPlaybackSwipeAdjustVolume': "Ajustar volumen",
   'videoPlaybackSwipeChangeVideo': "Vídeo siguiente / anterior",
   'videoPlaybackSwipeDisabled': "Desactivar",
   'videoPlaybackSwipeSkipTenSeconds': "Avanzar / retroceder 10 segundos",

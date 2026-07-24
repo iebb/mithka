@@ -27,10 +27,12 @@ import '../components/ui_components.dart';
 import '../theme/app_theme.dart';
 import '../theme/emoji_font_catalog.dart';
 import '../theme/global_theme_view.dart';
+import '../theme/message_bubble_background.dart';
 import '../theme/system_font_catalog.dart';
 import '../theme/theme_controller.dart';
 import 'app_icon_controller.dart';
 import 'chat_folder_management_view.dart';
+import 'message_bubble_settings_view.dart';
 import 'quick_reaction_settings_view.dart';
 
 class AppearanceView extends StatelessWidget {
@@ -103,6 +105,27 @@ class AppearanceView extends StatelessWidget {
                         ),
                       ),
                       icon: HeroAppIcons.image.data,
+                    ),
+                    _navigationRow(
+                      context,
+                      AppStrings.t(AppStringKeys.appearanceMessageBubbles),
+                      AppStrings.t(switch (theme.messageBubbleBackground) {
+                        MessageBubbleBackground.standard =>
+                          AppStringKeys.messageBubbleDefault,
+                        MessageBubbleBackground.purpleFolded =>
+                          AppStringKeys.messageBubblePurpleFolded,
+                        MessageBubbleBackground.creamCharms =>
+                          AppStringKeys.messageBubbleCreamCharms,
+                        MessageBubbleBackground.custom =>
+                          AppStringKeys.messageBubbleCustom,
+                      }),
+                      () => Navigator.of(context).push(
+                        PageRouteBuilder<void>(
+                          pageBuilder: (_, _, _) =>
+                              const MessageBubbleSettingsView(),
+                        ),
+                      ),
+                      icon: HeroAppIcons.message.data,
                     ),
                     _toggleRow(
                       context,

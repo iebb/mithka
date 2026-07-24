@@ -119,6 +119,7 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
   Timer? _inAppBannerTimer;
   final Map<Object, _VisibleChatRegistration> _visibleChats = {};
   final Map<(int, int), Map<String, dynamic>> _chatNotificationSettings = {};
+  final Map<int, int> _accountUserIdsByClient = {};
 
   bool get inAppBannersEnabled => _inAppBannersEnabled;
   InAppNotificationBannerData? get inAppBanner => _inAppBanner;
@@ -247,13 +248,19 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
     final raw = update.obj('message');
     if (raw == null || (raw.boolean('is_outgoing') ?? false)) return;
 
+    if (!await _receivesNotificationsFrom(
+      clientId,
+      isActiveAccount: isActiveAccount,
+    )) {
+      return;
+    }
+
     if (await CountryChatBlocker.shared.handleIncomingMessage(
       raw,
       clientId: clientId,
     )) {
       return;
     }
-    if (!isActiveAccount && !_notificationPreferences.allAccounts) return;
 
     final chatId = raw.int64('chat_id');
     final messageId = raw.int64('id');
@@ -554,6 +561,34 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
       return name.isEmpty ? null : name;
     } catch (_) {
       return null;
+    }
+  }
+
+  Future<bool> _receivesNotificationsFrom(
+    int clientId, {
+    required bool isActiveAccount,
+  }) async {
+    final mode = _notificationPreferences.accountMode;
+    if (mode == NotificationAccountMode.all) return true;
+    if (mode == NotificationAccountMode.current) return isActiveAccount;
+    final cachedUserId = _accountUserIdsByClient[clientId];
+    if (cachedUserId != null) {
+      return _notificationPreferences.receivesNotificationsFrom(
+        userId: cachedUserId,
+        isActiveAccount: isActiveAccount,
+      );
+    }
+    try {
+      final user = await _query({'@type': 'getMe'}, clientId);
+      final userId = user.int64('id');
+      if (userId == null) return false;
+      _accountUserIdsByClient[clientId] = userId;
+      return _notificationPreferences.receivesNotificationsFrom(
+        userId: userId,
+        isActiveAccount: isActiveAccount,
+      );
+    } catch (_) {
+      return false;
     }
   }
 

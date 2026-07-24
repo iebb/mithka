@@ -8,6 +8,8 @@ import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 
+enum AccountSessionBackupStorage { synced, local }
+
 class AccountSessionBackup {
   const AccountSessionBackup({
     required this.id,
@@ -15,6 +17,7 @@ class AccountSessionBackup {
     required this.createdAt,
     required this.sizeBytes,
     required this.sessionString,
+    this.storage = AccountSessionBackupStorage.synced,
     this.phone,
     this.userId,
   });
@@ -26,6 +29,7 @@ class AccountSessionBackup {
   final DateTime createdAt;
   final int sizeBytes;
   final String sessionString;
+  final AccountSessionBackupStorage storage;
 
   String get displayName => name.trim().isEmpty ? id : name;
 }
@@ -66,6 +70,12 @@ class AccountBackupService {
     return await _channel.invokeMethod<bool>('isSupported') ?? false;
   }
 
+  Future<bool> get isLocalStorageSupported async {
+    if (!_platformEligible) return false;
+    return await _channel.invokeMethod<bool>('isLocalStorageSupported') ??
+        false;
+  }
+
   Future<Set<String>> consentedAccountIds() async {
     await _ensureExplicitConsentMigration();
     final prefs = await SharedPreferences.getInstance();
@@ -82,9 +92,7 @@ class AccountBackupService {
 
   Future<Set<String>> protectedAccountIds() async {
     final ids = await consentedAccountIds();
-    if (await isSupported) {
-      ids.addAll((await listBackups()).map((backup) => backup.id));
-    }
+    ids.addAll((await listBackups()).map((backup) => backup.id));
     return ids;
   }
 
@@ -153,7 +161,11 @@ class AccountBackupService {
       return;
     }
     await prefs.remove('$_consentPrefix$accountId');
-    await deleteAccountId(accountId, removeConsent: false);
+    await deleteAccountId(
+      accountId,
+      removeConsent: false,
+      storage: AccountSessionBackupStorage.synced,
+    );
   }
 
   Future<void> backupActiveAccountIfEnabled() async {
@@ -205,13 +217,40 @@ class AccountBackupService {
 
   Future<List<AccountSessionBackup>> listBackups() async {
     await _ensureExplicitConsentMigration();
-    if (!await isSupported) return const [];
-    final rawItems = await _channel.invokeListMethod<Object?>('getAllSessions');
+    final syncedSupported = await isSupported;
+    final localSupported = await isLocalStorageSupported;
+    if (!syncedSupported && !localSupported) return const [];
+    final backups = <AccountSessionBackup>[
+      if (syncedSupported)
+        ...await _listBackupsFrom(AccountSessionBackupStorage.synced),
+      if (localSupported)
+        ...await _listBackupsFrom(AccountSessionBackupStorage.local),
+    ];
+    backups.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    final syncedBackups = backups.where(
+      (backup) => backup.storage == AccountSessionBackupStorage.synced,
+    );
+    if (syncedBackups.isNotEmpty) {
+      final prefs = await SharedPreferences.getInstance();
+      for (final backup in syncedBackups) {
+        await prefs.setBool('$_consentPrefix${backup.id}', true);
+      }
+    }
+    return backups;
+  }
+
+  Future<List<AccountSessionBackup>> _listBackupsFrom(
+    AccountSessionBackupStorage storage,
+  ) async {
+    final rawItems = await _channel.invokeListMethod<Object?>(
+      'getAllSessions',
+      {'storage': storage.name},
+    );
     final backupsById = <String, AccountSessionBackup>{};
     for (final raw in rawItems ?? const []) {
       final data = raw is Uint8List ? raw : null;
       if (data == null) continue;
-      final backup = _decode(data);
+      final backup = _decode(data, storage: storage);
       if (backup == null) continue;
       final existing = backupsById[backup.id];
       if (existing == null || backup.createdAt.isAfter(existing.createdAt)) {
@@ -220,12 +259,6 @@ class AccountBackupService {
     }
     final backups = backupsById.values.toList();
     backups.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    if (backups.isNotEmpty) {
-      final prefs = await SharedPreferences.getInstance();
-      for (final backup in backups) {
-        await prefs.setBool('$_consentPrefix${backup.id}', true);
-      }
-    }
     return backups;
   }
 
@@ -256,8 +289,13 @@ class AccountBackupService {
     return ids;
   }
 
-  Future<AccountSessionBackup> backupActiveAccount() async {
-    if (!await isSupported) {
+  Future<AccountSessionBackup> backupActiveAccount({
+    AccountSessionBackupStorage storage = AccountSessionBackupStorage.synced,
+  }) async {
+    final supported = storage == AccountSessionBackupStorage.local
+        ? await isLocalStorageSupported
+        : await isSupported;
+    if (!supported) {
       throw UnsupportedError(
         'Account session backup is not available on this device',
       );
@@ -265,9 +303,19 @@ class AccountBackupService {
     final exported = await _exportActiveAccountSession();
     await _channel.invokeMethod<void>('saveSession', {
       'id': exported.backup.id,
-      'data': _encode(exported.backup, slot: exported.slot),
+      'data': _encode(exported.backup, slot: exported.slot, storage: storage),
+      'storage': storage.name,
     });
-    return exported.backup;
+    return AccountSessionBackup(
+      id: exported.backup.id,
+      name: exported.backup.name,
+      phone: exported.backup.phone,
+      userId: exported.backup.userId,
+      createdAt: exported.backup.createdAt,
+      sizeBytes: exported.backup.sizeBytes,
+      sessionString: exported.backup.sessionString,
+      storage: storage,
+    );
   }
 
   Future<AccountSessionBackup> exportActiveSession() async {
@@ -331,16 +379,34 @@ class AccountBackupService {
   }
 
   Future<void> delete(AccountSessionBackup backup) async {
-    await deleteAccountId(backup.id);
+    await deleteAccountId(backup.id, storage: backup.storage);
   }
 
-  Future<void> deleteAccountId(String id, {bool removeConsent = true}) async {
-    if (removeConsent) {
+  Future<void> deleteAccountId(
+    String id, {
+    bool removeConsent = true,
+    AccountSessionBackupStorage? storage,
+  }) async {
+    if (removeConsent && storage != AccountSessionBackupStorage.local) {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('$_consentPrefix$id');
     }
-    if (!await isSupported) return;
-    await _channel.invokeMethod<void>('deleteSession', {'id': id});
+    if (storage == null || storage == AccountSessionBackupStorage.synced) {
+      if (await isSupported) {
+        await _channel.invokeMethod<void>('deleteSession', {
+          'id': id,
+          'storage': AccountSessionBackupStorage.synced.name,
+        });
+      }
+    }
+    if (storage == null || storage == AccountSessionBackupStorage.local) {
+      if (await isLocalStorageSupported) {
+        await _channel.invokeMethod<void>('deleteSession', {
+          'id': id,
+          'storage': AccountSessionBackupStorage.local.name,
+        });
+      }
+    }
   }
 
   Future<void> deleteAll() async {
@@ -354,8 +420,16 @@ class AccountBackupService {
       await prefs.remove(key);
     }
     _pendingConsentBySlot.clear();
-    if (!await isSupported) return;
-    await _channel.invokeMethod<void>('deleteAllSessions');
+    if (await isSupported) {
+      await _channel.invokeMethod<void>('deleteAllSessions', {
+        'storage': AccountSessionBackupStorage.synced.name,
+      });
+    }
+    if (await isLocalStorageSupported) {
+      await _channel.invokeMethod<void>('deleteAllSessions', {
+        'storage': AccountSessionBackupStorage.local.name,
+      });
+    }
   }
 
   Future<int?> _activeUserId() async {
@@ -459,7 +533,11 @@ class AccountBackupService {
     await prefs.setBool(_consentMigrationKey, true);
   }
 
-  Uint8List _encode(AccountSessionBackup backup, {required int slot}) {
+  Uint8List _encode(
+    AccountSessionBackup backup, {
+    required int slot,
+    AccountSessionBackupStorage storage = AccountSessionBackupStorage.synced,
+  }) {
     return Uint8List.fromList(
       utf8.encode(
         jsonEncode(<String, Object?>{
@@ -470,6 +548,7 @@ class AccountBackupService {
           'userId': backup.userId,
           'name': backup.name,
           'phone': backup.phone,
+          'storage': storage.name,
           'createdAt': backup.createdAt.toIso8601String(),
           'sessionString': backup.sessionString,
         }),
@@ -477,7 +556,10 @@ class AccountBackupService {
     );
   }
 
-  AccountSessionBackup? _decode(Uint8List data) {
+  AccountSessionBackup? _decode(
+    Uint8List data, {
+    AccountSessionBackupStorage storage = AccountSessionBackupStorage.synced,
+  }) {
     try {
       final decoded = jsonDecode(utf8.decode(data));
       if (decoded is! Map<String, dynamic>) return null;
@@ -501,6 +583,7 @@ class AccountBackupService {
         createdAt: createdAt ?? DateTime.fromMillisecondsSinceEpoch(0),
         sizeBytes: utf8.encode(sessionString).length,
         sessionString: sessionString,
+        storage: storage,
       );
     } catch (_) {
       return null;

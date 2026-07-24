@@ -3386,6 +3386,7 @@ class _ChatViewState extends State<ChatView> {
       onButtonTap: _pressMessageButton,
       onBotCommandTap: _sendCommand,
       onHashtagTap: _openHashtagSearch,
+      onViewInChat: _scrollToMessage,
     );
   }
 

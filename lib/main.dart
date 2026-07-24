@@ -308,7 +308,10 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
   }
 
   void _handleActiveAccountChange() {
-    _theme.setActiveAccountSlot(_accounts.activeSlot);
+    _theme.setActiveAccountSlot(
+      _accounts.activeSlot,
+      userId: _accounts.activeUserId,
+    );
   }
 
   void _handleThemePreferencesChange() {

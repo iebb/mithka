@@ -3726,6 +3726,7 @@ abstract final class TDParse {
             const <int>[];
       case 'messageChatJoinByLink':
       case 'messageChatJoinByRequest':
+      case 'messageChatBoost':
         return senderId != null && senderId > 0 ? [senderId] : const <int>[];
       case 'messageChatDeleteMember':
         final userId = content?.int64('user_id');

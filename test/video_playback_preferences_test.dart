@@ -14,14 +14,28 @@ void main() {
       preferences.horizontalSwipeAction,
       VideoHorizontalSwipeAction.adjustProgress,
     );
+    expect(
+      preferences.leftVerticalSwipeAction,
+      VideoVerticalSwipeAction.brightness,
+    );
+    expect(
+      preferences.rightVerticalSwipeAction,
+      VideoVerticalSwipeAction.volume,
+    );
     expect(preferences.completionAction, VideoCompletionAction.prompt);
   });
 
-  test('video playback preferences persist both custom actions', () async {
+  test('video playback preferences persist all custom actions', () async {
     SharedPreferences.setMockInitialValues({});
 
     await VideoPlaybackPreferences.saveHorizontalSwipeAction(
       VideoHorizontalSwipeAction.changeVideo,
+    );
+    await VideoPlaybackPreferences.saveLeftVerticalSwipeAction(
+      VideoVerticalSwipeAction.volume,
+    );
+    await VideoPlaybackPreferences.saveRightVerticalSwipeAction(
+      VideoVerticalSwipeAction.disabled,
     );
     await VideoPlaybackPreferences.saveCompletionAction(
       VideoCompletionAction.autoplayNext,
@@ -32,12 +46,22 @@ void main() {
       preferences.horizontalSwipeAction,
       VideoHorizontalSwipeAction.changeVideo,
     );
+    expect(
+      preferences.leftVerticalSwipeAction,
+      VideoVerticalSwipeAction.volume,
+    );
+    expect(
+      preferences.rightVerticalSwipeAction,
+      VideoVerticalSwipeAction.disabled,
+    );
     expect(preferences.completionAction, VideoCompletionAction.autoplayNext);
   });
 
   test('unknown saved values fall back safely', () async {
     SharedPreferences.setMockInitialValues({
       VideoPlaybackPreferences.horizontalSwipePreferenceKey: 'unknown',
+      VideoPlaybackPreferences.leftVerticalSwipePreferenceKey: 'unknown',
+      VideoPlaybackPreferences.rightVerticalSwipePreferenceKey: 'unknown',
       VideoPlaybackPreferences.completionPreferenceKey: 'unknown',
     });
 
@@ -46,6 +70,14 @@ void main() {
     expect(
       preferences.horizontalSwipeAction,
       VideoHorizontalSwipeAction.adjustProgress,
+    );
+    expect(
+      preferences.leftVerticalSwipeAction,
+      VideoVerticalSwipeAction.brightness,
+    );
+    expect(
+      preferences.rightVerticalSwipeAction,
+      VideoVerticalSwipeAction.volume,
     );
     expect(preferences.completionAction, VideoCompletionAction.prompt);
   });

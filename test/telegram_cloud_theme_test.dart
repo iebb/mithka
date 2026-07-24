@@ -150,7 +150,7 @@ windowShadowFg: #01020380;
       await android.writeAsString('''
 windowBackgroundWhite=#ff334455
 chat_inBubble=#ff445566
-chat_outBubble=#ff556677
+chat_outBubble=#ff95ec69
 avatar_nameInMessageRed=#ff112233
 ''');
       await macos.writeAsString('groupPeerNameOrange=cc7722');
@@ -158,7 +158,8 @@ avatar_nameInMessageRed=#ff112233
         ..addFile(
           ArchiveFile.string(
             'colors.tdesktop-theme',
-            'windowBg: #667788; msgInBg: #778899; msgOutBg: #8899aa;',
+            'windowBg: #667788; msgInBg: #778899; msgOutBg: #8899aa; '
+                'msgOutBgSelected: #112233;',
           ),
         );
       await desktop.writeAsBytes(ZipEncoder().encode(desktopArchive)!);
@@ -181,12 +182,12 @@ avatar_nameInMessageRed=#ff112233
 
       expect(theme.palette['list.plainBg'], 0x101820);
       expect(theme.incomingColor?.toARGB32(), 0xFF445566);
-      expect(theme.outgoingColor?.toARGB32(), 0xFF556677);
+      expect(theme.outgoingColor?.toARGB32(), 0xFF95EC69);
       expect(theme.incomingTextColor?.toARGB32(), 0xFFF2F5F7);
       expect(theme.outgoingTextColor?.toARGB32(), 0xFF101820);
       expect(
         theme.uiColors.pinnedRow.toARGB32(),
-        theme.uiColors.background.toARGB32(),
+        isNot(theme.uiColors.background.toARGB32()),
       );
       expect(theme.senderNameColors[0].toARGB32(), 0xFF112233);
       expect(theme.senderNameColors[1].toARGB32(), 0xFFCC7722);
@@ -631,6 +632,33 @@ msgOutBg: #f3b4bd;
       expect(controller.brandColor.toARGB32(), 0xFF112233);
       controller.setActiveAccountSlot(1);
       expect(controller.darkCloudTheme?.slug, 'FirstAccount');
+    },
+  );
+
+  test(
+    'per-account theme follows the Telegram user instead of a reused slot',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        'usePerAccountTheming': true,
+        'appearanceMode.account.3': AppearanceMode.dark.name,
+        'brandColor.account.3': 0xFF123456,
+      });
+      final prefs = await SharedPreferences.getInstance();
+
+      final controller = ThemeController(prefs, initialAccountSlot: 3);
+      controller.setActiveAccountSlot(3, userId: 7001);
+      expect(controller.mode, AppearanceMode.dark);
+      expect(controller.brandColor.toARGB32(), 0xFF123456);
+      expect(prefs.containsKey('appearanceMode.account.3'), isFalse);
+      expect(prefs.getString('appearanceMode.account.user.7001'), 'dark');
+
+      controller.setActiveAccountSlot(9, userId: 7001);
+      expect(controller.mode, AppearanceMode.dark);
+      expect(controller.brandColor.toARGB32(), 0xFF123456);
+
+      controller.setActiveAccountSlot(3, userId: 8002);
+      expect(controller.mode, AppearanceMode.system);
+      expect(controller.brandColor.toARGB32(), 0xFF0099FF);
     },
   );
 

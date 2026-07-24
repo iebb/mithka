@@ -34,22 +34,37 @@ class _VideoPlaybackSettingsViewState extends State<VideoPlaybackSettingsView> {
   }
 
   Future<void> _setSwipeAction(VideoHorizontalSwipeAction action) async {
-    setState(() {
-      _preferences = VideoPlaybackPreferences(
-        horizontalSwipeAction: action,
-        completionAction: _preferences.completionAction,
-      );
-    });
+    setState(
+      () => _preferences = _preferences.copyWith(horizontalSwipeAction: action),
+    );
     await VideoPlaybackPreferences.saveHorizontalSwipeAction(action);
   }
 
+  Future<void> _setLeftVerticalSwipeAction(
+    VideoVerticalSwipeAction action,
+  ) async {
+    setState(
+      () =>
+          _preferences = _preferences.copyWith(leftVerticalSwipeAction: action),
+    );
+    await VideoPlaybackPreferences.saveLeftVerticalSwipeAction(action);
+  }
+
+  Future<void> _setRightVerticalSwipeAction(
+    VideoVerticalSwipeAction action,
+  ) async {
+    setState(
+      () => _preferences = _preferences.copyWith(
+        rightVerticalSwipeAction: action,
+      ),
+    );
+    await VideoPlaybackPreferences.saveRightVerticalSwipeAction(action);
+  }
+
   Future<void> _setCompletionAction(VideoCompletionAction action) async {
-    setState(() {
-      _preferences = VideoPlaybackPreferences(
-        horizontalSwipeAction: _preferences.horizontalSwipeAction,
-        completionAction: action,
-      );
-    });
+    setState(
+      () => _preferences = _preferences.copyWith(completionAction: action),
+    );
     await VideoPlaybackPreferences.saveCompletionAction(action);
   }
 
@@ -84,6 +99,26 @@ class _VideoPlaybackSettingsViewState extends State<VideoPlaybackSettingsView> {
                         selected: _preferences.horizontalSwipeAction,
                         label: _swipeLabel,
                         onSelected: _setSwipeAction,
+                      ),
+                      const SizedBox(height: 18),
+                      _sectionHeader(
+                        AppStringKeys.videoPlaybackLeftVerticalSwipe,
+                      ),
+                      _choiceCard<VideoVerticalSwipeAction>(
+                        values: VideoVerticalSwipeAction.values,
+                        selected: _preferences.leftVerticalSwipeAction,
+                        label: _verticalSwipeLabel,
+                        onSelected: _setLeftVerticalSwipeAction,
+                      ),
+                      const SizedBox(height: 18),
+                      _sectionHeader(
+                        AppStringKeys.videoPlaybackRightVerticalSwipe,
+                      ),
+                      _choiceCard<VideoVerticalSwipeAction>(
+                        values: VideoVerticalSwipeAction.values,
+                        selected: _preferences.rightVerticalSwipeAction,
+                        label: _verticalSwipeLabel,
+                        onSelected: _setRightVerticalSwipeAction,
                       ),
                       const SizedBox(height: 18),
                       _sectionHeader(AppStringKeys.videoPlaybackWhenFinished),
@@ -171,6 +206,16 @@ class _VideoPlaybackSettingsViewState extends State<VideoPlaybackSettingsView> {
     VideoHorizontalSwipeAction.skipTenSeconds =>
       AppStringKeys.videoPlaybackSwipeSkipTenSeconds,
   };
+
+  String _verticalSwipeLabel(VideoVerticalSwipeAction action) =>
+      switch (action) {
+        VideoVerticalSwipeAction.disabled =>
+          AppStringKeys.videoPlaybackSwipeDisabled,
+        VideoVerticalSwipeAction.brightness =>
+          AppStringKeys.videoPlaybackSwipeAdjustBrightness,
+        VideoVerticalSwipeAction.volume =>
+          AppStringKeys.videoPlaybackSwipeAdjustVolume,
+      };
 
   String _completionLabel(VideoCompletionAction action) => switch (action) {
     VideoCompletionAction.prompt => AppStringKeys.videoPlaybackFinishedAsk,

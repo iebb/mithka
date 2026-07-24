@@ -42,6 +42,7 @@ class _AccountBackupViewState extends State<AccountBackupView> {
   var _working = false;
   var _consented = false;
   var _supported = false;
+  var _localSupported = false;
   List<AccountSessionBackup> _backups = const [];
 
   @override
@@ -54,6 +55,7 @@ class _AccountBackupViewState extends State<AccountBackupView> {
     setState(() => _loading = true);
     try {
       final supported = await _service.isSupported;
+      final localSupported = await _service.isLocalStorageSupported;
       final consented = widget.showCreateAction
           ? await _service.activeAccountHasConsent()
           : false;
@@ -64,6 +66,7 @@ class _AccountBackupViewState extends State<AccountBackupView> {
         setState(() {
           _consented = consented;
           _supported = supported;
+          _localSupported = localSupported;
           _backups = backups;
         });
       }
@@ -90,11 +93,11 @@ class _AccountBackupViewState extends State<AccountBackupView> {
     }
   }
 
-  Future<void> _backupActive() async {
+  Future<void> _backupActive(AccountSessionBackupStorage storage) async {
     if (_working) return;
     setState(() => _working = true);
     try {
-      final backup = await _service.backupActiveAccount();
+      final backup = await _service.backupActiveAccount(storage: storage);
       await _load();
       if (mounted) {
         showToast(
@@ -372,7 +375,9 @@ class _AccountBackupViewState extends State<AccountBackupView> {
     final ok = await showAppConfirmDialog(
       context,
       title: AppStringKeys.accountBackupDeleteTitle,
-      message: AppStringKeys.accountBackupDeleteMessage,
+      message: backup.storage == AccountSessionBackupStorage.local
+          ? AppStringKeys.accountBackupDeleteLocalMessage
+          : AppStringKeys.accountBackupDeleteMessage,
       confirmText: AppStringKeys.chatDelete,
       destructive: true,
     );
@@ -419,6 +424,8 @@ class _AccountBackupViewState extends State<AccountBackupView> {
                         _enabledSwitch(),
                         const SizedBox(height: 12),
                         _actionButton(),
+                        const SizedBox(height: 8),
+                        _localBackupButton(),
                         const SizedBox(height: 8),
                         _copyPyrogramButton(),
                         const SizedBox(height: 8),
@@ -501,7 +508,9 @@ class _AccountBackupViewState extends State<AccountBackupView> {
     final c = context.colors;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: _working || !_consented || !_supported ? null : _backupActive,
+      onTap: _working || !_consented || !_supported
+          ? null
+          : () => _backupActive(AccountSessionBackupStorage.synced),
       child: Container(
         height: 52,
         decoration: BoxDecoration(
@@ -534,6 +543,16 @@ class _AccountBackupViewState extends State<AccountBackupView> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _localBackupButton() {
+    return _tileButton(
+      icon: HeroAppIcons.mobileScreenButton,
+      title: AppStringKeys.accountBackupSaveOnDevice,
+      onTap: _working || !_localSupported
+          ? null
+          : () => _backupActive(AccountSessionBackupStorage.local),
     );
   }
 
@@ -619,11 +638,7 @@ class _AccountBackupViewState extends State<AccountBackupView> {
   Widget _notice() {
     final c = context.colors;
     return Text(
-      AppStrings.t(
-        Platform.isIOS
-            ? AppStringKeys.accountBackupNoticeICloud
-            : AppStringKeys.accountBackupNoticeAndroid,
-      ),
+      AppStrings.t(AppStringKeys.accountBackupNoticeWithLocal),
       style: TextStyle(fontSize: 13, height: 1.35, color: c.textTertiary),
     );
   }
@@ -670,7 +685,7 @@ class _AccountBackupViewState extends State<AccountBackupView> {
             _BackupRow(
               backup: backup,
               subtitle:
-                  '${_dateFormat.format(backup.createdAt.toLocal())} · ${_formatBytes(backup.sizeBytes)}',
+                  '${_storageLabel(backup.storage)} · ${_dateFormat.format(backup.createdAt.toLocal())} · ${_formatBytes(backup.sizeBytes)}',
               userIdLabel: backup.userId == null
                   ? null
                   : AppStrings.t(AppStringKeys.accountBackupUserId, {
@@ -692,6 +707,17 @@ class _AccountBackupViewState extends State<AccountBackupView> {
     if (kb < 1024) return '${kb.toStringAsFixed(kb < 10 ? 1 : 0)} KB';
     final mb = kb / 1024;
     return '${mb.toStringAsFixed(mb < 10 ? 1 : 0)} MB';
+  }
+
+  String _storageLabel(AccountSessionBackupStorage storage) {
+    if (storage == AccountSessionBackupStorage.local) {
+      return AppStrings.t(AppStringKeys.accountBackupStorageOnDevice);
+    }
+    return AppStrings.t(
+      Platform.isIOS
+          ? AppStringKeys.accountBackupStorageICloud
+          : AppStringKeys.accountBackupStorageAndroid,
+    );
   }
 }
 

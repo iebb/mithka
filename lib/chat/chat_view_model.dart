@@ -5099,6 +5099,8 @@ class ChatViewModel extends ChangeNotifier {
         case 'messageChatJoinByLink':
         case 'messageChatJoinByRequest':
           _resolveJoinServiceText(message);
+        case 'messageChatBoost':
+          _resolveBoostServiceText(message);
         case 'messageChatDeleteMember':
           _resolveDeleteMemberServiceText(message);
       }
@@ -5109,10 +5111,9 @@ class ChatViewModel extends ChangeNotifier {
     final names = <String>[];
     for (final userId in message.serviceUserIds.take(5)) {
       try {
-        final user = await _client.query({
-          '@type': 'getUser',
-          'user_id': userId,
-        });
+        final user =
+            TdUserIndex.shared.userFor(_client.activeSlot, userId) ??
+            await _client.query({'@type': 'getUser', 'user_id': userId});
         final name = TDParse.userName(user);
         if (name.isNotEmpty) names.add(name);
       } catch (_) {}
@@ -5133,6 +5134,25 @@ class ChatViewModel extends ChangeNotifier {
     if (index < 0 || messages[index].text == text) return;
     messages[index].text = text;
     notifyListeners();
+  }
+
+  Future<void> _resolveBoostServiceText(ChatMessage message) async {
+    if (message.serviceUserIds.isEmpty) return;
+    final userId = message.serviceUserIds.first;
+    try {
+      final user =
+          TdUserIndex.shared.userFor(_client.activeSlot, userId) ??
+          await _client.query({'@type': 'getUser', 'user_id': userId});
+      final name = TDParse.userName(user);
+      if (name.isEmpty) return;
+      final text = AppStrings.t(AppStringKeys.chatUserBoostedGroup, {
+        'value1': name,
+      });
+      final index = messages.indexWhere((m) => m.id == message.id);
+      if (index < 0 || messages[index].text == text) return;
+      messages[index].text = text;
+      notifyListeners();
+    } catch (_) {}
   }
 
   Future<void> _resolveDeleteMemberServiceText(ChatMessage message) async {

@@ -123,3 +123,4 @@ flutter:
     - assets/app_icon.png
     - assets/app_icons/
     - assets/emoji_preview/
+    - assets/message_bubbles/

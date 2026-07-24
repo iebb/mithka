@@ -1,12 +1,17 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+enum NotificationAccountMode { all, current, selected }
+
 class NotificationPreferences extends ChangeNotifier {
   NotificationPreferences._();
 
   static final NotificationPreferences shared = NotificationPreferences._();
 
   static const _allAccountsKey = 'mithka.notifications.allAccounts.v1';
+  static const _accountModeKey = 'mithka.notifications.accountMode.v2';
+  static const _selectedAccountIdsKey =
+      'mithka.notifications.selectedAccountIds.v2';
   static const _inAppSoundsKey = 'mithka.notifications.inAppSounds.v1';
   static const _inAppVibrateKey = 'mithka.notifications.inAppVibrate.v1';
   static const _inAppPreviewKey = 'mithka.notifications.inAppPreview.v1';
@@ -14,13 +19,16 @@ class NotificationPreferences extends ChangeNotifier {
       'mithka.notifications.namesOnLockScreen.v1';
 
   SharedPreferences? _preferences;
-  bool _allAccounts = true;
+  NotificationAccountMode _accountMode = NotificationAccountMode.all;
+  Set<int> _selectedAccountIds = {};
   bool _inAppSounds = true;
   bool _inAppVibrate = false;
   bool _inAppPreview = true;
   bool _namesOnLockScreen = true;
 
-  bool get allAccounts => _allAccounts;
+  NotificationAccountMode get accountMode => _accountMode;
+  Set<int> get selectedAccountIds => Set.unmodifiable(_selectedAccountIds);
+  bool get allAccounts => _accountMode == NotificationAccountMode.all;
   bool get inAppSounds => _inAppSounds;
   bool get inAppVibrate => _inAppVibrate;
   bool get inAppPreview => _inAppPreview;
@@ -28,19 +36,87 @@ class NotificationPreferences extends ChangeNotifier {
 
   void initialize(SharedPreferences preferences) {
     _preferences = preferences;
-    _allAccounts = preferences.getBool(_allAccountsKey) ?? true;
+    final storedMode = preferences.getString(_accountModeKey);
+    _accountMode = NotificationAccountMode.values.firstWhere(
+      (mode) => mode.name == storedMode,
+      orElse: () => (preferences.getBool(_allAccountsKey) ?? true)
+          ? NotificationAccountMode.all
+          : NotificationAccountMode.current,
+    );
+    _selectedAccountIds =
+        (preferences.getStringList(_selectedAccountIdsKey) ?? const <String>[])
+            .map(int.tryParse)
+            .whereType<int>()
+            .toSet();
+    if (_accountMode == NotificationAccountMode.selected &&
+        _selectedAccountIds.isEmpty) {
+      _accountMode = NotificationAccountMode.current;
+    }
     _inAppSounds = preferences.getBool(_inAppSoundsKey) ?? true;
     _inAppVibrate = preferences.getBool(_inAppVibrateKey) ?? false;
     _inAppPreview = preferences.getBool(_inAppPreviewKey) ?? true;
     _namesOnLockScreen = preferences.getBool(_namesOnLockScreenKey) ?? true;
   }
 
-  Future<void> setAllAccounts(bool value) => _set(
-    value: value,
-    current: _allAccounts,
-    apply: () => _allAccounts = value,
-    key: _allAccountsKey,
+  Future<void> setAllAccounts(bool value) => setAccountMode(
+    value ? NotificationAccountMode.all : NotificationAccountMode.current,
   );
+
+  Future<void> setAccountMode(
+    NotificationAccountMode value, {
+    Iterable<int> defaultSelectedAccountIds = const [],
+  }) async {
+    if (value == NotificationAccountMode.selected &&
+        _selectedAccountIds.isEmpty) {
+      _selectedAccountIds = defaultSelectedAccountIds.toSet();
+      await _persistSelectedAccountIds();
+    }
+    if (_accountMode == value) return;
+    _accountMode = value;
+    notifyListeners();
+    await _preferences?.setString(_accountModeKey, value.name);
+    await _preferences?.setBool(
+      _allAccountsKey,
+      value == NotificationAccountMode.all,
+    );
+  }
+
+  Future<void> setSelectedAccountIds(Iterable<int> values) async {
+    final normalized = values.toSet();
+    if (setEquals(normalized, _selectedAccountIds)) return;
+    _selectedAccountIds = normalized;
+    notifyListeners();
+    await _persistSelectedAccountIds();
+  }
+
+  Future<void> removeAccount(int userId) async {
+    if (!_selectedAccountIds.contains(userId)) return;
+    final remaining = _selectedAccountIds.toSet()..remove(userId);
+    _selectedAccountIds = remaining;
+    if (_accountMode == NotificationAccountMode.selected && remaining.isEmpty) {
+      _accountMode = NotificationAccountMode.current;
+      await _preferences?.setString(
+        _accountModeKey,
+        NotificationAccountMode.current.name,
+      );
+    }
+    notifyListeners();
+    await _persistSelectedAccountIds();
+  }
+
+  bool receivesNotificationsFrom({
+    required int userId,
+    required bool isActiveAccount,
+  }) => switch (_accountMode) {
+    NotificationAccountMode.all => true,
+    NotificationAccountMode.current => isActiveAccount,
+    NotificationAccountMode.selected => _selectedAccountIds.contains(userId),
+  };
+
+  Future<void> _persistSelectedAccountIds() async {
+    final values = _selectedAccountIds.map((id) => '$id').toList()..sort();
+    await _preferences?.setStringList(_selectedAccountIdsKey, values);
+  }
 
   Future<void> setInAppSounds(bool value) => _set(
     value: value,
