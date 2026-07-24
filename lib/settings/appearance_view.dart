@@ -137,6 +137,41 @@ class AppearanceView extends StatelessWidget {
                           : null,
                     ),
                   ],
+                  _toggleRow(
+                    context,
+                    HeroAppIcons.listCheck.data,
+                    AppStrings.t(AppStringKeys.appearanceShowGroupMemberTitles),
+                    theme.showMemberTags,
+                    (value) => theme.showMemberTags = value,
+                  ),
+                  _toggleRow(
+                    context,
+                    HeroAppIcons.idBadge.data,
+                    AppStrings.t(
+                      AppStringKeys.appearanceShowPlainMemberRoleTags,
+                    ),
+                    theme.showPlainMemberRoleTags,
+                    (value) => theme.showPlainMemberRoleTags = value,
+                  ),
+                  _navigationRow(
+                    context,
+                    AppStrings.t(AppStringKeys.appearanceSenderNameReadability),
+                    AppStrings.t(switch (theme.senderNameReadabilityMode) {
+                      SenderNameReadabilityMode.background =>
+                        AppStringKeys.appearanceSenderNameReadabilityBackground,
+                      SenderNameReadabilityMode.shadow =>
+                        AppStringKeys.appearanceSenderNameReadabilityShadow,
+                      SenderNameReadabilityMode.none =>
+                        AppStringKeys.appearanceSenderNameReadabilityNone,
+                    }),
+                    () => Navigator.of(context).push(
+                      PageRouteBuilder<void>(
+                        pageBuilder: (_, _, _) =>
+                            const SenderNameReadabilitySettingsView(),
+                      ),
+                    ),
+                    icon: HeroAppIcons.eye.data,
+                  ),
                 ]),
                 const SizedBox(height: AppSpacing.xl),
                 _label(context, AppStrings.t(AppStringKeys.appearanceMode)),
@@ -435,6 +470,64 @@ class InterfaceSizeSettingsView extends StatelessWidget {
   }
 }
 
+class SenderNameReadabilitySettingsView extends StatelessWidget {
+  const SenderNameReadabilitySettingsView({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final theme = context.watch<ThemeController>();
+    return Scaffold(
+      backgroundColor: c.groupedBackground,
+      body: Column(
+        children: [
+          NavHeader(
+            title: AppStrings.t(AppStringKeys.appearanceSenderNameReadability),
+            onBack: () => Navigator.of(context).pop(),
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                AppSpacing.xl,
+                AppSpacing.lg,
+                AppSpacing.section,
+              ),
+              children: [
+                const AppearanceView()._card(context, [
+                  for (final mode in SenderNameReadabilityMode.values)
+                    const AppearanceView()._choiceRow(
+                      context,
+                      switch (mode) {
+                        SenderNameReadabilityMode.background =>
+                          HeroAppIcons.idBadge.data,
+                        SenderNameReadabilityMode.shadow =>
+                          HeroAppIcons.wandMagicSparkles.data,
+                        SenderNameReadabilityMode.none =>
+                          HeroAppIcons.eyeSlash.data,
+                      },
+                      switch (mode) {
+                        SenderNameReadabilityMode.background =>
+                          AppStringKeys
+                              .appearanceSenderNameReadabilityBackground,
+                        SenderNameReadabilityMode.shadow =>
+                          AppStringKeys.appearanceSenderNameReadabilityShadow,
+                        SenderNameReadabilityMode.none =>
+                          AppStringKeys.appearanceSenderNameReadabilityNone,
+                      },
+                      theme.senderNameReadabilityMode == mode,
+                      () => theme.senderNameReadabilityMode = mode,
+                    ),
+                ]),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class DisplaySettingsView extends StatelessWidget {
   const DisplaySettingsView({super.key});
 
@@ -485,22 +578,6 @@ class DisplaySettingsView extends StatelessWidget {
                 const SizedBox(height: AppSpacing.xl),
                 _label(context, AppStrings.t(AppStringKeys.appearanceChatView)),
                 _card(context, [
-                  _toggleRow(
-                    context,
-                    HeroAppIcons.listCheck.data,
-                    AppStrings.t(AppStringKeys.appearanceShowGroupMemberTitles),
-                    theme.showMemberTags,
-                    (v) => theme.showMemberTags = v,
-                  ),
-                  _toggleRow(
-                    context,
-                    HeroAppIcons.idBadge.data,
-                    AppStrings.t(
-                      AppStringKeys.appearanceShowPlainMemberRoleTags,
-                    ),
-                    theme.showPlainMemberRoleTags,
-                    (v) => theme.showPlainMemberRoleTags = v,
-                  ),
                   _toggleRow(
                     context,
                     HeroAppIcons.images.data,

@@ -458,6 +458,14 @@ abstract final class AppStringKeys {
   static const appearanceSearchFont = 'appearanceSearchFont';
   static const appearanceSenderNameBackground =
       'appearanceSenderNameBackground';
+  static const appearanceSenderNameReadability =
+      'appearanceSenderNameReadability';
+  static const appearanceSenderNameReadabilityBackground =
+      'appearanceSenderNameReadabilityBackground';
+  static const appearanceSenderNameReadabilityShadow =
+      'appearanceSenderNameReadabilityShadow';
+  static const appearanceSenderNameReadabilityNone =
+      'appearanceSenderNameReadabilityNone';
   static const appearanceShowChatListSearch = 'appearanceShowChatListSearch';
   static const appearanceShowEditAndReadMarks =
       'appearanceShowEditAndReadMarks';
@@ -2210,6 +2218,8 @@ abstract final class AppStringKeys {
   static const stickerSetDetailActionFailed = 'stickerSetDetailActionFailed';
   static const stickerSetDetailAddSuccess = 'stickerSetDetailAddSuccess';
   static const stickerSetDetailRemoved = 'stickerSetDetailRemoved';
+  static const stickerSetDetailSaveAllApng = 'stickerSetDetailSaveAllApng';
+  static const stickerSetDetailSaveAllGif = 'stickerSetDetailSaveAllGif';
   static const stickerSetDetailStickerCount = 'stickerSetDetailStickerCount';
   static const stickerSetDetailTitle = 'stickerSetDetailTitle';
   static const stickerStoreRecent = 'stickerStoreRecent';

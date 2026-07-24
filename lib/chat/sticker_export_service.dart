@@ -15,6 +15,7 @@ import 'package:video_player/video_player.dart';
 import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
 import 'media_library_saver.dart';
+import 'sticker_item.dart';
 
 enum StickerExportFormat { png, gif, mov, lottie }
 
@@ -133,6 +134,79 @@ class StickerExportService {
         } catch (_) {}
       }
     }
+  }
+
+  static Future<StickerExportResult> exportSet(
+    List<StickerItem> stickers, {
+    required String title,
+    required StickerExportFormat format,
+    void Function(int completed, int total)? onProgress,
+  }) async {
+    if (!_isSupportedPlatform(StickerExportDestination.files) ||
+        (format != StickerExportFormat.png &&
+            format != StickerExportFormat.gif)) {
+      return StickerExportResult.unsupported;
+    }
+    if (stickers.isEmpty) return StickerExportResult.failed;
+
+    final prepared = <File>[];
+    try {
+      final archive = Archive();
+      onProgress?.call(0, stickers.length);
+      for (var index = 0; index < stickers.length; index++) {
+        final item = stickers[index];
+        final file = TdFileRef(id: item.id);
+        final message = ChatMessage(
+          id: item.id,
+          isOutgoing: false,
+          text: '',
+          date: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+          image: item.isAnimated || item.isVideo ? null : file,
+          animatedSticker: item.isAnimated ? file : null,
+          videoSticker: item.isVideo ? file : null,
+        );
+        final output = await _prepare(message, format);
+        if (output == null || !await output.exists()) {
+          return StickerExportResult.failed;
+        }
+        prepared.add(output);
+        final bytes = await output.readAsBytes();
+        final extension = format == StickerExportFormat.png ? 'apng' : 'gif';
+        final name = '${(index + 1).toString().padLeft(3, '0')}.$extension';
+        archive.addFile(ArchiveFile(name, bytes.length, bytes));
+        onProgress?.call(index + 1, stickers.length);
+      }
+
+      final bytes = ZipEncoder().encode(archive);
+      if (bytes == null) return StickerExportResult.failed;
+      final baseName = _safeFileName(title.trim().isEmpty ? 'stickers' : title);
+      final formatName = format == StickerExportFormat.png ? 'apng' : 'gif';
+      final selectedPath = await FilePicker.platform.saveFile(
+        fileName: '$baseName-$formatName.zip',
+        type: FileType.custom,
+        allowedExtensions: const ['zip'],
+        bytes: Uint8List.fromList(bytes),
+      );
+      if (selectedPath != null && !Platform.isIOS && !Platform.isAndroid) {
+        await File(selectedPath).writeAsBytes(bytes, flush: true);
+      }
+      return selectedPath == null
+          ? StickerExportResult.cancelled
+          : StickerExportResult.saved;
+    } catch (_) {
+      return StickerExportResult.failed;
+    } finally {
+      for (final file in prepared) {
+        try {
+          if (await file.exists()) await file.delete();
+        } catch (_) {}
+      }
+    }
+  }
+
+  static String _safeFileName(String value) {
+    final safe = value.replaceAll(RegExp(r'[\\/:*?"<>|\x00-\x1f]'), '_');
+    return safe.length <= 80 ? safe : safe.substring(0, 80);
   }
 
   static bool _isSupportedPlatform(StickerExportDestination destination) {
