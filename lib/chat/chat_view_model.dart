@@ -3829,7 +3829,12 @@ class ChatViewModel extends ChangeNotifier {
         }
         _replaceText(
           messageId,
-          TDParse.messageText(content),
+          // Chat-list previews deliberately synthesize labels such as
+          // "Photo", "Video", and a document name. A transcript update must
+          // keep using only user-authored text, otherwise TDLib's live content
+          // update for a just-sent attachment turns that preview label into a
+          // visible caption until the confirmed message replaces it.
+          TDParse.messageContentText(content),
           entities: TDParse.messageTextEntities(content),
           customEmoji: TDParse.customEmojiEntitiesForContent(content),
           linkPreview: TDParse.linkPreview(content.obj('link_preview')),
