@@ -2167,6 +2167,38 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets('bottom-aligns the sender identity beside wrapped text', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await pumpAiReplyComposer(
+        tester,
+        (_) async => const TelegramAiFormattedText(text: 'Generated reply'),
+        includeSenderOptions: true,
+      );
+
+      final field = find.byType(TextField);
+      final sender = find.byKey(const ValueKey('composerSenderPicker'));
+      await tester.enterText(
+        field,
+        'This longer message wraps across several lines in the narrow input.',
+      );
+      await tester.pump();
+
+      expect(
+        tester.getSize(field).height,
+        greaterThan(tester.getSize(sender).height),
+      );
+      expect(
+        tester.getRect(sender).bottom,
+        closeTo(tester.getRect(field).bottom, 0.1),
+      );
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('does not overwrite text typed while an AI reply is running', (
       tester,
     ) async {
@@ -2343,7 +2375,7 @@ void main() {
       );
     });
 
-    testWidgets('shows two-line AI action above the send button', (
+    testWidgets('shows a circular style action above the send button', (
       tester,
     ) async {
       final vm = _FocusTestChatViewModel()
@@ -2391,6 +2423,12 @@ void main() {
       expect(aiButton, findsOneWidget);
       final sendButton = find.byKey(const ValueKey('composerSendButton'));
       expect(sendButton, findsOneWidget);
+      expect(tester.getSize(aiButton), const Size.square(36));
+      final styleIcon = tester.widget<AppIcon>(
+        find.byKey(const ValueKey('composerAiStyleIcon')),
+      );
+      expect(styleIcon.icon, HeroAppIcons.palette);
+      expect(styleIcon.size, 19);
       expect(
         tester.getCenter(aiButton).dx,
         greaterThan(tester.getRect(field).right),

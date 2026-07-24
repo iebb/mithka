@@ -3116,6 +3116,9 @@ class _ChatInputBarState extends State<ChatInputBar> {
                     vertical: 9,
                   ),
                   child: Row(
+                    crossAxisAlignment: hasText
+                        ? CrossAxisAlignment.end
+                        : CrossAxisAlignment.center,
                     children: [
                       if (vm.canChooseMessageSender && sender != null) ...[
                         GestureDetector(
@@ -3312,24 +3315,21 @@ class _ChatInputBarState extends State<ChatInputBar> {
                       onTap: () => unawaited(_openTelegramAiEditor()),
                       child: Container(
                         width: 36,
-                        height: 28,
+                        height: 36,
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
                           color: AppTheme.brand.withValues(alpha: 0.10),
-                          borderRadius: BorderRadius.circular(14),
+                          shape: BoxShape.circle,
                           border: Border.all(
                             color: AppTheme.brand.withValues(alpha: 0.34),
                             width: 0.75,
                           ),
                         ),
-                        child: Text(
-                          'AI',
-                          style: TextStyle(
-                            fontSize: 12,
-                            height: 1,
-                            fontWeight: FontWeight.w700,
-                            color: AppTheme.brand,
-                          ),
+                        child: AppIcon(
+                          HeroAppIcons.palette,
+                          key: const ValueKey('composerAiStyleIcon'),
+                          size: 19,
+                          color: AppTheme.brand,
                         ),
                       ),
                     ),
