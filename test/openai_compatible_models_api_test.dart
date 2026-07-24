@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:mithka/settings/ai_endpoint_style.dart';
+import 'package:mithka/settings/ai_stdout_logger.dart';
 import 'package:mithka/settings/openai_compatible_models_api.dart';
 
 void main() {
@@ -145,7 +146,9 @@ void main() {
     'sends a customizable model test prompt and returns its response',
     () async {
       late http.Request captured;
+      final logLines = <String>[];
       final api = OpenAiCompatibleModelsApi(
+        aiLogger: AiStdoutLogger(sink: logLines.add),
         httpClient: MockClient((request) async {
           captured = request;
           return http.Response(
@@ -178,6 +181,25 @@ void main() {
         ],
         'stream': false,
       });
+      final logEvents = logLines
+          .map((line) => jsonDecode(line) as Map<String, dynamic>)
+          .toList();
+      expect(logEvents.map((event) => event['event']), [
+        'ai.request',
+        'ai.response',
+      ]);
+      final loggedMessage =
+          (((logEvents.first['payload'] as Map)['body'] as Map)['messages']
+                      as List)
+                  .single
+              as Map;
+      expect(loggedMessage['role'], 'user');
+      expect(loggedMessage['content'], 'Say hello in one sentence');
+      expect(
+        (logEvents.last['result'] as Map)['body'],
+        contains('Hello from the model'),
+      );
+      expect(logLines.join(), isNot(contains('secret')));
     },
   );
 

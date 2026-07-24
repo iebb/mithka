@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../settings/ai_endpoint_style.dart';
+import '../settings/ai_stdout_logger.dart';
 import 'unread_chat_summary_service.dart';
 
 class OpenAiCompatibleUnreadSummaryProvider
@@ -15,6 +16,7 @@ class OpenAiCompatibleUnreadSummaryProvider
     required this.model,
     this.endpointStyle = AiEndpointStyle.openAiChatCompletions,
     http.Client? httpClient,
+    AiStdoutLogger? aiLogger,
     this.apiKey,
     this.requestTimeout = const Duration(seconds: 75),
     this.streamIdleTimeout = const Duration(seconds: 30),
@@ -27,6 +29,7 @@ class OpenAiCompatibleUnreadSummaryProvider
   }) : assert(requestTimeout > Duration.zero),
        assert(streamIdleTimeout > Duration.zero),
        _httpClient = httpClient ?? http.Client(),
+       _aiLogger = aiLogger ?? aiStdoutLogger,
        _ownsHttpClient = httpClient == null;
 
   final Uri serverBaseUri;
@@ -39,6 +42,7 @@ class OpenAiCompatibleUnreadSummaryProvider
   final bool useJsonResponseFormat;
   final List<Duration> transientRetryDelays;
   final http.Client _httpClient;
+  final AiStdoutLogger _aiLogger;
   final bool _ownsHttpClient;
 
   Uri get requestUri => endpointStyle.requestUriFor(serverBaseUri);
@@ -147,93 +151,162 @@ class OpenAiCompatibleUnreadSummaryProvider
     required UnreadChatSummaryContentCallback onContent,
   }) async {
     final stopwatch = Stopwatch()..start();
+    final provider = '${endpointStyle.storageValue}/$model';
+    const operation = 'unread_summary';
+    final correlationId = _aiLogger.newCorrelationId(provider);
+    final requestPayload = <String, Object?>{
+      'method': 'POST',
+      'endpoint': {
+        'scheme': requestUri.scheme,
+        'host': requestUri.host,
+        if (requestUri.hasPort) 'port': requestUri.port,
+        'path': requestUri.path,
+      },
+      'body': body,
+    };
+    final secrets = <String>[?apiKey];
+    _aiLogger.request(
+      correlationId: correlationId,
+      provider: provider,
+      operation: operation,
+      payload: requestPayload,
+      secrets: secrets,
+    );
     final request = http.Request('POST', requestUri)
       ..headers.addAll(headers)
       ..body = jsonEncode(body);
-    final response = await _httpClient.send(request).timeout(requestTimeout);
+    late final http.StreamedResponse response;
+    try {
+      response = await _httpClient.send(request).timeout(requestTimeout);
+    } catch (error, stackTrace) {
+      _aiLogger.error(
+        correlationId: correlationId,
+        provider: provider,
+        operation: operation,
+        error: error,
+        payload: requestPayload,
+        stackTrace: stackTrace,
+        secrets: secrets,
+      );
+      rethrow;
+    }
     _log(
       'connected status=${response.statusCode} '
       'elapsed_ms=${stopwatch.elapsedMilliseconds}',
     );
-    final isSuccessful =
-        response.statusCode >= 200 && response.statusCode < 300;
-    final isEventStream =
-        response.headers['content-type']?.toLowerCase().contains(
-          'text/event-stream',
-        ) ==
-        true;
-    final contentType = response.headers['content-type']?.toLowerCase() ?? '';
-    final isJsonLineStream =
-        contentType.contains('application/x-ndjson') ||
-        contentType.contains('application/stream+json') ||
-        (endpointStyle == AiEndpointStyle.ollamaChat && body['stream'] == true);
-    late final String responseBody;
-    if (isEventStream || isJsonLineStream) {
-      final raw = StringBuffer();
-      final streamedContent = StringBuffer();
-      var lastReportedLength = 0;
-      var receivedFirstEvent = false;
-      await for (final line
-          in response.stream
-              .timeout(streamIdleTimeout)
-              .transform(utf8.decoder)
-              .transform(const LineSplitter())) {
-        raw.writeln(line);
-        if (!receivedFirstEvent && line.trim().isNotEmpty) {
-          receivedFirstEvent = true;
-          _log(
-            'first stream event elapsed_ms=${stopwatch.elapsedMilliseconds}',
-          );
-        }
-        if (!isSuccessful) continue;
-        var delta = _streamContentDelta(line, isSse: isEventStream);
-        if (delta.isEmpty &&
-            endpointStyle == AiEndpointStyle.openAiResponses &&
-            streamedContent.isEmpty &&
-            (!isEventStream || line.trimLeft().startsWith('data:'))) {
-          final data = (isEventStream ? line.substring(5) : line).trim();
-          if (data.isNotEmpty && data != '[DONE]') {
-            final event = _decodeEnvelope(data);
-            if (event['type'] == 'response.output_text.done' &&
-                event['text'] is String) {
-              delta = event['text'] as String;
+    try {
+      final isSuccessful =
+          response.statusCode >= 200 && response.statusCode < 300;
+      final isEventStream =
+          response.headers['content-type']?.toLowerCase().contains(
+            'text/event-stream',
+          ) ==
+          true;
+      final contentType = response.headers['content-type']?.toLowerCase() ?? '';
+      final isJsonLineStream =
+          contentType.contains('application/x-ndjson') ||
+          contentType.contains('application/stream+json') ||
+          (endpointStyle == AiEndpointStyle.ollamaChat &&
+              body['stream'] == true);
+      late final String responseBody;
+      if (isEventStream || isJsonLineStream) {
+        final raw = StringBuffer();
+        final streamedContent = StringBuffer();
+        var lastReportedLength = 0;
+        var receivedFirstEvent = false;
+        await for (final line
+            in response.stream
+                .timeout(streamIdleTimeout)
+                .transform(utf8.decoder)
+                .transform(const LineSplitter())) {
+          raw.writeln(line);
+          if (line.trim().isNotEmpty) {
+            _aiLogger.response(
+              correlationId: correlationId,
+              provider: provider,
+              operation: '$operation.stream_event',
+              result: {'data': line},
+              secrets: secrets,
+            );
+          }
+          if (!receivedFirstEvent && line.trim().isNotEmpty) {
+            receivedFirstEvent = true;
+            _log(
+              'first stream event elapsed_ms=${stopwatch.elapsedMilliseconds}',
+            );
+          }
+          if (!isSuccessful) continue;
+          var delta = _streamContentDelta(line, isSse: isEventStream);
+          if (delta.isEmpty &&
+              endpointStyle == AiEndpointStyle.openAiResponses &&
+              streamedContent.isEmpty &&
+              (!isEventStream || line.trimLeft().startsWith('data:'))) {
+            final data = (isEventStream ? line.substring(5) : line).trim();
+            if (data.isNotEmpty && data != '[DONE]') {
+              final event = _decodeEnvelope(data);
+              if (event['type'] == 'response.output_text.done' &&
+                  event['text'] is String) {
+                delta = event['text'] as String;
+              }
             }
           }
+          if (delta.isEmpty) continue;
+          streamedContent.write(delta);
+          final accumulated = streamedContent.toString();
+          if (accumulated.length - lastReportedLength >= 8) {
+            lastReportedLength = accumulated.length;
+            onContent(accumulated);
+          }
         }
-        if (delta.isEmpty) continue;
-        streamedContent.write(delta);
         final accumulated = streamedContent.toString();
-        if (accumulated.length - lastReportedLength >= 8) {
-          lastReportedLength = accumulated.length;
+        if (isSuccessful &&
+            accumulated.isNotEmpty &&
+            accumulated.length != lastReportedLength) {
           onContent(accumulated);
         }
+        _log(
+          'stream closed content_chars=${accumulated.length} '
+          'elapsed_ms=${stopwatch.elapsedMilliseconds}',
+        );
+        responseBody = raw.toString();
+      } else {
+        responseBody = await response.stream
+            .timeout(streamIdleTimeout)
+            .transform(utf8.decoder)
+            .join();
+        _log(
+          'buffered response chars=${responseBody.length} '
+          'elapsed_ms=${stopwatch.elapsedMilliseconds}',
+        );
       }
-      final accumulated = streamedContent.toString();
-      if (isSuccessful &&
-          accumulated.isNotEmpty &&
-          accumulated.length != lastReportedLength) {
-        onContent(accumulated);
-      }
-      _log(
-        'stream closed content_chars=${accumulated.length} '
-        'elapsed_ms=${stopwatch.elapsedMilliseconds}',
+      _aiLogger.response(
+        correlationId: correlationId,
+        provider: provider,
+        operation: operation,
+        result: {
+          'status_code': response.statusCode,
+          'content_type': contentType,
+          'body': responseBody,
+        },
+        secrets: secrets,
       );
-      responseBody = raw.toString();
-    } else {
-      responseBody = await response.stream
-          .timeout(streamIdleTimeout)
-          .transform(utf8.decoder)
-          .join();
-      _log(
-        'buffered response chars=${responseBody.length} '
-        'elapsed_ms=${stopwatch.elapsedMilliseconds}',
+      return _BufferedHttpResponse(
+        statusCode: response.statusCode,
+        headers: response.headers,
+        body: responseBody,
       );
+    } catch (error, stackTrace) {
+      _aiLogger.error(
+        correlationId: correlationId,
+        provider: provider,
+        operation: operation,
+        error: error,
+        payload: requestPayload,
+        stackTrace: stackTrace,
+        secrets: secrets,
+      );
+      rethrow;
     }
-    return _BufferedHttpResponse(
-      statusCode: response.statusCode,
-      headers: response.headers,
-      body: responseBody,
-    );
   }
 
   String _streamContentDelta(String rawLine, {required bool isSse}) {

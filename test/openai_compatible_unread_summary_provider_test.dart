@@ -7,6 +7,7 @@ import 'package:http/testing.dart';
 import 'package:mithka/chat/openai_compatible_unread_summary_provider.dart';
 import 'package:mithka/chat/unread_chat_summary_service.dart';
 import 'package:mithka/settings/ai_endpoint_style.dart';
+import 'package:mithka/settings/ai_stdout_logger.dart';
 
 Map<String, dynamic> _summaryJson() => {
   'overview': '要点',
@@ -40,6 +41,7 @@ UnreadChatSummaryProviderRequest _request() => UnreadChatSummaryProviderRequest(
 void main() {
   test('posts a streaming authenticated chat completion', () async {
     late http.Request captured;
+    final logLines = <String>[];
     final client = MockClient((request) async {
       captured = request;
       return http.Response(
@@ -59,6 +61,7 @@ void main() {
       model: 'test-model',
       apiKey: ' sk-test ',
       httpClient: client,
+      aiLogger: AiStdoutLogger(sink: logLines.add),
     );
 
     final result = await provider.complete(_request());
@@ -81,6 +84,19 @@ void main() {
     );
     expect(messages.last['content'], contains('"output_language":"zh-Hans"'));
     expect(result['overview'], '要点');
+    final logEvents = logLines
+        .map((line) => jsonDecode(line) as Map<String, dynamic>)
+        .toList();
+    expect(logEvents.map((event) => event['event']), [
+      'ai.request',
+      'ai.response',
+    ]);
+    expect(
+      ((logEvents.first['payload'] as Map)['body'] as Map)['stream'],
+      isTrue,
+    );
+    expect((logEvents.last['result'] as Map)['body'], contains('要点'));
+    expect(logLines.join(), isNot(contains('sk-test')));
   });
 
   test(

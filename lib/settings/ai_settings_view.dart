@@ -148,6 +148,24 @@ class _AiSettingsViewState extends State<AiSettingsView> {
                             icon: HeroAppIcons.reply,
                             color: const Color(0xFF229ED9),
                           ),
+                          const InsetDivider(leadingInset: 56),
+                          SettingsRow(
+                            key: const ValueKey('aiReplyPromptRow'),
+                            title: AppStringKeys.aiReplyGuidance.l10n(context),
+                            value: settings.hasCustomAiReplyPrompt
+                                ? settings.aiReplyPrompt.replaceAll('\n', ' ')
+                                : AppStringKeys.editProfileDefault.l10n(
+                                    context,
+                                  ),
+                            leading: const SettingsIconTile(
+                              icon: HeroAppIcons.penToSquare,
+                              backgroundColor: Color(0xFF20A45B),
+                            ),
+                            onTap: () => _push(
+                              context,
+                              AiReplyPromptEditorView(settings: settings),
+                            ),
+                          ),
                         ],
                       ),
                     ],
@@ -177,6 +195,123 @@ class _AiSettingsViewState extends State<AiSettingsView> {
         feature: feature,
       ),
     );
+  }
+}
+
+class AiReplyPromptEditorView extends StatefulWidget {
+  const AiReplyPromptEditorView({super.key, required this.settings});
+
+  final AiSettingsController settings;
+
+  @override
+  State<AiReplyPromptEditorView> createState() =>
+      _AiReplyPromptEditorViewState();
+}
+
+class _AiReplyPromptEditorViewState extends State<AiReplyPromptEditorView> {
+  late final TextEditingController _prompt = TextEditingController(
+    text: widget.settings.aiReplyPrompt,
+  );
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _prompt.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Scaffold(
+      backgroundColor: c.groupedBackground,
+      body: Column(
+        children: [
+          NavHeader(
+            title: AppStringKeys.aiReplyTitle.l10n(context),
+            onBack: () => Navigator.of(context).pop(),
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                AppSpacing.xl,
+                AppSpacing.lg,
+                AppSpacing.section,
+              ),
+              children: [
+                Semantics(
+                  textField: true,
+                  label: AppStringKeys.aiReplyGuidance.l10n(context),
+                  child: Container(
+                    constraints: const BoxConstraints(minHeight: 260),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: c.card,
+                      borderRadius: BorderRadius.circular(AppRadius.card),
+                      border: Border.all(color: c.divider, width: 0.5),
+                    ),
+                    child: TextField(
+                      key: const ValueKey('aiReplyPromptField'),
+                      controller: _prompt,
+                      minLines: 11,
+                      maxLines: null,
+                      maxLength:
+                          AiSettingsController.replyPromptMaximumCharacters,
+                      keyboardType: TextInputType.multiline,
+                      textCapitalization: TextCapitalization.sentences,
+                      style: AppTextStyle.body(
+                        c.textPrimary,
+                      ).copyWith(height: 1.4),
+                      cursorColor: AppTheme.brand,
+                      decoration: InputDecoration(
+                        border: InputBorder.none,
+                        isCollapsed: true,
+                        hintText: AppStringKeys.aiReplyGuidanceHint.l10n(
+                          context,
+                        ),
+                        hintStyle: AppTextStyle.body(
+                          c.textTertiary,
+                        ).copyWith(height: 1.4),
+                        counterText: '',
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                _actionButton(
+                  context,
+                  label: AppStringKeys.accentColorPickerSave.l10n(context),
+                  saving: _saving,
+                  onTap: _save,
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                _actionButton(
+                  context,
+                  label: AppStringKeys.editProfileDefault.l10n(context),
+                  saving: _saving,
+                  onTap: () => setState(
+                    () => _prompt.text = defaultAiReplyPrompt.trim(),
+                  ),
+                  backgroundColor: c.card,
+                  foregroundColor: AppTheme.brand,
+                  borderColor: AppTheme.brand,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _save() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    await widget.settings.setAiReplyPrompt(_prompt.text);
+    if (!mounted) return;
+    showToast(context, AppStringKeys.aiSaved.l10n(context));
+    Navigator.of(context).pop();
   }
 }
 

@@ -266,4 +266,114 @@ void main() {
     expect(settings.isConfiguredForFeature(AiFeature.summary), isTrue);
     await tester.pump(const Duration(seconds: 2));
   });
+
+  testWidgets('AI reply prompt editor saves and resets the shared prompt', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final settings = AiSettingsController(
+      preferences,
+      pccApi: ApplePccApi(
+        invokeMethod: (_, _) async => {
+          'sdkAvailable': false,
+          'available': false,
+          'reason': 'unavailable',
+        },
+      ),
+      secureRead: (_) async => null,
+      secureWrite: (_, _) async {},
+    );
+    final theme = ThemeController(preferences);
+    addTearDown(settings.dispose);
+    addTearDown(theme.dispose);
+    await settings.initialize();
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider.value(value: settings),
+          ChangeNotifierProvider.value(value: theme),
+        ],
+        child: const MaterialApp(
+          locale: Locale('en'),
+          localizationsDelegates: [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: AiSettingsView(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final promptRow = find.byKey(const ValueKey('aiReplyPromptRow'));
+    expect(promptRow, findsOneWidget);
+    expect(tester.widget<SettingsRow>(promptRow).value, 'Default');
+
+    await tester.tap(promptRow);
+    await tester.pumpAndSettle();
+    final promptField = find.byKey(const ValueKey('aiReplyPromptField'));
+    expect(promptField, findsOneWidget);
+    expect(
+      tester.widget<TextField>(promptField).controller!.text,
+      defaultAiReplyPrompt.trim(),
+    );
+    expect(
+      tester.widget<TextField>(promptField).maxLength,
+      AiSettingsController.replyPromptMaximumCharacters,
+    );
+
+    const customPrompt = 'Reply with a warm tone and preserve emoji.';
+    await tester.enterText(promptField, customPrompt);
+    await tester.scrollUntilVisible(
+      find.text('Save'),
+      220,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(settings.aiReplyPrompt, customPrompt);
+    expect(settings.hasCustomAiReplyPrompt, isTrue);
+    expect(
+      preferences.getString(AiSettingsController.replyPromptPreferenceKey),
+      customPrompt,
+    );
+    expect(tester.widget<SettingsRow>(promptRow).value, customPrompt);
+
+    await tester.tap(promptRow);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('Default'),
+      220,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.tap(find.text('Default'));
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('aiReplyPromptField')))
+          .controller!
+          .text,
+      defaultAiReplyPrompt.trim(),
+    );
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(settings.aiReplyPrompt, defaultAiReplyPrompt.trim());
+    expect(settings.hasCustomAiReplyPrompt, isFalse);
+    expect(
+      preferences.containsKey(AiSettingsController.replyPromptPreferenceKey),
+      isFalse,
+    );
+    expect(tester.widget<SettingsRow>(promptRow).value, 'Default');
+    await tester.pump(const Duration(seconds: 2));
+  });
 }

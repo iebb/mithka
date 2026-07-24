@@ -7,7 +7,6 @@ import '../components/app_icons.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../theme/app_theme.dart';
-import 'ai_reply_service.dart';
 import 'custom_emoji.dart';
 import 'telegram_ai_service.dart';
 
@@ -255,24 +254,16 @@ class TelegramAiEditorView extends StatefulWidget {
     super.key,
     required this.service,
     required this.source,
-    this.replyProvider,
-    this.replyRequest,
-    this.replyProviderLabel = '',
-    this.startInReplyMode = false,
   });
 
   final TelegramAiService service;
   final TelegramAiFormattedText source;
-  final AiReplyProvider? replyProvider;
-  final AiReplyRequest? replyRequest;
-  final String replyProviderLabel;
-  final bool startInReplyMode;
 
   @override
   State<TelegramAiEditorView> createState() => _TelegramAiEditorViewState();
 }
 
-enum _TelegramAiMode { reply, translate, style, fix }
+enum _TelegramAiMode { translate, style, fix }
 
 class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
   static const _languages = <String, String>{
@@ -286,8 +277,7 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
     'fr': 'Français',
   };
 
-  late _TelegramAiMode _mode;
-  late final TextEditingController _replyGuidance;
+  _TelegramAiMode _mode = _TelegramAiMode.style;
   bool _addEmojis = false;
   String _language = '';
   String _style = '';
@@ -295,28 +285,7 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
   bool _working = false;
   TelegramAiFormattedText? _result;
 
-  bool get _hasReplyMode =>
-      widget.replyProvider != null && widget.replyRequest != null;
-
-  @override
-  void initState() {
-    super.initState();
-    _mode = widget.startInReplyMode && _hasReplyMode
-        ? _TelegramAiMode.reply
-        : _TelegramAiMode.style;
-    _replyGuidance = TextEditingController(
-      text: widget.replyRequest?.guidance ?? '',
-    );
-  }
-
-  @override
-  void dispose() {
-    _replyGuidance.dispose();
-    super.dispose();
-  }
-
   bool get _canGenerate => switch (_mode) {
-    _TelegramAiMode.reply => _hasReplyMode,
     _TelegramAiMode.translate => _language.isNotEmpty,
     _TelegramAiMode.style => _style.isNotEmpty || _addEmojis,
     _TelegramAiMode.fix => true,
@@ -333,8 +302,7 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
 
   Future<void> _generate() async {
     if (_working || !_canGenerate) return;
-    if (_mode != _TelegramAiMode.reply &&
-        widget.service.capabilitiesSnapshot?.compositionSupported != true) {
+    if (widget.service.capabilitiesSnapshot?.compositionSupported != true) {
       showToast(
         context,
         AppStrings.t(
@@ -346,19 +314,15 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
     }
     setState(() => _working = true);
     try {
-      final result = _mode == _TelegramAiMode.reply
-          ? await widget.replyProvider!.generate(
-              widget.replyRequest!.copyWith(guidance: _replyGuidance.text),
-            )
-          : await widget.service.compose(
-              text: widget.source,
-              proofread: _mode == _TelegramAiMode.fix,
-              translateToLanguageCode: _mode == _TelegramAiMode.translate
-                  ? _language
-                  : '',
-              styleName: _mode == _TelegramAiMode.style ? _style : '',
-              addEmojis: _mode != _TelegramAiMode.fix && _addEmojis,
-            );
+      final result = await widget.service.compose(
+        text: widget.source,
+        proofread: _mode == _TelegramAiMode.fix,
+        translateToLanguageCode: _mode == _TelegramAiMode.translate
+            ? _language
+            : '',
+        styleName: _mode == _TelegramAiMode.style ? _style : '',
+        addEmojis: _mode != _TelegramAiMode.fix && _addEmojis,
+      );
       if (mounted) setState(() => _result = result);
     } catch (error) {
       if (mounted) showToast(context, error.toString());
@@ -375,11 +339,7 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
       body: Column(
         children: [
           NavHeader(
-            title: AppStrings.t(
-              _mode == _TelegramAiMode.reply
-                  ? AppStringKeys.aiReplyTitle
-                  : AppStringKeys.telegramAiEditorRewriteTitle,
-            ),
+            title: AppStrings.t(AppStringKeys.telegramAiEditorRewriteTitle),
             onBack: () => Navigator.of(context).pop(),
           ),
           Expanded(
@@ -419,14 +379,9 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
 
   String get _primaryLabel {
     if (_result != null) {
-      return AppStrings.t(
-        _mode == _TelegramAiMode.reply
-            ? AppStringKeys.aiReplyUseReply
-            : AppStringKeys.composerFormatApply,
-      );
+      return AppStrings.t(AppStringKeys.composerFormatApply);
     }
     return switch (_mode) {
-      _TelegramAiMode.reply => AppStrings.t(AppStringKeys.aiReplyGenerate),
       _TelegramAiMode.translate => AppStrings.t(
         AppStringKeys.telegramAiEditorTranslate,
       ),
@@ -441,7 +396,6 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
 
   Widget _previewCard() {
     final c = context.colors;
-    final replyTarget = widget.replyRequest?.target;
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -453,14 +407,8 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _previewSection(
-            _mode == _TelegramAiMode.reply
-                ? AppStrings.t(AppStringKeys.aiReplyReplyingTo, {
-                    'value1': replyTarget?.speaker ?? '',
-                  })
-                : AppStrings.t(AppStringKeys.telegramAiEditorOriginal),
-            _mode == _TelegramAiMode.reply
-                ? replyTarget?.text ?? ''
-                : widget.source.text,
+            AppStrings.t(AppStringKeys.telegramAiEditorOriginal),
+            widget.source.text,
             trailing: _mode == _TelegramAiMode.style
                 ? _inlineEmojiToggle()
                 : null,
@@ -472,11 +420,7 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
                   ? AppStrings.t(AppStringKeys.telegramAiEditorToLanguage, {
                       'value1': _languages[_language] ?? _language,
                     })
-                  : AppStrings.t(
-                      _mode == _TelegramAiMode.reply
-                          ? AppStringKeys.aiReplyDraftReply
-                          : AppStringKeys.telegramAiEditorResult,
-                    ),
+                  : AppStrings.t(AppStringKeys.telegramAiEditorResult),
               _result!.text,
             ),
           ],
@@ -578,12 +522,6 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
       ),
       child: Row(
         children: [
-          if (_hasReplyMode)
-            _modeItem(
-              _TelegramAiMode.reply,
-              AppStrings.t(AppStringKeys.aiReplyMode),
-              HeroAppIcons.reply,
-            ),
           _modeItem(
             _TelegramAiMode.translate,
             AppStrings.t(AppStringKeys.telegramAiEditorTranslate),
@@ -655,61 +593,10 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
   }
 
   Widget _modeOptions() => switch (_mode) {
-    _TelegramAiMode.reply => _replyOptions(),
     _TelegramAiMode.translate => _translationOptions(),
     _TelegramAiMode.style => _styleOptions(),
     _TelegramAiMode.fix => const SizedBox.shrink(),
   };
-
-  Widget _replyOptions() {
-    final c = context.colors;
-    final provider = widget.replyProviderLabel.trim();
-    return Container(
-      key: const ValueKey('aiReplyOptions'),
-      padding: const EdgeInsets.fromLTRB(14, 13, 14, 14),
-      decoration: BoxDecoration(
-        color: c.card,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: c.divider, width: 0.5),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            AppStrings.t(AppStringKeys.aiReplyGuidance),
-            style: TextStyle(
-              color: c.textPrimary,
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 9),
-          TextField(
-            key: const ValueKey('aiReplyGuidanceField'),
-            controller: _replyGuidance,
-            enabled: !_working,
-            minLines: 2,
-            maxLines: 5,
-            textCapitalization: TextCapitalization.sentences,
-            decoration: InputDecoration(
-              hintText: AppStrings.t(AppStringKeys.aiReplyGuidanceHint),
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            AppStrings.t(AppStringKeys.aiReplyPrivacyNote, {
-              'value1': provider,
-            }),
-            style: TextStyle(
-              color: c.textSecondary,
-              fontSize: 12,
-              height: 1.35,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _translationOptions() {
     final c = context.colors;

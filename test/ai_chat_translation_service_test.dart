@@ -6,6 +6,7 @@ import 'package:http/testing.dart';
 import 'package:mithka/chat/ai_chat_translation_service.dart';
 import 'package:mithka/settings/ai_endpoint_style.dart';
 import 'package:mithka/settings/ai_settings_controller.dart';
+import 'package:mithka/settings/ai_stdout_logger.dart';
 import 'package:mithka/settings/apple_pcc_api.dart';
 import 'package:mithka/settings/translation_api.dart';
 
@@ -14,6 +15,7 @@ void main() {
     'OpenAI-compatible translation sends context as untrusted JSON',
     () async {
       late http.Request captured;
+      final logLines = <String>[];
       final client = MockClient((request) async {
         captured = request;
         return http.Response.bytes(
@@ -37,6 +39,7 @@ void main() {
         model: 'translator-model',
         apiKey: 'secret',
         httpClient: client,
+        aiLogger: AiStdoutLogger(sink: logLines.add),
       );
 
       final result = await service.translate(
@@ -56,6 +59,19 @@ void main() {
       expect(messages.first['content'], contains('Do not answer'));
       expect(messages.last['content'], contains('"prior_messages"'));
       expect(messages.last['content'], contains('See you later'));
+      final logEvents = logLines
+          .map((line) => jsonDecode(line) as Map<String, dynamic>)
+          .toList();
+      expect(logEvents.map((event) => event['event']), [
+        'ai.request',
+        'ai.response',
+      ]);
+      expect(
+        ((logEvents.first['payload'] as Map)['body'] as Map)['messages'],
+        isNotEmpty,
+      );
+      expect((logEvents.last['result'] as Map)['body'], contains('Bis später'));
+      expect(logLines.join(), isNot(contains('secret')));
     },
   );
 
