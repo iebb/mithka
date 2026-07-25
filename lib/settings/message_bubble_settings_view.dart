@@ -120,7 +120,7 @@ class _MessageBubbleSettingsViewState extends State<MessageBubbleSettingsView> {
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        'Browse the public channel as a bubble grid. Repository images are exactly 190 × 120 px and contain four compact text-color squares.',
+                        'Browse the public channel as a bubble grid. Repository images are exactly 390 × 186 px and contain four compact text-color squares.',
                         style: TextStyle(
                           color: c.textSecondary,
                           fontSize: 13.5,
@@ -201,7 +201,7 @@ class _MessageBubbleSettingsViewState extends State<MessageBubbleSettingsView> {
   ) {
     final c = context.colors;
     return Container(
-      height: 220,
+      height: 320,
       padding: const EdgeInsets.fromLTRB(14, 24, 14, 20),
       decoration: BoxDecoration(
         color: c.chatBackground,

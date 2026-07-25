@@ -40,7 +40,7 @@ Future<void> applyMessageBubbleRepositoryPhoto(
   String? sourceMessageLink,
 }) async {
   if (!isEligibleMessageBubbleRepositoryPhoto(message)) {
-    showToast(context, 'Bubble images must be exactly 190 × 120 px.');
+    showToast(context, 'Bubble images must be exactly 390 × 186 px.');
     return;
   }
   final path = await TdFileCenter.shared.pathFor(message.image!);
@@ -63,7 +63,7 @@ Future<void> applyMessageBubbleRepositoryPhoto(
     if (!context.mounted) return;
     final text = switch (error.failure) {
       CustomMessageBubbleImportFailure.wrongRepositorySize =>
-        'Bubble images must be exactly 190 × 120 px.',
+        'Bubble images must be exactly 390 × 186 px.',
       CustomMessageBubbleImportFailure.invalidPalette =>
         'The four color swatches must each be one solid color.',
       _ => 'This image is not a valid message bubble.',
@@ -132,7 +132,7 @@ class _MessageBubbleRepositoryViewState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Repository images are exactly 190 × 120 px. Four compact squares store text colors; color 1 is currently used.',
+                  'Repository images are exactly 390 × 186 px. Four compact squares store text colors; color 1 is currently used.',
                   style: TextStyle(
                     color: c.textSecondary,
                     fontSize: 13,

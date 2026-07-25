@@ -116,7 +116,7 @@ void main() {
     );
   });
 
-  test('repository processor enforces 190x120 and reads four swatches', () {
+  test('repository processor enforces 390x186 and reads four swatches', () {
     final processed = const CustomMessageBubblePngProcessor().processRepository(
       _repositoryTemplatePng(),
     );
@@ -128,14 +128,14 @@ void main() {
       0xFFAABBCC,
     ]);
     expect(processed.foregroundColorValue, 0xFF112233);
-    expect((processed.width, processed.height), (49, 37));
+    expect((processed.width, processed.height), (145, 109));
     final telegramJpeg = image_lib.encodeJpg(
       image_lib.decodePng(_repositoryTemplatePng())!,
       quality: 90,
     );
     final transcoded = const CustomMessageBubblePngProcessor()
         .processRepository(Uint8List.fromList(telegramJpeg));
-    expect((transcoded.width, transcoded.height), (49, 37));
+    expect((transcoded.width, transcoded.height), (145, 109));
     expect(
       transcoded.foregroundColorValue & 0xFFFFFF,
       closeTo(0x112233, 0x050505),
@@ -157,8 +157,8 @@ void main() {
   test('eligible #msgbubble photos expose the apply action', () {
     ChatMessage message({
       required String caption,
-      int width = 190,
-      int height = 120,
+      int width = 390,
+      int height = 186,
     }) => ChatMessage(
       id: 42,
       isOutgoing: false,
@@ -364,7 +364,7 @@ void main() {
       find.byKey(const ValueKey('messageBubbleOpenRepository')),
       findsOneWidget,
     );
-    expect(find.textContaining('190 × 120'), findsOneWidget);
+    expect(find.textContaining('390 × 186'), findsOneWidget);
   });
 
   testWidgets(

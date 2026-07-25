@@ -143,19 +143,19 @@ class ProcessedMessageBubblePng {
 
 /// Canonical wire format used by the public @msgbubble repository.
 ///
-/// The four 20px swatches sit in a compact center band. They are metadata rather
+/// The four 52px swatches sit in a compact center band. They are metadata rather
 /// than bubble artwork and are removed before the PNG is center-slice compacted.
 abstract final class MessageBubbleRepositoryFormat {
-  static const width = 190;
-  static const height = 120;
-  static const artworkWidth = 160;
-  static const swatchSize = 20;
-  static const swatchGap = 5;
-  static const swatchTop = 46;
-  static const swatchLeft = 38;
+  static const width = 390;
+  static const height = 186;
+  static const artworkWidth = 390;
+  static const swatchSize = 52;
+  static const swatchGap = 16;
+  static const swatchTop = 68;
+  static const swatchLeft = 72;
   static const swatchCount = 4;
-  static const protectedHorizontal = 24;
-  static const protectedVertical = 18;
+  static const protectedHorizontal = 72;
+  static const protectedVertical = 54;
 
   static int swatchX(int index) =>
       swatchLeft + index * (swatchSize + swatchGap);
