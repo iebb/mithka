@@ -3671,7 +3671,6 @@ class _MessageBubbleState extends State<MessageBubble>
         case 'textEntityTypePhoneNumber':
         case 'textEntityTypeBankCardNumber':
           color = link;
-          decorations.add(TextDecoration.underline);
         case 'textEntityTypeMediaTimestamp':
           color = link;
           weight = FontWeight.w600;
@@ -3782,13 +3781,7 @@ class _MessageBubbleState extends State<MessageBubble>
       spans.add(
         TextSpan(
           text: matched,
-          style: baseStyle.copyWith(
-            color: link,
-            decoration: isMention || isHashtag
-                ? baseStyle.decoration
-                : TextDecoration.underline,
-            decorationColor: link,
-          ),
+          style: baseStyle.copyWith(color: link),
           recognizer: recognizer,
         ),
       );
@@ -4416,7 +4409,7 @@ class _MessageBubbleState extends State<MessageBubble>
         sources.length == 1 && _isGifDocument(sources.single.document!);
     return Container(
       key: ValueKey('messageDocumentAlbumCard-${message.id}'),
-      width: 244,
+      width: _bubbleMaxWidth(),
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: c.card,
