@@ -268,8 +268,11 @@ class _MessageBubbleState extends State<MessageBubble>
 
   ChatMessage get message => widget.message;
 
-  MessageBubbleBackgroundSpec get _bubbleBackgroundStyle =>
-      context.watch<ThemeController>().effectiveMessageBubbleBackgroundSpec;
+  MessageBubbleBackgroundSpec get _bubbleBackgroundStyle {
+    return context
+        .watch<ThemeController>()
+        .effectiveMessageBubbleBackgroundSpecFor(outgoing: message.isOutgoing);
+  }
 
   Color get _outgoingBubbleColor =>
       _bubbleBackgroundStyle.backgroundColor ??

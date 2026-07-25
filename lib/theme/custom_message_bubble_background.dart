@@ -73,13 +73,33 @@ class CustomMessageBubbleBackground {
   final List<int> paletteColorValues;
   final String? sourceMessageLink;
 
-  Rect get centerSlice =>
-      Rect.fromLTWH(stretchX.toDouble(), stretchY.toDouble(), 1, 1);
+  double get imageScale =>
+      sourceMessageLink == null ? 1 : MessageBubbleRepositoryFormat.imageScale;
 
-  Size get minimumSize => Size(width.toDouble(), height.toDouble());
+  Rect get centerSlice => Rect.fromLTWH(
+    stretchX / imageScale,
+    stretchY / imageScale,
+    1 / imageScale,
+    1 / imageScale,
+  );
+
+  Size get minimumSize {
+    final overflow = visualOverflow;
+    return Size(
+      width / imageScale - overflow.horizontal,
+      height / imageScale - overflow.vertical,
+    );
+  }
 
   EdgeInsets get contentPadding =>
       const EdgeInsets.symmetric(horizontal: 12, vertical: 9);
+
+  // A square 90 px source corner compacts to 27 logical pixels. Its 30 px
+  // transparent portion therefore becomes 9 logical pixels on every edge.
+  // outside the layout aligns the inner 300 × 120 artwork vertices with the
+  // corresponding vertices of a standard bubble.
+  EdgeInsets get visualOverflow =>
+      sourceMessageLink == null ? EdgeInsets.zero : const EdgeInsets.all(9);
 
   Color get backgroundColor => Color(backgroundColorValue);
   Color get foregroundColor => Color(foregroundColorValue);
@@ -143,19 +163,27 @@ class ProcessedMessageBubblePng {
 
 /// Canonical wire format used by the public @msgbubble repository.
 ///
-/// The four 52px swatches sit in a compact center band. They are metadata rather
+/// The four 40px swatches sit in a compact center band. They are metadata rather
 /// than bubble artwork and are removed before the PNG is center-slice compacted.
 abstract final class MessageBubbleRepositoryFormat {
-  static const width = 390;
-  static const height = 186;
-  static const artworkWidth = 390;
-  static const swatchSize = 52;
-  static const swatchGap = 16;
-  static const swatchTop = 68;
-  static const swatchLeft = 72;
+  static const width = 360;
+  static const height = 180;
+  static const artworkWidth = 300;
+  static const artworkHeight = 120;
+  static const artworkPadding = 30;
+  static const swatchSize = 40;
+  static const swatchGap = 10;
+  static const swatchTop = 70;
+  // 4 × 40 plus 3 × 10 = 190 px, centered on x=180. This leaves x=180
+  // inside the 10 px gap between squares 2 and 3 for the center slice.
+  static const swatchLeft = 85;
   static const swatchCount = 4;
-  static const protectedHorizontal = 72;
-  static const protectedVertical = 54;
+  // Retain 30 px of transparent canvas plus 60 px of artwork per corner.
+  static const protectedHorizontal = 90;
+  static const protectedVertical = 90;
+  static const runtimeCornerWidth = 27;
+  static const runtimeCornerHeight = 27;
+  static const imageScale = 10 / 3;
 
   static int swatchX(int index) =>
       swatchLeft + index * (swatchSize + swatchGap);
@@ -221,17 +249,25 @@ class CustomMessageBubblePngProcessor {
         );
       }
       final prepared = _stripRepositoryPalette(decoded);
-      source = prepared.$1;
+      source = _restoreRepositoryCornerTransparency(prepared.$1);
       palette = prepared.$2;
     }
 
-    final horizontal = repositoryFormat
-        ? _compactRepositoryColumns(source)
-        : _collapseRepeatedColumns(source);
-    final compact = repositoryFormat
-        ? _compactRepositoryRows(horizontal.image)
-        : _collapseRepeatedRows(horizontal.image);
-    final center = compact.image.getPixel(horizontal.stretch, compact.stretch);
+    late final image_lib.Image compactImage;
+    late final int stretchX;
+    late final int stretchY;
+    if (repositoryFormat) {
+      compactImage = _compactRepositoryCorners(source);
+      stretchX = MessageBubbleRepositoryFormat.protectedHorizontal;
+      stretchY = MessageBubbleRepositoryFormat.protectedVertical;
+    } else {
+      final horizontal = _collapseRepeatedColumns(source);
+      final compact = _collapseRepeatedRows(horizontal.image);
+      compactImage = compact.image;
+      stretchX = horizontal.stretch;
+      stretchY = compact.stretch;
+    }
+    final center = compactImage.getPixel(stretchX, stretchY);
     final background = Color.fromARGB(
       center.a.toInt(),
       center.r.toInt(),
@@ -242,11 +278,11 @@ class CustomMessageBubblePngProcessor {
         ? const Color(0xFF1E1E1E)
         : const Color(0xFFFFFFFF);
     return ProcessedMessageBubblePng(
-      bytes: Uint8List.fromList(image_lib.encodePng(compact.image)),
-      width: compact.image.width,
-      height: compact.image.height,
-      stretchX: horizontal.stretch,
-      stretchY: compact.stretch,
+      bytes: Uint8List.fromList(image_lib.encodePng(compactImage)),
+      width: compactImage.width,
+      height: compactImage.height,
+      stretchX: stretchX,
+      stretchY: stretchY,
       backgroundColorValue: background.toARGB32(),
       foregroundColorValue: palette.isEmpty
           ? foreground.toARGB32()
@@ -258,8 +294,13 @@ class CustomMessageBubblePngProcessor {
   }
 
   (image_lib.Image, List<int>) _stripRepositoryPalette(image_lib.Image source) {
-    final output = image_lib.Image.from(source);
-    final center = source.getPixel(source.width ~/ 2, source.height ~/ 2);
+    final output = source.convert(numChannels: 4);
+    // Sample the bubble fill above the palette band. The canvas center falls
+    // inside swatch 3 in the 360 × 180 repository layout.
+    final center = source.getPixel(
+      source.width ~/ 2,
+      MessageBubbleRepositoryFormat.swatchTop - 10,
+    );
     final colors = <int>[];
     for (
       var index = 0;
@@ -268,10 +309,30 @@ class CustomMessageBubblePngProcessor {
     ) {
       final left = MessageBubbleRepositoryFormat.swatchX(index);
       const top = MessageBubbleRepositoryFormat.swatchTop;
-      final sample = source.getPixel(
-        left + MessageBubbleRepositoryFormat.swatchSize ~/ 2,
-        top + MessageBubbleRepositoryFormat.swatchSize ~/ 2,
-      );
+      const inset = MessageBubbleRepositoryFormat.swatchSize ~/ 4;
+      var red = 0;
+      var green = 0;
+      var blue = 0;
+      var alpha = 0;
+      var samples = 0;
+      for (
+        var y = top + inset;
+        y < top + MessageBubbleRepositoryFormat.swatchSize - inset;
+        y++
+      ) {
+        for (
+          var x = left + inset;
+          x < left + MessageBubbleRepositoryFormat.swatchSize - inset;
+          x++
+        ) {
+          final pixel = source.getPixel(x, y);
+          red += pixel.r.toInt();
+          green += pixel.g.toInt();
+          blue += pixel.b.toInt();
+          alpha += pixel.a.toInt();
+          samples++;
+        }
+      }
       for (
         var y = top;
         y < top + MessageBubbleRepositoryFormat.swatchSize;
@@ -282,26 +343,15 @@ class CustomMessageBubblePngProcessor {
           x < left + MessageBubbleRepositoryFormat.swatchSize;
           x++
         ) {
-          final pixel = source.getPixel(x, y);
-          const inset = MessageBubbleRepositoryFormat.swatchSize ~/ 4;
-          if (x >= left + inset &&
-              x < left + MessageBubbleRepositoryFormat.swatchSize - inset &&
-              y >= top + inset &&
-              y < top + MessageBubbleRepositoryFormat.swatchSize - inset &&
-              !_pixelsNear(pixel, sample, 5)) {
-            throw const CustomMessageBubbleImportException(
-              CustomMessageBubbleImportFailure.invalidPalette,
-            );
-          }
           output.setPixelRgba(x, y, center.r, center.g, center.b, center.a);
         }
       }
       colors.add(
         Color.fromARGB(
-          sample.a.toInt(),
-          sample.r.toInt(),
-          sample.g.toInt(),
-          sample.b.toInt(),
+          alpha ~/ samples,
+          red ~/ samples,
+          green ~/ samples,
+          blue ~/ samples,
         ).toARGB32(),
       );
     }
@@ -317,44 +367,124 @@ class CustomMessageBubblePngProcessor {
     return true;
   }
 
-  _CollapsedAxis _compactRepositoryColumns(image_lib.Image source) {
-    const edge = MessageBubbleRepositoryFormat.protectedHorizontal;
-    final output = image_lib.Image(
-      width: edge * 2 + 1,
-      height: source.height,
-      numChannels: 4,
-    );
+  image_lib.Image _restoreRepositoryCornerTransparency(image_lib.Image source) {
+    if (source.getPixel(0, 0).a.toInt() == 0) return source;
+    final output = source.convert(numChannels: 4);
+    final visited = Uint8List(source.width * source.height);
+    final queue = <int>[];
+    var transparentCount = 0;
+
+    const padding = MessageBubbleRepositoryFormat.artworkPadding;
+    final artworkRight = source.width - padding - 1;
+    final artworkBottom = source.height - padding - 1;
     for (var y = 0; y < source.height; y++) {
-      for (var x = 0; x < output.width; x++) {
-        final sourceX = x < edge
-            ? x
-            : x == edge
-            ? MessageBubbleRepositoryFormat.artworkWidth ~/ 2
-            : MessageBubbleRepositoryFormat.artworkWidth - (output.width - x);
-        _copyPixel(source, sourceX, y, output, x, y);
+      for (var x = 0; x < source.width; x++) {
+        if (x < padding ||
+            x > artworkRight ||
+            y < padding ||
+            y > artworkBottom) {
+          final pixel = source.getPixel(x, y);
+          output.setPixelRgba(x, y, pixel.r, pixel.g, pixel.b, 0);
+        }
       }
     }
-    return _CollapsedAxis(output, edge);
+    final paddingOnly = output.convert(numChannels: 4);
+
+    void flood(int startX, int startY) {
+      final seed = source.getPixel(startX, startY);
+      queue
+        ..clear()
+        ..add(startY * source.width + startX);
+      while (queue.isNotEmpty) {
+        final offset = queue.removeLast();
+        if (visited[offset] != 0) continue;
+        final x = offset % source.width;
+        final y = offset ~/ source.width;
+        if (x < padding ||
+            x > artworkRight ||
+            y < padding ||
+            y > artworkBottom) {
+          continue;
+        }
+        final pixel = source.getPixel(x, y);
+        final delta = <int>[
+          (pixel.r.toInt() - seed.r.toInt()).abs(),
+          (pixel.g.toInt() - seed.g.toInt()).abs(),
+          (pixel.b.toInt() - seed.b.toInt()).abs(),
+        ].reduce((a, b) => a > b ? a : b);
+        if (delta > 36) continue;
+        visited[offset] = 1;
+        final alpha = delta <= 6
+            ? 0
+            : ((delta - 6) * 8.5).round().clamp(0, 255);
+        output.setPixelRgba(x, y, pixel.r, pixel.g, pixel.b, alpha);
+        transparentCount++;
+        if (x > 0) queue.add(offset - 1);
+        if (x + 1 < source.width) queue.add(offset + 1);
+        if (y > 0) queue.add(offset - source.width);
+        if (y + 1 < source.height) queue.add(offset + source.width);
+      }
+    }
+
+    flood(padding, padding);
+    flood(artworkRight, padding);
+    flood(padding, artworkBottom);
+    flood(artworkRight, artworkBottom);
+    // A malformed flat card has no closed bubble edge. Never erase its body.
+    return transparentCount >
+            MessageBubbleRepositoryFormat.artworkWidth *
+                MessageBubbleRepositoryFormat.artworkHeight ~/
+                2
+        ? paddingOnly
+        : output;
   }
 
-  _CollapsedAxis _compactRepositoryRows(image_lib.Image source) {
-    const edge = MessageBubbleRepositoryFormat.protectedVertical;
+  image_lib.Image _compactRepositoryCorners(image_lib.Image source) {
+    const sourceEdgeX = MessageBubbleRepositoryFormat.protectedHorizontal;
+    const sourceEdgeY = MessageBubbleRepositoryFormat.protectedVertical;
+    const edgeX = MessageBubbleRepositoryFormat.protectedHorizontal;
+    const edgeY = MessageBubbleRepositoryFormat.protectedVertical;
     final output = image_lib.Image(
-      width: source.width,
-      height: edge * 2 + 1,
+      width: edgeX * 2 + 1,
+      height: edgeY * 2 + 1,
       numChannels: 4,
     );
+    int sourceCoordinate(
+      int value,
+      int outputLength,
+      int sourceLength,
+      int sourceCenter,
+      int sourceMax,
+    ) {
+      final outputEdge = (outputLength - 1) ~/ 2;
+      if (value == outputEdge) return sourceCenter;
+      final fromEdge = value < outputEdge ? value : outputLength - 1 - value;
+      final sourceFromEdge = outputEdge == 1
+          ? 0
+          : (fromEdge * (sourceLength - 1) / (outputEdge - 1)).round();
+      return value < outputEdge ? sourceFromEdge : sourceMax - sourceFromEdge;
+    }
+
     for (var y = 0; y < output.height; y++) {
-      final sourceY = y < edge
-          ? y
-          : y == edge
-          ? source.height ~/ 2
-          : source.height - (output.height - y);
-      for (var x = 0; x < source.width; x++) {
-        _copyPixel(source, x, sourceY, output, x, y);
+      final sourceY = sourceCoordinate(
+        y,
+        output.height,
+        sourceEdgeY,
+        source.height ~/ 2,
+        source.height - 1,
+      );
+      for (var x = 0; x < output.width; x++) {
+        final sourceX = sourceCoordinate(
+          x,
+          output.width,
+          sourceEdgeX,
+          source.width ~/ 2,
+          source.width - 1,
+        );
+        _copyPixel(source, sourceX, sourceY, output, x, y);
       }
     }
-    return _CollapsedAxis(output, edge);
+    return output;
   }
 
   _CollapsedAxis _collapseRepeatedColumns(image_lib.Image source) {
@@ -435,12 +565,6 @@ class CustomMessageBubblePngProcessor {
 
   bool _pixelsEqual(image_lib.Pixel a, image_lib.Pixel b) =>
       a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
-
-  bool _pixelsNear(image_lib.Pixel a, image_lib.Pixel b, int tolerance) =>
-      (a.r.toInt() - b.r.toInt()).abs() <= tolerance &&
-      (a.g.toInt() - b.g.toInt()).abs() <= tolerance &&
-      (a.b.toInt() - b.b.toInt()).abs() <= tolerance &&
-      (a.a.toInt() - b.a.toInt()).abs() <= tolerance;
 
   void _copyPixel(
     image_lib.Image source,

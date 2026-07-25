@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -18,11 +19,27 @@ import 'link_handler.dart';
 
 const messageBubbleRepositoryUsername = 'msgbubble';
 
+TdFileRef? messageBubbleRepositoryFile(ChatMessage message) {
+  if (message.contentType == 'messagePhoto' &&
+      message.imageWidth == MessageBubbleRepositoryFormat.width &&
+      message.imageHeight == MessageBubbleRepositoryFormat.height) {
+    return message.image;
+  }
+  final document = message.document;
+  if (message.contentType == 'messageDocument' &&
+      document != null &&
+      document.ext.toLowerCase() == 'png' &&
+      RegExp(
+        r'(^|\s)#msgbubble(?:\s|$)',
+        caseSensitive: false,
+      ).hasMatch(message.text)) {
+    return document.file;
+  }
+  return null;
+}
+
 bool isEligibleMessageBubbleRepositoryPhoto(ChatMessage message) =>
-    message.contentType == 'messagePhoto' &&
-    message.image != null &&
-    message.imageWidth == MessageBubbleRepositoryFormat.width &&
-    message.imageHeight == MessageBubbleRepositoryFormat.height;
+    messageBubbleRepositoryFile(message) != null;
 
 bool offersMessageBubbleApplyAction(ChatMessage message) =>
     isEligibleMessageBubbleRepositoryPhoto(message) &&
@@ -40,10 +57,12 @@ Future<void> applyMessageBubbleRepositoryPhoto(
   String? sourceMessageLink,
 }) async {
   if (!isEligibleMessageBubbleRepositoryPhoto(message)) {
-    showToast(context, 'Bubble images must be exactly 390 × 186 px.');
+    showToast(context, 'Bubble images must be exactly 360 × 180 px.');
     return;
   }
-  final path = await TdFileCenter.shared.pathFor(message.image!);
+  final path = await TdFileCenter.shared.pathFor(
+    messageBubbleRepositoryFile(message)!,
+  );
   if (path == null || !await File(path).exists()) {
     if (context.mounted) showToast(context, 'Could not download this bubble.');
     return;
@@ -63,7 +82,7 @@ Future<void> applyMessageBubbleRepositoryPhoto(
     if (!context.mounted) return;
     final text = switch (error.failure) {
       CustomMessageBubbleImportFailure.wrongRepositorySize =>
-        'Bubble images must be exactly 390 × 186 px.',
+        'Bubble images must be exactly 360 × 180 px.',
       CustomMessageBubbleImportFailure.invalidPalette =>
         'The four color swatches must each be one solid color.',
       _ => 'This image is not a valid message bubble.',
@@ -119,44 +138,24 @@ class _MessageBubbleRepositoryViewState
         .watch<ThemeController>()
         .customMessageBubbleBackground
         ?.sourceMessageLink;
+    ChatMessage? previewMessage;
+    for (final message in bubbles) {
+      if (messageBubbleRepositoryLink(message.id) == selectedLink) {
+        previewMessage = message;
+        break;
+      }
+    }
+    previewMessage ??= bubbles.isEmpty ? null : bubbles.first;
     return Scaffold(
       backgroundColor: c.groupedBackground,
       body: Column(
         children: [
           NavHeader(title: 'Message bubbles', onBack: widget.onBack),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-            color: c.card,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Repository images are exactly 390 × 186 px. Four compact squares store text colors; color 1 is currently used.',
-                  style: TextStyle(
-                    color: c.textSecondary,
-                    fontSize: 13,
-                    height: 1.35,
-                  ),
-                ),
-                if (selectedLink != null) ...[
-                  const SizedBox(height: 7),
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => openLink(context, selectedLink),
-                    child: Text(
-                      selectedLink,
-                      style: TextStyle(
-                        color: AppTheme.brand,
-                        fontSize: 12.5,
-                        decoration: TextDecoration.underline,
-                      ),
-                    ),
-                  ),
-                ],
-              ],
+          if (previewMessage != null)
+            _RepositoryChatPreview(
+              message: previewMessage,
+              sourceLink: selectedLink,
             ),
-          ),
           Expanded(
             child: bubbles.isEmpty && !_vm.initialLoaded
                 ? const Center(child: CircularProgressIndicator())
@@ -170,97 +169,230 @@ class _MessageBubbleRepositoryViewState
                     },
                     child: GridView.builder(
                       padding: const EdgeInsets.all(12),
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: MediaQuery.sizeOf(context).width >= 700
-                            ? 3
-                            : 2,
-                        mainAxisSpacing: 12,
-                        crossAxisSpacing: 12,
-                        childAspectRatio: 1.18,
-                      ),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 3,
+                            mainAxisSpacing: 10,
+                            crossAxisSpacing: 10,
+                            // The high-resolution nine-slice needs about 55
+                            // logical px of height after card insets.
+                            childAspectRatio: 1.8,
+                          ),
                       itemCount: bubbles.length,
                       itemBuilder: (context, index) {
                         final message = bubbles[index];
                         final link = messageBubbleRepositoryLink(message.id);
                         final selected = selectedLink == link;
                         final applying = _applying.contains(message.id);
-                        return Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: c.card,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: selected ? AppTheme.brand : c.divider,
-                              width: selected ? 1.5 : 0.5,
+                        return GestureDetector(
+                          key: ValueKey('messageBubbleApply-${message.id}'),
+                          behavior: HitTestBehavior.opaque,
+                          onTap: applying ? null : () => _apply(message),
+                          child: Container(
+                            // Keep breathing room around the image: decorations
+                            // can reach beyond the visual bubble edge.
+                            padding: const EdgeInsets.all(5),
+                            decoration: BoxDecoration(
+                              color: Colors.transparent,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: selected
+                                    ? AppTheme.brand
+                                    : Colors.transparent,
+                                width: 1.5,
+                              ),
                             ),
-                          ),
-                          child: Column(
-                            children: [
-                              Expanded(
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(9),
-                                  child: TDImage(
-                                    photo: message.image,
-                                    fit: BoxFit.contain,
-                                    cornerRadius: 0,
-                                    showProgress: true,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 7),
-                              GestureDetector(
-                                behavior: HitTestBehavior.opaque,
-                                onTap: applying ? null : () => _apply(message),
-                                child: Container(
-                                  height: 34,
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(
-                                    color: selected
-                                        ? AppTheme.brand.withValues(alpha: 0.12)
-                                        : AppTheme.brand,
-                                    borderRadius: BorderRadius.circular(9),
-                                  ),
-                                  child: applying
-                                      ? const SizedBox(
-                                          width: 16,
-                                          height: 16,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                          ),
-                                        )
-                                      : Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            AppIcon(
-                                              selected
-                                                  ? HeroAppIcons.check
-                                                  : HeroAppIcons.palette,
-                                              size: 15,
-                                              color: selected
-                                                  ? AppTheme.brand
-                                                  : AppTheme.onBrand,
-                                            ),
-                                            const SizedBox(width: 6),
-                                            Text(
-                                              selected ? 'Applied' : 'Apply',
-                                              style: TextStyle(
-                                                color: selected
-                                                    ? AppTheme.brand
-                                                    : AppTheme.onBrand,
-                                                fontSize: 13,
-                                                fontWeight: FontWeight.w700,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                ),
-                              ),
-                            ],
+                            child: applying
+                                ? const Center(
+                                    child: SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    ),
+                                  )
+                                : _RepositoryBubbleThumbnail(message: message),
                           ),
                         );
                       },
                     ),
                   ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RepositoryBubbleThumbnail extends StatefulWidget {
+  const _RepositoryBubbleThumbnail({
+    required this.message,
+    this.sampleText = 'Bubble preview',
+    this.sampleFontSize = 10.5,
+  });
+
+  final ChatMessage message;
+  final String sampleText;
+  final double sampleFontSize;
+
+  @override
+  State<_RepositoryBubbleThumbnail> createState() =>
+      _RepositoryBubbleThumbnailState();
+}
+
+class _RepositoryBubbleThumbnailState
+    extends State<_RepositoryBubbleThumbnail> {
+  late final Future<ProcessedMessageBubblePng?> _processed = _load();
+
+  Future<ProcessedMessageBubblePng?> _load() async {
+    final file = messageBubbleRepositoryFile(widget.message);
+    if (file == null) return null;
+    final path = await TdFileCenter.shared.pathFor(file);
+    if (path == null || !await File(path).exists()) return null;
+    try {
+      return const CustomMessageBubblePngProcessor().processRepository(
+        Uint8List.fromList(await File(path).readAsBytes()),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<ProcessedMessageBubblePng?>(
+      future: _processed,
+      builder: (context, snapshot) {
+        final processed = snapshot.data;
+        if (processed == null) {
+          return TDImage(
+            photo: messageBubbleRepositoryFile(widget.message),
+            fit: BoxFit.contain,
+            cornerRadius: 0,
+            showProgress: snapshot.connectionState != ConnectionState.done,
+          );
+        }
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final canCenterSlice =
+                constraints.maxWidth >=
+                    processed.width /
+                        MessageBubbleRepositoryFormat.imageScale &&
+                constraints.maxHeight >=
+                    processed.height / MessageBubbleRepositoryFormat.imageScale;
+            return Stack(
+              fit: StackFit.expand,
+              clipBehavior: Clip.none,
+              children: [
+                Image.memory(
+                  processed.bytes,
+                  scale: MessageBubbleRepositoryFormat.imageScale,
+                  fit: canCenterSlice ? BoxFit.fill : BoxFit.contain,
+                  centerSlice: canCenterSlice
+                      ? Rect.fromLTWH(
+                          processed.stretchX /
+                              MessageBubbleRepositoryFormat.imageScale,
+                          processed.stretchY /
+                              MessageBubbleRepositoryFormat.imageScale,
+                          1 / MessageBubbleRepositoryFormat.imageScale,
+                          1 / MessageBubbleRepositoryFormat.imageScale,
+                        )
+                      : null,
+                  filterQuality: FilterQuality.high,
+                  gaplessPlayback: true,
+                ),
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 10, 18, 9),
+                    child: Text(
+                      widget.sampleText,
+                      maxLines: 2,
+                      textAlign: TextAlign.center,
+                      overflow: TextOverflow.clip,
+                      style: TextStyle(
+                        color: Color(processed.foregroundColorValue),
+                        fontSize: widget.sampleFontSize,
+                        height: 1.08,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _RepositoryChatPreview extends StatelessWidget {
+  const _RepositoryChatPreview({
+    required this.message,
+    required this.sourceLink,
+  });
+
+  final ChatMessage message;
+  final String? sourceLink;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Container(
+      key: const ValueKey('message-bubble-chat-preview'),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+      color: c.chatBackground,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: AppTheme.brand.withValues(alpha: 0.18),
+              shape: BoxShape.circle,
+            ),
+            alignment: Alignment.center,
+            child: AppIcon(
+              HeroAppIcons.solidMessage,
+              size: AppIconSize.lg,
+              color: AppTheme.brand,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Mithka',
+                  style: TextStyle(
+                    color: AppTheme.brand,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: sourceLink == null
+                      ? null
+                      : () => openLink(context, sourceLink!),
+                  child: SizedBox(
+                    width: 250,
+                    height: 86,
+                    child: _RepositoryBubbleThumbnail(
+                      message: message,
+                      sampleText: 'This is a message bubble preview.',
+                      sampleFontSize: 13,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),

@@ -87,7 +87,9 @@ class _MessageBubbleSettingsViewState extends State<MessageBubbleSettingsView> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(14, 18, 14, 28),
               children: [
-                _preview(context, theme.messageBubbleBackgroundSpec),
+                _preview(context, theme),
+                const SizedBox(height: 16),
+                _applicationScopeCard(context, theme),
                 const SizedBox(height: 16),
                 Container(
                   padding: const EdgeInsets.all(16),
@@ -120,7 +122,7 @@ class _MessageBubbleSettingsViewState extends State<MessageBubbleSettingsView> {
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        'Browse the public channel as a bubble grid. Repository images are exactly 390 × 186 px and contain four compact text-color squares.',
+                        'Browse the public channel as a bubble grid. Repository images are exactly 360 × 180 px, with a 300 × 120 bubble box and 30 px transparent padding on every side.',
                         style: TextStyle(
                           color: c.textSecondary,
                           fontSize: 13.5,
@@ -195,13 +197,77 @@ class _MessageBubbleSettingsViewState extends State<MessageBubbleSettingsView> {
     );
   }
 
-  Widget _preview(
-    BuildContext context,
-    MessageBubbleBackgroundSpec background,
-  ) {
+  Widget _applicationScopeCard(BuildContext context, ThemeController theme) {
     final c = context.colors;
+    Widget choice(String label, MessageBubbleApplicationScope scope) {
+      final selected = theme.messageBubbleApplicationScope == scope;
+      return GestureDetector(
+        key: ValueKey('message-bubble-scope-${scope.name}'),
+        behavior: HitTestBehavior.opaque,
+        onTap: () => theme.messageBubbleApplicationScope = scope,
+        child: SizedBox(
+          height: 48,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    label,
+                    style: TextStyle(fontSize: 15, color: c.textPrimary),
+                  ),
+                ),
+                AppIcon(
+                  selected ? HeroAppIcons.circleCheck : HeroAppIcons.circle,
+                  size: 19,
+                  color: selected ? AppTheme.brand : c.textTertiary,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Container(
-      height: 320,
+      decoration: BoxDecoration(
+        color: c.card,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: c.divider, width: 0.5),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 13, 14, 5),
+            child: Text(
+              'Apply bubble to',
+              style: TextStyle(
+                color: c.textSecondary,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          choice('My messages only', MessageBubbleApplicationScope.ownMessages),
+          Divider(height: 0.5, thickness: 0.5, color: c.divider),
+          choice('All messages', MessageBubbleApplicationScope.allMessages),
+        ],
+      ),
+    );
+  }
+
+  Widget _preview(BuildContext context, ThemeController theme) {
+    final c = context.colors;
+    final incomingBackground = theme.effectiveMessageBubbleBackgroundSpecFor(
+      outgoing: false,
+    );
+    final outgoingBackground = theme.effectiveMessageBubbleBackgroundSpecFor(
+      outgoing: true,
+    );
+    return Container(
+      height: 280,
       padding: const EdgeInsets.fromLTRB(14, 24, 14, 20),
       decoration: BoxDecoration(
         color: c.chatBackground,
@@ -219,7 +285,7 @@ class _MessageBubbleSettingsViewState extends State<MessageBubbleSettingsView> {
               Flexible(
                 child: _previewBubble(
                   context,
-                  background: background,
+                  background: incomingBackground,
                   outgoing: false,
                   text: 'Repository bubble preview',
                 ),
@@ -231,7 +297,7 @@ class _MessageBubbleSettingsViewState extends State<MessageBubbleSettingsView> {
             alignment: Alignment.centerRight,
             child: _previewBubble(
               context,
-              background: background,
+              background: outgoingBackground,
               outgoing: true,
               text: 'The center stretches with longer messages.',
             ),

@@ -116,7 +116,7 @@ void main() {
     );
   });
 
-  test('repository processor enforces 390x186 and reads four swatches', () {
+  test('repository processor enforces 360x180 and reads four swatches', () {
     final processed = const CustomMessageBubblePngProcessor().processRepository(
       _repositoryTemplatePng(),
     );
@@ -128,14 +128,27 @@ void main() {
       0xFFAABBCC,
     ]);
     expect(processed.foregroundColorValue, 0xFF112233);
-    expect((processed.width, processed.height), (145, 109));
+    expect((processed.width, processed.height), (181, 181));
+    final compact = image_lib.decodePng(processed.bytes)!;
+    expect(compact.getPixel(0, 0).a.toInt(), 0);
+    expect(compact.getPixel(90, 90).a.toInt(), 0xFF);
+    expect(_rgba(compact.getPixel(90, 90)), 0xFFEEDDCC);
+    expect(
+      MessageBubbleRepositoryFormat.swatchX(1) +
+          MessageBubbleRepositoryFormat.swatchSize,
+      lessThan(180),
+    );
+    expect(MessageBubbleRepositoryFormat.swatchX(2), greaterThan(180));
     final telegramJpeg = image_lib.encodeJpg(
       image_lib.decodePng(_repositoryTemplatePng())!,
       quality: 90,
     );
     final transcoded = const CustomMessageBubblePngProcessor()
         .processRepository(Uint8List.fromList(telegramJpeg));
-    expect((transcoded.width, transcoded.height), (145, 109));
+    expect((transcoded.width, transcoded.height), (181, 181));
+    final jpegCompact = image_lib.decodePng(transcoded.bytes)!;
+    expect(jpegCompact.getPixel(0, 0).a.toInt(), 0);
+    expect(jpegCompact.getPixel(90, 90).a.toInt(), 0xFF);
     expect(
       transcoded.foregroundColorValue & 0xFFFFFF,
       closeTo(0x112233, 0x050505),
@@ -157,8 +170,8 @@ void main() {
   test('eligible #msgbubble photos expose the apply action', () {
     ChatMessage message({
       required String caption,
-      int width = 390,
-      int height = 186,
+      int width = 360,
+      int height = 180,
     }) => ChatMessage(
       id: 42,
       isOutgoing: false,
@@ -186,6 +199,21 @@ void main() {
       ),
       isFalse,
     );
+    final pngDocument = ChatMessage(
+      id: 43,
+      isOutgoing: false,
+      text: '#msgbubble',
+      date: 0,
+      contentType: 'messageDocument',
+      document: MessageDocument(
+        fileName: 'pastry-pal.png',
+        size: 123,
+        ext: 'PNG',
+        file: TdFileRef(id: 8),
+      ),
+    );
+    expect(offersMessageBubbleApplyAction(pngDocument), isTrue);
+    expect(messageBubbleRepositoryFile(pngDocument)?.id, 8);
     expect(messageBubbleRepositoryLink(42), 'https://t.me/msgbubble/42');
   });
 
@@ -209,6 +237,11 @@ void main() {
       expect(await File(custom.filePath).exists(), isTrue);
       expect(await source.exists(), isFalse);
       expect(custom.centerSlice, const Rect.fromLTWH(2, 2, 1, 1));
+      expect(
+        custom.contentPadding,
+        const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      );
+      expect(custom.visualOverflow, EdgeInsets.zero);
       final roundTrip = CustomMessageBubbleBackground.fromJson(custom.toJson());
       expect(roundTrip.filePath, custom.filePath);
 
@@ -256,12 +289,30 @@ void main() {
     addTearDown(theme.dispose);
 
     theme.messageBubbleBackground = MessageBubbleBackground.berryOrbit;
+    theme.messageBubbleApplicationScope =
+        MessageBubbleApplicationScope.ownMessages;
+    expect(
+      theme.effectiveMessageBubbleBackgroundSpecFor(outgoing: false),
+      MessageBubbleBackgroundSpec.standard,
+    );
+    expect(
+      theme.effectiveMessageBubbleBackgroundSpecFor(outgoing: true).selection,
+      MessageBubbleBackground.berryOrbit,
+    );
     theme.usePerAccountTheming = true;
     theme.setActiveAccountSlot(1, userId: 22);
     expect(theme.messageBubbleBackground, MessageBubbleBackground.standard);
+    expect(
+      theme.messageBubbleApplicationScope,
+      MessageBubbleApplicationScope.allMessages,
+    );
 
     theme.setActiveAccountSlot(0, userId: 11);
     expect(theme.messageBubbleBackground, MessageBubbleBackground.berryOrbit);
+    expect(
+      theme.messageBubbleApplicationScope,
+      MessageBubbleApplicationScope.ownMessages,
+    );
 
     theme.themingEnabled = false;
     expect(
@@ -337,6 +388,81 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('decorative overflow preserves standard text coordinates', (
+    tester,
+  ) async {
+    const padding = EdgeInsets.symmetric(horizontal: 12, vertical: 9);
+    const constraints = BoxConstraints(minWidth: 49, minHeight: 37);
+    const decorative = MessageBubbleBackgroundSpec(
+      selection: MessageBubbleBackground.custom,
+      image: AssetImage('assets/message_bubbles/pastry-pal.png'),
+      centerSlice: Rect.fromLTWH(24, 18, 1, 1),
+      minimumSize: Size(49, 37),
+      contentPadding: padding,
+      backgroundColor: Color(0xFFFFF3B5),
+      foregroundColor: Color(0xFF5A321D),
+      visualOverflow: EdgeInsets.all(9),
+    );
+
+    Widget bubble(bool decorated) => StretchableMessageBubbleBackground(
+      key: ValueKey(decorated ? 'decorativeBubble' : 'standardBubble'),
+      background: decorated ? decorative : MessageBubbleBackgroundSpec.standard,
+      fallbackColor: Colors.white,
+      fallbackBorderRadius: BorderRadius.circular(12),
+      fallbackPadding: padding,
+      constraints: constraints,
+      child: Text(
+        'Identical text',
+        key: ValueKey(decorated ? 'decorativeText' : 'standardText'),
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                bubble(false),
+                const SizedBox(width: 80),
+                bubble(true),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    Offset localOffset(String bubbleKey, String textKey) =>
+        tester.getTopLeft(find.byKey(ValueKey(textKey))) -
+        tester.getTopLeft(find.byKey(ValueKey(bubbleKey)));
+
+    expect(
+      localOffset('decorativeBubble', 'decorativeText'),
+      localOffset('standardBubble', 'standardText'),
+    );
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('decorativeText'))).dy,
+      tester.getTopLeft(find.byKey(const ValueKey('standardText'))).dy,
+    );
+    expect(
+      tester.getSize(find.byKey(const ValueKey('decorativeBubble'))),
+      tester.getSize(find.byKey(const ValueKey('standardBubble'))),
+    );
+    final overflowFinder = find.descendant(
+      of: find.byKey(const ValueKey('decorativeBubble')),
+      matching: find.byType(Positioned),
+    );
+    expect(overflowFinder, findsOneWidget);
+    final overflowLayer = tester.widget<Positioned>(overflowFinder);
+    expect((overflowLayer.left, overflowLayer.top), (-9.0, -9.0));
+    expect((overflowLayer.right, overflowLayer.bottom), (-9.0, -9.0));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('appearance page routes bubble selection to the repository', (
     tester,
   ) async {
@@ -360,11 +486,13 @@ void main() {
 
     expect(find.byType(GridView), findsNothing);
     expect(find.text('@msgbubble repository'), findsOneWidget);
+    expect(find.text('My messages only'), findsOneWidget);
+    expect(find.text('All messages'), findsOneWidget);
     expect(
       find.byKey(const ValueKey('messageBubbleOpenRepository')),
       findsOneWidget,
     );
-    expect(find.textContaining('390 × 186'), findsOneWidget);
+    expect(find.textContaining('360 × 180'), findsOneWidget);
   });
 
   testWidgets(
@@ -392,6 +520,9 @@ void main() {
               sourceMessageLink: 'https://t.me/msgbubble/42',
             ),
       ))!;
+      expect(prepared.minimumSize.width, closeTo(36.3, 0.01));
+      expect(prepared.minimumSize.height, closeTo(36.3, 0.01));
+      expect(prepared.visualOverflow, const EdgeInsets.all(9));
       theme.installCustomMessageBubbleBackground(prepared);
 
       await tester.pumpWidget(
@@ -516,7 +647,21 @@ Uint8List _repositoryTemplatePng() {
     height: MessageBubbleRepositoryFormat.height,
     numChannels: 4,
   );
-  image.clear(image_lib.ColorRgba8(0xEE, 0xDD, 0xCC, 0xFF));
+  image.clear(image_lib.ColorRgba8(0xFA, 0xFA, 0xFA, 0xFF));
+  for (var y = 10; y < image.height - 10; y++) {
+    for (var x = 10; x < image.width - 10; x++) {
+      final border =
+          x < 13 || x >= image.width - 13 || y < 13 || y >= image.height - 13;
+      image.setPixelRgba(
+        x,
+        y,
+        border ? 0x50 : 0xEE,
+        border ? 0x50 : 0xDD,
+        border ? 0x50 : 0xCC,
+        0xFF,
+      );
+    }
+  }
   const colors = <(int, int, int)>[
     (0x11, 0x22, 0x33),
     (0x44, 0x55, 0x66),

@@ -27,6 +27,31 @@ void main() {
     expect(ThemeController(prefs).themingEnabled, isFalse);
   });
 
+  test('chat font size is not pre-scaled before root text scaling', () async {
+    SharedPreferences.setMockInitialValues({'fontScale': 1.5});
+    final prefs = await SharedPreferences.getInstance();
+    final controller = ThemeController(prefs);
+
+    expect(controller.fontScale, 1.5);
+    expect(controller.chatTextSize(16), 16);
+  });
+
+  test(
+    'interface option is squared while rendering keeps its prior scale',
+    () async {
+      SharedPreferences.setMockInitialValues({'interfaceScale': 1.5});
+      final prefs = await SharedPreferences.getInstance();
+      final controller = ThemeController(prefs);
+
+      expect(controller.interfaceScale, 2.25);
+      expect(controller.renderedInterfaceScale, 1.5);
+
+      controller.interfaceScale = 2.25;
+      expect(controller.renderedInterfaceScale, 1.5);
+      expect(prefs.getDouble('interfaceScale'), 1.5);
+    },
+  );
+
   testWidgets('Appearance is a hub and Theme owns conditional controls', (
     tester,
   ) async {
@@ -36,6 +61,11 @@ void main() {
     expect(find.text('Interface'), findsOneWidget);
     expect(find.text('Interface Size'), findsOneWidget);
     expect(find.text('Font'), findsOneWidget);
+    expect(find.text('Message Bubbles'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('appearance-message-bubbles-row')),
+      findsOneWidget,
+    );
     expect(find.text('Enable Theming'), findsNothing);
     expect(find.text('Wallpaper'), findsNothing);
     expect(find.text('Use chat theme for UI'), findsNothing);
@@ -53,6 +83,7 @@ void main() {
     controller.themingEnabled = true;
     await tester.pump();
     expect(find.text('Wallpaper'), findsOneWidget);
+    expect(find.text('Message Bubbles'), findsNothing);
     expect(find.text('Use chat theme for UI'), findsNothing);
     expect(find.text('Use themes per account'), findsOneWidget);
   });
@@ -124,6 +155,7 @@ void main() {
       HeroAppIcons.tableCells,
       HeroAppIcons.expand,
       HeroAppIcons.font,
+      HeroAppIcons.message,
     ]) {
       expect(find.byIcon(icon.data), findsOneWidget, reason: '$icon is reused');
     }
@@ -199,10 +231,11 @@ void main() {
 
     await openChild('chat-list-settings-row', 'chat-list-preview');
     expect(
-      find.byKey(const ValueKey('appearance-live-preview-unavailable')),
+      find.byKey(const ValueKey('chat-list-representative-row')),
       findsOneWidget,
     );
-    expect(find.text('Mithka Group'), findsNothing);
+    expect(find.text('Mithka Users'), findsOneWidget);
+    expect(find.text('Jennie: See you in the chat'), findsOneWidget);
     controller.showChatListSearch = false;
     await tester.pump();
     await returnToInterface();
@@ -311,9 +344,16 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Interface Size'), findsNothing);
-    expect(find.text('Mithka'), findsOneWidget);
-    expect(find.text('Saved Messages'), findsOneWidget);
-    expect(find.text('10:42'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('font-size-chat-preview')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('font-size-chat-list-preview')),
+      findsOneWidget,
+    );
+    expect(find.text('This is how chat text will look.'), findsOneWidget);
+    expect(find.text('Mithka Users'), findsOneWidget);
 
     tester.state<NavigatorState>(find.byType(Navigator).first).pop();
     await tester.pumpAndSettle();

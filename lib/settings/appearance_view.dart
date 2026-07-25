@@ -23,7 +23,6 @@ import 'package:provider/provider.dart';
 import '../app/unread_badge_model.dart';
 import '../chat/chat_wallpaper_view.dart';
 import '../chat/message_bubble.dart';
-import '../chats/chat_row_view.dart';
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
@@ -122,6 +121,24 @@ class AppearanceView extends StatelessWidget {
                         ),
                       ),
                       icon: HeroAppIcons.font.data,
+                    ),
+                  ),
+                ]),
+                const SizedBox(height: AppSpacing.xl),
+                _card(context, [
+                  KeyedSubtree(
+                    key: const ValueKey('appearance-message-bubbles-row'),
+                    child: _navigationRow(
+                      context,
+                      AppStrings.t(AppStringKeys.appearanceMessageBubbles),
+                      _messageBubbleBackgroundLabel(theme),
+                      () => Navigator.of(context).push(
+                        PageRouteBuilder<void>(
+                          pageBuilder: (_, _, _) =>
+                              const MessageBubbleSettingsView(),
+                        ),
+                      ),
+                      icon: HeroAppIcons.message.data,
                     ),
                   ),
                 ]),
@@ -229,47 +246,6 @@ class ThemeSettingsView extends StatelessWidget {
                         ),
                       ),
                       icon: HeroAppIcons.image.data,
-                    ),
-                    appearance._navigationRow(
-                      context,
-                      AppStrings.t(AppStringKeys.appearanceMessageBubbles),
-                      AppStrings.t(switch (theme.messageBubbleBackground) {
-                        MessageBubbleBackground.standard =>
-                          AppStringKeys.messageBubbleDefault,
-                        MessageBubbleBackground.midnightAurora =>
-                          AppStringKeys.messageBubbleMidnightAurora,
-                        MessageBubbleBackground.solarPorcelain =>
-                          AppStringKeys.messageBubbleSolarPorcelain,
-                        MessageBubbleBackground.berryOrbit =>
-                          AppStringKeys.messageBubbleBerryOrbit,
-                        MessageBubbleBackground.arcticBlueprint =>
-                          AppStringKeys.messageBubbleArcticBlueprint,
-                        MessageBubbleBackground.emberArcade =>
-                          AppStringKeys.messageBubbleEmberArcade,
-                        MessageBubbleBackground.lilacConstellation =>
-                          AppStringKeys.messageBubbleLilacConstellation,
-                        MessageBubbleBackground.forestFamiliar =>
-                          AppStringKeys.messageBubbleForestFamiliar,
-                        MessageBubbleBackground.inkWanderer =>
-                          AppStringKeys.messageBubbleInkWanderer,
-                        MessageBubbleBackground.pixelCadet =>
-                          AppStringKeys.messageBubblePixelCadet,
-                        MessageBubbleBackground.cosmicMechanic =>
-                          AppStringKeys.messageBubbleCosmicMechanic,
-                        MessageBubbleBackground.pastryPal =>
-                          AppStringKeys.messageBubblePastryPal,
-                        MessageBubbleBackground.noirDetective =>
-                          AppStringKeys.messageBubbleNoirDetective,
-                        MessageBubbleBackground.custom =>
-                          AppStringKeys.messageBubbleCustom,
-                      }),
-                      () => Navigator.of(context).push(
-                        PageRouteBuilder<void>(
-                          pageBuilder: (_, _, _) =>
-                              const MessageBubbleSettingsView(),
-                        ),
-                      ),
-                      icon: HeroAppIcons.message.data,
                     ),
                   ]),
                 ],
@@ -939,6 +915,32 @@ String _nameColorSummary(
   StatusEmojiDisplayMode status,
 ) => '${AppStrings.t(audience.label)} · ${AppStrings.t(status.label)}';
 
+String _messageBubbleBackgroundLabel(
+  ThemeController theme,
+) => AppStrings.t(switch (theme.messageBubbleBackground) {
+  MessageBubbleBackground.standard => AppStringKeys.messageBubbleDefault,
+  MessageBubbleBackground.midnightAurora =>
+    AppStringKeys.messageBubbleMidnightAurora,
+  MessageBubbleBackground.solarPorcelain =>
+    AppStringKeys.messageBubbleSolarPorcelain,
+  MessageBubbleBackground.berryOrbit => AppStringKeys.messageBubbleBerryOrbit,
+  MessageBubbleBackground.arcticBlueprint =>
+    AppStringKeys.messageBubbleArcticBlueprint,
+  MessageBubbleBackground.emberArcade => AppStringKeys.messageBubbleEmberArcade,
+  MessageBubbleBackground.lilacConstellation =>
+    AppStringKeys.messageBubbleLilacConstellation,
+  MessageBubbleBackground.forestFamiliar =>
+    AppStringKeys.messageBubbleForestFamiliar,
+  MessageBubbleBackground.inkWanderer => AppStringKeys.messageBubbleInkWanderer,
+  MessageBubbleBackground.pixelCadet => AppStringKeys.messageBubblePixelCadet,
+  MessageBubbleBackground.cosmicMechanic =>
+    AppStringKeys.messageBubbleCosmicMechanic,
+  MessageBubbleBackground.pastryPal => AppStringKeys.messageBubblePastryPal,
+  MessageBubbleBackground.noirDetective =>
+    AppStringKeys.messageBubbleNoirDetective,
+  MessageBubbleBackground.custom => AppStringKeys.messageBubbleCustom,
+});
+
 class _SurfacePreviewCard extends StatelessWidget {
   const _SurfacePreviewCard({required this.title, required this.child});
 
@@ -1250,34 +1252,153 @@ class _ChatListSettingsPreview extends StatelessWidget {
         border: Border.all(color: c.divider),
       ),
       clipBehavior: Clip.antiAlias,
-      child: _AppearanceSnapshotBuilder(
-        builder: (context, data) {
-          if (data.chatRows.isEmpty) {
-            return const _LivePreviewUnavailable();
-          }
-          return ExcludeSemantics(
-            child: IgnorePointer(
-              child: TickerMode(
-                enabled: false,
-                child: Column(
-                  children: [
-                    for (
-                      var index = 0;
-                      index < data.chatRows.length;
-                      index++
-                    ) ...[
-                      if (index > 0)
-                        InsetDivider(
-                          leadingInset: theme.avatarSize + AppSpacing.xxl,
-                        ),
-                      ChatRowView(chat: data.chatRows[index]),
-                    ],
-                  ],
+      child: ExcludeSemantics(
+        child: IgnorePointer(
+          child: _RepresentativeChatListRow(
+            key: const ValueKey('chat-list-representative-row'),
+            theme: theme,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RepresentativeChatListRow extends StatelessWidget {
+  const _RepresentativeChatListRow({super.key, required this.theme});
+
+  final ThemeController theme;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: Row(
+        children: [
+          Container(
+            width: theme.avatarSize,
+            height: theme.avatarSize,
+            decoration: BoxDecoration(
+              color: AppTheme.brand.withValues(alpha: 0.16),
+              shape: BoxShape.circle,
+            ),
+            alignment: Alignment.center,
+            child: AppIcon(
+              HeroAppIcons.solidMessage,
+              size: AppIconSize.xl,
+              color: AppTheme.brand,
+            ),
+          ),
+          const SizedBox(width: AppSpacing.lg),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Mithka Users',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: AppTextSize.bodyLarge,
+                    fontWeight: FontWeight.w600,
+                    color: c.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.xxs),
+                Text(
+                  'Jennie: See you in the chat',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: AppTextSize.footnote,
+                    color: c.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '10:42',
+                style: TextStyle(
+                  fontSize: AppTextSize.caption,
+                  color: c.textTertiary,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              Container(
+                width: 18,
+                height: 18,
+                decoration: BoxDecoration(
+                  color: AppTheme.brand,
+                  shape: BoxShape.circle,
+                ),
+                alignment: Alignment.center,
+                child: const Text(
+                  '2',
+                  style: TextStyle(
+                    color: Color(0xFFFFFFFF),
+                    fontSize: AppTextSize.caption,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RepresentativeMessageBubble extends StatelessWidget {
+  const _RepresentativeMessageBubble();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Align(
+      key: const ValueKey('font-size-chat-preview'),
+      alignment: Alignment.centerLeft,
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 260),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.lg,
+          AppSpacing.md,
+          AppSpacing.lg,
+          AppSpacing.sm,
+        ),
+        decoration: BoxDecoration(
+          color: c.bubbleIncoming,
+          borderRadius: BorderRadius.circular(AppRadius.card),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'This is how chat text will look.',
+              style: TextStyle(
+                fontSize: AppTextSize.bodyLarge,
+                color: c.bubbleIncomingText,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.xs),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                '10:42',
+                style: TextStyle(
+                  fontSize: AppTextSize.caption,
+                  color: c.textTertiary,
                 ),
               ),
             ),
-          );
-        },
+          ],
+        ),
       ),
     );
   }
@@ -1622,48 +1743,41 @@ extension _DisplayAppearanceHelpers on AppearanceView {
   }
 
   Widget _fontSizePreview(BuildContext context, ThemeController theme) {
-    final c = context.colors;
-    Widget sample(String text, double size, FontWeight weight) => Row(
-      children: [
-        Expanded(
-          child: Text(
-            text,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: size,
-              fontWeight: weight,
-              color: c.textPrimary,
-            ),
-          ),
-        ),
-        const SizedBox(width: AppSpacing.lg),
-        Text(
-          '${size.round()}',
-          style: TextStyle(
-            fontSize: AppTextSize.caption,
-            color: c.textTertiary,
-            fontFeatures: const [FontFeature.tabularFigures()],
-          ),
-        ),
-      ],
-    );
-
     return _previewCard(
       context,
       title: AppStrings.t(AppStringKeys.appearanceFontSize),
       value: theme.fontScale,
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          sample('Mithka', AppTextSize.title, FontWeight.w700),
-          const SizedBox(height: AppSpacing.lg),
-          sample(
-            AppStrings.t(AppStringKeys.savedMessages),
-            AppTextSize.bodyLarge,
-            FontWeight.w500,
+          Text(
+            AppStrings.t(AppStringKeys.appearanceChatView),
+            style: TextStyle(
+              fontSize: AppTextSize.caption,
+              color: context.colors.textTertiary,
+            ),
           ),
-          const SizedBox(height: AppSpacing.lg),
-          sample('10:42', AppTextSize.caption, FontWeight.w400),
+          const SizedBox(height: AppSpacing.md),
+          const _RepresentativeMessageBubble(),
+          const SizedBox(height: AppSpacing.xl),
+          Text(
+            AppStrings.t(AppStringKeys.appearanceChatList),
+            style: TextStyle(
+              fontSize: AppTextSize.caption,
+              color: context.colors.textTertiary,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Container(
+            key: const ValueKey('font-size-chat-list-preview'),
+            decoration: BoxDecoration(
+              color: context.colors.background,
+              borderRadius: BorderRadius.circular(AppRadius.control),
+              border: Border.all(color: context.colors.divider),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: _RepresentativeChatListRow(theme: theme),
+          ),
         ],
       ),
     );

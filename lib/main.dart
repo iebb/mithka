@@ -479,7 +479,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
                 value: systemUiOverlayStyleForSurface(context.colors.navBar),
                 child: _ScaledAppView(
                   fontScale: theme.fontScale,
-                  interfaceScale: theme.interfaceScale,
+                  interfaceScale: theme.renderedInterfaceScale,
                   child: DefaultTextStyle(
                     style: theme.applyAppTextStyle(
                       AppTextStyle.body(context.colors.textPrimary),
@@ -590,7 +590,10 @@ class _ScaledAppView extends StatelessWidget {
       viewPadding: _unscaleInsets(media.viewPadding, scale),
       viewInsets: _unscaleInsets(media.viewInsets, scale),
       systemGestureInsets: _unscaleInsets(media.systemGestureInsets, scale),
-      textScaler: TextScaler.linear(fontScale / scale),
+      // The outer transform scales geometry and text together. Keep only the
+      // independent font preference here; dividing by interfaceScale caused
+      // normal Text widgets to stay small while noScaling text still grew.
+      textScaler: TextScaler.linear(fontScale),
     );
 
     return AppKeyboardDismissOnTap(

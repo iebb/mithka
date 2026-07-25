@@ -49,22 +49,44 @@ class StretchableMessageBubbleBackground extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final decorative = background.isDecorative;
+    if (decorative) {
+      final overflow = background.visualOverflow;
+      final content = Container(
+        constraints: _effectiveConstraints,
+        padding: background.contentPadding,
+        child: child,
+      );
+      return Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(
+            left: -overflow.left,
+            top: -overflow.top,
+            right: -overflow.right,
+            bottom: -overflow.bottom,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                image: DecorationImage(
+                  image: background.image!,
+                  centerSlice: background.centerSlice,
+                  fit: BoxFit.fill,
+                  filterQuality: FilterQuality.high,
+                ),
+              ),
+            ),
+          ),
+          content,
+        ],
+      );
+    }
     return Container(
       constraints: _effectiveConstraints,
-      padding: decorative ? background.contentPadding : fallbackPadding,
+      padding: fallbackPadding,
       clipBehavior: clipBehavior,
       decoration: BoxDecoration(
-        color: decorative ? null : fallbackColor,
-        borderRadius: decorative ? null : fallbackBorderRadius,
-        border: decorative ? null : fallbackBorder,
-        image: decorative
-            ? DecorationImage(
-                image: background.image!,
-                centerSlice: background.centerSlice,
-                fit: BoxFit.fill,
-                filterQuality: FilterQuality.high,
-              )
-            : null,
+        color: fallbackColor,
+        borderRadius: fallbackBorderRadius,
+        border: fallbackBorder,
       ),
       child: child,
     );

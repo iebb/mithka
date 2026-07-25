@@ -68,6 +68,7 @@ class MessageBubbleBackgroundSpec {
     required this.contentPadding,
     required this.backgroundColor,
     required this.foregroundColor,
+    this.visualOverflow = EdgeInsets.zero,
   });
 
   factory MessageBubbleBackgroundSpec.resolve(
@@ -90,12 +91,13 @@ class MessageBubbleBackgroundSpec {
     MessageBubbleBackground.custom when custom != null =>
       MessageBubbleBackgroundSpec(
         selection: MessageBubbleBackground.custom,
-        image: FileImage(File(custom.filePath)),
+        image: FileImage(File(custom.filePath), scale: custom.imageScale),
         centerSlice: custom.centerSlice,
         minimumSize: custom.minimumSize,
         contentPadding: custom.contentPadding,
         backgroundColor: custom.backgroundColor,
         foregroundColor: custom.foregroundColor,
+        visualOverflow: custom.visualOverflow,
       ),
     MessageBubbleBackground.custom => standard,
   };
@@ -237,6 +239,7 @@ class MessageBubbleBackgroundSpec {
   final EdgeInsets contentPadding;
   final Color? backgroundColor;
   final Color? foregroundColor;
+  final EdgeInsets visualOverflow;
 
   bool get isDecorative => image != null;
 }
