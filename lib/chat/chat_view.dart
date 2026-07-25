@@ -87,6 +87,7 @@ import 'media_library_saver.dart';
 import 'media_send_preview_view.dart';
 import 'message_action_menu.dart';
 import 'message_bubble.dart';
+import 'message_bubble_repository_view.dart';
 import 'message_replies_sheet.dart';
 import 'music_player_controller.dart';
 import 'openai_compatible_unread_summary_provider.dart';
@@ -116,6 +117,21 @@ ChatMessage selectMediaAlbumInteractionOwner(List<ChatMessage> group) {
   }
   return group.first;
 }
+
+@visibleForTesting
+bool chatTranscriptBoundaryChanged({
+  required int previousCount,
+  required int currentCount,
+  required int? previousNewestMessageId,
+  required int? currentNewestMessageId,
+  required int? previousOldestMessageId,
+  required int? currentOldestMessageId,
+  required bool hasBufferedLiveMessages,
+}) =>
+    previousCount != currentCount ||
+    previousNewestMessageId != currentNewestMessageId ||
+    previousOldestMessageId != currentOldestMessageId ||
+    hasBufferedLiveMessages;
 
 class _MessageDeleteOptions {
   const _MessageDeleteOptions({
@@ -821,6 +837,9 @@ class _ChatViewState extends State<ChatView> {
   final Set<int> _reportedVisibleMessageIds = <int>{};
   final Set<int> _expandedBlockedRunIds = <int>{};
   bool _unreadProgressUpdateScheduled = false;
+  bool _viewTickerEnabled = true;
+  bool _modelDirtyWhileInactive = false;
+  bool _reactivationSyncScheduled = false;
   ChatMessage? _actionTarget;
   Rect? _actionRect; // global bounds of the long-pressed bubble
   MessageActionSource _actionSource = MessageActionSource.normal;
@@ -1057,7 +1076,7 @@ class _ChatViewState extends State<ChatView> {
     _setScrollTarget(widget.initialMessageId);
     _vm.onAppear();
     _readSyncTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (mounted && _isAtLoadedBottom(80)) {
+      if (mounted && _viewTickerEnabled && _isAtLoadedBottom(80)) {
         _markReadAtBottomIfNeeded();
       }
     });
@@ -1077,16 +1096,32 @@ class _ChatViewState extends State<ChatView> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_notificationVisibilityRegistered) return;
-    _notificationVisibilityRegistered = true;
-    NotificationController.shared.registerVisibleChat(
-      this,
-      widget.chatId,
-      () =>
-          mounted &&
-          (ModalRoute.of(context)?.isCurrent ?? false) &&
-          TickerMode.valuesOf(context).enabled,
-    );
+    final tickerEnabled = TickerMode.valuesOf(context).enabled;
+    final reactivated = !_viewTickerEnabled && tickerEnabled;
+    _viewTickerEnabled = tickerEnabled;
+    if (reactivated &&
+        _modelDirtyWhileInactive &&
+        !_reactivationSyncScheduled) {
+      _reactivationSyncScheduled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _reactivationSyncScheduled = false;
+        if (!mounted || !_viewTickerEnabled || !_modelDirtyWhileInactive) {
+          return;
+        }
+        _onModel();
+      });
+    }
+    if (!_notificationVisibilityRegistered) {
+      _notificationVisibilityRegistered = true;
+      NotificationController.shared.registerVisibleChat(
+        this,
+        widget.chatId,
+        () =>
+            mounted &&
+            (ModalRoute.of(context)?.isCurrent ?? false) &&
+            TickerMode.valuesOf(context).enabled,
+      );
+    }
   }
 
   bool get _shouldRestoreSessionScroll {
@@ -1123,7 +1158,11 @@ class _ChatViewState extends State<ChatView> {
       towardOlderMessages: pos.userScrollDirection == ScrollDirection.forward,
       isAtBottom: _isAtLoadedBottom(1),
     );
-    _saveSessionScrollSnapshot();
+    // Persist cheap scalar state while the finger is moving. Capturing an
+    // anchor walks every mounted transcript entry and performs layout-space
+    // conversions, so defer that work until scrolling settles or the view
+    // exits.
+    _saveSessionScrollSnapshot(captureAnchor: false);
     _scheduleUnreadProgressUpdate();
     if (_selectionAnchorId != null && scrollingUp != _selectionScrollingUp) {
       setState(() => _selectionScrollingUp = scrollingUp);
@@ -1190,6 +1229,7 @@ class _ChatViewState extends State<ChatView> {
     } else if (notification is ScrollEndNotification) {
       _olderHistoryPull.reset();
       _scheduleLoadedOlderReveal();
+      _saveSessionScrollSnapshot();
     }
     return false;
   }
@@ -1274,7 +1314,7 @@ class _ChatViewState extends State<ChatView> {
     _scroll.jumpTo(_scroll.position.pixels);
   }
 
-  void _saveSessionScrollSnapshot() {
+  void _saveSessionScrollSnapshot({bool captureAnchor = true}) {
     if (!_didInitialScroll ||
         !_initialTranscriptReady ||
         _maintainSessionScrollAnchor ||
@@ -1285,7 +1325,9 @@ class _ChatViewState extends State<ChatView> {
     final pos = _scroll.position;
     if (!pos.hasContentDimensions) return;
     final wasAtLoadedBottom = _isAtLoadedBottom(80);
-    final anchor = wasAtLoadedBottom ? null : _captureSessionScrollAnchor();
+    final anchor = wasAtLoadedBottom || !captureAnchor
+        ? null
+        : _captureSessionScrollAnchor();
     _sessionScrollSnapshots[widget.chatId] = _ChatScrollSnapshot(
       pixels: clampScrollOffset(pos, pos.pixels),
       wasAtLoadedBottom: wasAtLoadedBottom,
@@ -1788,6 +1830,11 @@ class _ChatViewState extends State<ChatView> {
 
   void _onModel() {
     if (!mounted) return;
+    if (!_viewTickerEnabled) {
+      _modelDirtyWhileInactive = true;
+      return;
+    }
+    _modelDirtyWhileInactive = false;
     final olderLoadFinished = _wasLoadingOlder && !_vm.isLoadingOlder;
     _wasLoadingOlder = _vm.isLoadingOlder;
     final oldest = _oldestServerMessage(_vm.messages);
@@ -1883,10 +1930,19 @@ class _ChatViewState extends State<ChatView> {
     }
     final rebasedParkedShortArm = parkedShortArm || expandedInitialWindow;
     final liveIncomingMessageIds = _vm.consumeLiveIncomingMessageIds();
-    if (_vm.messages.length != _lastCount) {
+    final newest = _latestServerMessage(_vm.messages);
+    final transcriptBoundaryChanged = chatTranscriptBoundaryChanged(
+      previousCount: _lastCount,
+      currentCount: _vm.messages.length,
+      previousNewestMessageId: _lastNewestMessageId,
+      currentNewestMessageId: newest?.id,
+      previousOldestMessageId: _lastOldestMessageId,
+      currentOldestMessageId: oldest?.id,
+      hasBufferedLiveMessages: liveIncomingMessageIds.isNotEmpty,
+    );
+    if (transcriptBoundaryChanged) {
       final wasNearBottom = _isNearBottom(72);
       final previousNewestId = _lastNewestMessageId;
-      final newest = _latestServerMessage(_vm.messages);
       final appendedNewest =
           newest != null &&
           newest.id != previousNewestId &&
@@ -2957,6 +3013,15 @@ class _ChatViewState extends State<ChatView> {
       showCommentAttachment: _vm.isChannel,
       channelHasLinkedDiscussion: _vm.hasLinkedDiscussion,
       onOpenImage: _openImage,
+      onApplyMessageBubble: offersMessageBubbleApplyAction(message)
+          ? (message) => unawaited(
+              applyMessageBubbleRepositoryPhoto(
+                context,
+                message,
+                sourceMessageLink: messageBubbleRepositoryLink(message.id),
+              ),
+            )
+          : null,
       onOpenSticker: _openSticker,
       onPlayVideo: _playVideo,
       onPlayMusic: _playMusicMessage,
@@ -4715,6 +4780,9 @@ class _ChatViewState extends State<ChatView> {
         title: widget.title,
       );
     }
+    if (_vm.isMessageBubbleRepository) {
+      return MessageBubbleRepositoryView(viewModel: _vm, onBack: _handleBack);
+    }
     final showPeerRestrictionBlock =
         _vm.isPeerRestricted && _vm.messages.isEmpty;
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
@@ -4916,38 +4984,6 @@ class _ChatViewState extends State<ChatView> {
           ),
         ),
         if (!transcriptReady) Positioned.fill(child: _transcriptSkeleton()),
-        if (transcriptReady && _vm.isLoadingOlder)
-          Positioned(
-            key: const ValueKey('chat-older-history-loading'),
-            top: showPinnedTodo ? 72 : 8,
-            left: 0,
-            right: 0,
-            child: IgnorePointer(
-              child: Center(
-                child: Container(
-                  width: 34,
-                  height: 34,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: context.colors.card.withValues(alpha: 0.94),
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: context.colors.divider,
-                      width: 0.5,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.16),
-                        blurRadius: 10,
-                        offset: const Offset(0, 3),
-                      ),
-                    ],
-                  ),
-                  child: const AppActivityIndicator(size: 17),
-                ),
-              ),
-            ),
-          ),
         if (showPinnedTodo)
           Positioned(
             top: 12,
@@ -6506,8 +6542,12 @@ class _ChatViewState extends State<ChatView> {
         );
     final firstContactBeforeCenter =
         firstContactInfo != null && !firstContactAtCenter;
+    final showOlderLoadingGap = _vm.isLoadingOlder;
+    final olderLoadingItemCount = showOlderLoadingGap ? 1 : 0;
     final olderChildCount =
-        olderEntries.length + (firstContactBeforeCenter ? 1 : 0);
+        olderEntries.length +
+        (firstContactBeforeCenter ? 1 : 0) +
+        olderLoadingItemCount;
     final newerLeadingItemCount = firstContactAtCenter ? 1 : 0;
     final olderIndexByKey = <Key, int>{
       for (var i = 0; i < olderEntries.length; i++) olderEntries[i].key: i,
@@ -6552,6 +6592,13 @@ class _ChatViewState extends State<ChatView> {
                         messages,
                       );
                     }
+                    if (firstContactBeforeCenter &&
+                        index == olderEntries.length) {
+                      return _buildFirstContactCard(firstContactInfo);
+                    }
+                    if (showOlderLoadingGap) {
+                      return _historyLoadingGap('chat-older-history-gap');
+                    }
                     return _buildFirstContactCard(firstContactInfo!);
                   },
                   childCount: olderChildCount,
@@ -6589,8 +6636,36 @@ class _ChatViewState extends State<ChatView> {
                   semanticIndexOffset: olderChildCount,
                 ),
               ),
+              if (_vm.isLoadingLatest)
+                SliverToBoxAdapter(
+                  child: _historyLoadingGap('chat-latest-history-gap'),
+                ),
               const SliverToBoxAdapter(child: SizedBox(height: 8)),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _historyLoadingGap(String key) {
+    return AnimatedSize(
+      key: ValueKey(key),
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
+      child: SizedBox(
+        height: 54,
+        child: Center(
+          child: Container(
+            width: 34,
+            height: 34,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: context.colors.card.withValues(alpha: 0.94),
+              shape: BoxShape.circle,
+              border: Border.all(color: context.colors.divider, width: 0.5),
+            ),
+            child: const AppActivityIndicator(size: 17),
           ),
         ),
       ),

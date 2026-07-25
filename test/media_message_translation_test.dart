@@ -12,6 +12,14 @@ import 'package:mithka/theme/theme_controller.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+Iterable<TextSpan> _textSpans(InlineSpan span) sync* {
+  if (span is! TextSpan) return;
+  yield span;
+  for (final child in span.children ?? const <InlineSpan>[]) {
+    yield* _textSpans(child);
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -120,6 +128,79 @@ void main() {
       find.byKey(const ValueKey('messageTranslationBlock')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('document cards expand to the standard message width', (
+    tester,
+  ) async {
+    final message = ChatMessage(
+      id: 3,
+      isOutgoing: false,
+      text: '',
+      date: 1,
+      contentType: 'messageDocument',
+      document: MessageDocument(
+        fileName: 'archive.ipa',
+        size: 1024,
+        ext: 'IPA',
+        file: null,
+      ),
+    );
+
+    await pumpBubble(tester, message);
+
+    final card = find.byKey(const ValueKey('messageDocumentAlbumCard-3'));
+    final bubble = find.byType(MessageBubble);
+    expect(
+      tester.getSize(card).width,
+      moreOrLessEquals(tester.getSize(bubble).width * 0.75),
+    );
+    expect(tester.getSize(card).width, greaterThan(244));
+  });
+
+  testWidgets('message links have no generated underline', (tester) async {
+    const text = 'site https://example.com manual';
+    final message = ChatMessage(
+      id: 4,
+      isOutgoing: false,
+      text: text,
+      date: 1,
+      contentType: 'messageText',
+      textEntities: const [
+        MessageTextEntity(
+          offset: 0,
+          length: 4,
+          type: 'textEntityTypeTextUrl',
+          url: 'https://example.com/site',
+        ),
+        MessageTextEntity(
+          offset: 25,
+          length: 6,
+          type: 'textEntityTypeUnderline',
+        ),
+      ],
+    );
+
+    await pumpBubble(tester, message);
+
+    final textBubble = find.byKey(const ValueKey('messageTextBubble-4'));
+    final richText = tester
+        .widgetList<RichText>(
+          find.descendant(of: textBubble, matching: find.byType(RichText)),
+        )
+        .firstWhere((widget) => widget.text.toPlainText().contains(text));
+    final spans = _textSpans(richText.text).toList();
+    final entityLink = spans.singleWhere((span) => span.text == 'site');
+    final autoLink = spans.singleWhere(
+      (span) => span.text == 'https://example.com',
+    );
+    final explicitUnderline = spans.singleWhere(
+      (span) => span.text == 'manual',
+    );
+
+    expect(entityLink.style?.decoration, isNot(TextDecoration.underline));
+    expect(autoLink.style?.decoration, isNot(TextDecoration.underline));
+    expect(explicitUnderline.style?.decoration, TextDecoration.underline);
   });
 
   testWidgets('document albums render as one bubble with one shared caption', (

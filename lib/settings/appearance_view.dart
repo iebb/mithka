@@ -826,17 +826,6 @@ class ChatListAppearanceSettingsView extends StatelessWidget {
           ),
           icon: HeroAppIcons.inbox.data,
         ),
-        appearance._navigationRow(
-          context,
-          AppStrings.t(AppStringKeys.appearanceGestures),
-          '',
-          () => Navigator.of(context).push(
-            PageRouteBuilder<void>(
-              pageBuilder: (_, _, _) => const GestureSettingsView(),
-            ),
-          ),
-          icon: HeroAppIcons.arrowsRightLeft.data,
-        ),
         appearance._toggleRow(
           context,
           HeroAppIcons.magnifyingGlass.data,
@@ -1554,78 +1543,6 @@ class ArchivedChatsSettingsView extends StatelessWidget {
                       mode.label,
                       theme.archivedChatsDisplayMode == mode,
                       () => theme.archivedChatsDisplayMode = mode,
-                    ),
-                ]),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class GestureSettingsView extends StatelessWidget {
-  const GestureSettingsView({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    final theme = context.watch<ThemeController>();
-    const appearance = AppearanceView();
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
-        children: [
-          NavHeader(
-            title: AppStrings.t(AppStringKeys.appearanceGestures),
-            onBack: () => Navigator.of(context).pop(),
-          ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.lg,
-                AppSpacing.xl,
-                AppSpacing.lg,
-                AppSpacing.section,
-              ),
-              children: [
-                appearance._label(
-                  context,
-                  AppStrings.t(AppStringKeys.gesturesChatListSwipe),
-                ),
-                appearance._card(context, [
-                  for (final behavior in ChatListSwipeBehavior.values)
-                    appearance._choiceRow(
-                      context,
-                      behavior.icon,
-                      behavior.label,
-                      theme.chatListSwipeBehavior == behavior,
-                      () => theme.chatListSwipeBehavior = behavior,
-                    ),
-                  if (theme.chatListSwipeBehavior ==
-                      ChatListSwipeBehavior.switchFolders)
-                    appearance._toggleRow(
-                      context,
-                      HeroAppIcons.message.data,
-                      AppStrings.t(AppStringKeys.gesturesHoldSwipeActions),
-                      theme.chatListHoldSwipeActions,
-                      (value) => theme.chatListHoldSwipeActions = value,
-                    ),
-                ]),
-                const SizedBox(height: AppSpacing.xl),
-                appearance._label(
-                  context,
-                  AppStrings.t(AppStringKeys.gesturesThreeFingerSwipe),
-                ),
-                appearance._card(context, [
-                  for (final behavior in ThreeFingerSwipeBehavior.values)
-                    appearance._choiceRow(
-                      context,
-                      behavior.icon,
-                      behavior.label,
-                      theme.threeFingerSwipeBehavior == behavior,
-                      () => theme.threeFingerSwipeBehavior = behavior,
                     ),
                 ]),
               ],

@@ -261,6 +261,7 @@ class ChatViewModel extends ChangeNotifier {
   bool joinByRequest = false; // joining needs approval → "申请加入"
   bool joinRequested = false; // a join request was sent (awaiting approval)
   bool isChannel = false; // broadcast channel (members can't post)
+  bool isMessageBubbleRepository = false;
   bool hasLinkedDiscussion = false;
   bool isDirectMessagesGroup = false;
   bool isAdministeredDirectMessagesGroup = false;
@@ -367,6 +368,7 @@ class ChatViewModel extends ChangeNotifier {
   bool get canLoadOlder =>
       !_isLoadingOlder && _allMessages.isNotEmpty && _hasOlderHistory;
   bool get isLoadingOlder => _isLoadingOlder;
+  bool get isLoadingLatest => _latestHistoryLoadInFlight;
   bool get hasOlderHistory => _hasOlderHistory;
   int get _oldestServerMessageId {
     for (final message in _allMessages) {
@@ -2613,6 +2615,7 @@ class ChatViewModel extends ChangeNotifier {
     _latestHistoryLiveArrivals.clear();
     _latestHistoryDeletedMessageIds.clear();
     _latestHistoryLoadInvalidated = false;
+    notifyListeners();
     final messagesAtRequestStart = List<ChatMessage>.of(_allMessages);
     try {
       Map<String, dynamic> response;
@@ -2679,6 +2682,7 @@ class ChatViewModel extends ChangeNotifier {
       _latestHistoryLiveArrivals.clear();
       _latestHistoryDeletedMessageIds.clear();
       _latestHistoryLoadInvalidated = false;
+      notifyListeners();
     }
 
     return true;
@@ -2759,6 +2763,7 @@ class ChatViewModel extends ChangeNotifier {
     canJoin = false;
     joinByRequest = false;
     isChannel = false;
+    isMessageBubbleRepository = false;
     hasLinkedDiscussion = false;
     isDirectMessagesGroup = false;
     isAdministeredDirectMessagesGroup = false;
@@ -2846,6 +2851,17 @@ class ChatViewModel extends ChangeNotifier {
               );
             }
             isChannel = sg.boolean('is_channel') ?? false;
+            final usernames = sg.obj('usernames');
+            final activeUsernames = usernames?['active_usernames'];
+            final repositoryNames = <String>{
+              if (activeUsernames is List)
+                for (final value in activeUsernames.whereType<String>())
+                  value.toLowerCase(),
+              if ((usernames?.str('editable_username') ?? '').isNotEmpty)
+                usernames!.str('editable_username')!.toLowerCase(),
+            };
+            isMessageBubbleRepository =
+                isChannel && repositoryNames.contains('msgbubble');
             isDirectMessagesGroup =
                 sg.boolean('is_direct_messages_group') ?? false;
             isAdministeredDirectMessagesGroup =
@@ -4415,28 +4431,58 @@ class ChatViewModel extends ChangeNotifier {
   /// For each message that replies to another, resolve the quoted sender +
   /// preview — from the already-loaded list when possible, else via getMessage.
   void _resolveRepliesIfNeeded(List<ChatMessage> batch) {
-    for (final m in batch) {
-      final rid = m.replyToMessageId;
-      if (rid == null || m.replyToPreview != null) continue;
-      final idx = messages.indexWhere((x) => x.id == rid);
-      if (idx >= 0) {
-        _applyReply(m, messages[idx]);
-      } else {
-        _client
-            .query({
-              '@type': 'getMessage',
-              'chat_id': chatId,
-              'message_id': rid,
-            })
-            .then((raw) {
-              final q = TDParse.message(raw);
-              if (q != null) {
-                _applyReply(m, q);
-                notifyListeners();
-              }
-            })
-            .catchError((_) {});
+    final repliesToResolve = batch
+        .where(
+          (message) =>
+              message.replyToMessageId != null &&
+              message.replyToPreview == null,
+        )
+        .toList(growable: false);
+    if (repliesToResolve.isEmpty) return;
+    final loadedById = repliesToResolve.length > 1
+        ? <int, ChatMessage>{
+            for (final message in messages) message.id: message,
+          }
+        : null;
+    final unresolved = <int, List<ChatMessage>>{};
+    for (final m in repliesToResolve) {
+      final rid = m.replyToMessageId!;
+      ChatMessage? quoted = loadedById?[rid];
+      if (loadedById == null) {
+        for (final message in messages) {
+          if (message.id != rid) continue;
+          quoted = message;
+          break;
+        }
       }
+      if (quoted != null) {
+        _applyReply(m, quoted);
+        continue;
+      }
+      unresolved.putIfAbsent(rid, () => <ChatMessage>[]).add(m);
+    }
+    for (final entry in unresolved.entries) {
+      _client
+          .query({
+            '@type': 'getMessage',
+            'chat_id': chatId,
+            'message_id': entry.key,
+          })
+          .then((raw) {
+            final quoted = TDParse.message(raw);
+            if (quoted == null) return;
+            var changed = false;
+            for (final message in entry.value) {
+              if (message.replyToMessageId != entry.key ||
+                  message.replyToPreview != null) {
+                continue;
+              }
+              _applyReply(message, quoted);
+              changed = true;
+            }
+            if (changed) notifyListeners();
+          })
+          .catchError((_) {});
     }
   }
 
@@ -4908,9 +4954,18 @@ class ChatViewModel extends ChangeNotifier {
   }
 
   void _patchSender(_SenderInfo info, int senderId) {
+    _patchSenders(<int, _SenderInfo>{senderId: info});
+  }
+
+  void _patchSenders(Map<int, _SenderInfo> senders) {
+    if (senders.isEmpty) return;
     var changed = false;
     for (final m in messages) {
-      if (m.senderId != senderId || (m.isOutgoing && !m.senderIsChat)) continue;
+      final senderId = m.senderId;
+      if (senderId == null) continue;
+      final info = senders[senderId];
+      if (info == null) continue;
+      if (m.isOutgoing && !m.senderIsChat) continue;
       if (m.senderName == info.name &&
           _sameSenderPhoto(m.senderPhoto, info.photo) &&
           m.senderRole == info.role &&
@@ -4954,17 +5009,13 @@ class ChatViewModel extends ChangeNotifier {
 
   void _resolveSendersIfNeeded(List<ChatMessage> batch) {
     if (!isGroup) return;
-    _primeCachedSenderIdentities(batch);
+    final senderIds = _resolvableSenderIds(batch);
+    final cachedToPatch = _primeCachedSenderIdentities(senderIds);
     final pending = <int>{};
-    for (final message in batch) {
-      if ((message.isOutgoing && !message.senderIsChat) || message.isService) {
-        continue;
-      }
-      final senderId = message.senderId;
-      if (senderId == null) continue;
+    for (final senderId in senderIds) {
       final cached = _senderCache[senderId];
       if (cached != null) {
-        _patchSender(cached, senderId);
+        cachedToPatch[senderId] = cached;
         if (!_resolvedSenderDetails.contains(senderId) &&
             !_resolvingSenders.contains(senderId)) {
           pending.add(senderId);
@@ -4973,19 +5024,25 @@ class ChatViewModel extends ChangeNotifier {
         pending.add(senderId);
       }
     }
+    _patchSenders(cachedToPatch);
     for (final senderId in pending) {
       _resolvingSenders.add(senderId);
       _resolveSender(senderId);
     }
   }
 
-  void _primeCachedSenderIdentities(List<ChatMessage> batch) {
-    for (final message in batch) {
-      if ((message.isOutgoing && !message.senderIsChat) || message.isService) {
-        continue;
-      }
-      final senderId = message.senderId;
-      if (senderId == null || senderId <= 0) continue;
+  Set<int> _resolvableSenderIds(Iterable<ChatMessage> batch) => {
+    for (final message in batch)
+      if (!(message.isOutgoing && !message.senderIsChat) &&
+          !message.isService &&
+          message.senderId != null)
+        message.senderId!,
+  };
+
+  Map<int, _SenderInfo> _primeCachedSenderIdentities(Set<int> senderIds) {
+    final primed = <int, _SenderInfo>{};
+    for (final senderId in senderIds) {
+      if (senderId <= 0) continue;
       final user = TdUserIndex.shared.userFor(_client.activeSlot, senderId);
       if (user == null) continue;
       final existing = _senderCache[senderId];
@@ -4995,13 +5052,14 @@ class ChatViewModel extends ChangeNotifier {
         title: existing?.title,
       );
       _senderCache[senderId] = info;
-      _patchSender(info, senderId);
+      primed[senderId] = info;
     }
+    return primed;
   }
 
   @visibleForTesting
   void primeCachedSenderIdentitiesForTesting() {
-    _primeCachedSenderIdentities(messages);
+    _patchSenders(_primeCachedSenderIdentities(_resolvableSenderIds(messages)));
   }
 
   @visibleForTesting

@@ -492,7 +492,9 @@ class _TelegramRichTextState extends State<TelegramRichText> {
     var last = 0;
     for (final match in _linkRegExp.allMatches(text)) {
       if (match.start > last) {
-        spans.add(TextSpan(text: text.substring(last, match.start)));
+        spans.add(
+          TextSpan(text: text.substring(last, match.start), style: baseStyle),
+        );
       }
       final matched = text.substring(match.start, match.end);
       final isMention = match.group(2) != null;
@@ -522,19 +524,15 @@ class _TelegramRichTextState extends State<TelegramRichText> {
       spans.add(
         TextSpan(
           text: matched,
-          style: baseStyle.copyWith(
-            color: linkColor,
-            decoration: isMention || isHashtag
-                ? baseStyle.decoration
-                : TextDecoration.underline,
-            decorationColor: linkColor,
-          ),
+          style: baseStyle.copyWith(color: linkColor),
           recognizer: recognizer,
         ),
       );
       last = match.end;
     }
-    if (last < text.length) spans.add(TextSpan(text: text.substring(last)));
+    if (last < text.length) {
+      spans.add(TextSpan(text: text.substring(last), style: baseStyle));
+    }
     return spans;
   }
 
