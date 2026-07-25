@@ -5,7 +5,6 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
@@ -15,7 +14,7 @@ import '../theme/app_theme.dart';
 import '../theme/custom_message_bubble_background.dart';
 import '../theme/theme_controller.dart';
 import 'chat_view_model.dart';
-import 'link_handler.dart';
+import 'message_bubble_chat_preview.dart';
 
 const messageBubbleRepositoryUsername = 'msgbubble';
 
@@ -134,10 +133,8 @@ class _MessageBubbleRepositoryViewState
         .toList(growable: false)
         .reversed
         .toList(growable: false);
-    final selectedLink = context
-        .watch<ThemeController>()
-        .customMessageBubbleBackground
-        ?.sourceMessageLink;
+    final theme = context.watch<ThemeController>();
+    final selectedLink = theme.customMessageBubbleBackground?.sourceMessageLink;
     ChatMessage? previewMessage;
     for (final message in bubbles) {
       if (messageBubbleRepositoryLink(message.id) == selectedLink) {
@@ -152,9 +149,14 @@ class _MessageBubbleRepositoryViewState
         children: [
           NavHeader(title: 'Message bubbles', onBack: widget.onBack),
           if (previewMessage != null)
-            _RepositoryChatPreview(
-              message: previewMessage,
-              sourceLink: selectedLink,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+              child: MessageBubbleChatPreview(
+                incomingBackground: theme
+                    .effectiveMessageBubbleBackgroundSpecFor(outgoing: false),
+                outgoingBackground: theme
+                    .effectiveMessageBubbleBackgroundSpecFor(outgoing: true),
+              ),
             ),
           Expanded(
             child: bubbles.isEmpty && !_vm.initialLoaded
@@ -174,9 +176,9 @@ class _MessageBubbleRepositoryViewState
                             crossAxisCount: 3,
                             mainAxisSpacing: 10,
                             crossAxisSpacing: 10,
-                            // The high-resolution nine-slice needs about 55
-                            // logical px of height after card insets.
-                            childAspectRatio: 1.8,
+                            // Leave enough height for the high-resolution
+                            // center-slice so it can fill the entire cell width.
+                            childAspectRatio: 1.5,
                           ),
                       itemCount: bubbles.length,
                       itemBuilder: (context, index) {
@@ -226,15 +228,9 @@ class _MessageBubbleRepositoryViewState
 }
 
 class _RepositoryBubbleThumbnail extends StatefulWidget {
-  const _RepositoryBubbleThumbnail({
-    required this.message,
-    this.sampleText = 'Bubble preview',
-    this.sampleFontSize = 10.5,
-  });
+  const _RepositoryBubbleThumbnail({required this.message});
 
   final ChatMessage message;
-  final String sampleText;
-  final double sampleFontSize;
 
   @override
   State<_RepositoryBubbleThumbnail> createState() =>
@@ -306,13 +302,13 @@ class _RepositoryBubbleThumbnailState
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(20, 10, 18, 9),
                     child: Text(
-                      widget.sampleText,
+                      'Bubble preview',
                       maxLines: 2,
                       textAlign: TextAlign.center,
                       overflow: TextOverflow.clip,
                       style: TextStyle(
                         color: Color(processed.foregroundColorValue),
-                        fontSize: widget.sampleFontSize,
+                        fontSize: 10.5,
                         height: 1.08,
                         fontWeight: FontWeight.w600,
                       ),
@@ -324,78 +320,6 @@ class _RepositoryBubbleThumbnailState
           },
         );
       },
-    );
-  }
-}
-
-class _RepositoryChatPreview extends StatelessWidget {
-  const _RepositoryChatPreview({
-    required this.message,
-    required this.sourceLink,
-  });
-
-  final ChatMessage message;
-  final String? sourceLink;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    return Container(
-      key: const ValueKey('message-bubble-chat-preview'),
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-      color: c.chatBackground,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: AppTheme.brand.withValues(alpha: 0.18),
-              shape: BoxShape.circle,
-            ),
-            alignment: Alignment.center,
-            child: AppIcon(
-              HeroAppIcons.solidMessage,
-              size: AppIconSize.lg,
-              color: AppTheme.brand,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Mithka',
-                  style: TextStyle(
-                    color: AppTheme.brand,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: sourceLink == null
-                      ? null
-                      : () => openLink(context, sourceLink!),
-                  child: SizedBox(
-                    width: 250,
-                    height: 86,
-                    child: _RepositoryBubbleThumbnail(
-                      message: message,
-                      sampleText: 'This is a message bubble preview.',
-                      sampleFontSize: 13,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
