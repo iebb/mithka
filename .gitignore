@@ -39,11 +39,6 @@ migrate_working_dir/
 /third_party/**/android/.gradle/
 /third_party/**/android/build/
 
-# Private reference captures must never be tracked as theme assets.
-/assets/message_bubbles/**/reference_*_avatar.png
-/assets/message_bubbles/**/cream_charms.png
-/assets/message_bubbles/**/purple_folded.png
-
 # Symbolication related
 app.*.symbols
 
