@@ -1458,7 +1458,14 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
   ) {
     final baseStyle = TextStyle(
       fontSize: switch (block.kind) {
-        _RichBlockKind.heading => 21,
+        _RichBlockKind.heading => switch (block.headingLevel.clamp(1, 6)) {
+          1 => 24,
+          2 => 22,
+          3 => 20,
+          4 => 18,
+          5 => 16,
+          _ => 15,
+        },
         _RichBlockKind.footer => 14,
         _ => 16,
       },
@@ -1507,7 +1514,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
       ),
       child: field,
     );
-    return switch (block.kind) {
+    final decoratedEditor = switch (block.kind) {
       _RichBlockKind.blockQuotation => Padding(
         padding: const EdgeInsets.fromLTRB(2, 2, 12, 2),
         child: DecoratedBox(
@@ -1571,6 +1578,60 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
       ),
       _ => editor,
     };
+    if (block.kind != _RichBlockKind.heading) return decoratedEditor;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [_headingLevelSelector(c, block), decoratedEditor],
+    );
+  }
+
+  Widget _headingLevelSelector(AppColors c, _RichTextBlock block) {
+    return SizedBox(
+      key: const ValueKey('rich-heading-level-selector'),
+      height: 38,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(4, 3, 12, 3),
+        itemCount: 6,
+        separatorBuilder: (_, _) => const SizedBox(width: 6),
+        itemBuilder: (context, index) {
+          final level = index + 1;
+          final selected = block.headingLevel == level;
+          return GestureDetector(
+            key: ValueKey('rich-heading-level-$level'),
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              if (block.headingLevel == level) return;
+              setState(() => block.headingLevel = level);
+              block.focusNode.requestFocus();
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 140),
+              curve: Curves.easeOutCubic,
+              width: 42,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: selected
+                    ? AppTheme.brand.withValues(alpha: 0.14)
+                    : c.searchFill,
+                borderRadius: BorderRadius.circular(7),
+                border: Border.all(
+                  color: selected ? AppTheme.brand : c.divider,
+                  width: selected ? 1 : 0.5,
+                ),
+              ),
+              child: Text(
+                'H$level',
+                style: AppTextStyle.caption(
+                  selected ? AppTheme.brand : c.textSecondary,
+                ).copyWith(fontWeight: FontWeight.w600),
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   Widget _richTextContextMenu(

@@ -367,6 +367,7 @@ class ChatViewModel extends ChangeNotifier {
   bool get canLoadOlder =>
       !_isLoadingOlder && _allMessages.isNotEmpty && _hasOlderHistory;
   bool get isLoadingOlder => _isLoadingOlder;
+  bool get isLoadingLatest => _latestHistoryLoadInFlight;
   bool get hasOlderHistory => _hasOlderHistory;
   int get _oldestServerMessageId {
     for (final message in _allMessages) {
@@ -2613,6 +2614,7 @@ class ChatViewModel extends ChangeNotifier {
     _latestHistoryLiveArrivals.clear();
     _latestHistoryDeletedMessageIds.clear();
     _latestHistoryLoadInvalidated = false;
+    notifyListeners();
     final messagesAtRequestStart = List<ChatMessage>.of(_allMessages);
     try {
       Map<String, dynamic> response;
@@ -2679,6 +2681,7 @@ class ChatViewModel extends ChangeNotifier {
       _latestHistoryLiveArrivals.clear();
       _latestHistoryDeletedMessageIds.clear();
       _latestHistoryLoadInvalidated = false;
+      notifyListeners();
     }
 
     return true;

@@ -4971,38 +4971,6 @@ class _ChatViewState extends State<ChatView> {
           ),
         ),
         if (!transcriptReady) Positioned.fill(child: _transcriptSkeleton()),
-        if (transcriptReady && _vm.isLoadingOlder)
-          Positioned(
-            key: const ValueKey('chat-older-history-loading'),
-            top: showPinnedTodo ? 72 : 8,
-            left: 0,
-            right: 0,
-            child: IgnorePointer(
-              child: Center(
-                child: Container(
-                  width: 34,
-                  height: 34,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: context.colors.card.withValues(alpha: 0.94),
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: context.colors.divider,
-                      width: 0.5,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.16),
-                        blurRadius: 10,
-                        offset: const Offset(0, 3),
-                      ),
-                    ],
-                  ),
-                  child: const AppActivityIndicator(size: 17),
-                ),
-              ),
-            ),
-          ),
         if (showPinnedTodo)
           Positioned(
             top: 12,
@@ -6561,8 +6529,12 @@ class _ChatViewState extends State<ChatView> {
         );
     final firstContactBeforeCenter =
         firstContactInfo != null && !firstContactAtCenter;
+    final showOlderLoadingGap = _vm.isLoadingOlder;
+    final olderLoadingItemCount = showOlderLoadingGap ? 1 : 0;
     final olderChildCount =
-        olderEntries.length + (firstContactBeforeCenter ? 1 : 0);
+        olderEntries.length +
+        (firstContactBeforeCenter ? 1 : 0) +
+        olderLoadingItemCount;
     final newerLeadingItemCount = firstContactAtCenter ? 1 : 0;
     final olderIndexByKey = <Key, int>{
       for (var i = 0; i < olderEntries.length; i++) olderEntries[i].key: i,
@@ -6607,6 +6579,13 @@ class _ChatViewState extends State<ChatView> {
                         messages,
                       );
                     }
+                    if (firstContactBeforeCenter &&
+                        index == olderEntries.length) {
+                      return _buildFirstContactCard(firstContactInfo);
+                    }
+                    if (showOlderLoadingGap) {
+                      return _historyLoadingGap('chat-older-history-gap');
+                    }
                     return _buildFirstContactCard(firstContactInfo!);
                   },
                   childCount: olderChildCount,
@@ -6644,8 +6623,36 @@ class _ChatViewState extends State<ChatView> {
                   semanticIndexOffset: olderChildCount,
                 ),
               ),
+              if (_vm.isLoadingLatest)
+                SliverToBoxAdapter(
+                  child: _historyLoadingGap('chat-latest-history-gap'),
+                ),
               const SliverToBoxAdapter(child: SizedBox(height: 8)),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _historyLoadingGap(String key) {
+    return AnimatedSize(
+      key: ValueKey(key),
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
+      child: SizedBox(
+        height: 54,
+        child: Center(
+          child: Container(
+            width: 34,
+            height: 34,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: context.colors.card.withValues(alpha: 0.94),
+              shape: BoxShape.circle,
+              border: Border.all(color: context.colors.divider, width: 0.5),
+            ),
+            child: const AppActivityIndicator(size: 17),
           ),
         ),
       ),

@@ -229,6 +229,22 @@ void main() {
     expect((content['photo'] as Map)['height'], 900);
   });
 
+  test('includes video dimensions in the outgoing video payload', () {
+    final content = attachmentInputMessageContent(
+      attachment(
+        'portrait.mp4',
+        OutgoingAttachmentKind.video,
+        width: 1080,
+        height: 1920,
+      ),
+    );
+
+    expect(content['width'], 1080);
+    expect(content['height'], 1920);
+    expect((content['video'] as Map)['width'], 1080);
+    expect((content['video'] as Map)['height'], 1920);
+  });
+
   test('reads the encoded photo dimensions before sending', () async {
     final directory = await Directory.systemTemp.createTemp(
       'mithka-dimensions-',

@@ -117,17 +117,6 @@ enum ChatFolderDisplayMode {
   IconData get icon => _icon.data;
 }
 
-enum ChatListSwipeBehavior {
-  chatActions(AppStringKeys.gesturesChatActions, HeroAppIcons.message),
-  switchFolders(AppStringKeys.gesturesSwitchFolders, HeroAppIcons.folder);
-
-  const ChatListSwipeBehavior(this.label, this._icon);
-  final String label;
-  final AppIconData _icon;
-
-  IconData get icon => _icon.data;
-}
-
 enum NameColorAudience {
   premium(AppStringKeys.appearanceNameColorPremium, HeroAppIcons.star),
   allUsers(AppStringKeys.appearanceNameColorAllUsers, HeroAppIcons.users),
@@ -163,18 +152,6 @@ enum StatusEmojiDisplayMode {
 }
 
 enum SenderNameReadabilityMode { background, shadow, none }
-
-enum ThreeFingerSwipeBehavior {
-  switchFolders(AppStringKeys.gesturesSwitchFolders, HeroAppIcons.folder),
-  switchAccounts(AppStringKeys.gesturesSwitchAccounts, HeroAppIcons.users),
-  disabled(AppStringKeys.gesturesDoNothing, HeroAppIcons.ban);
-
-  const ThreeFingerSwipeBehavior(this.label, this._icon);
-  final String label;
-  final AppIconData _icon;
-
-  IconData get icon => _icon.data;
-}
 
 enum AppFontChoice {
   system(
@@ -976,30 +953,6 @@ class ThemeController extends ChangeNotifier {
       },
     );
     _showChatListSearch = _prefs.getBool(_chatListSearchKey) ?? true;
-    final storedSwipeBehavior = _prefs.getString(_chatListSwipeBehaviorKey);
-    _chatListSwipeBehavior = ChatListSwipeBehavior.values.firstWhere(
-      (behavior) => behavior.name == storedSwipeBehavior,
-      orElse: () {
-        final legacySwitchesFolders =
-            (_prefs.getBool(_disableChatListSwipeActionsKey) ?? false) &&
-            (_prefs.getBool(_chatListFolderSwipeSwitchingKey) ?? false);
-        return legacySwitchesFolders
-            ? ChatListSwipeBehavior.switchFolders
-            : ChatListSwipeBehavior.chatActions;
-      },
-    );
-    if (storedSwipeBehavior == null) {
-      _prefs.setString(_chatListSwipeBehaviorKey, _chatListSwipeBehavior.name);
-    }
-    _chatListHoldSwipeActions =
-        _prefs.getBool(_chatListHoldSwipeActionsKey) ?? false;
-    final storedThreeFingerBehavior = _prefs.getString(
-      _threeFingerSwipeBehaviorKey,
-    );
-    _threeFingerSwipeBehavior = ThreeFingerSwipeBehavior.values.firstWhere(
-      (behavior) => behavior.name == storedThreeFingerBehavior,
-      orElse: () => ThreeFingerSwipeBehavior.switchFolders,
-    );
     final storedSavedMessagesBookmarkView = _prefs.getBool(
       _savedMessagesBookmarkViewKey,
     );
@@ -1134,12 +1087,6 @@ class ThemeController extends ChangeNotifier {
   // Retained only to migrate the former show/hide toggle.
   static const _chatFolderFilterKey = 'showChatFolderFilter';
   static const _chatListSearchKey = 'showChatListSearch';
-  static const _disableChatListSwipeActionsKey = 'disableChatListSwipeActions';
-  static const _chatListFolderSwipeSwitchingKey =
-      'chatListFolderSwipeSwitching';
-  static const _chatListSwipeBehaviorKey = 'chatListSwipeBehavior';
-  static const _chatListHoldSwipeActionsKey = 'chatListHoldSwipeActions';
-  static const _threeFingerSwipeBehaviorKey = 'threeFingerSwipeBehavior';
   static const _savedMessagesBookmarkViewKey = 'savedMessagesBookmarkView';
   static const _legacyDisplayOwnChatAsFavoritesKey =
       'displayOwnChatAsFavorites';
@@ -1207,9 +1154,6 @@ class ThemeController extends ChangeNotifier {
   late bool _animateStatusEmoji;
   late ChatFolderDisplayMode _chatFolderDisplayMode;
   bool _showChatListSearch = true;
-  late ChatListSwipeBehavior _chatListSwipeBehavior;
-  bool _chatListHoldSwipeActions = false;
-  late ThreeFingerSwipeBehavior _threeFingerSwipeBehavior;
   bool _savedMessagesBookmarkView = false;
   bool _hideSidebarPhone = false;
   bool _showMemberTags = false;
@@ -1510,14 +1454,6 @@ class ThemeController extends ChangeNotifier {
   bool get animateStatusEmoji => _animateStatusEmoji;
   ChatFolderDisplayMode get chatFolderDisplayMode => _chatFolderDisplayMode;
   bool get showChatListSearch => _showChatListSearch;
-  ChatListSwipeBehavior get chatListSwipeBehavior => _chatListSwipeBehavior;
-  bool get chatListHoldSwipeActions => _chatListHoldSwipeActions;
-  ThreeFingerSwipeBehavior get threeFingerSwipeBehavior =>
-      _threeFingerSwipeBehavior;
-  bool get disableChatListSwipeActions =>
-      _chatListSwipeBehavior == ChatListSwipeBehavior.switchFolders;
-  bool get chatListFolderSwipeSwitching =>
-      _chatListSwipeBehavior == ChatListSwipeBehavior.switchFolders;
   bool get savedMessagesBookmarkView => _savedMessagesBookmarkView;
   bool get hideSidebarPhone => _hideSidebarPhone;
   bool get showMemberTags => _showMemberTags;
@@ -2049,39 +1985,6 @@ class ThemeController extends ChangeNotifier {
   set showChatListSearch(bool value) {
     _showChatListSearch = value;
     _prefs.setBool(_chatListSearchKey, value);
-    notifyListeners();
-  }
-
-  set disableChatListSwipeActions(bool value) {
-    chatListSwipeBehavior = value
-        ? ChatListSwipeBehavior.switchFolders
-        : ChatListSwipeBehavior.chatActions;
-  }
-
-  set chatListFolderSwipeSwitching(bool value) {
-    chatListSwipeBehavior = value
-        ? ChatListSwipeBehavior.switchFolders
-        : ChatListSwipeBehavior.chatActions;
-  }
-
-  set chatListSwipeBehavior(ChatListSwipeBehavior value) {
-    if (_chatListSwipeBehavior == value) return;
-    _chatListSwipeBehavior = value;
-    _prefs.setString(_chatListSwipeBehaviorKey, value.name);
-    notifyListeners();
-  }
-
-  set chatListHoldSwipeActions(bool value) {
-    if (_chatListHoldSwipeActions == value) return;
-    _chatListHoldSwipeActions = value;
-    _prefs.setBool(_chatListHoldSwipeActionsKey, value);
-    notifyListeners();
-  }
-
-  set threeFingerSwipeBehavior(ThreeFingerSwipeBehavior value) {
-    if (_threeFingerSwipeBehavior == value) return;
-    _threeFingerSwipeBehavior = value;
-    _prefs.setString(_threeFingerSwipeBehaviorKey, value.name);
     notifyListeners();
   }
 

@@ -2,6 +2,8 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:video_compress/video_compress.dart';
+
 import 'message_send_options.dart';
 
 enum OutgoingAttachmentKind {
@@ -136,13 +138,29 @@ Future<OutgoingAttachment> resolveAttachmentDimensions(
   OutgoingAttachment attachment,
 ) async {
   if (attachment.kind != OutgoingAttachmentKind.photo &&
-      attachment.kind != OutgoingAttachmentKind.animation) {
+      attachment.kind != OutgoingAttachmentKind.animation &&
+      attachment.kind != OutgoingAttachmentKind.video) {
     return attachment;
   }
   if ((attachment.width ?? 0) > 0 && (attachment.height ?? 0) > 0) {
     return attachment;
   }
   try {
+    if (attachment.kind == OutgoingAttachmentKind.video) {
+      final info = await VideoCompress.getMediaInfo(attachment.path);
+      final width = info.width;
+      final height = info.height;
+      if (width == null || height == null || width <= 0 || height <= 0) {
+        return attachment;
+      }
+      return attachment.copyWith(
+        width: width,
+        height: height,
+        duration: attachment.duration > 0
+            ? attachment.duration
+            : ((info.duration ?? 0) / 1000).round(),
+      );
+    }
     final data = await File(attachment.path).readAsBytes();
     final codec = await ui.instantiateImageCodec(data);
     final frame = await codec.getNextFrame();
@@ -249,8 +267,14 @@ Map<String, dynamic> attachmentInputMessageContent(
         if (attachment.coverPath case final path?)
           'cover': {'@type': 'inputFileLocal', 'path': path},
         'start_timestamp': attachment.startTimestamp,
+        'duration': attachment.duration,
+        'width': attachment.width ?? 0,
+        'height': attachment.height ?? 0,
         'supports_streaming': true,
       },
+      if ((attachment.width ?? 0) > 0) 'width': attachment.width,
+      if ((attachment.height ?? 0) > 0) 'height': attachment.height,
+      if (attachment.duration > 0) 'duration': attachment.duration,
       'caption': ?formattedCaption,
       'show_caption_above_media': sendConfiguration.showCaptionAboveMedia,
       'self_destruct_type': ?sendConfiguration.selfDestructType,

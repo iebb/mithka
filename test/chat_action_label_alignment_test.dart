@@ -5,6 +5,29 @@ import 'package:mithka/contacts/add_people_view.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
 void main() {
+  test('finger count maps to chat actions, folders, and accounts', () {
+    const horizontal = Offset(80, 4);
+    expect(
+      chatListMultiFingerSwipeAction(pointerCount: 1, delta: horizontal),
+      ChatListMultiFingerSwipeAction.none,
+    );
+    expect(
+      chatListMultiFingerSwipeAction(pointerCount: 2, delta: horizontal),
+      ChatListMultiFingerSwipeAction.switchFolders,
+    );
+    expect(
+      chatListMultiFingerSwipeAction(pointerCount: 3, delta: horizontal),
+      ChatListMultiFingerSwipeAction.switchAccounts,
+    );
+    expect(
+      chatListMultiFingerSwipeAction(
+        pointerCount: 3,
+        delta: const Offset(20, 90),
+      ),
+      ChatListMultiFingerSwipeAction.none,
+    );
+  });
+
   testWidgets('create action labels use centered line alignment', (
     tester,
   ) async {

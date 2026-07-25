@@ -111,6 +111,23 @@ double chatListItemScrollOffset({
 int chatListPullDownArchiveItemIndex({required bool showSearch}) =>
     showSearch ? 1 : 0;
 
+enum ChatListMultiFingerSwipeAction { none, switchFolders, switchAccounts }
+
+ChatListMultiFingerSwipeAction chatListMultiFingerSwipeAction({
+  required int pointerCount,
+  required Offset delta,
+  double distanceThreshold = 64,
+}) {
+  if ((pointerCount != 2 && pointerCount != 3) ||
+      delta.dx.abs() < distanceThreshold ||
+      delta.dx.abs() < delta.dy.abs() * 1.25) {
+    return ChatListMultiFingerSwipeAction.none;
+  }
+  return pointerCount == 2
+      ? ChatListMultiFingerSwipeAction.switchFolders
+      : ChatListMultiFingerSwipeAction.switchAccounts;
+}
+
 class CommunityListSelection {
   const CommunityListSelection({
     required this.community,
@@ -190,8 +207,9 @@ class _ChatListViewState extends State<ChatListView>
   bool _reactivationSyncScheduled = false;
   int _lastVisibleRows = 1;
   final Map<int, Offset> _gesturePointers = <int, Offset>{};
-  Offset? _threeFingerSwipeOrigin;
-  bool _threeFingerSwipeHandled = false;
+  Offset? _multiFingerSwipeOrigin;
+  int _multiFingerSwipeCount = 0;
+  bool _multiFingerSwipeHandled = false;
 
   static const double _refreshPullThreshold = 72;
 
@@ -761,47 +779,52 @@ class _ChatListViewState extends State<ChatListView>
 
   void _handleGesturePointerDown(PointerDownEvent event) {
     _gesturePointers[event.pointer] = event.position;
-    if (_gesturePointers.length == 3) {
-      _threeFingerSwipeOrigin = _gestureCentroid();
-      _threeFingerSwipeHandled = false;
+    if (_gesturePointers.length == 2 || _gesturePointers.length == 3) {
+      // Restart when another finger joins. This prevents the first few pixels
+      // of a three-finger account gesture from being mistaken for a folder
+      // change while the third finger is still landing.
+      _multiFingerSwipeCount = _gesturePointers.length;
+      _multiFingerSwipeOrigin = _gestureCentroid();
+      _multiFingerSwipeHandled = false;
     } else if (_gesturePointers.length > 3) {
-      _threeFingerSwipeOrigin = null;
+      _multiFingerSwipeOrigin = null;
+      _multiFingerSwipeCount = 0;
     }
   }
 
   void _handleGesturePointerMove(PointerMoveEvent event) {
     if (!_gesturePointers.containsKey(event.pointer)) return;
     _gesturePointers[event.pointer] = event.position;
-    final origin = _threeFingerSwipeOrigin;
-    if (_gesturePointers.length != 3 ||
+    final origin = _multiFingerSwipeOrigin;
+    if ((_gesturePointers.length != 2 && _gesturePointers.length != 3) ||
+        _gesturePointers.length != _multiFingerSwipeCount ||
         origin == null ||
-        _threeFingerSwipeHandled) {
+        _multiFingerSwipeHandled) {
       return;
     }
     final delta = _gestureCentroid() - origin;
-    if (delta.dx.abs() < 64 || delta.dx.abs() < delta.dy.abs() * 1.25) return;
-    _threeFingerSwipeHandled = true;
-    _performThreeFingerSwipe(delta.dx);
+    final action = chatListMultiFingerSwipeAction(
+      pointerCount: _multiFingerSwipeCount,
+      delta: delta,
+    );
+    if (action == ChatListMultiFingerSwipeAction.none) return;
+    _multiFingerSwipeHandled = true;
+    switch (action) {
+      case ChatListMultiFingerSwipeAction.switchFolders:
+        _switchFolderBySwipe(delta.dx < 0 ? -1000 : 1000);
+      case ChatListMultiFingerSwipeAction.switchAccounts:
+        _switchAccountBySwipe(delta.dx);
+      case ChatListMultiFingerSwipeAction.none:
+        return;
+    }
   }
 
   void _handleGesturePointerEnd(PointerEvent event) {
     _gesturePointers.remove(event.pointer);
-    if (_gesturePointers.length < 3) {
-      _threeFingerSwipeOrigin = null;
-      _threeFingerSwipeHandled = false;
-    }
-  }
-
-  void _performThreeFingerSwipe(double horizontalDelta) {
-    switch (context.read<ThemeController>().threeFingerSwipeBehavior) {
-      case ThreeFingerSwipeBehavior.switchFolders:
-        _switchFolderBySwipe(horizontalDelta < 0 ? -1000 : 1000);
-        return;
-      case ThreeFingerSwipeBehavior.switchAccounts:
-        _switchAccountBySwipe(horizontalDelta);
-        return;
-      case ThreeFingerSwipeBehavior.disabled:
-        return;
+    if (_gesturePointers.length < _multiFingerSwipeCount) {
+      _multiFingerSwipeOrigin = null;
+      _multiFingerSwipeCount = 0;
+      _multiFingerSwipeHandled = false;
     }
   }
 
@@ -1239,17 +1262,9 @@ class _ChatListViewState extends State<ChatListView>
             ),
             child: list,
           );
-          if (!theme.chatListFolderSwipeSwitching ||
-              _model.filters.length < 2) {
-            // No horizontal folder gesture wrapper is needed.
-          } else {
-            list = GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onHorizontalDragEnd: (details) =>
-                  _switchFolderBySwipe(details.primaryVelocity),
-              child: list,
-            );
-          }
+          // One-finger horizontal drags belong exclusively to ChatSwipeRow.
+          // Folder and account switching are observed by the two/three-finger
+          // raw-pointer handler around the complete chat list.
           list = _folderSwitchTransition(list);
 
           return list;
@@ -1449,22 +1464,6 @@ class _ChatListViewState extends State<ChatListView>
   }
 
   Widget _swipeRow(ChatSummary chat) {
-    final theme = context.watch<ThemeController>();
-    final holdForActions =
-        theme.chatListSwipeBehavior == ChatListSwipeBehavior.switchFolders &&
-        theme.chatListHoldSwipeActions;
-    if (theme.disableChatListSwipeActions && !holdForActions) {
-      return GestureDetector(
-        key: ValueKey(chat.id),
-        behavior: HitTestBehavior.opaque,
-        onTap: () => _openChat(chat),
-        child: ChatRowView(
-          chat: chat,
-          selected: widget.selectedChatId == chat.id,
-          onClearUnread: () => _model.markRead(chat),
-        ),
-      );
-    }
     final actions = chat.isPinned
         ? [
             SwipeActionItem(
@@ -1507,7 +1506,6 @@ class _ChatListViewState extends State<ChatListView>
       onOpenChanged: (id) => setState(() => _openSwipeChat = id),
       onTap: () => _openChat(chat),
       actions: actions,
-      requiresLongPressDrag: holdForActions,
       child: ChatRowView(
         chat: chat,
         selected: widget.selectedChatId == chat.id,
@@ -1559,7 +1557,28 @@ class _ChatListViewState extends State<ChatListView>
   }
 
   PageRoute<T> _chatEntryRoute<T>(Widget child) {
-    return MaterialPageRoute<T>(builder: (_) => child);
+    return PageRouteBuilder<T>(
+      transitionDuration: const Duration(milliseconds: 260),
+      reverseTransitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (_, animation, secondaryAnimation) => child,
+      transitionsBuilder: (_, animation, secondaryAnimation, page) {
+        final entrance = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+          reverseCurve: Curves.easeInCubic,
+        );
+        return FadeTransition(
+          opacity: Tween<double>(begin: 0.82, end: 1).animate(entrance),
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0.055, 0),
+              end: Offset.zero,
+            ).animate(entrance),
+            child: page,
+          ),
+        );
+      },
+    );
   }
 
   Widget _assistantRow() {

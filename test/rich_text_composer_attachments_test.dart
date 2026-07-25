@@ -7,6 +7,55 @@ import 'package:mithka/chat/rich_text_composer_view.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
 void main() {
+  testWidgets('heading selector submits the selected heading level', (
+    tester,
+  ) async {
+    RichTextComposerResult? submitted;
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('en'),
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () async {
+              submitted = await Navigator.of(context).push(
+                MaterialPageRoute<RichTextComposerResult>(
+                  builder: (_) => const RichTextComposerView(initialText: ''),
+                ),
+              );
+            },
+            child: const Text('Open composer'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open composer'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('H'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('rich-heading-level-selector')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('rich-heading-level-3')));
+    await tester.enterText(find.byType(TextField).last, 'Chapter title');
+    await tester.tap(find.text('Post'));
+    await tester.pumpAndSettle();
+
+    final segment = submitted!.segments.single;
+    expect(segment.html, '<h3>Chapter title</h3>');
+    expect(segment.blocks.single['@type'], 'inputPageBlockSectionHeading');
+    expect(segment.blocks.single['size'], 3);
+  });
+
   testWidgets('rich composer renders ordered file and music attachments', (
     tester,
   ) async {
