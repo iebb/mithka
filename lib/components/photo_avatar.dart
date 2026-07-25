@@ -16,6 +16,7 @@ import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 
 import '../app/performance_metrics.dart';
+import '../media/looping_media_playback.dart';
 import '../tdlib/animated_avatar_repository.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_image_loader.dart';
@@ -263,6 +264,7 @@ class _PhotoAvatarState extends State<PhotoAvatar> with WidgetsBindingObserver {
         await controller.initialize();
         await controller.setLooping(true);
         await controller.setVolume(0);
+        disableLoopingMediaAudioTracks(controller);
         await controller.play();
       } catch (_) {
         await controller.dispose();

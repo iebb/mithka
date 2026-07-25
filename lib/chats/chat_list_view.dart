@@ -185,6 +185,9 @@ class _ChatListViewState extends State<ChatListView>
   double _archiveDragOffset = 0;
   double _refreshPullDistance = 0;
   bool _isRefreshing = false;
+  bool _viewTickerEnabled = true;
+  bool _modelDirtyWhileInactive = false;
+  bool _reactivationSyncScheduled = false;
   int _lastVisibleRows = 1;
   final Map<int, Offset> _gesturePointers = <int, Offset>{};
   Offset? _threeFingerSwipeOrigin;
@@ -232,13 +235,38 @@ class _ChatListViewState extends State<ChatListView>
     widget.controller?.addListener(_onControllerRequest);
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final tickerEnabled = TickerMode.valuesOf(context).enabled;
+    final reactivated = !_viewTickerEnabled && tickerEnabled;
+    _viewTickerEnabled = tickerEnabled;
+    if (!reactivated ||
+        !_modelDirtyWhileInactive ||
+        _reactivationSyncScheduled) {
+      return;
+    }
+    _reactivationSyncScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _reactivationSyncScheduled = false;
+      if (!mounted || !_viewTickerEnabled || !_modelDirtyWhileInactive) return;
+      _onModel();
+    });
+  }
+
   void _onModel() {
+    if (!mounted) return;
+    if (!_viewTickerEnabled) {
+      _modelDirtyWhileInactive = true;
+      return;
+    }
+    _modelDirtyWhileInactive = false;
     if (_model.notice != null && mounted) {
       final text = _model.notice!;
       _model.clearNotice();
       showToast(context, text);
     }
-    if (mounted) setState(() {});
+    setState(() {});
     if (_pendingScrollToFirstUnreadRequest != null) {
       _tryScrollToFirstUnread();
     }

@@ -117,6 +117,21 @@ ChatMessage selectMediaAlbumInteractionOwner(List<ChatMessage> group) {
   return group.first;
 }
 
+@visibleForTesting
+bool chatTranscriptBoundaryChanged({
+  required int previousCount,
+  required int currentCount,
+  required int? previousNewestMessageId,
+  required int? currentNewestMessageId,
+  required int? previousOldestMessageId,
+  required int? currentOldestMessageId,
+  required bool hasBufferedLiveMessages,
+}) =>
+    previousCount != currentCount ||
+    previousNewestMessageId != currentNewestMessageId ||
+    previousOldestMessageId != currentOldestMessageId ||
+    hasBufferedLiveMessages;
+
 class _MessageDeleteOptions {
   const _MessageDeleteOptions({
     required this.deleteMessage,
@@ -821,6 +836,9 @@ class _ChatViewState extends State<ChatView> {
   final Set<int> _reportedVisibleMessageIds = <int>{};
   final Set<int> _expandedBlockedRunIds = <int>{};
   bool _unreadProgressUpdateScheduled = false;
+  bool _viewTickerEnabled = true;
+  bool _modelDirtyWhileInactive = false;
+  bool _reactivationSyncScheduled = false;
   ChatMessage? _actionTarget;
   Rect? _actionRect; // global bounds of the long-pressed bubble
   MessageActionSource _actionSource = MessageActionSource.normal;
@@ -1057,7 +1075,7 @@ class _ChatViewState extends State<ChatView> {
     _setScrollTarget(widget.initialMessageId);
     _vm.onAppear();
     _readSyncTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (mounted && _isAtLoadedBottom(80)) {
+      if (mounted && _viewTickerEnabled && _isAtLoadedBottom(80)) {
         _markReadAtBottomIfNeeded();
       }
     });
@@ -1077,16 +1095,32 @@ class _ChatViewState extends State<ChatView> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_notificationVisibilityRegistered) return;
-    _notificationVisibilityRegistered = true;
-    NotificationController.shared.registerVisibleChat(
-      this,
-      widget.chatId,
-      () =>
-          mounted &&
-          (ModalRoute.of(context)?.isCurrent ?? false) &&
-          TickerMode.valuesOf(context).enabled,
-    );
+    final tickerEnabled = TickerMode.valuesOf(context).enabled;
+    final reactivated = !_viewTickerEnabled && tickerEnabled;
+    _viewTickerEnabled = tickerEnabled;
+    if (reactivated &&
+        _modelDirtyWhileInactive &&
+        !_reactivationSyncScheduled) {
+      _reactivationSyncScheduled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _reactivationSyncScheduled = false;
+        if (!mounted || !_viewTickerEnabled || !_modelDirtyWhileInactive) {
+          return;
+        }
+        _onModel();
+      });
+    }
+    if (!_notificationVisibilityRegistered) {
+      _notificationVisibilityRegistered = true;
+      NotificationController.shared.registerVisibleChat(
+        this,
+        widget.chatId,
+        () =>
+            mounted &&
+            (ModalRoute.of(context)?.isCurrent ?? false) &&
+            TickerMode.valuesOf(context).enabled,
+      );
+    }
   }
 
   bool get _shouldRestoreSessionScroll {
@@ -1123,7 +1157,11 @@ class _ChatViewState extends State<ChatView> {
       towardOlderMessages: pos.userScrollDirection == ScrollDirection.forward,
       isAtBottom: _isAtLoadedBottom(1),
     );
-    _saveSessionScrollSnapshot();
+    // Persist cheap scalar state while the finger is moving. Capturing an
+    // anchor walks every mounted transcript entry and performs layout-space
+    // conversions, so defer that work until scrolling settles or the view
+    // exits.
+    _saveSessionScrollSnapshot(captureAnchor: false);
     _scheduleUnreadProgressUpdate();
     if (_selectionAnchorId != null && scrollingUp != _selectionScrollingUp) {
       setState(() => _selectionScrollingUp = scrollingUp);
@@ -1190,6 +1228,7 @@ class _ChatViewState extends State<ChatView> {
     } else if (notification is ScrollEndNotification) {
       _olderHistoryPull.reset();
       _scheduleLoadedOlderReveal();
+      _saveSessionScrollSnapshot();
     }
     return false;
   }
@@ -1274,7 +1313,7 @@ class _ChatViewState extends State<ChatView> {
     _scroll.jumpTo(_scroll.position.pixels);
   }
 
-  void _saveSessionScrollSnapshot() {
+  void _saveSessionScrollSnapshot({bool captureAnchor = true}) {
     if (!_didInitialScroll ||
         !_initialTranscriptReady ||
         _maintainSessionScrollAnchor ||
@@ -1285,7 +1324,9 @@ class _ChatViewState extends State<ChatView> {
     final pos = _scroll.position;
     if (!pos.hasContentDimensions) return;
     final wasAtLoadedBottom = _isAtLoadedBottom(80);
-    final anchor = wasAtLoadedBottom ? null : _captureSessionScrollAnchor();
+    final anchor = wasAtLoadedBottom || !captureAnchor
+        ? null
+        : _captureSessionScrollAnchor();
     _sessionScrollSnapshots[widget.chatId] = _ChatScrollSnapshot(
       pixels: clampScrollOffset(pos, pos.pixels),
       wasAtLoadedBottom: wasAtLoadedBottom,
@@ -1788,6 +1829,11 @@ class _ChatViewState extends State<ChatView> {
 
   void _onModel() {
     if (!mounted) return;
+    if (!_viewTickerEnabled) {
+      _modelDirtyWhileInactive = true;
+      return;
+    }
+    _modelDirtyWhileInactive = false;
     final olderLoadFinished = _wasLoadingOlder && !_vm.isLoadingOlder;
     _wasLoadingOlder = _vm.isLoadingOlder;
     final oldest = _oldestServerMessage(_vm.messages);
@@ -1883,10 +1929,19 @@ class _ChatViewState extends State<ChatView> {
     }
     final rebasedParkedShortArm = parkedShortArm || expandedInitialWindow;
     final liveIncomingMessageIds = _vm.consumeLiveIncomingMessageIds();
-    if (_vm.messages.length != _lastCount) {
+    final newest = _latestServerMessage(_vm.messages);
+    final transcriptBoundaryChanged = chatTranscriptBoundaryChanged(
+      previousCount: _lastCount,
+      currentCount: _vm.messages.length,
+      previousNewestMessageId: _lastNewestMessageId,
+      currentNewestMessageId: newest?.id,
+      previousOldestMessageId: _lastOldestMessageId,
+      currentOldestMessageId: oldest?.id,
+      hasBufferedLiveMessages: liveIncomingMessageIds.isNotEmpty,
+    );
+    if (transcriptBoundaryChanged) {
       final wasNearBottom = _isNearBottom(72);
       final previousNewestId = _lastNewestMessageId;
-      final newest = _latestServerMessage(_vm.messages);
       final appendedNewest =
           newest != null &&
           newest.id != previousNewestId &&

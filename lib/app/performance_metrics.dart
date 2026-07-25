@@ -1,6 +1,52 @@
+import 'package:flutter/foundation.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 import 'telemetry_config.dart';
+
+typedef PerformanceMetricClock = DateTime Function();
+typedef AnimatedAvatarGaugeReporter = void Function(int activePlayers);
+
+/// Rate-limits animated-avatar player gauges while preserving active-to-idle
+/// transitions. Repeated stop notifications while already idle are ignored.
+@visibleForTesting
+final class AnimatedAvatarMetricThrottle {
+  AnimatedAvatarMetricThrottle({
+    required this.onReport,
+    this.reportInterval = const Duration(seconds: 10),
+    PerformanceMetricClock? clock,
+  }) : _clock = clock ?? DateTime.now;
+
+  final Duration reportInterval;
+  final AnimatedAvatarGaugeReporter onReport;
+  final PerformanceMetricClock _clock;
+
+  DateTime _nextReport = DateTime.fromMillisecondsSinceEpoch(0);
+  int _activePlayers = 0;
+  int? _lastReportedPlayers;
+
+  void playerStarted() {
+    _activePlayers++;
+    _reportIfNeeded();
+  }
+
+  void playerStopped() {
+    if (_activePlayers == 0) return;
+    _activePlayers--;
+    _reportIfNeeded(forceIdleTransition: _activePlayers == 0);
+  }
+
+  void _reportIfNeeded({bool forceIdleTransition = false}) {
+    final now = _clock();
+    final shouldForceIdle =
+        forceIdleTransition &&
+        _lastReportedPlayers != null &&
+        _lastReportedPlayers != 0;
+    if (!shouldForceIdle && now.isBefore(_nextReport)) return;
+    _nextReport = now.add(reportInterval);
+    _lastReportedPlayers = _activePlayers;
+    onReport(_activePlayers);
+  }
+}
 
 /// Low-volume, privacy-safe Sentry measurements for known UI hot paths.
 ///
@@ -8,14 +54,20 @@ import 'telemetry_config.dart';
 /// rate-limited so observability cannot itself become part of the problem.
 abstract final class AppPerformanceMetrics {
   static const _chatListReportInterval = Duration(seconds: 30);
-  static const _avatarReportInterval = Duration(seconds: 10);
 
   static DateTime _nextChatListReport = DateTime.fromMillisecondsSinceEpoch(0);
-  static DateTime _nextAvatarReport = DateTime.fromMillisecondsSinceEpoch(0);
   static double _slowestChatListResortMs = 0;
   static int _largestChatList = 0;
   static int _mostCoalescedUpdates = 0;
-  static int _activeAnimatedAvatarPlayers = 0;
+  static final _animatedAvatarMetrics = AnimatedAvatarMetricThrottle(
+    onReport: (activePlayers) {
+      if (!sentryEnabled) return;
+      Sentry.metrics.gauge(
+        'mithka.ui.animated_avatar.active_players',
+        activePlayers,
+      );
+    },
+  );
 
   static void chatListResorted({
     required Duration elapsed,
@@ -61,27 +113,9 @@ abstract final class AppPerformanceMetrics {
     _mostCoalescedUpdates = 0;
   }
 
-  static void animatedAvatarPlayerStarted() {
-    _activeAnimatedAvatarPlayers++;
-    _reportAnimatedAvatarPlayers();
-  }
+  static void animatedAvatarPlayerStarted() =>
+      _animatedAvatarMetrics.playerStarted();
 
-  static void animatedAvatarPlayerStopped() {
-    if (_activeAnimatedAvatarPlayers > 0) _activeAnimatedAvatarPlayers--;
-    _reportAnimatedAvatarPlayers(forceWhenIdle: true);
-  }
-
-  static void _reportAnimatedAvatarPlayers({bool forceWhenIdle = false}) {
-    if (!sentryEnabled) return;
-    final now = DateTime.now();
-    if ((!forceWhenIdle || _activeAnimatedAvatarPlayers != 0) &&
-        now.isBefore(_nextAvatarReport)) {
-      return;
-    }
-    _nextAvatarReport = now.add(_avatarReportInterval);
-    Sentry.metrics.gauge(
-      'mithka.ui.animated_avatar.active_players',
-      _activeAnimatedAvatarPlayers,
-    );
-  }
+  static void animatedAvatarPlayerStopped() =>
+      _animatedAvatarMetrics.playerStopped();
 }

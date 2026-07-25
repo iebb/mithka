@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
 import '../components/photo_avatar.dart';
+import '../media/looping_media_playback.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
@@ -39,11 +40,20 @@ class _LoopingVideoViewState extends State<LoopingVideoView>
     with WidgetsBindingObserver {
   VideoPlayerController? _controller;
   int _generation = 0;
+  int? _loadedId;
+  String? _loadedLocalPath;
   int? _loadedSlot;
   bool _tickerEnabled = false;
   bool _appIsActive = true;
+  bool _loadPending = false;
+  LoopingMediaPlayerLease? _lease;
+  LoopingMediaPlayerWaiter? _leaseWaiter;
+  VideoPlayerController? _initializingController;
 
-  bool get _shouldPlay => _tickerEnabled && _appIsActive;
+  bool get _isEligible => loopingMediaPlaybackIsEligible(
+    tickerEnabled: _tickerEnabled,
+    appIsActive: _appIsActive,
+  );
 
   @override
   void initState() {
@@ -52,94 +62,248 @@ class _LoopingVideoViewState extends State<LoopingVideoView>
     _appIsActive =
         WidgetsBinding.instance.lifecycleState == null ||
         WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+    addLoopingMediaPlaybackContextListener(_handlePlaybackContextChanged);
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final enabled = TickerMode.valuesOf(context).enabled;
-    if (_tickerEnabled == enabled) return;
-    _tickerEnabled = enabled;
-    if (enabled && _controller == null) {
-      unawaited(_load());
-    } else {
-      unawaited(_syncPlayback());
-    }
+    _tickerEnabled = TickerMode.valuesOf(context).enabled;
+    _reconcilePlayback(rebuildOnRelease: false);
   }
 
   @override
   void didUpdateWidget(LoopingVideoView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.file.id != widget.file.id ||
-        oldWidget.file.localPath != widget.file.localPath ||
-        _loadedSlot != TdClient.shared.activeSlot) {
-      unawaited(_load());
-    }
+    _reconcilePlayback(rebuildOnRelease: false);
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _appIsActive = state == AppLifecycleState.resumed;
-    unawaited(_syncPlayback());
+    _reconcilePlayback();
   }
 
-  Future<void> _load() async {
-    final generation = ++_generation;
+  void _handlePlaybackContextChanged() {
+    if (!mounted) return;
+    _reconcilePlayback();
+  }
+
+  void _reconcilePlayback({bool rebuildOnRelease = true}) {
+    final slot = TdClient.shared.activeSlot;
+    final sourceChanged =
+        _loadedId != widget.file.id ||
+        _loadedLocalPath != widget.file.localPath ||
+        _loadedSlot != slot;
+    if (!_isEligible || sourceChanged) {
+      _releasePlayback(rebuild: rebuildOnRelease);
+    }
+    if (!_isEligible) return;
+    if (sourceChanged) {
+      _loadedId = widget.file.id;
+      _loadedLocalPath = widget.file.localPath;
+      _loadedSlot = slot;
+    }
+    if (_controller == null && !_loadPending && _leaseWaiter == null) {
+      _requestPlaybackLease();
+    }
+  }
+
+  void _requestPlaybackLease() {
+    if (!_isEligible ||
+        _loadPending ||
+        _controller != null ||
+        _leaseWaiter != null) {
+      return;
+    }
     final ref = widget.file;
     final slot = TdClient.shared.activeSlot;
-    _loadedSlot = slot;
+    final generation = ++_generation;
+    final lease = loopingMediaPlayerPool.tryAcquire();
+    if (lease != null) {
+      _startLoad(lease, generation, ref, slot);
+      return;
+    }
 
-    final old = _controller;
-    _controller = null;
-    if (old != null) {
-      await old.dispose();
-      if (mounted && generation == _generation) setState(() {});
+    late final LoopingMediaPlayerWaiter waiter;
+    waiter = loopingMediaPlayerPool.waitForLease((grantedLease) {
+      if (identical(_leaseWaiter, waiter)) _leaseWaiter = null;
+      if (!_ownsAttempt(generation, ref, slot)) {
+        grantedLease.release();
+        return;
+      }
+      _startLoad(grantedLease, generation, ref, slot);
+    });
+    _leaseWaiter = waiter;
+  }
+
+  void _startLoad(
+    LoopingMediaPlayerLease lease,
+    int generation,
+    TdFileRef ref,
+    int slot,
+  ) {
+    if (!_ownsAttempt(generation, ref, slot)) {
+      lease.release();
+      return;
+    }
+    _lease = lease;
+    _loadPending = true;
+    unawaited(_loadWithLease(lease, generation, ref, slot));
+  }
+
+  Future<void> _loadWithLease(
+    LoopingMediaPlayerLease lease,
+    int generation,
+    TdFileRef ref,
+    int slot,
+  ) async {
+    if (!_ownsLoad(generation, ref, slot, lease)) {
+      _clearLoadLease(lease);
+      return;
     }
 
     final path = await TdFileCenter.shared.pathFor(ref);
-    if (!mounted ||
-        generation != _generation ||
-        slot != TdClient.shared.activeSlot ||
-        path == null) {
+    if (!_ownsLoad(generation, ref, slot, lease)) {
+      _clearLoadLease(lease);
+      return;
+    }
+    if (path == null) {
+      _clearLoadLease(lease);
       return;
     }
 
     final controller = VideoPlayerController.file(File(path));
+    _initializingController = controller;
     try {
       await controller.initialize();
       await controller.setLooping(true);
       await controller.setVolume(0);
-      if (_shouldPlay) await controller.play();
+      disableLoopingMediaAudioTracks(controller);
+      if (!_ownsLoad(generation, ref, slot, lease)) {
+        await _disposeInitializingLoad(controller, lease);
+        return;
+      }
+      await controller.play();
     } catch (_) {
-      await controller.dispose();
+      await _disposeInitializingLoad(controller, lease);
       return;
     }
-    if (!mounted ||
-        generation != _generation ||
-        slot != TdClient.shared.activeSlot) {
-      await controller.dispose();
+    if (!_ownsLoad(generation, ref, slot, lease)) {
+      await _disposeInitializingLoad(controller, lease);
       return;
     }
+    if (identical(_initializingController, controller)) {
+      _initializingController = null;
+    }
+    _loadPending = false;
     setState(() => _controller = controller);
   }
 
-  Future<void> _syncPlayback() async {
-    final controller = _controller;
-    if (controller == null || !controller.value.isInitialized) return;
+  bool _ownsAttempt(int generation, TdFileRef ref, int slot) =>
+      mounted &&
+      _isEligible &&
+      generation == _generation &&
+      _loadedId == ref.id &&
+      _loadedLocalPath == ref.localPath &&
+      _loadedSlot == slot &&
+      slot == TdClient.shared.activeSlot;
+
+  bool _ownsLoad(
+    int generation,
+    TdFileRef ref,
+    int slot,
+    LoopingMediaPlayerLease lease,
+  ) =>
+      mounted &&
+      _isEligible &&
+      generation == _generation &&
+      _loadedId == ref.id &&
+      _loadedLocalPath == ref.localPath &&
+      _loadedSlot == slot &&
+      slot == TdClient.shared.activeSlot &&
+      identical(_lease, lease) &&
+      !lease.isReleased;
+
+  void _clearLoadLease(LoopingMediaPlayerLease lease) {
+    if (identical(_lease, lease)) {
+      _lease = null;
+      _loadPending = false;
+      lease.release();
+    }
+  }
+
+  Future<void> _disposeInitializingLoad(
+    VideoPlayerController controller,
+    LoopingMediaPlayerLease lease,
+  ) async {
+    if (!identical(_initializingController, controller)) return;
+    _initializingController = null;
+    final ownsLease = identical(_lease, lease);
+    if (ownsLease) {
+      _lease = null;
+    }
     try {
-      if (_shouldPlay) {
-        await controller.play();
-      } else {
-        await controller.pause();
+      await controller.dispose();
+    } catch (_) {
+      // Native teardown failures must not become uncaught async errors.
+    } finally {
+      if (ownsLease) {
+        if (_lease == null && _initializingController == null) {
+          _loadPending = false;
+        }
+        lease.release();
       }
-    } catch (_) {}
+    }
+  }
+
+  void _releasePlayback({bool rebuild = true}) {
+    ++_generation;
+    _leaseWaiter?.cancel();
+    _leaseWaiter = null;
+    _loadPending = false;
+    final controller = _controller;
+    final initializingController = _initializingController;
+    final lease = _lease;
+    _controller = null;
+    _initializingController = null;
+    _lease = null;
+    final controllers = <VideoPlayerController>{
+      ?controller,
+      ?initializingController,
+    };
+    if (controllers.isEmpty) {
+      lease?.release();
+    } else {
+      unawaited(_disposeReleasedControllers(controllers, lease));
+    }
+    if (controller != null && rebuild && mounted) setState(() {});
+  }
+
+  Future<void> _disposeReleasedControllers(
+    Set<VideoPlayerController> controllers,
+    LoopingMediaPlayerLease? lease,
+  ) async {
+    try {
+      await Future.wait(
+        controllers.map((current) async {
+          try {
+            await current.dispose();
+          } catch (_) {
+            // Continue tearing down the remaining native players.
+          }
+        }),
+      );
+    } finally {
+      lease?.release();
+    }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _generation++;
-    unawaited(_controller?.dispose());
+    removeLoopingMediaPlaybackContextListener(_handlePlaybackContextChanged);
+    _releasePlayback(rebuild: false);
     super.dispose();
   }
 
