@@ -15,6 +15,8 @@ class CustomMessageBubbleBackground {
     required this.stretchY,
     required this.backgroundColorValue,
     required this.foregroundColorValue,
+    this.paletteColorValues = const <int>[],
+    this.sourceMessageLink,
   });
 
   factory CustomMessageBubbleBackground.fromJson(Map<String, dynamic> json) {
@@ -25,6 +27,8 @@ class CustomMessageBubbleBackground {
     final stretchY = json['stretchY'];
     final backgroundColorValue = json['backgroundColor'];
     final foregroundColorValue = json['foregroundColor'];
+    final palette = json['palette'];
+    final sourceMessageLink = json['sourceMessageLink'];
     if (filePath is! String ||
         filePath.isEmpty ||
         width is! int ||
@@ -49,6 +53,13 @@ class CustomMessageBubbleBackground {
       stretchY: stretchY,
       backgroundColorValue: backgroundColorValue,
       foregroundColorValue: foregroundColorValue,
+      paletteColorValues: palette is List
+          ? palette.whereType<int>().take(4).toList(growable: false)
+          : <int>[foregroundColorValue],
+      sourceMessageLink:
+          sourceMessageLink is String && sourceMessageLink.isNotEmpty
+          ? sourceMessageLink
+          : null,
     );
   }
 
@@ -59,6 +70,8 @@ class CustomMessageBubbleBackground {
   final int stretchY;
   final int backgroundColorValue;
   final int foregroundColorValue;
+  final List<int> paletteColorValues;
+  final String? sourceMessageLink;
 
   Rect get centerSlice =>
       Rect.fromLTWH(stretchX.toDouble(), stretchY.toDouble(), 1, 1);
@@ -73,7 +86,7 @@ class CustomMessageBubbleBackground {
   bool get fileExists => File(filePath).existsSync();
 
   Map<String, dynamic> toJson() => {
-    'version': 1,
+    'version': 2,
     'filePath': filePath,
     'width': width,
     'height': height,
@@ -81,10 +94,19 @@ class CustomMessageBubbleBackground {
     'stretchY': stretchY,
     'backgroundColor': backgroundColorValue,
     'foregroundColor': foregroundColorValue,
+    'palette': paletteColorValues,
+    if (sourceMessageLink != null) 'sourceMessageLink': sourceMessageLink,
   };
 }
 
-enum CustomMessageBubbleImportFailure { invalidPng, tooSmall, tooLarge, write }
+enum CustomMessageBubbleImportFailure {
+  invalidPng,
+  tooSmall,
+  tooLarge,
+  wrongRepositorySize,
+  invalidPalette,
+  write,
+}
 
 class CustomMessageBubbleImportException implements Exception {
   const CustomMessageBubbleImportException(this.failure, [this.cause]);
@@ -106,6 +128,7 @@ class ProcessedMessageBubblePng {
     required this.stretchY,
     required this.backgroundColorValue,
     required this.foregroundColorValue,
+    this.paletteColorValues = const <int>[],
   });
 
   final Uint8List bytes;
@@ -115,6 +138,26 @@ class ProcessedMessageBubblePng {
   final int stretchY;
   final int backgroundColorValue;
   final int foregroundColorValue;
+  final List<int> paletteColorValues;
+}
+
+/// Canonical wire format used by the public @msgbubble repository.
+///
+/// The four 16px swatches sit in a flat center band. They are metadata rather
+/// than bubble artwork and are removed before the PNG is center-slice compacted.
+abstract final class MessageBubbleRepositoryFormat {
+  static const width = 160;
+  static const height = 120;
+  static const swatchSize = 16;
+  static const swatchGap = 8;
+  static const swatchTop = 52;
+  static const swatchLeft = 36;
+  static const swatchCount = 4;
+  static const protectedHorizontal = 24;
+  static const protectedVertical = 18;
+
+  static int swatchX(int index) =>
+      swatchLeft + index * (swatchSize + swatchGap);
 }
 
 class CustomMessageBubblePngProcessor {
@@ -127,17 +170,30 @@ class CustomMessageBubblePngProcessor {
   final int maximumDimension;
 
   ProcessedMessageBubblePng process(Uint8List bytes) {
+    return _process(bytes, repositoryFormat: false);
+  }
+
+  ProcessedMessageBubblePng processRepository(Uint8List bytes) {
+    return _process(bytes, repositoryFormat: true);
+  }
+
+  ProcessedMessageBubblePng _process(
+    Uint8List bytes, {
+    required bool repositoryFormat,
+  }) {
     if (bytes.length > maximumBytes) {
       throw const CustomMessageBubbleImportException(
         CustomMessageBubbleImportFailure.tooLarge,
       );
     }
-    if (!_hasPngSignature(bytes)) {
+    if (!repositoryFormat && !_hasPngSignature(bytes)) {
       throw const CustomMessageBubbleImportException(
         CustomMessageBubbleImportFailure.invalidPng,
       );
     }
-    final decoded = image_lib.decodePng(bytes);
+    final decoded = repositoryFormat
+        ? image_lib.decodeImage(bytes)
+        : image_lib.decodePng(bytes);
     if (decoded == null) {
       throw const CustomMessageBubbleImportException(
         CustomMessageBubbleImportFailure.invalidPng,
@@ -154,8 +210,26 @@ class CustomMessageBubblePngProcessor {
       );
     }
 
-    final horizontal = _collapseRepeatedColumns(decoded);
-    final compact = _collapseRepeatedRows(horizontal.image);
+    var source = decoded;
+    var palette = const <int>[];
+    if (repositoryFormat) {
+      if (decoded.width != MessageBubbleRepositoryFormat.width ||
+          decoded.height != MessageBubbleRepositoryFormat.height) {
+        throw const CustomMessageBubbleImportException(
+          CustomMessageBubbleImportFailure.wrongRepositorySize,
+        );
+      }
+      final prepared = _stripRepositoryPalette(decoded);
+      source = prepared.$1;
+      palette = prepared.$2;
+    }
+
+    final horizontal = repositoryFormat
+        ? _compactRepositoryColumns(source)
+        : _collapseRepeatedColumns(source);
+    final compact = repositoryFormat
+        ? _compactRepositoryRows(horizontal.image)
+        : _collapseRepeatedRows(horizontal.image);
     final center = compact.image.getPixel(horizontal.stretch, compact.stretch);
     final background = Color.fromARGB(
       center.a.toInt(),
@@ -173,8 +247,64 @@ class CustomMessageBubblePngProcessor {
       stretchX: horizontal.stretch,
       stretchY: compact.stretch,
       backgroundColorValue: background.toARGB32(),
-      foregroundColorValue: foreground.toARGB32(),
+      foregroundColorValue: palette.isEmpty
+          ? foreground.toARGB32()
+          : palette.first,
+      paletteColorValues: palette.isEmpty
+          ? <int>[foreground.toARGB32()]
+          : palette,
     );
+  }
+
+  (image_lib.Image, List<int>) _stripRepositoryPalette(image_lib.Image source) {
+    final output = image_lib.Image.from(source);
+    final center = source.getPixel(source.width ~/ 2, source.height ~/ 2);
+    final colors = <int>[];
+    for (
+      var index = 0;
+      index < MessageBubbleRepositoryFormat.swatchCount;
+      index++
+    ) {
+      final left = MessageBubbleRepositoryFormat.swatchX(index);
+      const top = MessageBubbleRepositoryFormat.swatchTop;
+      final sample = source.getPixel(
+        left + MessageBubbleRepositoryFormat.swatchSize ~/ 2,
+        top + MessageBubbleRepositoryFormat.swatchSize ~/ 2,
+      );
+      for (
+        var y = top;
+        y < top + MessageBubbleRepositoryFormat.swatchSize;
+        y++
+      ) {
+        for (
+          var x = left;
+          x < left + MessageBubbleRepositoryFormat.swatchSize;
+          x++
+        ) {
+          final pixel = source.getPixel(x, y);
+          const inset = MessageBubbleRepositoryFormat.swatchSize ~/ 4;
+          if (x >= left + inset &&
+              x < left + MessageBubbleRepositoryFormat.swatchSize - inset &&
+              y >= top + inset &&
+              y < top + MessageBubbleRepositoryFormat.swatchSize - inset &&
+              !_pixelsNear(pixel, sample, 5)) {
+            throw const CustomMessageBubbleImportException(
+              CustomMessageBubbleImportFailure.invalidPalette,
+            );
+          }
+          output.setPixelRgba(x, y, center.r, center.g, center.b, center.a);
+        }
+      }
+      colors.add(
+        Color.fromARGB(
+          sample.a.toInt(),
+          sample.r.toInt(),
+          sample.g.toInt(),
+          sample.b.toInt(),
+        ).toARGB32(),
+      );
+    }
+    return (output, colors);
   }
 
   bool _hasPngSignature(Uint8List bytes) {
@@ -184,6 +314,46 @@ class CustomMessageBubblePngProcessor {
       if (bytes[index] != signature[index]) return false;
     }
     return true;
+  }
+
+  _CollapsedAxis _compactRepositoryColumns(image_lib.Image source) {
+    const edge = MessageBubbleRepositoryFormat.protectedHorizontal;
+    final output = image_lib.Image(
+      width: edge * 2 + 1,
+      height: source.height,
+      numChannels: 4,
+    );
+    for (var y = 0; y < source.height; y++) {
+      for (var x = 0; x < output.width; x++) {
+        final sourceX = x < edge
+            ? x
+            : x == edge
+            ? source.width ~/ 2
+            : source.width - (output.width - x);
+        _copyPixel(source, sourceX, y, output, x, y);
+      }
+    }
+    return _CollapsedAxis(output, edge);
+  }
+
+  _CollapsedAxis _compactRepositoryRows(image_lib.Image source) {
+    const edge = MessageBubbleRepositoryFormat.protectedVertical;
+    final output = image_lib.Image(
+      width: source.width,
+      height: edge * 2 + 1,
+      numChannels: 4,
+    );
+    for (var y = 0; y < output.height; y++) {
+      final sourceY = y < edge
+          ? y
+          : y == edge
+          ? source.height ~/ 2
+          : source.height - (output.height - y);
+      for (var x = 0; x < source.width; x++) {
+        _copyPixel(source, x, sourceY, output, x, y);
+      }
+    }
+    return _CollapsedAxis(output, edge);
   }
 
   _CollapsedAxis _collapseRepeatedColumns(image_lib.Image source) {
@@ -265,6 +435,12 @@ class CustomMessageBubblePngProcessor {
   bool _pixelsEqual(image_lib.Pixel a, image_lib.Pixel b) =>
       a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
 
+  bool _pixelsNear(image_lib.Pixel a, image_lib.Pixel b, int tolerance) =>
+      (a.r.toInt() - b.r.toInt()).abs() <= tolerance &&
+      (a.g.toInt() - b.g.toInt()).abs() <= tolerance &&
+      (a.b.toInt() - b.b.toInt()).abs() <= tolerance &&
+      (a.a.toInt() - b.a.toInt()).abs() <= tolerance;
+
   void _copyPixel(
     image_lib.Image source,
     int sourceX,
@@ -312,7 +488,23 @@ class CustomMessageBubbleImporter {
   }
 
   Future<CustomMessageBubbleBackground> importBytes(Uint8List bytes) async {
-    final processed = _processor.process(bytes);
+    return _importProcessed(_processor.process(bytes));
+  }
+
+  Future<CustomMessageBubbleBackground> importRepositoryBytes(
+    Uint8List bytes, {
+    required String sourceMessageLink,
+  }) async {
+    return _importProcessed(
+      _processor.processRepository(bytes),
+      sourceMessageLink: sourceMessageLink,
+    );
+  }
+
+  Future<CustomMessageBubbleBackground> _importProcessed(
+    ProcessedMessageBubblePng processed, {
+    String? sourceMessageLink,
+  }) async {
     File? temporary;
     try {
       final support = await _supportDirectory();
@@ -333,6 +525,8 @@ class CustomMessageBubbleImporter {
         stretchY: processed.stretchY,
         backgroundColorValue: processed.backgroundColorValue,
         foregroundColorValue: processed.foregroundColorValue,
+        paletteColorValues: processed.paletteColorValues,
+        sourceMessageLink: sourceMessageLink,
       );
     } on CustomMessageBubbleImportException {
       rethrow;

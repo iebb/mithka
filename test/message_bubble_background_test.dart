@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as image_lib;
 import 'package:mithka/chat/message_bubble.dart';
+import 'package:mithka/chat/message_bubble_repository_view.dart';
 import 'package:mithka/chat/stretchable_message_bubble_background.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/settings/message_bubble_settings_view.dart';
@@ -113,6 +114,79 @@ void main() {
         ),
       ),
     );
+  });
+
+  test('repository processor enforces 160x120 and reads four swatches', () {
+    final processed = const CustomMessageBubblePngProcessor().processRepository(
+      _repositoryTemplatePng(),
+    );
+
+    expect(processed.paletteColorValues, const [
+      0xFF112233,
+      0xFF445566,
+      0xFF778899,
+      0xFFAABBCC,
+    ]);
+    expect(processed.foregroundColorValue, 0xFF112233);
+    expect((processed.width, processed.height), (49, 37));
+    final telegramJpeg = image_lib.encodeJpg(
+      image_lib.decodePng(_repositoryTemplatePng())!,
+      quality: 90,
+    );
+    final transcoded = const CustomMessageBubblePngProcessor()
+        .processRepository(Uint8List.fromList(telegramJpeg));
+    expect((transcoded.width, transcoded.height), (49, 37));
+    expect(
+      transcoded.foregroundColorValue & 0xFFFFFF,
+      closeTo(0x112233, 0x050505),
+    );
+    expect(
+      () => const CustomMessageBubblePngProcessor().processRepository(
+        _repeatableTemplatePng(),
+      ),
+      throwsA(
+        isA<CustomMessageBubbleImportException>().having(
+          (error) => error.failure,
+          'failure',
+          CustomMessageBubbleImportFailure.wrongRepositorySize,
+        ),
+      ),
+    );
+  });
+
+  test('eligible #msgbubble photos expose the apply action', () {
+    ChatMessage message({
+      required String caption,
+      int width = 160,
+      int height = 120,
+    }) => ChatMessage(
+      id: 42,
+      isOutgoing: false,
+      text: caption,
+      date: 0,
+      contentType: 'messagePhoto',
+      image: TdFileRef(id: 7),
+      imageWidth: width,
+      imageHeight: height,
+    );
+
+    expect(
+      offersMessageBubbleApplyAction(message(caption: '#msgbubble')),
+      isTrue,
+    );
+    expect(
+      offersMessageBubbleApplyAction(
+        message(caption: 'A bubble #MSGBUBBLE ready'),
+      ),
+      isTrue,
+    );
+    expect(
+      offersMessageBubbleApplyAction(
+        message(caption: '#msgbubble', width: 159),
+      ),
+      isFalse,
+    );
+    expect(messageBubbleRepositoryLink(42), 'https://t.me/msgbubble/42');
   });
 
   test(
@@ -263,7 +337,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('appearance picker applies the sample bubble immediately', (
+  testWidgets('appearance page routes bubble selection to the repository', (
     tester,
   ) async {
     SharedPreferences.setMockInitialValues({});
@@ -284,38 +358,17 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byType(GridView), findsOneWidget);
+    expect(find.byType(GridView), findsNothing);
+    expect(find.text('@msgbubble repository'), findsOneWidget);
     expect(
-      find.text(
-        'Message bubble styles are experimental and may change at any time.',
-      ),
+      find.byKey(const ValueKey('messageBubbleOpenRepository')),
       findsOneWidget,
     );
-    expect(
-      find.byKey(const ValueKey('messageBubbleChoice-forestFamiliar')),
-      findsOneWidget,
-    );
-
-    final solarChoice = find.byKey(
-      const ValueKey('messageBubbleChoice-solarPorcelain'),
-    );
-    await tester.ensureVisible(solarChoice);
-    await tester.pumpAndSettle();
-    await tester.tap(solarChoice);
-    await tester.pumpAndSettle();
-
-    expect(
-      theme.messageBubbleBackground,
-      MessageBubbleBackground.solarPorcelain,
-    );
-    expect(
-      preferences.getString('messageBubbleBackground.v1'),
-      'solarPorcelain',
-    );
+    expect(find.textContaining('160 × 120'), findsOneWidget);
   });
 
   testWidgets(
-    'appearance picker imports and immediately selects a custom PNG',
+    'appearance page refers to an applied bubble by public message link',
     (tester) async {
       tester.view.physicalSize = const Size(800, 3200);
       tester.view.devicePixelRatio = 1;
@@ -330,50 +383,36 @@ void main() {
       final theme = ThemeController(preferences);
       addTearDown(theme.dispose);
       final prepared = (await tester.runAsync(
-        () => CustomMessageBubbleImporter(
-          supportDirectory: () async => support,
-          fileId: () => 'widget',
-        ).importBytes(_repeatableTemplatePng()),
+        () =>
+            CustomMessageBubbleImporter(
+              supportDirectory: () async => support,
+              fileId: () => 'widget',
+            ).importRepositoryBytes(
+              _repositoryTemplatePng(),
+              sourceMessageLink: 'https://t.me/msgbubble/42',
+            ),
       ))!;
+      theme.installCustomMessageBubbleBackground(prepared);
 
       await tester.pumpWidget(
         ChangeNotifierProvider<ThemeController>.value(
           value: theme,
-          child: MaterialApp(
-            locale: const Locale('en'),
-            localizationsDelegates: const [AppLocalizations.delegate],
+          child: const MaterialApp(
+            locale: Locale('en'),
+            localizationsDelegates: [AppLocalizations.delegate],
             supportedLocales: AppLocalizations.supportedLocales,
-            home: MessageBubbleSettingsView(
-              importer: _ReturningCustomBubbleImporter(prepared),
-              pickCustomPng: () async => _repeatableTemplatePng(),
-            ),
+            home: MessageBubbleSettingsView(),
           ),
         ),
       );
 
-      final importRow = find.byKey(const ValueKey('messageBubbleCustomImport'));
-      expect(importRow, findsOneWidget);
-      await tester.tap(importRow);
-      for (
-        var attempt = 0;
-        attempt < 10 &&
-            theme.messageBubbleBackground != MessageBubbleBackground.custom;
-        attempt++
-      ) {
-        await tester.pump(const Duration(milliseconds: 20));
-      }
-      await tester.pump(const Duration(milliseconds: 200));
-
       expect(theme.messageBubbleBackground, MessageBubbleBackground.custom);
       expect(
-        theme.customMessageBubbleBackground?.minimumSize,
-        const Size(5, 5),
+        theme.customMessageBubbleBackground?.sourceMessageLink,
+        'https://t.me/msgbubble/42',
       );
       expect(theme.messageBubbleBackgroundSpec.image, isA<FileImage>());
-      expect(
-        find.byKey(const ValueKey('messageBubbleCustomReplace')),
-        findsOne,
-      );
+      expect(find.text('https://t.me/msgbubble/42'), findsOneWidget);
     },
   );
 
@@ -471,12 +510,37 @@ int _rgba(image_lib.Pixel pixel) =>
     pixel.g.toInt() << 8 |
     pixel.b.toInt();
 
-class _ReturningCustomBubbleImporter extends CustomMessageBubbleImporter {
-  _ReturningCustomBubbleImporter(this.value);
-
-  final CustomMessageBubbleBackground value;
-
-  @override
-  Future<CustomMessageBubbleBackground> importBytes(Uint8List bytes) async =>
-      value;
+Uint8List _repositoryTemplatePng() {
+  final image = image_lib.Image(
+    width: MessageBubbleRepositoryFormat.width,
+    height: MessageBubbleRepositoryFormat.height,
+    numChannels: 4,
+  );
+  image.clear(image_lib.ColorRgba8(0xEE, 0xDD, 0xCC, 0xFF));
+  const colors = <(int, int, int)>[
+    (0x11, 0x22, 0x33),
+    (0x44, 0x55, 0x66),
+    (0x77, 0x88, 0x99),
+    (0xAA, 0xBB, 0xCC),
+  ];
+  for (var index = 0; index < colors.length; index++) {
+    final (red, green, blue) = colors[index];
+    final left = MessageBubbleRepositoryFormat.swatchX(index);
+    for (
+      var y = MessageBubbleRepositoryFormat.swatchTop;
+      y <
+          MessageBubbleRepositoryFormat.swatchTop +
+              MessageBubbleRepositoryFormat.swatchSize;
+      y++
+    ) {
+      for (
+        var x = left;
+        x < left + MessageBubbleRepositoryFormat.swatchSize;
+        x++
+      ) {
+        image.setPixelRgba(x, y, red, green, blue, 0xFF);
+      }
+    }
+  }
+  return Uint8List.fromList(image_lib.encodePng(image));
 }

@@ -261,6 +261,7 @@ class ChatViewModel extends ChangeNotifier {
   bool joinByRequest = false; // joining needs approval → "申请加入"
   bool joinRequested = false; // a join request was sent (awaiting approval)
   bool isChannel = false; // broadcast channel (members can't post)
+  bool isMessageBubbleRepository = false;
   bool hasLinkedDiscussion = false;
   bool isDirectMessagesGroup = false;
   bool isAdministeredDirectMessagesGroup = false;
@@ -2762,6 +2763,7 @@ class ChatViewModel extends ChangeNotifier {
     canJoin = false;
     joinByRequest = false;
     isChannel = false;
+    isMessageBubbleRepository = false;
     hasLinkedDiscussion = false;
     isDirectMessagesGroup = false;
     isAdministeredDirectMessagesGroup = false;
@@ -2849,6 +2851,17 @@ class ChatViewModel extends ChangeNotifier {
               );
             }
             isChannel = sg.boolean('is_channel') ?? false;
+            final usernames = sg.obj('usernames');
+            final activeUsernames = usernames?['active_usernames'];
+            final repositoryNames = <String>{
+              if (activeUsernames is List)
+                for (final value in activeUsernames.whereType<String>())
+                  value.toLowerCase(),
+              if ((usernames?.str('editable_username') ?? '').isNotEmpty)
+                usernames!.str('editable_username')!.toLowerCase(),
+            };
+            isMessageBubbleRepository =
+                isChannel && repositoryNames.contains('msgbubble');
             isDirectMessagesGroup =
                 sg.boolean('is_direct_messages_group') ?? false;
             isAdministeredDirectMessagesGroup =

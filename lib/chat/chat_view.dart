@@ -87,6 +87,7 @@ import 'media_library_saver.dart';
 import 'media_send_preview_view.dart';
 import 'message_action_menu.dart';
 import 'message_bubble.dart';
+import 'message_bubble_repository_view.dart';
 import 'message_replies_sheet.dart';
 import 'music_player_controller.dart';
 import 'openai_compatible_unread_summary_provider.dart';
@@ -3012,6 +3013,15 @@ class _ChatViewState extends State<ChatView> {
       showCommentAttachment: _vm.isChannel,
       channelHasLinkedDiscussion: _vm.hasLinkedDiscussion,
       onOpenImage: _openImage,
+      onApplyMessageBubble: offersMessageBubbleApplyAction(message)
+          ? (message) => unawaited(
+              applyMessageBubbleRepositoryPhoto(
+                context,
+                message,
+                sourceMessageLink: messageBubbleRepositoryLink(message.id),
+              ),
+            )
+          : null,
       onOpenSticker: _openSticker,
       onPlayVideo: _playVideo,
       onPlayMusic: _playMusicMessage,
@@ -4769,6 +4779,9 @@ class _ChatViewState extends State<ChatView> {
         chatId: widget.chatId,
         title: widget.title,
       );
+    }
+    if (_vm.isMessageBubbleRepository) {
+      return MessageBubbleRepositoryView(viewModel: _vm, onBack: _handleBack);
     }
     final showPeerRestrictionBlock =
         _vm.isPeerRestricted && _vm.messages.isEmpty;

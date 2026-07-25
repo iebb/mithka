@@ -71,6 +71,7 @@ class MessageBubble extends StatefulWidget {
     this.onAvatarLongPress,
     this.onOpenReply,
     this.onOpenImage,
+    this.onApplyMessageBubble,
     this.onOpenSticker,
     this.onPlayVideo,
     this.onPlayMusic,
@@ -123,6 +124,7 @@ class MessageBubble extends StatefulWidget {
   final ValueChanged<ChatMessage>? onAvatarLongPress;
   final ValueChanged<int>? onOpenReply;
   final ValueChanged<ChatMessage>? onOpenImage;
+  final ValueChanged<ChatMessage>? onApplyMessageBubble;
   final ValueChanged<ChatMessage>? onOpenSticker;
   final ValueChanged<ChatMessage>? onPlayVideo;
   final ValueChanged<ChatMessage>? onPlayMusic;
@@ -3834,8 +3836,59 @@ class _MessageBubbleState extends State<MessageBubble>
               ),
       ),
     );
+    final mediaWithApplyAction = widget.onApplyMessageBubble == null
+        ? media
+        : Stack(
+            children: [
+              media,
+              Positioned(
+                left: 8,
+                right: 8,
+                bottom: 8,
+                child: GestureDetector(
+                  key: const ValueKey('messageBubbleApplyAction'),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => widget.onApplyMessageBubble?.call(message),
+                  child: Container(
+                    height: 36,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: AppTheme.brand,
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.18),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        AppIcon(
+                          HeroAppIcons.palette,
+                          size: 16,
+                          color: AppTheme.onBrand,
+                        ),
+                        const SizedBox(width: 7),
+                        Text(
+                          'Apply bubble',
+                          style: TextStyle(
+                            color: AppTheme.onBrand,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
     return _mediaWithCaption(
-      media: media,
+      media: mediaWithApplyAction,
       caption: caption,
       outgoing: outgoing,
     );

@@ -36,6 +36,24 @@ enum MessageBubbleBackground {
   };
 }
 
+extension MessageBubbleBackgroundRepositoryLink on MessageBubbleBackground {
+  String? get repositoryLink => switch (this) {
+    MessageBubbleBackground.midnightAurora => 'https://t.me/msgbubble/3',
+    MessageBubbleBackground.solarPorcelain => 'https://t.me/msgbubble/4',
+    MessageBubbleBackground.berryOrbit => 'https://t.me/msgbubble/5',
+    MessageBubbleBackground.arcticBlueprint => 'https://t.me/msgbubble/6',
+    MessageBubbleBackground.emberArcade => 'https://t.me/msgbubble/7',
+    MessageBubbleBackground.lilacConstellation => 'https://t.me/msgbubble/8',
+    MessageBubbleBackground.forestFamiliar => 'https://t.me/msgbubble/9',
+    MessageBubbleBackground.inkWanderer => 'https://t.me/msgbubble/10',
+    MessageBubbleBackground.pixelCadet => 'https://t.me/msgbubble/11',
+    MessageBubbleBackground.cosmicMechanic => 'https://t.me/msgbubble/12',
+    MessageBubbleBackground.pastryPal => 'https://t.me/msgbubble/13',
+    MessageBubbleBackground.noirDetective => 'https://t.me/msgbubble/14',
+    MessageBubbleBackground.standard || MessageBubbleBackground.custom => null,
+  };
+}
+
 /// Everything the renderer needs for either a bundled or user-provided PNG.
 ///
 /// A nullable [image] represents the standard color bubble. Decorative images
