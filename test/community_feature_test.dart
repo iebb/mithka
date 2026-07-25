@@ -9,6 +9,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/settings/feature_settings_view.dart';
 import 'package:mithka/settings/safety_notice_controller.dart';
 import 'package:mithka/tdlib/td_models.dart';
+import 'package:mithka/theme/app_theme.dart';
 import 'package:mithka/theme/theme_controller.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -116,6 +117,79 @@ void main() {
 
       expect(entries, everyElement(isA<CommunityChatEntry>()));
       expect(entries, hasLength(2));
+    });
+
+    testWidgets('collapsed community row stacks two plates behind its avatar', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final theme = ThemeController(prefs);
+      addTearDown(theme.dispose);
+      final community = CommunitySummary(
+        id: 42,
+        name: 'Formula Paddock',
+        haveAccess: true,
+        isAdministrator: false,
+        canEditChatList: false,
+      );
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<ThemeController>.value(
+          value: theme,
+          child: MaterialApp(
+            theme: ThemeData(
+              brightness: Brightness.light,
+              extensions: [AppColors.light],
+            ),
+            home: Scaffold(
+              body: CommunityChatListRow(
+                entry: CommunityGroupEntry(
+                  community: community,
+                  chats: [
+                    _chat(
+                      id: 1,
+                      title: 'Race Chat',
+                      order: 100,
+                      sender: 'Fexis',
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final front = find.byKey(const ValueKey('community-avatar-front'));
+      final nearBack = find.byKey(const ValueKey('community-avatar-back-1'));
+      final farBack = find.byKey(const ValueKey('community-avatar-back-2'));
+      expect(front, findsOneWidget);
+      expect(nearBack, findsOneWidget);
+      expect(farBack, findsOneWidget);
+      expect(tester.getSize(front), Size.square(theme.avatarSize));
+      expect(
+        tester.getTopLeft(nearBack).dx,
+        lessThan(tester.getTopLeft(front).dx),
+      );
+      expect(
+        tester.getTopLeft(farBack).dx,
+        lessThan(tester.getTopLeft(nearBack).dx),
+      );
+      expect(
+        tester.getTopLeft(nearBack).dy,
+        greaterThan(tester.getTopLeft(front).dy),
+      );
+      expect(
+        tester.getTopLeft(farBack).dy,
+        greaterThan(tester.getTopLeft(nearBack).dy),
+      );
+      expect(tester.widget<PhotoAvatar>(front).allowAnimation, isFalse);
+      final preview = tester.widget<ChatPreviewText>(
+        find.byType(ChatPreviewText),
+      );
+      expect(preview.sender, 'Fexis');
+      expect(preview.message, 'Latest message');
     });
 
     test('requests the native community peer catalog', () {
@@ -271,6 +345,7 @@ ChatSummary _chat({
   required int order,
   int unread = 0,
   bool markedUnread = false,
+  String? sender,
 }) {
   return ChatSummary(
     id: id,
@@ -282,6 +357,7 @@ ChatSummary _chat({
     order: order,
     isMuted: false,
     isMarkedUnread: markedUnread,
+    lastSender: sender,
     kind: ChatKind.group,
   );
 }
