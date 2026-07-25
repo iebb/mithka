@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chats/chat_row_view.dart';
+import 'package:mithka/components/photo_avatar.dart';
 import 'package:mithka/tdlib/td_models.dart';
 import 'package:mithka/theme/app_theme.dart';
 import 'package:mithka/theme/theme_controller.dart';
@@ -42,6 +43,11 @@ void main() {
     );
 
     Text title() => tester.widget<Text>(find.text('Normal user'));
+
+    expect(
+      tester.widget<PhotoAvatar>(find.byType(PhotoAvatar)).allowAnimation,
+      isFalse,
+    );
 
     expect(theme.chatListNameColorAudience, NameColorAudience.premium);
     expect(title().style?.color, AppColors.light.textPrimary);

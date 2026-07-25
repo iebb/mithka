@@ -29,51 +29,13 @@ import '../l10n/app_localizations.dart';
 import '../moments/moments_view.dart';
 import '../profile/profile_view.dart';
 import '../settings/topic_group_display_mode.dart';
-import '../tdlib/json_helpers.dart';
-import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/telegram_cloud_theme.dart';
 import '../theme/theme_controller.dart';
 import '../update/update_checker.dart';
 import 'chat_deep_link_controller.dart';
-
-/// Global unread badge source.
-class UnreadBadgeModel extends ChangeNotifier {
-  int _chatCount = 0;
-  int _messageCount = 0;
-  bool _started = false;
-
-  int countFor(UnreadBadgeMode mode) => switch (mode) {
-    UnreadBadgeMode.messages => _messageCount,
-    UnreadBadgeMode.chats => _chatCount,
-  };
-
-  void start() {
-    if (_started) return;
-    _started = true;
-    TdClient.shared.subscribe().listen((update) {
-      switch (update.type) {
-        case 'updateUnreadChatCount':
-          if (update.obj('chat_list')?.type != 'chatListMain') return;
-          _chatCount = update.integer('unread_unmuted_count') ?? 0;
-          notifyListeners();
-        case 'updateUnreadMessageCount':
-          if (update.obj('chat_list')?.type != 'chatListMain') return;
-          _messageCount = update.integer('unread_unmuted_count') ?? 0;
-          notifyListeners();
-        case 'mithkaUnreadDelta':
-          if (update.obj('chat_list')?.type != 'chatListMain') return;
-          final chatDelta = update.integer('chat_delta') ?? 0;
-          final messageDelta = update.integer('message_delta') ?? 0;
-          if (chatDelta == 0 && messageDelta == 0) return;
-          _chatCount = math.max(0, _chatCount + chatDelta);
-          _messageCount = math.max(0, _messageCount + messageDelta);
-          notifyListeners();
-      }
-    });
-  }
-}
+import 'unread_badge_model.dart';
 
 class MainTabView extends StatefulWidget {
   const MainTabView({super.key});
@@ -149,6 +111,8 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
   void dispose() {
     _chatDeepLinks?.removeListener(_handlePendingChatDeepLink);
     _chatListController.dispose();
+    _unread.dispose();
+    _tabBar.dispose();
     super.dispose();
   }
 
@@ -944,13 +908,20 @@ class _LazyTabStackState extends State<_LazyTabStack> {
 
   @override
   Widget build(BuildContext context) {
+    final selectedPosition = widget.selection
+        .clamp(0, widget.items.length - 1)
+        .toInt();
+    final selectedTabIndex = widget.items[selectedPosition].index;
     return IndexedStack(
-      index: widget.selection,
+      index: selectedPosition,
       children: [
         for (final tab in widget.items)
-          _builtTabIndexes.contains(tab.index)
-              ? widget.builder(tab)
-              : const SizedBox.expand(),
+          TickerMode(
+            enabled: tab.index == selectedTabIndex,
+            child: _builtTabIndexes.contains(tab.index)
+                ? widget.builder(tab)
+                : const SizedBox.expand(),
+          ),
       ],
     );
   }

@@ -18,37 +18,55 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('decorative presets stretch only one exact center pixel', () {
-    expect(
-      MessageBubbleBackgroundSpec.purpleFolded.minimumSize,
-      const Size(32, 29),
-    );
-    expect(
-      MessageBubbleBackgroundSpec.purpleFolded.centerSlice,
-      const Rect.fromLTWH(15, 14, 1, 1),
-    );
-    expect(
-      (MessageBubbleBackgroundSpec.purpleFolded.image! as AssetImage).assetName,
-      'assets/message_bubbles/purple_folded.png',
-    );
-    expect(
-      MessageBubbleBackgroundSpec.creamCharms.minimumSize,
-      const Size(45, 37),
-    );
-    expect(
-      MessageBubbleBackgroundSpec.creamCharms.centerSlice,
-      const Rect.fromLTWH(22, 15, 1, 1),
-    );
-    expect(
-      (MessageBubbleBackgroundSpec.creamCharms.image! as AssetImage).assetName,
-      'assets/message_bubbles/cream_charms.png',
-    );
+  test('generated presets fit the compact one-pixel center-slice contract', () {
+    const presets = <(MessageBubbleBackgroundSpec, String)>[
+      (MessageBubbleBackgroundSpec.midnightAurora, 'midnight-aurora.png'),
+      (MessageBubbleBackgroundSpec.solarPorcelain, 'solar-porcelain.png'),
+      (MessageBubbleBackgroundSpec.berryOrbit, 'berry-orbit.png'),
+      (MessageBubbleBackgroundSpec.arcticBlueprint, 'arctic-blueprint.png'),
+      (MessageBubbleBackgroundSpec.emberArcade, 'ember-arcade.png'),
+      (
+        MessageBubbleBackgroundSpec.lilacConstellation,
+        'lilac-constellation.png',
+      ),
+      (MessageBubbleBackgroundSpec.forestFamiliar, 'forest-familiar.png'),
+      (MessageBubbleBackgroundSpec.inkWanderer, 'ink-wanderer.png'),
+      (MessageBubbleBackgroundSpec.pixelCadet, 'pixel-cadet.png'),
+      (MessageBubbleBackgroundSpec.cosmicMechanic, 'cosmic-mechanic.png'),
+      (MessageBubbleBackgroundSpec.pastryPal, 'pastry-pal.png'),
+      (MessageBubbleBackgroundSpec.noirDetective, 'noir-detective.png'),
+    ];
+
+    for (final (spec, fileName) in presets) {
+      expect(spec.minimumSize, const Size(49, 37));
+      expect(spec.centerSlice, const Rect.fromLTWH(24, 18, 1, 1));
+      expect(
+        (spec.image! as AssetImage).assetName,
+        'assets/message_bubbles/$fileName',
+      );
+      final compact = image_lib.decodePng(
+        File('assets/message_bubbles/$fileName').readAsBytesSync(),
+      )!;
+      final retina = image_lib.decodePng(
+        File('assets/message_bubbles/2.0x/$fileName').readAsBytesSync(),
+      )!;
+      expect((compact.width, compact.height), (49, 37));
+      expect((retina.width, retina.height), (98, 74));
+    }
   });
 
-  test('legacy violet storage value migrates to the folded preset', () {
+  test('screenshot-derived storage values migrate to generated presets', () {
     expect(
       MessageBubbleBackground.fromStorage('moonlitViolet'),
-      MessageBubbleBackground.purpleFolded,
+      MessageBubbleBackground.midnightAurora,
+    );
+    expect(
+      MessageBubbleBackground.fromStorage('purpleFolded'),
+      MessageBubbleBackground.midnightAurora,
+    );
+    expect(
+      MessageBubbleBackground.fromStorage('creamCharms'),
+      MessageBubbleBackground.solarPorcelain,
     );
   });
 
@@ -163,20 +181,20 @@ void main() {
     final theme = ThemeController(preferences, initialAccountUserId: 11);
     addTearDown(theme.dispose);
 
-    theme.messageBubbleBackground = MessageBubbleBackground.creamCharms;
+    theme.messageBubbleBackground = MessageBubbleBackground.berryOrbit;
     theme.usePerAccountTheming = true;
     theme.setActiveAccountSlot(1, userId: 22);
     expect(theme.messageBubbleBackground, MessageBubbleBackground.standard);
 
     theme.setActiveAccountSlot(0, userId: 11);
-    expect(theme.messageBubbleBackground, MessageBubbleBackground.creamCharms);
+    expect(theme.messageBubbleBackground, MessageBubbleBackground.berryOrbit);
 
     theme.themingEnabled = false;
     expect(
       theme.effectiveMessageBubbleBackground,
       MessageBubbleBackground.standard,
     );
-    expect(theme.messageBubbleBackground, MessageBubbleBackground.creamCharms);
+    expect(theme.messageBubbleBackground, MessageBubbleBackground.berryOrbit);
   });
 
   testWidgets('center-sliced background renders at short and multiline sizes', (
@@ -185,7 +203,7 @@ void main() {
     Widget bubble(Key key, BoxConstraints constraints, String text) {
       return StretchableMessageBubbleBackground(
         key: key,
-        background: MessageBubbleBackgroundSpec.purpleFolded,
+        background: MessageBubbleBackgroundSpec.midnightAurora,
         fallbackColor: Colors.blue,
         fallbackBorderRadius: BorderRadius.circular(6),
         fallbackPadding: const EdgeInsets.all(8),
@@ -240,7 +258,7 @@ void main() {
             as BoxDecoration;
     expect(
       decoration.image?.centerSlice,
-      MessageBubbleBackgroundSpec.purpleFolded.centerSlice,
+      MessageBubbleBackgroundSpec.midnightAurora.centerSlice,
     );
     expect(tester.takeException(), isNull);
   });
@@ -264,23 +282,42 @@ void main() {
         ),
       ),
     );
+    await tester.pumpAndSettle();
 
-    final creamChoice = find.byKey(
-      const ValueKey('messageBubbleChoice-creamCharms'),
+    expect(find.byType(GridView), findsOneWidget);
+    expect(
+      find.text(
+        'Message bubble styles are experimental and may change at any time.',
+      ),
+      findsOneWidget,
     );
-    await tester.ensureVisible(creamChoice);
+    expect(
+      find.byKey(const ValueKey('messageBubbleChoice-forestFamiliar')),
+      findsOneWidget,
+    );
+
+    final solarChoice = find.byKey(
+      const ValueKey('messageBubbleChoice-solarPorcelain'),
+    );
+    await tester.ensureVisible(solarChoice);
     await tester.pumpAndSettle();
-    await tester.tap(creamChoice);
+    await tester.tap(solarChoice);
     await tester.pumpAndSettle();
 
-    expect(theme.messageBubbleBackground, MessageBubbleBackground.creamCharms);
-    expect(preferences.getString('messageBubbleBackground.v1'), 'creamCharms');
+    expect(
+      theme.messageBubbleBackground,
+      MessageBubbleBackground.solarPorcelain,
+    );
+    expect(
+      preferences.getString('messageBubbleBackground.v1'),
+      'solarPorcelain',
+    );
   });
 
   testWidgets(
     'appearance picker imports and immediately selects a custom PNG',
     (tester) async {
-      tester.view.physicalSize = const Size(800, 1200);
+      tester.view.physicalSize = const Size(800, 3200);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
@@ -344,7 +381,7 @@ void main() {
     tester,
   ) async {
     SharedPreferences.setMockInitialValues({
-      'messageBubbleBackground.v1': 'creamCharms',
+      'messageBubbleBackground.v1': 'emberArcade',
     });
     final preferences = await SharedPreferences.getInstance();
     final theme = ThemeController(preferences);
@@ -375,7 +412,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final bubble = find.byKey(const ValueKey('messageTextBubble-41'));
-    expect(tester.getSize(bubble).width, greaterThanOrEqualTo(45));
+    expect(tester.getSize(bubble).width, greaterThanOrEqualTo(49));
     expect(tester.getSize(bubble).height, greaterThanOrEqualTo(37));
 
     final decoration =
@@ -393,7 +430,7 @@ void main() {
     expect(decoration.image?.image, isA<AssetImage>());
     expect(
       decoration.image?.centerSlice,
-      MessageBubbleBackgroundSpec.creamCharms.centerSlice,
+      MessageBubbleBackgroundSpec.emberArcade.centerSlice,
     );
     expect(tester.takeException(), isNull);
   });

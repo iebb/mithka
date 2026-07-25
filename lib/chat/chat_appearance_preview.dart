@@ -74,6 +74,7 @@ class SenderNameReadabilityPlate extends StatelessWidget {
     required this.mode,
     required this.bubbleColor,
     required this.child,
+    this.shadowColor,
     this.padding = const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
     this.connectedToLeading = false,
   });
@@ -81,6 +82,7 @@ class SenderNameReadabilityPlate extends StatelessWidget {
   final SenderNameReadabilityMode mode;
   final Color bubbleColor;
   final Widget child;
+  final Color? shadowColor;
   final EdgeInsetsGeometry padding;
   final bool connectedToLeading;
 
@@ -90,7 +92,12 @@ class SenderNameReadabilityPlate extends StatelessWidget {
     if (mode == SenderNameReadabilityMode.shadow) {
       return DefaultTextStyle.merge(
         key: const ValueKey('senderNameReadabilityShadow'),
-        style: TextStyle(shadows: [Shadow(color: bubbleColor, blurRadius: 4)]),
+        style: TextStyle(
+          shadows: [
+            Shadow(color: shadowColor ?? bubbleColor, blurRadius: 12),
+            Shadow(color: shadowColor ?? bubbleColor, blurRadius: 6),
+          ],
+        ),
         child: child,
       );
     }
@@ -115,6 +122,7 @@ class SenderIdentityPills extends StatelessWidget {
     required this.bubbleColor,
     required this.name,
     required this.nameStyle,
+    this.shadowColor,
     this.role,
     this.roleTitle,
   });
@@ -123,11 +131,13 @@ class SenderIdentityPills extends StatelessWidget {
   final Color bubbleColor;
   final String name;
   final TextStyle nameStyle;
+  final Color? shadowColor;
   final MemberRole? role;
   final String? roleTitle;
 
   @override
   Widget build(BuildContext context) {
+    final effectiveNameStyle = nameStyle.copyWith(fontWeight: FontWeight.w500);
     final connected =
         readabilityMode == SenderNameReadabilityMode.background && role != null;
     return Row(
@@ -139,7 +149,7 @@ class SenderIdentityPills extends StatelessWidget {
             role: role!,
             title: roleTitle,
             connectedToTrailing: connected,
-            fontSize: connected ? nameStyle.fontSize : null,
+            fontSize: connected ? effectiveNameStyle.fontSize : null,
           ),
           if (!connected) const SizedBox(width: 4),
         ],
@@ -147,12 +157,13 @@ class SenderIdentityPills extends StatelessWidget {
           child: SenderNameReadabilityPlate(
             mode: readabilityMode,
             bubbleColor: bubbleColor,
+            shadowColor: shadowColor,
             connectedToLeading: connected,
             child: Text(
               name,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: nameStyle,
+              style: effectiveNameStyle,
             ),
           ),
         ),
@@ -211,7 +222,7 @@ class _PreviewMessage extends StatelessWidget {
           nameStyle: TextStyle(
             color: nameColor,
             fontSize: 11,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w500,
           ),
           role: readabilityMode == SenderNameReadabilityMode.background
               ? (outgoing ? MemberRole.owner : MemberRole.admin)

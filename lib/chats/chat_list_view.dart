@@ -814,6 +814,7 @@ class _ChatListViewState extends State<ChatListView>
                 title: _meName,
                 photo: _mePhoto,
                 size: AppMetric.headerAvatarSize,
+                allowAnimation: false,
               ),
             ),
             const SizedBox(width: AppSpacing.lg),

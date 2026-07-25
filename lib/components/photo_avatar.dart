@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 
+import '../app/performance_metrics.dart';
 import '../tdlib/animated_avatar_repository.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_image_loader.dart';
@@ -54,6 +55,46 @@ String _initial(String title) {
   return trimmed.characters.first.toUpperCase();
 }
 
+@visibleForTesting
+bool avatarAnimationIsEligible({
+  required bool surfaceAllowsAnimation,
+  required bool themeAllowsAnimation,
+  required bool tickerEnabled,
+  required bool appIsActive,
+}) =>
+    surfaceAllowsAnimation &&
+    themeAllowsAnimation &&
+    tickerEnabled &&
+    appIsActive;
+
+/// FVP/MDK creates a native player and worker set for every video controller.
+/// Keep avatar playback globally bounded even outside the chat list so a dense
+/// surface cannot exhaust native threads while it is coming on screen.
+abstract final class _AvatarPlayerBudget {
+  static const maxPlayers = 2;
+  static int _reservedPlayers = 0;
+
+  static _AvatarPlayerLease? tryAcquire() {
+    if (_reservedPlayers >= maxPlayers) return null;
+    _reservedPlayers++;
+    return _AvatarPlayerLease();
+  }
+
+  static void _release() {
+    if (_reservedPlayers > 0) _reservedPlayers--;
+  }
+}
+
+final class _AvatarPlayerLease {
+  bool _released = false;
+
+  void release() {
+    if (_released) return;
+    _released = true;
+    _AvatarPlayerBudget._release();
+  }
+}
+
 /// Profile/group avatar with a real TDLib photo, placeholder, and monogram.
 class PhotoAvatar extends StatefulWidget {
   const PhotoAvatar({
@@ -63,6 +104,7 @@ class PhotoAvatar extends StatefulWidget {
     this.size = 50,
     this.square = false,
     this.showOnlineDot = false,
+    this.allowAnimation = true,
   });
 
   final String title;
@@ -71,22 +113,35 @@ class PhotoAvatar extends StatefulWidget {
   final bool square;
   final bool showOnlineDot;
 
+  /// Whether this surface may create a video decoder for an animated avatar.
+  /// Dense scrolling lists should leave this off and use the static photo.
+  final bool allowAnimation;
+
   @override
   State<PhotoAvatar> createState() => _PhotoAvatarState();
 }
 
-class _PhotoAvatarState extends State<PhotoAvatar> {
+class _PhotoAvatarState extends State<PhotoAvatar> with WidgetsBindingObserver {
   File? _file;
   VideoPlayerController? _animationController;
+  _AvatarPlayerLease? _animationLease;
   int? _loadedId;
   int? _loadedSlot;
-  bool _animateAvatars = true;
+  bool _animateAvatars = false;
+  bool _themeAllowsAnimation = true;
+  bool _tickerEnabled = true;
+  bool _appIsActive = true;
+  bool _animationLoadPending = false;
   int _animationGeneration = 0;
   int? _animationSlot;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _appIsActive =
+        WidgetsBinding.instance.lifecycleState == null ||
+        WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
     _load();
   }
 
@@ -97,71 +152,135 @@ class _PhotoAvatarState extends State<PhotoAvatar> {
     if (oldWidget.photo?.id != widget.photo?.id ||
         oldWidget.photo?.hasAnimation != widget.photo?.hasAnimation ||
         oldWidget.photo?.photoId != widget.photo?.photoId ||
+        oldWidget.allowAnimation != widget.allowAnimation ||
         _animationSlot != TdClient.shared.activeSlot) {
-      _syncAnimation();
+      _updateAnimationEligibility(forceReload: true);
     }
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    var enabled = true;
+    var themeAllowsAnimation = true;
     try {
-      enabled = context.watch<ThemeController>().animateAvatars;
+      themeAllowsAnimation = context.watch<ThemeController>().animateAvatars;
     } on ProviderNotFoundException catch (_) {
       // Standalone widget tests and previews may not install app providers.
     }
-    if (_animateAvatars != enabled) {
-      _animateAvatars = enabled;
-      _syncAnimation();
-    } else if (_animationController == null) {
-      _syncAnimation();
+    _themeAllowsAnimation = themeAllowsAnimation;
+    _tickerEnabled = TickerMode.valuesOf(context).enabled;
+    _updateAnimationEligibility();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appIsActive = state == AppLifecycleState.resumed;
+    _updateAnimationEligibility();
+  }
+
+  void _updateAnimationEligibility({bool forceReload = false}) {
+    final enabled = avatarAnimationIsEligible(
+      surfaceAllowsAnimation: widget.allowAnimation,
+      themeAllowsAnimation: _themeAllowsAnimation,
+      tickerEnabled: _tickerEnabled,
+      appIsActive: _appIsActive,
+    );
+    if (!forceReload && _animateAvatars == enabled) {
+      if (enabled && _animationController == null && !_animationLoadPending) {
+        unawaited(_syncAnimation());
+      }
+      return;
     }
+    _animateAvatars = enabled;
+    unawaited(_syncAnimation());
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _animationGeneration++;
-    unawaited(_animationController?.dispose());
+    final controller = _animationController;
+    final lease = _animationLease;
+    _animationController = null;
+    _animationLease = null;
+    if (controller != null) {
+      AppPerformanceMetrics.animatedAvatarPlayerStopped();
+      unawaited(controller.dispose().whenComplete(() => lease?.release()));
+    } else {
+      lease?.release();
+    }
     super.dispose();
   }
 
   Future<void> _syncAnimation() async {
     final generation = ++_animationGeneration;
+    _animationLoadPending = true;
+    try {
+      await _syncAnimationForGeneration(generation);
+    } finally {
+      if (generation == _animationGeneration) {
+        _animationLoadPending = false;
+      }
+    }
+  }
+
+  Future<void> _syncAnimationForGeneration(int generation) async {
     final oldController = _animationController;
+    final oldLease = _animationLease;
     _animationController = null;
+    _animationLease = null;
     if (oldController != null) {
-      await oldController.dispose();
+      AppPerformanceMetrics.animatedAvatarPlayerStopped();
+      try {
+        await oldController.dispose();
+      } finally {
+        oldLease?.release();
+      }
       if (mounted) setState(() {});
+    } else {
+      oldLease?.release();
     }
     final photo = widget.photo;
     final slot = TdClient.shared.activeSlot;
     _animationSlot = slot;
     if (!_animateAvatars || photo == null || !photo.hasAnimation) return;
 
-    final animation = await AnimatedAvatarRepository.shared.resolve(photo);
-    if (!mounted || generation != _animationGeneration || animation == null) {
-      return;
-    }
-    final path = await TdFileCenter.shared.pathFor(animation);
-    if (!mounted || generation != _animationGeneration || path == null) return;
-    final controller = VideoPlayerController.file(File(path));
+    final lease = _AvatarPlayerBudget.tryAcquire();
+    if (lease == null) return;
+    var stateOwnsLease = false;
+
     try {
-      await controller.initialize();
-      await controller.setLooping(true);
-      await controller.setVolume(0);
-      await controller.play();
-    } catch (_) {
-      await controller.dispose();
-      return;
+      final animation = await AnimatedAvatarRepository.shared.resolve(photo);
+      if (!mounted || generation != _animationGeneration || animation == null) {
+        return;
+      }
+      final path = await TdFileCenter.shared.pathFor(animation);
+      if (!mounted || generation != _animationGeneration || path == null) {
+        return;
+      }
+      final controller = VideoPlayerController.file(File(path));
+      try {
+        await controller.initialize();
+        await controller.setLooping(true);
+        await controller.setVolume(0);
+        await controller.play();
+      } catch (_) {
+        await controller.dispose();
+        return;
+      }
+      if (!mounted ||
+          generation != _animationGeneration ||
+          slot != TdClient.shared.activeSlot) {
+        await controller.dispose();
+        return;
+      }
+      _animationLease = lease;
+      stateOwnsLease = true;
+      AppPerformanceMetrics.animatedAvatarPlayerStarted();
+      setState(() => _animationController = controller);
+    } finally {
+      if (!stateOwnsLease) lease.release();
     }
-    if (!mounted ||
-        generation != _animationGeneration ||
-        slot != TdClient.shared.activeSlot) {
-      await controller.dispose();
-      return;
-    }
-    setState(() => _animationController = controller);
   }
 
   void _load() {

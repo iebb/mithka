@@ -285,10 +285,11 @@ class _MessageBubbleState extends State<MessageBubble>
             : AppTheme.bubbleOutgoingText);
   }
 
+  Color get _incomingThemeBubbleColor =>
+      widget.incomingBubbleColor ?? context.colors.bubbleIncoming;
+
   Color get _incomingBubbleColor =>
-      _bubbleBackgroundStyle.backgroundColor ??
-      widget.incomingBubbleColor ??
-      context.colors.bubbleIncoming;
+      _bubbleBackgroundStyle.backgroundColor ?? _incomingThemeBubbleColor;
 
   Color get _incomingTextColor =>
       _bubbleBackgroundStyle.foregroundColor ??
@@ -302,20 +303,8 @@ class _MessageBubbleState extends State<MessageBubble>
           message.commentCount > 0 ||
           (widget.channelHasLinkedDiscussion && !message.isService));
 
-  BorderRadius _messageBorderRadius(
-    double radius, {
-    bool directlyAttached = true,
-  }) {
-    final corner = Radius.circular(radius);
-    return BorderRadius.only(
-      topLeft: corner,
-      topRight: corner,
-      bottomLeft: _showsAttachedComments && directlyAttached
-          ? Radius.zero
-          : corner,
-      bottomRight: corner,
-    );
-  }
+  BorderRadius _messageBorderRadius(double radius) =>
+      BorderRadius.circular(radius);
 
   Widget _bubbleBackground({
     Key? key,
@@ -324,7 +313,21 @@ class _MessageBubbleState extends State<MessageBubble>
     required EdgeInsetsGeometry padding,
     required BorderRadius borderRadius,
     BoxConstraints constraints = const BoxConstraints(),
+    bool containsAttachedComments = false,
   }) {
+    // When a comment action is present, the outer wrapper owns the only
+    // rounded/background surface. Inner message content keeps its normal
+    // padding but does not paint a second sliced image or rounded rectangle.
+    if (_showsAttachedComments && !containsAttachedComments) {
+      return Container(
+        key: key,
+        constraints: constraints,
+        padding: _bubbleBackgroundStyle.isDecorative
+            ? _bubbleBackgroundStyle.contentPadding
+            : padding,
+        child: child,
+      );
+    }
     return StretchableMessageBubbleBackground(
       key: key,
       background: _bubbleBackgroundStyle,
@@ -596,13 +599,12 @@ class _MessageBubbleState extends State<MessageBubble>
                                   readabilityMode:
                                       theme.senderNameReadabilityMode,
                                   bubbleColor: _incomingBubbleColor,
+                                  shadowColor: _incomingThemeBubbleColor,
                                   name: message.senderName!,
                                   nameStyle: TextStyle(
                                     fontSize: 12,
                                     color: senderNameColor,
-                                    fontWeight: message.senderIsPremium
-                                        ? FontWeight.w600
-                                        : FontWeight.w400,
+                                    fontWeight: FontWeight.w500,
                                   ),
                                   role: showSenderRole
                                       ? message.senderRole
@@ -1101,28 +1103,50 @@ class _MessageBubbleState extends State<MessageBubble>
       return body;
     }
     final foreground = outgoing ? _outgoingTextColor : _incomingTextColor;
-    final extras = <Widget>[
-      if (showSuggestedPost)
-        MessageSuggestedPostStatusContent(
-          info: message.suggestedPostInfo!,
-          background: outgoing ? _outgoingBubbleColor : _incomingBubbleColor,
-          foreground: foreground,
-          secondary: foreground.withValues(alpha: 0.68),
-          borderRadius: _messageBorderRadius(9),
-        ),
-      if (showComments) _commentThreadRow(outgoing),
-    ];
-    return IntrinsicWidth(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          body,
-          for (var index = 0; index < extras.length; index++) ...[
-            if (index == 0 && showSuggestedPost) const SizedBox(height: 6),
-            extras[index],
+    final suggestedPost = showSuggestedPost
+        ? MessageSuggestedPostStatusContent(
+            info: message.suggestedPostInfo!,
+            background: outgoing ? _outgoingBubbleColor : _incomingBubbleColor,
+            foreground: foreground,
+            secondary: foreground.withValues(alpha: 0.68),
+            borderRadius: _messageBorderRadius(9),
+          )
+        : null;
+    if (!showComments) {
+      return IntrinsicWidth(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            body,
+            if (suggestedPost != null) ...[
+              const SizedBox(height: 6),
+              suggestedPost,
+            ],
           ],
-        ],
+        ),
+      );
+    }
+    return IntrinsicWidth(
+      child: _bubbleBackground(
+        key: ValueKey('messageCombinedBubble-${message.id}'),
+        outgoing: outgoing,
+        constraints: BoxConstraints(maxWidth: _bubbleMaxWidth()),
+        padding: EdgeInsets.zero,
+        borderRadius: BorderRadius.circular(12),
+        containsAttachedComments: true,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            body,
+            if (suggestedPost != null) ...[
+              const SizedBox(height: 6),
+              suggestedPost,
+            ],
+            _commentThreadRow(outgoing),
+          ],
+        ),
       ),
     );
   }
@@ -1133,8 +1157,7 @@ class _MessageBubbleState extends State<MessageBubble>
     final label = count == 0
         ? AppStrings.t(AppStringKeys.messageLeaveAComment)
         : AppStrings.t(AppStringKeys.momentsCommentCount, {'value1': count});
-    final bg = outgoing ? _outgoingBubbleColor : _incomingBubbleColor;
-    final fg = outgoing ? _outgoingTextColor : c.textPrimary;
+    final fg = outgoing ? _outgoingTextColor : _incomingTextColor;
     final sub = outgoing
         ? _outgoingTextColor.withValues(alpha: 0.72)
         : c.linkBlue;
@@ -1146,16 +1169,13 @@ class _MessageBubbleState extends State<MessageBubble>
         key: ValueKey('messageCommentsAttachment-${message.id}'),
         padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
         decoration: BoxDecoration(
-          color: bg,
-          borderRadius: const BorderRadius.only(
-            bottomLeft: Radius.circular(12),
-            bottomRight: Radius.circular(12),
-          ),
-          border: Border.all(
-            color: outgoing
-                ? _outgoingTextColor.withValues(alpha: 0.12)
-                : c.divider.withValues(alpha: 0.7),
-            width: 0.5,
+          border: Border(
+            top: BorderSide(
+              color: outgoing
+                  ? _outgoingTextColor.withValues(alpha: 0.16)
+                  : c.divider.withValues(alpha: 0.7),
+              width: 0.5,
+            ),
           ),
         ),
         child: Row(
@@ -2625,10 +2645,7 @@ class _MessageBubbleState extends State<MessageBubble>
           width: maxWidth,
           decoration: BoxDecoration(
             color: c.card,
-            borderRadius: _messageBorderRadius(
-              10,
-              directlyAttached: caption == null,
-            ),
+            borderRadius: _messageBorderRadius(10),
             border: Border.all(color: c.divider, width: 0.5),
           ),
           clipBehavior: Clip.antiAlias,
@@ -3803,10 +3820,7 @@ class _MessageBubbleState extends State<MessageBubble>
         : imageSize;
     final grouped = _groupsMediaCaption(caption);
     final mediaRadius = grouped ? 0.0 : 10.0;
-    final mediaBorderRadius = _messageBorderRadius(
-      mediaRadius,
-      directlyAttached: caption == null,
-    );
+    final mediaBorderRadius = _messageBorderRadius(mediaRadius);
     final media = GestureDetector(
       onTap: () => widget.onOpenImage?.call(message),
       child: SizedBox(
@@ -3977,10 +3991,7 @@ class _MessageBubbleState extends State<MessageBubble>
           fit: StackFit.expand,
           children: [
             ClipRRect(
-              borderRadius: _messageBorderRadius(
-                mediaRadius,
-                directlyAttached: caption == null,
-              ),
+              borderRadius: _messageBorderRadius(mediaRadius),
               child: message.image != null
                   ? TDImage(
                       photo: message.image,
@@ -4050,10 +4061,7 @@ class _MessageBubbleState extends State<MessageBubble>
       onTap: () => widget.onPlayVideo?.call(message),
       onLongPress: () => _handleLongPress(MessageActionSource.video),
       child: ClipRRect(
-        borderRadius: _messageBorderRadius(
-          mediaRadius,
-          directlyAttached: caption == null,
-        ),
+        borderRadius: _messageBorderRadius(mediaRadius),
         child: SizedBox(
           key: ValueKey('message-animation-${message.id}'),
           width: size.width,
@@ -4162,10 +4170,7 @@ class _MessageBubbleState extends State<MessageBubble>
           outgoing: outgoing,
           constraints: const BoxConstraints.tightFor(width: 210),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-          borderRadius: _messageBorderRadius(
-            6,
-            directlyAttached: _caption() == null,
-          ),
+          borderRadius: _messageBorderRadius(6),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [

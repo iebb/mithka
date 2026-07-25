@@ -22,6 +22,7 @@ import '../security/local_app_lock_views.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
+import '../theme/theme_controller.dart';
 import 'account_backup_view.dart';
 import 'account_security_views.dart';
 import 'auto_delete_view.dart';
@@ -242,6 +243,7 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
     final c = context.colors;
     final appLock = context.watch<LocalAppLockController>();
     final sensitiveContent = context.watch<SensitiveContentController>();
+    final theme = context.watch<ThemeController>();
     return Scaffold(
       backgroundColor: c.groupedBackground,
       body: Column(
@@ -271,6 +273,12 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
                         );
                       },
                     ),
+                  _SwitchRow(
+                    HeroAppIcons.eyeSlash,
+                    AppStrings.t(AppStringKeys.appearanceHidePhoneInSidebar),
+                    theme.hideSidebarPhone,
+                    (value) => theme.hideSidebarPhone = value,
+                  ),
                 ]),
                 const SizedBox(height: 14),
                 _group(

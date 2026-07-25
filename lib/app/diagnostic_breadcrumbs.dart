@@ -17,7 +17,6 @@ abstract final class DiagnosticBreadcrumbs {
     'checkAuthenticationPasskey',
     'checkAuthenticationPassword',
     'deleteChatHistory',
-    'downloadFile',
     'forwardMessages',
     'getChatHistory',
     'getForumTopicHistory',
@@ -54,6 +53,9 @@ abstract final class DiagnosticBreadcrumbs {
   }) {
     if (!sentryEnabled) return;
     final operation = _cleanType(requestType);
+    // Successful downloadFile calls can happen once per 512 KiB media chunk.
+    // Recording every chunk displaced useful breadcrumbs and added telemetry
+    // work to a hot path. Failures are still retained by the condition below.
     if (!failed && !_highValueTdlibOperations.contains(operation)) return;
     final result = resultType == null ? null : _cleanType(resultType);
     unawaited(

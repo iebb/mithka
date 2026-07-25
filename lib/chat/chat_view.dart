@@ -7166,87 +7166,81 @@ class _ChatViewState extends State<ChatView> {
       maxRowHeight: 230,
     );
     final width = layout.width + padding * 2;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          constraints: BoxConstraints(maxWidth: width),
-          padding: const EdgeInsets.all(padding),
-          decoration: BoxDecoration(
-            color: outgoing
-                ? outgoingColor
-                : themedIncoming ?? c.bubbleIncoming,
-            borderRadius: showComments
-                ? const BorderRadius.only(
-                    topLeft: Radius.circular(8),
-                    topRight: Radius.circular(8),
-                    bottomRight: Radius.circular(8),
-                  )
-                : BorderRadius.circular(8),
-            border: outgoing ? null : Border.all(color: c.divider, width: 0.5),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                width: layout.width,
-                height: layout.height,
-                child: Stack(
-                  children: [
-                    for (var i = 0; i < visible.length; i++)
-                      Positioned.fromRect(
-                        rect: layout.tiles[i],
-                        child: _imageGroupTile(
-                          visible[i],
-                          width: layout.tiles[i].width,
-                          height: layout.tiles[i].height,
-                          extraCount: i == visible.length - 1
-                              ? math.max(0, group.length - visible.length)
-                              : 0,
+    return Container(
+      constraints: BoxConstraints(maxWidth: width),
+      decoration: BoxDecoration(
+        color: outgoing ? outgoingColor : themedIncoming ?? c.bubbleIncoming,
+        borderRadius: BorderRadius.circular(12),
+        border: outgoing ? null : Border.all(color: c.divider, width: 0.5),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(padding),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: layout.width,
+                  height: layout.height,
+                  child: Stack(
+                    children: [
+                      for (var i = 0; i < visible.length; i++)
+                        Positioned.fromRect(
+                          rect: layout.tiles[i],
+                          child: _imageGroupTile(
+                            visible[i],
+                            width: layout.tiles[i].width,
+                            height: layout.tiles[i].height,
+                            extraCount: i == visible.length - 1
+                                ? math.max(0, group.length - visible.length)
+                                : 0,
+                          ),
                         ),
-                      ),
-                  ],
-                ),
-              ),
-              if (captionMessage != null)
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: outgoing
-                      ? () => unawaited(_editMessageText(captionMessage))
-                      : null,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(6, 7, 6, 3),
-                    child: TelegramRichText(
-                      text: _albumCaption(captionMessage),
-                      entities: captionMessage.textEntities,
-                      style: TextStyle(
-                        fontSize: 15,
-                        height: 1.25,
-                        color: outgoing ? outgoingTextColor : incomingTextColor,
-                      ),
-                      linkColor: outgoing ? outgoingTextColor : c.linkBlue,
-                      onBotCommandTap: _sendCommand,
-                      onHashtagTap: _openHashtagSearch,
-                      onMentionTap: _openUserProfile,
-                    ),
+                    ],
                   ),
                 ),
-            ],
+                if (captionMessage != null)
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: outgoing
+                        ? () => unawaited(_editMessageText(captionMessage))
+                        : null,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(6, 7, 6, 3),
+                      child: TelegramRichText(
+                        text: _albumCaption(captionMessage),
+                        entities: captionMessage.textEntities,
+                        style: TextStyle(
+                          fontSize: 15,
+                          height: 1.25,
+                          color: outgoing
+                              ? outgoingTextColor
+                              : incomingTextColor,
+                        ),
+                        linkColor: outgoing ? outgoingTextColor : c.linkBlue,
+                        onBotCommandTap: _sendCommand,
+                        onHashtagTap: _openHashtagSearch,
+                        onMentionTap: _openUserProfile,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
-        ),
-        if (showComments)
-          _imageAlbumCommentsAttachment(
-            interactionOwner,
-            outgoing: outgoing,
-            width: width,
-            backgroundColor: outgoing
-                ? outgoingColor
-                : themedIncoming ?? c.bubbleIncoming,
-            outgoingTextColor: outgoingTextColor,
-          ),
-      ],
+          if (showComments)
+            _imageAlbumCommentsAttachment(
+              interactionOwner,
+              outgoing: outgoing,
+              width: width,
+              outgoingTextColor: outgoingTextColor,
+            ),
+        ],
+      ),
     );
   }
 
@@ -7254,7 +7248,6 @@ class _ChatViewState extends State<ChatView> {
     ChatMessage message, {
     required bool outgoing,
     required double width,
-    required Color backgroundColor,
     required Color outgoingTextColor,
   }) {
     final c = context.colors;
@@ -7274,16 +7267,13 @@ class _ChatViewState extends State<ChatView> {
         width: width,
         padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
         decoration: BoxDecoration(
-          color: backgroundColor,
-          borderRadius: const BorderRadius.only(
-            bottomLeft: Radius.circular(12),
-            bottomRight: Radius.circular(12),
-          ),
-          border: Border.all(
-            color: outgoing
-                ? outgoingTextColor.withValues(alpha: 0.12)
-                : c.divider.withValues(alpha: 0.7),
-            width: 0.5,
+          border: Border(
+            top: BorderSide(
+              color: outgoing
+                  ? outgoingTextColor.withValues(alpha: 0.16)
+                  : c.divider.withValues(alpha: 0.7),
+              width: 0.5,
+            ),
           ),
         ),
         child: Row(

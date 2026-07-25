@@ -13,6 +13,7 @@ import 'package:flutter/foundation.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../app/performance_metrics.dart';
 import '../communities/community_models.dart';
 import '../notifications/scope_notification_settings.dart';
 import '../settings/keyword_blocker.dart';
@@ -56,6 +57,7 @@ class ChatListViewModel extends ChangeNotifier {
   String? notice;
   bool _initialLoading = true;
   Timer? _resortTimer;
+  int _pendingResortSignals = 0;
 
   List<ChatSummary> get chats => _chats;
   List<ChatSummary> get archived => _archived;
@@ -1086,6 +1088,11 @@ class ChatListViewModel extends ChangeNotifier {
   // MARK: - Sorting
 
   void _resort() {
+    final stopwatch = Stopwatch()..start();
+    final coalescedUpdates = _pendingResortSignals > 0
+        ? _pendingResortSignals
+        : 1;
+    _pendingResortSignals = 0;
     _resortTimer?.cancel();
     _resortTimer = null;
     if (_disposed) return;
@@ -1114,12 +1121,23 @@ class ChatListViewModel extends ChangeNotifier {
         });
     }
     _finishInitialLoadingIfNeeded();
+    stopwatch.stop();
+    AppPerformanceMetrics.chatListResorted(
+      elapsed: stopwatch.elapsed,
+      chatCount: all.length,
+      coalescedUpdates: coalescedUpdates,
+      folderSelected: _selectedFilter.folderId != null,
+    );
     _notifyIfAlive();
   }
 
   void _scheduleResort() {
-    if (_disposed || _resortTimer != null) return;
-    _resortTimer = Timer(const Duration(milliseconds: 16), _resort);
+    if (_disposed) return;
+    _pendingResortSignals++;
+    if (_resortTimer != null) return;
+    // TDLib can deliver many dependent updates in one burst. A 50 ms window
+    // keeps the list responsive while avoiding a full sort/rebuild per frame.
+    _resortTimer = Timer(const Duration(milliseconds: 50), _resort);
   }
 
   @visibleForTesting

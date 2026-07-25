@@ -80,16 +80,18 @@ void main() {
     expect(decoration.boxShadow, isNotEmpty);
   });
 
-  testWidgets('shadow mode uses the bubble color behind the sender name', (
+  testWidgets('shadow mode uses its incoming theme bubble color', (
     tester,
   ) async {
-    const bubbleColor = Color(0xFF223344);
+    const renderedBubbleColor = Color(0xFF223344);
+    const incomingThemeBubbleColor = Color(0xFF556677);
     await tester.pumpWidget(
       const Directionality(
         textDirection: TextDirection.ltr,
         child: SenderNameReadabilityPlate(
           mode: SenderNameReadabilityMode.shadow,
-          bubbleColor: bubbleColor,
+          bubbleColor: renderedBubbleColor,
+          shadowColor: incomingThemeBubbleColor,
           child: Text('Bob Harris'),
         ),
       ),
@@ -98,8 +100,13 @@ void main() {
     final defaultText = tester.widget<DefaultTextStyle>(
       find.byKey(const ValueKey('senderNameReadabilityShadow')),
     );
-    expect(defaultText.style.shadows, isNotEmpty);
-    expect(defaultText.style.shadows!.single.color, bubbleColor);
+    final shadows = defaultText.style.shadows!;
+    expect(shadows, hasLength(2));
+    expect(shadows.map((shadow) => shadow.color), [
+      incomingThemeBubbleColor,
+      incomingThemeBubbleColor,
+    ]);
+    expect(shadows.map((shadow) => shadow.blurRadius), [12, 6]);
   });
 
   testWidgets('sender role and name become connected equal-size pills', (
@@ -114,7 +121,11 @@ void main() {
             readabilityMode: SenderNameReadabilityMode.background,
             bubbleColor: Color(0xFF223344),
             name: 'Bob Harris',
-            nameStyle: TextStyle(fontSize: 12, color: Color(0xFFB4C4E2)),
+            nameStyle: TextStyle(
+              fontSize: 12,
+              color: Color(0xFFB4C4E2),
+              fontWeight: FontWeight.w700,
+            ),
             role: MemberRole.admin,
             roleTitle: 'Moderator',
           ),
@@ -150,6 +161,7 @@ void main() {
     final roleText = tester.widget<Text>(find.text('Moderator'));
     final nameText = tester.widget<Text>(find.text('Bob Harris'));
     expect(roleText.style?.fontSize, nameText.style?.fontSize);
+    expect(nameText.style?.fontWeight, FontWeight.w500);
 
     final nameDecoration =
         tester.widget<DecoratedBox>(namePill).decoration as BoxDecoration;

@@ -909,11 +909,10 @@ class ThemeController extends ChangeNotifier {
       _prefs.remove(_scopedThemeKey(_cloudThemeKey));
       _persistCloudThemes();
     }
-    final hadTelegramUiPreference = _prefs.containsKey(
-      _scopedThemeKey(_useTelegramThemeForUiKey),
-    );
-    _useTelegramThemeForUi =
-        _prefs.getBool(_scopedThemeKey(_useTelegramThemeForUiKey)) ?? false;
+    // Cloud themes now own the app palette whenever they are installed. Drop
+    // the retired opt-out preference so an older `false` value cannot keep a
+    // selected theme from applying to the interface.
+    _prefs.remove(_scopedThemeKey(_legacyUseTelegramThemeForUiKey));
     _customMessageBubbleBackground = _decodeCustomMessageBubbleBackground(
       _scopedThemeKey(_customMessageBubbleBackgroundKey),
     );
@@ -921,14 +920,11 @@ class ThemeController extends ChangeNotifier {
       _prefs.getString(_scopedThemeKey(_messageBubbleBackgroundKey)),
     );
     _repairMissingCustomMessageBubble();
-    if (!hasCloudTheme) {
-      _useTelegramThemeForUi = false;
-      _prefs.setBool(_scopedThemeKey(_useTelegramThemeForUiKey), false);
-    } else if (!hadTelegramUiPreference &&
+    if (hasCloudTheme &&
         (_prefs.containsKey(_preCloudThemeModeKey) ||
             _prefs.containsKey(_preCloudThemeBrandKey))) {
-      // Themes installed by older builds always replaced the app palette.
-      // Migrate those users to the new, explicitly disabled-by-default mode.
+      // Older builds coupled theme installation to mode and brand changes.
+      // Restore those independent choices while retaining the selected theme.
       _restoreUiBeforeCloudTheme();
     }
     _fontChoice = AppFontChoice.values.firstWhere(
@@ -1112,7 +1108,7 @@ class ThemeController extends ChangeNotifier {
   static const _lightCloudThemeKey = 'telegramCloudThemeLight';
   static const _darkCloudThemeKey = 'telegramCloudThemeDark';
   static const _installedCloudThemesKey = 'installedTelegramCloudThemes';
-  static const _useTelegramThemeForUiKey = 'useTelegramThemeForUi';
+  static const _legacyUseTelegramThemeForUiKey = 'useTelegramThemeForUi';
   static const _messageBubbleBackgroundKey = 'messageBubbleBackground.v1';
   static const _customMessageBubbleBackgroundKey =
       'customMessageBubbleBackground.v1';
@@ -1194,7 +1190,6 @@ class ThemeController extends ChangeNotifier {
   TelegramCloudTheme? _lightCloudTheme;
   TelegramCloudTheme? _darkCloudTheme;
   late List<TelegramCloudTheme> _installedCloudThemes;
-  late bool _useTelegramThemeForUi;
   late MessageBubbleBackground _messageBubbleBackground;
   CustomMessageBubbleBackground? _customMessageBubbleBackground;
   late AppFontChoice _fontChoice;
@@ -1262,7 +1257,8 @@ class ThemeController extends ChangeNotifier {
     AppearanceMode.system =>
       WidgetsBinding.instance.platformDispatcher.platformBrightness,
   });
-  bool get useTelegramThemeForUi => _themingEnabled && _useTelegramThemeForUi;
+  bool usesCloudThemeForUi(Brightness brightness) =>
+      cloudThemeFor(brightness) != null;
   MessageBubbleBackground get messageBubbleBackground =>
       _messageBubbleBackground;
   MessageBubbleBackground get effectiveMessageBubbleBackground =>
@@ -1303,7 +1299,7 @@ class ThemeController extends ChangeNotifier {
       _cloudThemeKey,
       _lightCloudThemeKey,
       _darkCloudThemeKey,
-      _useTelegramThemeForUiKey,
+      _legacyUseTelegramThemeForUiKey,
       _messageBubbleBackgroundKey,
       _customMessageBubbleBackgroundKey,
     ]) {
@@ -1380,8 +1376,7 @@ class ThemeController extends ChangeNotifier {
     );
     _lightCloudTheme = _decodeTheme(_scopedThemeKey(_lightCloudThemeKey));
     _darkCloudTheme = _decodeTheme(_scopedThemeKey(_darkCloudThemeKey));
-    _useTelegramThemeForUi =
-        _prefs.getBool(_scopedThemeKey(_useTelegramThemeForUiKey)) ?? false;
+    _prefs.remove(_scopedThemeKey(_legacyUseTelegramThemeForUiKey));
     _customMessageBubbleBackground = _decodeCustomMessageBubbleBackground(
       _scopedThemeKey(_customMessageBubbleBackgroundKey),
     );
@@ -1389,7 +1384,6 @@ class ThemeController extends ChangeNotifier {
       _prefs.getString(_scopedThemeKey(_messageBubbleBackgroundKey)),
     );
     _repairMissingCustomMessageBubble();
-    if (!hasCloudTheme) _useTelegramThemeForUi = false;
     AppTheme.applyBrand(_brandColor);
   }
 
@@ -1428,7 +1422,6 @@ class ThemeController extends ChangeNotifier {
     final brand = _brandColor;
     final light = _lightCloudTheme;
     final dark = _darkCloudTheme;
-    final useForUi = _useTelegramThemeForUi;
     final bubbleBackground = _messageBubbleBackground;
     final customBubbleBackground = _customMessageBubbleBackground;
     _usePerAccountTheming = value;
@@ -1439,7 +1432,6 @@ class ThemeController extends ChangeNotifier {
           _prefs.containsKey(_scopedThemeKey(_brandKey)) ||
           _prefs.containsKey(_scopedThemeKey(_lightCloudThemeKey)) ||
           _prefs.containsKey(_scopedThemeKey(_darkCloudThemeKey)) ||
-          _prefs.containsKey(_scopedThemeKey(_useTelegramThemeForUiKey)) ||
           _prefs.containsKey(_scopedThemeKey(_messageBubbleBackgroundKey)) ||
           _prefs.containsKey(
             _scopedThemeKey(_customMessageBubbleBackgroundKey),
@@ -1449,7 +1441,6 @@ class ThemeController extends ChangeNotifier {
         _brandColor = brand;
         _lightCloudTheme = light;
         _darkCloudTheme = dark;
-        _useTelegramThemeForUi = useForUi;
         _messageBubbleBackground = bubbleBackground;
         _customMessageBubbleBackground = customBubbleBackground;
         _persistScopedThemeSettings();
@@ -1463,10 +1454,10 @@ class ThemeController extends ChangeNotifier {
   }
 
   /// The reusable semantic palette for every app surface at [brightness].
-  /// Chat wallpaper and bubble theming remain independent of this UI opt-in.
+  /// A selected cloud theme always owns the matching interface palette.
   AppColors uiColorsFor(Brightness brightness) {
     final theme = cloudThemeFor(brightness);
-    if (useTelegramThemeForUi && theme != null) return theme.uiColors;
+    if (theme != null) return theme.uiColors;
     return brightness == Brightness.dark ? AppColors.dark : AppColors.light;
   }
 
@@ -1729,10 +1720,6 @@ class ThemeController extends ChangeNotifier {
     notifyListeners();
   }
 
-  set useTelegramThemeForUi(bool value) {
-    _setUseTelegramThemeForUi(value, notify: true);
-  }
-
   set messageBubbleBackground(MessageBubbleBackground value) {
     if (value == MessageBubbleBackground.custom &&
         _customMessageBubbleBackground == null) {
@@ -1777,14 +1764,6 @@ class ThemeController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _setUseTelegramThemeForUi(bool value, {required bool notify}) {
-    if (value && !hasCloudTheme) return;
-    if (_useTelegramThemeForUi == value) return;
-    _useTelegramThemeForUi = value;
-    _prefs.setBool(_scopedThemeKey(_useTelegramThemeForUiKey), value);
-    if (notify) notifyListeners();
-  }
-
   void clearCloudTheme([Brightness? brightness]) {
     if (brightness == Brightness.light) {
       _lightCloudTheme = null;
@@ -1793,10 +1772,6 @@ class ThemeController extends ChangeNotifier {
     } else {
       _lightCloudTheme = null;
       _darkCloudTheme = null;
-    }
-    if (!hasCloudTheme) {
-      _useTelegramThemeForUi = false;
-      _prefs.setBool(_scopedThemeKey(_useTelegramThemeForUiKey), false);
     }
     _persistCloudThemes();
     notifyListeners();

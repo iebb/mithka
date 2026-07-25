@@ -14,7 +14,7 @@ import 'theme_controller.dart';
 import 'theme_wallpaper_prompt.dart';
 
 /// Global Telegram .attheme management. This intentionally contains no chat
-/// emoji themes. Applying its palette to the rest of the app is opt-in.
+/// emoji themes. A selected theme supplies the matching app palette directly.
 class GlobalThemeView extends StatefulWidget {
   const GlobalThemeView({super.key, this.themeService});
 
