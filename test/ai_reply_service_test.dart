@@ -9,6 +9,7 @@ import 'package:mithka/chat/telegram_ai_service.dart';
 import 'package:mithka/settings/ai_endpoint_style.dart';
 import 'package:mithka/settings/ai_stdout_logger.dart';
 import 'package:mithka/settings/apple_pcc_api.dart';
+import 'package:mithka/tdlib/td_client.dart';
 import 'package:mithka/tdlib/td_models.dart';
 
 void main() {
@@ -1927,9 +1928,10 @@ void main() {
   );
 
   test(
-    'Telegram Cocoon reply keeps style empty and bounds its prompt',
+    'Telegram Cocoon reply retries unsupported rich input as creation',
     () async {
       Map<String, dynamic>? compositionRequest;
+      Map<String, dynamic>? creationRequest;
       final service = TelegramAiService(
         queryOverride: (request) async {
           if (request['@type'] == 'getOption') {
@@ -1950,6 +1952,14 @@ void main() {
           }
           if (request['@type'] == 'composeRichMessageWithAi') {
             compositionRequest = Map<String, dynamic>.of(request);
+            throw TdError({
+              '@type': 'error',
+              'code': 400,
+              'message': 'RICH_MESSAGE_UNSUPPORTED',
+            });
+          }
+          if (request['@type'] == 'createRichMessageWithAi') {
+            creationRequest = Map<String, dynamic>.of(request);
             return {
               '@type': 'richMessage',
               'blocks': [
@@ -1981,6 +1991,16 @@ void main() {
       expect(
         (compositionRequest?['custom_prompt'] as String).runes.length,
         lessThanOrEqualTo(760),
+      );
+      expect(creationRequest?['language_code'], '');
+      expect(
+        (creationRequest?['prompt'] as String).runes.length,
+        lessThanOrEqualTo(telegramAiCreateReplyPromptMaxCharacters),
+      );
+      expect(creationRequest?['prompt'], contains('[REPLY TARGET]'));
+      expect(
+        creationRequest?['prompt'],
+        endsWith('Output only the reply text.'),
       );
     },
   );
