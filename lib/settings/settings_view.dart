@@ -154,14 +154,6 @@ class _SettingsViewState extends State<SettingsView> {
                   const InsetDivider(leadingInset: 56),
                   _navRow(
                     context,
-                    HeroAppIcons.eye,
-                    AppStrings.t(AppStringKeys.appearanceSize),
-                    const Color(0xFF34A2DF),
-                    () => const DisplaySettingsView(),
-                  ),
-                  const InsetDivider(leadingInset: 56),
-                  _navRow(
-                    context,
                     HeroAppIcons.globe,
                     AppStrings.t(AppStringKeys.proxyTitle),
                     const Color(0xFF34A2DF),

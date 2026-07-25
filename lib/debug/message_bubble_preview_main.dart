@@ -3,16 +3,14 @@ import 'package:flutter/widgets.dart';
 import '../chat/stretchable_message_bubble_background.dart';
 import '../theme/message_bubble_background.dart';
 
-const _canvasColor = Color(0xFF222222);
-const _purpleTextColor = Color(0xFFFFF09B);
-const _creamTextColor = Color(0xFFD35722);
+const _canvasColor = Color(0xFF17181C);
 
 void main() {
   runApp(const MessageBubblePreviewApp());
 }
 
-/// Deterministic 2x iPhone SE fixture for pixel-comparing the two decorative
-/// message-bubble presets with their source references.
+/// Deterministic grid for visually checking every generated center-slice
+/// preset at a compact picker width.
 class MessageBubblePreviewApp extends StatelessWidget {
   const MessageBubblePreviewApp({super.key});
 
@@ -21,7 +19,15 @@ class MessageBubblePreviewApp extends StatelessWidget {
     return WidgetsApp(
       color: _canvasColor,
       debugShowCheckedModeBanner: false,
-      builder: (context, child) => const _PreviewGallery(),
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(
+          context,
+        ).copyWith(textScaler: TextScaler.noScaling, boldText: false),
+        child: const ColoredBox(
+          color: _canvasColor,
+          child: SafeArea(child: _PreviewGallery()),
+        ),
+      ),
     );
   }
 }
@@ -29,139 +35,143 @@ class MessageBubblePreviewApp extends StatelessWidget {
 class _PreviewGallery extends StatelessWidget {
   const _PreviewGallery();
 
+  static const _items =
+      <({String name, MessageBubbleBackgroundSpec background})>[
+        (
+          name: 'Midnight Aurora',
+          background: MessageBubbleBackgroundSpec.midnightAurora,
+        ),
+        (
+          name: 'Solar Porcelain',
+          background: MessageBubbleBackgroundSpec.solarPorcelain,
+        ),
+        (
+          name: 'Berry Orbit',
+          background: MessageBubbleBackgroundSpec.berryOrbit,
+        ),
+        (
+          name: 'Arctic Blueprint',
+          background: MessageBubbleBackgroundSpec.arcticBlueprint,
+        ),
+        (
+          name: 'Ember Arcade',
+          background: MessageBubbleBackgroundSpec.emberArcade,
+        ),
+        (
+          name: 'Lilac Constellation',
+          background: MessageBubbleBackgroundSpec.lilacConstellation,
+        ),
+        (
+          name: 'Forest Familiar · Storybook',
+          background: MessageBubbleBackgroundSpec.forestFamiliar,
+        ),
+        (
+          name: 'Ink Wanderer · Ink wash',
+          background: MessageBubbleBackgroundSpec.inkWanderer,
+        ),
+        (
+          name: 'Pixel Cadet · Pixel art',
+          background: MessageBubbleBackgroundSpec.pixelCadet,
+        ),
+        (
+          name: 'Cosmic Mechanic · Sci-fi',
+          background: MessageBubbleBackgroundSpec.cosmicMechanic,
+        ),
+        (
+          name: 'Pastry Pal · Food art',
+          background: MessageBubbleBackgroundSpec.pastryPal,
+        ),
+        (
+          name: 'Noir Detective · Comic',
+          background: MessageBubbleBackgroundSpec.noirDetective,
+        ),
+      ];
+
   @override
   Widget build(BuildContext context) {
-    return MediaQuery(
-      data: MediaQuery.of(
-        context,
-      ).copyWith(textScaler: TextScaler.noScaling, boldText: false),
-      child: const ColoredBox(
-        color: _canvasColor,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Positioned(
-              left: 86.5,
-              top: 96,
-              width: 202,
-              height: 61,
-              child: _PurpleReferenceCanvas(),
-            ),
-            Positioned(
-              left: 9.5,
-              top: 224,
-              width: 356,
-              height: 67,
-              child: _CreamReferenceCanvas(),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PurpleReferenceCanvas extends StatelessWidget {
-  const _PurpleReferenceCanvas();
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Positioned(
-          left: 2,
-          top: 10,
-          width: 32,
-          height: 32,
-          child: Image.asset(
-            'assets/message_bubbles/reference_purple_avatar.png',
-            fit: BoxFit.fill,
-            filterQuality: FilterQuality.high,
-          ),
-        ),
-        const Positioned(
-          left: 42.5,
-          top: 8.5,
-          width: 135,
-          height: 40,
-          child: StretchableMessageBubbleBackground(
-            background: MessageBubbleBackgroundSpec.purpleFolded,
-            fallbackColor: Color(0xFF4B2A86),
-            fallbackBorderRadius: BorderRadius.zero,
-            fallbackPadding: EdgeInsets.zero,
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                '躺一下 拖延症犯了',
-                maxLines: 1,
-                softWrap: false,
-                overflow: TextOverflow.clip,
-                style: TextStyle(
-                  color: _purpleTextColor,
-                  fontSize: 14.1,
-                  height: 1,
-                  fontWeight: FontWeight.w500,
-                  letterSpacing: -0.15,
-                  decoration: TextDecoration.none,
-                ),
+    final items = [..._items.skip(6), ..._items.take(6)];
+    return CustomScrollView(
+      slivers: [
+        const SliverPadding(
+          padding: EdgeInsets.fromLTRB(18, 18, 18, 6),
+          sliver: SliverToBoxAdapter(
+            child: Text(
+              'Message bubble genres',
+              style: TextStyle(
+                color: Color(0xFFF4F4F7),
+                fontSize: 19,
+                fontWeight: FontWeight.w700,
+                decoration: TextDecoration.none,
               ),
             ),
           ),
         ),
-      ],
-    );
-  }
-}
-
-class _CreamReferenceCanvas extends StatelessWidget {
-  const _CreamReferenceCanvas();
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Positioned(
-          left: 11,
-          top: 12,
-          width: 32,
-          height: 32,
-          child: Image.asset(
-            'assets/message_bubbles/reference_cream_avatar.png',
-            fit: BoxFit.fill,
-            filterQuality: FilterQuality.high,
-          ),
-        ),
-        const Positioned(
-          left: 44.5,
-          top: 8.5,
-          width: 293,
-          height: 48,
-          child: StretchableMessageBubbleBackground(
-            background: MessageBubbleBackgroundSpec.creamCharms,
-            fallbackColor: Color(0xFFFFF2A4),
-            fallbackBorderRadius: BorderRadius.zero,
-            fallbackPadding: EdgeInsets.zero,
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'https://casetify.com/auth/C5Q-HRD-6RP',
-                maxLines: 1,
-                softWrap: false,
-                overflow: TextOverflow.clip,
-                style: TextStyle(
-                  color: _creamTextColor,
-                  fontSize: 13.6,
-                  height: 1,
-                  fontWeight: FontWeight.w500,
-                  letterSpacing: -0.16,
-                  decoration: TextDecoration.underline,
-                  decorationColor: _creamTextColor,
-                  decorationThickness: 1.75,
-                ),
+        const SliverPadding(
+          padding: EdgeInsets.fromLTRB(18, 0, 18, 14),
+          sliver: SliverToBoxAdapter(
+            child: Text(
+              'Experimental — styles may change at any time.',
+              style: TextStyle(
+                color: Color(0xFFA9ABB6),
+                fontSize: 11,
+                decoration: TextDecoration.none,
               ),
             ),
+          ),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(18, 0, 18, 24),
+          sliver: SliverGrid.builder(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              mainAxisSpacing: 10,
+              crossAxisSpacing: 10,
+              childAspectRatio: 1.18,
+            ),
+            itemCount: items.length,
+            itemBuilder: (context, index) {
+              final item = items[index];
+              return DecoratedBox(
+                decoration: BoxDecoration(
+                  color: const Color(0xFF24252B),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFF363840)),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: SizedBox.expand(
+                          child: StretchableMessageBubbleBackground(
+                            background: item.background,
+                            constraints: const BoxConstraints.expand(),
+                            fallbackColor: const Color(0xFF33343A),
+                            fallbackBorderRadius: BorderRadius.circular(10),
+                            fallbackPadding: EdgeInsets.zero,
+                            child: const SizedBox.shrink(),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 7),
+                      Text(
+                        item.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFFD7D8DE),
+                          fontSize: 11,
+                          height: 1.15,
+                          fontWeight: FontWeight.w600,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
           ),
         ),
       ],

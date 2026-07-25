@@ -3,9 +3,11 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/message_bubble.dart';
+import 'package:mithka/chat/stretchable_message_bubble_background.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/tdlib/td_models.dart';
 import 'package:mithka/theme/app_theme.dart';
+import 'package:mithka/theme/message_bubble_background.dart';
 import 'package:mithka/theme/theme_controller.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -189,6 +191,9 @@ void main() {
     final commentsFinder = find.byKey(
       const ValueKey('messageCommentsAttachment-10'),
     );
+    final combinedFinder = find.byKey(
+      const ValueKey('messageCombinedBubble-10'),
+    );
     final album = tester.widget<Container>(albumFinder);
     final albumRadius =
         (album.decoration! as BoxDecoration).borderRadius! as BorderRadius;
@@ -196,7 +201,19 @@ void main() {
       tester.getRect(commentsFinder).top,
       tester.getRect(albumFinder).bottom,
     );
-    expect(albumRadius.bottomLeft, Radius.zero);
+    expect(albumRadius.bottomLeft, isNot(Radius.zero));
+    expect(
+      tester
+          .getRect(combinedFinder)
+          .contains(tester.getRect(albumFinder).center),
+      isTrue,
+    );
+    expect(
+      tester
+          .getRect(combinedFinder)
+          .contains(tester.getRect(commentsFinder).center),
+      isTrue,
+    );
 
     await tester.longPress(
       find.byKey(const ValueKey('messageDocumentAlbumFile-11')),
@@ -204,7 +221,7 @@ void main() {
     expect(longPressed?.id, 11);
   });
 
-  testWidgets('comments attach flush with squared meeting corners', (
+  testWidgets('comments render inside one rounded message surface', (
     tester,
   ) async {
     final message = ChatMessage(
@@ -222,23 +239,31 @@ void main() {
     final commentsFinder = find.byKey(
       const ValueKey('messageCommentsAttachment-12'),
     );
+    final combinedFinder = find.byKey(
+      const ValueKey('messageCombinedBubble-12'),
+    );
     final main = tester.widget<Container>(mainFinder);
     final comments = tester.widget<Container>(commentsFinder);
-    final mainRadius = (main.decoration! as BoxDecoration).borderRadius!;
-    final commentsRadius =
-        (comments.decoration! as BoxDecoration).borderRadius!;
+    final combined = tester.widget<StretchableMessageBubbleBackground>(
+      combinedFinder,
+    );
+    final commentsDecoration = comments.decoration! as BoxDecoration;
 
     expect(
       tester.getRect(commentsFinder).top,
       tester.getRect(mainFinder).bottom,
     );
-    expect(mainRadius, isA<BorderRadius>());
-    expect((mainRadius as BorderRadius).bottomLeft, Radius.zero);
-    expect(commentsRadius, isA<BorderRadius>());
-    expect((commentsRadius as BorderRadius).topLeft, Radius.zero);
-    expect(commentsRadius.topRight, Radius.zero);
-    expect(commentsRadius.bottomLeft, const Radius.circular(12));
-    expect(commentsRadius.bottomRight, const Radius.circular(12));
+    expect(main.decoration, isNull);
+    expect(commentsDecoration.color, isNull);
+    expect(commentsDecoration.borderRadius, isNull);
+    expect((commentsDecoration.border! as Border).top.width, 0.5);
+    expect(combined.fallbackBorderRadius, BorderRadius.circular(12));
+    expect(
+      tester
+          .getRect(combinedFinder)
+          .contains(tester.getRect(commentsFinder).bottomCenter),
+      isTrue,
+    );
   });
 
   testWidgets('linked channel discussion stays visible before first comment', (
@@ -280,12 +305,71 @@ void main() {
       find.descendant(of: commentsFinder, matching: find.byType(Expanded)),
       findsOneWidget,
     );
-    final comments = tester.widget<Container>(commentsFinder);
+    final combinedFinder = find.byKey(
+      const ValueKey('messageCombinedBubble-13'),
+    );
     final expectedBackground = tester
         .element(messageFinder)
         .colors
         .bubbleIncoming;
-    expect((comments.decoration! as BoxDecoration).color, expectedBackground);
+    final combined = tester.widget<StretchableMessageBubbleBackground>(
+      combinedFinder,
+    );
+    expect(combined.fallbackColor, expectedBackground);
+    expect(
+      tester
+          .getRect(combinedFinder)
+          .contains(tester.getRect(commentsFinder).center),
+      isTrue,
+    );
+  });
+
+  testWidgets('decorative comments paint one center-sliced message surface', (
+    tester,
+  ) async {
+    final message = ChatMessage(
+      id: 131,
+      isOutgoing: false,
+      text: 'One decorated message',
+      date: 1,
+      contentType: 'messageText',
+      commentCount: 3,
+    );
+
+    final theme = await pumpBubble(
+      tester,
+      message,
+      showCommentAttachment: true,
+    );
+    theme.messageBubbleBackground = MessageBubbleBackground.forestFamiliar;
+    await tester.pumpAndSettle();
+
+    final combinedFinder = find.byKey(
+      const ValueKey('messageCombinedBubble-131'),
+    );
+    final combined = tester.widget<StretchableMessageBubbleBackground>(
+      combinedFinder,
+    );
+    expect(
+      combined.background.selection,
+      MessageBubbleBackground.forestFamiliar,
+    );
+    expect(combined.background.centerSlice, const Rect.fromLTWH(24, 18, 1, 1));
+    expect(
+      tester
+          .widget<Container>(
+            find.byKey(const ValueKey('messageTextBubble-131')),
+          )
+          .decoration,
+      isNull,
+    );
+    expect(
+      find.descendant(
+        of: combinedFinder,
+        matching: find.byType(StretchableMessageBubbleBackground),
+      ),
+      findsNothing,
+    );
   });
 
   testWidgets('outgoing bubble stays white on blue when theming is off', (

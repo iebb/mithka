@@ -33,6 +33,12 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# Local platform builds and generated test/image-processing workspaces.
+/ios/build/
+/tmp/
+/third_party/**/android/.gradle/
+/third_party/**/android/build/
+
 # Symbolication related
 app.*.symbols
 

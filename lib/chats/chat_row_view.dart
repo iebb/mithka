@@ -166,6 +166,7 @@ class ChatRowView extends StatelessWidget {
                   photo: chat.photo,
                   size: avatarSize,
                   square: chat.usesSquareAvatar && !circleGroups,
+                  allowAnimation: false,
                 ),
           if (chat.unreadCount > 0)
             Positioned(

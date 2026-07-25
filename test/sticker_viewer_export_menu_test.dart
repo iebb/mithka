@@ -64,12 +64,18 @@ void main() {
     expect(menuRect.right, lessThanOrEqualTo(390));
     expect(menuRect.bottom, lessThanOrEqualTo(844));
     for (final destination in ['photos', 'files']) {
-      for (final format in ['png', 'gif', 'mov']) {
-        expect(
-          find.byKey(ValueKey('sticker-export-$destination-$format')),
-          findsOneWidget,
-        );
-      }
+      expect(
+        find.byKey(ValueKey('sticker-export-$destination-png')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(ValueKey('sticker-export-$destination-gif')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(ValueKey('sticker-export-$destination-mov')),
+        findsNothing,
+      );
     }
     debugDefaultTargetPlatformOverride = null;
   });

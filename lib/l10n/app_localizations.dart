@@ -377,6 +377,9 @@ abstract final class AppStringKeys {
       'appearanceAlwaysShowMessageTime';
   static const appearanceAnimateAvatars = 'appearanceAnimateAvatars';
   static const appearanceAnimateStatusEmoji = 'appearanceAnimateStatusEmoji';
+  static const appearanceAvatarsAndSidebar = 'appearanceAvatarsAndSidebar';
+  static const appearanceLivePreviewUnavailable =
+      'appearanceLivePreviewUnavailable';
   static const appearanceArchivedChats = 'appearanceArchivedChats';
   static const appearanceArchivedChatsHidden = 'appearanceArchivedChatsHidden';
   static const appearanceArchivedChatsPullDown =
@@ -491,7 +494,6 @@ abstract final class AppStringKeys {
   static const appearanceTitle = 'appearanceTitle';
   static const appearanceTotalSize = 'appearanceTotalSize';
   static const appearanceUnreadBadge = 'appearanceUnreadBadge';
-  static const appearanceUseChatThemeForUi = 'appearanceUseChatThemeForUi';
   static const appIconBlueGradient = 'appIconBlueGradient';
   static const appIconChangeFailed = 'appIconChangeFailed';
   static const appIconDefault = 'appIconDefault';
@@ -1634,9 +1636,35 @@ abstract final class AppStringKeys {
   static const messageBubbleCallMissed = 'messageBubbleCallMissed';
   static const messageBubbleCallNoAnswer = 'messageBubbleCallNoAnswer';
   static const messageBubbleDefault = 'messageBubbleDefault';
-  static const messageBubbleMoonlitViolet = 'messageBubbleMoonlitViolet';
-  static const messageBubblePurpleFolded = 'messageBubblePurpleFolded';
-  static const messageBubbleCreamCharms = 'messageBubbleCreamCharms';
+  static const messageBubbleMidnightAurora = 'messageBubbleMidnightAurora';
+  static const messageBubbleSolarPorcelain = 'messageBubbleSolarPorcelain';
+  static const messageBubbleBerryOrbit = 'messageBubbleBerryOrbit';
+  static const messageBubbleArcticBlueprint = 'messageBubbleArcticBlueprint';
+  static const messageBubbleEmberArcade = 'messageBubbleEmberArcade';
+  static const messageBubbleLilacConstellation =
+      'messageBubbleLilacConstellation';
+  static const messageBubbleForestFamiliar = 'messageBubbleForestFamiliar';
+  static const messageBubbleInkWanderer = 'messageBubbleInkWanderer';
+  static const messageBubblePixelCadet = 'messageBubblePixelCadet';
+  static const messageBubbleCosmicMechanic = 'messageBubbleCosmicMechanic';
+  static const messageBubblePastryPal = 'messageBubblePastryPal';
+  static const messageBubbleNoirDetective = 'messageBubbleNoirDetective';
+  static const messageBubbleGenreClassic = 'messageBubbleGenreClassic';
+  static const messageBubbleGenreAbstract = 'messageBubbleGenreAbstract';
+  static const messageBubbleGenreMinimal = 'messageBubbleGenreMinimal';
+  static const messageBubbleGenreEditorial = 'messageBubbleGenreEditorial';
+  static const messageBubbleGenreTechnical = 'messageBubbleGenreTechnical';
+  static const messageBubbleGenreRetro = 'messageBubbleGenreRetro';
+  static const messageBubbleGenreCelestial = 'messageBubbleGenreCelestial';
+  static const messageBubbleGenreStorybook = 'messageBubbleGenreStorybook';
+  static const messageBubbleGenreInkWash = 'messageBubbleGenreInkWash';
+  static const messageBubbleGenrePixelArt = 'messageBubbleGenrePixelArt';
+  static const messageBubbleGenreSciFi = 'messageBubbleGenreSciFi';
+  static const messageBubbleGenreFoodArt = 'messageBubbleGenreFoodArt';
+  static const messageBubbleGenreComicNoir = 'messageBubbleGenreComicNoir';
+  static const messageBubbleGenreCustom = 'messageBubbleGenreCustom';
+  static const messageBubbleExperimentalNotice =
+      'messageBubbleExperimentalNotice';
   static const messageBubbleCustom = 'messageBubbleCustom';
   static const messageBubbleCustomImport = 'messageBubbleCustomImport';
   static const messageBubbleCustomReplace = 'messageBubbleCustomReplace';
@@ -2220,6 +2248,7 @@ abstract final class AppStringKeys {
   static const stickerSetDetailRemoved = 'stickerSetDetailRemoved';
   static const stickerSetDetailSaveAllApng = 'stickerSetDetailSaveAllApng';
   static const stickerSetDetailSaveAllGif = 'stickerSetDetailSaveAllGif';
+  static const stickerSetDetailSaveAllPng = 'stickerSetDetailSaveAllPng';
   static const stickerSetDetailStickerCount = 'stickerSetDetailStickerCount';
   static const stickerSetDetailTitle = 'stickerSetDetailTitle';
   static const stickerStoreRecent = 'stickerStoreRecent';

@@ -62,6 +62,10 @@ class _StickerSetDetailViewState extends State<StickerSetDetailView> {
     }
     final overlay = Overlay.of(context);
     final c = context.colors;
+    final formats = StickerExportService.availableSetFormats(_stickers);
+    final animated = _stickers.any(
+      (sticker) => sticker.isAnimated || sticker.isVideo,
+    );
     late OverlayEntry entry;
     entry = OverlayEntry(
       builder: (_) => Stack(
@@ -97,17 +101,20 @@ class _StickerSetDetailViewState extends State<StickerSetDetailView> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _menuItem(
-                    c,
-                    AppStrings.t(AppStringKeys.stickerSetDetailSaveAllApng),
-                    StickerExportFormat.png,
-                  ),
-                  Container(height: 0.5, color: c.divider),
-                  _menuItem(
-                    c,
-                    AppStrings.t(AppStringKeys.stickerSetDetailSaveAllGif),
-                    StickerExportFormat.gif,
-                  ),
+                  for (var index = 0; index < formats.length; index++) ...[
+                    if (index > 0) Container(height: 0.5, color: c.divider),
+                    _menuItem(
+                      c,
+                      AppStrings.t(
+                        formats[index] == StickerExportFormat.gif
+                            ? AppStringKeys.stickerSetDetailSaveAllGif
+                            : animated
+                            ? AppStringKeys.stickerSetDetailSaveAllApng
+                            : AppStringKeys.stickerSetDetailSaveAllPng,
+                      ),
+                      formats[index],
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -295,9 +302,14 @@ class _StickerSetDetailViewState extends State<StickerSetDetailView> {
     final total = _exportTotal;
     final completed = _exportCompleted.clamp(0, total);
     final progress = total == 0 ? 0.0 : completed / total;
+    final animated = _stickers.any(
+      (sticker) => sticker.isAnimated || sticker.isVideo,
+    );
     final formatLabel = _exportFormat == StickerExportFormat.gif
         ? 'GIF ZIP'
-        : 'APNG ZIP';
+        : animated
+        ? 'APNG ZIP'
+        : 'PNG ZIP';
     return Positioned.fill(
       child: ColoredBox(
         color: const Color(0x52000000),

@@ -346,7 +346,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
           : null,
       scaffoldBackgroundColor: colors.background,
       colorScheme: ColorScheme.fromSeed(
-        seedColor: theme.useTelegramThemeForUi
+        seedColor: theme.usesCloudThemeForUi(brightness)
             ? colors.linkBlue
             : theme.brandColor,
         brightness: brightness,
@@ -426,7 +426,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
               final media = MediaQuery.of(context);
               final currentTheme = Theme.of(context);
               AppTheme.applyBrand(
-                theme.useTelegramThemeForUi
+                theme.usesCloudThemeForUi(currentTheme.brightness)
                     ? context.colors.linkBlue
                     : theme.brandColor,
               );

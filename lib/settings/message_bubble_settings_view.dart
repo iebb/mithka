@@ -110,6 +110,99 @@ class _MessageBubbleSettingsViewState extends State<MessageBubbleSettingsView> {
     final theme = context.watch<ThemeController>();
     final selected = theme.messageBubbleBackground;
     final custom = theme.customMessageBubbleBackground;
+    final presets =
+        <
+          ({
+            MessageBubbleBackground style,
+            MessageBubbleBackgroundSpec background,
+            String labelKey,
+            String genreKey,
+          })
+        >[
+          (
+            style: MessageBubbleBackground.standard,
+            background: MessageBubbleBackgroundSpec.standard,
+            labelKey: AppStringKeys.messageBubbleDefault,
+            genreKey: AppStringKeys.messageBubbleGenreClassic,
+          ),
+          (
+            style: MessageBubbleBackground.midnightAurora,
+            background: MessageBubbleBackgroundSpec.midnightAurora,
+            labelKey: AppStringKeys.messageBubbleMidnightAurora,
+            genreKey: AppStringKeys.messageBubbleGenreAbstract,
+          ),
+          (
+            style: MessageBubbleBackground.solarPorcelain,
+            background: MessageBubbleBackgroundSpec.solarPorcelain,
+            labelKey: AppStringKeys.messageBubbleSolarPorcelain,
+            genreKey: AppStringKeys.messageBubbleGenreMinimal,
+          ),
+          (
+            style: MessageBubbleBackground.berryOrbit,
+            background: MessageBubbleBackgroundSpec.berryOrbit,
+            labelKey: AppStringKeys.messageBubbleBerryOrbit,
+            genreKey: AppStringKeys.messageBubbleGenreEditorial,
+          ),
+          (
+            style: MessageBubbleBackground.arcticBlueprint,
+            background: MessageBubbleBackgroundSpec.arcticBlueprint,
+            labelKey: AppStringKeys.messageBubbleArcticBlueprint,
+            genreKey: AppStringKeys.messageBubbleGenreTechnical,
+          ),
+          (
+            style: MessageBubbleBackground.emberArcade,
+            background: MessageBubbleBackgroundSpec.emberArcade,
+            labelKey: AppStringKeys.messageBubbleEmberArcade,
+            genreKey: AppStringKeys.messageBubbleGenreRetro,
+          ),
+          (
+            style: MessageBubbleBackground.lilacConstellation,
+            background: MessageBubbleBackgroundSpec.lilacConstellation,
+            labelKey: AppStringKeys.messageBubbleLilacConstellation,
+            genreKey: AppStringKeys.messageBubbleGenreCelestial,
+          ),
+          (
+            style: MessageBubbleBackground.forestFamiliar,
+            background: MessageBubbleBackgroundSpec.forestFamiliar,
+            labelKey: AppStringKeys.messageBubbleForestFamiliar,
+            genreKey: AppStringKeys.messageBubbleGenreStorybook,
+          ),
+          (
+            style: MessageBubbleBackground.inkWanderer,
+            background: MessageBubbleBackgroundSpec.inkWanderer,
+            labelKey: AppStringKeys.messageBubbleInkWanderer,
+            genreKey: AppStringKeys.messageBubbleGenreInkWash,
+          ),
+          (
+            style: MessageBubbleBackground.pixelCadet,
+            background: MessageBubbleBackgroundSpec.pixelCadet,
+            labelKey: AppStringKeys.messageBubblePixelCadet,
+            genreKey: AppStringKeys.messageBubbleGenrePixelArt,
+          ),
+          (
+            style: MessageBubbleBackground.cosmicMechanic,
+            background: MessageBubbleBackgroundSpec.cosmicMechanic,
+            labelKey: AppStringKeys.messageBubbleCosmicMechanic,
+            genreKey: AppStringKeys.messageBubbleGenreSciFi,
+          ),
+          (
+            style: MessageBubbleBackground.pastryPal,
+            background: MessageBubbleBackgroundSpec.pastryPal,
+            labelKey: AppStringKeys.messageBubblePastryPal,
+            genreKey: AppStringKeys.messageBubbleGenreFoodArt,
+          ),
+          (
+            style: MessageBubbleBackground.noirDetective,
+            background: MessageBubbleBackgroundSpec.noirDetective,
+            labelKey: AppStringKeys.messageBubbleNoirDetective,
+            genreKey: AppStringKeys.messageBubbleGenreComicNoir,
+          ),
+        ];
+    final visiblePresets = [
+      presets.first,
+      ...presets.skip(7),
+      ...presets.skip(1).take(6),
+    ];
     return Scaffold(
       backgroundColor: c.groupedBackground,
       body: Column(
@@ -132,50 +225,81 @@ class _MessageBubbleSettingsViewState extends State<MessageBubbleSettingsView> {
                     height: 1.35,
                   ),
                 ),
-                const SizedBox(height: 18),
-                _choice(
-                  context,
-                  style: MessageBubbleBackground.standard,
-                  background: MessageBubbleBackgroundSpec.standard,
-                  label: AppStrings.t(AppStringKeys.messageBubbleDefault),
-                  selected: selected == MessageBubbleBackground.standard,
-                  onTap: () => theme.messageBubbleBackground =
-                      MessageBubbleBackground.standard,
-                ),
-                const SizedBox(height: 10),
-                _choice(
-                  context,
-                  style: MessageBubbleBackground.purpleFolded,
-                  background: MessageBubbleBackgroundSpec.purpleFolded,
-                  label: AppStrings.t(AppStringKeys.messageBubblePurpleFolded),
-                  selected: selected == MessageBubbleBackground.purpleFolded,
-                  onTap: () => theme.messageBubbleBackground =
-                      MessageBubbleBackground.purpleFolded,
-                ),
-                const SizedBox(height: 10),
-                _choice(
-                  context,
-                  style: MessageBubbleBackground.creamCharms,
-                  background: MessageBubbleBackgroundSpec.creamCharms,
-                  label: AppStrings.t(AppStringKeys.messageBubbleCreamCharms),
-                  selected: selected == MessageBubbleBackground.creamCharms,
-                  onTap: () => theme.messageBubbleBackground =
-                      MessageBubbleBackground.creamCharms,
-                ),
-                const SizedBox(height: 10),
-                _choice(
-                  context,
-                  style: MessageBubbleBackground.custom,
-                  background: theme.messageBubbleBackgroundSpecFor(
-                    MessageBubbleBackground.custom,
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                  decoration: BoxDecoration(
+                    color: AppTheme.brand.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: AppTheme.brand.withValues(alpha: 0.18),
+                      width: 0.5,
+                    ),
                   ),
-                  label: AppStrings.t(AppStringKeys.messageBubbleCustom),
-                  selected: selected == MessageBubbleBackground.custom,
-                  emptyCustom: custom == null,
-                  onTap: custom == null
-                      ? _importCustomPng
-                      : () => theme.messageBubbleBackground =
-                            MessageBubbleBackground.custom,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      AppIcon(
+                        HeroAppIcons.circleInfo,
+                        size: 18,
+                        color: AppTheme.brand,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          AppStrings.t(
+                            AppStringKeys.messageBubbleExperimentalNotice,
+                          ),
+                          style: TextStyle(
+                            color: c.textSecondary,
+                            fontSize: 12.5,
+                            height: 1.35,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+                GridView.count(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisCount: MediaQuery.sizeOf(context).width >= 600
+                      ? 3
+                      : 2,
+                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 10,
+                  childAspectRatio: 1.12,
+                  children: [
+                    for (final preset in visiblePresets)
+                      _choice(
+                        context,
+                        style: preset.style,
+                        background: preset.background,
+                        label: AppStrings.t(preset.labelKey),
+                        genre: AppStrings.t(preset.genreKey),
+                        selected: selected == preset.style,
+                        onTap: () =>
+                            theme.messageBubbleBackground = preset.style,
+                      ),
+                    _choice(
+                      context,
+                      style: MessageBubbleBackground.custom,
+                      background: theme.messageBubbleBackgroundSpecFor(
+                        MessageBubbleBackground.custom,
+                      ),
+                      label: AppStrings.t(AppStringKeys.messageBubbleCustom),
+                      genre: AppStrings.t(
+                        AppStringKeys.messageBubbleGenreCustom,
+                      ),
+                      selected: selected == MessageBubbleBackground.custom,
+                      emptyCustom: custom == null,
+                      onTap: custom == null
+                          ? _importCustomPng
+                          : () => theme.messageBubbleBackground =
+                                MessageBubbleBackground.custom,
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 14),
                 Text(
@@ -324,6 +448,7 @@ class _MessageBubbleSettingsViewState extends State<MessageBubbleSettingsView> {
     required MessageBubbleBackground style,
     required MessageBubbleBackgroundSpec background,
     required String label,
+    required String genre,
     required bool selected,
     required VoidCallback onTap,
     bool emptyCustom = false,
@@ -336,8 +461,7 @@ class _MessageBubbleSettingsViewState extends State<MessageBubbleSettingsView> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
         curve: Curves.easeOutCubic,
-        height: 78,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
+        padding: const EdgeInsets.all(9),
         decoration: BoxDecoration(
           color: c.card,
           borderRadius: BorderRadius.circular(14),
@@ -346,47 +470,72 @@ class _MessageBubbleSettingsViewState extends State<MessageBubbleSettingsView> {
             width: selected ? 1.5 : 0.5,
           ),
         ),
-        child: Row(
+        child: Stack(
           children: [
-            Expanded(
-              child: Text(
-                label,
-                style: TextStyle(
-                  color: c.textPrimary,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: SizedBox.expand(
+                    child: StretchableMessageBubbleBackground(
+                      background: background,
+                      constraints: const BoxConstraints.expand(),
+                      fallbackColor: c.bubbleIncoming,
+                      fallbackBorderRadius: BorderRadius.circular(12),
+                      fallbackBorder: Border.all(color: c.divider, width: 0.5),
+                      fallbackPadding: EdgeInsets.zero,
+                      child: emptyCustom
+                          ? Center(
+                              child: AppIcon(
+                                HeroAppIcons.image,
+                                size: 22,
+                                color: c.textTertiary,
+                              ),
+                            )
+                          : const SizedBox.shrink(),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 7),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: c.textPrimary,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  genre,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: c.textTertiary, fontSize: 11.5),
+                ),
+              ],
+            ),
+            Positioned(
+              top: 5,
+              right: 5,
+              child: Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: c.card.withValues(alpha: 0.92),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: selected ? AppTheme.brand : c.divider,
+                    width: selected ? 1.25 : 0.5,
+                  ),
+                ),
+                child: AppIcon(
+                  selected ? HeroAppIcons.check : HeroAppIcons.circle,
+                  size: selected ? 15 : 12,
+                  color: selected ? AppTheme.brand : c.textTertiary,
                 ),
               ),
-            ),
-            SizedBox(
-              width: 112,
-              height: 50,
-              child: StretchableMessageBubbleBackground(
-                background: background,
-                constraints: const BoxConstraints.tightFor(
-                  width: 112,
-                  height: 50,
-                ),
-                fallbackColor: c.bubbleIncoming,
-                fallbackBorderRadius: BorderRadius.circular(12),
-                fallbackBorder: Border.all(color: c.divider, width: 0.5),
-                fallbackPadding: EdgeInsets.zero,
-                child: emptyCustom
-                    ? Center(
-                        child: AppIcon(
-                          HeroAppIcons.image,
-                          size: 22,
-                          color: c.textTertiary,
-                        ),
-                      )
-                    : const SizedBox.shrink(),
-              ),
-            ),
-            const SizedBox(width: 12),
-            AppIcon(
-              selected ? HeroAppIcons.circleCheck : HeroAppIcons.circle,
-              size: 21,
-              color: selected ? AppTheme.brand : c.textTertiary,
             ),
           ],
         ),
