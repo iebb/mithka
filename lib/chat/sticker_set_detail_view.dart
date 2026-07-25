@@ -16,6 +16,7 @@ import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
 import 'custom_emoji.dart'; // parseStickers
+import 'sticker_export_service.dart';
 import 'sticker_item.dart';
 import 'sticker_preview.dart';
 import 'sticker_set_studio_view.dart';
@@ -35,6 +36,161 @@ class _StickerSetDetailViewState extends State<StickerSetDetailView> {
   bool _owned = false;
   bool _loading = true;
   bool _working = false;
+  bool _exporting = false;
+  int _exportCompleted = 0;
+  int _exportTotal = 0;
+  StickerExportFormat? _exportFormat;
+  final LayerLink _menuLink = LayerLink();
+  OverlayEntry? _menu;
+
+  @override
+  void dispose() {
+    _closeMenu();
+    super.dispose();
+  }
+
+  void _closeMenu() {
+    final menu = _menu;
+    _menu = null;
+    if (menu?.mounted == true) menu!.remove();
+  }
+
+  void _toggleMenu() {
+    if (_menu != null) {
+      _closeMenu();
+      return;
+    }
+    final overlay = Overlay.of(context);
+    final c = context.colors;
+    late OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (_) => Stack(
+        children: [
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: _closeMenu,
+            ),
+          ),
+          CompositedTransformFollower(
+            link: _menuLink,
+            targetAnchor: Alignment.bottomRight,
+            followerAnchor: Alignment.topRight,
+            offset: const Offset(0, 6),
+            showWhenUnlinked: false,
+            child: Container(
+              key: const ValueKey('sticker-set-export-menu'),
+              width: 226,
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: c.card,
+                borderRadius: BorderRadius.circular(13),
+                border: Border.all(color: c.divider, width: 0.5),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x35000000),
+                    blurRadius: 18,
+                    offset: Offset(0, 7),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _menuItem(
+                    c,
+                    AppStrings.t(AppStringKeys.stickerSetDetailSaveAllApng),
+                    StickerExportFormat.png,
+                  ),
+                  Container(height: 0.5, color: c.divider),
+                  _menuItem(
+                    c,
+                    AppStrings.t(AppStringKeys.stickerSetDetailSaveAllGif),
+                    StickerExportFormat.gif,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    _menu = entry;
+    overlay.insert(entry);
+  }
+
+  Widget _menuItem(dynamic c, String label, StickerExportFormat format) {
+    return GestureDetector(
+      key: ValueKey('sticker-set-export-${format.name}'),
+      behavior: HitTestBehavior.opaque,
+      onTap: _exporting ? null : () => _exportAll(format),
+      child: SizedBox(
+        height: 46,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Row(
+            children: [
+              AppIcon(HeroAppIcons.folder, size: 20, color: c.textPrimary),
+              const SizedBox(width: 11),
+              Text(
+                label,
+                style: TextStyle(
+                  color: c.textPrimary,
+                  fontSize: 15,
+                  decoration: TextDecoration.none,
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _exportAll(StickerExportFormat format) async {
+    _closeMenu();
+    if (_exporting) return;
+    setState(() {
+      _exporting = true;
+      _exportCompleted = 0;
+      _exportTotal = _stickers.length;
+      _exportFormat = format;
+    });
+    final result = await StickerExportService.exportSet(
+      _stickers,
+      title: _title,
+      format: format,
+      onProgress: (completed, total) {
+        if (!mounted) return;
+        setState(() {
+          _exportCompleted = completed;
+          _exportTotal = total;
+        });
+      },
+    );
+    if (!mounted) return;
+    setState(() {
+      _exporting = false;
+      _exportFormat = null;
+    });
+    final feedback = switch (result) {
+      StickerExportResult.saved => AppStrings.t(
+        AppStringKeys.stickerExportSavedToFiles,
+      ),
+      StickerExportResult.failed => AppStrings.t(
+        AppStringKeys.stickerExportFailed,
+      ),
+      StickerExportResult.unsupported => AppStrings.t(
+        AppStringKeys.stickerExportUnsupported,
+      ),
+      StickerExportResult.cancelled => null,
+      StickerExportResult.permissionDenied => AppStrings.t(
+        AppStringKeys.stickerExportFailed,
+      ),
+    };
+    if (feedback != null) showToast(context, feedback);
+  }
 
   @override
   void initState() {
@@ -97,28 +253,103 @@ class _StickerSetDetailViewState extends State<StickerSetDetailView> {
     final c = context.colors;
     return Scaffold(
       backgroundColor: c.groupedBackground,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _header(c),
-            if (_loading)
-              const Expanded(
-                child: Center(
-                  child: SizedBox(
-                    width: 26,
-                    height: 26,
-                    child: CircularProgressIndicator.adaptive(strokeWidth: 2),
+      body: Stack(
+        children: [
+          SafeArea(
+            child: Column(
+              children: [
+                _header(c),
+                if (_loading)
+                  const Expanded(
+                    child: Center(
+                      child: SizedBox(
+                        width: 26,
+                        height: 26,
+                        child: CircularProgressIndicator.adaptive(
+                          strokeWidth: 2,
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  Expanded(
+                    child: ListView(
+                      padding: const EdgeInsets.all(16),
+                      children: [
+                        _setCard(c),
+                        const SizedBox(height: 18),
+                        _grid(),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          if (_exporting) _exportProgress(c),
+        ],
+      ),
+    );
+  }
+
+  Widget _exportProgress(dynamic c) {
+    final total = _exportTotal;
+    final completed = _exportCompleted.clamp(0, total);
+    final progress = total == 0 ? 0.0 : completed / total;
+    final formatLabel = _exportFormat == StickerExportFormat.gif
+        ? 'GIF ZIP'
+        : 'APNG ZIP';
+    return Positioned.fill(
+      child: ColoredBox(
+        color: const Color(0x52000000),
+        child: Center(
+          child: Container(
+            key: const ValueKey('sticker-set-export-progress'),
+            width: 270,
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+            decoration: BoxDecoration(
+              color: c.card,
+              borderRadius: BorderRadius.circular(15),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x38000000),
+                  blurRadius: 24,
+                  offset: Offset(0, 9),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  AppStrings.t(AppStringKeys.stickerExportPreparing, {
+                    'value1': formatLabel,
+                  }),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: c.textPrimary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-              )
-            else
-              Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.all(16),
-                  children: [_setCard(c), const SizedBox(height: 18), _grid()],
+                const SizedBox(height: 15),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(3),
+                  child: LinearProgressIndicator(
+                    key: const ValueKey('sticker-set-export-progress-bar'),
+                    value: progress,
+                    minHeight: 6,
+                    backgroundColor: c.searchFill,
+                    valueColor: AlwaysStoppedAnimation(AppTheme.brand),
+                  ),
                 ),
-              ),
-          ],
+                const SizedBox(height: 9),
+                Text(
+                  '$completed / $total',
+                  style: TextStyle(color: c.textSecondary, fontSize: 13),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -149,29 +380,53 @@ class _StickerSetDetailViewState extends State<StickerSetDetailView> {
               ),
             ),
           ),
-          if (_owned)
-            Align(
-              alignment: Alignment.centerRight,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () async {
-                  await Navigator.of(context).push<void>(
-                    MaterialPageRoute(
-                      builder: (_) => StickerSetManageView(setId: widget.setId),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_owned)
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () async {
+                      await Navigator.of(context).push<void>(
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              StickerSetManageView(setId: widget.setId),
+                        ),
+                      );
+                      await _load();
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      child: AppIcon(
+                        HeroAppIcons.penToSquare,
+                        size: 22,
+                        color: c.textPrimary,
+                      ),
                     ),
-                  );
-                  await _load();
-                },
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                  child: AppIcon(
-                    HeroAppIcons.penToSquare,
-                    size: 22,
-                    color: c.textPrimary,
+                  ),
+                CompositedTransformTarget(
+                  link: _menuLink,
+                  child: GestureDetector(
+                    key: const ValueKey('sticker-set-export-menu-button'),
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _loading || _exporting || _stickers.isEmpty
+                        ? null
+                        : _toggleMenu,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      child: AppIcon(
+                        HeroAppIcons.ellipsis,
+                        size: 24,
+                        color: _exporting ? c.textTertiary : c.textPrimary,
+                      ),
+                    ),
                   ),
                 ),
-              ),
+              ],
             ),
+          ),
         ],
       ),
     );

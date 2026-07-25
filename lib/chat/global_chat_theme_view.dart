@@ -247,8 +247,8 @@ class _GlobalChatThemeViewState extends State<GlobalChatThemeView> {
                       .l10n(context),
                   outgoingMessage: AppStringKeys.chatWallpaperPreviewOutgoing
                       .l10n(context),
-                  showSenderNamePlate:
-                      appearance.showSenderNameReadabilityPlate,
+                  senderNameReadabilityMode:
+                      appearance.senderNameReadabilityMode,
                 ),
                 const Spacer(),
                 Text(

@@ -593,7 +593,8 @@ class _MessageBubbleState extends State<MessageBubble>
                             children: [
                               Flexible(
                                 child: SenderIdentityPills(
-                                  enabled: theme.showSenderNameReadabilityPlate,
+                                  readabilityMode:
+                                      theme.senderNameReadabilityMode,
                                   bubbleColor: _incomingBubbleColor,
                                   name: message.senderName!,
                                   nameStyle: TextStyle(

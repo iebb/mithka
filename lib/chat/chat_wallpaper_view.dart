@@ -338,8 +338,6 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
                         ],
                         _preview(),
                         const SizedBox(height: 12),
-                        _senderNameReadabilityOption(),
-                        const SizedBox(height: 18),
                         _customizeBlock(),
                         const SizedBox(height: 18),
                         Text(
@@ -395,8 +393,8 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
                       .l10n(context),
                   outgoingMessage: AppStringKeys.chatWallpaperPreviewOutgoing
                       .l10n(context),
-                  showSenderNamePlate:
-                      appearance.showSenderNameReadabilityPlate,
+                  senderNameReadabilityMode:
+                      appearance.senderNameReadabilityMode,
                 ),
                 const Spacer(),
                 Text(
@@ -469,44 +467,6 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
           themeStyle?.nameColor ?? globalTheme?.accentColor ?? c.linkBlue,
       outgoingName:
           themeStyle?.nameColor ?? globalTheme?.accentColor ?? c.linkBlue,
-    );
-  }
-
-  Widget _senderNameReadabilityOption() {
-    final c = context.colors;
-    final appearance = context.watch<ThemeController>();
-    final enabled = appearance.showSenderNameReadabilityPlate;
-    void update(bool value) {
-      appearance.showSenderNameReadabilityPlate = value;
-    }
-
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => update(!enabled),
-      child: Container(
-        constraints: const BoxConstraints(minHeight: 52),
-        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
-        decoration: BoxDecoration(
-          color: c.card,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Row(
-          children: [
-            AppIcon(HeroAppIcons.idBadge, size: 19, color: c.linkBlue),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                AppStringKeys.appearanceSenderNameBackground.l10n(context),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 14, color: c.textPrimary),
-              ),
-            ),
-            const SizedBox(width: 10),
-            AppSwitch(value: enabled, onChanged: update),
-          ],
-        ),
-      ),
     );
   }
 

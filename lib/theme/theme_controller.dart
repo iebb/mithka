@@ -162,6 +162,8 @@ enum StatusEmojiDisplayMode {
   bool get animate => this == StatusEmojiDisplayMode.animated;
 }
 
+enum SenderNameReadabilityMode { background, shadow, none }
+
 enum ThreeFingerSwipeBehavior {
   switchFolders(AppStringKeys.gesturesSwitchFolders, HeroAppIcons.folder),
   switchAccounts(AppStringKeys.gesturesSwitchAccounts, HeroAppIcons.users),
@@ -1044,8 +1046,20 @@ class ThemeController extends ChangeNotifier {
           ? StatusEmojiDisplayMode.animated
           : StatusEmojiDisplayMode.static,
     );
-    _showSenderNameReadabilityPlate =
-        _prefs.getBool(_senderNameReadabilityPlateKey) ?? false;
+    final storedSenderNameReadability = _prefs.getString(
+      _senderNameReadabilityModeKey,
+    );
+    _senderNameReadabilityMode = SenderNameReadabilityMode.values.firstWhere(
+      (mode) => mode.name == storedSenderNameReadability,
+      orElse: () {
+        final legacy = _prefs.getBool(_senderNameReadabilityPlateKey);
+        return legacy == true
+            ? SenderNameReadabilityMode.background
+            : legacy == false
+            ? SenderNameReadabilityMode.none
+            : SenderNameReadabilityMode.shadow;
+      },
+    );
     _showMessageMetaIndicators =
         _prefs.getBool(_messageMetaIndicatorsKey) ?? false;
     _alwaysShowMessageTime = _prefs.getBool(_alwaysShowMessageTimeKey) ?? false;
@@ -1148,6 +1162,7 @@ class ThemeController extends ChangeNotifier {
   static const _chatStatusEmojiModeKey = 'chatStatusEmojiMode.v1';
   static const _senderNameReadabilityPlateKey =
       'showSenderNameReadabilityPlate';
+  static const _senderNameReadabilityModeKey = 'senderNameReadabilityMode.v1';
   static const _messageMetaIndicatorsKey = 'showMessageMetaIndicators';
   static const _alwaysShowMessageTimeKey = 'alwaysShowMessageTime';
   static const _openChatsAtLatestKey = 'openChatsAtLatest';
@@ -1209,7 +1224,8 @@ class ThemeController extends ChangeNotifier {
   StatusEmojiDisplayMode _chatListStatusEmojiMode =
       StatusEmojiDisplayMode.static;
   StatusEmojiDisplayMode _chatStatusEmojiMode = StatusEmojiDisplayMode.static;
-  bool _showSenderNameReadabilityPlate = false;
+  SenderNameReadabilityMode _senderNameReadabilityMode =
+      SenderNameReadabilityMode.shadow;
   bool _showMessageMetaIndicators = false;
   bool _alwaysShowMessageTime = false;
   bool _openChatsAtLatest = false;
@@ -1526,7 +1542,8 @@ class ThemeController extends ChangeNotifier {
   bool get showChatNameColors =>
       _chatNameColorAudience != NameColorAudience.nobody;
   bool get showChatPremiumEmojiStatus => _chatStatusEmojiMode.visible;
-  bool get showSenderNameReadabilityPlate => _showSenderNameReadabilityPlate;
+  SenderNameReadabilityMode get senderNameReadabilityMode =>
+      _senderNameReadabilityMode;
   bool get showMessageMetaIndicators => _showMessageMetaIndicators;
   bool get alwaysShowMessageTime => _alwaysShowMessageTime;
   bool get openChatsAtLatest => _openChatsAtLatest;
@@ -2164,10 +2181,10 @@ class ThemeController extends ChangeNotifier {
     notifyListeners();
   }
 
-  set showSenderNameReadabilityPlate(bool value) {
-    if (_showSenderNameReadabilityPlate == value) return;
-    _showSenderNameReadabilityPlate = value;
-    _prefs.setBool(_senderNameReadabilityPlateKey, value);
+  set senderNameReadabilityMode(SenderNameReadabilityMode value) {
+    if (_senderNameReadabilityMode == value) return;
+    _senderNameReadabilityMode = value;
+    _prefs.setString(_senderNameReadabilityModeKey, value.name);
     notifyListeners();
   }
 
