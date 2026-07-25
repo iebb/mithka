@@ -116,7 +116,7 @@ void main() {
     );
   });
 
-  test('repository processor enforces 160x120 and reads four swatches', () {
+  test('repository processor enforces 190x120 and reads four swatches', () {
     final processed = const CustomMessageBubblePngProcessor().processRepository(
       _repositoryTemplatePng(),
     );
@@ -157,7 +157,7 @@ void main() {
   test('eligible #msgbubble photos expose the apply action', () {
     ChatMessage message({
       required String caption,
-      int width = 160,
+      int width = 190,
       int height = 120,
     }) => ChatMessage(
       id: 42,
@@ -364,7 +364,7 @@ void main() {
       find.byKey(const ValueKey('messageBubbleOpenRepository')),
       findsOneWidget,
     );
-    expect(find.textContaining('160 × 120'), findsOneWidget);
+    expect(find.textContaining('190 × 120'), findsOneWidget);
   });
 
   testWidgets(

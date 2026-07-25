@@ -143,15 +143,16 @@ class ProcessedMessageBubblePng {
 
 /// Canonical wire format used by the public @msgbubble repository.
 ///
-/// The four 16px swatches sit in a flat center band. They are metadata rather
+/// The four 20px swatches sit in a compact center band. They are metadata rather
 /// than bubble artwork and are removed before the PNG is center-slice compacted.
 abstract final class MessageBubbleRepositoryFormat {
-  static const width = 160;
+  static const width = 190;
   static const height = 120;
-  static const swatchSize = 16;
-  static const swatchGap = 8;
-  static const swatchTop = 52;
-  static const swatchLeft = 36;
+  static const artworkWidth = 160;
+  static const swatchSize = 20;
+  static const swatchGap = 5;
+  static const swatchTop = 46;
+  static const swatchLeft = 38;
   static const swatchCount = 4;
   static const protectedHorizontal = 24;
   static const protectedVertical = 18;
@@ -328,8 +329,8 @@ class CustomMessageBubblePngProcessor {
         final sourceX = x < edge
             ? x
             : x == edge
-            ? source.width ~/ 2
-            : source.width - (output.width - x);
+            ? MessageBubbleRepositoryFormat.artworkWidth ~/ 2
+            : MessageBubbleRepositoryFormat.artworkWidth - (output.width - x);
         _copyPixel(source, sourceX, y, output, x, y);
       }
     }

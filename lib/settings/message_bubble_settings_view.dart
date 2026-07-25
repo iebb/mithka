@@ -120,7 +120,7 @@ class _MessageBubbleSettingsViewState extends State<MessageBubbleSettingsView> {
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        'Browse the public channel as a bubble grid. Repository PNGs are exactly 160 × 120 px and contain four fixed text-color swatches.',
+                        'Browse the public channel as a bubble grid. Repository images are exactly 190 × 120 px and contain four compact text-color squares.',
                         style: TextStyle(
                           color: c.textSecondary,
                           fontSize: 13.5,
