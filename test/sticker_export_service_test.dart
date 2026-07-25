@@ -5,6 +5,7 @@ import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as image_lib;
 import 'package:mithka/chat/sticker_export_service.dart';
+import 'package:mithka/chat/sticker_item.dart';
 import 'package:mithka/tdlib/td_models.dart';
 
 void main() {
@@ -17,16 +18,12 @@ void main() {
     image: animatedSticker == null ? TdFileRef(id: 7) : null,
   );
 
-  test('offers PNG, GIF, and MOV when alpha MOV is supported', () {
+  test('offers only a one-frame PNG for static stickers', () {
     final formats = StickerExportService.availableFormats(
       message(),
       supportsMov: true,
     );
-    expect(formats, [
-      StickerExportFormat.png,
-      StickerExportFormat.gif,
-      StickerExportFormat.mov,
-    ]);
+    expect(formats, [StickerExportFormat.png]);
   });
 
   test('labels animated PNG exports as APNG', () {
@@ -38,7 +35,71 @@ void main() {
     );
     expect(StickerExportFormat.png.label(animated: true), 'APNG');
     expect(StickerExportFormat.png.label(animated: false), 'PNG');
+    expect(StickerExportFormat.png.extension, 'png');
     expect(StickerExportFormat.lottie.label(animated: true), 'Lottie JSON');
+  });
+
+  test('APNG ZIP entries use png and static GIF ZIP entries stay png', () {
+    const animated = StickerItem(
+      id: 1,
+      width: 512,
+      height: 512,
+      emoji: '',
+      isAnimated: true,
+    );
+    const staticImage = StickerItem(id: 2, width: 512, height: 512, emoji: '');
+
+    expect(
+      StickerExportService.setArchiveEntryNameForTest(
+        0,
+        animated,
+        StickerExportFormat.png,
+      ),
+      '001.png',
+    );
+    expect(
+      StickerExportService.setArchiveEntryNameForTest(
+        1,
+        staticImage,
+        StickerExportFormat.png,
+      ),
+      '002.png',
+    );
+    expect(
+      StickerExportService.setArchiveEntryNameForTest(
+        1,
+        staticImage,
+        StickerExportFormat.gif,
+      ),
+      '002.png',
+    );
+    expect(
+      StickerExportService.setArchiveEntryNameForTest(
+        0,
+        animated,
+        StickerExportFormat.gif,
+      ),
+      '001.gif',
+    );
+    expect(StickerExportService.availableSetFormats([staticImage]), [
+      StickerExportFormat.png,
+    ]);
+    expect(StickerExportService.availableSetFormats([animated]), [
+      StickerExportFormat.png,
+      StickerExportFormat.gif,
+    ]);
+    expect(
+      StickerExportService.setArchiveFormatNameForTest([
+        staticImage,
+      ], StickerExportFormat.png),
+      'png',
+    );
+    expect(
+      StickerExportService.setArchiveFormatNameForTest([
+        animated,
+      ], StickerExportFormat.png),
+      'apng',
+    );
   });
 
   test('TGS export returns the original standard Lottie JSON', () {
@@ -71,6 +132,22 @@ void main() {
     expect(decoded.frames[0].getPixel(0, 0).a.toInt(), 0);
     expect(decoded.frames[1].getPixel(0, 0).a.toInt(), 128);
     expect(decoded.frames[0].frameDuration, 50);
+  });
+
+  test('one-frame PNG omits APNG animation control chunks', () {
+    final bytes = StickerExportService.encodeRgbaFramesForTest(
+      [
+        Uint8List.fromList([255, 0, 0, 128]),
+      ],
+      width: 1,
+      height: 1,
+      durationMs: 100,
+      format: StickerExportFormat.png,
+    );
+
+    expect(bytes, isNotNull);
+    expect(image_lib.decodePng(bytes!)?.numFrames, 1);
+    expect(String.fromCharCodes(bytes), isNot(contains('acTL')));
   });
 
   test('GIF encoder produces an animated GIF', () {

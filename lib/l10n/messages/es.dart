@@ -1797,6 +1797,7 @@ const esMessages = <String, String>{
   'stickerSetDetailRemoved': "Sticker eliminado",
   'stickerSetDetailSaveAllApng': "Guardar todos como APNG",
   'stickerSetDetailSaveAllGif': "Guardar todos como GIF",
+  'stickerSetDetailSaveAllPng': "Guardar todos como PNG",
   'stickerSetDetailStickerCount': "{value1} stickers",
   'stickerSetDetailTitle': "Detalles del sticker",
   'stickerStoreRecent': "Recientes",

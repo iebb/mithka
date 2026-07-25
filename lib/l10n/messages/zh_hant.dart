@@ -1625,6 +1625,7 @@ const zhHantMessages = <String, String>{
   'stickerExportUnsupported': "此裝置不支援這種格式。",
   'stickerSetDetailSaveAllApng': "全部儲存為 APNG",
   'stickerSetDetailSaveAllGif': "全部儲存為 GIF",
+  'stickerSetDetailSaveAllPng': "全部儲存為 PNG",
   'stickerSetDetailActionFailed': "操作失敗",
   'stickerSetDetailAddSuccess': "已新增貼圖",
   'stickerSetDetailRemoved': "已移除貼圖",

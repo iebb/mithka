@@ -1623,6 +1623,7 @@ const zhHansMessages = <String, String>{
   'stickerExportUnsupported': "此设备不支持这种格式。",
   'stickerSetDetailSaveAllApng': "全部保存为 APNG",
   'stickerSetDetailSaveAllGif': "全部保存为 GIF",
+  'stickerSetDetailSaveAllPng': "全部保存为 PNG",
   'stickerSetDetailActionFailed': "操作失败",
   'stickerSetDetailAddSuccess': "已添加表情",
   'stickerSetDetailRemoved': "已移除表情",

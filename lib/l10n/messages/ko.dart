@@ -1659,6 +1659,7 @@ const koMessages = <String, String>{
   'stickerExportUnsupported': "이 기기에서는 이 형식을 사용할 수 없습니다.",
   'stickerSetDetailSaveAllApng': "모두 APNG로 저장",
   'stickerSetDetailSaveAllGif': "모두 GIF로 저장",
+  'stickerSetDetailSaveAllPng': "모두 PNG로 저장",
   'stickerSetDetailActionFailed': "작업 실패",
   'stickerSetDetailAddSuccess': "스티커가 추가됨",
   'stickerSetDetailRemoved': "스티커가 삭제됨",

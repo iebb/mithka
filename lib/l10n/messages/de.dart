@@ -1809,6 +1809,7 @@ const deMessages = <String, String>{
   'stickerSetDetailRemoved': "Sticker entfernt",
   'stickerSetDetailSaveAllApng': "Alle als APNG speichern",
   'stickerSetDetailSaveAllGif': "Alle als GIF speichern",
+  'stickerSetDetailSaveAllPng': "Alle als PNG speichern",
   'stickerSetDetailStickerCount': "{value1} Sticker",
   'stickerSetDetailTitle': "Sticker-Details",
   'stickerStoreRecent': "Zuletzt",

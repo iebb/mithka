@@ -1810,6 +1810,7 @@ const frMessages = <String, String>{
   'stickerSetDetailRemoved': "Sticker supprimé",
   'stickerSetDetailSaveAllApng': "Tout enregistrer en APNG",
   'stickerSetDetailSaveAllGif': "Tout enregistrer en GIF",
+  'stickerSetDetailSaveAllPng': "Tout enregistrer en PNG",
   'stickerSetDetailStickerCount': "{value1} stickers",
   'stickerSetDetailTitle': "Détails du sticker",
   'stickerStoreRecent': "Récents",

@@ -1821,6 +1821,7 @@ const enMessages = <String, String>{
   'stickerExportUnsupported': "This format isn’t available on this device.",
   'stickerSetDetailSaveAllApng': "Save all as APNG",
   'stickerSetDetailSaveAllGif': "Save all as GIF",
+  'stickerSetDetailSaveAllPng': "Save all as PNG",
   'stickerSetDetailActionFailed': "Action failed",
   'stickerSetDetailAddSuccess': "Sticker added",
   'stickerSetDetailRemoved': "Sticker removed",

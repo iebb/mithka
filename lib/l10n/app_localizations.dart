@@ -2220,6 +2220,7 @@ abstract final class AppStringKeys {
   static const stickerSetDetailRemoved = 'stickerSetDetailRemoved';
   static const stickerSetDetailSaveAllApng = 'stickerSetDetailSaveAllApng';
   static const stickerSetDetailSaveAllGif = 'stickerSetDetailSaveAllGif';
+  static const stickerSetDetailSaveAllPng = 'stickerSetDetailSaveAllPng';
   static const stickerSetDetailStickerCount = 'stickerSetDetailStickerCount';
   static const stickerSetDetailTitle = 'stickerSetDetailTitle';
   static const stickerStoreRecent = 'stickerStoreRecent';

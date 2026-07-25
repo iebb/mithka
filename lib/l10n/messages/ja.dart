@@ -1657,6 +1657,7 @@ const jaMessages = <String, String>{
   'stickerExportUnsupported': "この形式はこのデバイスでは利用できません。",
   'stickerSetDetailSaveAllApng': "すべてAPNGで保存",
   'stickerSetDetailSaveAllGif': "すべてGIFで保存",
+  'stickerSetDetailSaveAllPng': "すべてPNGで保存",
   'stickerSetDetailActionFailed': "操作に失敗しました",
   'stickerSetDetailAddSuccess': "スタンプを追加しました",
   'stickerSetDetailRemoved': "スタンプを削除しました",
