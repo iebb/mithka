@@ -2153,7 +2153,7 @@ class _ChannelMomentsSearchViewState extends State<ChannelMomentsSearchView> {
 void openChannelPostOriginal(BuildContext context, ChannelPost post) {
   pushAppChatRoute(
     context,
-    MaterialPageRoute(
+    AppChatPageRoute<void>(
       builder: (_) => ChatView(
         chatId: post.channel.id,
         title: post.channel.title,
@@ -3743,7 +3743,7 @@ class _InlineComments extends StatelessWidget {
             behavior: HitTestBehavior.opaque,
             onTap: () => pushAppChatRoute(
               context,
-              MaterialPageRoute(
+              AppChatPageRoute<void>(
                 builder: (_) => ChatView(
                   chatId: comment.chatId,
                   title: post.channel.title,

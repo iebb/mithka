@@ -111,6 +111,98 @@ double chatListItemScrollOffset({
 int chatListPullDownArchiveItemIndex({required bool showSearch}) =>
     showSearch ? 1 : 0;
 
+/// Returns the distance that leading chat-list content must move up to cancel
+/// the viewport's native top overscroll in the same frame.
+double chatListTopOverscrollOffset(
+  double scrollPixels, {
+  double minScrollExtent = 0,
+}) => math.max(0.0, minScrollExtent - scrollPixels).toDouble();
+
+/// Whether the current pull has crossed the archive reveal threshold.
+bool chatListShouldRevealPullDownArchive({
+  required double pullOffset,
+  required double rowHeight,
+}) => pullOffset >= rowHeight * 0.45;
+
+/// Whether forward scrolling has moved far enough to hide the archive row.
+bool chatListShouldHidePullDownArchive({
+  required double scrollPixels,
+  required double minScrollExtent,
+  required double rowHeight,
+}) => scrollPixels - minScrollExtent > rowHeight * 0.5;
+
+/// Keeps leading pull-down content visually fixed while the surrounding list
+/// uses bouncing scroll physics.
+class ChatListTopOverscrollPin extends StatelessWidget {
+  const ChatListTopOverscrollPin({
+    super.key,
+    required this.controller,
+    required this.child,
+    this.enabled = true,
+  });
+
+  final ScrollController controller;
+  final Widget child;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!enabled) return child;
+    return AnimatedBuilder(
+      animation: controller,
+      child: child,
+      builder: (context, child) {
+        final positions = controller.positions;
+        final position = positions.length == 1 ? positions.single : null;
+        final pullOffset = position != null && position.hasContentDimensions
+            ? chatListTopOverscrollOffset(
+                position.pixels,
+                minScrollExtent: position.minScrollExtent,
+              )
+            : 0.0;
+        return Transform.translate(
+          offset: Offset(0, -pullOffset),
+          child: child,
+        );
+      },
+    );
+  }
+}
+
+/// Animates the pull-down archive row without letting viewport overscroll move
+/// the row's painted position.
+class ChatListPullDownArchiveSlot extends StatelessWidget {
+  const ChatListPullDownArchiveSlot({
+    super.key,
+    required this.controller,
+    required this.rowHeight,
+    required this.visible,
+    required this.child,
+    this.duration = const Duration(milliseconds: 180),
+  });
+
+  final ScrollController controller;
+  final double rowHeight;
+  final bool visible;
+  final Widget child;
+  final Duration duration;
+
+  @override
+  Widget build(BuildContext context) {
+    return ChatListTopOverscrollPin(
+      controller: controller,
+      child: AnimatedSize(
+        duration: duration,
+        curve: Curves.easeOutCubic,
+        alignment: Alignment.topCenter,
+        child: visible
+            ? SizedBox(height: rowHeight, child: child)
+            : const SizedBox(width: double.infinity),
+      ),
+    );
+  }
+}
+
 enum ChatListMultiFingerSwipeAction { none, switchFolders, switchAccounts }
 
 ChatListMultiFingerSwipeAction chatListMultiFingerSwipeAction({
@@ -198,8 +290,6 @@ class _ChatListViewState extends State<ChatListView>
   int _pendingScrollAttempts = 0;
   bool _toggleUnreadTargetNext = true;
   bool _archiveRevealed = false;
-  double _archivePullDistance = 0;
-  double _archiveDragOffset = 0;
   double _refreshPullDistance = 0;
   bool _isRefreshing = false;
   bool _viewTickerEnabled = true;
@@ -291,9 +381,37 @@ class _ChatListViewState extends State<ChatListView>
   }
 
   void _onScroll() {
-    if (!_scrollController.hasClients) return;
-    final rowHeight = context.read<ThemeController>().rowHeight;
-    if (_scrollController.position.extentAfter < rowHeight * 8) {
+    if (!mounted) return;
+    final positions = _scrollController.positions;
+    if (positions.length != 1) return;
+    final position = positions.single;
+    final theme = context.read<ThemeController>();
+    final rowHeight = theme.rowHeight + 0.5;
+    final archiveEnabled =
+        _model.isAllFilter &&
+        _model.archived.isNotEmpty &&
+        theme.archivedChatsDisplayMode == ArchivedChatsDisplayMode.pullDown;
+    if (archiveEnabled && position.hasContentDimensions) {
+      final pullOffset = chatListTopOverscrollOffset(
+        position.pixels,
+        minScrollExtent: position.minScrollExtent,
+      );
+      if (!_archiveRevealed &&
+          chatListShouldRevealPullDownArchive(
+            pullOffset: pullOffset,
+            rowHeight: rowHeight,
+          )) {
+        setState(() => _archiveRevealed = true);
+      } else if (_archiveRevealed &&
+          chatListShouldHidePullDownArchive(
+            scrollPixels: position.pixels,
+            minScrollExtent: position.minScrollExtent,
+            rowHeight: rowHeight,
+          )) {
+        setState(() => _archiveRevealed = false);
+      }
+    }
+    if (position.extentAfter < theme.rowHeight * 8) {
       _model.loadMore();
     }
   }
@@ -343,15 +461,15 @@ class _ChatListViewState extends State<ChatListView>
       unawaited(
         pushAppChatRoute(
           context,
-          _chatEntryRoute(
-            bookmarkView
-                ? const SavedMessagesView()
-                : ChatView(
+          bookmarkView
+              ? _standardEntryRoute(const SavedMessagesView())
+              : _chatEntryRoute(
+                  ChatView(
                     chatId: chat.id,
                     title: AppStrings.t(AppStringKeys.savedMessages),
                     seedMessage: chat.lastChatMessage,
                   ),
-          ),
+                ),
         ),
       );
       return;
@@ -381,7 +499,7 @@ class _ChatListViewState extends State<ChatListView>
       unawaited(
         pushAppChatRoute(
           context,
-          _chatEntryRoute(
+          _standardEntryRoute(
             ForumTopicBrowserView(
               chats: railChats.values.toList(),
               initialChat: chat,
@@ -564,8 +682,6 @@ class _ChatListViewState extends State<ChatListView>
       _folderTransitionDirection = direction;
       _openSwipeChat = null;
       _archiveRevealed = false;
-      _archivePullDistance = 0;
-      _archiveDragOffset = 0;
       _refreshPullDistance = 0;
     });
     _model.selectFilter(filter);
@@ -1253,13 +1369,7 @@ class _ChatListViewState extends State<ChatListView>
           }
 
           list = NotificationListener<ScrollNotification>(
-            onNotification: (notification) => _handleChatListPull(
-              notification,
-              archiveEnabled:
-                  hasArchive &&
-                  archiveMode == ArchivedChatsDisplayMode.pullDown,
-              rowHeight: rowH,
-            ),
+            onNotification: _handleChatListPull,
             child: list,
           );
           // One-finger horizontal drags belong exclusively to ChatSwipeRow.
@@ -1274,38 +1384,31 @@ class _ChatListViewState extends State<ChatListView>
   }
 
   Widget _archivePullSearchPill(bool pinDuringArchivePull) {
-    final offset = pinDuringArchivePull ? -_archiveDragOffset : 0.0;
-    return Transform.translate(offset: Offset(0, offset), child: _searchPill());
+    return ChatListTopOverscrollPin(
+      controller: _scrollController,
+      enabled: pinDuringArchivePull,
+      child: _searchPill(),
+    );
   }
 
   Widget _pullDownArchiveSlot({
     required double rowHeight,
     required bool visible,
   }) {
-    return AnimatedSize(
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOutCubic,
-      alignment: Alignment.topCenter,
-      clipBehavior: Clip.none,
-      child: visible
-          ? Transform.translate(
-              offset: Offset(0, -_archiveDragOffset),
-              child: SizedBox(height: rowHeight, child: _assistantRow()),
-            )
-          : const SizedBox(width: double.infinity),
+    final duration = MediaQuery.maybeOf(context)?.disableAnimations ?? false
+        ? Duration.zero
+        : const Duration(milliseconds: 180);
+    return ChatListPullDownArchiveSlot(
+      controller: _scrollController,
+      rowHeight: rowHeight,
+      visible: visible,
+      duration: duration,
+      child: _assistantRow(),
     );
   }
 
-  bool _handleChatListPull(
-    ScrollNotification notification, {
-    required bool archiveEnabled,
-    required double rowHeight,
-  }) {
-    _handleArchivePull(
-      notification,
-      enabled: archiveEnabled,
-      rowHeight: rowHeight,
-    );
+  bool _handleChatListPull(ScrollNotification notification) {
+    if (notification.depth != 0) return false;
     if (_isRefreshing) return false;
 
     if (notification is ScrollStartNotification) {
@@ -1337,74 +1440,6 @@ class _ChatListViewState extends State<ChatListView>
     } finally {
       if (mounted) setState(() => _isRefreshing = false);
     }
-  }
-
-  bool _handleArchivePull(
-    ScrollNotification notification, {
-    required bool enabled,
-    required double rowHeight,
-  }) {
-    if (!enabled) return false;
-    if (notification is ScrollStartNotification) {
-      _archivePullDistance = 0;
-      if (_archiveDragOffset != 0) {
-        setState(() => _archiveDragOffset = 0);
-      }
-    } else if (notification is OverscrollNotification &&
-        notification.overscroll < 0) {
-      _archivePullDistance = math.max(
-        _archivePullDistance + -notification.overscroll,
-        math.max(0, -notification.metrics.pixels),
-      );
-      final positionPull = math
-          .max(0.0, -notification.metrics.pixels)
-          .toDouble();
-      _updateArchivePullVisual(
-        rowHeight,
-        visualPull: positionPull > 0
-            ? positionPull
-            : math.min(_archivePullDistance, rowHeight * 2),
-      );
-    } else if (notification is ScrollUpdateNotification) {
-      if (notification.metrics.pixels < 0) {
-        _archivePullDistance = -notification.metrics.pixels;
-        _updateArchivePullVisual(
-          rowHeight,
-          visualPull: -notification.metrics.pixels,
-        );
-      } else if (_archiveRevealed &&
-          notification.metrics.pixels > rowHeight * 0.5) {
-        setState(() {
-          _archiveRevealed = false;
-          _archiveDragOffset = 0;
-        });
-      } else if (_archiveDragOffset != 0) {
-        setState(() => _archiveDragOffset = 0);
-      }
-    } else if (notification is ScrollEndNotification) {
-      _archivePullDistance = 0;
-      if (_archiveDragOffset != 0) {
-        setState(() => _archiveDragOffset = 0);
-      }
-    }
-    return false;
-  }
-
-  void _updateArchivePullVisual(
-    double rowHeight, {
-    required double visualPull,
-  }) {
-    final shouldReveal =
-        _archiveRevealed || _archivePullDistance >= rowHeight * 0.45;
-    final nextOffset = shouldReveal ? visualPull : 0.0;
-    if (_archiveRevealed == shouldReveal &&
-        (_archiveDragOffset - nextOffset).abs() < 0.5) {
-      return;
-    }
-    setState(() {
-      _archiveRevealed = shouldReveal;
-      _archiveDragOffset = nextOffset;
-    });
   }
 
   void _switchFolderBySwipe(double? velocity) {
@@ -1556,7 +1591,11 @@ class _ChatListViewState extends State<ChatListView>
     return AppStringKeys.chatDelete;
   }
 
-  PageRoute<T> _chatEntryRoute<T>(Widget child) {
+  PageRoute<T> _chatEntryRoute<T>(ChatView child) {
+    return AppChatPageRoute<T>(builder: (_) => child);
+  }
+
+  PageRoute<T> _standardEntryRoute<T>(Widget child) {
     return PageRouteBuilder<T>(
       transitionDuration: const Duration(milliseconds: 260),
       reverseTransitionDuration: const Duration(milliseconds: 220),

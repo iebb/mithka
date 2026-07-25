@@ -3843,6 +3843,9 @@ class ChatViewModel extends ChangeNotifier {
               content.boolean('new_has_protected_content') ??
               hasProtectedContent;
         }
+        if (content.type == 'messageVideo') {
+          _replaceVideoMedia(messageId, content);
+        }
         _replaceText(
           messageId,
           // Chat-list previews deliberately synthesize labels such as
@@ -4755,6 +4758,22 @@ class ChatViewModel extends ChangeNotifier {
       if (edited) target.isEdited = true;
     }
     _applyKeywordFilter();
+  }
+
+  void _replaceVideoMedia(int messageId, Map<String, dynamic> content) {
+    final media = TDParse.mediaAttachment(content);
+    for (final target in _messageRefs(messageId)) {
+      target.contentType = content.type;
+      target.image =
+          media.image?.inheritLocalPathFrom(target.image) ?? target.image;
+      target.video =
+          media.video?.inheritLocalPathFrom(target.video) ?? target.video;
+      if ((media.width ?? 0) > 0) target.imageWidth = media.width;
+      if ((media.height ?? 0) > 0) target.imageHeight = media.height;
+      if ((media.videoDuration ?? 0) > 0) {
+        target.videoDuration = media.videoDuration;
+      }
+    }
   }
 
   void _replacePendingMessage(

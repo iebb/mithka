@@ -34,6 +34,7 @@ import '../theme/app_theme.dart';
 import '../theme/telegram_cloud_theme.dart';
 import '../theme/theme_controller.dart';
 import '../update/update_checker.dart';
+import 'app_navigator.dart';
 import 'chat_deep_link_controller.dart';
 import 'unread_badge_model.dart';
 
@@ -248,7 +249,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
       final navigator = Navigator.of(context, rootNavigator: true);
       navigator.popUntil((route) => route.isFirst);
       navigator.push(
-        MaterialPageRoute(
+        AppChatPageRoute(
           builder: (_) => ChatView(
             chatId: request.chatId,
             title: request.title,

@@ -250,7 +250,7 @@ class _SearchViewState extends State<SearchView> {
       final title = hit.sourceTitle;
       await pushAppChatRoute(
         context,
-        CupertinoPageRoute(
+        AppChatPageRoute(
           builder: (_) => ChatView(
             chatId: hit.chatId!,
             title: title.isEmpty ? hit.title : title,
@@ -264,7 +264,7 @@ class _SearchViewState extends State<SearchView> {
     if (chat != null) {
       await pushAppChatRoute(
         context,
-        CupertinoPageRoute(
+        AppChatPageRoute(
           builder: (_) => ChatView(chatId: chat.id, title: chat.title),
         ),
       );
@@ -282,7 +282,7 @@ class _SearchViewState extends State<SearchView> {
       if (!mounted || summary == null) return;
       await pushAppChatRoute(
         context,
-        CupertinoPageRoute(
+        AppChatPageRoute(
           builder: (_) => ChatView(chatId: summary.id, title: summary.title),
         ),
       );

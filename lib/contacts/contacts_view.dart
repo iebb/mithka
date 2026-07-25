@@ -69,7 +69,9 @@ class _ContactsViewState extends State<ContactsView> {
       widget.onOpenDetail!(detail);
       return;
     }
-    final route = MaterialPageRoute<void>(builder: (_) => detail);
+    final route = detail is ChatView
+        ? AppChatPageRoute<void>(builder: (_) => detail)
+        : MaterialPageRoute<void>(builder: (_) => detail);
     if (outsideTabs) {
       pushAppChatRoute(context, route);
       return;

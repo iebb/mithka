@@ -64,7 +64,7 @@ class _ForumTopicBrowserViewState extends State<ForumTopicBrowserView> {
     if (!chat.isForum) {
       replaceWithAppChatRoute(
         context,
-        MaterialPageRoute(
+        AppChatPageRoute(
           builder: (_) => ChatView(
             chatId: chat.id,
             title: chat.title,

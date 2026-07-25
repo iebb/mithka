@@ -310,7 +310,7 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
     if (cid == null) return;
     pushAppChatRoute(
       context,
-      MaterialPageRoute(
+      AppChatPageRoute(
         builder: (_) => ChatView(chatId: cid, title: _name),
       ),
     );
@@ -333,7 +333,7 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
       final title = secretChat.title.isNotEmpty ? secretChat.title : _name;
       await pushAppChatRoute(
         context,
-        MaterialPageRoute(
+        AppChatPageRoute(
           builder: (_) => ChatView(chatId: secretChat.id, title: title),
         ),
       );
