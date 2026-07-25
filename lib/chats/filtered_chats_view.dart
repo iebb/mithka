@@ -150,7 +150,7 @@ class FilteredChatsView extends StatelessWidget {
                   behavior: HitTestBehavior.opaque,
                   onTap: () => pushAppChatRoute(
                     context,
-                    MaterialPageRoute(
+                    AppChatPageRoute(
                       builder: (_) =>
                           ChatView(chatId: chat.id, title: chat.title),
                     ),

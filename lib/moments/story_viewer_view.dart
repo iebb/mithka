@@ -17,6 +17,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
+import '../app/app_navigator.dart';
 import '../chat/chat_picker_view.dart';
 import '../chat/chat_view.dart';
 import '../chat/custom_emoji.dart';
@@ -666,7 +667,7 @@ class _StoryViewerViewState extends State<StoryViewerView>
         } catch (_) {}
         if (mounted) {
           await Navigator.of(context).push(
-            MaterialPageRoute(
+            AppChatPageRoute<void>(
               builder: (_) => ChatView(chatId: chatId, title: title),
             ),
           );

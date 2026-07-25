@@ -1047,31 +1047,6 @@ Future<T?> _showMusicBottomSheet<T>(
   );
 }
 
-Route<T> _musicPageRoute<T>({required WidgetBuilder builder}) {
-  return PageRouteBuilder<T>(
-    transitionDuration: const Duration(milliseconds: 220),
-    reverseTransitionDuration: const Duration(milliseconds: 180),
-    pageBuilder: (context, _, _) => builder(context),
-    transitionsBuilder: (context, animation, _, child) {
-      final curved = CurvedAnimation(
-        parent: animation,
-        curve: Curves.easeOutCubic,
-        reverseCurve: Curves.easeInCubic,
-      );
-      return FadeTransition(
-        opacity: curved,
-        child: SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(0.04, 0),
-            end: Offset.zero,
-          ).animate(curved),
-          child: child,
-        ),
-      );
-    },
-  );
-}
-
 void _showMusicQueue(BuildContext context, MusicPlayerController controller) {
   final navigatorContext = appNavigatorKey.currentContext;
   if (navigatorContext == null) return;
@@ -2121,7 +2096,7 @@ void _openOriginal(ChatMessage message) {
   final chatId = message.chatId;
   if (chatId == null || chatId == 0 || message.id == 0) return;
   appNavigatorKey.currentState?.push(
-    _musicPageRoute(
+    AppChatPageRoute<void>(
       builder: (_) => ChatView(
         chatId: chatId,
         title: message.senderName ?? '',

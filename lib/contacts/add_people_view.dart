@@ -225,7 +225,7 @@ class _AddPeopleViewState extends State<AddPeopleView> {
 
   void _openChat(_ChatHit h) => pushAppChatRoute(
     context,
-    MaterialPageRoute(
+    AppChatPageRoute(
       builder: (_) => ChatView(chatId: h.id, title: h.title),
     ),
   );
@@ -257,7 +257,7 @@ class _AddPeopleViewState extends State<AddPeopleView> {
       unawaited(
         pushAppChatRoute(
           context,
-          MaterialPageRoute(
+          AppChatPageRoute(
             builder: (_) => ChatView(chatId: id, title: title),
           ),
         ),

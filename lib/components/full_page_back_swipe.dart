@@ -1,6 +1,23 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 
+/// A route-owned animation driver for [FullPageBackSwipe].
+///
+/// Keeping the animation controller on the route allows Flutter's navigator to
+/// reveal and repaint the actual previous route while the current page follows
+/// the pointer.
+abstract interface class FullPageBackSwipeDriver {
+  bool get canStartFullPageBackSwipe;
+
+  bool startFullPageBackSwipe();
+
+  void updateFullPageBackSwipe(double progress);
+
+  void cancelFullPageBackSwipe();
+
+  void commitFullPageBackSwipe(VoidCallback? beforePop);
+}
+
 /// Observes a rightward back swipe from anywhere inside [child].
 ///
 /// A raw pointer listener is intentional: nested horizontal controls can keep
@@ -11,48 +28,42 @@ class FullPageBackSwipe extends StatefulWidget {
     super.key,
     required this.enabled,
     required this.onBack,
+    this.beforeRoutePop,
     required this.child,
   });
 
   final bool enabled;
   final VoidCallback onBack;
+  final VoidCallback? beforeRoutePop;
   final Widget child;
 
   @override
   State<FullPageBackSwipe> createState() => _FullPageBackSwipeState();
 }
 
-class _FullPageBackSwipeState extends State<FullPageBackSwipe>
-    with SingleTickerProviderStateMixin {
+class _FullPageBackSwipeState extends State<FullPageBackSwipe> {
   int? _pointer;
   double _dx = 0;
   double _dy = 0;
   VelocityTracker? _velocity;
-  late final AnimationController _settleController;
-  Animation<double>? _settleAnimation;
-  double _visualOffset = 0;
   bool _horizontalIntent = false;
+  FullPageBackSwipeDriver? _driver;
+  bool _routeDriverDetected = false;
 
   @override
-  void initState() {
-    super.initState();
-    _settleController =
-        AnimationController(
-          vsync: this,
-          duration: const Duration(milliseconds: 220),
-        )..addListener(() {
-          final animation = _settleAnimation;
-          if (animation != null) {
-            setState(() => _visualOffset = animation.value);
-          }
-        });
+  void didUpdateWidget(FullPageBackSwipe oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.enabled && !widget.enabled && _pointer != null) {
+      final driver = _driver;
+      _reset();
+      driver?.cancelFullPageBackSwipe();
+    }
   }
 
   void _start(PointerDownEvent event) {
+    if (_pointer != null) return;
     _reset();
     if (!widget.enabled) return;
-    _settleController.stop();
-    _settleAnimation = null;
     _pointer = event.pointer;
     _velocity = VelocityTracker.withKind(event.kind)
       ..addPosition(event.timeStamp, event.position);
@@ -66,15 +77,20 @@ class _FullPageBackSwipeState extends State<FullPageBackSwipe>
     tracker.addPosition(event.timeStamp, event.position);
     if (!_horizontalIntent && _dx > 7 && _dx.abs() > _dy.abs() * 1.35) {
       _horizontalIntent = true;
+      final route = ModalRoute.of(context);
+      final driver = route is FullPageBackSwipeDriver
+          ? route as FullPageBackSwipeDriver
+          : null;
+      _routeDriverDetected = driver != null;
+      if (driver != null &&
+          driver.canStartFullPageBackSwipe &&
+          driver.startFullPageBackSwipe()) {
+        _driver = driver;
+      }
     }
     if (_horizontalIntent) {
       final width = MediaQuery.sizeOf(context).width;
-      final raw = _dx.clamp(0.0, width * 1.08);
-      // A small amount of resistance at the far edge keeps the content
-      // attached to the finger without allowing an unbounded translation.
-      setState(() {
-        _visualOffset = raw <= width ? raw : width + (raw - width) * 0.18;
-      });
+      _driver?.updateFullPageBackSwipe((_dx / width).clamp(0.0, 1.0));
     }
   }
 
@@ -88,53 +104,40 @@ class _FullPageBackSwipeState extends State<FullPageBackSwipe>
         horizontal &&
         _dx > 72 &&
         (velocity > 520 || _dx > 118);
-    final start = _visualOffset;
-    _reset(keepVisualOffset: true);
-    _animateTo(shouldPop ? MediaQuery.sizeOf(context).width : 0, from: start);
-    // Start navigation on release so the route's reverse transition and this
-    // settle animation overlap instead of adding two serial delays.
-    if (shouldPop) widget.onBack();
+    final driver = _driver;
+    final routeDriverDetected = _routeDriverDetected;
+    _reset();
+    if (driver == null) {
+      if (shouldPop && !routeDriverDetected) widget.onBack();
+      return;
+    }
+    if (shouldPop) {
+      driver.commitFullPageBackSwipe(widget.beforeRoutePop);
+    } else {
+      driver.cancelFullPageBackSwipe();
+    }
   }
 
   void _cancel(PointerCancelEvent event) {
     if (event.pointer != _pointer) return;
-    final start = _visualOffset;
-    _reset(keepVisualOffset: true);
-    _animateTo(0, from: start);
+    final driver = _driver;
+    _reset();
+    driver?.cancelFullPageBackSwipe();
   }
 
-  void _animateTo(
-    double target, {
-    required double from,
-    VoidCallback? onComplete,
-  }) {
-    final distance = (target - from).abs();
-    final width = MediaQuery.sizeOf(context).width;
-    _settleController.duration = Duration(
-      milliseconds: (120 + 120 * (distance / width).clamp(0.0, 1.0)).round(),
-    );
-    _settleAnimation = Tween<double>(begin: from, end: target).animate(
-      CurvedAnimation(parent: _settleController, curve: Curves.easeOutCubic),
-    );
-    _settleController.forward(from: 0).whenComplete(() {
-      if (!mounted) return;
-      _settleAnimation = null;
-      if (onComplete != null) onComplete();
-    });
-  }
-
-  void _reset({bool keepVisualOffset = false}) {
+  void _reset() {
     _pointer = null;
     _dx = 0;
     _dy = 0;
     _velocity = null;
     _horizontalIntent = false;
-    if (!keepVisualOffset) _visualOffset = 0;
+    _driver = null;
+    _routeDriverDetected = false;
   }
 
   @override
   void dispose() {
-    _settleController.dispose();
+    _driver?.cancelFullPageBackSwipe();
     super.dispose();
   }
 
@@ -146,26 +149,7 @@ class _FullPageBackSwipeState extends State<FullPageBackSwipe>
       onPointerMove: _update,
       onPointerUp: _end,
       onPointerCancel: _cancel,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          ColoredBox(
-            color: const Color(0xFF111318),
-            child: Opacity(
-              opacity:
-                  (0.16 *
-                          (1 -
-                              _visualOffset / MediaQuery.sizeOf(context).width))
-                      .clamp(0.0, 0.16),
-              child: const ColoredBox(color: Color(0xFF000000)),
-            ),
-          ),
-          Transform.translate(
-            offset: Offset(_visualOffset, 0),
-            child: widget.child,
-          ),
-        ],
-      ),
+      child: widget.child,
     );
   }
 }

@@ -800,6 +800,9 @@ class ChatMessage {
       imageWidth = previous.imageWidth;
       imageHeight = previous.imageHeight;
     }
+    if ((videoDuration ?? 0) <= 0) {
+      videoDuration = previous.videoDuration;
+    }
     video = video?.inheritLocalPathFrom(previous.video) ?? previous.video;
     animatedSticker =
         animatedSticker?.inheritLocalPathFrom(previous.animatedSticker) ??

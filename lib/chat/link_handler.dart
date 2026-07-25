@@ -895,20 +895,22 @@ Future<void> _openSavedMessages(
   final bookmarkView = context
       .read<ThemeController>()
       .savedMessagesBookmarkView;
-  final Widget destination;
+  final Route<void> route;
   if (bookmarkView) {
-    destination = const SavedMessagesView();
+    route = PageRouteBuilder<void>(
+      pageBuilder: (_, _, _) => const SavedMessagesView(),
+    );
   } else {
     final chatId = await SavedMessagesService().savedChatId();
     if (!nav.mounted) return;
-    destination = ChatView(
-      chatId: chatId,
-      title: AppStrings.t(AppStringKeys.savedMessages),
+    route = AppChatPageRoute<void>(
+      builder: (_) => ChatView(
+        chatId: chatId,
+        title: AppStrings.t(AppStringKeys.savedMessages),
+      ),
     );
   }
-  unawaited(
-    nav.push(PageRouteBuilder<void>(pageBuilder: (_, _, _) => destination)),
-  );
+  unawaited(nav.push(route));
 }
 
 Future<void> _openStickerSet(NavigatorState nav, String name) async {
@@ -2121,7 +2123,7 @@ Future<void> _openChat(
   final chatNavigator = appNavigatorKey.currentState ?? nav;
   unawaited(
     chatNavigator.push(
-      MaterialPageRoute(
+      AppChatPageRoute<void>(
         builder: (_) => ChatView(
           chatId: chatId,
           title: title,

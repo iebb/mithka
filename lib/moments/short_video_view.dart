@@ -463,7 +463,7 @@ class _ShortVideoViewState extends State<ShortVideoView> {
   void _openComments(ChatMessage message) {
     pushAppChatRoute(
       context,
-      MaterialPageRoute(
+      AppChatPageRoute<void>(
         builder: (_) => ChatView(
           chatId: widget.chat.id,
           title: widget.chat.title,

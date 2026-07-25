@@ -98,7 +98,7 @@ class _CreateGroupViewState extends State<CreateGroupView> {
         unawaited(
           replaceWithAppChatRoute(
             context,
-            MaterialPageRoute(
+            AppChatPageRoute(
               builder: (_) => ChatView(chatId: chatId, title: title),
             ),
           ),

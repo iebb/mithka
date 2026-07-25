@@ -15,6 +15,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/notifications/scope_notification_settings.dart';
 import 'package:provider/provider.dart';
 
+import '../app/app_navigator.dart';
 import '../chats/chat_delete_policy.dart';
 import '../components/app_icons.dart';
 import '../components/confirm_dialog.dart';
@@ -126,13 +127,15 @@ class _ChatInfoViewState extends State<ChatInfoView> {
   void _openDirectMessages() {
     final chatId = _vm.directMessagesChatId;
     if (chatId == 0) return;
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => _vm.opensDirectMessagesAsTopics
-            ? ChannelDirectMessagesView(chatId: chatId, title: _vm.title)
-            : ChatView(chatId: chatId, title: _vm.title),
-      ),
-    );
+    final route = _vm.opensDirectMessagesAsTopics
+        ? MaterialPageRoute<void>(
+            builder: (_) =>
+                ChannelDirectMessagesView(chatId: chatId, title: _vm.title),
+          )
+        : AppChatPageRoute<void>(
+            builder: (_) => ChatView(chatId: chatId, title: _vm.title),
+          );
+    Navigator.of(context).push(route);
   }
 
   @override

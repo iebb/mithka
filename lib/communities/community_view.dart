@@ -618,7 +618,7 @@ class _CommunityViewState extends State<CommunityView> {
     unawaited(
       pushAppChatRoute(
         context,
-        MaterialPageRoute(
+        AppChatPageRoute<void>(
           builder: (_) => ChatView(
             chatId: chat.id,
             title: chat.title,

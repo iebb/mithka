@@ -17,6 +17,7 @@ import 'package:flutter/services.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
+import '../app/app_navigator.dart';
 import '../app/video_split_controller.dart';
 import '../auth/telegram_country_names.dart';
 import '../call/call_manager.dart';
@@ -1381,6 +1382,7 @@ class _ChatViewState extends State<ChatView> {
     return FullPageBackSwipe(
       enabled: _canBackSwipe,
       onBack: () => unawaited(_popFromBackSwipe()),
+      beforeRoutePop: _prepareExitState,
       child: child,
     );
   }
@@ -3261,7 +3263,7 @@ class _ChatViewState extends State<ChatView> {
           final chatId = chat.int64('id');
           if (!mounted || chatId == null) return;
           await Navigator.of(context).push(
-            MaterialPageRoute<void>(
+            AppChatPageRoute<void>(
               builder: (_) =>
                   ChatView(chatId: chatId, title: contact.displayName),
             ),
@@ -4616,9 +4618,10 @@ class _ChatViewState extends State<ChatView> {
       final Widget destination = senderChatId == widget.chatId
           ? ChatInfoView(chatId: senderChatId, title: title)
           : ChatView(chatId: senderChatId, title: title);
-      Navigator.of(
-        context,
-      ).push(PageRouteBuilder<void>(pageBuilder: (_, _, _) => destination));
+      final route = destination is ChatView
+          ? AppChatPageRoute<void>(builder: (_) => destination)
+          : PageRouteBuilder<void>(pageBuilder: (_, _, _) => destination);
+      Navigator.of(context).push(route);
       return;
     }
     final uid = m.isOutgoing

@@ -332,7 +332,7 @@ class _SavedMessagesViewState extends State<SavedMessagesView> {
     final nav = appNavigatorKey.currentState ?? Navigator.of(context);
     unawaited(
       nav.push(
-        MaterialPageRoute(
+        AppChatPageRoute<void>(
           builder: (_) => ChatView(
             chatId: chatId,
             title: title,

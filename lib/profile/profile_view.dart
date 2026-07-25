@@ -188,11 +188,13 @@ class _ProfileViewState extends State<ProfileView> {
         .savedMessagesBookmarkView;
     pushAppChatRoute(
       context,
-      PageRouteBuilder<void>(
-        pageBuilder: (_, _, _) => bookmarkView
-            ? const SavedMessagesView()
-            : ChatView(chatId: cid, title: title),
-      ),
+      bookmarkView
+          ? PageRouteBuilder<void>(
+              pageBuilder: (_, _, _) => const SavedMessagesView(),
+            )
+          : AppChatPageRoute<void>(
+              builder: (_) => ChatView(chatId: cid, title: title),
+            ),
     );
   }
 

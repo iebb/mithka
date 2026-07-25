@@ -8,6 +8,7 @@
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
+import '../app/app_navigator.dart';
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
 import '../l10n/telegram_language_controller.dart';
@@ -194,7 +195,7 @@ class _PinnedMessagesViewState extends State<PinnedMessagesView> {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(
+        AppChatPageRoute<void>(
           builder: (_) => ChatView(
             chatId: widget.chatId,
             title: widget.title,

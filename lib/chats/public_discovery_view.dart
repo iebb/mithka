@@ -365,7 +365,7 @@ class _PublicDiscoveryViewState extends State<PublicDiscoveryView> {
     if (!mounted) return;
     await pushAppChatRoute(
       context,
-      MaterialPageRoute(
+      AppChatPageRoute(
         builder: (_) => ChatView(chatId: chatId, title: peer.title),
       ),
     );
@@ -373,7 +373,7 @@ class _PublicDiscoveryViewState extends State<PublicDiscoveryView> {
 
   Future<void> _openHit(_DiscoveryHit hit) => pushAppChatRoute(
     context,
-    MaterialPageRoute(
+    AppChatPageRoute(
       builder: (_) => ChatView(
         chatId: hit.chatId,
         title: hit.source.title,

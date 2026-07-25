@@ -11,6 +11,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
+import '../app/app_navigator.dart';
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
@@ -1825,7 +1826,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
     if (!_canOpenSourceMessage(message)) return;
     final sourceChatId = _sourceChatIdFor(message);
     Navigator.of(context).push(
-      MaterialPageRoute(
+      AppChatPageRoute<void>(
         builder: (_) => ChatView(
           chatId: sourceChatId,
           title: _sourceTitleFor(message),

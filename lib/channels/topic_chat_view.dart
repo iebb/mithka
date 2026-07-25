@@ -503,7 +503,7 @@ class _TopicChatViewState extends State<TopicChatView> {
     unawaited(
       replaceWithAppChatRoute(
         context,
-        MaterialPageRoute(
+        AppChatPageRoute(
           builder: (_) => ChatView(
             chatId: widget.chat.id,
             title: widget.chat.title,
@@ -1514,7 +1514,7 @@ class _TopicSearchViewState extends State<_TopicSearchView> {
               behavior: HitTestBehavior.opaque,
               onTap: () => pushAppChatRoute(
                 context,
-                MaterialPageRoute(
+                AppChatPageRoute(
                   builder: (_) => ChatView(
                     chatId: widget.chat.id,
                     title: widget.chat.title,
