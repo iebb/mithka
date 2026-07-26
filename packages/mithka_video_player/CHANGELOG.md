@@ -1,3 +1,22 @@
+## 0.3.0
+
+- Added an immutable custom-chrome scope with playback snapshots, localized
+  labels, optional previous/next navigation, and a controller-safe actions
+  facade for play, seek, scrub, volume, speed, visibility, and fullscreen.
+- Added `MithkaVideoInteractionMode.delegateToChrome` so project-owned mobile
+  gestures can exclusively own surface taps and drags while the package keeps
+  the video surface, buffering, captions, focus, keyboard, and state updates.
+- Added accessible, custom-painted previous/play/next transport controls to the
+  default chrome whenever host navigation callbacks are supplied.
+- Made fullscreen default controls and captions honor top, bottom, and
+  horizontal safe-area insets without changing embedded spacing.
+- Rendered already-initialized caller-owned controllers immediately while
+  applying changed initial settings asynchronously as nonfatal commands.
+- Merged center transport into the bottom row below 220 logical pixels high,
+  preventing compact 16:9 chrome from painting controls over each other.
+- Expanded the example and tests to cover custom chrome, navigation callbacks,
+  gesture delegation, and caller-owned controller lifetime.
+
 ## 0.2.0
 
 - Moved FVP initialization and typed backend configuration into the optional

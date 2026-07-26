@@ -913,7 +913,7 @@ packages:
       path: "packages/mithka_video_player"
       relative: true
     source: path
-    version: "0.2.0"
+    version: "0.3.0"
   mithka_video_player_fvp:
     dependency: "direct main"
     description:

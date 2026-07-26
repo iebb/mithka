@@ -38,10 +38,26 @@ typedef MithkaVideoPlayerErrorCallback =
 
 typedef MithkaVideoRetryCallback = FutureOr<void> Function();
 
+typedef MithkaVideoChromeBuilder =
+    Widget Function(BuildContext context, MithkaVideoChromeScope scope);
+
 enum MithkaVideoLifecycleBehavior {
   pauseAndResume,
   pause,
   delegateToController,
+}
+
+/// Selects whether the player or a custom chrome owns surface gestures.
+enum MithkaVideoInteractionMode {
+  /// Enables the built-in tap, touch double-tap, and desktop double-click
+  /// behavior.
+  builtIn,
+
+  /// Leaves surface pointer gestures to [MithkaVideoPlayer.chromeBuilder].
+  ///
+  /// Focus, keyboard shortcuts, pointer-wheel volume, playback state, the
+  /// video surface, buffering feedback, and captions remain player-owned.
+  delegateToChrome,
 }
 
 enum MithkaVideoPlaybackState {
@@ -52,6 +68,82 @@ enum MithkaVideoPlaybackState {
   buffering,
   completed,
   failed,
+}
+
+/// Playback commands available to custom player chrome.
+///
+/// The facade never transfers ownership of the underlying video controller.
+/// Calls made after the player is disposed are safe no-ops.
+abstract interface class MithkaVideoActions {
+  Future<void> togglePlayback();
+
+  Future<void> seekTo(Duration position);
+
+  Future<void> seekBy(Duration delta);
+
+  Future<void> setVolume(double volume);
+
+  Future<void> toggleMute();
+
+  Future<void> setPlaybackSpeed(double speed);
+
+  void showControls();
+
+  void hideControls();
+
+  void toggleControls();
+
+  void requestFullscreen(bool fullscreen);
+
+  void beginScrub(double fraction);
+
+  void updateScrub(double fraction);
+
+  Future<void> endScrub(double fraction);
+}
+
+/// Immutable playback state supplied to [MithkaVideoChromeBuilder].
+@immutable
+class MithkaVideoChromeSnapshot {
+  const MithkaVideoChromeSnapshot({
+    required this.value,
+    required this.playbackState,
+    required this.displayPosition,
+    required this.controlsVisible,
+    required this.isScrubbing,
+    required this.bufferingIndicatorVisible,
+    required this.isFullscreen,
+  });
+
+  final VideoPlayerValue value;
+  final MithkaVideoPlaybackState playbackState;
+  final Duration displayPosition;
+  final bool controlsVisible;
+  final bool isScrubbing;
+  final bool bufferingIndicatorVisible;
+  final bool isFullscreen;
+}
+
+/// Immutable dependencies supplied to custom player chrome.
+@immutable
+class MithkaVideoChromeScope {
+  const MithkaVideoChromeScope({
+    required this.snapshot,
+    required this.actions,
+    required this.labels,
+    required this.previous,
+    required this.next,
+  });
+
+  final MithkaVideoChromeSnapshot snapshot;
+  final MithkaVideoActions actions;
+  final MithkaVideoPlayerLabels labels;
+
+  /// Requests the previous item, or is null when the host has no such action.
+  final VoidCallback? previous;
+
+  /// Requests the next item, or is null when the host has no such action.
+  final VoidCallback? next;
 }
 
 class MithkaVideoPlayerError implements Exception {
@@ -69,6 +161,8 @@ class MithkaVideoPlayerLabels {
   const MithkaVideoPlayerLabels({
     this.play = 'Play',
     this.pause = 'Pause',
+    this.previous = 'Previous video',
+    this.next = 'Next video',
     this.mute = 'Mute',
     this.unmute = 'Unmute',
     this.fullscreen = 'Fullscreen',
@@ -87,6 +181,8 @@ class MithkaVideoPlayerLabels {
 
   final String play;
   final String pause;
+  final String previous;
+  final String next;
   final String mute;
   final String unmute;
   final String fullscreen;
@@ -119,6 +215,8 @@ class MithkaVideoPlayer extends StatefulWidget {
     this.onToggleFullscreen,
     this.onReady,
     this.onEnded,
+    this.onPrevious,
+    this.onNext,
     this.onPositionChanged,
     this.onPlaybackStateChanged,
     this.onError,
@@ -140,6 +238,7 @@ class MithkaVideoPlayer extends StatefulWidget {
     this.focusNode,
     this.enableKeyboardShortcuts = true,
     this.enableScrollVolume = false,
+    this.interactionMode = MithkaVideoInteractionMode.builtIn,
     this.fit = BoxFit.contain,
     this.alignment = Alignment.center,
     this.captionsEnabled = true,
@@ -155,6 +254,7 @@ class MithkaVideoPlayer extends StatefulWidget {
     this.errorBuilder,
     this.videoSurfaceBuilder,
     this.scrubPreviewBuilder,
+    this.chromeBuilder,
     this.isFullscreen = false,
   }) : assert(controller == null || controllerBuilder == null),
        assert(
@@ -176,6 +276,8 @@ class MithkaVideoPlayer extends StatefulWidget {
   final VoidCallback? onToggleFullscreen;
   final ValueChanged<VideoPlayerController>? onReady;
   final VoidCallback? onEnded;
+  final VoidCallback? onPrevious;
+  final VoidCallback? onNext;
   final ValueChanged<Duration>? onPositionChanged;
   final ValueChanged<MithkaVideoPlaybackState>? onPlaybackStateChanged;
   final MithkaVideoPlayerErrorCallback? onError;
@@ -215,6 +317,7 @@ class MithkaVideoPlayer extends StatefulWidget {
   final FocusNode? focusNode;
   final bool enableKeyboardShortcuts;
   final bool enableScrollVolume;
+  final MithkaVideoInteractionMode interactionMode;
   final BoxFit fit;
   final AlignmentGeometry alignment;
   final bool captionsEnabled;
@@ -225,6 +328,7 @@ class MithkaVideoPlayer extends StatefulWidget {
   final MithkaVideoPlayerErrorBuilder? errorBuilder;
   final MithkaVideoSurfaceBuilder? videoSurfaceBuilder;
   final MithkaVideoScrubPreviewBuilder? scrubPreviewBuilder;
+  final MithkaVideoChromeBuilder? chromeBuilder;
   final bool isFullscreen;
 
   @override
@@ -279,14 +383,20 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
   PointerDeviceKind? _lastPointerKind;
   final Map<int, Uint8List> _previewCache = {};
   FocusNode? _internalFocusNode;
+  late final MithkaVideoActions _actions;
 
   FocusNode get _focusNode =>
       widget.focusNode ??
       (_internalFocusNode ??= FocusNode(debugLabel: 'mithka-video-player'));
 
+  EdgeInsets get _fullscreenSafePadding => widget.isFullscreen
+      ? MediaQuery.maybeOf(context)?.padding ?? EdgeInsets.zero
+      : EdgeInsets.zero;
+
   @override
   void initState() {
     super.initState();
+    _actions = _MithkaVideoActions(this);
     _validateConfiguration();
     WidgetsBinding.instance.addObserver(this);
     _volume = widget.initialMuted ? 0 : widget.initialVolume ?? 1;
@@ -405,39 +515,6 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
     controller.addListener(_onControllerChanged);
     try {
       if (!controller.value.isInitialized) await controller.initialize();
-      if (!mounted ||
-          generation != _controllerGeneration ||
-          _controller != controller) {
-        return;
-      }
-      if (controller.value.hasError) {
-        throw MithkaVideoPlayerError(
-          controller.value.errorDescription ?? widget.labels.failed,
-        );
-      }
-      await controller.setLooping(widget.looping);
-      if (!_isCurrentController(controller, generation)) return;
-      _volume = widget.initialMuted
-          ? 0
-          : widget.initialVolume ?? controller.value.volume;
-      _lastAudibleVolume = _volume > 0 ? _volume : 1;
-      await controller.setVolume(_volume);
-      if (!_isCurrentController(controller, generation)) return;
-      _speed = widget.initialPlaybackSpeed ?? controller.value.playbackSpeed;
-      if (_speed != controller.value.playbackSpeed) {
-        await controller.setPlaybackSpeed(_speed);
-        if (!_isCurrentController(controller, generation)) return;
-      }
-      final initialPosition = widget.initialPosition;
-      if (initialPosition != null && initialPosition > Duration.zero) {
-        final duration = controller.value.duration;
-        await controller.seekTo(
-          duration > Duration.zero && initialPosition > duration
-              ? duration
-              : initialPosition,
-        );
-        if (!_isCurrentController(controller, generation)) return;
-      }
     } catch (error, stackTrace) {
       if (mounted && generation == _controllerGeneration) {
         _setFatalError(error, stackTrace);
@@ -445,6 +522,23 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
       return;
     }
     if (!mounted || generation != _controllerGeneration) return;
+    if (controller.value.hasError) {
+      _setFatalError(
+        MithkaVideoPlayerError(
+          controller.value.errorDescription ?? widget.labels.failed,
+        ),
+        StackTrace.empty,
+      );
+      return;
+    }
+    final targetVolume = widget.initialMuted
+        ? 0.0
+        : widget.initialVolume ?? controller.value.volume;
+    final targetSpeed =
+        widget.initialPlaybackSpeed ?? controller.value.playbackSpeed;
+    _volume = targetVolume;
+    _lastAudibleVolume = _volume > 0 ? _volume : 1;
+    _speed = targetSpeed;
     _initializing = false;
     _error = null;
     _lastRenderedValue = controller.value;
@@ -454,6 +548,13 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
       'while notifying that the video player is ready',
     );
     _notifyPlaybackState(_stateFor(controller.value));
+    await _applyInitialConfiguration(
+      controller,
+      generation,
+      targetVolume: targetVolume,
+      targetSpeed: targetSpeed,
+    );
+    if (!_isCurrentController(controller, generation)) return;
     if (widget.autoplay) {
       if (_lifecycleState == AppLifecycleState.resumed ||
           widget.lifecycleBehavior ==
@@ -468,6 +569,41 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
     if (!_isCurrentController(controller, generation)) return;
     if (widget.autofocus) _focusNode.requestFocus();
     _scheduleHide();
+  }
+
+  Future<void> _applyInitialConfiguration(
+    VideoPlayerController controller,
+    int generation, {
+    required double targetVolume,
+    required double targetSpeed,
+  }) async {
+    if (controller.value.isLooping != widget.looping) {
+      await _runCommand(() => controller.setLooping(widget.looping));
+      if (!_isCurrentController(controller, generation)) return;
+    }
+    if (controller.value.volume != targetVolume) {
+      await _runCommand(() => controller.setVolume(targetVolume));
+      if (!_isCurrentController(controller, generation)) return;
+      _volume = controller.value.volume.clamp(0.0, 1.0);
+      if (_volume > 0) _lastAudibleVolume = _volume;
+    }
+    if (controller.value.playbackSpeed != targetSpeed) {
+      await _runCommand(() => controller.setPlaybackSpeed(targetSpeed));
+      if (!_isCurrentController(controller, generation)) return;
+      _speed = controller.value.playbackSpeed;
+    }
+    final initialPosition = widget.initialPosition;
+    if (initialPosition != null && initialPosition > Duration.zero) {
+      final duration = controller.value.duration;
+      final target = duration > Duration.zero && initialPosition > duration
+          ? duration
+          : initialPosition;
+      if (controller.value.position != target) {
+        await _runCommand(() => controller.seekTo(target));
+        if (!_isCurrentController(controller, generation)) return;
+      }
+    }
+    if (mounted) setState(() {});
   }
 
   bool _isCurrentController(VideoPlayerController controller, int generation) =>
@@ -787,6 +923,22 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
     _scheduleHide();
   }
 
+  void _hideControls() {
+    _hideTimer?.cancel();
+    if (!_controlsVisible || _accessibleNavigation || _controlsHaveFocus) {
+      return;
+    }
+    setState(() => _controlsVisible = false);
+  }
+
+  void _toggleControls() {
+    if (_controlsVisible) {
+      _hideControls();
+    } else {
+      _showControls();
+    }
+  }
+
   void _handleControlsFocusChange(bool focused) {
     if (_controlsHaveFocus == focused) return;
     _controlsHaveFocus = focused;
@@ -835,16 +987,20 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
     if (controller == null || !controller.value.isInitialized) return;
     final duration = controller.value.duration;
     if (duration <= Duration.zero) return;
-    final target = controller.value.position + delta;
-    await _runCommand(
-      () => controller.seekTo(
-        target < Duration.zero
-            ? Duration.zero
-            : target > duration
-            ? duration
-            : target,
-      ),
-    );
+    await _seekTo(controller.value.position + delta);
+  }
+
+  Future<void> _seekTo(Duration position) async {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+    final duration = controller.value.duration;
+    if (duration <= Duration.zero) return;
+    final target = position < Duration.zero
+        ? Duration.zero
+        : position > duration
+        ? duration
+        : position;
+    await _runCommand(() => controller.seekTo(target));
     _showControls();
   }
 
@@ -860,20 +1016,19 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
     _showControls();
   }
 
-  void _toggleMute() => unawaited(
-    _setVolume(_volume > 0 ? 0 : math.max(0.2, _lastAudibleVolume)),
-  );
+  Future<void> _toggleMute() =>
+      _setVolume(_volume > 0 ? 0 : math.max(0.2, _lastAudibleVolume));
 
-  Future<void> _cycleSpeed() async {
-    final speeds = widget.playbackSpeeds.where((speed) => speed > 0).toList();
-    if (speeds.isEmpty) return;
-    final index = speeds.indexOf(_speed);
+  Future<void> _setPlaybackSpeed(double speed) async {
+    if (!speed.isFinite || speed <= 0) {
+      throw ArgumentError.value(speed, 'speed', 'must be finite and positive');
+    }
     final previous = _speed;
-    _speed = speeds[(index + 1) % speeds.length];
+    _speed = speed;
     final controller = _controller;
     if (controller != null) {
       try {
-        await controller.setPlaybackSpeed(_speed);
+        await controller.setPlaybackSpeed(speed);
       } catch (error, stackTrace) {
         _speed = previous;
         await _runCommand(() => Future<void>.error(error, stackTrace));
@@ -881,6 +1036,13 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
     }
     if (mounted) setState(() {});
     _showControls();
+  }
+
+  Future<void> _cycleSpeed() async {
+    final speeds = widget.playbackSpeeds.where((speed) => speed > 0).toList();
+    if (speeds.isEmpty) return;
+    final index = speeds.indexOf(_speed);
+    await _setPlaybackSpeed(speeds[(index + 1) % speeds.length]);
   }
 
   KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
@@ -910,7 +1072,7 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
       unawaited(_setVolume(_volume - widget.volumeStep));
     } else if (key == LogicalKeyboardKey.keyM) {
       if (repeating) return KeyEventResult.handled;
-      _toggleMute();
+      unawaited(_toggleMute());
     } else if (key == LogicalKeyboardKey.keyF) {
       if (repeating) return KeyEventResult.handled;
       _requestFullscreen(!widget.isFullscreen);
@@ -950,13 +1112,13 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
     _scrubPause = _resumeAfterScrub
         ? _runCommand(controller.pause)
         : Future.value();
-    _updateScrub(fraction);
+    _updateScrub(fraction.clamp(0.0, 1.0));
   }
 
   void _updateScrub(double fraction) {
     if (!_scrubActive) return;
     final duration = _scrubController?.value.duration ?? Duration.zero;
-    final position = duration * fraction;
+    final position = duration * fraction.clamp(0.0, 1.0);
     _queuePreview(position);
     setState(() => _scrubPosition = position);
   }
@@ -967,7 +1129,7 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
     final session = _scrubGeneration;
     final commit = ++_scrubCommitGeneration;
     final shouldResume = _resumeAfterScrub;
-    final position = controller.value.duration * fraction;
+    final position = controller.value.duration * fraction.clamp(0.0, 1.0);
     await _scrubPause;
     if (!_isCurrentScrub(controller, session, commit)) return;
     await _runCommand(() => controller.seekTo(position));
@@ -1138,6 +1300,22 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
     _showControls();
   }
 
+  void _requestPrevious() {
+    if (!mounted) return;
+    final callback = widget.onPrevious;
+    if (callback == null) return;
+    _invokeCallback(callback, 'while requesting the previous video');
+    _showControls();
+  }
+
+  void _requestNext() {
+    if (!mounted) return;
+    final callback = widget.onNext;
+    if (callback == null) return;
+    _invokeCallback(callback, 'while requesting the next video');
+    _showControls();
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _lifecycleState = state;
@@ -1284,73 +1462,114 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
                       !controller.value.isInitialized) {
                     return _loadingView();
                   }
-                  return GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () {
-                      if (_controlsVisible && _accessibleNavigation) {
-                        _showControls();
-                        return;
-                      }
-                      setState(() => _controlsVisible = !_controlsVisible);
-                      if (_controlsVisible) _scheduleHide();
-                    },
-                    onDoubleTapDown: (details) {
-                      if (_lastPointerKind == PointerDeviceKind.mouse ||
-                          _lastPointerKind == PointerDeviceKind.trackpad) {
-                        _requestFullscreen(!widget.isFullscreen);
-                        return;
-                      }
-                      final fraction =
-                          details.localPosition.dx / constraints.maxWidth;
-                      if (fraction < 0.42) {
-                        unawaited(_seekBy(-widget.seekInterval));
-                      } else if (fraction > 0.58) {
-                        unawaited(_seekBy(widget.seekInterval));
-                      } else {
-                        unawaited(_togglePlayback());
-                      }
-                    },
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        _videoSurface(controller),
-                        if (_showBuffering)
-                          Center(
-                            child: Semantics(
-                              label: widget.labels.buffering,
-                              liveRegion: true,
-                              child: const SizedBox.square(
-                                dimension: 32,
-                                child: _ActivityIndicator(),
-                              ),
-                            ),
-                          ),
-                        if (widget.captionsEnabled &&
-                            controller.value.caption.text.trim().isNotEmpty)
-                          _caption(controller.value.caption.text),
-                        Focus(
-                          canRequestFocus: false,
-                          onFocusChange: _handleControlsFocusChange,
-                          child: ExcludeFocus(
-                            excluding: !_controlsVisible,
-                            child: ExcludeSemantics(
-                              excluding: !_controlsVisible,
-                              child: IgnorePointer(
-                                ignoring: !_controlsVisible,
-                                child: AnimatedOpacity(
-                                  opacity: _controlsVisible ? 1 : 0,
-                                  duration: const Duration(milliseconds: 170),
-                                  child: _controls(controller, wide),
-                                ),
-                              ),
+                  final readyPlayer = Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      _videoSurface(controller),
+                      if (_showBuffering)
+                        Center(
+                          child: Semantics(
+                            label: widget.labels.buffering,
+                            liveRegion: true,
+                            child: const SizedBox.square(
+                              dimension: 32,
+                              child: _ActivityIndicator(),
                             ),
                           ),
                         ),
-                      ],
-                    ),
+                      if (widget.captionsEnabled &&
+                          controller.value.caption.text.trim().isNotEmpty)
+                        _caption(controller.value.caption.text),
+                      _chrome(controller, wide, constraints.maxHeight),
+                    ],
+                  );
+                  if (widget.interactionMode ==
+                      MithkaVideoInteractionMode.delegateToChrome) {
+                    return readyPlayer;
+                  }
+                  return GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _handleSurfaceTap,
+                    onDoubleTapDown: (details) =>
+                        _handleSurfaceDoubleTap(details, constraints.maxWidth),
+                    child: readyPlayer,
                   );
                 },
               ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _handleSurfaceTap() {
+    if (_controlsVisible && _accessibleNavigation) {
+      _showControls();
+      return;
+    }
+    setState(() => _controlsVisible = !_controlsVisible);
+    if (_controlsVisible) _scheduleHide();
+  }
+
+  void _handleSurfaceDoubleTap(TapDownDetails details, double width) {
+    if (_lastPointerKind == PointerDeviceKind.mouse ||
+        _lastPointerKind == PointerDeviceKind.trackpad) {
+      _requestFullscreen(!widget.isFullscreen);
+      return;
+    }
+    final fraction = width <= 0 ? 0.5 : details.localPosition.dx / width;
+    if (fraction < 0.42) {
+      unawaited(_seekBy(-widget.seekInterval));
+    } else if (fraction > 0.58) {
+      unawaited(_seekBy(widget.seekInterval));
+    } else {
+      unawaited(_togglePlayback());
+    }
+  }
+
+  Widget _chrome(
+    VideoPlayerController controller,
+    bool wide,
+    double availableHeight,
+  ) {
+    final builder = widget.chromeBuilder;
+    if (builder != null) {
+      final scope = MithkaVideoChromeScope(
+        snapshot: MithkaVideoChromeSnapshot(
+          value: controller.value,
+          playbackState: _stateFor(controller.value),
+          displayPosition: _scrubPosition ?? controller.value.position,
+          controlsVisible: _controlsVisible,
+          isScrubbing: _scrubActive,
+          bufferingIndicatorVisible: _showBuffering,
+          isFullscreen: widget.isFullscreen,
+        ),
+        actions: _actions,
+        labels: widget.labels,
+        previous: widget.onPrevious == null ? null : _requestPrevious,
+        next: widget.onNext == null ? null : _requestNext,
+      );
+      return Focus(
+        canRequestFocus: false,
+        onFocusChange: _handleControlsFocusChange,
+        child: builder(context, scope),
+      );
+    }
+    final safePadding = _fullscreenSafePadding;
+    return Focus(
+      canRequestFocus: false,
+      onFocusChange: _handleControlsFocusChange,
+      child: ExcludeFocus(
+        excluding: !_controlsVisible,
+        child: ExcludeSemantics(
+          excluding: !_controlsVisible,
+          child: IgnorePointer(
+            ignoring: !_controlsVisible,
+            child: AnimatedOpacity(
+              opacity: _controlsVisible ? 1 : 0,
+              duration: const Duration(milliseconds: 170),
+              child: _controls(controller, wide, safePadding, availableHeight),
             ),
           ),
         ),
@@ -1376,32 +1595,35 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
     );
   }
 
-  Widget _caption(String text) => Positioned(
-    left: 24,
-    right: 24,
-    bottom: _controlsVisible ? 92 : 22,
-    child: Semantics(
-      liveRegion: true,
-      label: text,
-      excludeSemantics: true,
-      child: Center(
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: const Color(0xB0000000),
-            borderRadius: BorderRadius.circular(5),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-            child: Text(
-              text,
-              textAlign: TextAlign.center,
-              style: widget.captionStyle,
+  Widget _caption(String text) {
+    final safePadding = _fullscreenSafePadding;
+    return Positioned(
+      left: 24 + safePadding.left,
+      right: 24 + safePadding.right,
+      bottom: (_controlsVisible ? 92 : 22) + safePadding.bottom,
+      child: Semantics(
+        liveRegion: true,
+        label: text,
+        excludeSemantics: true,
+        child: Center(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: const Color(0xB0000000),
+              borderRadius: BorderRadius.circular(5),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+              child: Text(
+                text,
+                textAlign: TextAlign.center,
+                style: widget.captionStyle,
+              ),
             ),
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 
   double _aspectRatio(VideoPlayerController controller) {
     if (widget.width != null &&
@@ -1459,7 +1681,12 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
         );
   }
 
-  Widget _controls(VideoPlayerController controller, bool wide) {
+  Widget _controls(
+    VideoPlayerController controller,
+    bool wide,
+    EdgeInsets safePadding,
+    double availableHeight,
+  ) {
     final value = controller.value;
     final hasTimeline = value.duration > Duration.zero;
     final durationMs = hasTimeline ? value.duration.inMilliseconds : 1;
@@ -1468,6 +1695,10 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
     final buffered = value.buffered.isEmpty
         ? 0.0
         : (value.buffered.last.end.inMilliseconds / durationMs).clamp(0.0, 1.0);
+    final mergeTransport =
+        !wide && availableHeight - safePadding.vertical < 220;
+    final horizontalPadding = mergeTransport ? 8.0 : (wide ? 24.0 : 14.0);
+    final bottomPadding = mergeTransport ? 4.0 : (wide ? 20.0 : 12.0);
     return Stack(
       children: [
         const Positioned.fill(
@@ -1488,8 +1719,8 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
         ),
         if (widget.onClose != null)
           Positioned(
-            top: 14,
-            left: 14,
+            top: 14 + safePadding.top,
+            left: 14 + safePadding.left,
             child: _controlButton(
               glyph: _Glyph.close,
               label: widget.labels.close,
@@ -1497,19 +1728,11 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
               size: 42,
             ),
           ),
-        Center(
-          child: _controlButton(
-            glyph: value.isPlaying ? _Glyph.pause : _Glyph.play,
-            label: value.isPlaying ? widget.labels.pause : widget.labels.play,
-            onTap: _togglePlayback,
-            size: wide ? 68 : 56,
-            filled: true,
-          ),
-        ),
+        if (!mergeTransport) Center(child: _transportControls(value, wide)),
         Positioned(
-          left: wide ? 24 : 14,
-          right: wide ? 24 : 14,
-          bottom: wide ? 20 : 12,
+          left: horizontalPadding + safePadding.left,
+          right: horizontalPadding + safePadding.right,
+          bottom: bottomPadding + safePadding.bottom,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -1569,6 +1792,7 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
                   position: position,
                   hasTimeline: hasTimeline,
                   wide: wide,
+                  mergeTransport: mergeTransport,
                   availableWidth: constraints.maxWidth,
                 ),
               ),
@@ -1584,12 +1808,16 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
     required Duration position,
     required bool hasTimeline,
     required bool wide,
+    required bool mergeTransport,
     required double availableWidth,
   }) {
     final hasFullscreen =
         widget.onToggleFullscreen != null || widget.onFullscreenChanged != null;
-    final showFullscreen = hasFullscreen && availableWidth >= 88;
-    var fixedWidth = 44.0 + (showFullscreen ? 44 : 0);
+    var fixedWidth = 44.0;
+    if (mergeTransport && widget.onPrevious != null) fixedWidth += 48;
+    if (mergeTransport && widget.onNext != null) fixedWidth += 48;
+    final showFullscreen = hasFullscreen && availableWidth >= fixedWidth + 44;
+    if (showFullscreen) fixedWidth += 44;
     final showMute = availableWidth >= fixedWidth + 48;
     if (showMute) fixedWidth += 48;
     final showVolume = wide && showMute && availableWidth >= fixedWidth + 98;
@@ -1601,17 +1829,33 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
 
     return Row(
       children: [
+        if (mergeTransport && widget.onPrevious != null) ...[
+          _controlButton(
+            glyph: _Glyph.previous,
+            label: widget.labels.previous,
+            onTap: _requestPrevious,
+          ),
+          const SizedBox(width: 4),
+        ],
         _controlButton(
           glyph: value.isPlaying ? _Glyph.pause : _Glyph.play,
           label: value.isPlaying ? widget.labels.pause : widget.labels.play,
           onTap: _togglePlayback,
         ),
+        if (mergeTransport && widget.onNext != null) ...[
+          const SizedBox(width: 4),
+          _controlButton(
+            glyph: _Glyph.next,
+            label: widget.labels.next,
+            onTap: _requestNext,
+          ),
+        ],
         if (showMute) ...[
           const SizedBox(width: 4),
           _controlButton(
             glyph: _volume == 0 ? _Glyph.muted : _Glyph.volume,
             label: _volume == 0 ? widget.labels.unmute : widget.labels.mute,
-            onTap: _toggleMute,
+            onTap: () => unawaited(_toggleMute()),
           ),
         ],
         if (showVolume) ...[
@@ -1671,6 +1915,46 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
             onTap: () => _requestFullscreen(!widget.isFullscreen),
           ),
       ],
+    );
+  }
+
+  Widget _transportControls(VideoPlayerValue value, bool wide) {
+    final previous = widget.onPrevious;
+    final next = widget.onNext;
+    final sideSize = wide ? 56.0 : 44.0;
+    final spacing = wide ? 12.0 : 8.0;
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (previous != null) ...[
+            _controlButton(
+              glyph: _Glyph.previous,
+              label: widget.labels.previous,
+              onTap: _requestPrevious,
+              size: sideSize,
+            ),
+            SizedBox(width: spacing),
+          ],
+          _controlButton(
+            glyph: value.isPlaying ? _Glyph.pause : _Glyph.play,
+            label: value.isPlaying ? widget.labels.pause : widget.labels.play,
+            onTap: _togglePlayback,
+            size: wide ? 68 : 56,
+            filled: true,
+          ),
+          if (next != null) ...[
+            SizedBox(width: spacing),
+            _controlButton(
+              glyph: _Glyph.next,
+              label: widget.labels.next,
+              onTap: _requestNext,
+              size: sideSize,
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -1792,7 +2076,82 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
   }
 }
 
-enum _Glyph { play, pause, volume, muted, fullscreen, exitFullscreen, close }
+final class _MithkaVideoActions implements MithkaVideoActions {
+  const _MithkaVideoActions(this._state);
+
+  final _MithkaVideoPlayerState _state;
+
+  bool get _active => _state.mounted;
+
+  @override
+  Future<void> togglePlayback() =>
+      _active ? _state._togglePlayback() : Future.value();
+
+  @override
+  Future<void> seekTo(Duration position) =>
+      _active ? _state._seekTo(position) : Future.value();
+
+  @override
+  Future<void> seekBy(Duration delta) =>
+      _active ? _state._seekBy(delta) : Future.value();
+
+  @override
+  Future<void> setVolume(double volume) =>
+      _active ? _state._setVolume(volume) : Future.value();
+
+  @override
+  Future<void> toggleMute() => _active ? _state._toggleMute() : Future.value();
+
+  @override
+  Future<void> setPlaybackSpeed(double speed) =>
+      _active ? _state._setPlaybackSpeed(speed) : Future.value();
+
+  @override
+  void showControls() {
+    if (_active) _state._showControls();
+  }
+
+  @override
+  void hideControls() {
+    if (_active) _state._hideControls();
+  }
+
+  @override
+  void toggleControls() {
+    if (_active) _state._toggleControls();
+  }
+
+  @override
+  void requestFullscreen(bool fullscreen) {
+    if (_active) _state._requestFullscreen(fullscreen);
+  }
+
+  @override
+  void beginScrub(double fraction) {
+    if (_active) _state._beginScrub(fraction);
+  }
+
+  @override
+  void updateScrub(double fraction) {
+    if (_active) _state._updateScrub(fraction);
+  }
+
+  @override
+  Future<void> endScrub(double fraction) =>
+      _active ? _state._endScrub(fraction) : Future.value();
+}
+
+enum _Glyph {
+  play,
+  pause,
+  previous,
+  next,
+  volume,
+  muted,
+  fullscreen,
+  exitFullscreen,
+  close,
+}
 
 class _GlyphPainter extends CustomPainter {
   const _GlyphPainter(this.glyph);
@@ -1833,6 +2192,40 @@ class _GlyphPainter extends CustomPainter {
             Rect.fromLTWH(w * 0.58, h * 0.18, w * 0.16, h * 0.64),
             Radius.circular(w * 0.04),
           ),
+          paint,
+        );
+      case _Glyph.previous:
+        paint.style = PaintingStyle.fill;
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(w * 0.2, h * 0.2, w * 0.1, h * 0.6),
+            Radius.circular(w * 0.025),
+          ),
+          paint,
+        );
+        canvas.drawPath(
+          Path()
+            ..moveTo(w * 0.76, h * 0.18)
+            ..lineTo(w * 0.32, h * 0.5)
+            ..lineTo(w * 0.76, h * 0.82)
+            ..close(),
+          paint,
+        );
+      case _Glyph.next:
+        paint.style = PaintingStyle.fill;
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(w * 0.7, h * 0.2, w * 0.1, h * 0.6),
+            Radius.circular(w * 0.025),
+          ),
+          paint,
+        );
+        canvas.drawPath(
+          Path()
+            ..moveTo(w * 0.24, h * 0.18)
+            ..lineTo(w * 0.68, h * 0.5)
+            ..lineTo(w * 0.24, h * 0.82)
+            ..close(),
           paint,
         );
       case _Glyph.volume:

@@ -1045,10 +1045,6 @@ jobs:
               echo "- **English:** Only the standard APK is produced from 2026-08-01 UTC. The temporary compatibility APK is no longer generated. Choose the APK matching your device ABI."
               echo "- **中文：** 从 2026-08-01 UTC 起仅生成标准 APK，不再生成临时兼容 APK。请选择与设备 ABI 匹配的 APK。"
             fi
-            echo
-            echo "## Desktop / 桌面端"
-            echo "- **English:** Windows x64, universal macOS (Apple silicon and Intel), and Linux x64 archives include the pinned TDLib runtime. The macOS archive is ad-hoc signed and not notarized."
-            echo "- **中文：** Windows x64、通用 macOS（Apple 芯片和 Intel）及 Linux x64 压缩包均包含固定版本的 TDLib 运行库。macOS 压缩包使用临时签名，未经公证。"
             if [ "$PRERELEASE" = "true" ]; then
               echo
               echo "**Full changelog:** [$compare_label]($compare_url)"

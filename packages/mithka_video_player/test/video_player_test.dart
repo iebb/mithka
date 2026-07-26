@@ -55,6 +55,285 @@ void main() {
     await controller.dispose();
   });
 
+  testWidgets(
+    'already-initialized caller controller renders before configuration',
+    (tester) async {
+      final controller = _FakeVideoPlayerController(initialized: true);
+      controller.setLoopingGate = Completer<void>();
+      final surfaceKey = GlobalKey();
+      var readyCalls = 0;
+
+      await tester.pumpWidget(
+        _frame(
+          MithkaVideoPlayer(
+            source: _source('already-ready'),
+            controller: controller,
+            autoplay: false,
+            looping: true,
+            videoSurfaceBuilder: (context, value) =>
+                SizedBox.expand(key: surfaceKey),
+            onReady: (_) => readyCalls++,
+          ),
+        ),
+      );
+
+      expect(find.byKey(surfaceKey), findsOneWidget);
+      expect(_semanticsWidget('Loading video'), findsNothing);
+      expect(controller.initializeCalls, 0);
+      expect(controller.setLoopingCalls, 1);
+      expect(readyCalls, 1);
+
+      controller.setLoopingGate!.complete();
+      await tester.pumpAndSettle();
+      expect(controller.value.isLooping, isTrue);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      expect(controller.disposed, isFalse);
+      await controller.dispose();
+    },
+  );
+
+  testWidgets('post-initialization configuration errors stay nonfatal', (
+    tester,
+  ) async {
+    final controller = _FakeVideoPlayerController(
+      initialized: true,
+      setLoopingError: StateError('configuration rejected'),
+    );
+    final errors = <MithkaVideoPlayerError>[];
+    final states = <MithkaVideoPlaybackState>[];
+    const surfaceKey = ValueKey('configured-surface');
+
+    await tester.pumpWidget(
+      _frame(
+        MithkaVideoPlayer(
+          source: _source('nonfatal-configuration'),
+          controller: controller,
+          autoplay: false,
+          looping: true,
+          videoSurfaceBuilder: (context, value) =>
+              const SizedBox.expand(key: surfaceKey),
+          onError: errors.add,
+          onPlaybackStateChanged: states.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(surfaceKey), findsOneWidget);
+    expect(find.text('This video could not be played'), findsNothing);
+    expect(errors, hasLength(1));
+    expect(states, isNot(contains(MithkaVideoPlaybackState.failed)));
+    expect(controller.disposed, isFalse);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    await controller.dispose();
+  });
+
+  testWidgets('default chrome renders localized previous and next controls', (
+    tester,
+  ) async {
+    final controller = _FakeVideoPlayerController();
+    var previousCalls = 0;
+    var nextCalls = 0;
+
+    await tester.pumpWidget(
+      _frame(
+        MithkaVideoPlayer(
+          source: _source('navigation'),
+          controller: controller,
+          autoplay: false,
+          labels: const MithkaVideoPlayerLabels(
+            previous: 'Previous episode',
+            next: 'Next episode',
+          ),
+          onPrevious: () => previousCalls++,
+          onNext: () => nextCalls++,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(_semanticsWidget('Previous episode'), findsOneWidget);
+    expect(_semanticsWidget('Next episode'), findsOneWidget);
+    final semantics = tester.ensureSemantics();
+    tester.semantics.tap(find.semantics.byLabel('Previous episode'));
+    await tester.pump();
+    tester.semantics.tap(find.semantics.byLabel('Next episode'));
+    await tester.pump();
+    expect(previousCalls, 1);
+    expect(nextCalls, 1);
+    semantics.dispose();
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    expect(controller.disposed, isFalse);
+    await controller.dispose();
+  });
+
+  testWidgets(
+    'fullscreen chrome respects safe areas without changing embedded',
+    (tester) async {
+      final controller = _FakeVideoPlayerController();
+      const padding = EdgeInsets.fromLTRB(7, 24, 9, 34);
+
+      Widget player({required bool fullscreen}) => _frame(
+        MithkaVideoPlayer(
+          key: const ValueKey('safe-area-player'),
+          source: _source('safe-area'),
+          controller: controller,
+          autoplay: false,
+          isFullscreen: fullscreen,
+          onClose: () {},
+          onFullscreenChanged: (_) {},
+        ),
+        width: 500,
+        height: 300,
+        padding: padding,
+      );
+
+      await tester.pumpWidget(player(fullscreen: true));
+      await tester.pumpAndSettle();
+      var playerRect = tester.getRect(find.byType(MithkaVideoPlayer));
+      var closeRect = tester.getRect(_semanticsWidget('Close'));
+      var fullscreenRect = tester.getRect(_semanticsWidget('Exit fullscreen'));
+      expect(closeRect.top - playerRect.top, closeTo(14 + padding.top, 0.01));
+      expect(
+        playerRect.bottom - fullscreenRect.bottom,
+        closeTo(12 + padding.bottom, 0.01),
+      );
+
+      await tester.pumpWidget(player(fullscreen: false));
+      await tester.pump();
+      playerRect = tester.getRect(find.byType(MithkaVideoPlayer));
+      closeRect = tester.getRect(_semanticsWidget('Close'));
+      fullscreenRect = tester.getRect(_semanticsWidget('Fullscreen'));
+      expect(closeRect.top - playerRect.top, closeTo(14, 0.01));
+      expect(playerRect.bottom - fullscreenRect.bottom, closeTo(12, 0.01));
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      expect(controller.disposed, isFalse);
+      await controller.dispose();
+    },
+  );
+
+  testWidgets('custom chrome receives nullable navigation and safe actions', (
+    tester,
+  ) async {
+    final controller = _FakeVideoPlayerController();
+    MithkaVideoChromeScope? scope;
+
+    Widget player({VoidCallback? previous, VoidCallback? next}) => _frame(
+      MithkaVideoPlayer(
+        key: const ValueKey('custom-chrome'),
+        source: _source('custom-chrome'),
+        controller: controller,
+        autoplay: false,
+        interactionMode: MithkaVideoInteractionMode.delegateToChrome,
+        onPrevious: previous,
+        onNext: next,
+        chromeBuilder: (context, value) {
+          scope = value;
+          return GestureDetector(
+            key: const ValueKey('custom-play'),
+            behavior: HitTestBehavior.opaque,
+            onTap: value.actions.togglePlayback,
+          );
+        },
+      ),
+    );
+
+    await tester.pumpWidget(player());
+    await tester.pumpAndSettle();
+    expect(scope, isNotNull);
+    expect(scope!.previous, isNull);
+    expect(scope!.next, isNull);
+    expect(scope!.snapshot.playbackState, MithkaVideoPlaybackState.ready);
+    expect(scope!.snapshot.displayPosition, Duration.zero);
+
+    var previousCalls = 0;
+    var nextCalls = 0;
+    await tester.pumpWidget(
+      player(previous: () => previousCalls++, next: () => nextCalls++),
+    );
+    await tester.pump();
+    expect(scope!.previous, isNotNull);
+    expect(scope!.next, isNotNull);
+    scope!.previous!();
+    scope!.next!();
+    expect(previousCalls, 1);
+    expect(nextCalls, 1);
+
+    await tester.tap(find.byKey(const ValueKey('custom-play')));
+    await tester.pump();
+    expect(controller.value.isPlaying, isTrue);
+    expect(scope!.snapshot.playbackState, MithkaVideoPlaybackState.playing);
+
+    await scope!.actions.seekTo(const Duration(seconds: 42));
+    await scope!.actions.setVolume(0.35);
+    await scope!.actions.setPlaybackSpeed(1.5);
+    await tester.pump();
+    expect(controller.value.position, const Duration(seconds: 42));
+    expect(controller.value.volume, 0.35);
+    expect(controller.value.playbackSpeed, 1.5);
+
+    final retainedActions = scope!.actions;
+    final playCalls = controller.playCalls;
+    final pauseCalls = controller.pauseCalls;
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    expect(controller.disposed, isFalse);
+    await retainedActions.togglePlayback();
+    expect(controller.playCalls, playCalls);
+    expect(controller.pauseCalls, pauseCalls);
+    await controller.dispose();
+  });
+
+  testWidgets(
+    'delegated interaction leaves surface gestures to custom chrome',
+    (tester) async {
+      final controller = _FakeVideoPlayerController();
+      final fullscreenRequests = <bool>[];
+
+      await tester.pumpWidget(
+        _frame(
+          MithkaVideoPlayer(
+            source: _source('delegated-interaction'),
+            controller: controller,
+            autoplay: false,
+            interactionMode: MithkaVideoInteractionMode.delegateToChrome,
+            onFullscreenChanged: fullscreenRequests.add,
+            chromeBuilder: (context, scope) =>
+                const SizedBox.expand(key: ValueKey('passive-custom-chrome')),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final center = tester.getCenter(find.byType(MithkaVideoPlayer));
+      await tester.tapAt(center, kind: PointerDeviceKind.touch);
+      await tester.pump(const Duration(milliseconds: 40));
+      await tester.tapAt(center, kind: PointerDeviceKind.touch);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(controller.playCalls, 0);
+      expect(controller.value.position, Duration.zero);
+
+      await tester.tapAt(center, kind: PointerDeviceKind.mouse);
+      await tester.pump(const Duration(milliseconds: 40));
+      await tester.tapAt(center, kind: PointerDeviceKind.mouse);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(fullscreenRequests, isEmpty);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      expect(controller.disposed, isFalse);
+      await controller.dispose();
+    },
+  );
+
   testWidgets('builder controllers are replaced and disposed by the player', (
     tester,
   ) async {
@@ -586,6 +865,8 @@ void main() {
             source: _source('narrow'),
             controller: controller,
             autoplay: false,
+            onPrevious: () {},
+            onNext: () {},
             onFullscreenChanged: (_) {},
           ),
           width: width,
@@ -600,6 +881,51 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
     await controller.dispose();
+  });
+
+  testWidgets('short 16:9 chrome merges center and bottom transport controls', (
+    tester,
+  ) async {
+    for (final size in <Size>[const Size(160, 90), const Size(220, 124)]) {
+      final controller = _FakeVideoPlayerController();
+      await tester.pumpWidget(
+        _frame(
+          MithkaVideoPlayer(
+            key: ValueKey('short-${size.width}'),
+            source: _source('short-${size.width}'),
+            controller: controller,
+            autoplay: false,
+            onPrevious: () {},
+            onNext: () {},
+          ),
+          width: size.width,
+          height: size.height,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(_semanticsWidget('Play'), findsOneWidget);
+      expect(_semanticsWidget('Previous video'), findsOneWidget);
+      expect(_semanticsWidget('Next video'), findsOneWidget);
+      expect(find.byType(MithkaVideoSlider), findsOneWidget);
+      expect(tester.takeException(), isNull, reason: 'overlap at $size');
+
+      final timeline = tester.getRect(find.byType(MithkaVideoSlider));
+      final previous = tester.getRect(_semanticsWidget('Previous video'));
+      final play = tester.getRect(_semanticsWidget('Play'));
+      final next = tester.getRect(_semanticsWidget('Next video'));
+      final player = tester.getRect(find.byType(MithkaVideoPlayer));
+      expect(timeline.bottom, lessThanOrEqualTo(play.top));
+      expect(previous.right, lessThanOrEqualTo(play.left));
+      expect(play.right, lessThanOrEqualTo(next.left));
+      expect(player.contains(previous.topLeft), isTrue);
+      expect(player.contains(next.bottomRight), isTrue);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      expect(controller.disposed, isFalse);
+      await controller.dispose();
+    }
   });
 
   testWidgets('scrub preview uses the controller aspect ratio', (tester) async {
@@ -800,11 +1126,13 @@ Widget _frame(
   Widget child, {
   double width = 1024,
   double height = 768,
+  EdgeInsets padding = EdgeInsets.zero,
   bool accessibleNavigation = false,
   TextScaler textScaler = TextScaler.noScaling,
 }) => MediaQuery(
   data: MediaQueryData(
     size: Size(width, height),
+    padding: padding,
     accessibleNavigation: accessibleNavigation,
     textScaler: textScaler,
   ),
@@ -820,14 +1148,27 @@ class _FakeVideoPlayerController extends VideoPlayerController {
   _FakeVideoPlayerController({
     this.initializeError,
     this.videoSize = const Size(1280, 720),
-  }) : super.networkUrl(Uri.parse('https://media.example/fake.mp4'));
+    this.setLoopingError,
+    bool initialized = false,
+  }) : super.networkUrl(Uri.parse('https://media.example/fake.mp4')) {
+    if (initialized) {
+      value = value.copyWith(
+        duration: const Duration(minutes: 2),
+        size: videoSize,
+        isInitialized: true,
+      );
+    }
+  }
 
   final Object? initializeError;
   final Size videoSize;
+  final Object? setLoopingError;
   Completer<void>? pauseGate;
+  Completer<void>? setLoopingGate;
   int initializeCalls = 0;
   int playCalls = 0;
   int pauseCalls = 0;
+  int setLoopingCalls = 0;
   bool disposed = false;
 
   @override
@@ -857,6 +1198,10 @@ class _FakeVideoPlayerController extends VideoPlayerController {
 
   @override
   Future<void> setLooping(bool looping) async {
+    setLoopingCalls++;
+    await setLoopingGate?.future;
+    final error = setLoopingError;
+    if (error != null) throw error;
     value = value.copyWith(isLooping: looping);
   }
 

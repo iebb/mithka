@@ -4981,11 +4981,6 @@ class _ChatViewState extends State<ChatView> {
   Widget _transcriptLayer() {
     final aiSettings = context.watch<AiSettingsController?>();
     final transcriptReady = _initialTranscriptReady;
-    final seedMessage = widget.seedMessage;
-    final showSeedMessage = shouldShowSeedMessageWhileOpening(
-      initialTranscriptReady: transcriptReady,
-      hasSeedMessage: seedMessage != null,
-    );
     final newMessagesPlacement = chatNewMessagesControlPlacement(
       isScrolledUp: _showJumpDown,
       hasNewMessages: _shouldShowNewMessagesBanner,
@@ -5012,12 +5007,10 @@ class _ChatViewState extends State<ChatView> {
             ),
           ),
         ),
-        if (!transcriptReady)
-          Positioned.fill(
-            child: showSeedMessage
-                ? _initialSeedMessagePreview(seedMessage!)
-                : _transcriptSkeleton(),
-          ),
+        if (shouldShowTranscriptSkeleton(
+          initialTranscriptReady: transcriptReady,
+        ))
+          Positioned.fill(child: _transcriptSkeleton()),
         if (showPinnedTodo)
           Positioned(
             top: 12,
@@ -5064,95 +5057,6 @@ class _ChatViewState extends State<ChatView> {
             bottomIndicator == ChatBottomIndicator.jumpToBottom)
           Positioned(right: 16, bottom: 12, child: _jumpToBottomButton()),
       ],
-    );
-  }
-
-  Widget _initialSeedMessagePreview(ChatMessage message) {
-    final c = context.colors;
-    final outgoing = message.isOutgoing;
-    final bubbleColor = outgoing
-        ? (_effectiveOutgoingColor() ?? AppTheme.bubbleOutgoing)
-        : (_effectiveIncomingColor() ?? c.bubbleIncoming);
-    final textColor = outgoing
-        ? (_effectiveOutgoingTextColor() ?? AppTheme.bubbleOutgoingText)
-        : (_effectiveIncomingTextColor() ?? c.bubbleIncomingText);
-    final senderName = message.senderName?.trim() ?? '';
-    final previewText = message.text.trim().isEmpty
-        ? '\u2026'
-        : message.text.trim();
-    return IgnorePointer(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: _effectiveWallpaper() == null
-              ? c.chatBackground
-              : const Color(0x00000000),
-        ),
-        child: Align(
-          alignment: Alignment.bottomCenter,
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(
-              outgoing ? 72 : 14,
-              16,
-              outgoing ? 14 : 72,
-              14,
-            ),
-            child: Align(
-              alignment: outgoing
-                  ? Alignment.centerRight
-                  : Alignment.centerLeft,
-              child: Container(
-                constraints: const BoxConstraints(maxWidth: 420),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 13,
-                  vertical: 9,
-                ),
-                decoration: BoxDecoration(
-                  color: bubbleColor,
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF000000).withValues(alpha: 0.10),
-                      blurRadius: 2,
-                      offset: const Offset(0, 1),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (!outgoing && _vm.isGroup && senderName.isNotEmpty) ...[
-                      Text(
-                        senderName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: c.linkBlue,
-                          fontSize: 12,
-                          height: 1.2,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                    ],
-                    Text(
-                      previewText,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: textColor,
-                        fontSize: 15,
-                        height: 1.25,
-                        fontWeight: FontWeight.w400,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
     );
   }
 

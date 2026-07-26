@@ -13,8 +13,9 @@ does not require Material, Cupertino, or their built-in icon fonts.
 
 - Network, asset, native-file, caller-owned controller, and controller-builder
   sources.
-- Play/pause, replay, mute, volume, playback speed, seek, buffered progress,
-  captions, fullscreen callbacks, and scrub previews where supported.
+- Previous/play/next navigation, replay, mute, volume, playback speed, seek,
+  buffered progress, captions, fullscreen callbacks, and scrub previews where
+  supported.
 - Compact controls for narrow layouts and larger controls with inline volume
   on wide tablet/desktop layouts.
 - Keyboard, pointer, touch, touch-region double-tap seek, desktop double-click
@@ -22,6 +23,8 @@ does not require Material, Cupertino, or their built-in icon fonts.
   screen-reader semantics.
 - Configurable autoplay, looping, initial position, seek interval, control-hide
   delay, fit, alignment, colors, labels, focus, lifecycle policy, and builders.
+- Replaceable project chrome with immutable playback snapshots, safe playback
+  actions, and opt-in exclusive ownership of mobile surface gestures.
 - Official `video_player` backends on Android, iOS, macOS, and web, with an
   optional sibling FVP adapter for Linux, Windows, and deliberate native
   backend overrides.
@@ -144,6 +147,8 @@ MithkaVideoPlayer(
   onEnded: () {
     // Advance a playlist or update application state.
   },
+  onPrevious: playPreviousItem,
+  onNext: playNextItem,
   onToggleFullscreen: () {
     // Fullscreen layout/navigation belongs to the host application.
   },
@@ -196,6 +201,12 @@ source still describes identity and thumbnail/caption metadata. When replacing
 a direct controller, retain it until the old player has detached and dispose it
 from the owning widget or service.
 
+An already-initialized supplied controller is displayed immediately. Changed
+looping, volume, speed, or initial-position settings are then applied as
+nonfatal commands, so slow platform configuration cannot leave audio playing
+behind a loading surface. Command failures are reported through `onError`
+without replacing an otherwise valid video surface with the fatal error view.
+
 Use a controller builder when a project needs a custom backend, caching layer,
 signed-URL refresh, or test double but wants the player to own that controller's
 lifetime. Keep the builder function's identity stable across rebuilds; creating
@@ -219,6 +230,62 @@ caller must replace it if its construction options need to change.
 Player-owned failures can retry by creating a fresh controller. A caller-owned
 controller only exposes retry when `onRetry` is supplied; that callback must
 repair or replace the external controller before it completes.
+
+### Custom chrome and gesture ownership
+
+`chromeBuilder` replaces only the ready player's foreground controls. The
+package continues to own the fitted video surface, delayed buffering indicator,
+captions, controller observation, keyboard shortcuts, focus, lifecycle policy,
+and error/loading states.
+
+```dart
+MithkaVideoPlayer(
+  source: source,
+  controller: playbackSession.controller,
+  lifecycleBehavior: MithkaVideoLifecycleBehavior.delegateToController,
+  interactionMode: MithkaVideoInteractionMode.delegateToChrome,
+  onPrevious: playlist.hasPrevious ? playlist.previous : null,
+  onNext: playlist.hasNext ? playlist.next : null,
+  chromeBuilder: (context, scope) => ProjectVideoChrome(
+    snapshot: scope.snapshot,
+    actions: scope.actions,
+    labels: scope.labels,
+    onPrevious: scope.previous,
+    onNext: scope.next,
+  ),
+)
+```
+
+`MithkaVideoChromeSnapshot` is immutable and includes the current
+`VideoPlayerValue`, effective scrub/display position, playback state, control
+visibility, buffering visibility, scrubbing state, and fullscreen state.
+`MithkaVideoActions` routes commands through the player's error handling and
+provides play/pause, absolute and relative seeking, volume/mute, speed, scrub
+lifecycle, control visibility, and fullscreen requests. Retaining the facade is safe:
+after the player is disposed its methods become no-ops and never dispose or
+mutate a caller-owned controller.
+
+Choose `delegateToChrome` when the custom foreground implements tap,
+double-tap, pan, brightness, or volume gestures. It removes the package's
+surface tap and double-tap recognizers so the two gesture systems cannot
+compete. The default `builtIn` mode preserves existing touch-region seeking and
+desktop double-click fullscreen behavior. Pointer-wheel volume and keyboard
+shortcuts remain independently controlled by their existing flags.
+
+Navigation remains host-owned. `onPrevious` and `onNext` are nullable; the
+default chrome renders accessible transport buttons only for available
+callbacks, and custom chrome receives the same availability through
+`MithkaVideoChromeScope.previous` and `.next`.
+
+For built-in chrome shorter than 220 logical pixels, the player merges
+previous/play/next into the bottom action row and tightens its edge spacing.
+This keeps real 160x90 and 220x124 embedded players usable without overlapping
+a separate center transport over the timeline.
+
+When `isFullscreen` is true, the default chrome and captions add the current
+`MediaQuery` safe-area insets to their edge spacing. Embedded layouts retain
+their fixed spacing. A custom chrome reads and applies `MediaQuery` directly so
+the host can coordinate notches, system bars, and presentation-specific chrome.
 
 ### Scrub previews
 
@@ -254,11 +321,11 @@ visible close control always invokes `onClose` directly.
 
 ### Localization and custom states
 
-Pass `MithkaVideoPlayerLabels` for localized control, state, timeline, and error
-announcements. Loading and error builders let a host match its own design while
-the default views remain dependency-free. The error callback receives playback
-failures for logging or recovery; do not show raw backend exception strings to
-users.
+Pass `MithkaVideoPlayerLabels` for localized control, state, timeline, error,
+and previous/next navigation announcements. Loading and error builders let a
+host match its own design while the default views remain dependency-free. The
+error callback receives playback failures for logging or recovery; do not show
+raw backend exception strings to users.
 
 ## Input and accessibility contract
 

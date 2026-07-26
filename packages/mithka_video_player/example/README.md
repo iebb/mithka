@@ -12,6 +12,8 @@ The catalog demonstrates:
 - a custom controller builder whose result is owned by the player;
 - opt-in asset and native-file sources;
 - embedded and host-managed fullscreen layouts;
+- optional previous/next transport controls and replaceable custom chrome;
+- delegated surface gestures driven through the safe playback-actions facade;
 - lifecycle/status callbacks;
 - keyboard and pointer controls; and
 - multiple simultaneous, independent desktop video windows.
@@ -116,6 +118,16 @@ be constructed with `VideoPlayerOptions(allowBackgroundPlayback: true)` so the
 player, rather than a second backend observer, owns pause/resume transitions.
 Keep `lifecycleBehavior` stable during playback; changing it recreates a
 source- or builder-owned controller and reapplies initial playback settings.
+
+## Custom chrome example
+
+Press **Use custom chrome** to replace the built-in foreground with the
+example's project-owned previous/play/next controls and touch-region
+double-taps. The player uses `MithkaVideoInteractionMode.delegateToChrome`, so
+only that foreground owns surface gestures; video layout, captions, buffering,
+keyboard input, focus, and controller state remain package-owned. Press **Use
+built-in chrome** to return to the default controls without replacing the
+active controller.
 
 ## Independent desktop windows
 

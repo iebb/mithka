@@ -15,12 +15,10 @@ bool chatOpenWorkIsStale({
     openingClientId != activeClientId ||
     openingAccountSlot != activeAccountSlot;
 
-/// The chat list already owns the latest message, so a newly opened chat can
-/// show that lightweight preview while its full transcript is positioned.
-bool shouldShowSeedMessageWhileOpening({
-  required bool initialTranscriptReady,
-  required bool hasSeedMessage,
-}) => !initialTranscriptReady && hasSeedMessage;
+/// Keep placeholder content visually distinct from real chat messages until
+/// the transcript has finished its initial positioning.
+bool shouldShowTranscriptSkeleton({required bool initialTranscriptReady}) =>
+    !initialTranscriptReady;
 
 /// Once any cached message is available, opening should no longer wait for a
 /// remote history round trip. A latest-window refresh can continue in the

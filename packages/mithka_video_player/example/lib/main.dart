@@ -57,6 +57,7 @@ class _ExampleHomeState extends State<_ExampleHome> {
   ).createController(videoPlayerOptionsOverride: _playerOwnedLifecycleOptions);
   ExampleSourceMode _mode = ExampleSourceMode.network;
   bool _fullscreen = false;
+  bool _customChrome = false;
   int _lastStatusSecond = -1;
   String _status = 'Paused — select the player and press Space to begin';
 
@@ -136,9 +137,12 @@ class _ExampleHomeState extends State<_ExampleHome> {
                       const SizedBox(height: 16),
                       _PlayerFooter(
                         status: _status,
+                        customChrome: _customChrome,
                         windowEnabled:
                             mithkaSupportsDesktopVideoWindows &&
                             _mode != ExampleSourceMode.asset,
+                        onToggleChrome: () =>
+                            setState(() => _customChrome = !_customChrome),
                         onOpenWindow: () => unawaited(_openWindow()),
                       ),
                       const SizedBox(height: 28),
@@ -168,8 +172,16 @@ class _ExampleHomeState extends State<_ExampleHome> {
     autoplay: false,
     isFullscreen: _fullscreen,
     accentColor: _Palette.accent,
+    interactionMode: _customChrome
+        ? MithkaVideoInteractionMode.delegateToChrome
+        : MithkaVideoInteractionMode.builtIn,
+    chromeBuilder: _customChrome
+        ? (context, scope) => _ExampleCustomChrome(scope: scope)
+        : null,
     onClose: _fullscreen ? _toggleFullscreen : null,
     onToggleFullscreen: _toggleFullscreen,
+    onPrevious: () => setState(() => _status = 'Previous requested'),
+    onNext: () => setState(() => _status = 'Next requested'),
     onReady: (_) {
       if (mounted) setState(() => _status = 'Ready');
     },
@@ -293,12 +305,16 @@ class _SourceSelector extends StatelessWidget {
 class _PlayerFooter extends StatelessWidget {
   const _PlayerFooter({
     required this.status,
+    required this.customChrome,
     required this.windowEnabled,
+    required this.onToggleChrome,
     required this.onOpenWindow,
   });
 
   final String status;
+  final bool customChrome;
   final bool windowEnabled;
+  final VoidCallback onToggleChrome;
   final VoidCallback onOpenWindow;
 
   @override
@@ -322,11 +338,121 @@ class _PlayerFooter extends StatelessWidget {
         ),
       ),
       _DemoButton(
+        label: customChrome ? 'Use built-in chrome' : 'Use custom chrome',
+        onPressed: onToggleChrome,
+      ),
+      _DemoButton(
         label: 'Open independent window',
         enabled: windowEnabled,
         onPressed: onOpenWindow,
       ),
     ],
+  );
+}
+
+class _ExampleCustomChrome extends StatelessWidget {
+  const _ExampleCustomChrome({required this.scope});
+
+  final MithkaVideoChromeScope scope;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) => GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: scope.actions.toggleControls,
+      onDoubleTapDown: (details) {
+        final fraction = constraints.maxWidth <= 0
+            ? 0.5
+            : details.localPosition.dx / constraints.maxWidth;
+        if (fraction < 0.4) {
+          unawaited(scope.actions.seekBy(const Duration(seconds: -10)));
+        } else if (fraction > 0.6) {
+          unawaited(scope.actions.seekBy(const Duration(seconds: 10)));
+        } else {
+          unawaited(scope.actions.togglePlayback());
+        }
+      },
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          IgnorePointer(
+            child: AnimatedOpacity(
+              opacity: scope.snapshot.controlsVisible ? 1 : 0,
+              duration: const Duration(milliseconds: 160),
+              child: const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Color(0x18000000),
+                      Color(0x00000000),
+                      Color(0xB0000000),
+                    ],
+                    stops: [0, 0.52, 1],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          IgnorePointer(
+            ignoring: !scope.snapshot.controlsVisible,
+            child: AnimatedOpacity(
+              opacity: scope.snapshot.controlsVisible ? 1 : 0,
+              duration: const Duration(milliseconds: 160),
+              child: Center(
+                child: Wrap(
+                  spacing: 10,
+                  runSpacing: 8,
+                  alignment: WrapAlignment.center,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    if (scope.previous != null)
+                      _DemoButton(
+                        label: scope.labels.previous,
+                        onPressed: scope.previous!,
+                      ),
+                    _DemoButton(
+                      label: scope.snapshot.value.isPlaying
+                          ? scope.labels.pause
+                          : scope.labels.play,
+                      selected: true,
+                      onPressed: () =>
+                          unawaited(scope.actions.togglePlayback()),
+                    ),
+                    if (scope.next != null)
+                      _DemoButton(
+                        label: scope.labels.next,
+                        onPressed: scope.next!,
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            left: 14,
+            right: 14,
+            bottom: 12,
+            child: IgnorePointer(
+              child: AnimatedOpacity(
+                opacity: scope.snapshot.controlsVisible ? 1 : 0,
+                duration: const Duration(milliseconds: 160),
+                child: Text(
+                  '${_format(scope.snapshot.displayPosition)} / '
+                  '${_format(scope.snapshot.value.duration)}',
+                  style: const TextStyle(
+                    color: _Palette.text,
+                    fontSize: 12,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
   );
 }
 

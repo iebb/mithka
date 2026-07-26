@@ -10,6 +10,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -453,6 +454,25 @@ enum VideoPlayerPresentation { fullscreen, embedded, pictureInPicture }
 
 enum VideoDisplayMode { fullscreen, pictureInPicture, split }
 
+@visibleForTesting
+bool usesReusableMobileFullscreenPlayer({
+  required VideoPlayerPresentation presentation,
+  required TargetPlatform platform,
+  bool isWeb = false,
+}) {
+  if (isWeb || presentation != VideoPlayerPresentation.fullscreen) {
+    return false;
+  }
+  return platform == TargetPlatform.android || platform == TargetPlatform.iOS;
+}
+
+@visibleForTesting
+bool isStoppedVideoPlaybackComplete(VideoPlayerValue value) {
+  if (value.isPlaying || !value.isInitialized) return false;
+  return value.isCompleted ||
+      (value.duration > Duration.zero && value.position >= value.duration);
+}
+
 enum _PlayerGesture { brightness, volume, seek, changeVideo, skipTenSeconds }
 
 enum _PlayerGestureSide { left, right }
@@ -566,8 +586,7 @@ class _VideoPlaylistPlayerViewState extends State<VideoPlaylistPlayerView> {
   @override
   void didUpdateWidget(covariant VideoPlaylistPlayerView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.queue.current.video.id != _queue.current.video.id ||
-        widget.queue.items.length != _queue.items.length) {
+    if (widget.queue != oldWidget.queue) {
       _queue = widget.queue;
     }
   }
@@ -610,6 +629,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   bool _failed = false;
   bool _controlsVisible = true;
   Timer? _hideTimer;
+  Timer? _progressRebuildTimer;
   StreamSubscription<TdFileProgress>? _progressSub;
   TdFileProgress? _progress;
   double _speed = 1;
@@ -626,6 +646,8 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   bool _systemPiPSupported = false;
   bool _systemPiPPrepared = false;
   String? _systemPiPId;
+  Future<void>? _systemPiPPrepareOperation;
+  Future<bool>? _systemPiPStartOperation;
   int _lastSystemPiPSyncMs = -1;
   bool _wakelockActive = false;
   _PlayerGesture? _activeGesture;
@@ -647,6 +669,9 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   late final Future<PlayerBrightnessSession?> _brightnessSession;
   bool _completionHandled = false;
   bool _showCompletionPrompt = false;
+  final FocusNode _completionPromptFocusNode = FocusNode(
+    debugLabel: 'video-completion-primary-action',
+  );
   final GlobalKey _scrubberKey = GlobalKey(debugLabel: 'video-scrubber');
   final Map<int, Uint8List> _scrubPreviewCache = {};
   OverlayEntry? _scrubPreviewOverlay;
@@ -726,7 +751,15 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
       }
       _lastProgressAt = now;
       _lastProgressBytes = progress.downloaded;
-      setState(() => _progress = progress);
+      _progress = progress;
+      if (_usesReusableMobileFullscreenPlayer) {
+        _progressRebuildTimer ??= Timer(const Duration(milliseconds: 250), () {
+          _progressRebuildTimer = null;
+          if (mounted) setState(() {});
+        });
+      } else {
+        setState(() {});
+      }
     });
     final completedPath = await _completedLocalVideoPath();
     if (!mounted) return;
@@ -844,16 +877,24 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   // Rebuild for play/pause + scrubber position changes.
   void _onTick() {
     final value = _controller?.value;
-    if (value?.isCompleted == true && !_completionHandled) {
+    final completed = value != null && isStoppedVideoPlaybackComplete(value);
+    if (completed && !_completionHandled) {
       _completionHandled = true;
       unawaited(_handlePlaybackCompleted());
-    } else if (value != null && !value.isCompleted && _completionHandled) {
+    } else if (value != null && !completed && _completionHandled) {
       _completionHandled = false;
+    }
+    if (value != null) {
+      _volume = value.volume.clamp(0.0, 1.0);
+      _speed = value.playbackSpeed;
     }
     _storePlaybackPositionIfNeeded();
     _syncSystemPictureInPictureIfNeeded();
     _updateWakelock();
-    if (mounted) setState(() {});
+    // The reusable player throttles its own chrome refreshes while the texture
+    // renders independently. Avoid rebuilding the entire TDLib host for every
+    // decoded frame on mobile fullscreen playback.
+    if (mounted && !_usesReusableMobileFullscreenPlayer) setState(() {});
   }
 
   /// Keep the screen awake while the video is actively playing; release the
@@ -897,6 +938,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
 
   void _scheduleHide() {
     _hideTimer?.cancel();
+    if (_usesReusableMobileFullscreenPlayer) return;
     _hideTimer = Timer(const Duration(seconds: 5), () {
       if (mounted && (_controller?.value.isPlaying ?? false)) {
         setState(() => _controlsVisible = false);
@@ -943,6 +985,11 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
           _controlsVisible = false;
           _showCompletionPrompt = true;
         });
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _showCompletionPrompt) {
+            _completionPromptFocusNode.requestFocus();
+          }
+        });
       case VideoCompletionAction.autoplayNext:
         if (widget.nextVideo != null && widget.onNavigate != null) {
           widget.onNavigate!(1);
@@ -973,6 +1020,11 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   void _playNextVideo() {
     if (widget.nextVideo == null || widget.onNavigate == null) return;
     widget.onNavigate!(1);
+  }
+
+  void _navigateFromControl(int delta) {
+    if (!_canNavigate(delta)) return;
+    widget.onNavigate?.call(delta);
   }
 
   Future<void> _setSpeed(double speed) async {
@@ -1061,7 +1113,20 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     } catch (_) {}
   }
 
-  Future<bool> _startSystemPictureInPicture() async {
+  Future<bool> _startSystemPictureInPicture() {
+    final pending = _systemPiPStartOperation;
+    if (pending != null) return pending;
+    late final Future<bool> tracked;
+    tracked = _performSystemPictureInPictureStart().whenComplete(() {
+      if (identical(_systemPiPStartOperation, tracked)) {
+        _systemPiPStartOperation = null;
+      }
+    });
+    _systemPiPStartOperation = tracked;
+    return tracked;
+  }
+
+  Future<bool> _performSystemPictureInPictureStart() async {
     final c = _controller;
     final uri = _systemPiPSourceUri();
     if (c == null || !c.value.isInitialized || uri == null) {
@@ -1072,6 +1137,9 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
       debugPrint('system PiP start skipped: AVPictureInPicture unsupported');
       return false;
     }
+    final pendingPrepare = _systemPiPPrepareOperation;
+    if (pendingPrepare != null) await pendingPrepare;
+    if (!mounted) return false;
 
     var id = _systemPiPId;
     var started = false;
@@ -1085,6 +1153,10 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
         playing: c.value.isPlaying,
         videoSize: c.value.size,
       );
+      if (!mounted) {
+        await SystemPictureInPicture.cancelPrepared(id);
+        return false;
+      }
     }
     if (!started) {
       if (id != null) {
@@ -1117,6 +1189,10 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
           }
         },
       );
+      if (!mounted) {
+        await SystemPictureInPicture.cancelPrepared(id);
+        return false;
+      }
     }
     if (!started) {
       debugPrint('system PiP failed to start for source: $uri');
@@ -1149,7 +1225,20 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
         : Uri.file(source);
   }
 
-  Future<void> _prepareSystemPictureInPicture() async {
+  Future<void> _prepareSystemPictureInPicture() {
+    final pending = _systemPiPPrepareOperation;
+    if (pending != null) return pending;
+    late final Future<void> tracked;
+    tracked = _performSystemPictureInPicturePreparation().whenComplete(() {
+      if (identical(_systemPiPPrepareOperation, tracked)) {
+        _systemPiPPrepareOperation = null;
+      }
+    });
+    _systemPiPPrepareOperation = tracked;
+    return tracked;
+  }
+
+  Future<void> _performSystemPictureInPicturePreparation() async {
     if (_systemPiPPrepared || _systemPiPId != null) {
       return;
     }
@@ -1157,6 +1246,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     final uri = _systemPiPSourceUri();
     if (c == null || !c.value.isInitialized || uri == null) return;
     if (!await _isSystemPictureInPictureSupported()) return;
+    if (!mounted) return;
 
     final server = _streamServer;
     final shouldCancelOnStop =
@@ -1233,27 +1323,66 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
       unawaited(ScreenWakelock.disable());
     }
     _hideTimer?.cancel();
+    _progressRebuildTimer?.cancel();
     _scrubPreviewTimer?.cancel();
     _scrubPreviewOverlay?.remove();
     _scrubPreviewOverlay = null;
     _scrubPreviewGeneration++;
+    _completionPromptFocusNode.dispose();
     _progressSub?.cancel();
     unawaited(_storePlaybackPosition(force: true));
-    _controller?.removeListener(_onTick);
-    if (!_systemPiPHandoff || !_systemPiPUsesActivePlayer) {
-      _controller?.dispose();
-    }
+    final controller = _controller;
+    controller?.removeListener(_onTick);
     final preparedPiPId = _systemPiPId;
-    if (!_systemPiPHandoff && preparedPiPId != null) {
-      unawaited(SystemPictureInPicture.cancelPrepared(preparedPiPId));
-    }
-    unawaited(_streamServer?.close());
+    unawaited(
+      _releasePlaybackResources(
+        controller: controller,
+        disposeController: !_systemPiPHandoff || !_systemPiPUsesActivePlayer,
+        preparedPiPId: _systemPiPHandoff ? null : preparedPiPId,
+        pendingPiPPreparation: _systemPiPPrepareOperation,
+        pendingPiPStart: _systemPiPStartOperation,
+        streamServer: _streamServer,
+      ),
+    );
     if (!_systemPiPHandoff &&
         !_openedCompletedLocalFile &&
         _progress?.isCompleted != true) {
       TdFileCenter.shared.cancelDownload(widget.video.id);
     }
     super.dispose();
+  }
+
+  Future<void> _releasePlaybackResources({
+    required VideoPlayerController? controller,
+    required bool disposeController,
+    required String? preparedPiPId,
+    required Future<void>? pendingPiPPreparation,
+    required Future<bool>? pendingPiPStart,
+    required TdVideoStreamServer? streamServer,
+  }) async {
+    // A prepared native PiP session may still retain the player's texture.
+    // Release that platform session before disposing the Flutter controller.
+    if (pendingPiPPreparation != null) {
+      try {
+        await pendingPiPPreparation;
+      } catch (_) {}
+    }
+    if (pendingPiPStart != null) {
+      try {
+        await pendingPiPStart;
+      } catch (_) {}
+    }
+    if (preparedPiPId != null) {
+      await SystemPictureInPicture.cancelPrepared(preparedPiPId);
+    }
+    if (disposeController) {
+      try {
+        await controller?.dispose();
+      } catch (_) {}
+    }
+    try {
+      await streamServer?.close();
+    } catch (_) {}
   }
 
   Future<void> _restorePlayerBrightness() async {
@@ -1265,9 +1394,133 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   Widget build(BuildContext context) {
     final c = _controller;
     final ready = c != null && c.value.isInitialized;
+    if (_usesReusableMobileFullscreenPlayer && ready) {
+      return ColoredBox(
+        color: Colors.black,
+        child: _reusableMobileFullscreenPlayer(c),
+      );
+    }
+    return _legacyPlayer(ready ? c : null);
+  }
+
+  Widget _reusableMobileFullscreenPlayer(VideoPlayerController controller) {
+    final source = _reusablePlayerSource();
+    final alignment = _usesPhonePortraitVideoOffset(context)
+        ? const Alignment(0, -0.20)
+        : Alignment.center;
+    return MithkaVideoPlayer(
+      key: ValueKey('mobile-fullscreen-video-${widget.video.id}'),
+      source: source,
+      controller: controller,
+      width: widget.width,
+      height: widget.height,
+      autoplay: false,
+      initialVolume: _volume,
+      initialPlaybackSpeed: _speed,
+      onClose: _close,
+      onToggleFullscreen: widget.onToggleFullscreen,
+      onPrevious: widget.previousVideo == null
+          ? null
+          : () => _navigateFromControl(-1),
+      onNext: widget.nextVideo == null ? null : () => _navigateFromControl(1),
+      lifecycleBehavior: MithkaVideoLifecycleBehavior.delegateToController,
+      controlsAutoHideDuration: const Duration(seconds: 5),
+      positionUpdateInterval: const Duration(milliseconds: 200),
+      interactionMode: MithkaVideoInteractionMode.delegateToChrome,
+      autofocus: true,
+      enableKeyboardShortcuts: !_showCompletionPrompt,
+      alignment: alignment,
+      showScrubPreview: false,
+      isFullscreen: true,
+      loadingBuilder: (_) => _loadingState(),
+      chromeBuilder: (_, scope) => _mobileFullscreenChrome(controller, scope),
+    );
+  }
+
+  MithkaVideoSource _reusablePlayerSource() {
+    final path = _localPath;
+    if (path != null &&
+        (path.startsWith('http://') || path.startsWith('https://'))) {
+      return MithkaVideoSource.network(path);
+    }
+    if (path != null && path.isNotEmpty) {
+      return MithkaVideoSource.file(path);
+    }
+    throw StateError('An initialized mobile video must have a source');
+  }
+
+  Widget _mobileFullscreenChrome(
+    VideoPlayerController controller,
+    MithkaVideoChromeScope scope,
+  ) {
+    final controlsVisible =
+        scope.snapshot.controlsVisible && !_showCompletionPrompt;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // Keep the surface recognizer behind interactive chrome. A drag that
+        // starts on the scrubber, volume control, or any button therefore
+        // belongs to that control instead of accidentally seeking, navigating,
+        // or changing a side gesture value.
+        Positioned.fill(
+          child: LayoutBuilder(
+            builder: (context, constraints) => GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: scope.actions.toggleControls,
+              onDoubleTapDown: (details) => _handleMobileDoubleTap(
+                details,
+                constraints.maxWidth,
+                scope.actions,
+              ),
+              onPanDown: (details) => _gestureOrigin = details.localPosition,
+              onPanStart: (details) {
+                scope.actions.showControls();
+                _startPlaybackGesture(details, controller);
+              },
+              onPanUpdate: (details) =>
+                  _updatePlaybackGesture(details, controller),
+              onPanEnd: (_) => _finishPlaybackGesture(controller),
+              onPanCancel: _cancelPlaybackGesture,
+            ),
+          ),
+        ),
+        if (controlsVisible) ..._controlChromeBlocks(visible: true),
+        if (controlsVisible)
+          IgnorePointer(child: _topTechnicalInfo(_debugText(controller))),
+        if (controlsVisible) ..._controls(controller),
+        if (_gestureIndicatorReady)
+          _activeGesture == _PlayerGesture.brightness ||
+                  _activeGesture == _PlayerGesture.volume
+              ? _sideLevelIndicator()
+              : _gestureIndicator(controller),
+        if (_showCompletionPrompt) _completionPrompt(),
+        if (controlsVisible) _closeButton(),
+      ],
+    );
+  }
+
+  void _handleMobileDoubleTap(
+    TapDownDetails details,
+    double width,
+    MithkaVideoActions actions,
+  ) {
+    final fraction = width <= 0 ? 0.5 : details.localPosition.dx / width;
+    if (fraction < 0.42) {
+      unawaited(actions.seekBy(const Duration(seconds: -10)));
+    } else if (fraction > 0.58) {
+      unawaited(actions.seekBy(const Duration(seconds: 10)));
+    } else {
+      unawaited(actions.togglePlayback());
+    }
+  }
+
+  Widget _legacyPlayer(VideoPlayerController? controller) {
+    final ready = controller != null && controller.value.isInitialized;
     final body = Focus(
       autofocus: _isDesktopPlatform,
-      onKeyEvent: ready ? (_, event) => _handleDesktopKey(event, c) : null,
+      onKeyEvent: ready
+          ? (_, event) => _handleDesktopKey(event, controller)
+          : null,
       child: Listener(
         onPointerSignal: ready ? _handlePointerSignal : null,
         child: GestureDetector(
@@ -1280,13 +1533,13 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
               ? (details) => _gestureOrigin = details.localPosition
               : null,
           onPanStart: ready && _supportsPlaybackGestures
-              ? (details) => _startPlaybackGesture(details, c)
+              ? (details) => _startPlaybackGesture(details, controller)
               : null,
           onPanUpdate: ready && _supportsPlaybackGestures
-              ? (details) => _updatePlaybackGesture(details, c)
+              ? (details) => _updatePlaybackGesture(details, controller)
               : null,
           onPanEnd: ready && _supportsPlaybackGestures
-              ? (_) => _finishPlaybackGesture(c)
+              ? (_) => _finishPlaybackGesture(controller)
               : null,
           onPanCancel: ready && _supportsPlaybackGestures
               ? _cancelPlaybackGesture
@@ -1294,26 +1547,26 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              if (ready) _videoFrame(c) else _loadingState(),
+              if (ready) _videoFrame(controller) else _loadingState(),
               if (ready && _controlsVisible)
                 ..._controlChromeBlocks(visible: true),
               if (ready &&
                   _controlsVisible &&
                   widget.presentation !=
                       VideoPlayerPresentation.pictureInPicture)
-                _topTechnicalInfo(_debugText(c)),
-              if (ready && _controlsVisible) ..._controls(c),
+                _topTechnicalInfo(_debugText(controller)),
+              if (ready && _controlsVisible) ..._controls(controller),
               if (ready && _gestureIndicatorReady)
                 _activeGesture == _PlayerGesture.brightness ||
                         _activeGesture == _PlayerGesture.volume
                     ? _sideLevelIndicator()
-                    : _gestureIndicator(c),
+                    : _gestureIndicator(controller),
               if (ready && _showCompletionPrompt) _completionPrompt(),
               if (!ready || _controlsVisible)
                 widget.presentation ==
                             VideoPlayerPresentation.pictureInPicture &&
                         ready
-                    ? _pipTopBar(c)
+                    ? _pipTopBar(controller)
                     : _closeButton(),
             ],
           ),
@@ -1331,6 +1584,13 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
 
   bool get _supportsPlaybackGestures =>
       widget.presentation == VideoPlayerPresentation.fullscreen;
+
+  bool get _usesReusableMobileFullscreenPlayer =>
+      usesReusableMobileFullscreenPlayer(
+        presentation: widget.presentation,
+        platform: defaultTargetPlatform,
+        isWeb: kIsWeb,
+      );
 
   bool get _isDesktopPlatform =>
       Platform.isMacOS || Platform.isWindows || Platform.isLinux;
@@ -1424,7 +1684,11 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     var gesture = _activeGesture;
     if (gesture == null) {
       if (math.max(delta.dx.abs(), delta.dy.abs()) < 12) return;
-      if (delta.dx.abs() > delta.dy.abs()) {
+      const axisLockRatio = 1.20;
+      final horizontal = delta.dx.abs() >= delta.dy.abs() * axisLockRatio;
+      final vertical = delta.dy.abs() >= delta.dx.abs() * axisLockRatio;
+      if (!horizontal && !vertical) return;
+      if (horizontal) {
         _activeGestureSide = null;
         gesture = switch (_horizontalSwipeAction) {
           VideoHorizontalSwipeAction.disabled => null,
@@ -1809,11 +2073,16 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                             icon: HeroAppIcons.play,
                             label: AppStringKeys.videoPlayerPlayNext,
                             primary: true,
+                            focusNode: _completionPromptFocusNode,
                             onTap: _playNextVideo,
                           ),
                         _completionActionButton(
                           icon: HeroAppIcons.arrowsRotate,
                           label: AppStringKeys.videoPlayerReplay,
+                          autofocus: next == null,
+                          focusNode: next == null
+                              ? _completionPromptFocusNode
+                              : null,
                           onTap: () => unawaited(_replayFromBeginning()),
                         ),
                         _completionActionButton(
@@ -1847,37 +2116,16 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     required String label,
     required VoidCallback onTap,
     bool primary = false,
+    bool autofocus = false,
+    FocusNode? focusNode,
   }) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Container(
-        height: 44,
-        padding: const EdgeInsets.symmetric(horizontal: 18),
-        decoration: BoxDecoration(
-          color: primary ? Colors.white : const Color(0xFF2C2C2E),
-          borderRadius: BorderRadius.circular(22),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AppIcon(
-              icon,
-              size: 18,
-              color: primary ? Colors.black : Colors.white,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              label.l10n(context),
-              style: TextStyle(
-                color: primary ? Colors.black : Colors.white,
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-      ),
+    return _FocusableVideoActionButton(
+      icon: icon,
+      label: label.l10n(context),
+      onPressed: onTap,
+      primary: primary,
+      autofocus: autofocus || primary,
+      focusNode: focusNode,
     );
   }
 
@@ -2076,10 +2324,15 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
       left: pip || embedded ? null : (phoneFullscreen ? 8 : 30),
       right: pip ? 4 : (embedded ? 8 : null),
       child: pip || embedded
-          ? _plainIconButton(HeroAppIcons.xmark.data, _close)
-          : _roundIconButton(
-              HeroAppIcons.chevronLeft.data,
+          ? _plainIconButton(
+              HeroAppIcons.xmark,
               _close,
+              label: AppStringKeys.musicPlayerClose.l10n(context),
+            )
+          : _roundIconButton(
+              HeroAppIcons.chevronLeft,
+              _close,
+              label: AppStringKeys.musicPlayerClose.l10n(context),
               size: phoneFullscreen ? 44 : 58,
             ),
     );
@@ -2108,7 +2361,12 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
             ),
           ),
           const SizedBox(width: 4),
-          _plainIconButton(HeroAppIcons.xmark.data, _close, size: 28),
+          _plainIconButton(
+            HeroAppIcons.xmark,
+            _close,
+            label: AppStringKeys.musicPlayerClose.l10n(context),
+            size: 28,
+          ),
         ],
       ),
     );
@@ -2196,9 +2454,14 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     if (widget.compactControls) return _pendingCompactControls();
     final layout = _controlsLayout(context);
     final bottom = _controlsBottom(layout);
-    final timeline = _pendingTimelineRow(layout);
+    final centerTransport = layout.timelineCompact && _showsNavigationControls;
+    final timeline = _pendingTimelineRow(
+      layout,
+      showTransport: !centerTransport,
+    );
     final secondary = _pendingSecondaryControls(layout);
     return [
+      if (centerTransport) Center(child: _pendingTransportControls()),
       Positioned(
         left: layout.left,
         right: layout.right,
@@ -2213,21 +2476,34 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     ];
   }
 
-  Widget _pendingTimelineRow(_VideoControlsLayout layout) {
+  Widget _pendingTimelineRow(
+    _VideoControlsLayout layout, {
+    bool showTransport = true,
+  }) {
+    final showNavigation = showTransport && _showsNavigationControls;
     return Row(
       children: [
-        SizedBox(
-          width: layout.playButtonSize.width,
-          height: layout.playButtonSize.height,
-          child: Center(
-            child: AppIcon(
-              HeroAppIcons.play,
-              color: Colors.white.withValues(alpha: 0.7),
-              size: layout.playIconSize,
+        if (showNavigation) ...[
+          _navigationControl(-1, size: layout.playButtonSize.height),
+          SizedBox(width: layout.playGap),
+        ],
+        if (showTransport)
+          SizedBox(
+            width: layout.playButtonSize.width,
+            height: layout.playButtonSize.height,
+            child: Center(
+              child: AppIcon(
+                HeroAppIcons.play,
+                color: Colors.white.withValues(alpha: 0.7),
+                size: layout.playIconSize,
+              ),
             ),
           ),
-        ),
-        SizedBox(width: layout.playGap),
+        if (showNavigation) ...[
+          SizedBox(width: layout.playGap),
+          _navigationControl(1, size: layout.playButtonSize.height),
+        ],
+        if (showTransport) SizedBox(width: layout.playGap),
         Text('00:00', style: layout.timeStyle),
         SizedBox(width: layout.timeGap),
         Expanded(child: _loadingScrubber(compact: layout.timelineCompact)),
@@ -2237,35 +2513,34 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     );
   }
 
-  Widget _pendingSecondaryControls(_VideoControlsLayout layout) {
+  Widget _pendingTransportControls() {
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        const Spacer(),
-        _secondaryVolumeSlider(layout),
-        SizedBox(width: layout.actionGap),
-        _speedMenu(compact: layout.timelineCompact),
-        SizedBox(width: layout.actionGap),
-        _roundIconButton(
-          HeroAppIcons.download.data,
-          _downloadedNotice,
-          size: layout.actionButtonSize,
+        _navigationControl(-1, size: 54),
+        const SizedBox(width: 14),
+        Semantics(
+          label: AppStringKeys.videoPlayerLoading.l10n(context),
+          child: SizedBox(
+            width: 54,
+            height: 54,
+            child: Center(
+              child: AppIcon(
+                HeroAppIcons.play,
+                color: Colors.white.withValues(alpha: 0.7),
+                size: 32,
+              ),
+            ),
+          ),
         ),
-        if (widget.onSwitchMode != null) ...[
-          SizedBox(width: layout.actionGap),
-          _modeSwitchButton(size: layout.actionButtonSize),
-        ],
-        if (_showsSystemPictureInPictureButton) ...[
-          SizedBox(width: layout.actionGap),
-          _systemPictureInPictureButton(size: layout.actionButtonSize),
-        ],
-        SizedBox(width: layout.actionGap),
-        _roundIconButton(
-          HeroAppIcons.share.data,
-          _forwardVideo,
-          size: layout.actionButtonSize,
-        ),
+        const SizedBox(width: 14),
+        _navigationControl(1, size: 54),
       ],
     );
+  }
+
+  Widget _pendingSecondaryControls(_VideoControlsLayout layout) {
+    return _secondaryActionRow(layout);
   }
 
   List<Widget> _pendingCompactControls() {
@@ -2385,9 +2660,11 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     if (widget.compactControls) return _compactControls(c);
     final layout = _controlsLayout(context);
     final bottom = _controlsBottom(layout);
-    final timeline = _timelineRow(c, layout);
-    final secondary = _secondaryControls(c, layout);
+    final centerTransport = layout.timelineCompact && _showsNavigationControls;
+    final timeline = _timelineRow(c, layout, showTransport: !centerTransport);
+    final secondary = _secondaryActionRow(layout);
     return [
+      if (centerTransport) Center(child: _transportControls(c)),
       Positioned(
         left: layout.left,
         right: layout.right,
@@ -2402,27 +2679,37 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     ];
   }
 
-  Widget _timelineRow(VideoPlayerController c, _VideoControlsLayout layout) {
+  Widget _timelineRow(
+    VideoPlayerController c,
+    _VideoControlsLayout layout, {
+    bool showTransport = true,
+  }) {
     final value = c.value;
     final playing = value.isPlaying;
+    final showNavigation = showTransport && _showsNavigationControls;
     return Row(
       children: [
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: _togglePlay,
-          child: SizedBox(
-            width: layout.playButtonSize.width,
-            height: layout.playButtonSize.height,
-            child: Center(
-              child: AppIcon(
-                playing ? HeroAppIcons.pause : HeroAppIcons.play,
-                color: Colors.white,
-                size: layout.playIconSize,
-              ),
-            ),
+        if (showNavigation) ...[
+          _navigationControl(-1, size: layout.playButtonSize.height),
+          SizedBox(width: layout.playGap),
+        ],
+        if (showTransport)
+          _FocusableVideoIconButton(
+            icon: playing ? HeroAppIcons.pause : HeroAppIcons.play,
+            label:
+                (playing
+                        ? AppStringKeys.musicPlayerPause
+                        : AppStringKeys.musicPlayerPlay)
+                    .l10n(context),
+            onPressed: _togglePlay,
+            size: layout.playButtonSize,
+            iconSize: layout.playIconSize,
           ),
-        ),
-        SizedBox(width: layout.playGap),
+        if (showNavigation) ...[
+          SizedBox(width: layout.playGap),
+          _navigationControl(1, size: layout.playButtonSize.height),
+        ],
+        if (showTransport) SizedBox(width: layout.playGap),
         Text(_fmt(_displayPosition(c)), style: layout.timeStyle),
         SizedBox(width: layout.timeGap),
         Expanded(child: _scrubber(c, compact: layout.timelineCompact)),
@@ -2432,37 +2719,82 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     );
   }
 
-  Widget _secondaryControls(
-    VideoPlayerController c,
-    _VideoControlsLayout layout,
-  ) {
+  Widget _transportControls(VideoPlayerController controller) {
+    final playing = controller.value.isPlaying;
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        const Spacer(),
-        _secondaryVolumeSlider(layout),
-        SizedBox(width: layout.actionGap),
-        _speedMenu(compact: layout.timelineCompact),
-        SizedBox(width: layout.actionGap),
-        _roundIconButton(
-          HeroAppIcons.download.data,
-          _downloadedNotice,
-          size: layout.actionButtonSize,
-        ),
-        if (widget.onSwitchMode != null) ...[
-          SizedBox(width: layout.actionGap),
-          _modeSwitchButton(size: layout.actionButtonSize),
+        if (_showsNavigationControls) ...[
+          _navigationControl(-1, size: 54),
+          const SizedBox(width: 14),
         ],
-        if (_showsSystemPictureInPictureButton) ...[
-          SizedBox(width: layout.actionGap),
-          _systemPictureInPictureButton(size: layout.actionButtonSize),
-        ],
-        SizedBox(width: layout.actionGap),
-        _roundIconButton(
-          HeroAppIcons.share.data,
-          _forwardVideo,
-          size: layout.actionButtonSize,
+        _FocusableVideoIconButton(
+          icon: playing ? HeroAppIcons.pause : HeroAppIcons.play,
+          label:
+              (playing
+                      ? AppStringKeys.musicPlayerPause
+                      : AppStringKeys.musicPlayerPlay)
+                  .l10n(context),
+          onPressed: _togglePlay,
+          size: const Size.square(54),
+          iconSize: 32,
         ),
+        if (_showsNavigationControls) ...[
+          const SizedBox(width: 14),
+          _navigationControl(1, size: 54),
+        ],
       ],
+    );
+  }
+
+  Widget _secondaryActionRow(_VideoControlsLayout layout) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = layout.timelineCompact;
+        final width = constraints.maxWidth;
+        final actions = <Widget>[];
+
+        void addAction(Widget action) {
+          if (actions.isNotEmpty) {
+            actions.add(SizedBox(width: layout.actionGap));
+          }
+          actions.add(action);
+        }
+
+        if (!compact || width >= 340) {
+          addAction(_secondaryVolumeSlider(layout));
+        }
+        if (!compact || width >= 280) {
+          addAction(_speedMenu(compact: compact));
+        }
+        if (!compact || width >= 380) {
+          addAction(
+            _roundIconButton(
+              HeroAppIcons.download,
+              _downloadedNotice,
+              label: AppStringKeys.musicPlayerDownload.l10n(context),
+              size: layout.actionButtonSize,
+            ),
+          );
+        }
+        if (widget.onSwitchMode != null && (!compact || width >= 240)) {
+          addAction(_modeSwitchButton(size: layout.actionButtonSize));
+        }
+        if (_showsSystemPictureInPictureButton && (!compact || width >= 300)) {
+          addAction(
+            _systemPictureInPictureButton(size: layout.actionButtonSize),
+          );
+        }
+        addAction(
+          _roundIconButton(
+            HeroAppIcons.share,
+            _forwardVideo,
+            label: AppStringKeys.topicChatShare.l10n(context),
+            size: layout.actionButtonSize,
+          ),
+        );
+        return Row(children: [const Spacer(), ...actions]);
+      },
     );
   }
 
@@ -2472,26 +2804,9 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   }
 
   List<Widget> _compactControls(VideoPlayerController c) {
-    final value = c.value;
     final pip = widget.presentation == VideoPlayerPresentation.pictureInPicture;
     return [
-      Center(
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: _togglePlay,
-          child: SizedBox(
-            width: 54,
-            height: 54,
-            child: Center(
-              child: AppIcon(
-                value.isPlaying ? HeroAppIcons.pause : HeroAppIcons.play,
-                color: Colors.white,
-                size: 32,
-              ),
-            ),
-          ),
-        ),
-      ),
+      Center(child: _transportControls(c)),
       Positioned(
         left: 12,
         right: 12,
@@ -2591,6 +2906,11 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
             thumbRadius: compact ? 5 : 8,
             activeColor: Colors.white,
             inactiveColor: Colors.transparent,
+            semanticLabel: AppStringKeys.videoPlaybackSwipeAdjustProgress.l10n(
+              context,
+            ),
+            semanticValue:
+                '${_fmt(Duration(milliseconds: position))} / ${_fmt(value.duration)}',
             onChangeStart: duration <= 0
                 ? null
                 : (fraction) =>
@@ -2975,20 +3295,12 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
       child: Row(
         mainAxisSize: compact ? MainAxisSize.max : MainAxisSize.min,
         children: [
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: _toggleMute,
-            child: SizedBox(
-              width: compact ? 24 : 28,
-              height: compact ? 36 : 38,
-              child: Center(
-                child: Icon(
-                  _volumeIconData,
-                  color: Colors.white,
-                  size: iconSize,
-                ),
-              ),
-            ),
+          _FocusableVideoIconButton(
+            icon: _volumeIcon,
+            label: _volumeButtonLabel,
+            onPressed: _toggleMute,
+            size: Size(compact ? 36 : 38, compact ? 36 : 38),
+            iconSize: iconSize,
           ),
           SizedBox(width: compact ? 0 : 7),
           Expanded(
@@ -2998,6 +3310,10 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
               thumbRadius: compact ? 5 : 7,
               activeColor: Colors.white,
               inactiveColor: Colors.white.withValues(alpha: 0.22),
+              semanticLabel: AppStringKeys.videoPlaybackSwipeAdjustVolume.l10n(
+                context,
+              ),
+              semanticValue: '${(_volume * 100).round()}%',
               onChangeStart: (_) => _hideTimer?.cancel(),
               onChanged: _setVolume,
               onChangeEnd: (_) => _scheduleHide(),
@@ -3008,21 +3324,34 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     );
   }
 
-  IconData get _volumeIconData => _volume <= 0.01
-      ? HeroAppIcons.volumeXmark.data
-      : HeroAppIcons.volumeHigh.data;
+  AppIconData get _volumeIcon =>
+      _volume <= 0.01 ? HeroAppIcons.volumeXmark : HeroAppIcons.volumeHigh;
+
+  String get _volumeButtonLabel =>
+      (_volume <= 0.01 ? AppStringKeys.chatUnmute : AppStringKeys.callMute)
+          .l10n(context);
 
   Widget _muteButton({required double size}) {
-    return _roundIconButton(_volumeIconData, _toggleMute, size: size);
+    return _roundIconButton(
+      _volumeIcon,
+      _toggleMute,
+      label: _volumeButtonLabel,
+      size: size,
+    );
   }
 
   Widget _fullscreenButton({required double size}) {
     final callback = widget.onSwitchMode;
     if (callback == null) return const SizedBox.shrink();
-    return _roundIconButton(HeroAppIcons.expand.data, () {
-      callback(VideoDisplayMode.fullscreen);
-      _scheduleHide();
-    }, size: size);
+    return _roundIconButton(
+      HeroAppIcons.expand,
+      () {
+        callback(VideoDisplayMode.fullscreen);
+        _scheduleHide();
+      },
+      label: AppStringKeys.videoPlayerFullscreen.l10n(context),
+      size: size,
+    );
   }
 
   bool get _showsSystemPictureInPictureButton =>
@@ -3033,11 +3362,16 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
 
   Widget _systemPictureInPictureButton({required double size}) {
     if (!_showsSystemPictureInPictureButton) return const SizedBox.shrink();
-    return _roundIconButton(HeroAppIcons.pictureInPicture.data, () {
-      debugPrint('picture in picture button tapped');
-      unawaited(_enterPictureInPicture());
-      _scheduleHide();
-    }, size: size);
+    return _roundIconButton(
+      HeroAppIcons.pictureInPicture,
+      () {
+        debugPrint('picture in picture button tapped');
+        unawaited(_enterPictureInPicture());
+        _scheduleHide();
+      },
+      label: AppStringKeys.videoPlayerPictureInPicture.l10n(context),
+      size: size,
+    );
   }
 
   Future<void> _enterPictureInPicture() async {
@@ -3056,52 +3390,79 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     if (callback == null) return const SizedBox.shrink();
     return Tooltip(
       message: AppStringKeys.videoPlayerSplitScreen.l10n(context),
-      child: _roundIconButton(HeroAppIcons.tableColumns.data, () {
-        callback(VideoDisplayMode.split);
-        _scheduleHide();
-      }, size: size),
+      child: _roundIconButton(
+        HeroAppIcons.tableColumns,
+        () {
+          callback(VideoDisplayMode.split);
+          _scheduleHide();
+        },
+        label: AppStringKeys.videoPlayerSplitScreen.l10n(context),
+        size: size,
+      ),
+    );
+  }
+
+  bool get _showsNavigationControls =>
+      widget.onNavigate != null &&
+      (widget.previousVideo != null || widget.nextVideo != null) &&
+      widget.presentation != VideoPlayerPresentation.pictureInPicture;
+
+  Widget _navigationControl(int delta, {required double size}) {
+    final previous = delta < 0;
+    final enabled = _canNavigate(delta) && widget.onNavigate != null;
+    final rtl = Directionality.of(context) == TextDirection.rtl;
+    final icon = previous
+        ? (rtl ? HeroAppIcons.arrowRight : HeroAppIcons.arrowLeft)
+        : (rtl ? HeroAppIcons.arrowLeft : HeroAppIcons.arrowRight);
+    final label =
+        (previous
+                ? enabled
+                      ? AppStringKeys.videoPlayerPreviousVideo
+                      : AppStringKeys.videoPlayerNoPreviousVideo
+                : enabled
+                ? AppStringKeys.videoPlayerNextVideo
+                : AppStringKeys.videoPlayerNoNextVideo)
+            .l10n(context);
+    return _FocusableVideoIconButton(
+      icon: icon,
+      label: label,
+      enabled: enabled,
+      onPressed: () => _navigateFromControl(delta),
+      size: Size.square(math.max(48, size)),
+      iconSize: math.max(22, size * 0.44),
+      opacity: enabled ? 0.92 : 0.30,
     );
   }
 
   Widget _roundIconButton(
-    IconData icon,
+    AppIconData icon,
     VoidCallback onTap, {
+    required String label,
     double size = 50,
   }) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: SizedBox(
-        width: size,
-        height: size,
-        child: Center(
-          child: Icon(
-            icon,
-            color: Colors.white.withValues(alpha: 0.92),
-            size: size * 0.5,
-          ),
-        ),
-      ),
+    return _FocusableVideoIconButton(
+      icon: icon,
+      label: label,
+      onPressed: onTap,
+      size: Size.square(size),
+      iconSize: size * 0.5,
+      opacity: 0.92,
     );
   }
 
   Widget _plainIconButton(
-    IconData icon,
+    AppIconData icon,
     VoidCallback onTap, {
+    required String label,
     double size = 34,
   }) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: SizedBox(
-        width: size,
-        height: size,
-        child: Icon(
-          icon,
-          color: Colors.white.withValues(alpha: 0.92),
-          size: size * 0.58,
-        ),
-      ),
+    return _FocusableVideoIconButton(
+      icon: icon,
+      label: label,
+      onPressed: onTap,
+      size: Size.square(size),
+      iconSize: size * 0.58,
+      opacity: 0.92,
     );
   }
 
@@ -3187,5 +3548,191 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   static String _speedString(double bytesPerSecond) {
     if (bytesPerSecond <= 0) return '0 KB';
     return _byteString(bytesPerSecond.round());
+  }
+}
+
+class _FocusableVideoIconButton extends StatefulWidget {
+  const _FocusableVideoIconButton({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+    required this.size,
+    required this.iconSize,
+    this.enabled = true,
+    this.opacity = 1,
+  });
+
+  final AppIconData icon;
+  final String label;
+  final VoidCallback onPressed;
+  final Size size;
+  final double iconSize;
+  final bool enabled;
+  final double opacity;
+
+  @override
+  State<_FocusableVideoIconButton> createState() =>
+      _FocusableVideoIconButtonState();
+}
+
+class _FocusableVideoIconButtonState extends State<_FocusableVideoIconButton> {
+  bool _focused = false;
+
+  void _activate() {
+    if (widget.enabled) widget.onPressed();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FocusableActionDetector(
+      enabled: widget.enabled,
+      shortcuts: const <ShortcutActivator, Intent>{
+        SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+        SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
+      },
+      actions: <Type, Action<Intent>>{
+        ActivateIntent: CallbackAction<ActivateIntent>(
+          onInvoke: (_) {
+            _activate();
+            return null;
+          },
+        ),
+      },
+      onShowFocusHighlight: (focused) {
+        if (_focused == focused) return;
+        setState(() => _focused = focused);
+      },
+      mouseCursor: widget.enabled
+          ? SystemMouseCursors.click
+          : SystemMouseCursors.basic,
+      child: Semantics(
+        button: true,
+        enabled: widget.enabled,
+        label: widget.label,
+        onTap: widget.enabled ? _activate : null,
+        child: Opacity(
+          opacity: widget.opacity,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            excludeFromSemantics: true,
+            onTap: widget.enabled ? _activate : null,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: _focused
+                    ? Colors.white.withValues(alpha: 0.12)
+                    : Colors.transparent,
+                border: _focused
+                    ? Border.all(color: Colors.white, width: 2)
+                    : null,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: SizedBox(
+                width: math.max(44, widget.size.width),
+                height: math.max(44, widget.size.height),
+                child: Center(
+                  child: AppIcon(
+                    widget.icon,
+                    color: Colors.white,
+                    size: widget.iconSize,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FocusableVideoActionButton extends StatefulWidget {
+  const _FocusableVideoActionButton({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+    required this.primary,
+    required this.autofocus,
+    this.focusNode,
+  });
+
+  final AppIconData icon;
+  final String label;
+  final VoidCallback onPressed;
+  final bool primary;
+  final bool autofocus;
+  final FocusNode? focusNode;
+
+  @override
+  State<_FocusableVideoActionButton> createState() =>
+      _FocusableVideoActionButtonState();
+}
+
+class _FocusableVideoActionButtonState
+    extends State<_FocusableVideoActionButton> {
+  bool _focused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground = widget.primary ? Colors.black : Colors.white;
+    return FocusableActionDetector(
+      autofocus: widget.autofocus,
+      focusNode: widget.focusNode,
+      shortcuts: const <ShortcutActivator, Intent>{
+        SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+        SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
+      },
+      actions: <Type, Action<Intent>>{
+        ActivateIntent: CallbackAction<ActivateIntent>(
+          onInvoke: (_) {
+            widget.onPressed();
+            return null;
+          },
+        ),
+      },
+      onShowFocusHighlight: (focused) {
+        if (_focused == focused) return;
+        setState(() => _focused = focused);
+      },
+      mouseCursor: SystemMouseCursors.click,
+      child: Semantics(
+        button: true,
+        label: widget.label,
+        onTap: widget.onPressed,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          excludeFromSemantics: true,
+          onTap: widget.onPressed,
+          child: Container(
+            height: 44,
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            decoration: BoxDecoration(
+              color: widget.primary ? Colors.white : const Color(0xFF2C2C2E),
+              border: _focused
+                  ? Border.all(
+                      color: widget.primary ? Colors.black : Colors.white,
+                      width: 2,
+                    )
+                  : null,
+              borderRadius: BorderRadius.circular(22),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AppIcon(widget.icon, size: 18, color: foreground),
+                const SizedBox(width: 8),
+                Text(
+                  widget.label,
+                  style: TextStyle(
+                    color: foreground,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

@@ -48,26 +48,13 @@ void main() {
   });
 
   group('chat opening preview', () {
-    test('uses the chat-list seed until transcript positioning is ready', () {
+    test('uses a skeleton until transcript positioning is ready', () {
       expect(
-        shouldShowSeedMessageWhileOpening(
-          initialTranscriptReady: false,
-          hasSeedMessage: true,
-        ),
+        shouldShowTranscriptSkeleton(initialTranscriptReady: false),
         isTrue,
       );
       expect(
-        shouldShowSeedMessageWhileOpening(
-          initialTranscriptReady: true,
-          hasSeedMessage: true,
-        ),
-        isFalse,
-      );
-      expect(
-        shouldShowSeedMessageWhileOpening(
-          initialTranscriptReady: false,
-          hasSeedMessage: false,
-        ),
+        shouldShowTranscriptSkeleton(initialTranscriptReady: true),
         isFalse,
       );
     });
