@@ -223,7 +223,7 @@ void main() {
         of: find.byType(BottomSheet),
         matching: find.text(telegramCocoonLabel),
       ),
-      findsNothing,
+      findsOneWidget,
     );
     await tester.tap(find.text('summary-model').last);
     await tester.pumpAndSettle();
@@ -234,7 +234,7 @@ void main() {
         of: find.byType(BottomSheet),
         matching: find.text(telegramCocoonLabel),
       ),
-      findsNothing,
+      findsOneWidget,
     );
     await tester.tap(find.text('Apple On-Device Model').last);
     await tester.pumpAndSettle();

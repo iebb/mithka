@@ -18,6 +18,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
 import '../app/app_navigator.dart';
+import '../app/desktop_video_window.dart';
 import '../app/video_split_controller.dart';
 import '../auth/telegram_country_names.dart';
 import '../call/call_manager.dart';
@@ -66,6 +67,7 @@ import 'chat_info_view.dart';
 import 'chat_input_bar.dart';
 import 'chat_media_drop_region.dart';
 import 'chat_message_merge.dart';
+import 'chat_open_performance.dart';
 import 'chat_picker_view.dart';
 import 'chat_return_to_latest_coordinator.dart';
 import 'chat_scroll_metrics.dart';
@@ -99,6 +101,7 @@ import 'rich_text_composer_view.dart';
 import 'shared_contact_sheet.dart';
 import 'sticker_set_detail_view.dart';
 import 'sticker_viewer.dart';
+import 'telegram_cocoon_unread_summary_provider.dart';
 import 'telegram_mini_app_view.dart';
 import 'telegram_rich_text.dart';
 import 'transcript_pivot_partition.dart';
@@ -3343,6 +3346,10 @@ class _ChatViewState extends State<ChatView> {
   void _playVideo(ChatMessage message, {bool muted = false}) {
     if (message.video == null) return;
     final session = _videoSession(message);
+    if (supportsDesktopVideoWindows) {
+      unawaited(_openDesktopVideoWindow(session, muted: muted));
+      return;
+    }
     if (VideoSplitController.instance.isOpen) {
       VideoSplitController.instance.play(session);
       return;
@@ -3358,6 +3365,19 @@ class _ChatViewState extends State<ChatView> {
         ),
       ),
     );
+  }
+
+  Future<void> _openDesktopVideoWindow(
+    VideoSplitSession session, {
+    required bool muted,
+  }) async {
+    final opened = await DesktopVideoWindowService.instance.open(
+      session,
+      muted: muted,
+    );
+    if (!opened && mounted) {
+      showToast(context, AppStringKeys.videoPlayerLoadFailed);
+    }
   }
 
   VideoSplitSession _videoSession(ChatMessage message) {
@@ -4259,6 +4279,7 @@ class _ChatViewState extends State<ChatView> {
     final service = AiChatTranslationService.fromSettings(
       settings,
       instructions: _translation.aiTranslationPrompt,
+      telegramAi: _vm.telegramAi,
     );
     try {
       return await service.translate(
@@ -4466,7 +4487,7 @@ class _ChatViewState extends State<ChatView> {
         height: asset.height,
       );
     } else {
-      final picked = await FilePicker.platform.pickFiles(
+      final picked = await FilePicker.pickFiles(
         type: message.contentType == 'messageAudio'
             ? FileType.audio
             : FileType.any,
@@ -4960,6 +4981,11 @@ class _ChatViewState extends State<ChatView> {
   Widget _transcriptLayer() {
     final aiSettings = context.watch<AiSettingsController?>();
     final transcriptReady = _initialTranscriptReady;
+    final seedMessage = widget.seedMessage;
+    final showSeedMessage = shouldShowSeedMessageWhileOpening(
+      initialTranscriptReady: transcriptReady,
+      hasSeedMessage: seedMessage != null,
+    );
     final newMessagesPlacement = chatNewMessagesControlPlacement(
       isScrolledUp: _showJumpDown,
       hasNewMessages: _shouldShowNewMessagesBanner,
@@ -4986,7 +5012,12 @@ class _ChatViewState extends State<ChatView> {
             ),
           ),
         ),
-        if (!transcriptReady) Positioned.fill(child: _transcriptSkeleton()),
+        if (!transcriptReady)
+          Positioned.fill(
+            child: showSeedMessage
+                ? _initialSeedMessagePreview(seedMessage!)
+                : _transcriptSkeleton(),
+          ),
         if (showPinnedTodo)
           Positioned(
             top: 12,
@@ -5033,6 +5064,95 @@ class _ChatViewState extends State<ChatView> {
             bottomIndicator == ChatBottomIndicator.jumpToBottom)
           Positioned(right: 16, bottom: 12, child: _jumpToBottomButton()),
       ],
+    );
+  }
+
+  Widget _initialSeedMessagePreview(ChatMessage message) {
+    final c = context.colors;
+    final outgoing = message.isOutgoing;
+    final bubbleColor = outgoing
+        ? (_effectiveOutgoingColor() ?? AppTheme.bubbleOutgoing)
+        : (_effectiveIncomingColor() ?? c.bubbleIncoming);
+    final textColor = outgoing
+        ? (_effectiveOutgoingTextColor() ?? AppTheme.bubbleOutgoingText)
+        : (_effectiveIncomingTextColor() ?? c.bubbleIncomingText);
+    final senderName = message.senderName?.trim() ?? '';
+    final previewText = message.text.trim().isEmpty
+        ? '\u2026'
+        : message.text.trim();
+    return IgnorePointer(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: _effectiveWallpaper() == null
+              ? c.chatBackground
+              : const Color(0x00000000),
+        ),
+        child: Align(
+          alignment: Alignment.bottomCenter,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              outgoing ? 72 : 14,
+              16,
+              outgoing ? 14 : 72,
+              14,
+            ),
+            child: Align(
+              alignment: outgoing
+                  ? Alignment.centerRight
+                  : Alignment.centerLeft,
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 420),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 13,
+                  vertical: 9,
+                ),
+                decoration: BoxDecoration(
+                  color: bubbleColor,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF000000).withValues(alpha: 0.10),
+                      blurRadius: 2,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (!outgoing && _vm.isGroup && senderName.isNotEmpty) ...[
+                      Text(
+                        senderName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: c.linkBlue,
+                          fontSize: 12,
+                          height: 1.2,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                    ],
+                    Text(
+                      previewText,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: textColor,
+                        fontSize: 15,
+                        height: 1.25,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -5301,7 +5421,6 @@ class _ChatViewState extends State<ChatView> {
     setState(() => _openingUnreadSummary = true);
 
     final configuration = settings!.configurationForFeature(AiFeature.summary);
-    final providerMode = configuration.providerMode;
     final endpoint = configuration.endpoint;
     final endpointStyle = configuration.endpointStyle;
     final model = configuration.model;
@@ -5320,7 +5439,7 @@ class _ChatViewState extends State<ChatView> {
         : null;
     final outputLanguage = Localizations.localeOf(context).toLanguageTag();
     final session = _createUnreadSummarySession(
-      providerMode: providerMode,
+      candidateKind: configuration.candidate.kind,
       endpoint: endpoint,
       endpointStyle: endpointStyle,
       model: model,
@@ -5353,7 +5472,7 @@ class _ChatViewState extends State<ChatView> {
   }
 
   _UnreadSummarySession _createUnreadSummarySession({
-    required AiProviderMode providerMode,
+    required AiModelCandidateKind candidateKind,
     required Uri? endpoint,
     required AiEndpointStyle endpointStyle,
     required String model,
@@ -5373,8 +5492,36 @@ class _ChatViewState extends State<ChatView> {
       },
     );
 
-    switch (providerMode) {
-      case AiProviderMode.applePcc:
+    switch (candidateKind) {
+      case AiModelCandidateKind.telegramCocoon:
+        const contextWindow = 8192;
+        final tokenBudget = unreadSummaryTokenBudget(
+          contextWindow,
+          trustedInstructions: unreadChatSummaryCompactTrustedInstructions,
+          maximumResponseTokens: 1300,
+          maximumPayloadTokens: 5500,
+        );
+        return _UnreadSummarySession(
+          UnreadChatSummaryService(
+            historyLoader: loader,
+            maxChunkMessages: 180,
+            maxChunks: 5,
+            maxConcurrentRequests: 1,
+            maxChunkTokenEstimate: tokenBudget.payloadTokens,
+            mergeChunkSummariesLocally: true,
+            trustedInstructions: unreadChatSummaryCompactTrustedInstructions,
+            providerCode: 'telegram_cocoon',
+            contextWindowTokens: contextWindow,
+            outputLanguage: outputLanguage,
+            initialPromptTokenEstimate: tokenBudget.initialPromptTokens,
+            reservedNonPayloadTokenEstimate:
+                tokenBudget.reservedNonPayloadTokens,
+            provider: TelegramCocoonUnreadSummaryProvider(
+              telegramAi: _vm.telegramAi,
+            ),
+          ),
+        );
+      case AiModelCandidateKind.applePcc:
         final contextWindow = math.min(
           pccContextSize ?? applePccContextTokenLimit,
           applePccContextTokenLimit,
@@ -5404,7 +5551,7 @@ class _ChatViewState extends State<ChatView> {
             ),
           ),
         );
-      case AiProviderMode.appleOnDevice:
+      case AiModelCandidateKind.appleOnDevice:
         final contextWindow = math.min(
           onDeviceContextSize ?? appleOnDeviceContextTokenLimit,
           appleOnDeviceContextTokenLimit,
@@ -5439,7 +5586,7 @@ class _ChatViewState extends State<ChatView> {
             ),
           ),
         );
-      case AiProviderMode.openAiCompatible:
+      case AiModelCandidateKind.server:
         if (endpoint == null || model.trim().isEmpty) {
           throw StateError('The summary server is not configured.');
         }

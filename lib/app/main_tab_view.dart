@@ -12,6 +12,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../auth/account_store.dart';
 import '../auth/auth_manager.dart';
@@ -34,6 +35,7 @@ import '../theme/app_theme.dart';
 import '../theme/telegram_cloud_theme.dart';
 import '../theme/theme_controller.dart';
 import '../update/update_checker.dart';
+import 'adaptive_split_layout.dart';
 import 'app_navigator.dart';
 import 'chat_deep_link_controller.dart';
 import 'unread_badge_model.dart';
@@ -60,6 +62,8 @@ class _MainTabViewState extends _MainRootViewState<MainTabView> {
 class _MainSplitRootViewState extends _MainRootViewState<MainSplitRootView> {}
 
 abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
+  static const _desktopSidebarWidthKey = 'mithka.desktopSplitSidebarWidth.v1';
+
   bool get checkForUpdates => false;
 
   int _selection = 0;
@@ -72,10 +76,15 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
   Widget? _selectedContactDetail;
   Widget? _selectedMomentDetail;
   ChatDeepLinkController? _chatDeepLinks;
+  double? _splitSidebarWidth;
+  bool _splitResizeHandleHovered = false;
 
   @override
   void initState() {
     super.initState();
+    if (isDesktopTargetPlatform()) {
+      unawaited(_restoreDesktopSidebarWidth());
+    }
     // Android-only: check GitHub Releases for a newer same-ABI build (once).
     if (checkForUpdates) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -85,6 +94,21 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) unawaited(_synchronizeInstalledCloudThemes());
     });
+  }
+
+  Future<void> _restoreDesktopSidebarWidth() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedWidth = prefs.getDouble(_desktopSidebarWidthKey);
+    if (!mounted || savedWidth == null) return;
+    setState(() => _splitSidebarWidth = savedWidth);
+  }
+
+  Future<void> _persistDesktopSidebarWidth() async {
+    if (!isDesktopTargetPlatform()) return;
+    final width = _splitSidebarWidth;
+    if (width == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_desktopSidebarWidthKey, width);
   }
 
   Future<void> _synchronizeInstalledCloudThemes() async {
@@ -432,46 +456,123 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
   ) {
     final theme = context.watch<ThemeController>();
     final size = MediaQuery.of(context).size;
-    final sidebarWidth = (size.width * 0.32).clamp(320.0, 420.0).toDouble();
+    final sidebarWidth = constrainSplitSidebarWidth(
+      requestedWidth:
+          _splitSidebarWidth ?? defaultSplitSidebarWidth(size.width),
+      totalWidth: size.width,
+    );
     return AnimatedBuilder(
       animation: _tabBar,
       builder: (context, _) => Column(
         children: [
           Expanded(
-            child: Row(
+            child: Stack(
               children: [
-                SizedBox(
-                  width: sidebarWidth,
-                  child: Column(
-                    children: [
-                      Expanded(
-                        child: _LazyTabStack(
-                          selection: selection,
-                          items: tabs,
-                          builder: (tab) => _tabletSidebarRoot(tab.index),
-                        ),
+                Row(
+                  children: [
+                    SizedBox(
+                      width: sidebarWidth,
+                      child: Column(
+                        children: [
+                          Expanded(
+                            child: _LazyTabStack(
+                              selection: selection,
+                              items: tabs,
+                              builder: (tab) => _tabletSidebarRoot(tab.index),
+                            ),
+                          ),
+                          AnimatedBuilder(
+                            animation: _unread,
+                            builder: (context, _) => _ClassicTabBar(
+                              selection: selection,
+                              onSelect: _select,
+                              items: tabs,
+                              onClearUnread: _chatListController.markAllRead,
+                              unread: _unread.countFor(theme.unreadBadgeMode),
+                            ),
+                          ),
+                        ],
                       ),
-                      AnimatedBuilder(
-                        animation: _unread,
-                        builder: (context, _) => _ClassicTabBar(
-                          selection: selection,
-                          onSelect: _select,
-                          items: tabs,
-                          onClearUnread: _chatListController.markAllRead,
-                          unread: _unread.countFor(theme.unreadBadgeMode),
-                        ),
+                    ),
+                    Expanded(
+                      child: _musicAwareContent(
+                        _tabletDetailPane(activeTabIndex),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-                Expanded(
-                  child: _musicAwareContent(_tabletDetailPane(activeTabIndex)),
+                Positioned(
+                  left: sidebarWidth - splitResizeHandleWidth / 2,
+                  top: 0,
+                  bottom: 0,
+                  child: _splitResizeHandle(
+                    totalWidth: size.width,
+                    sidebarWidth: sidebarWidth,
+                  ),
                 ),
               ],
             ),
           ),
           _fixedMusicPlayer(safeBottom: true),
         ],
+      ),
+    );
+  }
+
+  Widget _splitResizeHandle({
+    required double totalWidth,
+    required double sidebarWidth,
+  }) {
+    final dividerColor = _splitResizeHandleHovered
+        ? AppTheme.brand.withValues(alpha: 0.78)
+        : context.colors.divider;
+    return Semantics(
+      label: 'Resize sidebar',
+      child: MouseRegion(
+        cursor: SystemMouseCursors.resizeColumn,
+        onEnter: (_) {
+          if (!_splitResizeHandleHovered) {
+            setState(() => _splitResizeHandleHovered = true);
+          }
+        },
+        onExit: (_) {
+          if (_splitResizeHandleHovered) {
+            setState(() => _splitResizeHandleHovered = false);
+          }
+        },
+        child: GestureDetector(
+          key: const ValueKey('main-split-resize-handle'),
+          behavior: HitTestBehavior.opaque,
+          onHorizontalDragStart: (_) {
+            if (_splitSidebarWidth != sidebarWidth) {
+              setState(() => _splitSidebarWidth = sidebarWidth);
+            }
+          },
+          onHorizontalDragUpdate: (details) {
+            final current = _splitSidebarWidth ?? sidebarWidth;
+            final resized = constrainSplitSidebarWidth(
+              requestedWidth: current + details.delta.dx,
+              totalWidth: totalWidth,
+            );
+            if (resized != _splitSidebarWidth) {
+              setState(() => _splitSidebarWidth = resized);
+            }
+          },
+          onHorizontalDragEnd: (_) {
+            unawaited(_persistDesktopSidebarWidth());
+          },
+          child: SizedBox(
+            width: splitResizeHandleWidth,
+            child: Center(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 120),
+                curve: Curves.easeOutCubic,
+                width: _splitResizeHandleHovered ? 2 : 1,
+                color: dividerColor,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -602,8 +703,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
   }
 
   bool _usesTabletSplit(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-    return size.width > size.height && math.min(size.width, size.height) >= 600;
+    return usesAdaptiveSplitLayout(MediaQuery.of(context).size);
   }
 
   // MARK: - Drawer overlay (the "我" profile drawer)

@@ -282,7 +282,6 @@ const enMessages = <String, String>{
   'appearanceClearTextFonts': "Clear Text Fonts",
   'appearanceColor': "Color",
   'appearanceDisableChatListSwipeActions': "Disable swipe actions",
-  'appearanceSavedMessagesBookmarkView': "Saved Messages bookmark view",
   'appearanceGestures': "Gestures",
   'gesturesChatActions': "Chat actions",
   'gesturesChatListSwipe': "Chat list swipe",

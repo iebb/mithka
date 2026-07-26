@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:mithka/chat/ai_chat_translation_service.dart';
+import 'package:mithka/chat/telegram_ai_service.dart';
 import 'package:mithka/settings/ai_endpoint_style.dart';
 import 'package:mithka/settings/ai_settings_controller.dart';
 import 'package:mithka/settings/ai_stdout_logger.dart';
@@ -11,6 +12,37 @@ import 'package:mithka/settings/apple_pcc_api.dart';
 import 'package:mithka/settings/translation_api.dart';
 
 void main() {
+  test('Telegram Cocoon translation uses native TDLib composition', () async {
+    late Map<String, dynamic> captured;
+    final telegramAi = TelegramAiService(
+      queryOverride: (request) async {
+        captured = Map<String, dynamic>.of(request);
+        return {
+          '@type': 'formattedText',
+          'text': 'Bis später 👋',
+          'entities': <Map<String, dynamic>>[],
+        };
+      },
+    );
+    addTearDown(telegramAi.dispose);
+    final service = AiChatTranslationService(telegramAi: telegramAi);
+
+    final result = await service.translate(
+      text: 'See you later 👋',
+      sourceLanguageCode: 'en',
+      targetLanguageCode: 'de',
+      targetLanguageName: 'German',
+      priorMessages: const ['The meeting is finished.'],
+    );
+
+    expect(result, 'Bis später 👋');
+    expect(captured['@type'], 'composeTextWithAi');
+    expect(captured['translate_to_language_code'], 'de');
+    expect(captured['style_name'], '');
+    expect(captured['add_emojis'], isFalse);
+    expect((captured['text'] as Map)['text'], 'See you later 👋');
+  });
+
   test(
     'OpenAI-compatible translation sends context as untrusted JSON',
     () async {

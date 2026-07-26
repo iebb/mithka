@@ -3336,6 +3336,14 @@ void main() {
       expect(find.byKey(const ValueKey('messageDeliveryDot-0')), findsNothing);
       expect(find.byKey(const ValueKey('messageDeliveryDot-1')), findsNothing);
 
+      message.isSendAcknowledged = true;
+      await pumpBubble();
+      expect(find.byKey(const ValueKey('messageDeliverySent')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('messageDeliverySending')),
+        findsNothing,
+      );
+
       message.isSending = false;
       await pumpBubble();
       expect(find.byKey(const ValueKey('messageDeliverySent')), findsOneWidget);

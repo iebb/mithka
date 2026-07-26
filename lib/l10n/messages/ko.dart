@@ -269,7 +269,6 @@ const koMessages = <String, String>{
   'appearanceClearTextFonts': "텍스트 글꼴 모두 지우기",
   'appearanceColor': "색상",
   'appearanceDisableChatListSwipeActions': "스와이프 동작 끄기",
-  'appearanceSavedMessagesBookmarkView': "저장된 메시지 북마크 보기",
   'appearanceGestures': "제스처",
   'gesturesChatActions': "채팅 동작",
   'gesturesChatListSwipe': "채팅 목록 스와이프",

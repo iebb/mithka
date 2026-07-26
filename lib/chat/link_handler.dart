@@ -54,8 +54,6 @@ import '../theme/theme_controller.dart';
 import 'channel_direct_messages_view.dart';
 import 'chat_picker_view.dart';
 import 'chat_view.dart';
-import 'saved_messages_service.dart';
-import 'saved_messages_view.dart';
 import 'sticker_set_detail_view.dart';
 import 'telegram_ai_service.dart';
 import 'telegram_invoice_checkout_view.dart';
@@ -892,24 +890,26 @@ Future<void> _openSavedMessages(
   NavigatorState nav,
 ) async {
   if (!nav.mounted) return;
-  final bookmarkView = context
-      .read<ThemeController>()
-      .savedMessagesBookmarkView;
-  final Route<void> route;
-  if (bookmarkView) {
-    route = PageRouteBuilder<void>(
-      pageBuilder: (_, _, _) => const SavedMessagesView(),
-    );
-  } else {
-    final chatId = await SavedMessagesService().savedChatId();
-    if (!nav.mounted) return;
-    route = AppChatPageRoute<void>(
-      builder: (_) => ChatView(
-        chatId: chatId,
-        title: AppStrings.t(AppStringKeys.savedMessages),
-      ),
-    );
-  }
+  final option = await TdClient.shared.query({
+    '@type': 'getOption',
+    'name': 'my_id',
+  });
+  final userId = option.int64('value');
+  if (userId == null) return;
+  final chat = await TdClient.shared.query({
+    '@type': 'createPrivateChat',
+    'user_id': userId,
+    'force': false,
+  });
+  final chatId = chat.int64('id');
+  if (chatId == null) return;
+  if (!nav.mounted) return;
+  final route = AppChatPageRoute<void>(
+    builder: (_) => ChatView(
+      chatId: chatId,
+      title: AppStrings.t(AppStringKeys.savedMessages),
+    ),
+  );
   unawaited(nav.push(route));
 }
 

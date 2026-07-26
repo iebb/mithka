@@ -4,6 +4,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/tdlib/td_client.dart';
 
 void main() {
+  test('quick acknowledgement option is enabled for TDLib clients', () {
+    expect(quickAckTdlibOptionRequest(), <String, dynamic>{
+      '@type': 'setOption',
+      'name': 'use_quick_ack',
+      'value': <String, dynamic>{'@type': 'optionValueBoolean', 'value': true},
+    });
+  });
+
   test('hot restart closes every persisted native TDLib client', () {
     final sent = <(int, Map<String, dynamic>)>[];
 

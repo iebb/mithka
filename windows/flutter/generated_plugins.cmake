@@ -9,6 +9,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   fvp
   geolocator_windows
   local_auth_windows
+  multi_window_manager
   permission_handler_windows
   sentry_flutter
   url_launcher_windows

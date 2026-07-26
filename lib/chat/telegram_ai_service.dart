@@ -500,6 +500,33 @@ class TelegramAiService extends ChangeNotifier {
     ),
   );
 
+  Future<TelegramAiFormattedText> composeRich({
+    required String source,
+    required String customPrompt,
+    String translateToLanguageCode = '',
+    bool addEmojis = false,
+    int maxSourceCharacters = telegramAiReplyTranscriptMaxCharacters,
+  }) async {
+    final available = await capabilities();
+    if (!available.richCompositionSupported ||
+        !available.compositionSupported) {
+      throw UnsupportedError(
+        'Telegram Cocoon rich composition requires TDLib 1.8.66 or newer '
+        'and an available Telegram AI composition service.',
+      );
+    }
+    final response = await _queryAi(
+      buildComposeRichMessageWithAiRequest(
+        transcript: source,
+        customPrompt: customPrompt,
+        translateToLanguageCode: translateToLanguageCode,
+        addEmojis: addEmojis,
+        maxTranscriptCharacters: maxSourceCharacters,
+      ),
+    );
+    return _richMessageFormatted(response);
+  }
+
   Future<TelegramAiFormattedText> createReply({
     required String transcript,
     required String prompt,
@@ -544,6 +571,10 @@ class TelegramAiService extends ChangeNotifier {
         );
       }
     }
+    return _richMessageFormatted(response);
+  }
+
+  TelegramAiFormattedText _richMessageFormatted(Map<String, dynamic> response) {
     final content = <String, dynamic>{
       '@type': 'messageRichMessage',
       'message': response,

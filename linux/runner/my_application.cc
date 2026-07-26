@@ -6,6 +6,7 @@
 #endif
 
 #include "flutter/generated_plugin_registrant.h"
+#include <multi_window_manager/multi_window_manager_plugin.h>
 
 struct _MyApplication {
   GtkApplication parent_instance;
@@ -74,6 +75,9 @@ static void my_application_activate(GApplication* application) {
   gtk_widget_realize(GTK_WIDGET(view));
 
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
+  multi_window_manager_linux_init(GTK_APPLICATION(application),
+                                  fl_register_plugins);
+  multi_window_manager_linux_detach_flutter_quit_on_window_close(window, view);
 
   gtk_widget_grab_focus(GTK_WIDGET(view));
 }

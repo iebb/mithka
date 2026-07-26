@@ -23,13 +23,6 @@ void main() {
       AppStrings.tForLocale('zhHans', AppStringKeys.savedMessages),
       '保存的消息',
     );
-    expect(
-      AppStrings.tForLocale(
-        'zhHans',
-        AppStringKeys.appearanceSavedMessagesBookmarkView,
-      ),
-      '保存的消息书签视图',
-    );
   });
 
   test('gallery and TGS actions have native Traditional Chinese wording', () {

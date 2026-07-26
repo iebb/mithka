@@ -294,8 +294,6 @@ const deMessages = <String, String>{
   'appearanceClearTextFonts': "Textschriften löschen",
   'appearanceColor': "Farbe",
   'appearanceDisableChatListSwipeActions': "Wischaktionen deaktivieren",
-  'appearanceSavedMessagesBookmarkView':
-      "Lesezeichenansicht für gespeicherte Nachrichten",
   'appearanceGestures': "Gesten",
   'gesturesChatActions': "Chat-Aktionen",
   'gesturesChatListSwipe': "Wischen in der Chatliste",

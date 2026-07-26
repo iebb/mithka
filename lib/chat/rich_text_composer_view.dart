@@ -1197,7 +1197,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
       _RichBlockKind.voiceNote => const ['ogg', 'opus', 'm4a'],
       _ => const ['mp3', 'm4a', 'aac', 'flac', 'wav', 'ogg', 'opus'],
     };
-    final result = await FilePicker.platform.pickFiles(
+    final result = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: extensions,
     );
@@ -3248,7 +3248,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
     final remaining = _maxAttachments - _attachmentCount;
     if (remaining <= 0) return;
     try {
-      final result = await FilePicker.platform.pickFiles(allowMultiple: true);
+      final result = await FilePicker.pickFiles(allowMultiple: true);
       if (!mounted || result == null) return;
       final paths = result.files.map((file) => file.path).whereType<String>();
       _insertAttachmentsAfterActive(
@@ -3300,7 +3300,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
   }
 
   Future<void> _pickLocalSingleAudio() async {
-    final result = await FilePicker.platform.pickFiles(
+    final result = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: const [
         'mp3',
@@ -3329,7 +3329,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
     final remaining = _maxAttachments - _attachmentCount;
     if (remaining <= 0) return;
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.pickFiles(
         allowMultiple: true,
         type: FileType.custom,
         allowedExtensions: const [

@@ -21,7 +21,6 @@ import '../auth/auth_manager.dart';
 import '../call/calls_view.dart';
 import '../chat/chat_view.dart';
 import '../chat/custom_emoji.dart';
-import '../chat/saved_messages_view.dart';
 import '../chat/shared_media_view.dart';
 import '../components/app_icons.dart';
 import '../components/confirm_dialog.dart';
@@ -183,18 +182,11 @@ class _ProfileViewState extends State<ProfileView> {
 
   void _openSaved(String title) {
     final cid = _vm.savedChatId ?? _vm.user?.id ?? 0;
-    final bookmarkView = context
-        .read<ThemeController>()
-        .savedMessagesBookmarkView;
     pushAppChatRoute(
       context,
-      bookmarkView
-          ? PageRouteBuilder<void>(
-              pageBuilder: (_, _, _) => const SavedMessagesView(),
-            )
-          : AppChatPageRoute<void>(
-              builder: (_) => ChatView(chatId: cid, title: title),
-            ),
+      AppChatPageRoute<void>(
+        builder: (_) => ChatView(chatId: cid, title: title),
+      ),
     );
   }
 

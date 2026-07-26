@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/communities/community_models.dart';
 import 'package:mithka/communities/community_view.dart';
+import 'package:mithka/components/app_icons.dart';
 import 'package:mithka/components/photo_avatar.dart';
 import 'package:mithka/components/ui_components.dart';
 import 'package:mithka/l10n/app_localizations.dart';
@@ -277,7 +278,8 @@ void main() {
       expect(find.text('Race Chat'), findsOneWidget);
       expect(find.text('CHATS YOU CAN VIEW'), findsOneWidget);
       expect(find.text('Public Announcements'), findsOneWidget);
-      expect(find.text('Show as One Chat'), findsOneWidget);
+      expect(find.text('Show as One Chat'), findsNothing);
+      expect(find.byIcon(HeroAppIcons.magnifyingGlass.data), findsNothing);
 
       final header = find.byKey(const ValueKey('community-header'));
       final avatar = find.descendant(
@@ -294,8 +296,13 @@ void main() {
         greaterThan(tester.getTopRight(avatar).dx),
       );
 
-      await tester.tap(find.byType(AppSwitch));
-      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('community-header-menu')));
+      await tester.pumpAndSettle();
+      expect(find.text('Show as One Chat'), findsOneWidget);
+      expect(find.byIcon(HeroAppIcons.check.data), findsOneWidget);
+
+      await tester.tap(find.text('Show as One Chat'));
+      await tester.pumpAndSettle();
 
       expect(collapsed, isFalse);
     });

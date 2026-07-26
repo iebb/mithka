@@ -27,6 +27,7 @@ import '../tdlib/td_user_index.dart';
 import 'ai_reply_service.dart';
 import 'chat_first_contact_info.dart';
 import 'chat_message_merge.dart';
+import 'chat_open_performance.dart';
 import 'chat_unread_progress.dart';
 import 'checklist_composer_view.dart';
 import 'checklist_service.dart';
@@ -415,6 +416,7 @@ class ChatViewModel extends ChangeNotifier {
   final Set<int> _blockedSenderIds = {};
   final Set<int> _discardedPendingMessageIds = {};
   final Set<int> _settledPendingMessageIds = {};
+  final Set<int> _acknowledgedPendingMessageIds = {};
   final Map<int, Completer<void>> _messageSendWaiters = {};
   final Map<int, _MessageSendResult> _recentMessageSendResults = {};
 
@@ -452,7 +454,10 @@ class ChatViewModel extends ChangeNotifier {
   bool get canChooseMessageSender => availableMessageSenders.length > 1;
   bool get canForwardContent => !hasProtectedContent;
   bool get canLoadOlder =>
-      !_isLoadingOlder && _allMessages.isNotEmpty && _hasOlderHistory;
+      !_isLoadingOlder &&
+      !_latestHistoryLoadInFlight &&
+      _allMessages.isNotEmpty &&
+      _hasOlderHistory;
   bool get isLoadingOlder => _isLoadingOlder;
   bool get isLoadingLatest => _latestHistoryLoadInFlight;
   bool get hasOlderHistory => _hasOlderHistory;
@@ -479,6 +484,14 @@ class ChatViewModel extends ChangeNotifier {
   final Set<int> _resolvingSenders = {};
   final Set<int> _resolvedSenderDetails = {};
   bool _isDisposed = false;
+
+  bool get _chatOpenWorkIsStale => chatOpenWorkIsStale(
+    disposed: _isDisposed,
+    openingClientId: _accountClientId,
+    openingAccountSlot: _accountSlot,
+    activeClientId: _client.activeClientId,
+    activeAccountSlot: _client.activeSlot,
+  );
 
   @override
   void notifyListeners() {
@@ -539,6 +552,7 @@ class ChatViewModel extends ChangeNotifier {
       unawaited(_loadMe());
       unawaited(_loadAiCapabilities());
       await _loadChatHeader();
+      if (_chatOpenWorkIsStale) return;
       if (_restoredFromSession) {
         unawaited(_discardStaleRestoredPendingMessages());
         _resolveRichMessagesIfNeeded(messages);
@@ -556,17 +570,21 @@ class ChatViewModel extends ChangeNotifier {
       final target = initialMessageId;
       if (target != null) {
         await loadAroundMessage(target);
+        if (_chatOpenWorkIsStale) return;
       } else if (sessionAnchorMessageId != null) {
         final restored = await loadAroundMessage(
           sessionAnchorMessageId!,
           scrollToTarget: false,
           onlyLocal: true,
         );
+        if (_chatOpenWorkIsStale) return;
         if (!restored) {
           await _loadInitialHistory(openAtLatest: markReadOnOpen);
+          if (_chatOpenWorkIsStale) return;
         }
       } else {
         await _loadInitialHistory(openAtLatest: markReadOnOpen);
+        if (_chatOpenWorkIsStale) return;
       }
       initialLoaded = true;
       notifyListeners();
@@ -1211,6 +1229,7 @@ class ChatViewModel extends ChangeNotifier {
       _discardedPendingMessageIds.contains(pendingMessageId);
 
   void _discardPendingMessage(int pendingMessageId) {
+    _acknowledgedPendingMessageIds.remove(pendingMessageId);
     _discardedPendingMessageIds.add(pendingMessageId);
     _removeMessages([pendingMessageId]);
     unawaited(_deleteDiscardedPendingMessage(pendingMessageId));
@@ -2695,7 +2714,7 @@ class ChatViewModel extends ChangeNotifier {
   }
 
   Future<bool> loadLatestHistory() async {
-    if (_latestHistoryLoadInFlight) return false;
+    if (_chatOpenWorkIsStale || _latestHistoryLoadInFlight) return false;
     final requestGeneration = ++_historyWindowGeneration;
     _latestHistoryLoadInFlight = true;
     _latestHistoryLiveArrivals.clear();
@@ -2718,7 +2737,7 @@ class ChatViewModel extends ChangeNotifier {
         if (_markPeerRestricted(error)) notifyListeners();
         return false;
       }
-      if (_isDisposed ||
+      if (_chatOpenWorkIsStale ||
           _latestHistoryLoadInvalidated ||
           requestGeneration != _historyWindowGeneration) {
         return false;
@@ -2797,6 +2816,7 @@ class ChatViewModel extends ChangeNotifier {
       }
       return;
     }
+    if (_chatOpenWorkIsStale) return;
     peerTitle = chat.str('title') ?? peerTitle;
     peerPhoto = TDParse.smallPhoto(chat.obj('photo'));
     firstContactInfo = ChatFirstContactInfo.fromActionBar(
@@ -2871,6 +2891,7 @@ class ChatViewModel extends ChangeNotifier {
       _secretChatId = type?.integer('secret_chat_id');
       _applySecretChatReadiness(SecretChatReadiness.unknown, notify: false);
       await _loadSecretChatState();
+      if (_chatOpenWorkIsStale) return;
     } else {
       _secretChatId = null;
     }
@@ -2887,6 +2908,7 @@ class ChatViewModel extends ChangeNotifier {
               '@type': 'getUser',
               'user_id': uid,
             });
+            if (_chatOpenWorkIsStale) return;
             final restrictionReason = TDParse.restrictionReasonFor(user);
             if (restrictionReason != null &&
                 TDParse.isBlockingRestriction(user)) {
@@ -2906,7 +2928,10 @@ class ChatViewModel extends ChangeNotifier {
           }
           if (type?.type == 'chatTypePrivate') {
             unawaited(_loadPrivatePaidMessageInfo(uid));
-            if (peerIsBot) await _loadBotInfo(uid);
+            if (peerIsBot) {
+              await _loadBotInfo(uid);
+              if (_chatOpenWorkIsStale) return;
+            }
           }
         }
       case 'chatTypeBasicGroup':
@@ -2920,6 +2945,7 @@ class ChatViewModel extends ChangeNotifier {
               '@type': 'getBasicGroup',
               'basic_group_id': gid,
             });
+            if (_chatOpenWorkIsStale) return;
             memberCount = bg.integer('member_count') ?? 0;
             _applyGroupStatus(bg.obj('status'));
           } catch (_) {}
@@ -2936,6 +2962,7 @@ class ChatViewModel extends ChangeNotifier {
               '@type': 'getSupergroup',
               'supergroup_id': sgid,
             });
+            if (_chatOpenWorkIsStale) return;
             final restrictionReason = TDParse.restrictionReasonFor(sg);
             if (restrictionReason != null &&
                 TDParse.isBlockingRestriction(sg)) {
@@ -3510,6 +3537,7 @@ class ChatViewModel extends ChangeNotifier {
       unreadCount: unreadCount,
     )) {
       final loaded = await _loadInitialAroundLastRead();
+      if (_chatOpenWorkIsStale) return;
       // A chat-list preview hit can satisfy around-last-read with one local
       // bubble. Fall through to latest hydration so the open path does not
       // settle until the user scrolls.
@@ -3523,13 +3551,16 @@ class ChatViewModel extends ChangeNotifier {
       lastReadInboxId,
       onlyLocal: true,
     );
+    if (_chatOpenWorkIsStale) return false;
     if (loadedLocal) {
       if (isThinInitialHistoryWindow(messages.length)) {
-        return loadAroundMessage(
+        final loadedRemote = await loadAroundMessage(
           lastReadInboxId,
           scrollToTarget: false,
           replaceCurrentWindow: false,
         );
+        if (_chatOpenWorkIsStale) return false;
+        return loadedRemote;
       }
       unawaited(
         loadAroundMessage(
@@ -3544,30 +3575,27 @@ class ChatViewModel extends ChangeNotifier {
   }
 
   Future<void> _loadInitialLatestHistory() async {
+    if (_chatOpenWorkIsStale) return;
     anchoredHistory = false;
     _historyAnchorMessageId = null;
     final localLoaded = await _fetchHistory(0, 0, 40, onlyLocal: true);
-    if (!localLoaded) {
-      await _fetchHistory(0, 0, 40);
-    } else if (isThinInitialHistoryWindow(messages.length)) {
-      // Await the remote page for preview-sized local caches. Fire-and-forget
-      // left the UI on a single bubble until a scroll triggered loadOlder.
-      await _fetchHistory(0, 0, 40);
-    } else {
-      unawaited(_fetchHistory(0, 0, 40));
+    if (_chatOpenWorkIsStale) return;
+    if (shouldHydrateInitialHistoryInBackground(
+      loadedMessageCount: _allMessages.length,
+    )) {
+      // The chat-list seed or a local TDLib page is enough to make the view
+      // interactive. Refreshing through loadLatestHistory publishes its own
+      // completion notification and blocks short-window paging from racing the
+      // same remote request.
+      unawaited(loadLatestHistory());
+      return;
     }
-    if (_allMessages.isEmpty) return;
-    // Render the first page immediately. Older unread-boundary paging used to
-    // happen here and could block a large media channel for seconds on cold
-    // cache before any UI appeared.
-    if (isThinInitialHistoryWindow(messages.length)) {
-      await _fetchHistory(_allMessages.first.id, 0, 40);
-    }
+    if (!localLoaded) await _fetchHistory(0, 0, 40);
   }
 
   Future<void> _hydrateRestoredLatestHistory() async {
     await _fetchHistory(0, 0, 40, onlyLocal: true);
-    if (_isDisposed) return;
+    if (_chatOpenWorkIsStale) return;
     await _fetchHistory(0, 0, 40);
   }
 
@@ -3577,6 +3605,7 @@ class ChatViewModel extends ChangeNotifier {
     bool scrollToTarget = true,
     bool replaceCurrentWindow = true,
   }) async {
+    if (_chatOpenWorkIsStale) return false;
     final requestGeneration = replaceCurrentWindow
         ? ++_historyWindowGeneration
         : _historyWindowGeneration;
@@ -3594,6 +3623,10 @@ class ChatViewModel extends ChangeNotifier {
     } catch (_) {
       // A missing or restricted target message doesn't imply the containing
       // chat is restricted. Load its surrounding history when available.
+    }
+
+    if (_chatOpenWorkIsStale || requestGeneration != _historyWindowGeneration) {
+      return false;
     }
 
     try {
@@ -3614,7 +3647,7 @@ class ChatViewModel extends ChangeNotifier {
       if (_markPeerRestricted(error)) notifyListeners();
     }
 
-    if (_isDisposed || requestGeneration != _historyWindowGeneration) {
+    if (_chatOpenWorkIsStale || requestGeneration != _historyWindowGeneration) {
       return false;
     }
     if (batch.isEmpty) return false;
@@ -3773,6 +3806,7 @@ class ChatViewModel extends ChangeNotifier {
     bool isOlder = false,
     bool onlyLocal = false,
   }) async {
+    if (_chatOpenWorkIsStale) return false;
     final requestGeneration = _historyWindowGeneration;
     Map<String, dynamic> response;
     try {
@@ -3788,7 +3822,7 @@ class ChatViewModel extends ChangeNotifier {
       if (_markPeerRestricted(error)) notifyListeners();
       return false;
     }
-    if (_isDisposed || requestGeneration != _historyWindowGeneration) {
+    if (_chatOpenWorkIsStale || requestGeneration != _historyWindowGeneration) {
       return false;
     }
 
@@ -4028,6 +4062,7 @@ class ChatViewModel extends ChangeNotifier {
         final oldMessageId = update.int64('old_message_id');
         final rawSentMessage = update.obj('message');
         if (oldMessageId == null || rawSentMessage == null) return;
+        _acknowledgedPendingMessageIds.remove(oldMessageId);
         if (_latestHistoryLoadInFlight) {
           _latestHistoryLiveArrivals.remove(oldMessageId);
           final sentMessage = TDParse.message(rawSentMessage);
@@ -4041,10 +4076,25 @@ class ChatViewModel extends ChangeNotifier {
           const _MessageSendResult.success(),
         );
 
+      case 'updateMessageSendAcknowledged':
+        if (update.int64('chat_id') != chatId) return;
+        final messageId = update.int64('message_id');
+        if (messageId == null) return;
+        _rememberAcknowledgedPendingMessageId(messageId);
+        final targets = _messageRefs(messageId);
+        if (targets.isEmpty) return;
+        for (final message in targets) {
+          message.isSendAcknowledged = true;
+        }
+        // Publish a new transcript list so ChatView's identity-based memo
+        // rebuilds the bubble immediately instead of retaining its spinner.
+        _applyKeywordFilter();
+
       case 'updateMessageSendFailed':
         if (update.int64('chat_id') != chatId) return;
         final oldMessageId = update.int64('old_message_id');
         if (oldMessageId == null) return;
+        _acknowledgedPendingMessageIds.remove(oldMessageId);
         if (_latestHistoryLoadInFlight) {
           _latestHistoryLiveArrivals.remove(oldMessageId);
         }
@@ -4811,6 +4861,9 @@ class ChatViewModel extends ChangeNotifier {
   void _merge(List<ChatMessage> incoming) {
     if (incoming.isEmpty) return;
     for (final message in incoming) {
+      if (_acknowledgedPendingMessageIds.contains(message.id)) {
+        message.isSendAcknowledged = true;
+      }
       if (_locallyViewedMentionIds.contains(message.id)) {
         message.containsUnreadMention = false;
       }
@@ -4834,6 +4887,9 @@ class ChatViewModel extends ChangeNotifier {
   }) {
     if (incoming.isEmpty) return;
     for (final message in incoming) {
+      if (_acknowledgedPendingMessageIds.contains(message.id)) {
+        message.isSendAcknowledged = true;
+      }
       if (_locallyViewedMentionIds.contains(message.id)) {
         message.containsUnreadMention = false;
       }
@@ -4856,6 +4912,15 @@ class ChatViewModel extends ChangeNotifier {
     _settledPendingMessageIds.add(messageId);
     while (_settledPendingMessageIds.length > 256) {
       _settledPendingMessageIds.remove(_settledPendingMessageIds.first);
+    }
+  }
+
+  void _rememberAcknowledgedPendingMessageId(int messageId) {
+    _acknowledgedPendingMessageIds.add(messageId);
+    while (_acknowledgedPendingMessageIds.length > 256) {
+      _acknowledgedPendingMessageIds.remove(
+        _acknowledgedPendingMessageIds.first,
+      );
     }
   }
 
@@ -5244,6 +5309,11 @@ class ChatViewModel extends ChangeNotifier {
   @visibleForTesting
   void applyLiveUpdateForTesting(Map<String, dynamic> update) {
     _handle(update);
+  }
+
+  @visibleForTesting
+  void mergeMessageForTesting(ChatMessage message) {
+    _merge([message]);
   }
 
   void _applySenderUserUpdate(Map<String, dynamic> user) {

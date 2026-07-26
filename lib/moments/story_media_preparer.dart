@@ -2,8 +2,8 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:image/image.dart' as image_lib;
+import 'package:light_compressor_v2/light_compressor_v2.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:video_compress/video_compress.dart';
 
 import 'story_service.dart';
 
@@ -31,6 +31,8 @@ List<StoryVideoSegment> planStoryVideoSegments(
 
 class StoryMediaPreparer {
   const StoryMediaPreparer();
+
+  LightCompressor get _videoCompressor => LightCompressor();
 
   Future<StoryMediaDraft> preparePhoto(
     String path, {
@@ -78,8 +80,8 @@ class StoryMediaPreparer {
   }
 
   Future<Duration> videoDuration(String path) async {
-    final info = await VideoCompress.getMediaInfo(path);
-    return Duration(milliseconds: (info.duration ?? 0).round());
+    final info = await _videoCompressor.getMediaInfo(path);
+    return info.duration ?? Duration.zero;
   }
 
   Future<List<StoryMediaDraft>> prepareVideo(
@@ -92,22 +94,35 @@ class StoryMediaPreparer {
     final result = <StoryMediaDraft>[];
     for (var i = 0; i < segments.length; i++) {
       final segment = segments[i];
-      final media = await VideoCompress.compressVideo(
-        path,
-        quality: VideoQuality.Res1280x720Quality,
-        startTime: segment.startSecond,
-        duration: segment.duration,
-        includeAudio: true,
+      final media = await _videoCompressor.compressVideo(
+        path: path,
+        videoQuality: VideoQuality.high,
+        android: AndroidConfig(isSharedStorage: false),
+        ios: IOSConfig(saveInGallery: false),
+        video: Video(
+          videoName:
+              'mithka_story_${DateTime.now().microsecondsSinceEpoch}_$i.mp4',
+          videoWidth: 1280,
+          videoHeight: 720,
+          videoFps: 30,
+        ),
+        isMinBitrateCheckEnabled: false,
+        edit: VideoEdit(
+          trimStartMs: segment.startSecond * 1000,
+          trimEndMs: (segment.startSecond + segment.duration) * 1000,
+        ),
       );
-      final outputPath = media?.path;
+      final outputPath = media is OnSuccess ? media.destinationPath : null;
       if (outputPath == null || outputPath.isEmpty) {
         throw StateError('Video segment ${i + 1} could not be prepared');
       }
-      final durationMs = media?.duration ?? segment.duration * 1000;
+      final outputDuration = media is OnSuccess
+          ? media.duration
+          : segment.duration.toDouble();
       result.add(
         StoryMediaDraft.video(
           path: outputPath,
-          duration: (durationMs / 1000).clamp(0.001, 60),
+          duration: outputDuration.clamp(0.001, 60),
           addedStickerFileIds: addedStickerFileIds,
         ),
       );
@@ -116,5 +131,5 @@ class StoryMediaPreparer {
     return result;
   }
 
-  Future<void> cancel() => VideoCompress.cancelCompression();
+  Future<void> cancel() => _videoCompressor.cancelCompression();
 }

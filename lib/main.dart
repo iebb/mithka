@@ -18,6 +18,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:fvp/fvp.dart' as fvp;
 import 'package:google_fonts/google_fonts.dart';
+import 'package:multi_window_manager/multi_window_manager.dart';
 import 'package:provider/provider.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -27,6 +28,7 @@ import 'app/app_performance_controller.dart';
 import 'app/app_version.dart';
 import 'app/chat_deep_link_controller.dart';
 import 'app/content_view.dart';
+import 'app/desktop_video_window.dart';
 import 'app/global_video_split_host.dart';
 import 'app/telemetry_config.dart';
 import 'auth/account_store.dart';
@@ -64,7 +66,24 @@ import 'tdlib/td_client.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_controller.dart';
 
-Future<void> main() async {
+Future<void> main(List<String> arguments) async {
+  if (supportsDesktopVideoWindows) {
+    WidgetsFlutterBinding.ensureInitialized();
+    final windowId = arguments.isEmpty ? 0 : int.tryParse(arguments.first) ?? 0;
+    if (windowId == 0) {
+      await MultiWindowManager.ensureInitialized(0);
+    } else {
+      await MultiWindowManager.ensureInitializedSecondary(windowId);
+    }
+    final videoArguments = DesktopVideoWindowArguments.tryParse(
+      windowId > 0 && arguments.length > 1 ? arguments[1] : '',
+    );
+    if (videoArguments != null) {
+      if (_shouldUseFvp()) fvp.registerWith();
+      runApp(DesktopVideoWindowApp(arguments: videoArguments));
+      return;
+    }
+  }
   if (!sentryEnabled) {
     WidgetsFlutterBinding.ensureInitialized();
     configureAppImageCache();

@@ -145,6 +145,15 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
           defaultPresentSound: false,
           defaultPresentBadge: false,
         ),
+        macOS: DarwinInitializationSettings(
+          requestAlertPermission: false,
+          requestBadgePermission: false,
+          requestSoundPermission: false,
+          defaultPresentBanner: false,
+          defaultPresentList: false,
+          defaultPresentSound: false,
+          defaultPresentBadge: false,
+        ),
       ),
       onDidReceiveNotificationResponse: _openNotification,
     );
@@ -191,7 +200,14 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
             IOSFlutterLocalNotificationsPlugin
           >()
           ?.requestPermissions(alert: true, badge: true, sound: true);
-      if (androidGranted == false || iosGranted == false) {
+      final macosGranted = await _plugin
+          .resolvePlatformSpecificImplementation<
+            MacOSFlutterLocalNotificationsPlugin
+          >()
+          ?.requestPermissions(alert: true, badge: true, sound: true);
+      if (androidGranted == false ||
+          iosGranted == false ||
+          macosGranted == false) {
         _notificationsAvailable = false;
       }
     } on PlatformException catch (error) {

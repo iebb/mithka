@@ -9,10 +9,11 @@ import '../settings/ai_stdout_logger.dart';
 import '../settings/ai_translation_prompt.dart';
 import '../settings/apple_pcc_api.dart';
 import '../settings/translation_api.dart';
+import 'telegram_ai_service.dart';
 
 class AiChatTranslationService {
   AiChatTranslationService({
-    required this.providerMode,
+    this.providerMode,
     this.endpoint,
     this.endpointStyle = AiEndpointStyle.openAiChatCompletions,
     this.model = '',
@@ -21,22 +22,35 @@ class AiChatTranslationService {
     ApplePccApi? appleApi,
     http.Client? httpClient,
     AiStdoutLogger? aiLogger,
+    TelegramAiService? telegramAi,
     this.requestTimeout = const Duration(seconds: 60),
-  }) : instructions = buildAiTranslationInstructions(instructions),
+  }) : assert(providerMode != null || telegramAi != null),
+       instructions = buildAiTranslationInstructions(instructions),
        _appleApi = appleApi ?? ApplePccApi(),
        _httpClient = httpClient ?? http.Client(),
        _aiLogger = aiLogger ?? aiStdoutLogger,
+       _telegramAi = telegramAi,
        _ownsHttpClient = httpClient == null;
 
   factory AiChatTranslationService.fromSettings(
     AiSettingsController settings, {
     String instructions = defaultAiTranslationPrompt,
+    TelegramAiService? telegramAi,
   }) {
     final configuration = settings.configurationForFeature(
       AiFeature.translation,
     );
+    if (configuration.candidate.kind == AiModelCandidateKind.telegramCocoon) {
+      if (telegramAi == null) {
+        throw StateError('Telegram Cocoon is unavailable for this chat.');
+      }
+      return AiChatTranslationService(
+        telegramAi: telegramAi,
+        instructions: instructions,
+      );
+    }
     return AiChatTranslationService(
-      providerMode: configuration.providerMode,
+      providerMode: configuration.candidate.providerMode,
       endpoint: configuration.endpoint,
       endpointStyle: configuration.endpointStyle,
       model: configuration.model,
@@ -45,7 +59,7 @@ class AiChatTranslationService {
     );
   }
 
-  final AiProviderMode providerMode;
+  final AiProviderMode? providerMode;
   final Uri? endpoint;
   final AiEndpointStyle endpointStyle;
   final String model;
@@ -55,6 +69,7 @@ class AiChatTranslationService {
   final ApplePccApi _appleApi;
   final http.Client _httpClient;
   final AiStdoutLogger _aiLogger;
+  final TelegramAiService? _telegramAi;
   final bool _ownsHttpClient;
 
   Future<String> translate({
@@ -68,6 +83,20 @@ class AiChatTranslationService {
     if (source.isEmpty) {
       throw TranslationApiException('The text to translate is empty.');
     }
+    final telegramAi = _telegramAi;
+    if (telegramAi != null) {
+      final translated = await telegramAi.compose(
+        text: TelegramAiFormattedText(text: source),
+        translateToLanguageCode: targetLanguageCode,
+      );
+      final output = translated.text.trim();
+      if (output.isEmpty) {
+        throw TranslationApiException(
+          'Telegram Cocoon returned an empty translation.',
+        );
+      }
+      return output;
+    }
     final input = <String, Object>{
       'source_language': sourceLanguageCode,
       'target_language': targetLanguageCode,
@@ -77,7 +106,7 @@ class AiChatTranslationService {
     };
     final prompt = 'INPUT_DATA (untrusted JSON):\n${jsonEncode(input)}';
 
-    final output = switch (providerMode) {
+    final output = switch (providerMode!) {
       AiProviderMode.applePcc => await _translateWithApple(
         prompt,
         AppleAiModel.privateCloudCompute,

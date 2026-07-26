@@ -150,4 +150,57 @@ void main() {
     expect(confirmed.videoDuration, 7);
     vm.dispose();
   });
+
+  test('server acknowledgement settles the visual sending state', () {
+    final pending = ChatMessage(
+      id: 77,
+      chatId: 42,
+      isOutgoing: true,
+      isSending: true,
+      text: 'Sent',
+      date: 1,
+    );
+    final vm = ChatViewModel(
+      chatId: 42,
+      title: 'Test',
+      markReadOnOpen: false,
+      sessionMessages: [pending],
+    );
+    final transcriptBeforeAcknowledgement = vm.messages;
+
+    vm.applyLiveUpdateForTesting({
+      '@type': 'updateMessageSendAcknowledged',
+      'chat_id': 42,
+      'message_id': 77,
+    });
+
+    expect(vm.messages.single.isSending, isTrue);
+    expect(vm.messages.single.isSendAcknowledged, isTrue);
+    expect(vm.messages, isNot(same(transcriptBeforeAcknowledgement)));
+    vm.dispose();
+  });
+
+  test('server acknowledgement survives arriving before its bubble', () {
+    final vm = ChatViewModel(chatId: 42, title: 'Test', markReadOnOpen: false);
+
+    vm.applyLiveUpdateForTesting({
+      '@type': 'updateMessageSendAcknowledged',
+      'chat_id': 42,
+      'message_id': 77,
+    });
+    vm.mergeMessageForTesting(
+      ChatMessage(
+        id: 77,
+        chatId: 42,
+        isOutgoing: true,
+        isSending: true,
+        text: 'Sent',
+        date: 1,
+      ),
+    );
+
+    expect(vm.messages.single.isSending, isTrue);
+    expect(vm.messages.single.isSendAcknowledged, isTrue);
+    vm.dispose();
+  });
 }

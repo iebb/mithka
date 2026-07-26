@@ -965,16 +965,6 @@ class ThemeController extends ChangeNotifier {
       },
     );
     _showChatListSearch = _prefs.getBool(_chatListSearchKey) ?? true;
-    final storedSavedMessagesBookmarkView = _prefs.getBool(
-      _savedMessagesBookmarkViewKey,
-    );
-    _savedMessagesBookmarkView =
-        storedSavedMessagesBookmarkView ??
-        _prefs.getBool(_legacyDisplayOwnChatAsFavoritesKey) ??
-        false;
-    if (storedSavedMessagesBookmarkView == null) {
-      _prefs.setBool(_savedMessagesBookmarkViewKey, _savedMessagesBookmarkView);
-    }
     _hideSidebarPhone = _prefs.getBool(_hideSidebarPhoneKey) ?? false;
     _showMemberTags = _prefs.getBool(_memberTagsKey) ?? false;
     _showPlainMemberRoleTags = _prefs.getBool(_plainMemberRoleTagsKey) ?? false;
@@ -1101,9 +1091,6 @@ class ThemeController extends ChangeNotifier {
   // Retained only to migrate the former show/hide toggle.
   static const _chatFolderFilterKey = 'showChatFolderFilter';
   static const _chatListSearchKey = 'showChatListSearch';
-  static const _savedMessagesBookmarkViewKey = 'savedMessagesBookmarkView';
-  static const _legacyDisplayOwnChatAsFavoritesKey =
-      'displayOwnChatAsFavorites';
   static const _hideSidebarPhoneKey = 'hideSidebarPhone';
   static const _memberTagsKey = 'showMemberTags';
   static const _plainMemberRoleTagsKey = 'showPlainMemberRoleTags';
@@ -1169,7 +1156,6 @@ class ThemeController extends ChangeNotifier {
   late bool _animateStatusEmoji;
   late ChatFolderDisplayMode _chatFolderDisplayMode;
   bool _showChatListSearch = true;
-  bool _savedMessagesBookmarkView = false;
   bool _hideSidebarPhone = false;
   bool _showMemberTags = false;
   bool _showPlainMemberRoleTags = false;
@@ -1502,7 +1488,6 @@ class ThemeController extends ChangeNotifier {
   bool get animateStatusEmoji => _animateStatusEmoji;
   ChatFolderDisplayMode get chatFolderDisplayMode => _chatFolderDisplayMode;
   bool get showChatListSearch => _showChatListSearch;
-  bool get savedMessagesBookmarkView => _savedMessagesBookmarkView;
   bool get hideSidebarPhone => _hideSidebarPhone;
   bool get showMemberTags => _showMemberTags;
   bool get showPlainMemberRoleTags => _showPlainMemberRoleTags;
@@ -2037,13 +2022,6 @@ class ThemeController extends ChangeNotifier {
     if (_chatFolderDisplayMode == value) return;
     _chatFolderDisplayMode = value;
     _prefs.setString(_chatFolderDisplayModeKey, value.name);
-    notifyListeners();
-  }
-
-  set savedMessagesBookmarkView(bool value) {
-    if (_savedMessagesBookmarkView == value) return;
-    _savedMessagesBookmarkView = value;
-    _prefs.setBool(_savedMessagesBookmarkViewKey, value);
     notifyListeners();
   }
 

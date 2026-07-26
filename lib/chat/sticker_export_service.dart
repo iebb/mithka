@@ -120,7 +120,7 @@ class StickerExportService {
       }
 
       final bytes = await output.readAsBytes();
-      final selectedPath = await FilePicker.platform.saveFile(
+      final selectedPath = await FilePicker.saveFile(
         fileName: output.uri.pathSegments.last,
         type: FileType.custom,
         allowedExtensions: [format.extension],
@@ -193,10 +193,9 @@ class StickerExportService {
       }
 
       final bytes = ZipEncoder().encode(archive);
-      if (bytes == null) return StickerExportResult.failed;
       final baseName = _safeFileName(title.trim().isEmpty ? 'stickers' : title);
       final formatName = _setArchiveFormatName(stickers, format);
-      final selectedPath = await FilePicker.platform.saveFile(
+      final selectedPath = await FilePicker.saveFile(
         fileName: '$baseName-$formatName.zip',
         type: FileType.custom,
         allowedExtensions: const ['zip'],
@@ -345,7 +344,9 @@ class StickerExportService {
     StickerExportFormat format,
   ) async {
     final compressed = await input.readAsBytes();
-    final json = Uint8List.fromList(GZipDecoder().decodeBytes(compressed));
+    final json = Uint8List.fromList(
+      const GZipDecoder().decodeBytes(compressed),
+    );
     final composition = await LottieComposition.fromBytes(json);
     final drawable = LottieDrawable(composition);
     final originalWidth = composition.bounds.width;
@@ -398,7 +399,9 @@ class StickerExportService {
   @visibleForTesting
   static Uint8List? decodeTgsLottie(Uint8List compressed) {
     try {
-      final json = Uint8List.fromList(GZipDecoder().decodeBytes(compressed));
+      final json = Uint8List.fromList(
+        const GZipDecoder().decodeBytes(compressed),
+      );
       final document = jsonDecode(utf8.decode(json));
       if (document is! Map<String, dynamic> ||
           document['fr'] is! num ||

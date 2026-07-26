@@ -294,8 +294,6 @@ const esMessages = <String, String>{
   'appearanceClearTextFonts': "Borrar fuentes de texto",
   'appearanceColor': "Color",
   'appearanceDisableChatListSwipeActions': "Desactivar gestos laterales",
-  'appearanceSavedMessagesBookmarkView':
-      "Vista de marcadores de Mensajes guardados",
   'appearanceGestures': "Gestos",
   'gesturesChatActions': "Acciones del chat",
   'gesturesChatListSwipe': "Deslizar en la lista de chats",

@@ -268,7 +268,6 @@ const jaMessages = <String, String>{
   'appearanceClearTextFonts': "テキストフォントをクリア",
   'appearanceColor': "色",
   'appearanceDisableChatListSwipeActions': "スワイプ操作を無効化",
-  'appearanceSavedMessagesBookmarkView': "保存済みメッセージのブックマーク表示",
   'appearanceGestures': "ジェスチャー",
   'gesturesChatActions': "チャット操作",
   'gesturesChatListSwipe': "チャット一覧のスワイプ",

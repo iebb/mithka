@@ -43,6 +43,7 @@ import 'file_detail_view.dart';
 import 'link_handler.dart';
 import 'location_detail_view.dart';
 import 'looping_video_view.dart';
+import 'media_preview_geometry.dart';
 import 'message_action_menu.dart';
 import 'message_special_content.dart';
 import 'music_player_controller.dart';
@@ -352,7 +353,8 @@ class _MessageBubbleState extends State<MessageBubble>
     return math.max(1.0, width * _bubbleMaxWidthFraction);
   }
 
-  double _mediaMaxWidth() => _bubbleMaxWidth();
+  double _mediaMaxWidth() =>
+      math.min(_bubbleMaxWidth(), telegramDesktopMediaPreviewMaxSide);
 
   double _chatFontSize(double base) =>
       context.watch<ThemeController>().chatTextSize(base);
@@ -1059,7 +1061,7 @@ class _MessageBubbleState extends State<MessageBubble>
       clipBehavior: Clip.none,
       children: [
         child,
-        Positioned(right: 5, bottom: 3, child: _floatingMeta(outgoing)),
+        Positioned(right: 2, bottom: 2, child: _floatingMeta(outgoing)),
       ],
     );
   }
@@ -1069,7 +1071,9 @@ class _MessageBubbleState extends State<MessageBubble>
         ? _outgoingTextColor.withValues(alpha: 0.72)
         : context.colors.textTertiary;
     final content = Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+      padding: outgoing
+          ? EdgeInsets.zero
+          : const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -1077,12 +1081,12 @@ class _MessageBubbleState extends State<MessageBubble>
             AppIcon(
               HeroAppIcons.penToSquare,
               key: const ValueKey('messageDeliveryEdited'),
-              size: 13,
+              size: 10,
               color: faint,
             )
           else if (outgoing)
             _MessageDeliveryIndicator(
-              isSending: message.isSending,
+              isSending: message.isSending && !message.isSendAcknowledged,
               pendingColor: _outgoingTextColor,
               size: 10,
             ),
@@ -3127,14 +3131,14 @@ class _MessageBubbleState extends State<MessageBubble>
               AppIcon(
                 HeroAppIcons.penToSquare,
                 key: const ValueKey('messageDeliveryEdited'),
-                size: 11,
+                size: 10,
                 color: faint,
               )
             else if (outgoing)
               _MessageDeliveryIndicator(
-                isSending: message.isSending,
+                isSending: message.isSending && !message.isSendAcknowledged,
                 pendingColor: _outgoingTextColor,
-                size: 9,
+                size: 10,
               ),
           ],
         ),
@@ -3808,13 +3812,18 @@ class _MessageBubbleState extends State<MessageBubble>
       (logical * MediaQuery.devicePixelRatioOf(context)).ceil();
 
   Widget _imageContent(TdFileRef image, bool outgoing) {
-    final imageSize = _imageDisplaySize();
+    final geometry = _imagePreviewGeometry();
+    final imageSize = geometry.contentSize;
     final caption = _caption();
-    final usesBlurredFrame =
+    final widensForCaption =
         caption != null && _usesBlurredImageFrame(imageSize);
-    final frameSize = usesBlurredFrame
-        ? Size(_mediaMaxWidth(), imageSize.height)
-        : imageSize;
+    final frameSize = widensForCaption
+        ? Size(
+            _mediaMaxWidth(),
+            math.max(imageSize.height, geometry.frameSize.height),
+          )
+        : geometry.frameSize;
+    final usesBlurredFrame = geometry.needsBlurredFill || widensForCaption;
     final grouped = _groupsMediaCaption(caption);
     final mediaRadius = grouped ? 0.0 : 10.0;
     final mediaBorderRadius = _messageBorderRadius(mediaRadius);
@@ -3902,8 +3911,12 @@ class _MessageBubbleState extends State<MessageBubble>
     Size frameSize,
     BorderRadius borderRadius,
   ) {
-    final frameCacheWidth = _cachePx(frameSize.width);
-    final frameCacheHeight = _cachePx(frameSize.height);
+    final blurredSource = image.thumbnail ?? image;
+    final blurredCacheWidth = math.min(_cachePx(frameSize.width), _cachePx(96));
+    final blurredCacheHeight = math.min(
+      _cachePx(frameSize.height),
+      _cachePx(96),
+    );
     return ClipRRect(
       borderRadius: borderRadius,
       child: Stack(
@@ -3914,10 +3927,10 @@ class _MessageBubbleState extends State<MessageBubble>
             child: Transform.scale(
               scale: 1.08,
               child: TDImage(
-                photo: image,
+                photo: blurredSource,
                 cornerRadius: 0,
-                cacheWidth: frameCacheWidth,
-                cacheHeight: frameCacheHeight,
+                cacheWidth: blurredCacheWidth,
+                cacheHeight: blurredCacheHeight,
               ),
             ),
           ),
@@ -4135,13 +4148,14 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   Size _imageDisplaySize() {
-    final maxWidth = _mediaMaxWidth();
-    return _fitSize(
-      width: message.imageWidth,
-      height: message.imageHeight,
-      maxWidth: maxWidth,
-      maxHeight: maxWidth,
-      fallback: Size(maxWidth, maxWidth),
+    return _imagePreviewGeometry().frameSize;
+  }
+
+  MediaPreviewGeometry _imagePreviewGeometry() {
+    return telegramDesktopMediaPreviewGeometry(
+      sourceWidth: message.imageWidth,
+      sourceHeight: message.imageHeight,
+      availableWidth: _mediaMaxWidth(),
     );
   }
 

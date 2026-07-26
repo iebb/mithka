@@ -620,6 +620,7 @@ class ChatMessage {
     this.richMessageIsFull = true,
     this.isEdited = false,
     this.isSending = false,
+    this.isSendAcknowledged = false,
     this.viewCount = 0,
     this.forwardCount = 0,
     this.hasCommentThread = false,
@@ -722,6 +723,7 @@ class ChatMessage {
 
   bool isEdited; // shows a "已编辑" tag
   bool isSending;
+  bool isSendAcknowledged;
   int viewCount;
   int forwardCount;
   bool hasCommentThread;

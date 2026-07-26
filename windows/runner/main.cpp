@@ -2,8 +2,11 @@
 #include <flutter/flutter_view_controller.h>
 #include <windows.h>
 
+#include <iostream>
+
 #include "flutter_window.h"
 #include "utils.h"
+#include "multi_window_manager/multi_window_manager_plugin.h"
 
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command) {
@@ -31,6 +34,20 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);
+
+  MultiWindowManagerPluginSetWindowCreatedCallback(
+      [](std::vector<std::string> child_arguments) {
+        flutter::DartProject child_project(L"data");
+        child_project.set_dart_entrypoint_arguments(std::move(child_arguments));
+        auto child = std::make_shared<FlutterWindow>(child_project);
+        const Win32Window::Point child_origin(40, 40);
+        const Win32Window::Size child_size(880, 520);
+        if (!child->Create(L"Mithka Video", child_origin, child_size)) {
+          std::cerr << "Failed to create a video window" << std::endl;
+        }
+        child->SetQuitOnClose(false);
+        return child;
+      });
 
   ::MSG msg;
   while (::GetMessage(&msg, nullptr, 0, 0)) {

@@ -25,6 +25,8 @@ import '../theme/date_text.dart';
 import '../theme/theme_controller.dart';
 import 'community_models.dart';
 
+enum _CommunityHeaderAction { toggleCollapsed }
+
 class CommunityChatListRow extends StatelessWidget {
   const CommunityChatListRow({
     super.key,
@@ -263,11 +265,7 @@ class CommunityView extends StatefulWidget {
 }
 
 class _CommunityViewState extends State<CommunityView> {
-  final TextEditingController _searchController = TextEditingController();
-  final FocusNode _searchFocus = FocusNode();
   late bool _collapsed = widget.community.collapsed;
-  bool _searching = false;
-  String _query = '';
 
   List<ChatSummary> get _currentChats =>
       widget.chatsProvider?.call() ?? widget.chats;
@@ -295,8 +293,6 @@ class _CommunityViewState extends State<CommunityView> {
   @override
   void dispose() {
     widget.updates?.removeListener(_handleUpdates);
-    _searchController.dispose();
-    _searchFocus.dispose();
     super.dispose();
   }
 
@@ -307,9 +303,8 @@ class _CommunityViewState extends State<CommunityView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final query = _query.trim().toLowerCase();
-    final chats = _filtered(_currentChats, query);
-    final viewableChats = _filtered(_currentViewableChats, query);
+    final chats = _currentChats;
+    final viewableChats = _currentViewableChats;
     final hasResults = chats.isNotEmpty || viewableChats.isNotEmpty;
     return Scaffold(
       backgroundColor: c.groupedBackground,
@@ -320,31 +315,14 @@ class _CommunityViewState extends State<CommunityView> {
             onBack: widget.showBackButton
                 ? widget.onBack ?? () => Navigator.of(context).pop()
                 : null,
-            trailing: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: _toggleSearch,
-              child: SizedBox(
-                width: AppMetric.hitTarget,
-                height: AppMetric.hitTarget,
-                child: AppIcon(
-                  _searching
-                      ? HeroAppIcons.xmark
-                      : HeroAppIcons.magnifyingGlass,
-                  size: AppIconSize.nav - 2,
-                  color: c.textPrimary,
-                ),
-              ),
-            ),
+            trailing: _headerMenu(),
           ),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.fromLTRB(12, 14, 12, 28),
               children: [
                 _communityHeader(),
-                if (_searching) ...[const SizedBox(height: 12), _searchField()],
                 const SizedBox(height: 14),
-                _collapseCard(),
-                const SizedBox(height: 20),
                 if (!hasResults)
                   _chatCard(const [])
                 else ...[
@@ -369,16 +347,43 @@ class _CommunityViewState extends State<CommunityView> {
     );
   }
 
-  List<ChatSummary> _filtered(List<ChatSummary> chats, String query) {
-    if (query.isEmpty) return chats;
-    return chats
-        .where(
-          (chat) =>
-              chat.title.toLowerCase().contains(query) ||
-              chat.lastMessage.toLowerCase().contains(query),
-        )
-        .toList();
-  }
+  Widget _headerMenu() => PopupMenuButton<_CommunityHeaderAction>(
+    key: const ValueKey('community-header-menu'),
+    tooltip: '',
+    color: context.colors.background,
+    padding: EdgeInsets.zero,
+    onSelected: (_) => _setCollapsed(!_collapsed),
+    itemBuilder: (context) => [
+      PopupMenuItem<_CommunityHeaderAction>(
+        value: _CommunityHeaderAction.toggleCollapsed,
+        child: Row(
+          children: [
+            SizedBox(
+              width: 22,
+              child: _collapsed
+                  ? AppIcon(
+                      HeroAppIcons.check,
+                      size: 16,
+                      color: context.colors.linkBlue,
+                    )
+                  : null,
+            ),
+            const SizedBox(width: 8),
+            Text(AppStringKeys.communityShowAsOneChat.l10n(context)),
+          ],
+        ),
+      ),
+    ],
+    child: SizedBox(
+      width: AppMetric.hitTarget,
+      height: AppMetric.hitTarget,
+      child: AppIcon(
+        HeroAppIcons.ellipsis,
+        size: AppIconSize.nav,
+        color: context.colors.textPrimary,
+      ),
+    ),
+  );
 
   Widget _sectionHeader(String title) => Padding(
     padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -449,84 +454,9 @@ class _CommunityViewState extends State<CommunityView> {
     );
   }
 
-  Widget _searchField() {
-    final c = context.colors;
-    return Container(
-      height: 40,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: c.searchFill,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        children: [
-          AppIcon(
-            HeroAppIcons.magnifyingGlass,
-            size: 16,
-            color: c.textTertiary,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: EditableText(
-              controller: _searchController,
-              focusNode: _searchFocus,
-              style: TextStyle(fontSize: 15, color: c.textPrimary),
-              cursorColor: c.linkBlue,
-              backgroundCursorColor: c.textTertiary,
-              textInputAction: TextInputAction.search,
-              onChanged: (value) => setState(() => _query = value),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _collapseCard() {
-    final c = context.colors;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-      decoration: BoxDecoration(
-        color: c.card,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  AppStringKeys.communityShowAsOneChat.l10n(context),
-                  style: TextStyle(
-                    fontSize: AppTextSize.body,
-                    fontWeight: FontWeight.w500,
-                    color: c.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  AppStringKeys.communityShowAsOneChatDescription.l10n(context),
-                  style: TextStyle(
-                    fontSize: AppTextSize.caption,
-                    height: 1.3,
-                    color: c.textTertiary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 16),
-          AppSwitch(
-            value: _collapsed,
-            onChanged: (value) {
-              setState(() => _collapsed = value);
-              widget.onCollapsedChanged(value);
-            },
-          ),
-        ],
-      ),
-    );
+  void _setCollapsed(bool value) {
+    setState(() => _collapsed = value);
+    widget.onCollapsedChanged(value);
   }
 
   Widget _chatCard(List<ChatSummary> chats) {
@@ -572,22 +502,6 @@ class _CommunityViewState extends State<CommunityView> {
         ),
       ),
     );
-  }
-
-  void _toggleSearch() {
-    setState(() {
-      _searching = !_searching;
-      if (!_searching) {
-        _query = '';
-        _searchController.clear();
-        _searchFocus.unfocus();
-      }
-    });
-    if (_searching) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _searchFocus.requestFocus();
-      });
-    }
   }
 
   Future<void> _openChat(ChatSummary chat) async {

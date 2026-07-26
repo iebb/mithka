@@ -89,6 +89,13 @@ List<int> closeStaleDebugTdlibClients(
   return staleClientIds;
 }
 
+@visibleForTesting
+Map<String, dynamic> quickAckTdlibOptionRequest() => <String, dynamic>{
+  '@type': 'setOption',
+  'name': 'use_quick_ack',
+  'value': <String, dynamic>{'@type': 'optionValueBoolean', 'value': true},
+};
+
 class TdClient {
   TdClient._();
   static final TdClient shared = TdClient._();
@@ -1061,6 +1068,10 @@ class TdClient {
         'application_version': api.resolvedApplicationVersion('1.0'),
       }),
     );
+    // Ask Telegram's transport for an early server acknowledgement. TDLib
+    // emits updateMessageSendAcknowledged only while this option is enabled;
+    // without it the delivery indicator must wait for the slower final result.
+    _bindings.send(clientId, jsonEncode(quickAckTdlibOptionRequest()));
     if (clientId == _activeClientId) {
       _applySavedProxyToClientOnce(clientId);
     }

@@ -7,11 +7,11 @@ PODS:
     - FlutterMacOS
   - Firebase/CoreOnly (12.15.0):
     - FirebaseCore (~> 12.15.0)
-  - firebase_analytics (12.4.3):
+  - firebase_analytics (12.4.5):
     - firebase_core
     - FirebaseAnalytics (= 12.15.0)
     - FlutterMacOS
-  - firebase_core (4.11.0):
+  - firebase_core (4.12.1):
     - Firebase/CoreOnly (~> 12.15.0)
     - FlutterMacOS
   - FirebaseAnalytics (12.15.0):
@@ -105,12 +105,16 @@ PODS:
   - GoogleUtilities/UserDefaults (8.1.2):
     - GoogleUtilities/Logger
     - GoogleUtilities/Privacy
+  - light_compressor_v2 (1.0.1):
+    - FlutterMacOS
   - local_auth_darwin (0.0.1):
     - Flutter
     - FlutterMacOS
   - mdk (0.36.0)
   - mobile_scanner (7.0.0):
     - Flutter
+    - FlutterMacOS
+  - multi_window_manager (0.0.1):
     - FlutterMacOS
   - nanopb (3.30910.0):
     - nanopb/decode (= 3.30910.0)
@@ -119,21 +123,19 @@ PODS:
   - nanopb/encode (3.30910.0)
   - package_info_plus (0.0.1):
     - FlutterMacOS
-  - photo_manager (3.10.0):
+  - photo_manager (3.11.0):
     - Flutter
     - FlutterMacOS
   - PromisesObjC (2.4.1)
-  - Sentry/HybridSDK (8.58.3)
-  - sentry_flutter (9.22.0):
+  - Sentry/HybridSDK (8.58.4)
+  - sentry_flutter (9.25.0):
     - Flutter
     - FlutterMacOS
-    - Sentry/HybridSDK (= 8.58.3)
+    - Sentry/HybridSDK (= 8.58.4)
   - shared_preferences_foundation (0.0.1):
     - Flutter
     - FlutterMacOS
   - url_launcher_macos (0.0.1):
-    - FlutterMacOS
-  - video_compress (0.3.0):
     - FlutterMacOS
   - video_player_avfoundation (0.0.1):
     - Flutter
@@ -153,14 +155,15 @@ DEPENDENCIES:
   - FlutterMacOS (from `Flutter/ephemeral`)
   - fvp (from `Flutter/ephemeral/.symlinks/plugins/fvp/darwin`)
   - geolocator_apple (from `Flutter/ephemeral/.symlinks/plugins/geolocator_apple/darwin`)
+  - light_compressor_v2 (from `Flutter/ephemeral/.symlinks/plugins/light_compressor_v2/macos`)
   - local_auth_darwin (from `Flutter/ephemeral/.symlinks/plugins/local_auth_darwin/darwin`)
   - mobile_scanner (from `Flutter/ephemeral/.symlinks/plugins/mobile_scanner/darwin`)
+  - multi_window_manager (from `Flutter/ephemeral/.symlinks/plugins/multi_window_manager/macos`)
   - package_info_plus (from `Flutter/ephemeral/.symlinks/plugins/package_info_plus/macos`)
   - photo_manager (from `Flutter/ephemeral/.symlinks/plugins/photo_manager/darwin`)
   - sentry_flutter (from `Flutter/ephemeral/.symlinks/plugins/sentry_flutter/macos`)
   - shared_preferences_foundation (from `Flutter/ephemeral/.symlinks/plugins/shared_preferences_foundation/darwin`)
   - url_launcher_macos (from `Flutter/ephemeral/.symlinks/plugins/url_launcher_macos/macos`)
-  - video_compress (from `Flutter/ephemeral/.symlinks/plugins/video_compress/macos`)
   - video_player_avfoundation (from `Flutter/ephemeral/.symlinks/plugins/video_player_avfoundation/darwin`)
   - webview_flutter_wkwebview (from `Flutter/ephemeral/.symlinks/plugins/webview_flutter_wkwebview/darwin`)
 
@@ -199,10 +202,14 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral/.symlinks/plugins/fvp/darwin
   geolocator_apple:
     :path: Flutter/ephemeral/.symlinks/plugins/geolocator_apple/darwin
+  light_compressor_v2:
+    :path: Flutter/ephemeral/.symlinks/plugins/light_compressor_v2/macos
   local_auth_darwin:
     :path: Flutter/ephemeral/.symlinks/plugins/local_auth_darwin/darwin
   mobile_scanner:
     :path: Flutter/ephemeral/.symlinks/plugins/mobile_scanner/darwin
+  multi_window_manager:
+    :path: Flutter/ephemeral/.symlinks/plugins/multi_window_manager/macos
   package_info_plus:
     :path: Flutter/ephemeral/.symlinks/plugins/package_info_plus/macos
   photo_manager:
@@ -213,8 +220,6 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral/.symlinks/plugins/shared_preferences_foundation/darwin
   url_launcher_macos:
     :path: Flutter/ephemeral/.symlinks/plugins/url_launcher_macos/macos
-  video_compress:
-    :path: Flutter/ephemeral/.symlinks/plugins/video_compress/macos
   video_player_avfoundation:
     :path: Flutter/ephemeral/.symlinks/plugins/video_player_avfoundation/darwin
   webview_flutter_wkwebview:
@@ -225,8 +230,8 @@ SPEC CHECKSUMS:
   file_picker: 7584aae6fa07a041af2b36a2655122d42f578c1a
   file_selector_macos: 9e9e068e90ebee155097d00e89ae91edb2374db7
   Firebase: a8539b633d474fbeb654c7043f9c1649e274045b
-  firebase_analytics: 5016af7e1eed3afdfeebf94c3374143d1ad35cd6
-  firebase_core: 4922bf7ac16c97fb67008a1a00842059b345b0d9
+  firebase_analytics: 1383420e89f6889446bf5431bbe3d6a10eabe478
+  firebase_core: 1c188a8384be0315478a22c1a3165871d75a95ba
   FirebaseAnalytics: 9c9fa7915fc52ea03077000d5a7b6a8947b2d76e
   FirebaseCore: 2e86a4ea1684d4381707069e4a6d89ac808e901e
   FirebaseCoreInternal: 6ab6a02c94446c026d2cf35cf5383842ebaa4992
@@ -238,18 +243,19 @@ SPEC CHECKSUMS:
   geolocator_apple: ab36aa0e8b7d7a2d7639b3b4e48308394e8cef5e
   GoogleAppMeasurement: a6d37949071d456e9147dac6789c4342e0e7a8c5
   GoogleUtilities: 766ace00c6b10d8148408f329d10c4f051931850
+  light_compressor_v2: 6dd0480d1f6817fbf16a6c34fb09957bc4b5f819
   local_auth_darwin: c3ee6cce0a8d56be34c8ccb66ba31f7f180aaebb
   mdk: 3bfb53e0bcc9643180eaa864360051f281e4c17b
   mobile_scanner: 9157936403f5a0644ca3779a38ff8404c5434a93
+  multi_window_manager: da056847639d602c06d2e5b56f62b732bb24a1f1
   nanopb: fad817b59e0457d11a5dfbde799381cd727c1275
   package_info_plus: f0052d280d17aa382b932f399edf32507174e870
-  photo_manager: 93cc83778e33d5fd49dfd7e34b73f8f5a4f10aaf
+  photo_manager: 6ab48c2ce7ec21aa06d59e6cc049f0b6d9ba7f94
   PromisesObjC: 752c3227f599e3467650e47ea36f433eeb10c273
-  Sentry: 108fdbb76299c4189af12246bf0308c09c278922
-  sentry_flutter: fbb8a76a5a009ce7ba7bde295ee6b50b11916851
+  Sentry: 5321d74bdd28d6f6f8beaa1ca06f1fdc746bff49
+  sentry_flutter: d6279f3b5156b6535e2159e03437b571a24cc648
   shared_preferences_foundation: 7036424c3d8ec98dfe75ff1667cb0cd531ec82bb
   url_launcher_macos: f87a979182d112f911de6820aefddaf56ee9fbfd
-  video_compress: 752b161da855df2492dd1a8fa899743cc8fe9534
   video_player_avfoundation: 3453f792138786248960ca029747fcd9f318ef52
   webview_flutter_wkwebview: 8ebf4fded22593026f7dbff1fbff31ea98573c8d
 

@@ -241,6 +241,7 @@
 				33CC110E2044A8840003C045 /* Bundle Framework */,
 				3399D490228B24CF009A79C7 /* ShellScript */,
 				6751E65EC80AAB609F1B0505 /* [CP] Embed Pods Frameworks */,
+				A40D2E8A2F3326A000D1B001 /* Embed macOS TDLib */,
 			);
 			buildRules = (
 			);
@@ -377,6 +378,28 @@
 			shellPath = /bin/sh;
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-frameworks.sh\"\n";
 			showEnvVarsInLog = 0;
+		};
+		A40D2E8A2F3326A000D1B001 /* Embed macOS TDLib */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/../scripts/build-tdjson-desktop.sh",
+				"$(SRCROOT)/../scripts/embed-tdjson-macos.sh",
+			);
+			name = "Embed macOS TDLib";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/libtdjson.dylib",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/bash;
+			shellScript = "\"$SRCROOT/../scripts/embed-tdjson-macos.sh\"\n";
 		};
 		85882DBE95C9FE0D7EF5A144 /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;

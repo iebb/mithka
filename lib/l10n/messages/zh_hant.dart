@@ -256,7 +256,6 @@ const zhHantMessages = <String, String>{
   'appearanceClearTextFonts': "清除文字字型",
   'appearanceColor': "顏色",
   'appearanceDisableChatListSwipeActions': "停用側滑操作",
-  'appearanceSavedMessagesBookmarkView': "已儲存訊息書籤檢視",
   'appearanceGestures': "手勢",
   'gesturesChatActions': "聊天操作",
   'gesturesChatListSwipe': "聊天列表滑動",

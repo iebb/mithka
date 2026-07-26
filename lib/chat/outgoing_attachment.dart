@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:video_compress/video_compress.dart';
+import 'package:light_compressor_v2/light_compressor_v2.dart';
 
 import 'message_send_options.dart';
 
@@ -147,9 +147,9 @@ Future<OutgoingAttachment> resolveAttachmentDimensions(
   }
   try {
     if (attachment.kind == OutgoingAttachmentKind.video) {
-      final info = await VideoCompress.getMediaInfo(attachment.path);
-      final width = info.width;
-      final height = info.height;
+      final info = await LightCompressor().getMediaInfo(attachment.path);
+      final width = info.displayWidth;
+      final height = info.displayHeight;
       if (width == null || height == null || width <= 0 || height <= 0) {
         return attachment;
       }
@@ -158,7 +158,7 @@ Future<OutgoingAttachment> resolveAttachmentDimensions(
         height: height,
         duration: attachment.duration > 0
             ? attachment.duration
-            : ((info.duration ?? 0) / 1000).round(),
+            : (info.duration ?? Duration.zero).inSeconds,
       );
     }
     final data = await File(attachment.path).readAsBytes();

@@ -9,9 +9,10 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:fvp/fvp.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -41,7 +42,6 @@ typedef TdVideoStreamQuery =
 /// The class is public only so its HTTP behavior can be exercised without a
 /// native media player in tests. App code should treat it as an implementation
 /// detail of [VideoPlayerView].
-@visibleForTesting
 class TdVideoStreamServer {
   TdVideoStreamServer(
     this.fileId, {
@@ -505,6 +505,8 @@ class VideoPlayerView extends StatefulWidget {
     this.previousVideo,
     this.nextVideo,
     this.onNavigate,
+    this.directSourceUri,
+    this.onToggleFullscreen,
   });
 
   final TdFileRef video;
@@ -522,6 +524,11 @@ class VideoPlayerView extends StatefulWidget {
   final VideoPlaybackItem? previousVideo;
   final VideoPlaybackItem? nextVideo;
   final ValueChanged<int>? onNavigate;
+
+  /// A source already prepared by the owning engine, used by desktop child
+  /// windows so they never initialize a second TDLib client.
+  final Uri? directSourceUri;
+  final VoidCallback? onToggleFullscreen;
 
   @override
   State<VideoPlayerView> createState() => _VideoPlayerViewState();
@@ -684,6 +691,16 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   }
 
   Future<void> _load() async {
+    final directSourceUri = widget.directSourceUri;
+    if (directSourceUri != null) {
+      _localPath = directSourceUri.toString();
+      final initialized = await _initializeFromUri(directSourceUri);
+      if (!initialized && mounted) {
+        setState(() => _failed = true);
+        showToast(context, AppStringKeys.videoPlayerCannotPlay);
+      }
+      return;
+    }
     final sourcePath = widget.video.localPath;
     if (sourcePath != null && sourcePath.isNotEmpty) {
       final source = File(sourcePath);
@@ -1262,46 +1279,59 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   Widget build(BuildContext context) {
     final c = _controller;
     final ready = c != null && c.value.isInitialized;
-    final body = GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: ready ? _toggleControls : null,
-      onPanDown: ready && _supportsPlaybackGestures
-          ? (details) => _gestureOrigin = details.localPosition
-          : null,
-      onPanStart: ready && _supportsPlaybackGestures
-          ? (details) => _startPlaybackGesture(details, c)
-          : null,
-      onPanUpdate: ready && _supportsPlaybackGestures
-          ? (details) => _updatePlaybackGesture(details, c)
-          : null,
-      onPanEnd: ready && _supportsPlaybackGestures
-          ? (_) => _finishPlaybackGesture(c)
-          : null,
-      onPanCancel: ready && _supportsPlaybackGestures
-          ? _cancelPlaybackGesture
-          : null,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          if (ready) _videoFrame(c) else _loadingState(),
-          if (ready && _controlsVisible) ..._controlChromeBlocks(visible: true),
-          if (ready &&
-              _controlsVisible &&
-              widget.presentation != VideoPlayerPresentation.pictureInPicture)
-            _topTechnicalInfo(_debugText(c)),
-          if (ready && _controlsVisible) ..._controls(c),
-          if (ready && _gestureIndicatorReady)
-            _activeGesture == _PlayerGesture.brightness ||
-                    _activeGesture == _PlayerGesture.volume
-                ? _sideLevelIndicator()
-                : _gestureIndicator(c),
-          if (ready && _showCompletionPrompt) _completionPrompt(),
-          if (!ready || _controlsVisible)
-            widget.presentation == VideoPlayerPresentation.pictureInPicture &&
-                    ready
-                ? _pipTopBar(c)
-                : _closeButton(),
-        ],
+    final body = Focus(
+      autofocus: _isDesktopPlatform,
+      onKeyEvent: ready ? (_, event) => _handleDesktopKey(event, c) : null,
+      child: Listener(
+        onPointerSignal: ready ? _handlePointerSignal : null,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: ready ? _toggleControls : null,
+          onDoubleTap: ready && _isDesktopPlatform
+              ? widget.onToggleFullscreen
+              : null,
+          onPanDown: ready && _supportsPlaybackGestures
+              ? (details) => _gestureOrigin = details.localPosition
+              : null,
+          onPanStart: ready && _supportsPlaybackGestures
+              ? (details) => _startPlaybackGesture(details, c)
+              : null,
+          onPanUpdate: ready && _supportsPlaybackGestures
+              ? (details) => _updatePlaybackGesture(details, c)
+              : null,
+          onPanEnd: ready && _supportsPlaybackGestures
+              ? (_) => _finishPlaybackGesture(c)
+              : null,
+          onPanCancel: ready && _supportsPlaybackGestures
+              ? _cancelPlaybackGesture
+              : null,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (ready) _videoFrame(c) else _loadingState(),
+              if (ready && _controlsVisible)
+                ..._controlChromeBlocks(visible: true),
+              if (ready &&
+                  _controlsVisible &&
+                  widget.presentation !=
+                      VideoPlayerPresentation.pictureInPicture)
+                _topTechnicalInfo(_debugText(c)),
+              if (ready && _controlsVisible) ..._controls(c),
+              if (ready && _gestureIndicatorReady)
+                _activeGesture == _PlayerGesture.brightness ||
+                        _activeGesture == _PlayerGesture.volume
+                    ? _sideLevelIndicator()
+                    : _gestureIndicator(c),
+              if (ready && _showCompletionPrompt) _completionPrompt(),
+              if (!ready || _controlsVisible)
+                widget.presentation ==
+                            VideoPlayerPresentation.pictureInPicture &&
+                        ready
+                    ? _pipTopBar(c)
+                    : _closeButton(),
+            ],
+          ),
+        ),
       ),
     );
     if (widget.presentation == VideoPlayerPresentation.embedded) {
@@ -1315,6 +1345,69 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
 
   bool get _supportsPlaybackGestures =>
       widget.presentation == VideoPlayerPresentation.fullscreen;
+
+  bool get _isDesktopPlatform =>
+      Platform.isMacOS || Platform.isWindows || Platform.isLinux;
+
+  KeyEventResult _handleDesktopKey(
+    KeyEvent event,
+    VideoPlayerController controller,
+  ) {
+    if (!_isDesktopPlatform || event is! KeyDownEvent) {
+      return KeyEventResult.ignored;
+    }
+    final key = event.logicalKey;
+    if (key == LogicalKeyboardKey.space || key == LogicalKeyboardKey.keyK) {
+      unawaited(_togglePlay());
+    } else if (key == LogicalKeyboardKey.arrowLeft ||
+        key == LogicalKeyboardKey.keyJ) {
+      _seekBy(controller, const Duration(seconds: -10));
+    } else if (key == LogicalKeyboardKey.arrowRight ||
+        key == LogicalKeyboardKey.keyL) {
+      _seekBy(controller, const Duration(seconds: 10));
+    } else if (key == LogicalKeyboardKey.arrowUp) {
+      _setVolume(_volume + 0.05);
+    } else if (key == LogicalKeyboardKey.arrowDown) {
+      _setVolume(_volume - 0.05);
+    } else if (key == LogicalKeyboardKey.keyM) {
+      _toggleMute();
+    } else if (key == LogicalKeyboardKey.keyF ||
+        key == LogicalKeyboardKey.enter) {
+      widget.onToggleFullscreen?.call();
+    } else if (key == LogicalKeyboardKey.home) {
+      unawaited(controller.seekTo(Duration.zero));
+    } else if (key == LogicalKeyboardKey.end) {
+      unawaited(controller.seekTo(controller.value.duration));
+    } else if (key == LogicalKeyboardKey.escape) {
+      _close();
+    } else {
+      return KeyEventResult.ignored;
+    }
+    _revealControlsTemporarily();
+    return KeyEventResult.handled;
+  }
+
+  void _handlePointerSignal(PointerSignalEvent event) {
+    if (!_isDesktopPlatform || event is! PointerScrollEvent) return;
+    _setVolume(_volume + (event.scrollDelta.dy < 0 ? 0.05 : -0.05));
+    _revealControlsTemporarily();
+  }
+
+  void _seekBy(VideoPlayerController controller, Duration delta) {
+    final duration = controller.value.duration;
+    final target = Duration(
+      milliseconds:
+          (controller.value.position.inMilliseconds + delta.inMilliseconds)
+              .clamp(0, duration.inMilliseconds),
+    );
+    unawaited(controller.seekTo(target));
+  }
+
+  void _revealControlsTemporarily() {
+    if (!mounted) return;
+    if (!_controlsVisible) setState(() => _controlsVisible = true);
+    _scheduleHide();
+  }
 
   bool get _gestureIndicatorReady =>
       _activeGesture != null &&
@@ -2658,14 +2751,18 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     _scrubPreviewBytes = null;
   }
 
-  Widget _buildScrubPreviewOverlay(BuildContext overlayContext) {
+  Widget _buildScrubPreviewOverlay(BuildContext _) {
     final scrubberContext = _scrubberKey.currentContext;
     final position = _scrubPosition;
     if (scrubberContext == null || position == null) {
       return const SizedBox.shrink();
     }
     final scrubberBox = scrubberContext.findRenderObject();
-    final overlayBox = overlayContext.findRenderObject();
+    // An OverlayEntry's builder context belongs to the entry's own positioned
+    // subtree, not necessarily to the Overlay's coordinate space. Using it as
+    // `ancestor` makes localToGlobal return entry-local coordinates (usually
+    // near 0,0), which pinned previews to the window's top-left on desktop.
+    final overlayBox = Overlay.of(scrubberContext).context.findRenderObject();
     if (scrubberBox is! RenderBox || overlayBox is! RenderBox) {
       return const SizedBox.shrink();
     }
@@ -2675,10 +2772,10 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
         : (position.inMilliseconds / durationMs).clamp(0.0, 1.0);
     final trackInset = _scrubPreviewCompact ? 0.0 : 24.0;
     final trackWidth = math.max(0.0, scrubberBox.size.width - trackInset * 2);
-    final target = scrubberBox.localToGlobal(
+    final globalTarget = scrubberBox.localToGlobal(
       Offset(trackInset + trackWidth * fraction, 0),
-      ancestor: overlayBox,
     );
+    final target = overlayBox.globalToLocal(globalTarget);
     final previewWidth = _scrubPreviewCompact ? 128.0 : 160.0;
     final sourceAspect =
         widget.width != null &&

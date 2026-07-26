@@ -22,7 +22,6 @@ import '../channels/forum_topic_browser_view.dart';
 import '../chat/chat_view.dart';
 import '../chat/custom_emoji.dart';
 import '../chat/link_handler.dart';
-import '../chat/saved_messages_view.dart';
 import '../communities/community_models.dart';
 import '../communities/community_view.dart';
 import '../components/app_icons.dart';
@@ -455,21 +454,16 @@ class _ChatListViewState extends State<ChatListView>
       return;
     }
     if (chat.isSavedMessages) {
-      final bookmarkView = context
-          .read<ThemeController>()
-          .savedMessagesBookmarkView;
       unawaited(
         pushAppChatRoute(
           context,
-          bookmarkView
-              ? _standardEntryRoute(const SavedMessagesView())
-              : _chatEntryRoute(
-                  ChatView(
-                    chatId: chat.id,
-                    title: AppStrings.t(AppStringKeys.savedMessages),
-                    seedMessage: chat.lastChatMessage,
-                  ),
-                ),
+          _chatEntryRoute(
+            ChatView(
+              chatId: chat.id,
+              title: AppStrings.t(AppStringKeys.savedMessages),
+              seedMessage: chat.lastChatMessage,
+            ),
+          ),
         ),
       );
       return;

@@ -809,13 +809,6 @@ class ChatListAppearanceSettingsView extends StatelessWidget {
           theme.showChatListSearch,
           (value) => theme.showChatListSearch = value,
         ),
-        appearance._toggleRow(
-          context,
-          HeroAppIcons.thumbtack.data,
-          AppStrings.t(AppStringKeys.appearanceSavedMessagesBookmarkView),
-          theme.savedMessagesBookmarkView,
-          (value) => theme.savedMessagesBookmarkView = value,
-        ),
         appearance._navigationRow(
           context,
           AppStrings.t(AppStringKeys.appearanceShowNameColors),

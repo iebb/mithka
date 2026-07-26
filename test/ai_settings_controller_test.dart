@@ -41,11 +41,11 @@ void main() {
       expect(controller.modelCandidates, hasLength(2));
       expect(
         controller.modelCandidatesForFeature(AiFeature.translation),
-        hasLength(2),
+        hasLength(3),
       );
       expect(
         controller.modelCandidatesForFeature(AiFeature.summary),
-        hasLength(2),
+        hasLength(3),
       );
       expect(
         controller.modelCandidatesForFeature(AiFeature.reply),
@@ -67,7 +67,7 @@ void main() {
     });
 
     test(
-      'scopes Telegram Cocoon to replies and persists a reply choice',
+      'offers Telegram Cocoon to every AI feature and persists each choice',
       () async {
         SharedPreferences.setMockInitialValues({});
         final preferences = await SharedPreferences.getInstance();
@@ -95,8 +95,8 @@ void main() {
                 (candidate) =>
                     candidate.kind == AiModelCandidateKind.telegramCocoon,
               )
-              .isEmpty,
-          isTrue,
+              .length,
+          1,
         );
         expect(
           controller
@@ -105,8 +105,8 @@ void main() {
                 (candidate) =>
                     candidate.kind == AiModelCandidateKind.telegramCocoon,
               )
-              .isEmpty,
-          isTrue,
+              .length,
+          1,
         );
         expect(
           controller.modelCandidatesForFeature(AiFeature.reply).first.kind,
@@ -123,11 +123,11 @@ void main() {
         );
         expect(
           controller.translationModelCandidate.kind,
-          AiModelCandidateKind.applePcc,
+          AiModelCandidateKind.telegramCocoon,
         );
         expect(
           controller.summaryModelCandidate.kind,
-          AiModelCandidateKind.applePcc,
+          AiModelCandidateKind.telegramCocoon,
         );
 
         await controller.setFeatureModelCandidate(
@@ -148,6 +148,14 @@ void main() {
           secureWrite: (_, _) async {},
         );
         await restored.initialize();
+        expect(
+          restored.translationModelCandidate.kind,
+          AiModelCandidateKind.telegramCocoon,
+        );
+        expect(
+          restored.summaryModelCandidate.kind,
+          AiModelCandidateKind.telegramCocoon,
+        );
         expect(
           restored.replyModelCandidate.kind,
           AiModelCandidateKind.appleOnDevice,

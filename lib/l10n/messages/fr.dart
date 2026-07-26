@@ -293,8 +293,6 @@ const frMessages = <String, String>{
   'appearanceClearTextFonts': "Effacer les polices de texte",
   'appearanceColor': "Couleur",
   'appearanceDisableChatListSwipeActions': "Désactiver les balayages",
-  'appearanceSavedMessagesBookmarkView':
-      "Vue des signets des Messages enregistrés",
   'appearanceGestures': "Gestes",
   'gesturesChatActions': "Actions du chat",
   'gesturesChatListSwipe': "Balayage de la liste des chats",

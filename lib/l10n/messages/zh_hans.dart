@@ -253,7 +253,6 @@ const zhHansMessages = <String, String>{
   'appearanceClearTextFonts': "清空文本字体",
   'appearanceColor': "颜色",
   'appearanceDisableChatListSwipeActions': "禁用侧滑操作",
-  'appearanceSavedMessagesBookmarkView': "保存的消息书签视图",
   'appearanceGestures': "手势",
   'gesturesChatActions': "聊天操作",
   'gesturesChatListSwipe': "聊天列表滑动",

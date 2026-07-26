@@ -7,7 +7,6 @@ void main() {
     const paths = [
       'lib/profile/profile_contact_management_view.dart',
       'lib/profile/profile_photo_management_view.dart',
-      'lib/chat/saved_messages_view.dart',
       'lib/chat/scheduled_messages_view.dart',
       'lib/chat/contact_share_picker_view.dart',
       'lib/chat/channel_direct_messages_view.dart',

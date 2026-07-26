@@ -81,6 +81,7 @@ List<ChatMessage> mergeChatMessages(
     if (ignoredMessageIds.contains(message.id)) continue;
     final existing = byId[message.id];
     if (existing != null) {
+      message.isSendAcknowledged = existing.isSendAcknowledged;
       message.senderName ??= existing.senderName;
       message.senderIsChat = message.senderIsChat || existing.senderIsChat;
       message.senderPhoto ??= existing.senderPhoto;
