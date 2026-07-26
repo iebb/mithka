@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- TDLib networking -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -26,6 +27,15 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <!-- App unlock and Mini App biometric tokens use Android's BiometricPrompt. -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <!-- light_compressor_v2 declares these for its optional BackgroundConfig.
+         Mithka never opts into background compression, so keep them out of the
+         release manifest and the Google Play foreground-service declaration. -->
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"
+        tools:node="remove" />
 
     <application
         android:label="Mithka"
@@ -35,6 +45,12 @@
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:networkSecurityConfig="@xml/network_security_config">
+        <service
+            android:name="com.gurfdev.light_compressor_v2.CompressionForegroundService"
+            tools:node="remove" />
+        <receiver
+            android:name="com.gurfdev.light_compressor_v2.CompressionCancelReceiver"
+            tools:node="remove" />
         <meta-data
             android:name="io.sentry.dsn"
             android:value="${sentryDsn}" />
