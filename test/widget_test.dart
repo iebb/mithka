@@ -3294,7 +3294,9 @@ void main() {
       expect(richTextContaining('Retained original text'), findsNothing);
     });
 
-    testWidgets('always shows one sent dot and two read dots', (tester) async {
+    testWidgets('shows sending progress that becomes a green sent circle', (
+      tester,
+    ) async {
       SharedPreferences.setMockInitialValues({
         'showMessageMetaIndicators': false,
       });
@@ -3308,7 +3310,7 @@ void main() {
         date: 1,
       );
 
-      Future<void> pumpBubble({required bool isRead}) {
+      Future<void> pumpBubble() {
         return tester.pumpWidget(
           ChangeNotifierProvider<ThemeController>.value(
             value: theme,
@@ -3318,7 +3320,6 @@ void main() {
                   message: message,
                   peerTitle: 'Test',
                   isGroup: false,
-                  isRead: isRead,
                 ),
               ),
             ),
@@ -3326,22 +3327,34 @@ void main() {
         );
       }
 
-      await pumpBubble(isRead: false);
+      message.isSending = true;
+      await pumpBubble();
       expect(
-        find.byKey(const ValueKey('messageDeliveryDot-0')),
+        find.byKey(const ValueKey('messageDeliverySending')),
         findsOneWidget,
       );
+      expect(find.byKey(const ValueKey('messageDeliveryDot-0')), findsNothing);
       expect(find.byKey(const ValueKey('messageDeliveryDot-1')), findsNothing);
 
-      await pumpBubble(isRead: true);
+      message.isSending = false;
+      await pumpBubble();
+      expect(find.byKey(const ValueKey('messageDeliverySent')), findsOneWidget);
+      final sentPaint = tester.widget<CustomPaint>(
+        find.descendant(
+          of: find.byKey(const ValueKey('messageDeliverySent')),
+          matching: find.byType(CustomPaint),
+        ),
+      );
+      expect((sentPaint.painter as dynamic).color, const Color(0xFF34C759));
+
+      message.isEdited = true;
+      await pumpBubble();
       expect(
-        find.byKey(const ValueKey('messageDeliveryDot-0')),
+        find.byKey(const ValueKey('messageDeliveryEdited')),
         findsOneWidget,
       );
-      expect(
-        find.byKey(const ValueKey('messageDeliveryDot-1')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const ValueKey('messageDeliverySent')), findsNothing);
+      expect(find.byIcon(HeroAppIcons.penToSquare.data), findsOneWidget);
     });
 
     testWidgets('keeps an outgoing photo repeat badge beside its bubble', (

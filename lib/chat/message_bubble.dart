@@ -150,7 +150,7 @@ class MessageBubble extends StatefulWidget {
   final ValueChanged<ChatMessage>? onOpenStory;
   final ValueChanged<ChatMessage>? onTranscribeVoice;
   final ValueChanged<ChatMessage>? onSummarizeMessage;
-  final bool isRead; // outgoing message read by the peer (two delivery dots)
+  final bool isRead;
   final Color? outgoingBubbleColor;
   final Color? outgoingBubbleTextColor;
   final Color? incomingBubbleColor;
@@ -1065,32 +1065,40 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   Widget _floatingMeta(bool outgoing) {
-    final c = context.colors;
     final faint = outgoing
         ? _outgoingTextColor.withValues(alpha: 0.72)
-        : c.textTertiary;
-    return IgnorePointer(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: outgoing
-              ? Colors.black.withValues(alpha: 0.10)
-              : c.card.withValues(alpha: 0.72),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (message.isEdited)
-                AppIcon(HeroAppIcons.pen, size: 13, color: faint),
-              if (message.isEdited && outgoing) const SizedBox(width: 3),
-              if (outgoing)
-                _deliveryDots(diameter: 4, color: _outgoingTextColor),
-            ],
-          ),
-        ),
+        : context.colors.textTertiary;
+    final content = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (message.isEdited)
+            AppIcon(
+              HeroAppIcons.penToSquare,
+              key: const ValueKey('messageDeliveryEdited'),
+              size: 13,
+              color: faint,
+            )
+          else if (outgoing)
+            _MessageDeliveryIndicator(
+              isSending: message.isSending,
+              pendingColor: _outgoingTextColor,
+              size: 10,
+            ),
+        ],
       ),
+    );
+    return IgnorePointer(
+      child: outgoing
+          ? content
+          : DecoratedBox(
+              decoration: BoxDecoration(
+                color: context.colors.card.withValues(alpha: 0.72),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: content,
+            ),
     );
   }
 
@@ -3104,7 +3112,7 @@ class _MessageBubbleState extends State<MessageBubble>
     unicode: true,
   );
 
-  /// Trailing inline meta after the text: time + edited pencil + delivery dots.
+  /// Trailing inline meta: delivery progress, replaced by edit status.
   InlineSpan _metaSpan(bool outgoing) {
     final faint = outgoing
         ? _outgoingTextColor.withValues(alpha: 0.65)
@@ -3116,30 +3124,21 @@ class _MessageBubbleState extends State<MessageBubble>
           mainAxisSize: MainAxisSize.min,
           children: [
             if (widget.message.isEdited)
-              AppIcon(HeroAppIcons.pen, size: 11, color: faint),
-            if (widget.message.isEdited && outgoing) const SizedBox(width: 4),
-            if (outgoing)
-              _deliveryDots(diameter: 3.5, color: _outgoingTextColor),
+              AppIcon(
+                HeroAppIcons.penToSquare,
+                key: const ValueKey('messageDeliveryEdited'),
+                size: 11,
+                color: faint,
+              )
+            else if (outgoing)
+              _MessageDeliveryIndicator(
+                isSending: message.isSending,
+                pendingColor: _outgoingTextColor,
+                size: 9,
+              ),
           ],
         ),
       ),
-    );
-  }
-
-  Widget _deliveryDots({required double diameter, required Color color}) {
-    Widget dot(int index) => Container(
-      key: ValueKey('messageDeliveryDot-$index'),
-      width: diameter,
-      height: diameter,
-      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-    );
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        dot(0),
-        if (widget.isRead) ...[SizedBox(width: diameter * 0.75), dot(1)],
-      ],
     );
   }
 
@@ -4903,4 +4902,112 @@ class _LatexView extends StatelessWidget {
       return Text(expression, style: style);
     }
   }
+}
+
+class _MessageDeliveryIndicator extends StatefulWidget {
+  const _MessageDeliveryIndicator({
+    required this.isSending,
+    required this.pendingColor,
+    required this.size,
+  });
+
+  final bool isSending;
+  final Color pendingColor;
+  final double size;
+
+  @override
+  State<_MessageDeliveryIndicator> createState() =>
+      _MessageDeliveryIndicatorState();
+}
+
+class _MessageDeliveryIndicatorState extends State<_MessageDeliveryIndicator>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.isSending) _controller.repeat();
+  }
+
+  @override
+  void didUpdateWidget(_MessageDeliveryIndicator oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isSending == oldWidget.isSending) return;
+    if (widget.isSending) {
+      _controller.repeat();
+    } else {
+      _controller.stop();
+      _controller.value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => SizedBox.square(
+    key: ValueKey(
+      widget.isSending ? 'messageDeliverySending' : 'messageDeliverySent',
+    ),
+    dimension: widget.size,
+    child: CustomPaint(
+      painter: _MessageDeliveryPainter(
+        rotation: _controller,
+        isSending: widget.isSending,
+        color: widget.isSending
+            ? widget.pendingColor.withValues(alpha: 0.72)
+            : const Color(0xFF34C759),
+      ),
+    ),
+  );
+}
+
+class _MessageDeliveryPainter extends CustomPainter {
+  _MessageDeliveryPainter({
+    required Animation<double> rotation,
+    required this.isSending,
+    required this.color,
+  }) : _rotation = rotation,
+       super(repaint: rotation);
+
+  final Animation<double> _rotation;
+  final bool isSending;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final strokeWidth = math.max(1.25, size.shortestSide * 0.16);
+    final radius = (size.shortestSide - strokeWidth) / 2;
+    final rect = Rect.fromCircle(
+      center: size.center(Offset.zero),
+      radius: radius,
+    );
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round;
+    if (isSending) {
+      canvas.drawArc(
+        rect,
+        _rotation.value * math.pi * 2 - math.pi / 2,
+        math.pi * 1.35,
+        false,
+        paint,
+      );
+    } else {
+      canvas.drawCircle(size.center(Offset.zero), radius, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_MessageDeliveryPainter oldDelegate) =>
+      oldDelegate.isSending != isSending || oldDelegate.color != color;
 }

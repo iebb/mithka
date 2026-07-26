@@ -133,10 +133,94 @@ class MessageReactionUser {
 }
 
 class BotCommandOption {
-  const BotCommandOption({required this.command, required this.description});
+  const BotCommandOption({
+    required this.command,
+    required this.description,
+    this.botUserId = 0,
+    this.botName = '',
+    this.botUsername = '',
+    this.botPhoto,
+  });
 
   final String command;
   final String description;
+  final int botUserId;
+  final String botName;
+  final String botUsername;
+  final TdFileRef? botPhoto;
+
+  String get normalizedCommand =>
+      command.trim().replaceFirst(RegExp(r'^/+'), '');
+
+  String get displayCommand => '/$normalizedCommand';
+
+  String get targetedCommand {
+    final username = botUsername.trim().replaceFirst(RegExp(r'^@+'), '');
+    return username.isEmpty ? displayCommand : '$displayCommand@$username';
+  }
+}
+
+typedef BotCommandUserLoader =
+    Future<Map<String, dynamic>?> Function(int userId);
+
+@visibleForTesting
+Future<List<BotCommandOption>> resolveGroupBotCommandOptions(
+  Map<String, dynamic> fullInfo,
+  BotCommandUserLoader loadUser,
+) async {
+  final groups =
+      fullInfo.objects('bot_commands') ?? const <Map<String, dynamic>>[];
+  final resolved = await Future.wait(
+    groups.map((group) async {
+      final botUserId = group.int64('bot_user_id');
+      if (botUserId == null || botUserId <= 0) {
+        return const <BotCommandOption>[];
+      }
+
+      final user = await loadUser(botUserId);
+      final username = _primaryBotUsername(user);
+      final parsedName = user == null ? '' : TDParse.userName(user).trim();
+      final botName = parsedName.isNotEmpty
+          ? parsedName
+          : username.isNotEmpty
+          ? username
+          : 'Bot';
+      final photo = user == null
+          ? null
+          : TDParse.smallPhoto(user.obj('profile_photo'));
+
+      return (group.objects('commands') ?? const <Map<String, dynamic>>[])
+          .map(
+            (command) => BotCommandOption(
+              command: command.str('command') ?? '',
+              description: command.str('description') ?? '',
+              botUserId: botUserId,
+              botName: botName,
+              botUsername: username,
+              botPhoto: photo,
+            ),
+          )
+          .where((command) => command.normalizedCommand.isNotEmpty)
+          .toList(growable: false);
+    }),
+  );
+  return List.unmodifiable(resolved.expand((commands) => commands));
+}
+
+String _primaryBotUsername(Map<String, dynamic>? user) {
+  if (user == null) return '';
+  final usernames = user.obj('usernames');
+  final active = usernames?['active_usernames'];
+  if (active is List) {
+    for (final username in active.whereType<String>()) {
+      final normalized = username.trim().replaceFirst(RegExp(r'^@+'), '');
+      if (normalized.isNotEmpty) return normalized;
+    }
+  }
+  return (usernames?.str('editable_username') ?? '').trim().replaceFirst(
+    RegExp(r'^@+'),
+    '',
+  );
 }
 
 class BotMenuInfo {
@@ -221,6 +305,7 @@ class ChatViewModel extends ChangeNotifier {
   bool isGroup = false;
   int memberCount = 0;
   int? peerUserId; // private chat → call target
+  int? peerBasicGroupId;
   int? peerSupergroupId;
   String meName = AppStrings.t(AppStringKeys.chatMeLabel);
   int? meId;
@@ -296,6 +381,7 @@ class ChatViewModel extends ChangeNotifier {
   final TdClient _client = TdClient.shared;
   final int _accountClientId;
   final int _accountSlot;
+  int _groupBotCommandsGeneration = 0;
   Future<Set<String>>? _aiReplyBlockedSenderKeysFuture;
   int _aiReplyBlockedSenderRevision = 0;
   late final TelegramAiService telegramAi = TelegramAiService(client: _client);
@@ -2791,6 +2877,8 @@ class ChatViewModel extends ChangeNotifier {
     switch (type?.type) {
       case 'chatTypePrivate':
       case 'chatTypeSecret':
+        peerBasicGroupId = null;
+        peerSupergroupId = null;
         peerUserId = type?.int64('user_id');
         final uid = peerUserId;
         if (uid != null) {
@@ -2823,6 +2911,9 @@ class ChatViewModel extends ChangeNotifier {
         }
       case 'chatTypeBasicGroup':
         final gid = type?.int64('basic_group_id');
+        peerUserId = null;
+        peerBasicGroupId = gid;
+        peerSupergroupId = null;
         if (gid != null) {
           try {
             final bg = await _client.query({
@@ -2832,9 +2923,12 @@ class ChatViewModel extends ChangeNotifier {
             memberCount = bg.integer('member_count') ?? 0;
             _applyGroupStatus(bg.obj('status'));
           } catch (_) {}
+          unawaited(_loadBasicGroupFullInfo(gid));
         }
       case 'chatTypeSupergroup':
         final sgid = type?.int64('supergroup_id');
+        peerUserId = null;
+        peerBasicGroupId = null;
         peerSupergroupId = sgid;
         if (sgid != null) {
           try {
@@ -2986,12 +3080,60 @@ class ChatViewModel extends ChangeNotifier {
         '@type': 'getSupergroupFullInfo',
         'supergroup_id': supergroupId,
       });
+      if (_isDisposed || peerSupergroupId != supergroupId) return;
       memberCount = full.integer('member_count') ?? memberCount;
       hasLinkedDiscussion =
           isChannel && (full.int64('linked_chat_id') ?? 0) != 0;
       _setPaidMessageStarCount(_paidMessageStars(full), notify: false);
       notifyListeners();
+      if (isChannel) {
+        _clearGroupBotCommands();
+      } else {
+        unawaited(_applyGroupBotCommands(full));
+      }
     } catch (_) {}
+  }
+
+  Future<void> _loadBasicGroupFullInfo(int basicGroupId) async {
+    try {
+      final full = await _client.query({
+        '@type': 'getBasicGroupFullInfo',
+        'basic_group_id': basicGroupId,
+      });
+      if (_isDisposed || peerBasicGroupId != basicGroupId) return;
+      final members = full.objects('members');
+      if (members != null) memberCount = members.length;
+      notifyListeners();
+      unawaited(_applyGroupBotCommands(full));
+    } catch (_) {}
+  }
+
+  Future<void> _applyGroupBotCommands(Map<String, dynamic> fullInfo) async {
+    final generation = ++_groupBotCommandsGeneration;
+    final commands = await resolveGroupBotCommandOptions(fullInfo, (
+      userId,
+    ) async {
+      try {
+        return await _client.query({'@type': 'getUser', 'user_id': userId});
+      } catch (_) {
+        return null;
+      }
+    });
+    if (_isDisposed ||
+        generation != _groupBotCommandsGeneration ||
+        !isGroup ||
+        isChannel) {
+      return;
+    }
+    botCommands = commands;
+    notifyListeners();
+  }
+
+  void _clearGroupBotCommands() {
+    _groupBotCommandsGeneration++;
+    if (botCommands.isEmpty) return;
+    botCommands = const [];
+    notifyListeners();
   }
 
   Future<void> _loadPrivatePaidMessageInfo(int userId) async {
@@ -4108,6 +4250,19 @@ class ChatViewModel extends ChangeNotifier {
         hasLinkedDiscussion =
             isChannel && (fullInfo.int64('linked_chat_id') ?? 0) != 0;
         _setPaidMessageStarCount(_paidMessageStars(fullInfo));
+        if (isChannel) {
+          _clearGroupBotCommands();
+        } else {
+          unawaited(_applyGroupBotCommands(fullInfo));
+        }
+
+      case 'updateBasicGroupFullInfo':
+        if (update.int64('basic_group_id') != peerBasicGroupId) return;
+        final fullInfo = update.obj('basic_group_full_info') ?? update;
+        final members = fullInfo.objects('members');
+        if (members != null) memberCount = members.length;
+        notifyListeners();
+        unawaited(_applyGroupBotCommands(fullInfo));
 
       case 'updateUserStatus':
         if (isGroup || update.int64('user_id') != peerUserId) return;

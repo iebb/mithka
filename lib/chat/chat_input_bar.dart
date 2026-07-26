@@ -107,6 +107,18 @@ class MentionQuery {
   final String query;
 }
 
+class BotCommandQuery {
+  const BotCommandQuery({
+    required this.start,
+    required this.end,
+    required this.query,
+  });
+
+  final int start;
+  final int end;
+  final String query;
+}
+
 MentionQuery? activeMentionQuery(String text, TextSelection selection) {
   if (!selection.isValid || !selection.isCollapsed) return null;
   final cursor = selection.extentOffset;
@@ -120,6 +132,34 @@ MentionQuery? activeMentionQuery(String text, TextSelection selection) {
     end: cursor,
     query: match.group(2) ?? '',
   );
+}
+
+BotCommandQuery? activeBotCommandQuery(String text, TextSelection selection) {
+  if (!selection.isValid ||
+      !selection.isCollapsed ||
+      selection.extentOffset != text.length) {
+    return null;
+  }
+  final match = RegExp(r'^/([A-Za-z0-9_]*)$').firstMatch(text);
+  if (match == null) return null;
+  return BotCommandQuery(
+    start: 0,
+    end: text.length,
+    query: match.group(1) ?? '',
+  );
+}
+
+List<BotCommandOption> matchingBotCommands(
+  Iterable<BotCommandOption> commands,
+  String query,
+) {
+  final normalizedQuery = query.toLowerCase();
+  return commands
+      .where(
+        (command) =>
+            command.normalizedCommand.toLowerCase().startsWith(normalizedQuery),
+      )
+      .toList(growable: false);
 }
 
 bool isTelegramAiDraftEligible(String text) =>
@@ -326,6 +366,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
   MentionQuery? _mentionQuery;
   List<MentionCandidate> _mentionCandidates = const [];
   int _mentionSearchGeneration = 0;
+  BotCommandQuery? _botCommandQuery;
+  List<BotCommandOption> _botCommandCandidates = const [];
   OverlayEntry? _relayProgressEntry;
   RichMessageRelayProgress? _relayProgress;
   final BotPlatformService _botPlatform = BotPlatformService();
@@ -442,6 +484,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
     }
     if (applyingAiReplyDraft) return;
     _updateMentionSuggestions();
+    _updateBotCommandSuggestions();
     _queueInlineBotResults();
     final now = DateTime.now();
     if (_controller.text.isNotEmpty &&
@@ -502,6 +545,57 @@ class _ChatInputBarState extends State<ChatInputBar> {
       end: query.end,
       label: candidate.name,
       userId: candidate.userId,
+    );
+    _focus.requestFocus();
+  }
+
+  void _updateBotCommandSuggestions({bool force = false, bool rebuild = true}) {
+    final query = activeBotCommandQuery(
+      _controller.text,
+      _controller.selection,
+    );
+    if (query == null || !vm.isGroup || vm.isChannel) {
+      if (_botCommandQuery == null && _botCommandCandidates.isEmpty) return;
+      _botCommandQuery = null;
+      _botCommandCandidates = const [];
+      if (rebuild && mounted) setState(() {});
+      return;
+    }
+    if (!force &&
+        _botCommandQuery?.start == query.start &&
+        _botCommandQuery?.end == query.end &&
+        _botCommandQuery?.query == query.query) {
+      return;
+    }
+    _botCommandQuery = query;
+    _botCommandCandidates = matchingBotCommands(vm.botCommands, query.query);
+    if (rebuild && mounted) setState(() {});
+  }
+
+  void _sendBotCommandHint(BotCommandOption command) {
+    if (!vm.sendCommand(command.targetedCommand)) return;
+    _controller.clear();
+    _focus.requestFocus();
+    widget.onMessageSent();
+  }
+
+  void _insertBotCommandHint(BotCommandOption command) {
+    final query = activeBotCommandQuery(
+      _controller.text,
+      _controller.selection,
+    );
+    if (query == null) return;
+    final replacement = '${command.displayCommand} ';
+    final text = _controller.text.replaceRange(
+      query.start,
+      query.end,
+      replacement,
+    );
+    _controller.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(
+        offset: query.start + replacement.length,
+      ),
     );
     _focus.requestFocus();
   }
@@ -616,6 +710,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
     _hasText = _controller.text.trim().isNotEmpty;
     _aiDraftEligible = isTelegramAiDraftEligible(_controller.text);
     if (_hasText) _quickReplyContextVisible = false;
+    _updateBotCommandSuggestions(force: true, rebuild: false);
     if (mounted) setState(() {});
   }
 
@@ -1825,6 +1920,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
               if (vm.replyTo != null) _replyBanner(vm.replyTo!),
               if (_inlineBotLoading || _inlineBotResults != null)
                 _inlineBotResultMenu()
+              else if (_botCommandCandidates.isNotEmpty)
+                _botCommandMenu()
               else if (_mentionCandidates.isNotEmpty)
                 _mentionMenu()
               else if (_quickReplyContextVisible && _quickReplies.isNotEmpty)
@@ -1990,6 +2087,111 @@ class _ChatInputBarState extends State<ChatInputBar> {
     } catch (error) {
       _showBotPlatformFailure(error);
     }
+  }
+
+  Widget _botCommandMenu() {
+    final c = context.colors;
+    return Container(
+      key: const ValueKey('groupBotCommandHints'),
+      constraints: const BoxConstraints(maxHeight: 260),
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      decoration: BoxDecoration(
+        color: c.card,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: c.divider, width: 0.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 14,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: ListView.separated(
+        shrinkWrap: true,
+        padding: EdgeInsets.zero,
+        itemCount: _botCommandCandidates.length,
+        separatorBuilder: (_, _) => const InsetDivider(leadingInset: 54),
+        itemBuilder: (context, index) {
+          final command = _botCommandCandidates[index];
+          final stableKey = '${command.botUserId}-${command.normalizedCommand}';
+          return Semantics(
+            button: true,
+            label: '${command.botName}, ${command.displayCommand}',
+            value: command.description,
+            child: GestureDetector(
+              key: ValueKey('groupBotCommand-$stableKey'),
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _sendBotCommandHint(command),
+              child: SizedBox(
+                height: 46,
+                child: Row(
+                  children: [
+                    const SizedBox(width: 12),
+                    PhotoAvatar(
+                      title: command.botName,
+                      photo: command.botPhoto,
+                      size: 30,
+                      allowAnimation: false,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text: command.displayCommand,
+                              style: TextStyle(
+                                color: c.textPrimary,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            if (command.description.trim().isNotEmpty)
+                              TextSpan(
+                                text: '  ${command.description.trim()}',
+                                style: TextStyle(
+                                  color: c.textSecondary,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w400,
+                                ),
+                              ),
+                          ],
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Semantics(
+                      button: true,
+                      label:
+                          '${AppStrings.t(AppStringKeys.richTextComposerInsert)} ${command.displayCommand}',
+                      child: GestureDetector(
+                        key: ValueKey('insertGroupBotCommand-$stableKey'),
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => _insertBotCommandHint(command),
+                        child: SizedBox(
+                          width: 42,
+                          height: 46,
+                          child: Center(
+                            child: AppIcon(
+                              HeroAppIcons.reply,
+                              size: 18,
+                              color: c.textTertiary,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   Widget _mentionMenu() {
