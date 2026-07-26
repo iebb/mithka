@@ -899,6 +899,13 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.0.0"
+  mithka_video_player:
+    dependency: "direct main"
+    description:
+      path: "packages/mithka_video_player"
+      relative: true
+    source: path
+    version: "0.1.0"
   mobile_scanner:
     dependency: "direct main"
     description:
@@ -908,7 +915,7 @@ packages:
     source: hosted
     version: "7.4.0"
   multi_window_manager:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: multi_window_manager
       sha256: "75d81f9c5dfb101079059b4d63cb8600b748378bf31bfc0b221edba604b8c5a8"
@@ -1552,7 +1559,7 @@ packages:
     source: hosted
     version: "2.4.0"
   video_thumbnail_gen:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: video_thumbnail_gen
       sha256: "63e7ab31eb59c2ed870cede4783033fbaa95b94b38379a550b60f69a7311edf1"

@@ -76,6 +76,9 @@ class HeroAppIcons {
   static const download = AppIconData(HeroiconsOutline.arrowDownTray);
   static const droplet = AppIconData(HeroiconsOutline.beaker);
   static const ellipsis = AppIconData(HeroiconsOutline.ellipsisHorizontal);
+  static const ellipsisVertical = AppIconData(
+    HeroiconsOutline.ellipsisVertical,
+  );
   static const expand = AppIconData(HeroiconsOutline.arrowsPointingOut);
   static const eye = AppIconData(HeroiconsOutline.eye);
   static const eyeSlash = AppIconData(HeroiconsOutline.eyeSlash);

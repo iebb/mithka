@@ -37,18 +37,31 @@ void main() {
     expect(DesktopVideoWindowArguments.tryParse('not json'), isNull);
   });
 
-  test('desktop player uses SPM windowing and native keyboard controls', () {
-    final window = File('lib/app/desktop_video_window.dart').readAsStringSync();
-    final player = File('lib/chat/video_player_view.dart').readAsStringSync();
+  test(
+    'desktop player uses package windowing and native keyboard controls',
+    () {
+      final window = File(
+        'lib/app/desktop_video_window.dart',
+      ).readAsStringSync();
+      final packageWindow = File(
+        'packages/mithka_video_player/lib/src/desktop_video_windows.dart',
+      ).readAsStringSync();
+      final player = File(
+        'packages/mithka_video_player/lib/src/video_player.dart',
+      ).readAsStringSync();
 
-    expect(window, contains('package:multi_window_manager/'));
-    expect(window, isNot(contains('desktop_multi_window')));
-    expect(player, contains('LogicalKeyboardKey.space'));
-    expect(player, contains('LogicalKeyboardKey.arrowLeft'));
-    expect(player, contains('LogicalKeyboardKey.arrowRight'));
-    expect(player, contains('LogicalKeyboardKey.keyM'));
-    expect(player, contains('onDoubleTap:'));
-  });
+      expect(window, contains('package:mithka_video_player/'));
+      expect(window, isNot(contains('package:multi_window_manager/')));
+      expect(packageWindow, contains('package:multi_window_manager/'));
+      expect(window, isNot(contains('desktop_multi_window')));
+      expect(player, contains('LogicalKeyboardKey.space'));
+      expect(player, contains('LogicalKeyboardKey.arrowLeft'));
+      expect(player, contains('LogicalKeyboardKey.arrowRight'));
+      expect(player, contains('LogicalKeyboardKey.keyM'));
+      expect(player, contains('onDoubleTapDown:'));
+      expect(player, contains('trackWidth * fraction - previewWidth / 2'));
+    },
+  );
 
   test('macOS keeps the primary Flutter window visible at launch', () {
     final runner = File(

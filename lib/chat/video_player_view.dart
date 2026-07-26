@@ -15,9 +15,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fvp/fvp.dart';
 import 'package:mithka/l10n/app_localizations.dart';
+import 'package:mithka_video_player/mithka_video_player.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
-import 'package:video_thumbnail_gen/video_thumbnail_gen.dart';
 
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
@@ -505,7 +505,6 @@ class VideoPlayerView extends StatefulWidget {
     this.previousVideo,
     this.nextVideo,
     this.onNavigate,
-    this.directSourceUri,
     this.onToggleFullscreen,
   });
 
@@ -525,9 +524,6 @@ class VideoPlayerView extends StatefulWidget {
   final VideoPlaybackItem? nextVideo;
   final ValueChanged<int>? onNavigate;
 
-  /// A source already prepared by the owning engine, used by desktop child
-  /// windows so they never initialize a second TDLib client.
-  final Uri? directSourceUri;
   final VoidCallback? onToggleFullscreen;
 
   @override
@@ -691,16 +687,6 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   }
 
   Future<void> _load() async {
-    final directSourceUri = widget.directSourceUri;
-    if (directSourceUri != null) {
-      _localPath = directSourceUri.toString();
-      final initialized = await _initializeFromUri(directSourceUri);
-      if (!initialized && mounted) {
-        setState(() => _failed = true);
-        showToast(context, AppStringKeys.videoPlayerCannotPlay);
-      }
-      return;
-    }
     final sourcePath = widget.video.localPath;
     if (sourcePath != null && sourcePath.isNotEmpty) {
       final source = File(sourcePath);
@@ -2599,7 +2585,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
               ),
             ),
           ),
-          _OwnedVideoSlider(
+          MithkaVideoSlider(
             value: duration <= 0 ? 0 : position / duration,
             trackHeight: compact ? 2.5 : 4,
             thumbRadius: compact ? 5 : 8,
@@ -2706,12 +2692,9 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     final generation = _scrubPreviewGeneration;
     Uint8List? bytes;
     try {
-      bytes = await VideoThumbnail.thumbnailData(
-        video: source,
-        imageFormat: ImageFormat.JPEG,
-        maxWidth: 240,
-        timeMs: position.inMilliseconds,
-        quality: 72,
+      bytes = await MithkaVideoThumbnail.generate(
+        source: source,
+        position: position,
       );
     } catch (_) {
       bytes = null;
@@ -3009,7 +2992,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
           ),
           SizedBox(width: compact ? 0 : 7),
           Expanded(
-            child: _OwnedVideoSlider(
+            child: MithkaVideoSlider(
               value: _volume,
               trackHeight: compact ? 2.5 : 3,
               thumbRadius: compact ? 5 : 7,
@@ -3205,172 +3188,4 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     if (bytesPerSecond <= 0) return '0 KB';
     return _byteString(bytesPerSecond.round());
   }
-}
-
-class _OwnedVideoSlider extends StatefulWidget {
-  const _OwnedVideoSlider({
-    required this.value,
-    required this.trackHeight,
-    required this.thumbRadius,
-    required this.activeColor,
-    required this.inactiveColor,
-    required this.onChanged,
-    this.onChangeStart,
-    this.onChangeEnd,
-  });
-
-  final double value;
-  final double trackHeight;
-  final double thumbRadius;
-  final Color activeColor;
-  final Color inactiveColor;
-  final ValueChanged<double>? onChangeStart;
-  final ValueChanged<double>? onChanged;
-  final ValueChanged<double>? onChangeEnd;
-
-  @override
-  State<_OwnedVideoSlider> createState() => _OwnedVideoSliderState();
-}
-
-class _OwnedVideoSliderState extends State<_OwnedVideoSlider> {
-  double? _interactionValue;
-
-  double _valueAt(double dx, double width) {
-    final usableWidth = math.max(1.0, width - widget.thumbRadius * 2);
-    return ((dx - widget.thumbRadius) / usableWidth).clamp(0.0, 1.0);
-  }
-
-  void _begin(double dx, double width) {
-    final value = _valueAt(dx, width);
-    setState(() => _interactionValue = value);
-    widget.onChangeStart?.call(value);
-    widget.onChanged?.call(value);
-  }
-
-  void _update(double dx, double width) {
-    final value = _valueAt(dx, width);
-    setState(() => _interactionValue = value);
-    widget.onChanged?.call(value);
-  }
-
-  void _end() {
-    final value = _interactionValue ?? widget.value;
-    widget.onChangeEnd?.call(value);
-    setState(() => _interactionValue = null);
-  }
-
-  @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) {
-      final enabled = widget.onChanged != null;
-      final value = (_interactionValue ?? widget.value).clamp(0.0, 1.0);
-      return Semantics(
-        slider: true,
-        enabled: enabled,
-        value: '${(value * 100).round()}%',
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTapUp: enabled
-              ? (details) {
-                  final next = _valueAt(
-                    details.localPosition.dx,
-                    constraints.maxWidth,
-                  );
-                  widget.onChangeStart?.call(next);
-                  widget.onChanged?.call(next);
-                  widget.onChangeEnd?.call(next);
-                }
-              : null,
-          onHorizontalDragStart: enabled
-              ? (details) =>
-                    _begin(details.localPosition.dx, constraints.maxWidth)
-              : null,
-          onHorizontalDragUpdate: enabled
-              ? (details) =>
-                    _update(details.localPosition.dx, constraints.maxWidth)
-              : null,
-          onHorizontalDragEnd: enabled ? (_) => _end() : null,
-          onHorizontalDragCancel: enabled ? _end : null,
-          child: CustomPaint(
-            painter: _OwnedVideoSliderPainter(
-              value: value,
-              trackHeight: widget.trackHeight,
-              thumbRadius: widget.thumbRadius,
-              activeColor: widget.activeColor,
-              inactiveColor: widget.inactiveColor,
-              enabled: enabled,
-            ),
-            child: const SizedBox.expand(),
-          ),
-        ),
-      );
-    },
-  );
-}
-
-class _OwnedVideoSliderPainter extends CustomPainter {
-  const _OwnedVideoSliderPainter({
-    required this.value,
-    required this.trackHeight,
-    required this.thumbRadius,
-    required this.activeColor,
-    required this.inactiveColor,
-    required this.enabled,
-  });
-
-  final double value;
-  final double trackHeight;
-  final double thumbRadius;
-  final Color activeColor;
-  final Color inactiveColor;
-  final bool enabled;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final left = thumbRadius;
-    final right = math.max(left, size.width - thumbRadius);
-    final centerY = size.height / 2;
-    final thumbX = left + (right - left) * value;
-    final trackRect = RRect.fromRectAndRadius(
-      Rect.fromLTRB(
-        left,
-        centerY - trackHeight / 2,
-        right,
-        centerY + trackHeight / 2,
-      ),
-      Radius.circular(trackHeight / 2),
-    );
-    if (inactiveColor.a > 0) {
-      canvas.drawRRect(trackRect, Paint()..color = inactiveColor);
-    }
-    if (thumbX > left) {
-      canvas.save();
-      canvas.clipRRect(trackRect);
-      canvas.drawRect(
-        Rect.fromLTRB(
-          left,
-          centerY - trackHeight / 2,
-          thumbX,
-          centerY + trackHeight / 2,
-        ),
-        Paint()..color = activeColor,
-      );
-      canvas.restore();
-    }
-    canvas.drawCircle(
-      Offset(thumbX, centerY),
-      thumbRadius,
-      Paint()
-        ..color = enabled ? activeColor : activeColor.withValues(alpha: 0.7),
-    );
-  }
-
-  @override
-  bool shouldRepaint(_OwnedVideoSliderPainter oldDelegate) =>
-      oldDelegate.value != value ||
-      oldDelegate.trackHeight != trackHeight ||
-      oldDelegate.thumbRadius != thumbRadius ||
-      oldDelegate.activeColor != activeColor ||
-      oldDelegate.inactiveColor != inactiveColor ||
-      oldDelegate.enabled != enabled;
 }

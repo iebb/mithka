@@ -18,7 +18,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:fvp/fvp.dart' as fvp;
 import 'package:google_fonts/google_fonts.dart';
-import 'package:multi_window_manager/multi_window_manager.dart';
+import 'package:mithka_video_player/mithka_video_player.dart';
 import 'package:provider/provider.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -68,15 +68,8 @@ import 'theme/theme_controller.dart';
 
 Future<void> main(List<String> arguments) async {
   if (supportsDesktopVideoWindows) {
-    WidgetsFlutterBinding.ensureInitialized();
-    final windowId = arguments.isEmpty ? 0 : int.tryParse(arguments.first) ?? 0;
-    if (windowId == 0) {
-      await MultiWindowManager.ensureInitialized(0);
-    } else {
-      await MultiWindowManager.ensureInitializedSecondary(windowId);
-    }
-    final videoArguments = DesktopVideoWindowArguments.tryParse(
-      windowId > 0 && arguments.length > 1 ? arguments[1] : '',
+    final videoArguments = await MithkaDesktopVideoWindows.initialize(
+      arguments,
     );
     if (videoArguments != null) {
       if (_shouldUseFvp()) fvp.registerWith();

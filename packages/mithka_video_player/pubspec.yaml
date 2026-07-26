@@ -1,0 +1,22 @@
+name: mithka_video_player
+description: Reusable responsive Flutter video player and independent desktop-window support.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  multi_window_manager: ^1.3.0
+  video_player: ^2.13.0
+  video_thumbnail_gen: ^0.6.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: false
