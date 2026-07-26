@@ -4721,7 +4721,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
   /// 文件: pick an arbitrary document and send it.
   Future<void> _pickFile() async {
     try {
-      final result = await FilePicker.pickFiles(allowMultiple: true);
+      final result = await FilePicker.platform.pickFiles(allowMultiple: true);
       final attachments = result?.files
           .map((file) => file.path)
           .whereType<String>()
@@ -4790,7 +4790,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
   /// 音频: pick a local audio file and send it as a music message.
   Future<void> _pickLocalAudio() async {
     try {
-      final preferred = await FilePicker.pickFiles(
+      final preferred = await FilePicker.platform.pickFiles(
         allowMultiple: true,
         type: FileType.custom,
         allowedExtensions: const [
@@ -4805,7 +4805,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
         ],
       );
       final result =
-          preferred ?? await FilePicker.pickFiles(allowMultiple: true);
+          preferred ?? await FilePicker.platform.pickFiles(allowMultiple: true);
       if (result == null) return;
       final attachments = result.files
           .map((file) => file.path)

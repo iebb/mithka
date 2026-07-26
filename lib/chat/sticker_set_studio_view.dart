@@ -742,7 +742,7 @@ class _StickerSetManageViewState extends State<StickerSetManageView> {
   }
 
   Future<void> _setThumbnail() async {
-    final result = await FilePicker.pickFiles(
+    final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: const ['png', 'webp', 'tgs', 'webm'],
     );
@@ -1204,7 +1204,7 @@ class _StickerDraftEditorViewState extends State<StickerDraftEditorView> {
   }
 
   Future<void> _pick() async {
-    final result = await FilePicker.pickFiles(
+    final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: _format.allowedExtensions,
     );

@@ -4487,7 +4487,7 @@ class _ChatViewState extends State<ChatView> {
         height: asset.height,
       );
     } else {
-      final picked = await FilePicker.pickFiles(
+      final picked = await FilePicker.platform.pickFiles(
         type: message.contentType == 'messageAudio'
             ? FileType.audio
             : FileType.any,

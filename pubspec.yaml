@@ -1,7 +1,7 @@
 name: mithka
 description: "Mithka — a cross-platform Telegram client (Flutter), built on TDLib."
 publish_to: 'none'
-version: 0.7.30+281
+version: 0.7.31+281
 
 environment:
   sdk: ^3.12.2
@@ -44,9 +44,11 @@ dependencies:
   # Media pickers for the composer's + panel: photos/camera, documents, location.
   image_picker: ^1.2.3
   camera: ^0.12.0+2
-  file_picker: ^11.0.2
+  # 11.x assumes AGP 9 built-in Kotlin is enabled and omits its Kotlin plugin;
+  # this project keeps built-in Kotlin disabled for plugins that still apply KGP.
+  file_picker: ^10.3.10
   # 14.x pulls package_info_plus 10/win32 6, incompatible with stable
-  # file_picker 11's win32 5 constraint.
+  # the compatible file_picker 10.x line's win32 5 constraint.
   geolocator: ^13.0.4
 
   # QR business card (二维码名片) rendering.
@@ -81,7 +83,7 @@ dependencies:
   google_fonts: ^8.2.0
   firebase_core: ^4.12.1
   firebase_analytics: ^12.4.5
-  # 10.x requires win32 6, while stable file_picker 11 still requires win32 5.
+  # 10.x requires win32 6, while compatible file_picker 10.x requires win32 5.
   package_info_plus: ^9.0.1
   sentry_flutter: ^9.25.0
   http: ^1.6.0

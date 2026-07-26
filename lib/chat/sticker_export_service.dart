@@ -120,7 +120,7 @@ class StickerExportService {
       }
 
       final bytes = await output.readAsBytes();
-      final selectedPath = await FilePicker.saveFile(
+      final selectedPath = await FilePicker.platform.saveFile(
         fileName: output.uri.pathSegments.last,
         type: FileType.custom,
         allowedExtensions: [format.extension],
@@ -195,7 +195,7 @@ class StickerExportService {
       final bytes = ZipEncoder().encode(archive);
       final baseName = _safeFileName(title.trim().isEmpty ? 'stickers' : title);
       final formatName = _setArchiveFormatName(stickers, format);
-      final selectedPath = await FilePicker.saveFile(
+      final selectedPath = await FilePicker.platform.saveFile(
         fileName: '$baseName-$formatName.zip',
         type: FileType.custom,
         allowedExtensions: const ['zip'],
