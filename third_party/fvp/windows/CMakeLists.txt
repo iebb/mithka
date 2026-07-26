@@ -6,7 +6,7 @@ cmake_minimum_required(VERSION 3.17)
 
 # Project-level configuration.
 set(PROJECT_NAME "fvp")
-project(${PROJECT_NAME} VERSION 0.37.2
+project(${PROJECT_NAME} VERSION 0.37.3
     DESCRIPTION "Flutter video_player plugin via libmdk")
 set(PROJECT_VERSION_TWEAK 0)
 set(CMAKE_CXX_STANDARD 20)

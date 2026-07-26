@@ -39,15 +39,18 @@ let package = Package(
             linkerSettings: [
                 .linkedFramework("Flutter", .when(platforms: [.iOS])),
                 .linkedFramework("FlutterMacOS", .when(platforms: [.macOS])),
+                .linkedFramework("UIKit", .when(platforms: [.iOS])),
                 .linkedFramework("AVFoundation"),
+                .linkedFramework("AVKit"),
+                .linkedFramework("CoreMedia"),
                 .linkedFramework("CoreVideo"),
                 .linkedFramework("Metal"),
             ]
         ),
         .binaryTarget(
             name: "mdk",
-            url: "https://github.com/wang-bin/mdk-sdk/releases/download/v0.36.0/mdk-sdk-apple.zip",
-            checksum: "9c73e96a113096c9e8d9d255477e5327301bff6dead2266f7ab5436d37d6ccb6"
+            url: "https://github.com/wang-bin/mdk-sdk/releases/download/v0.37.0/mdk-sdk-apple.zip",
+            checksum: "1f92b5318138fdf90dfc2424c0ff751d64f705413ae0d3c7f04aa3faec49c921"
         ),
     ],
     cxxLanguageStandard: .cxx20

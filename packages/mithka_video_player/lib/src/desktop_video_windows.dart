@@ -1,147 +1,105 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
 
-import 'package:flutter/widgets.dart';
-import 'package:multi_window_manager/multi_window_manager.dart';
+import 'package:flutter/foundation.dart';
 
-const _defaultWindowType = 'mithka.video';
+import 'desktop_video_window_arguments.dart';
+import 'desktop_video_windows_platform.dart';
+import 'desktop_video_windows_stub.dart'
+    if (dart.library.io) 'desktop_video_windows_io.dart'
+    as implementation;
 
+export 'desktop_video_window_arguments.dart';
+export 'desktop_video_window_host.dart';
+
+/// Whether independent native video windows are available on this platform.
+///
+/// Importing this library is safe on every Flutter platform. Unsupported
+/// platforms never initialize or invoke the native desktop-window plugin.
 bool get mithkaSupportsDesktopVideoWindows =>
-    !Platform.isAndroid && !Platform.isIOS && !Platform.isFuchsia;
+    MithkaDesktopVideoWindows.instance.isSupported;
 
-class MithkaDesktopVideoWindowArguments {
-  const MithkaDesktopVideoWindowArguments({
-    required this.uri,
-    required this.title,
-    required this.width,
-    required this.height,
-    required this.muted,
-    this.windowType = _defaultWindowType,
-  });
+/// Owns independent desktop windows and their host-side resources.
+class MithkaDesktopVideoWindows {
+  MithkaDesktopVideoWindows._(this._platform);
 
-  final Uri uri;
-  final String title;
-  final int? width;
-  final int? height;
-  final bool muted;
-  final String windowType;
+  static final MithkaDesktopVideoWindows instance = MithkaDesktopVideoWindows._(
+    implementation.createDesktopWindowsPlatform(),
+  );
 
-  String encode() => jsonEncode({
-    'type': windowType,
-    'uri': uri.toString(),
-    'title': title,
-    'width': width,
-    'height': height,
-    'muted': muted,
-  });
+  final MithkaDesktopVideoWindowsPlatform _platform;
 
-  static MithkaDesktopVideoWindowArguments? tryParse(
-    String source, {
-    String windowType = _defaultWindowType,
-  }) {
-    if (source.isEmpty) return null;
-    try {
-      final value = jsonDecode(source);
-      if (value is! Map || value['type'] != windowType) return null;
-      final uri = Uri.tryParse(value['uri'] as String? ?? '');
-      if (uri == null || !uri.hasScheme) return null;
-      return MithkaDesktopVideoWindowArguments(
-        uri: uri,
-        title: value['title'] as String? ?? 'Video',
-        width: value['width'] as int?,
-        height: value['height'] as int?,
-        muted: value['muted'] as bool? ?? false,
-        windowType: windowType,
-      );
-    } catch (_) {
-      return null;
-    }
+  bool get isSupported => _platform.isSupported;
+
+  /// Receives recoverable native-window failures.
+  ///
+  /// Operations still resolve gracefully (`open` returns `null`; commands are
+  /// no-ops). When unset, failures are printed only in debug builds.
+  MithkaDesktopWindowErrorHandler? get onError => _platform.onError;
+
+  set onError(MithkaDesktopWindowErrorHandler? value) {
+    _platform.onError = value;
   }
-}
 
-typedef MithkaDesktopWindowClosed = FutureOr<void> Function();
+  /// IDs for windows which completed initialization and were shown.
+  Set<int> get activeWindowIds => _platform.activeWindowIds;
 
-/// Owns independent desktop windows while allowing a host to retain and clean
-/// up resources, such as a loopback video stream, for each child window.
-class MithkaDesktopVideoWindows with WindowListener {
-  MithkaDesktopVideoWindows._();
+  /// Observable native fullscreen state for the current child window.
+  ///
+  /// It remains false in a main window or on unsupported platforms and follows
+  /// both package requests and platform-native fullscreen controls.
+  static ValueListenable<bool> get currentWindowFullscreen =>
+      instance._platform.currentWindowFullscreen;
 
-  static final MithkaDesktopVideoWindows instance =
-      MithkaDesktopVideoWindows._();
-
-  final Map<int, MithkaDesktopWindowClosed> _closeCallbacks = {};
-  bool _observing = false;
-
+  /// Initializes the native-window integration for this Flutter engine.
+  ///
+  /// The returned arguments are non-null only for a valid child video window.
+  /// On unsupported platforms this is a side-effect-free no-op.
   static Future<MithkaDesktopVideoWindowArguments?> initialize(
     List<String> arguments, {
-    String windowType = _defaultWindowType,
-  }) async {
-    if (!mithkaSupportsDesktopVideoWindows) return null;
-    WidgetsFlutterBinding.ensureInitialized();
-    final windowId = arguments.isEmpty ? 0 : int.tryParse(arguments.first) ?? 0;
-    if (windowId == 0) {
-      await MultiWindowManager.ensureInitialized(0);
-    } else {
-      await MultiWindowManager.ensureInitializedSecondary(windowId);
-    }
-    return MithkaDesktopVideoWindowArguments.tryParse(
-      windowId > 0 && arguments.length > 1 ? arguments[1] : '',
-      windowType: windowType,
-    );
-  }
+    String windowType = mithkaDesktopVideoWindowType,
+  }) => instance._platform.initialize(arguments, windowType: windowType);
 
+  /// Opens another independent player window.
+  ///
+  /// Multiple calls may run concurrently and each creates an independent
+  /// window. [onClosed] is called exactly once when that window closes or when
+  /// opening it fails, making it suitable for releasing a retained stream.
   Future<int?> open(
     MithkaDesktopVideoWindowArguments arguments, {
     MithkaDesktopWindowClosed? onClosed,
-  }) async {
-    if (!mithkaSupportsDesktopVideoWindows) return null;
-    final controller = await MultiWindowManager.createWindow([
-      arguments.encode(),
-    ]);
-    if (controller == null) return null;
-    if (onClosed != null) _closeCallbacks[controller.id] = onClosed;
-    if (!_observing) {
-      _observing = true;
-      MultiWindowManager.addGlobalListener(this);
-    }
-    await controller.show();
-    return controller.id;
-  }
+    Duration timeout = const Duration(seconds: 20),
+  }) => _platform.open(arguments, onClosed: onClosed, timeout: timeout);
 
+  /// Configures the current child window using a video-preserving initial size.
   static Future<void> configureCurrentWindow({
     required String title,
     int? videoWidth,
     int? videoHeight,
-  }) async {
-    final aspect =
-        videoWidth != null &&
-            videoHeight != null &&
-            videoWidth > 0 &&
-            videoHeight > 0
-        ? videoWidth / videoHeight
-        : 16 / 9;
-    const preferredWidth = 880.0;
-    final preferredHeight = (preferredWidth / aspect).clamp(420.0, 720.0);
-    final window = MultiWindowManager.current;
-    await window.setMinimumSize(const Size(420, 280));
-    await window.setSize(Size(preferredWidth, preferredHeight));
-    await window.setTitle(title);
-    await window.center();
-  }
+  }) => instance._platform.configureCurrentWindow(
+    title: title,
+    videoWidth: videoWidth,
+    videoHeight: videoHeight,
+  );
 
+  /// Requests a graceful close of the current independent window.
   static Future<void> closeCurrentWindow() =>
-      MultiWindowManager.current.close();
+      instance._platform.closeCurrentWindow();
 
-  static Future<void> toggleCurrentWindowFullscreen() async {
-    final window = MultiWindowManager.current;
-    await window.setFullScreen(!await window.isFullScreen());
-  }
+  /// Requests a graceful close of a window owned by the current host.
+  Future<void> close(int windowId) => _platform.close(windowId);
 
-  @override
-  void onWindowClose([int? windowId]) {
-    if (windowId == null) return;
-    final callback = _closeCallbacks.remove(windowId);
-    if (callback != null) unawaited(Future<void>.sync(callback));
-  }
+  /// Requests a graceful close of every window opened by this host isolate.
+  Future<void> closeAll() => _platform.closeAll();
+
+  /// Requests a specific native fullscreen state for the current child window.
+  ///
+  /// Returns whether the native window reached the requested state. The
+  /// desired-state API avoids state drift when a player handles Escape or when
+  /// the same command is delivered more than once.
+  static Future<bool> setCurrentWindowFullscreen(bool fullscreen) =>
+      instance._platform.setCurrentWindowFullscreen(fullscreen);
+
+  /// Enters or leaves native fullscreen for the current child window.
+  static Future<void> toggleCurrentWindowFullscreen() =>
+      instance._platform.toggleCurrentWindowFullscreen();
 }

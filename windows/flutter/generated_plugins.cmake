@@ -3,6 +3,7 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  fc_native_video_thumbnail
   file_selector_windows
   firebase_core
   flutter_secure_storage_windows

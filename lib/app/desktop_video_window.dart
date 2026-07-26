@@ -46,31 +46,14 @@ class DesktopVideoWindowService {
   }
 }
 
-class DesktopVideoWindowApp extends StatefulWidget {
+class DesktopVideoWindowApp extends StatelessWidget {
   const DesktopVideoWindowApp({super.key, required this.arguments});
 
   final DesktopVideoWindowArguments arguments;
 
   @override
-  State<DesktopVideoWindowApp> createState() => _DesktopVideoWindowAppState();
-}
-
-class _DesktopVideoWindowAppState extends State<DesktopVideoWindowApp> {
-  @override
-  void initState() {
-    super.initState();
-    unawaited(
-      MithkaDesktopVideoWindows.configureCurrentWindow(
-        title: widget.arguments.title,
-        videoWidth: widget.arguments.width,
-        videoHeight: widget.arguments.height,
-      ),
-    );
-  }
-
-  @override
   Widget build(BuildContext context) => MaterialApp(
-    title: widget.arguments.title,
+    title: arguments.title,
     debugShowCheckedModeBanner: false,
     theme: ThemeData.dark().copyWith(scaffoldBackgroundColor: Colors.black),
     supportedLocales: AppLocalizations.supportedLocales,
@@ -80,16 +63,35 @@ class _DesktopVideoWindowAppState extends State<DesktopVideoWindowApp> {
       GlobalCupertinoLocalizations.delegate,
       GlobalWidgetsLocalizations.delegate,
     ],
-    home: ColoredBox(
+    home: MithkaDesktopVideoWindowHost(
+      initialArguments: arguments,
+      builder: (context, arguments) =>
+          _DesktopVideoWindowPlayer(arguments: arguments),
+    ),
+  );
+}
+
+class _DesktopVideoWindowPlayer extends StatelessWidget {
+  const _DesktopVideoWindowPlayer({required this.arguments});
+
+  final DesktopVideoWindowArguments arguments;
+
+  @override
+  Widget build(BuildContext context) => ValueListenableBuilder<bool>(
+    valueListenable: MithkaDesktopVideoWindows.currentWindowFullscreen,
+    builder: (context, fullscreen, _) => ColoredBox(
       color: Colors.black,
       child: MithkaVideoPlayer(
-        source: MithkaVideoSource.uri(widget.arguments.uri),
-        width: widget.arguments.width,
-        height: widget.arguments.height,
-        initialMuted: widget.arguments.muted,
+        source: MithkaVideoSource.uri(arguments.uri),
+        width: arguments.width,
+        height: arguments.height,
+        initialMuted: arguments.muted,
+        autofocus: true,
+        isFullscreen: fullscreen,
         onClose: MithkaDesktopVideoWindows.closeCurrentWindow,
-        onToggleFullscreen:
-            MithkaDesktopVideoWindows.toggleCurrentWindowFullscreen,
+        onFullscreenChanged: (value) => unawaited(
+          MithkaDesktopVideoWindows.setCurrentWindowFullscreen(value),
+        ),
       ),
     ),
   );

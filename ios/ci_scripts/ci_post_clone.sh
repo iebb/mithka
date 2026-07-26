@@ -231,12 +231,14 @@ printf '%s  %s\n' "$TGVOIP_SHA256" /tmp/tgvoip.zip | shasum -a 256 -c -
 unzip -q -o /tmp/tgvoip.zip -d ios/LocalPods/tgvoip
 ls -d ios/LocalPods/tgvoip/TgVoipWebrtc.xcframework
 
-# --- Flutter iOS build inputs (Generated.xcconfig, plugin pods) --------------
-# Keep Swift Package Manager OFF: the project is CocoaPods-only on purpose (SPM
-# produced App Store IPAs missing the SwiftSupport folder → ITMS-90426). A fresh
-# runner defaults SPM on, so disable it before generating the project.
+# --- Flutter iOS build inputs (Generated.xcconfig, SPM plugins, plugin pods) --
+# Flutter's generated Swift package owns plugins that publish SPM manifests.
+# CocoaPods remains alongside it for the small set of plugins without SPM
+# support and the local TgVoipWebrtc pod. The exported IPA is still responsible
+# for carrying SwiftSupport; scripts/build-ios-appstore.sh validates that
+# distribution artifact explicitly to prevent a recurrence of ITMS-90426.
 echo "▸ generating Flutter iOS build inputs"
-flutter config --no-enable-swift-package-manager
+flutter config --enable-swift-package-manager
 flutter precache --ios
 flutter pub get
 flutter_build_ios_config_with_retry

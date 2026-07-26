@@ -1,6 +1,7 @@
 # Flutter-related
 **/Flutter/ephemeral/
 **/Pods/
+Runner.xcworkspace/xcshareddata/swiftpm/Package.resolved
 
 # Xcode-related
 **/dgph

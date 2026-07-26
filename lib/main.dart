@@ -16,9 +16,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:fvp/fvp.dart' as fvp;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mithka_video_player/mithka_video_player.dart';
+import 'package:mithka_video_player_fvp/mithka_video_player_fvp.dart';
 import 'package:provider/provider.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -72,7 +72,7 @@ Future<void> main(List<String> arguments) async {
       arguments,
     );
     if (videoArguments != null) {
-      if (_shouldUseFvp()) fvp.registerWith();
+      _initializeVideoBackend();
       runApp(DesktopVideoWindowApp(arguments: videoArguments));
       return;
     }
@@ -97,17 +97,7 @@ Future<void> main(List<String> arguments) async {
 
 Future<void> _bootstrapAndRunApp() async {
   GoogleFonts.config.allowRuntimeFetching = true;
-  if (_shouldUseFvp()) {
-    // Route video_player through the MDK/FFmpeg backend so .webm (VP9 + alpha)
-    // video stickers decode + play (and stay transparent).
-    fvp.registerWith(
-      options: defaultTargetPlatform == TargetPlatform.android
-          ? {
-              'video.decoders': ['FFmpeg', 'dav1d'],
-            }
-          : null,
-    );
-  }
+  _initializeVideoBackend();
   // Let iPhone and iPad follow every physical orientation.
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
@@ -148,6 +138,20 @@ bool _shouldUseFvp() {
     return true;
   }
   return true;
+}
+
+void _initializeVideoBackend() {
+  if (!_shouldUseFvp()) return;
+  MithkaFvpBackend.ensureInitialized(
+    configuration: const MithkaFvpConfiguration(
+      platforms: {
+        MithkaFvpPlatform.ios,
+        MithkaFvpPlatform.linux,
+        MithkaFvpPlatform.macos,
+        MithkaFvpPlatform.windows,
+      },
+    ),
+  );
 }
 
 Future<void> _initTelemetry() async {

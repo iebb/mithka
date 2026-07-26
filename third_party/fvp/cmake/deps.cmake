@@ -76,9 +76,13 @@ macro(fvp_setup_deps)
       file(MD5 ${MDK_SDK_SAVE} MDK_SDK_MD5_SAVE)
       message("MDK_SDK_MD5_SAVE: ${MDK_SDK_MD5_SAVE}")
     endif()
+    # Flutter reaches plugins through a generated symlink. Newer CMake secure
+    # archive extraction refuses to write through that path, so extract through
+    # its canonical directory instead.
+    get_filename_component(MDK_SDK_EXTRACT_DIR "${CMAKE_CURRENT_SOURCE_DIR}" REALPATH)
     execute_process(
-      COMMAND ${CMAKE_COMMAND} -E tar "xvf" ${MDK_SDK_SAVE} # "--format=7zip"
-      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+      COMMAND ${CMAKE_COMMAND} -E tar "xvf" "${MDK_SDK_SAVE}" # "--format=7zip"
+      WORKING_DIRECTORY "${MDK_SDK_EXTRACT_DIR}"
       OUTPUT_STRIP_TRAILING_WHITESPACE
       RESULT_VARIABLE EXTRACT_RET
     )

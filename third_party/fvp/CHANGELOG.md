@@ -1,3 +1,13 @@
+# 0.37.3+mithka.1
+
+* package PrivacyInfo.xcprivacy and MDK 0.37.0 correctly with Swift Package Manager
+* render iOS picture-in-picture frames with asynchronous Metal completion,
+  bounded pending work, and stale-session guards instead of blocking the render thread
+* guard iOS 15 picture-in-picture APIs while retaining the iOS 14 deployment floor
+* keep the SPM, CocoaPods, and legacy Darwin Objective-C++ implementations in sync
+* fix current CMake builds on Windows
+* retain Mithka's Android startup crash workaround
+
 # 0.37.2
 
 * produce dynamic framework with SPM

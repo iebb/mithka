@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
-# Builds an App Store Connect IPA with the same native setup expected by Xcode
-# Cloud: CocoaPods only, no Flutter Swift Package Manager integration.
+# Builds an App Store Connect IPA with the same hybrid native setup expected by
+# Xcode Cloud: Swift Package Manager for compatible Flutter plugins and
+# CocoaPods for the remaining unsupported/local plugins.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -16,7 +17,7 @@ echo "== Xcode =="
 xcodebuild -version
 
 echo "== Flutter setup =="
-flutter config --no-enable-swift-package-manager
+flutter config --enable-swift-package-manager
 flutter pub get
 
 echo "== CocoaPods =="
@@ -47,6 +48,11 @@ if [[ -z "$IPA" ]]; then
   exit 1
 fi
 
+if ! unzip -Z1 "$IPA" | grep -Eq '^SwiftSupport/iphoneos/libswift.+\.dylib$'; then
+  echo "error: exported IPA is missing SwiftSupport/iphoneos (ITMS-90426)" >&2
+  exit 1
+fi
+
 echo "OK: $IPA"
 echo "OK: tdjson dSYM UUID $EXPECTED_UUID"
-echo "OK: Swift runtime packaging left to xcodebuild -exportArchive"
+echo "OK: SwiftSupport/iphoneos is present"

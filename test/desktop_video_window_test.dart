@@ -46,20 +46,41 @@ void main() {
       final packageWindow = File(
         'packages/mithka_video_player/lib/src/desktop_video_windows.dart',
       ).readAsStringSync();
+      final desktopWindowImplementation = File(
+        'packages/mithka_video_player/lib/src/desktop_video_windows_io.dart',
+      ).readAsStringSync();
+      final portableWindowStub = File(
+        'packages/mithka_video_player/lib/src/desktop_video_windows_stub.dart',
+      ).readAsStringSync();
       final player = File(
         'packages/mithka_video_player/lib/src/video_player.dart',
       ).readAsStringSync();
 
       expect(window, contains('package:mithka_video_player/'));
       expect(window, isNot(contains('package:multi_window_manager/')));
-      expect(packageWindow, contains('package:multi_window_manager/'));
+      expect(packageWindow, isNot(contains('package:multi_window_manager/')));
+      expect(packageWindow, isNot(contains("import 'dart:io'")));
+      expect(
+        desktopWindowImplementation,
+        contains('package:multi_window_manager/'),
+      );
+      expect(portableWindowStub, isNot(contains('multi_window_manager')));
       expect(window, isNot(contains('desktop_multi_window')));
       expect(player, contains('LogicalKeyboardKey.space'));
       expect(player, contains('LogicalKeyboardKey.arrowLeft'));
       expect(player, contains('LogicalKeyboardKey.arrowRight'));
       expect(player, contains('LogicalKeyboardKey.keyM'));
       expect(player, contains('onDoubleTapDown:'));
-      expect(player, contains('trackWidth * fraction - previewWidth / 2'));
+      expect(
+        player,
+        contains('textDirection == TextDirection.rtl\n        ? 1 - fraction'),
+      );
+      expect(
+        player,
+        contains('math.max(0, trackWidth - thumbRadius * 2) * visualFraction'),
+      );
+      expect(player, contains('thumbCenter - previewWidth / 2'));
+      expect(player, contains('math.max(0.0, trackWidth - previewWidth)'));
     },
   );
 

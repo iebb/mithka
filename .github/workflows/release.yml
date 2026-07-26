@@ -714,6 +714,10 @@ jobs:
           path: .tdlib-build/desktop-${{ matrix.platform }}
           key: tdjson-${{ matrix.platform }}-${{ matrix.architecture }}-${{ env.TDJSON_RELEASE_TAG }}-${{ hashFiles('scripts/build-tdjson-desktop.sh') }}
 
+      - name: Enable Swift Package Manager for macOS
+        if: matrix.platform == 'macos'
+        run: flutter config --enable-swift-package-manager
+
       - name: Resolve Flutter dependencies
         run: flutter pub get
 
@@ -731,11 +735,6 @@ jobs:
             static bool get isConfigured => apiId != 0 && apiHash.isNotEmpty;
           }
           EOF
-
-      - name: Refresh macOS CocoaPods specs
-        if: matrix.platform == 'macos'
-        working-directory: macos
-        run: pod install --repo-update
 
       - name: Build Linux release
         if: matrix.platform == 'linux'

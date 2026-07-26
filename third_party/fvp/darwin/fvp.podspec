@@ -15,7 +15,7 @@ Flutter video player plugin.
   s.author           = { 'Wang Bin' => 'wbsecg1@gmail.com' }
 
   s.compiler_flags   = '-Wno-documentation', '-std=c++20'
-  s.frameworks       = 'AVFoundation'
+  s.frameworks       = 'AVFoundation', 'AVKit', 'CoreMedia', 'CoreVideo', 'Metal'
   s.osx.frameworks    = 'FlutterMacOS'
   #s.osx.pod_target_xcconfig  =  { 'OTHER_LDFLAGS'  =>  '-framework FlutterMacOS'  }
   s.source           = { :path => '.' }
@@ -25,7 +25,7 @@ Flutter video player plugin.
   s.osx.dependency 'FlutterMacOS'
   s.ios.deployment_target = '12.0'
   s.osx.deployment_target = '10.13'
-  s.dependency 'mdk', '~> 0.36.0'
+  s.dependency 'mdk', '~> 0.37.0'
 
 #  s.platform = :osx, '10.11'
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }

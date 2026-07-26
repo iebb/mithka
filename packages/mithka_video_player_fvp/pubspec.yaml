@@ -1,0 +1,22 @@
+name: mithka_video_player_fvp
+description: Optional FVP playback backend adapter for mithka_video_player.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  fvp: ^0.37.3
+  mithka_video_player:
+    path: ../mithka_video_player
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: false

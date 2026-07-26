@@ -1,7 +1,7 @@
 name: mithka
 description: "Mithka — a cross-platform Telegram client (Flutter), built on TDLib."
 publish_to: 'none'
-version: 0.7.33+281
+version: 0.7.34+281
 
 environment:
   sdk: ^3.12.2
@@ -73,10 +73,14 @@ dependencies:
   # Reusable player controls, scrub previews, and independent desktop windows.
   mithka_video_player:
     path: packages/mithka_video_player
+  # Optional FVP registration kept outside the reusable player core.
+  mithka_video_player_fvp:
+    path: packages/mithka_video_player_fvp
   # Story video preparation: native 60-second segmentation and mobile-friendly
   # re-encoding before TDLib's inputStoryContentVideo upload.
   light_compressor_v2: ^1.9.0
-  fvp: ^0.37.2
+  # Direct because Mithka also consumes FVP-specific controller and PiP APIs.
+  fvp: ^0.37.3
   system_picture_in_picture:
     path: third_party/system_picture_in_picture
   flutter_local_notifications: ^22.2.0
@@ -124,6 +128,8 @@ flutter_launcher_icons:
   android: true
   remove_alpha_ios: true
 flutter:
+  config:
+    enable-swift-package-manager: true
   uses-material-design: false
   assets:
     - assets/penguin.png
