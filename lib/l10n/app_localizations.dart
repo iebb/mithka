@@ -493,10 +493,13 @@ abstract final class AppStringKeys {
   static const appearanceTotalSize = 'appearanceTotalSize';
   static const appearanceUnreadBadge = 'appearanceUnreadBadge';
   static const appIconBlueGradient = 'appIconBlueGradient';
+  static const appIconAurora = 'appIconAurora';
   static const appIconChangeFailed = 'appIconChangeFailed';
   static const appIconDefault = 'appIconDefault';
   static const appIconPixel = 'appIconPixel';
+  static const appIconPrism = 'appIconPrism';
   static const appIconPurpleGradient = 'appIconPurpleGradient';
+  static const appIconSignal = 'appIconSignal';
   static const appIconTitle = 'appIconTitle';
   static const appIconUnsupported = 'appIconUnsupported';
   static const appIconWhite = 'appIconWhite';

@@ -34,9 +34,15 @@ Color _distinctPinnedRowColor({
   required Color accent,
   required bool isDark,
 }) {
+  // Several Telegram palettes expose `chats_pinnedOverlay` as a translucent
+  // tint, not as a complete row surface. Chat rows sit above the always-painted
+  // swipe actions, so passing that tint through unchanged lets every action
+  // bleed through a closed pinned row. Resolve the overlay against the list
+  // background before comparing or returning it.
+  final resolvedCandidate = Color.alphaBlend(candidate, background);
   int channel(int value, int shift) => (value >> shift) & 0xFF;
   final backgroundValue = background.toARGB32();
-  final candidateValue = candidate.toARGB32();
+  final candidateValue = resolvedCandidate.toARGB32();
   final difference = [16, 8, 0]
       .map(
         (shift) =>
@@ -44,7 +50,7 @@ Color _distinctPinnedRowColor({
                 .abs(),
       )
       .reduce((largest, value) => value > largest ? value : largest);
-  if (difference >= 6) return candidate;
+  if (difference >= 6) return resolvedCandidate;
 
   var tint = accent;
   final accentValue = accent.toARGB32();
@@ -509,8 +515,8 @@ class TelegramCloudTheme {
     final base = isDark ? AppColors.dark : AppColors.light;
     Color value(TelegramThemeSemanticColor semantic, Color fallback) =>
         semanticColor(semantic) ?? fallback;
-    final background = value(
-      TelegramThemeSemanticColor.background,
+    final background = Color.alphaBlend(
+      value(TelegramThemeSemanticColor.background, base.background),
       base.background,
     );
     final card = value(TelegramThemeSemanticColor.card, base.card);

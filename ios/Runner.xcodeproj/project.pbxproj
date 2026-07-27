@@ -14,13 +14,16 @@
 		3710E08FDCA600E100CD4F88 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 52A009A067E9DA34DF0021A0 /* Foundation.framework */; };
 		3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */; };
 		3D4E5902AB7F165C43F64F26 /* MithkaWhite.icon in Resources */ = {isa = PBXBuildFile; fileRef = E55FCC0A5626166720397D1F /* MithkaWhite.icon */; };
+		41A7B9C1D3E5F708192A3B4C /* MithkaAurora.icon in Resources */ = {isa = PBXBuildFile; fileRef = 51B8CAD2E4F6091A2B3C4D5E /* MithkaAurora.icon */; };
 		51156E1E98CF8CB399FD4072 /* MithkaPixel.icon in Resources */ = {isa = PBXBuildFile; fileRef = C145FCC43A8CB4B5D827E2D6 /* MithkaPixel.icon */; };
 		56461556E6B04081CB084252 /* Pods_RunnerTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 175A52FD9B996D21E7E5A1EC /* Pods_RunnerTests.framework */; };
+		62C9DBE3F5071A2B3C4D5E6F /* MithkaPrism.icon in Resources */ = {isa = PBXBuildFile; fileRef = 73DAECF406182B3C4D5E6F70 /* MithkaPrism.icon */; };
 		6C64635A15B20F2FFA6AF6FB /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 52A009A067E9DA34DF0021A0 /* Foundation.framework */; };
 		74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74858FAE1ED2DC5600515810 /* AppDelegate.swift */; };
 		7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */; };
 		78A318202AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage in Frameworks */ = {isa = PBXBuildFile; productRef = 78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */; };
 		8092FDF4748B19657BE593AF /* NotificationCommunicationContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = B02F5C04823E6F1B8B4DC318 /* NotificationCommunicationContent.swift */; };
+		84EBFD0517293C4D5E6F7081 /* MithkaSignal.icon in Resources */ = {isa = PBXBuildFile; fileRef = 95FC0E16283A4D5E6F708192 /* MithkaSignal.icon */; };
 		8CE983C32FEBFF5D00D0A469 /* Pengram.icon in Resources */ = {isa = PBXBuildFile; fileRef = 8CE983C22FEBFF5D00D0A469 /* Pengram.icon */; };
 		97C146FC1CF9000F007C117D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FA1CF9000F007C117D /* Main.storyboard */; };
 		97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000F007C117D /* Assets.xcassets */; };
@@ -100,9 +103,11 @@
 		331C8081294A63A400263BE5 /* RunnerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RunnerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = AppFrameworkInfo.plist; path = Flutter/AppFrameworkInfo.plist; sourceTree = "<group>"; };
 		4722587BC4AC3EEC7575A44C /* Pods_Runner.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Runner.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		51B8CAD2E4F6091A2B3C4D5E /* MithkaAurora.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaAurora.icon; sourceTree = "<group>"; };
 		52A009A067E9DA34DF0021A0 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		5F21B8A72FEE7A5800F10001 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		6D9D5A9A2C128EE5009B90FA /* Runner.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Runner.entitlements; sourceTree = "<group>"; };
+		73DAECF406182B3C4D5E6F70 /* MithkaPrism.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaPrism.icon; sourceTree = "<group>"; };
 		74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Runner-Bridging-Header.h"; sourceTree = "<group>"; };
 		74858FAE1ED2DC5600515810 /* AppDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
@@ -110,6 +115,7 @@
 		7AF24ACBEB1466595B72E2DD /* tdjson.xcframework */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = wrapper.xcframework; name = tdjson.xcframework; path = tdjson/tdjson.xcframework; sourceTree = "<group>"; };
 		7AFA3C8E1D35360C0083082E /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Release.xcconfig; path = Flutter/Release.xcconfig; sourceTree = "<group>"; };
 		8CE983C22FEBFF5D00D0A469 /* Pengram.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = Pengram.icon; sourceTree = "<group>"; };
+		95FC0E16283A4D5E6F708192 /* MithkaSignal.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaSignal.icon; sourceTree = "<group>"; };
 		9740EEB21CF90195004384FC /* Debug.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Debug.xcconfig; path = Flutter/Debug.xcconfig; sourceTree = "<group>"; };
 		9740EEB31CF90195004384FC /* Generated.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Generated.xcconfig; path = Flutter/Generated.xcconfig; sourceTree = "<group>"; };
 		97C146EE1CF9000F007C117D /* Runner.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Runner.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -267,6 +273,9 @@
 				0CC7151EAA772074B2F1F159 /* MithkaBlue.icon */,
 				A257B729519AB240FBD5E29F /* MithkaPurple.icon */,
 				C145FCC43A8CB4B5D827E2D6 /* MithkaPixel.icon */,
+				51B8CAD2E4F6091A2B3C4D5E /* MithkaAurora.icon */,
+				73DAECF406182B3C4D5E6F70 /* MithkaPrism.icon */,
+				95FC0E16283A4D5E6F708192 /* MithkaSignal.icon */,
 				B02F5C04823E6F1B8B4DC318 /* NotificationCommunicationContent.swift */,
 			);
 			path = Runner;
@@ -495,6 +504,9 @@
 				B005C7BA5D2714CB149B4B95 /* MithkaBlue.icon in Resources */,
 				C77C2C471C478DA557C449E0 /* MithkaPurple.icon in Resources */,
 				51156E1E98CF8CB399FD4072 /* MithkaPixel.icon in Resources */,
+				41A7B9C1D3E5F708192A3B4C /* MithkaAurora.icon in Resources */,
+				62C9DBE3F5071A2B3C4D5E6F /* MithkaPrism.icon in Resources */,
+				84EBFD0517293C4D5E6F7081 /* MithkaSignal.icon in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -95,6 +95,9 @@ import UserNotifications
     case "blue": return "MithkaBlue"
     case "purple": return "MithkaPurple"
     case "pixel": return "MithkaPixel"
+    case "aurora": return "MithkaAurora"
+    case "prism": return "MithkaPrism"
+    case "signal": return "MithkaSignal"
     default: return nil
     }
   }
@@ -105,6 +108,9 @@ import UserNotifications
     case "MithkaBlue": return "blue"
     case "MithkaPurple": return "purple"
     case "MithkaPixel": return "pixel"
+    case "MithkaAurora": return "aurora"
+    case "MithkaPrism": return "prism"
+    case "MithkaSignal": return "signal"
     default: return "default"
     }
   }

@@ -2658,9 +2658,13 @@ void main() {
       expect(everySentCallbackSawClosedPanel, isTrue);
     });
 
-    testWidgets('more panel paints the bottom safe area with its background', (
+    testWidgets('composer and panel paint one continuous bottom surface', (
       tester,
     ) async {
+      final themedColors = AppColors.light.copyWith(
+        inputBarBackground: const Color(0xA0224466),
+        panelBackground: const Color(0x99664422),
+      );
       final vm = ChatViewModel(
         chatId: 1,
         title: 'Test chat',
@@ -2670,6 +2674,7 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          theme: ThemeData(extensions: [themedColors]),
           home: MediaQuery(
             data: const MediaQueryData(padding: EdgeInsets.only(bottom: 34)),
             child: Scaffold(
@@ -2689,17 +2694,25 @@ void main() {
       final safeAreaBackground = find.byKey(
         const ValueKey('chat-input-safe-area-background'),
       );
+      final panelSafeAreaBackground = find.byKey(
+        const ValueKey('chat-input-panel-safe-area-background'),
+      );
       final colors = tester.element(safeAreaBackground).colors;
       expect(
         tester.widget<ColoredBox>(safeAreaBackground).color,
         colors.inputBarBackground,
       );
+      expect(panelSafeAreaBackground, findsNothing);
 
       await tester.tap(find.byIcon(HeroAppIcons.circlePlus.data));
       await tester.pump();
 
       expect(
         tester.widget<ColoredBox>(safeAreaBackground).color,
+        colors.inputBarBackground,
+      );
+      expect(
+        tester.widget<ColoredBox>(panelSafeAreaBackground).color,
         colors.panelBackground,
       );
     });

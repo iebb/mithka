@@ -373,10 +373,13 @@ const esMessages = <String, String>{
   'appearanceTotalSize': "Tamaño total",
   'appearanceUnreadBadge': "Indicador de mensajes",
   'appIconBlueGradient': "Degradado azul",
+  'appIconAurora': "M aurora",
   'appIconChangeFailed': "No se pudo cambiar el icono de la app",
   'appIconDefault': "Predeterminado",
   'appIconPixel': "Píxel 8-bit",
+  'appIconPrism': "M prisma",
   'appIconPurpleGradient': "Degradado morado",
+  'appIconSignal': "M gruesa",
   'appIconTitle': "Icono de la app",
   'appIconUnsupported':
       "Es posible que esta plataforma o launcher no admita cambiar el icono.",

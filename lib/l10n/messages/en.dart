@@ -359,10 +359,13 @@ const enMessages = <String, String>{
   'appearanceTotalSize': "Total Size",
   'appearanceUnreadBadge': "Unread Badge",
   'appIconBlueGradient': "Blue Gradient",
+  'appIconAurora': "Aurora M",
   'appIconChangeFailed': "Failed to change app icon",
   'appIconDefault': "Default",
   'appIconPixel': "8-bit Pixel",
+  'appIconPrism': "Prism M",
   'appIconPurpleGradient': "Purple Gradient",
+  'appIconSignal': "Bold M",
   'appIconTitle': "App Icon",
   'appIconUnsupported':
       "This platform or launcher may not support changing the app icon.",

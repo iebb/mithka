@@ -374,10 +374,13 @@ const frMessages = <String, String>{
   'appearanceTotalSize': "Taille totale",
   'appearanceUnreadBadge': "Pastille de messages",
   'appIconBlueGradient': "Dégradé bleu",
+  'appIconAurora': "M boréal",
   'appIconChangeFailed': "Impossible de changer l’icône de l’app",
   'appIconDefault': "Par défaut",
   'appIconPixel': "Pixel 8-bit",
+  'appIconPrism': "M prisme",
   'appIconPurpleGradient': "Dégradé violet",
+  'appIconSignal': "M gras",
   'appIconTitle': "Icône de l’app",
   'appIconUnsupported':
       "Cette plateforme ou ce lanceur peut ne pas prendre en charge le changement d’icône.",

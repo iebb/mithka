@@ -679,6 +679,23 @@ msgOutBg: #f3b4bd;
     expect(readableForeground(const Color(0xFF101820)).toARGB32(), 0xFFFFFFFF);
   });
 
+  test('translucent pinned overlays resolve to an opaque row surface', () {
+    const background = Color(0xFF101820);
+    const overlay = Color(0x6680C0FF);
+    const theme = TelegramCloudTheme(
+      slug: 'OverlayTheme',
+      rawTitle: 'Overlay Theme',
+      baseTheme: 'builtInThemeNight',
+      accentColorValue: 0xFF80C0FF,
+      outgoingColors: [0xFF80C0FF],
+      palette: {'list.plainBg': 0xFF101820, 'chats_pinnedOverlay': 0x6680C0FF},
+    );
+
+    expect(theme.uiColors.background, background);
+    expect(theme.uiColors.pinnedRow, Color.alphaBlend(overlay, background));
+    expect(theme.uiColors.pinnedRow.a, 1);
+  });
+
   test(
     'built-in tint updates reusable UI accent and survives persistence',
     () async {

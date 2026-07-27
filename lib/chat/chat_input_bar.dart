@@ -1903,41 +1903,60 @@ class _ChatInputBarState extends State<ChatInputBar> {
     final replyKeyboard = _activeReplyKeyboard();
     final replyKeyboardPanelVisible =
         replyKeyboard != null && _replyKeyboardVisible && !_hasText;
-    final bottomSurfaceColor =
-        _panel != _Panel.none || replyKeyboardPanelVisible
-        ? c.panelBackground
-        : c.inputBarBackground;
+    final panelSurfaceVisible =
+        _panel != _Panel.none || replyKeyboardPanelVisible;
+    final bottomSafeArea = MediaQuery.paddingOf(context).bottom;
     return ColoredBox(
       key: const ValueKey('chat-input-safe-area-background'),
-      color: bottomSurfaceColor,
-      child: SafeArea(
-        top: false,
-        child: ColoredBox(
-          color: c.inputBarBackground,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (vm.replyTo != null) _replyBanner(vm.replyTo!),
-              if (_inlineBotLoading || _inlineBotResults != null)
-                _inlineBotResultMenu()
-              else if (_botCommandCandidates.isNotEmpty)
-                _botCommandMenu()
-              else if (_mentionCandidates.isNotEmpty)
-                _mentionMenu()
-              else if (_quickReplyContextVisible && _quickReplies.isNotEmpty)
-                _quickReplyContextMenu(),
-              _inputRow(replyKeyboard, aiSettings: aiSettings),
-              if (replyKeyboardPanelVisible)
-                _replyKeyboardPanel(replyKeyboard)
-              else
-                _iconStrip(),
-              if (_panel == _Panel.function) _functionPanel(),
-              if (_panel == _Panel.emoji) _emojiPanel(),
-              if (_panel == _Panel.sticker) _stickerPanel(),
-              if (_panel == _Panel.voice) _voicePanel(),
-            ],
+      color: c.inputBarBackground,
+      child: Stack(
+        alignment: Alignment.bottomCenter,
+        children: [
+          SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (vm.replyTo != null) _replyBanner(vm.replyTo!),
+                if (_inlineBotLoading || _inlineBotResults != null)
+                  _inlineBotResultMenu()
+                else if (_botCommandCandidates.isNotEmpty)
+                  _botCommandMenu()
+                else if (_mentionCandidates.isNotEmpty)
+                  _mentionMenu()
+                else if (_quickReplyContextVisible && _quickReplies.isNotEmpty)
+                  _quickReplyContextMenu(),
+                _inputRow(replyKeyboard, aiSettings: aiSettings),
+                if (replyKeyboardPanelVisible)
+                  _replyKeyboardPanel(replyKeyboard)
+                else
+                  _iconStrip(),
+                if (_panel == _Panel.function) _functionPanel(),
+                if (_panel == _Panel.emoji) _emojiPanel(),
+                if (_panel == _Panel.sticker) _stickerPanel(),
+                if (_panel == _Panel.voice) _voicePanel(),
+              ],
+            ),
           ),
-        ),
+          // The base input surface is painted exactly once across the complete
+          // composer. When a media/reply panel is open, extend that panel's
+          // surface through the system inset with the same single overlay used
+          // by the visible panel. This keeps translucent cloud-theme colors
+          // identical above and below the home indicator.
+          if (panelSurfaceVisible && bottomSafeArea > 0)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: bottomSafeArea,
+              child: IgnorePointer(
+                child: ColoredBox(
+                  key: const ValueKey('chat-input-panel-safe-area-background'),
+                  color: c.panelBackground,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

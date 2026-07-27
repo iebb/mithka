@@ -1,0 +1,33 @@
+{
+  "fill": {
+    "linear-gradient": [
+      "display-p3:0.20784,0.15686,0.45098,1.00000",
+      "display-p3:0.03137,0.04314,0.11373,1.00000"
+    ],
+    "orientation": {
+      "start": { "x": 0, "y": 0 },
+      "stop": { "x": 1, "y": 1 }
+    }
+  },
+  "groups": [
+    {
+      "layers": [
+        {
+          "glass": true,
+          "image-name": "prism.png",
+          "name": "prismatic-monogram",
+          "position": {
+            "scale": 0.88,
+            "translation-in-points": [0, 0]
+          }
+        }
+      ],
+      "shadow": { "kind": "neutral", "opacity": 0.32 },
+      "translucency": { "enabled": true, "value": 0.34 }
+    }
+  ],
+  "supported-platforms": {
+    "circles": ["watchOS"],
+    "squares": "shared"
+  }
+}

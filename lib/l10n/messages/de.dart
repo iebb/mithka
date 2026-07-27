@@ -375,10 +375,13 @@ const deMessages = <String, String>{
   'appearanceTotalSize': "Gesamtgröße",
   'appearanceUnreadBadge': "Ungelesen-Markierung",
   'appIconBlueGradient': "Blauer Verlauf",
+  'appIconAurora': "Aurora M",
   'appIconChangeFailed': "App-Symbol konnte nicht geändert werden",
   'appIconDefault': "Standard",
   'appIconPixel': "8-Bit-Pixel",
+  'appIconPrism': "Prisma M",
   'appIconPurpleGradient': "Violetter Verlauf",
+  'appIconSignal': "Fettes M",
   'appIconTitle': "App-Symbol",
   'appIconUnsupported':
       "Diese Plattform oder dieser Launcher unterstützt das Ändern des App-Symbols möglicherweise nicht.",
