@@ -12,6 +12,7 @@ import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_models.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'custom_emoji.dart';
 import 'sticker_item.dart';
@@ -786,7 +787,7 @@ class _StickerSetManageViewState extends State<StickerSetManageView> {
     final fileId = raw.obj('sticker')?.int64('id') ?? 0;
     final customEmojiId = raw.obj('full_type')?.int64('custom_emoji_id') ?? 0;
     if (fileId == 0) return;
-    final action = await showModalBottomSheet<_StickerAction>(
+    final action = await showAppModalSheet<_StickerAction>(
       context: context,
       backgroundColor: context.colors.card,
       builder: (sheetContext) => SafeArea(

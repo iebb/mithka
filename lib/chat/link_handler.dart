@@ -47,6 +47,7 @@ import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../tdlib/td_requests.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../theme/telegram_cloud_theme.dart';
 import '../theme/telegram_cloud_theme_view.dart';
@@ -316,11 +317,9 @@ Future<void> _openCloudTheme(
     final theme = await TelegramCloudThemeService().load(link);
     if (!context.mounted || !nav.mounted) return;
     await nav.push(
-      PageRouteBuilder<void>(
+      AppFadePageRoute<void>(
         pageBuilder: (_, animation, secondaryAnimation) =>
             TelegramCloudThemePreviewView(theme: theme),
-        transitionsBuilder: (_, animation, secondaryAnimation, child) =>
-            FadeTransition(opacity: animation, child: child),
       ),
     );
   } catch (_) {

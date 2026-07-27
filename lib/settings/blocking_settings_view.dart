@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../components/app_icons.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import 'blocked_user_service.dart';
@@ -60,7 +61,7 @@ class BlockingSettingsView extends StatelessWidget {
                         color: AppTheme.brand,
                       ),
                       onTap: () => Navigator.of(context).push(
-                        PageRouteBuilder<void>(
+                        AppPageRoute<void>(
                           pageBuilder: (_, _, _) => const BlockedUsersView(),
                         ),
                       ),
@@ -74,7 +75,7 @@ class BlockingSettingsView extends StatelessWidget {
                         color: AppTheme.brand,
                       ),
                       onTap: () => Navigator.of(context).push(
-                        PageRouteBuilder<void>(
+                        AppPageRoute<void>(
                           pageBuilder: (_, _, _) => const KeywordBlockerView(),
                         ),
                       ),
@@ -97,7 +98,7 @@ class BlockingSettingsView extends StatelessWidget {
                         color: AppTheme.brand,
                       ),
                       onTap: () => Navigator.of(context).push(
-                        PageRouteBuilder<void>(
+                        AppPageRoute<void>(
                           pageBuilder: (_, _, _) =>
                               const CountryMessageFilterView(),
                         ),

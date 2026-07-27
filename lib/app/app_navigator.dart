@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 
 import '../components/full_page_back_swipe.dart';
+import '../theme/app_motion.dart';
 
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -31,10 +32,10 @@ class AppChatPageRoute<T> extends PageRoute<T>
   bool _fullPageBackSwipeActive = false;
 
   @override
-  Duration get transitionDuration => const Duration(milliseconds: 260);
+  Duration get transitionDuration => AppMotion.route;
 
   @override
-  Duration get reverseTransitionDuration => const Duration(milliseconds: 220);
+  Duration get reverseTransitionDuration => AppMotion.routeReverse;
 
   @override
   Color? get barrierColor => null;
@@ -82,13 +83,13 @@ class AppChatPageRoute<T> extends PageRoute<T>
       animationController.animateTo(
         target,
         duration: _settleDuration(distance),
-        curve: Curves.easeOutCubic,
+        curve: AppMotion.standard,
       );
     } else {
       animationController.animateBack(
         target,
         duration: _settleDuration(distance),
-        curve: Curves.easeOutCubic,
+        curve: AppMotion.standard,
       );
     }
     _finishGestureWhenSettled(animationController);
@@ -121,7 +122,7 @@ class AppChatPageRoute<T> extends PageRoute<T>
       animationController.animateBack(
         0,
         duration: _settleDuration(distance),
-        curve: Curves.easeOutCubic,
+        curve: AppMotion.standard,
       );
     }
     _finishGestureWhenSettled(animationController);
@@ -192,14 +193,17 @@ class AppChatPageRoute<T> extends PageRoute<T>
     Animation<double> secondaryAnimation,
     Widget child,
   ) {
+    if (AppMotion.isReduced(context) && !_fullPageBackSwipeActive) {
+      return child;
+    }
     final leaving = _fullPageBackSwipeActive;
     if (leaving) {
       final effectiveAnimation = popGestureInProgress
           ? animation
           : CurvedAnimation(
               parent: animation,
-              curve: Curves.easeOutCubic,
-              reverseCurve: Curves.easeOutCubic,
+              curve: AppMotion.standard,
+              reverseCurve: AppMotion.accelerate,
             );
       return Stack(
         fit: StackFit.expand,
@@ -227,18 +231,33 @@ class AppChatPageRoute<T> extends PageRoute<T>
 
     final entrance = CurvedAnimation(
       parent: animation,
-      curve: Curves.easeOutCubic,
-      reverseCurve: Curves.easeInCubic,
+      curve: AppMotion.standard,
+      reverseCurve: AppMotion.accelerate,
+    );
+    final covered = CurvedAnimation(
+      parent: secondaryAnimation,
+      curve: AppMotion.standard,
+      reverseCurve: AppMotion.accelerate,
     );
     return FadeTransition(
-      opacity: Tween<double>(begin: 0.82, end: 1).animate(entrance),
+      opacity: Tween<double>(begin: 1, end: 0.96).animate(covered),
       child: SlideTransition(
         position: Tween<Offset>(
-          begin: const Offset(0.055, 0),
-          end: Offset.zero,
-        ).animate(entrance),
+          begin: Offset.zero,
+          end: const Offset(-0.018, 0),
+        ).animate(covered),
         transformHitTests: false,
-        child: child,
+        child: FadeTransition(
+          opacity: Tween<double>(begin: 0.92, end: 1).animate(entrance),
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0.045, 0),
+              end: Offset.zero,
+            ).animate(entrance),
+            transformHitTests: false,
+            child: child,
+          ),
+        ),
       ),
     );
   }

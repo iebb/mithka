@@ -15,6 +15,7 @@ import '../l10n/app_localizations.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'local_app_lock_controller.dart';
 
@@ -304,7 +305,7 @@ class _AppLockSettingsViewState extends State<AppLockSettingsView> {
 
   Future<AppLockCredentialType?> _chooseMethod({
     AppLockCredentialType? current,
-  }) => showModalBottomSheet<AppLockCredentialType>(
+  }) => showAppModalSheet<AppLockCredentialType>(
     context: context,
     backgroundColor: Colors.transparent,
     barrierColor: const Color(0x99000000),

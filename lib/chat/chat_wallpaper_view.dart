@@ -9,6 +9,7 @@ import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../media/app_asset_picker.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import 'chat_appearance_preview.dart';
@@ -163,15 +164,13 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
     if (!_allowCustomWallpaper()) return;
     final previous = _selection;
     final selected = await Navigator.of(context).push<ChatWallpaper>(
-      PageRouteBuilder<ChatWallpaper>(
+      AppFadePageRoute<ChatWallpaper>(
         pageBuilder: (_, _, _) => ChatWallpaperColorView(
           controller: _controller,
           dark: _targetDark,
           initial: previous,
           colorOnly: true,
         ),
-        transitionsBuilder: (_, animation, _, child) =>
-            FadeTransition(opacity: animation, child: child),
       ),
     );
     if (!mounted || selected == null) return;

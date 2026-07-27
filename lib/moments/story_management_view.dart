@@ -12,6 +12,7 @@ import '../l10n/app_localizations.dart';
 import '../media/app_asset_picker.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_models.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
 import 'story_authoring_view.dart';
@@ -135,7 +136,7 @@ class _StoryManagementViewState extends State<StoryManagementView> {
   Future<void> _storyAction(Map<String, dynamic> story) async {
     final id = story.integer('id');
     if (id == null) return;
-    final action = await showModalBottomSheet<String>(
+    final action = await showAppModalSheet<String>(
       context: context,
       backgroundColor: context.colors.background,
       builder: (sheetContext) => SafeArea(
@@ -327,7 +328,7 @@ class _StoryManagementViewState extends State<StoryManagementView> {
   }
 
   Future<void> _changePrivacy(int storyId) async {
-    final kind = await showModalBottomSheet<StoryPrivacyKind>(
+    final kind = await showAppModalSheet<StoryPrivacyKind>(
       context: context,
       backgroundColor: context.colors.background,
       builder: (sheetContext) => SafeArea(
@@ -386,7 +387,7 @@ class _StoryManagementViewState extends State<StoryManagementView> {
         if (story.integer('id') case final int id) id: story,
     };
     final selected = initial.toSet();
-    return showModalBottomSheet<List<int>>(
+    return showAppModalSheet<List<int>>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -534,7 +535,7 @@ class _StoryManagementViewState extends State<StoryManagementView> {
       for (final story in [..._profile, ..._archive])
         if (story.integer('id') case final int id) id: story,
     };
-    return showModalBottomSheet<List<int>>(
+    return showAppModalSheet<List<int>>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -643,7 +644,7 @@ class _StoryManagementViewState extends State<StoryManagementView> {
     final album = _albums[index];
     final id = album.integer('id');
     if (id == null) return;
-    final action = await showModalBottomSheet<String>(
+    final action = await showAppModalSheet<String>(
       context: context,
       backgroundColor: context.colors.background,
       builder: (sheetContext) => SafeArea(
@@ -769,7 +770,7 @@ class _StoryManagementViewState extends State<StoryManagementView> {
   }
 
   Future<void> _showPageActions() async {
-    final action = await showModalBottomSheet<String>(
+    final action = await showAppModalSheet<String>(
       context: context,
       backgroundColor: context.colors.background,
       builder: (sheetContext) => SafeArea(

@@ -15,6 +15,7 @@ import '../media/app_asset_picker.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'story_area_editor_view.dart';
 import 'story_camera_view.dart';
@@ -276,7 +277,7 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
   };
 
   Future<void> _addArea() async {
-    final type = await showModalBottomSheet<String>(
+    final type = await showAppModalSheet<String>(
       context: context,
       backgroundColor: context.colors.background,
       builder: (context) => SafeArea(
@@ -332,7 +333,7 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
     }
   }
 
-  Future<String?> _pickReaction() => showModalBottomSheet<String>(
+  Future<String?> _pickReaction() => showAppModalSheet<String>(
     context: context,
     backgroundColor: context.colors.background,
     builder: (sheetContext) => SafeArea(
@@ -400,7 +401,7 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
     });
     final messages = history.objects('messages') ?? const [];
     if (!mounted) return null;
-    final chosen = await showModalBottomSheet<Map<String, dynamic>>(
+    final chosen = await showAppModalSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
       backgroundColor: context.colors.background,
@@ -590,7 +591,7 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
         );
         return null;
       }
-      return showModalBottomSheet<String>(
+      return showAppModalSheet<String>(
         context: context,
         backgroundColor: context.colors.background,
         builder: (sheetContext) => SafeArea(
@@ -664,7 +665,7 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
   }) => showStoryTextEntry(context, title: title, hint: hint, initial: initial);
 
   Future<void> _pickTarget() async {
-    final selected = await showModalBottomSheet<int>(
+    final selected = await showAppModalSheet<int>(
       context: context,
       backgroundColor: context.colors.background,
       builder: (sheetContext) => SafeArea(
@@ -1238,7 +1239,7 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
 
   Future<void> _openShareSettings() async {
     if (_targets.isEmpty || _targetChatId == null || _media.isEmpty) return;
-    final confirmed = await showModalBottomSheet<bool>(
+    final confirmed = await showAppModalSheet<bool>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -1674,7 +1675,7 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
             172800: '48 hours',
           }
         : const {86400: '24 hours'};
-    final value = await showModalBottomSheet<int>(
+    final value = await showAppModalSheet<int>(
       context: context,
       backgroundColor: context.colors.background,
       builder: (sheetContext) => SafeArea(

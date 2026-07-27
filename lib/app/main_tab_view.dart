@@ -31,6 +31,7 @@ import '../moments/moments_view.dart';
 import '../profile/profile_view.dart';
 import '../settings/topic_group_display_mode.dart';
 import '../tdlib/td_models.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../theme/telegram_cloud_theme.dart';
 import '../theme/theme_controller.dart';
@@ -388,17 +389,23 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
           children: [
             Expanded(child: _musicAwareContent(_stack(tabs))),
             _fixedMusicPlayer(safeBottom: !showTabBar),
-            if (showTabBar)
-              AnimatedBuilder(
-                animation: _unread,
-                builder: (context, _) => _ClassicTabBar(
-                  selection: selection,
-                  onSelect: _select,
-                  items: tabs,
-                  onClearUnread: _chatListController.markAllRead,
-                  unread: _unread.countFor(theme.unreadBadgeMode),
-                ),
-              ),
+            AnimatedSize(
+              duration: AppMotion.duration(context, AppMotion.responsive),
+              curve: AppMotion.standard,
+              alignment: Alignment.bottomCenter,
+              child: showTabBar
+                  ? AnimatedBuilder(
+                      animation: _unread,
+                      builder: (context, _) => _ClassicTabBar(
+                        selection: selection,
+                        onSelect: _select,
+                        items: tabs,
+                        onClearUnread: _chatListController.markAllRead,
+                        unread: _unread.countFor(theme.unreadBadgeMode),
+                      ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
           ],
         );
       },
@@ -411,8 +418,8 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
       builder: (context, _) {
         final player = MusicPlayerController.shared;
         return AnimatedSize(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOutCubic,
+          duration: AppMotion.duration(context, AppMotion.responsive),
+          curve: AppMotion.standard,
           child:
               player.isVisible &&
                   !player.collapsed &&
@@ -496,7 +503,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
                     ),
                     Expanded(
                       child: _musicAwareContent(
-                        _tabletDetailPane(activeTabIndex),
+                        _animatedTabletDetailPane(activeTabIndex),
                       ),
                     ),
                   ],
@@ -565,8 +572,8 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
             width: splitResizeHandleWidth,
             child: Center(
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 120),
-                curve: Curves.easeOutCubic,
+                duration: AppMotion.duration(context, AppMotion.quick),
+                curve: AppMotion.standard,
                 width: _splitResizeHandleHovered ? 2 : 1,
                 color: dividerColor,
               ),
@@ -645,6 +652,32 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
           ),
   };
 
+  Widget _animatedTabletDetailPane(int activeTabIndex) {
+    final detail = _tabletDetailPane(activeTabIndex);
+    final motionKey = switch (activeTabIndex) {
+      0 when _selectedMessageCommunity != null => ValueKey(
+        'tablet-message-community-${_selectedMessageCommunity!.community.id}',
+      ),
+      0 when _selectedMessageChat != null => ValueKey(
+        'tablet-message-chat-${_selectedMessageChat!.chatId}-'
+        '${_selectedMessageChat!.isForum}-'
+        '${_selectedMessageChat!.initialMessageId ?? 0}',
+      ),
+      0 => const ValueKey('tablet-message-empty'),
+      1 when _selectedChannelDetail != null => ObjectKey(
+        _selectedChannelDetail!,
+      ),
+      1 => const ValueKey('tablet-channel-empty'),
+      2 when _selectedContactDetail != null => ObjectKey(
+        _selectedContactDetail!,
+      ),
+      2 => const ValueKey('tablet-contact-empty'),
+      _ when _selectedMomentDetail != null => ObjectKey(_selectedMomentDetail!),
+      _ => const ValueKey('tablet-moments-root'),
+    };
+    return _ContentReveal(motionKey: motionKey, child: detail);
+  }
+
   Widget _messageDetailPane() {
     final selectedCommunity =
         context.watch<ThemeController>().communitiesEnabled
@@ -708,36 +741,170 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
 
   // MARK: - Drawer overlay (the "我" profile drawer)
 
-  Widget _drawerOverlay() {
-    return Consumer<dc.DrawerController>(
-      builder: (context, drawer, _) {
-        final width = math.min(MediaQuery.of(context).size.width * 0.88, 420.0);
-        return IgnorePointer(
-          ignoring: !drawer.isOpen,
-          child: Stack(
-            children: [
-              AnimatedOpacity(
-                duration: const Duration(milliseconds: 220),
-                curve: Curves.easeOutCubic,
-                opacity: drawer.isOpen ? 1 : 0,
-                child: GestureDetector(
-                  onTap: drawer.close,
-                  child: Container(color: Colors.black.withValues(alpha: 0.35)),
+  Widget _drawerOverlay() =>
+      _ProfileDrawerOverlay(controller: context.read<dc.DrawerController>());
+}
+
+class _ProfileDrawerOverlay extends StatefulWidget {
+  const _ProfileDrawerOverlay({required this.controller});
+
+  final dc.DrawerController controller;
+
+  @override
+  State<_ProfileDrawerOverlay> createState() => _ProfileDrawerOverlayState();
+}
+
+class _ProfileDrawerOverlayState extends State<_ProfileDrawerOverlay>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  void _rebuild() => setState(() {});
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: AppMotion.deliberate,
+      reverseDuration: AppMotion.responsive,
+      value: widget.controller.isOpen ? 1 : 0,
+    )..addListener(_rebuild);
+    widget.controller.addListener(_sync);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _controller.duration = AppMotion.duration(context, AppMotion.deliberate);
+    _controller.reverseDuration = AppMotion.duration(
+      context,
+      AppMotion.responsive,
+    );
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ProfileDrawerOverlay oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (identical(oldWidget.controller, widget.controller)) return;
+    oldWidget.controller.removeListener(_sync);
+    widget.controller.addListener(_sync);
+    _sync();
+  }
+
+  void _sync() {
+    if (AppMotion.isReduced(context)) {
+      _controller.value = widget.controller.isOpen ? 1 : 0;
+    } else if (widget.controller.isOpen) {
+      _controller.forward();
+    } else {
+      _controller.reverse();
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_sync);
+    _controller
+      ..removeListener(_rebuild)
+      ..dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final width = math.min(MediaQuery.sizeOf(context).width * 0.88, 420.0);
+    final progress = AppMotion.emphasized.transform(_controller.value);
+    return IgnorePointer(
+      ignoring: _controller.isDismissed,
+      child: ExcludeSemantics(
+        excluding: _controller.isDismissed,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: widget.controller.close,
+                child: ColoredBox(
+                  color: Colors.black.withValues(alpha: 0.35 * progress),
                 ),
               ),
-              AnimatedPositioned(
-                duration: const Duration(milliseconds: 320),
-                curve: Curves.easeOutCubic,
-                left: drawer.isOpen ? 0 : -width,
-                top: 0,
-                bottom: 0,
-                width: width,
-                child: Material(
-                  color: context.colors.groupedBackground,
-                  child: const ProfileView(),
-                ),
+            ),
+            Positioned(
+              left: -width * (1 - progress),
+              top: 0,
+              bottom: 0,
+              width: width,
+              child: Material(
+                color: context.colors.groupedBackground,
+                child: const ProfileView(),
               ),
-            ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Immediately swaps heavy content, then animates only the arriving tree.
+/// This avoids keeping two live chat/media controllers mounted during a
+/// cross-fade while still making detail-pane changes spatially legible.
+class _ContentReveal extends StatefulWidget {
+  const _ContentReveal({required this.motionKey, required this.child});
+
+  final Key motionKey;
+  final Widget child;
+
+  @override
+  State<_ContentReveal> createState() => _ContentRevealState();
+}
+
+class _ContentRevealState extends State<_ContentReveal>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: AppMotion.deliberate,
+    value: 1,
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _controller.duration = AppMotion.duration(context, AppMotion.deliberate);
+    if (AppMotion.isReduced(context)) _controller.value = 1;
+  }
+
+  @override
+  void didUpdateWidget(covariant _ContentReveal oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.motionKey == widget.motionKey) return;
+    _controller.duration = AppMotion.duration(context, AppMotion.deliberate);
+    if (_controller.duration == Duration.zero) {
+      _controller.value = 1;
+    } else {
+      _controller.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      child: KeyedSubtree(key: widget.motionKey, child: widget.child),
+      builder: (context, child) {
+        final progress = AppMotion.standard.transform(_controller.value);
+        return Opacity(
+          opacity: 0.88 + 0.12 * progress,
+          child: Transform.translate(
+            offset: Offset(14 * (1 - progress), 0),
+            child: child,
           ),
         );
       },
@@ -782,8 +949,9 @@ class _ForumSplitDetailPaneState extends State<_ForumSplitDetailPane> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return _index == 0
+    final content = _index == 0
         ? ChatView(
+            key: const ValueKey('forum-detail-chat'),
             chatId: widget.chat.id,
             title: widget.chat.title,
             seedMessage: widget.chat.lastChatMessage,
@@ -803,6 +971,10 @@ class _ForumSplitDetailPaneState extends State<_ForumSplitDetailPane> {
             headerColor: widget.headerColor,
             onOpenChatView: () => unawaited(_showChatMode()),
           );
+    return _ContentReveal(
+      motionKey: ValueKey('forum-detail-$_index-${_topicThreadId ?? 0}'),
+      child: content,
+    );
   }
 
   Widget _tabSwitcher(AppColors c) {
@@ -860,7 +1032,8 @@ class _ForumDetailTabButton extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
+        duration: AppMotion.duration(context, AppMotion.responsive),
+        curve: AppMotion.standard,
         height: 32,
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
@@ -980,50 +1153,141 @@ class _LazyTabStack extends StatefulWidget {
   State<_LazyTabStack> createState() => _LazyTabStackState();
 }
 
-class _LazyTabStackState extends State<_LazyTabStack> {
+class _LazyTabStackState extends State<_LazyTabStack>
+    with SingleTickerProviderStateMixin {
   final Set<int> _builtTabIndexes = {};
+  late final AnimationController _transition;
+  int? _departingTabIndex;
+  double _direction = 1;
+  int _transitionGeneration = 0;
 
   @override
   void initState() {
     super.initState();
+    _transition = AnimationController(
+      vsync: this,
+      duration: AppMotion.deliberate,
+      value: 1,
+    );
     _rememberSelection();
   }
 
   @override
   void didUpdateWidget(covariant _LazyTabStack oldWidget) {
     super.didUpdateWidget(oldWidget);
+    final oldPosition = _selectedPosition(oldWidget);
+    final oldTabIndex = oldWidget.items.isEmpty
+        ? null
+        : oldWidget.items[oldPosition].index;
     _builtTabIndexes.removeWhere(
       (index) => !widget.items.any((tab) => tab.index == index),
     );
     _rememberSelection();
+    if (widget.items.isEmpty) return;
+    final nextPosition = _selectedPosition(widget);
+    final nextTabIndex = widget.items[nextPosition].index;
+    if (oldTabIndex == null || oldTabIndex == nextTabIndex) return;
+
+    _direction = nextPosition >= oldPosition ? 1 : -1;
+    _departingTabIndex = widget.items.any((tab) => tab.index == oldTabIndex)
+        ? oldTabIndex
+        : null;
+    _transition.duration = AppMotion.duration(context, AppMotion.deliberate);
+    final generation = ++_transitionGeneration;
+    if (_transition.duration == Duration.zero) {
+      _transition.value = 1;
+      _departingTabIndex = null;
+      return;
+    }
+    _transition.forward(from: 0).whenComplete(() {
+      if (!mounted || generation != _transitionGeneration) return;
+      setState(() => _departingTabIndex = null);
+    });
   }
+
+  int _selectedPosition(_LazyTabStack source) => source.items.isEmpty
+      ? 0
+      : source.selection.clamp(0, source.items.length - 1).toInt();
 
   void _rememberSelection() {
     if (widget.items.isEmpty) return;
-    final selectedIndex = widget.selection
-        .clamp(0, widget.items.length - 1)
-        .toInt();
+    final selectedIndex = _selectedPosition(widget);
     final selected = widget.items[selectedIndex];
     _builtTabIndexes.add(selected.index);
   }
 
   @override
+  void dispose() {
+    _transition.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final selectedPosition = widget.selection
-        .clamp(0, widget.items.length - 1)
-        .toInt();
+    if (widget.items.isEmpty) return const SizedBox.expand();
+    final selectedPosition = _selectedPosition(widget);
     final selectedTabIndex = widget.items[selectedPosition].index;
-    return IndexedStack(
-      index: selectedPosition,
-      children: [
-        for (final tab in widget.items)
-          TickerMode(
-            enabled: tab.index == selectedTabIndex,
-            child: _builtTabIndexes.contains(tab.index)
-                ? widget.builder(tab)
-                : const SizedBox.expand(),
+    return ClipRect(
+      child: AnimatedBuilder(
+        animation: _transition,
+        builder: (context, _) {
+          final progress = AppMotion.standard.transform(_transition.value);
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              for (final tab in widget.items)
+                _animatedTab(
+                  tab: tab,
+                  selectedTabIndex: selectedTabIndex,
+                  progress: progress,
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _animatedTab({
+    required _MainTabItem tab,
+    required int selectedTabIndex,
+    required double progress,
+  }) {
+    final selected = tab.index == selectedTabIndex;
+    final departing = tab.index == _departingTabIndex;
+    final visible = selected || departing;
+    final opacity = selected ? 0.86 + 0.14 * progress : 1 - progress;
+    final offset = selected
+        ? _direction * 20 * (1 - progress)
+        : -_direction * 10 * progress;
+    final scale = selected ? 0.995 + 0.005 * progress : 1 - 0.005 * progress;
+
+    return Offstage(
+      offstage: !visible,
+      child: ExcludeSemantics(
+        excluding: !selected,
+        child: IgnorePointer(
+          ignoring: !selected,
+          child: TickerMode(
+            enabled: selected,
+            child: Opacity(
+              opacity: opacity.clamp(0.0, 1.0),
+              child: Transform.translate(
+                offset: Offset(offset, 0),
+                child: Transform.scale(
+                  scale: scale,
+                  child: KeyedSubtree(
+                    key: ValueKey('main-tab-${tab.index}'),
+                    child: _builtTabIndexes.contains(tab.index)
+                        ? widget.builder(tab)
+                        : const SizedBox.expand(),
+                  ),
+                ),
+              ),
+            ),
           ),
-      ],
+        ),
+      ),
     );
   }
 }
@@ -1097,12 +1361,31 @@ class _ClassicTabBar extends StatelessWidget {
                                 clipBehavior: Clip.none,
                                 alignment: Alignment.center,
                                 children: [
-                                  AppIcon(
-                                    items[i].icon,
-                                    size: 24,
-                                    color: selection == i
-                                        ? AppTheme.brand
-                                        : c.textTertiary,
+                                  TweenAnimationBuilder<double>(
+                                    duration: AppMotion.duration(
+                                      context,
+                                      AppMotion.responsive,
+                                    ),
+                                    curve: AppMotion.standard,
+                                    tween: Tween<double>(
+                                      end: selection == i ? 1 : 0,
+                                    ),
+                                    builder: (context, value, child) =>
+                                        Transform.translate(
+                                          offset: Offset(0, -value),
+                                          child: Transform.scale(
+                                            scale: 1 + value * 0.08,
+                                            child: AppIcon(
+                                              items[i].icon,
+                                              size: 24,
+                                              color: Color.lerp(
+                                                c.textTertiary,
+                                                AppTheme.brand,
+                                                value,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
                                   ),
                                   if (i == 0 && unread > 0)
                                     Positioned(
@@ -1117,14 +1400,24 @@ class _ClassicTabBar extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(height: 2),
-                            Text(
-                              items[i].label.l10n(context),
-                              textAlign: TextAlign.center,
+                            AnimatedDefaultTextStyle(
+                              duration: AppMotion.duration(
+                                context,
+                                AppMotion.responsive,
+                              ),
+                              curve: AppMotion.standard,
                               style: TextStyle(
                                 fontSize: 11,
+                                fontWeight: selection == i
+                                    ? FontWeight.w600
+                                    : FontWeight.w400,
                                 color: selection == i
                                     ? AppTheme.brand
                                     : c.textTertiary,
+                              ),
+                              child: Text(
+                                items[i].label.l10n(context),
+                                textAlign: TextAlign.center,
                               ),
                             ),
                           ],

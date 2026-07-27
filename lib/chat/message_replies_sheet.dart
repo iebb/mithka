@@ -9,6 +9,7 @@ import '../components/toast.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'emoji_catalog.dart';
 import 'full_image_viewer.dart';
@@ -63,7 +64,7 @@ Future<void> showMessageRepliesSheet({
   ValueChanged<String>? onHashtagTap,
   ValueChanged<int>? onViewInChat,
 }) {
-  return showModalBottomSheet<void>(
+  return showAppModalSheet<void>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
@@ -928,7 +929,7 @@ class _MessageRepliesSheetState extends State<_MessageRepliesSheet> {
   }
 
   Future<void> _showMessageMenu(ChatMessage message) async {
-    final action = await showModalBottomSheet<_ReplySheetAction>(
+    final action = await showAppModalSheet<_ReplySheetAction>(
       context: context,
       backgroundColor: context.colors.background,
       builder: (menuContext) => SafeArea(

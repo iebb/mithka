@@ -15,6 +15,7 @@ import '../l10n/app_localizations.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'business_service.dart';
 
@@ -23,7 +24,7 @@ Future<T?> _businessChoiceSheet<T>(
   required String title,
   required T selected,
   required List<(T, String)> choices,
-}) => showModalBottomSheet<T>(
+}) => showAppModalSheet<T>(
   context: context,
   backgroundColor: Colors.transparent,
   builder: (sheetContext) {

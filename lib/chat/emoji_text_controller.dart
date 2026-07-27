@@ -533,7 +533,9 @@ class EmojiTextEditingController extends TextEditingController {
     final other = _entities.where((entity) => entity.typeName != type).toList();
     final merged = <_ComposerTextEntity>[];
     for (final entity in same) {
-      if (merged.isEmpty || entity.offset > merged.last.end) {
+      if (merged.isEmpty ||
+          entity.offset > merged.last.end ||
+          !_sameEntityTypePayload(entity.type, merged.last.type)) {
         merged.add(entity);
       } else if (entity.end > merged.last.end) {
         merged.last.length = entity.end - merged.last.offset;
@@ -543,6 +545,19 @@ class EmojiTextEditingController extends TextEditingController {
       ..clear()
       ..addAll(other)
       ..addAll(merged);
+  }
+
+  bool _sameEntityTypePayload(
+    Map<String, dynamic> first,
+    Map<String, dynamic> second,
+  ) {
+    if (first.length != second.length) return false;
+    for (final entry in first.entries) {
+      if (!second.containsKey(entry.key) || second[entry.key] != entry.value) {
+        return false;
+      }
+    }
+    return true;
   }
 
   TextStyle? _entityStyle(

@@ -15,6 +15,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app/performance_metrics.dart';
 import '../communities/community_models.dart';
+import '../notifications/notification_settings_payload.dart';
 import '../notifications/scope_notification_settings.dart';
 import '../settings/keyword_blocker.dart';
 import '../tdlib/chat_membership.dart';
@@ -460,6 +461,32 @@ class ChatListViewModel extends ChangeNotifier {
     });
   }
 
+  void toggleMute(ChatSummary chat) {
+    final newValue = !chat.isMuted;
+    final id = chat.id;
+    _mutate(id, (summary) => summary.isMuted = newValue);
+    _resort();
+
+    _client
+        .query({
+          '@type': 'setChatNotificationSettings',
+          'chat_id': id,
+          'notification_settings': inheritedChatNotificationSettings(
+            muteFor: newValue ? 2147483647 : 0,
+          ),
+        })
+        .catchError((Object _) {
+          _mutate(id, (summary) => summary.isMuted = !newValue);
+          notice = AppStrings.t(AppStringKeys.chatDeleteActionsFailed, {
+            'value1': AppStrings.t(
+              newValue ? AppStringKeys.callMute : AppStringKeys.chatUnmute,
+            ),
+          });
+          _resort();
+          return <String, dynamic>{};
+        });
+  }
+
   void markRead(ChatSummary chat) {
     if (chat.unreadCount <= 0 && !chat.isMarkedUnread) return;
     final previousUnread = chat.unreadCount;
@@ -573,6 +600,7 @@ class ChatListViewModel extends ChangeNotifier {
           if (last != null) {
             s.lastMessageId = last.int64('id') ?? s.lastMessageId;
             s.date = last.integer('date') ?? s.date;
+            s.lastChatMessage = TDParse.message(last);
             final content = last.obj('content');
             if (content != null) {
               s.lastMessage = _previewText(TDParse.messageText(content));
@@ -581,6 +609,7 @@ class ChatListViewModel extends ChangeNotifier {
             s.lastMessage = '';
             s.lastMessageId = 0;
             s.date = 0;
+            s.lastChatMessage = null;
             s.lastSender = null;
             _lastSenderKeys[id] = null;
           }
@@ -1142,6 +1171,12 @@ class ChatListViewModel extends ChangeNotifier {
 
   @visibleForTesting
   void scheduleResortForTesting() => _scheduleResort();
+
+  @visibleForTesting
+  void seedChatForTesting(ChatSummary chat) => _map[chat.id] = chat;
+
+  @visibleForTesting
+  void applyUpdateForTesting(Map<String, dynamic> update) => _apply(update);
 
   void _notifyIfAlive() {
     if (!_disposed) notifyListeners();

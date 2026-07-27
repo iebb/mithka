@@ -13,6 +13,7 @@ import '../media/app_asset_picker.dart';
 import '../profile/profile_icon_picker_view.dart';
 import '../settings/edit_field_view.dart';
 import '../tdlib/json_helpers.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'custom_emoji.dart';
 import 'group_administration_service.dart';
@@ -397,7 +398,7 @@ class _GroupAdvancedAdministrationViewState
 
   Future<void> _pickSlowMode() async {
     const values = [0, 5, 10, 30, 60, 300, 900, 3600];
-    final selected = await showModalBottomSheet<int>(
+    final selected = await showAppModalSheet<int>(
       context: context,
       backgroundColor: context.colors.card,
       builder: (sheetContext) => SafeArea(
@@ -1272,7 +1273,7 @@ class _ChatInviteLinkEditorViewState extends State<ChatInviteLinkEditorView> {
 
   Future<void> _pickExpiration() async {
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    final selected = await showModalBottomSheet<int>(
+    final selected = await showAppModalSheet<int>(
       context: context,
       backgroundColor: context.colors.card,
       builder: (sheetContext) => SafeArea(

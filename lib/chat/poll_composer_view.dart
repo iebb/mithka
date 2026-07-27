@@ -14,6 +14,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
 import '../components/ui_components.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 
 class PollOptionDraft {
@@ -631,7 +632,7 @@ class _PollComposerViewState extends State<PollComposerView> {
   }
 
   Future<int?> _showDurationPicker(List<(int, String)> values) =>
-      showModalBottomSheet<int>(
+      showAppModalSheet<int>(
         context: context,
         backgroundColor: Colors.transparent,
         builder: (sheetContext) {

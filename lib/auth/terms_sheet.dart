@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../components/app_icons.dart';
 import '../l10n/app_localizations.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 
 const telegramTermsUrl = 'https://telegram.org/tos';
@@ -13,7 +14,7 @@ Future<void> showTelegramTermsSheet(
   bool isDismissible = true,
   bool enableDrag = true,
 }) {
-  return showModalBottomSheet<void>(
+  return showAppModalSheet<void>(
     context: context,
     isDismissible: isDismissible,
     enableDrag: enableDrag,

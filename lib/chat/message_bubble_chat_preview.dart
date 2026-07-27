@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../components/photo_avatar.dart';
@@ -18,17 +20,22 @@ class MessageBubbleChatPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final rowGap = math.max(
+      8.0,
+      incomingBackground.visualOverflow.bottom +
+          outgoingBackground.visualOverflow.top +
+          2,
+    );
     return Container(
       key: const ValueKey('message-bubble-chat-preview'),
-      height: 280,
-      padding: const EdgeInsets.fromLTRB(14, 24, 14, 20),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: c.chatBackground,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: c.divider.withValues(alpha: 0.7)),
       ),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
         children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -37,6 +44,7 @@ class MessageBubbleChatPreview extends StatelessWidget {
               const SizedBox(width: 8),
               Flexible(
                 child: _PreviewBubble(
+                  key: const ValueKey('message-bubble-preview-incoming'),
                   background: incomingBackground,
                   outgoing: false,
                   text: 'Repository bubble preview with a longer message.',
@@ -44,10 +52,11 @@ class MessageBubbleChatPreview extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: rowGap),
           Align(
             alignment: Alignment.centerRight,
             child: _PreviewBubble(
+              key: const ValueKey('message-bubble-preview-outgoing'),
               background: outgoingBackground,
               outgoing: true,
               text: 'The center stretches with longer messages.',
@@ -61,6 +70,7 @@ class MessageBubbleChatPreview extends StatelessWidget {
 
 class _PreviewBubble extends StatelessWidget {
   const _PreviewBubble({
+    super.key,
     required this.background,
     required this.outgoing,
     required this.text,

@@ -1,7 +1,9 @@
 import 'dart:convert';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mithka/chat/custom_emoji.dart';
 import 'package:mithka/chat/message_bubble.dart';
 import 'package:mithka/chat/stretchable_message_bubble_background.dart';
 import 'package:mithka/l10n/app_localizations.dart';
@@ -201,6 +203,40 @@ void main() {
     expect(entityLink.style?.decoration, isNot(TextDecoration.underline));
     expect(autoLink.style?.decoration, isNot(TextDecoration.underline));
     expect(explicitUnderline.style?.decoration, TextDecoration.underline);
+  });
+
+  testWidgets('message custom emoji does not leak through a spoiler', (
+    tester,
+  ) async {
+    const text = '🙂';
+    final message = ChatMessage(
+      id: 41,
+      isOutgoing: false,
+      text: text,
+      date: 1,
+      contentType: 'messageText',
+      textEntities: const [
+        MessageTextEntity(offset: 0, length: 2, type: 'textEntityTypeSpoiler'),
+        MessageTextEntity(
+          offset: 0,
+          length: 2,
+          type: 'textEntityTypeCustomEmoji',
+          customEmojiId: 123,
+        ),
+      ],
+    );
+
+    await pumpBubble(tester, message);
+    expect(find.byType(CustomEmojiView), findsNothing);
+    final spoiler = tester
+        .widgetList<RichText>(find.byType(RichText))
+        .expand((widget) => _textSpans(widget.text))
+        .singleWhere((span) => span.text == text);
+    (spoiler.recognizer! as TapGestureRecognizer).onTap!();
+    await tester.pump();
+
+    expect(find.byType(CustomEmojiView), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 50));
   });
 
   testWidgets('document albums render as one bubble with one shared caption', (

@@ -35,10 +35,18 @@ screenshot are present in the generated assets.
 
 ## Export process
 
-The generated green backgrounds were removed with the Codex image-generation
-chroma-key helper. The resulting full-resolution transparent sources live in
-`design/message_bubbles/gpt-image-2-sources/`.
-`scripts/compact_generated_message_bubbles.dart` then keeps only the generated
+The generated green backgrounds were removed with a chroma-key helper. The
+full-resolution generation inputs are intentionally not stored in this
+repository; the compact runtime exports under `assets/message_bubbles/` are
+canonical.
+
+To regenerate the compact exports, place the twelve transparent source PNGs in
+an external directory and pass that directory to
+`scripts/compact_generated_message_bubbles.dart`. The script keeps only the
 corner and edge regions around a one-pixel logical center slice. Final exports
 are 49×37 logical pixels, with 98×74 two-times variants, so every compact source
 fits inside a 100×100 canvas.
+
+```bash
+dart run scripts/compact_generated_message_bubbles.dart /path/to/sources
+```

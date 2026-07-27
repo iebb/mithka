@@ -42,6 +42,7 @@ import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'ai_reply_service.dart';
 import 'audio_search_view.dart';
@@ -2372,7 +2373,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
   void _showSenderPicker() {
     final options = vm.availableMessageSenders;
     if (options.length <= 1) return;
-    showModalBottomSheet<void>(
+    showAppModalSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) {
@@ -2410,7 +2411,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
       unawaited(_openBotMenuWebApp(menu!));
       return;
     }
-    showModalBottomSheet<void>(
+    showAppModalSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) {
@@ -2568,7 +2569,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
     }
     if (!mounted) return;
 
-    await showModalBottomSheet<void>(
+    await showAppModalSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) {
@@ -2755,7 +2756,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
   }
 
   void _showGuestQueries() {
-    showModalBottomSheet<void>(
+    showAppModalSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) {
@@ -4879,7 +4880,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
     try {
       final limits = await loader.loadLimits();
       if (!mounted) return;
-      final draft = await showModalBottomSheet<SuggestedPostDraft>(
+      final draft = await showAppModalSheet<SuggestedPostDraft>(
         context: context,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,

@@ -19,6 +19,7 @@ import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../pro/mithka_pro_service.dart';
 import '../pro/mithka_pro_view.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'about_view.dart';
 import 'advanced_settings_view.dart';
@@ -259,7 +260,7 @@ class _SettingsViewState extends State<SettingsView> {
       behavior: HitTestBehavior.opaque,
       onTap: () => Navigator.of(context).push(
         platformNeutralRoute
-            ? PageRouteBuilder<void>(pageBuilder: (_, _, _) => destination())
+            ? AppPageRoute<void>(pageBuilder: (_, _, _) => destination())
             : MaterialPageRoute<void>(builder: (_) => destination()),
       ),
       child: _rowLabel(context, icon, title, color, trailing: trailing),

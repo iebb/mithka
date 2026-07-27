@@ -30,6 +30,7 @@ import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 
 class _StoryMedia {
@@ -835,7 +836,7 @@ class _StoryViewerViewState extends State<StoryViewerView>
   Future<void> _chooseStoryReaction() async {
     const reactions = ['❤', '👍', '🔥', '🎉', '😍', '👏'];
     _pausePlayback();
-    final chosen = await showModalBottomSheet<String>(
+    final chosen = await showAppModalSheet<String>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) => SafeArea(
@@ -968,7 +969,7 @@ class _StoryViewerViewState extends State<StoryViewerView>
 
   Future<void> _showMoreActions() async {
     _pausePlayback();
-    final action = await showModalBottomSheet<String>(
+    final action = await showAppModalSheet<String>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) => SafeArea(
@@ -1146,7 +1147,7 @@ class _StoryViewerViewState extends State<StoryViewerView>
       } catch (_) {}
     }
     if (!mounted) return;
-    await showModalBottomSheet<void>(
+    await showAppModalSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) {
@@ -1299,7 +1300,7 @@ class _StoryViewerViewState extends State<StoryViewerView>
           showToast(context, AppStringKeys.storyReported);
         case 'reportStoryResultOptionRequired':
           final options = result.objects('options') ?? const [];
-          final selected = await showModalBottomSheet<String>(
+          final selected = await showAppModalSheet<String>(
             context: context,
             backgroundColor: Colors.transparent,
             builder: (context) => SafeArea(

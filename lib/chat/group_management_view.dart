@@ -16,6 +16,7 @@ import '../profile/qr_code_view.dart';
 import '../settings/edit_field_view.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'chat_members_view.dart';
 import 'group_administration_service.dart';
@@ -668,11 +669,8 @@ class _GroupManagementViewState extends State<GroupManagementView> {
     );
   }
 
-  PageRoute<T> _pageRoute<T>(Widget child) => PageRouteBuilder<T>(
-    pageBuilder: (_, _, _) => child,
-    transitionsBuilder: (_, animation, _, routeChild) =>
-        FadeTransition(opacity: animation, child: routeChild),
-  );
+  PageRoute<T> _pageRoute<T>(Widget child) =>
+      AppFadePageRoute<T>(pageBuilder: (_, _, _) => child);
 }
 
 class _GroupManagementSwitch extends StatelessWidget {

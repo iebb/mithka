@@ -10,6 +10,7 @@ import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'data_storage_service.dart';
 
@@ -353,7 +354,7 @@ class _StorageUsageViewState extends State<StorageUsageView> {
     required int selected,
     required Future<void> Function(int value) onSelected,
   }) async {
-    final value = await showModalBottomSheet<int>(
+    final value = await showAppModalSheet<int>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) {
@@ -410,7 +411,7 @@ class _StorageUsageViewState extends State<StorageUsageView> {
     final chatId = entry.int64('chat_id') ?? 0;
     final title =
         _chatTitles[chatId] ?? (chatId == 0 ? 'Other files' : '$chatId');
-    await showModalBottomSheet<void>(
+    await showAppModalSheet<void>(
       context: context,
       showDragHandle: true,
       builder: (sheetContext) => SafeArea(

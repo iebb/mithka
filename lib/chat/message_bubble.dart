@@ -1346,13 +1346,24 @@ class _MessageBubbleState extends State<MessageBubble>
     _linkRecognizers.clear();
     final emojiOnly = _isEmojiOnlyText(text);
     final textFontSize = emojiOnly ? 34.0 : 15.0;
+    final bubblePadding = emojiOnly
+        ? const EdgeInsets.symmetric(horizontal: 10, vertical: 7)
+        : const EdgeInsets.symmetric(horizontal: 12, vertical: 9);
+    final effectivePadding = _bubbleBackgroundStyle.isDecorative
+        ? _bubbleBackgroundStyle.contentPadding
+        : bubblePadding;
+    // Preview geometry must use the bubble's content box, not its outer
+    // maximum. Otherwise the parent padding clamps only the width while the
+    // preview keeps a height calculated for the wider outer box.
+    final previewMaxWidth = math.max(
+      1.0,
+      _bubbleMaxWidth() - effectivePadding.horizontal,
+    );
     return _bubbleBackground(
       key: ValueKey('messageTextBubble-${message.id}'),
       outgoing: outgoing,
       constraints: BoxConstraints(maxWidth: _bubbleMaxWidth()),
-      padding: emojiOnly
-          ? const EdgeInsets.symmetric(horizontal: 10, vertical: 7)
-          : const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      padding: bubblePadding,
       borderRadius: _messageBorderRadius(6),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1367,7 +1378,11 @@ class _MessageBubbleState extends State<MessageBubble>
             const SizedBox(height: 5),
           ],
           if (_activeLinkPreview?.showAboveText ?? false) ...[
-            _linkPreviewCard(_activeLinkPreview!, outgoing),
+            _linkPreviewCard(
+              _activeLinkPreview!,
+              outgoing,
+              maxWidth: previewMaxWidth,
+            ),
             if (text.isNotEmpty) const SizedBox(height: 6),
           ],
           ..._richTextWidgets(
@@ -1387,7 +1402,11 @@ class _MessageBubbleState extends State<MessageBubble>
               !_activeLinkPreview!.showAboveText) ...[
             if (text.isNotEmpty || _activeRichBlocks.isNotEmpty)
               const SizedBox(height: 7),
-            _linkPreviewCard(_activeLinkPreview!, outgoing),
+            _linkPreviewCard(
+              _activeLinkPreview!,
+              outgoing,
+              maxWidth: previewMaxWidth,
+            ),
           ],
           if (_showsTranslation) ...[
             const SizedBox(height: 7),
@@ -2495,15 +2514,22 @@ class _MessageBubbleState extends State<MessageBubble>
     );
   }
 
-  Widget _linkPreviewCard(MessageLinkPreview preview, bool outgoing) {
+  Widget _linkPreviewCard(
+    MessageLinkPreview preview,
+    bool outgoing, {
+    required double maxWidth,
+  }) {
     final c = context.colors;
     final base = outgoing ? _outgoingTextColor : c.textPrimary;
     final secondary = outgoing
         ? _outgoingTextColor.withValues(alpha: 0.75)
         : c.textSecondary;
     final link = outgoing ? _outgoingTextColor : c.linkBlue;
-    final maxWidth = _bubbleMaxWidth();
-    final media = _linkPreviewMedia(preview, maxWidth);
+    const accentWidth = 3.0;
+    final media = _linkPreviewMedia(
+      preview,
+      math.max(1.0, maxWidth - accentWidth),
+    );
     final textChildren = <Widget>[
       if (preview.siteName.isNotEmpty)
         Text(
@@ -2544,20 +2570,32 @@ class _MessageBubbleState extends State<MessageBubble>
         ),
     ];
 
+    final translucentBackground = outgoing
+        ? _outgoingTextColor.withValues(alpha: 0.10)
+        : c.searchFill.withValues(alpha: 0.85);
+    // Decorative bubbles may contain ornaments across their stretchable
+    // center. Precomposing the preview fill keeps those pixels from showing
+    // through the card while retaining the same tint.
+    final cardBackground = _bubbleBackgroundStyle.isDecorative
+        ? Color.alphaBlend(
+            translucentBackground,
+            outgoing ? _outgoingBubbleColor : _incomingBubbleColor,
+          )
+        : translucentBackground;
+
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: preview.url.isEmpty ? null : () => openLink(context, preview.url),
       child: Container(
+        key: ValueKey('messageLinkPreviewCard-${message.id}'),
         width: maxWidth,
         decoration: BoxDecoration(
-          color: outgoing
-              ? _outgoingTextColor.withValues(alpha: 0.10)
-              : c.searchFill.withValues(alpha: 0.85),
+          color: cardBackground,
           borderRadius: BorderRadius.circular(7),
           border: Border(
             left: BorderSide(
               color: outgoing ? _outgoingTextColor : link,
-              width: 3,
+              width: accentWidth,
             ),
           ),
         ),
@@ -2602,6 +2640,7 @@ class _MessageBubbleState extends State<MessageBubble>
       fallback: Size(width, large ? 140 : 96),
     );
     return SizedBox(
+      key: ValueKey('messageLinkPreviewMedia-${message.id}'),
       width: size.width,
       height: size.height,
       child: Stack(
@@ -3458,34 +3497,6 @@ class _MessageBubbleState extends State<MessageBubble>
     final spans = <InlineSpan>[];
     var cursor = start;
     while (cursor < end) {
-      MessageTextEntity? emoji;
-      for (final e in entities) {
-        if (e.isCustomEmoji &&
-            e.customEmojiId != null &&
-            e.offset == cursor &&
-            e.end <= end) {
-          emoji = e;
-          break;
-        }
-      }
-      if (emoji != null) {
-        spans.add(
-          WidgetSpan(
-            alignment: PlaceholderAlignment.middle,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 0.5),
-              child: CustomEmojiView(
-                id: emoji.customEmojiId!,
-                size: math.max(20, fontSize * 1.15),
-                color: base,
-              ),
-            ),
-          ),
-        );
-        cursor = emoji.end.clamp(cursor + 1, end).toInt();
-        continue;
-      }
-
       var next = end;
       for (final e in entities) {
         final eStart = e.offset.clamp(start, end).toInt();
@@ -3541,6 +3552,22 @@ class _MessageBubbleState extends State<MessageBubble>
               .where((e) => e.type != 'textEntityTypeSpoiler')
               .toList(growable: false);
     final style = _entityStyle(effectiveActive, base, link);
+    final customEmojiId = _customEmojiId(effectiveActive);
+    if (customEmojiId != null) {
+      return [
+        WidgetSpan(
+          alignment: PlaceholderAlignment.middle,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 0.5),
+            child: CustomEmojiView(
+              id: customEmojiId,
+              size: math.max(20, fontSize * 1.15),
+              color: style.color ?? base,
+            ),
+          ),
+        ),
+      ];
+    }
     if (_hasMath(effectiveActive)) {
       return [_inlineMathSpan(segment, style, fontSize)];
     }
@@ -3619,6 +3646,15 @@ class _MessageBubbleState extends State<MessageBubble>
 
   bool _hasInlineCode(List<MessageTextEntity> active) {
     return active.any((e) => e.type == 'textEntityTypeCode');
+  }
+
+  int? _customEmojiId(List<MessageTextEntity> active) {
+    for (final entity in active.reversed) {
+      if (entity.isCustomEmoji && entity.customEmojiId != null) {
+        return entity.customEmojiId;
+      }
+    }
+    return null;
   }
 
   bool _hasMath(List<MessageTextEntity> active) {

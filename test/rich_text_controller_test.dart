@@ -136,6 +136,53 @@ void main() {
       });
     });
 
+    test('keeps adjacent parameterized entities distinct after edits', () {
+      final controller = EmojiTextEditingController();
+      addTearDown(controller.dispose);
+
+      controller.setFormattedText('oneTwo', [
+        {
+          '@type': 'textEntity',
+          'offset': 0,
+          'length': 3,
+          'type': {
+            '@type': 'textEntityTypeTextUrl',
+            'url': 'https://one.example',
+          },
+        },
+        {
+          '@type': 'textEntity',
+          'offset': 3,
+          'length': 3,
+          'type': {
+            '@type': 'textEntityTypeTextUrl',
+            'url': 'https://two.example',
+          },
+        },
+      ]);
+
+      // Simulate a keyboard edit so the controller normalizes all ranges.
+      controller.value = const TextEditingValue(
+        text: 'oneTwo!',
+        selection: TextSelection.collapsed(offset: 7),
+      );
+
+      final (_, entities) = controller.toFormatted();
+      expect(entities, hasLength(2));
+      expect(entities[0]['offset'], 0);
+      expect(entities[0]['length'], 3);
+      expect(entities[0]['type'], {
+        '@type': 'textEntityTypeTextUrl',
+        'url': 'https://one.example',
+      });
+      expect(entities[1]['offset'], 3);
+      expect(entities[1]['length'], 3);
+      expect(entities[1]['type'], {
+        '@type': 'textEntityTypeTextUrl',
+        'url': 'https://two.example',
+      });
+    });
+
     test('rehydrates custom emoji while preserving enclosing formats', () {
       final controller = EmojiTextEditingController();
       addTearDown(controller.dispose);

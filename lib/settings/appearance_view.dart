@@ -28,6 +28,7 @@ import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../tdlib/td_models.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../theme/emoji_font_catalog.dart';
 import '../theme/global_theme_view.dart';
@@ -73,7 +74,7 @@ class AppearanceView extends StatelessWidget {
                       AppStrings.t(AppStringKeys.appearanceTheme),
                       AppStrings.t(theme.mode.label),
                       () => Navigator.of(context).push(
-                        PageRouteBuilder<void>(
+                        AppPageRoute<void>(
                           pageBuilder: (_, _, _) => const ThemeSettingsView(),
                         ),
                       ),
@@ -87,7 +88,7 @@ class AppearanceView extends StatelessWidget {
                       AppStrings.t(AppStringKeys.appearanceSize),
                       null,
                       () => Navigator.of(context).push(
-                        PageRouteBuilder<void>(
+                        AppPageRoute<void>(
                           pageBuilder: (_, _, _) => const DisplaySettingsView(),
                         ),
                       ),
@@ -101,7 +102,7 @@ class AppearanceView extends StatelessWidget {
                       AppStrings.t(AppStringKeys.appearanceInterfaceSize),
                       '${(theme.interfaceScale * 100).round()}%',
                       () => Navigator.of(context).push(
-                        PageRouteBuilder<void>(
+                        AppPageRoute<void>(
                           pageBuilder: (_, _, _) =>
                               const InterfaceSizeSettingsView(),
                         ),
@@ -116,7 +117,7 @@ class AppearanceView extends StatelessWidget {
                       AppStrings.t(AppStringKeys.appearanceFont),
                       theme.effectiveFontChainLabel,
                       () => Navigator.of(context).push(
-                        PageRouteBuilder<void>(
+                        AppPageRoute<void>(
                           pageBuilder: (_, _, _) => const FontSettingsView(),
                         ),
                       ),
@@ -133,7 +134,7 @@ class AppearanceView extends StatelessWidget {
                       AppStrings.t(AppStringKeys.appearanceMessageBubbles),
                       _messageBubbleBackgroundLabel(theme),
                       () => Navigator.of(context).push(
-                        PageRouteBuilder<void>(
+                        AppPageRoute<void>(
                           pageBuilder: (_, _, _) =>
                               const MessageBubbleSettingsView(),
                         ),
@@ -150,7 +151,7 @@ class AppearanceView extends StatelessWidget {
                     AppStrings.t(AppStringKeys.appIconTitle),
                     null,
                     () => Navigator.of(context).push(
-                      PageRouteBuilder<void>(
+                      AppPageRoute<void>(
                         pageBuilder: (_, _, _) => const AppIconSettingsView(),
                       ),
                     ),
@@ -224,7 +225,7 @@ class ThemeSettingsView extends StatelessWidget {
                       theme.cloudTheme?.displayTitle ??
                           AppStrings.t(AppStringKeys.globalThemeDefault),
                       () => Navigator.of(context).push(
-                        PageRouteBuilder<void>(
+                        AppPageRoute<void>(
                           pageBuilder: (_, _, _) => const GlobalThemeView(),
                         ),
                       ),
@@ -235,7 +236,7 @@ class ThemeSettingsView extends StatelessWidget {
                       AppStrings.t(AppStringKeys.groupAppearanceWallpaper),
                       null,
                       () => Navigator.of(context).push(
-                        PageRouteBuilder<void>(
+                        AppPageRoute<void>(
                           pageBuilder: (_, _, _) => ChatWallpaperView.global(
                             chatTitle: AppStrings.t(
                               AppStringKeys.chatWallpaperGlobalPreview,
@@ -578,7 +579,7 @@ class DisplaySettingsView extends StatelessWidget {
                       AppStrings.t(AppStringKeys.appearanceAvatarsAndSidebar),
                       null,
                       () => Navigator.of(context).push(
-                        PageRouteBuilder<void>(
+                        AppPageRoute<void>(
                           pageBuilder: (_, _, _) =>
                               const AvatarsAndSidebarSettingsView(),
                         ),
@@ -593,7 +594,7 @@ class DisplaySettingsView extends StatelessWidget {
                       AppStrings.t(AppStringKeys.appearanceChatView),
                       null,
                       () => Navigator.of(context).push(
-                        PageRouteBuilder<void>(
+                        AppPageRoute<void>(
                           pageBuilder: (_, _, _) =>
                               const ChatViewAppearanceSettingsView(),
                         ),
@@ -608,7 +609,7 @@ class DisplaySettingsView extends StatelessWidget {
                       AppStrings.t(AppStringKeys.appearanceChatList),
                       null,
                       () => Navigator.of(context).push(
-                        PageRouteBuilder<void>(
+                        AppPageRoute<void>(
                           pageBuilder: (_, _, _) =>
                               const ChatListAppearanceSettingsView(),
                         ),
@@ -623,7 +624,7 @@ class DisplaySettingsView extends StatelessWidget {
                       AppStrings.t(AppStringKeys.appearanceUnreadBadge),
                       null,
                       () => Navigator.of(context).push(
-                        PageRouteBuilder<void>(
+                        AppPageRoute<void>(
                           pageBuilder: (_, _, _) =>
                               const UnreadBadgeSettingsView(),
                         ),
@@ -720,7 +721,7 @@ class ChatViewAppearanceSettingsView extends StatelessWidget {
               AppStringKeys.appearanceSenderNameReadabilityNone,
           }),
           () => Navigator.of(context).push(
-            PageRouteBuilder<void>(
+            AppPageRoute<void>(
               pageBuilder: (_, _, _) =>
                   const SenderNameReadabilitySettingsView(),
             ),
@@ -735,7 +736,7 @@ class ChatViewAppearanceSettingsView extends StatelessWidget {
             theme.chatStatusEmojiMode,
           ),
           () => Navigator.of(context).push(
-            PageRouteBuilder<void>(
+            AppPageRoute<void>(
               pageBuilder: (_, _, _) => const NameColorSettingsView(
                 surface: NameColorSettingsSurface.chat,
               ),
@@ -757,7 +758,7 @@ class ChatViewAppearanceSettingsView extends StatelessWidget {
             'value1': theme.quickReactions.length,
           }),
           () => Navigator.of(context).push(
-            PageRouteBuilder<void>(
+            AppPageRoute<void>(
               pageBuilder: (_, _, _) => const QuickReactionSettingsView(),
             ),
           ),
@@ -817,7 +818,7 @@ class ChatListAppearanceSettingsView extends StatelessWidget {
             theme.chatListStatusEmojiMode,
           ),
           () => Navigator.of(context).push(
-            PageRouteBuilder<void>(
+            AppPageRoute<void>(
               pageBuilder: (_, _, _) => const NameColorSettingsView(
                 surface: NameColorSettingsSurface.chatList,
               ),
@@ -2285,7 +2286,7 @@ class FontSettingsView extends StatelessWidget {
                       value: '${(theme.fontScale * 100).round()}%',
                       height: AppMetric.compactSettingsRowHeight,
                       onTap: () => Navigator.of(context).push(
-                        PageRouteBuilder<void>(
+                        AppPageRoute<void>(
                           pageBuilder: (_, _, _) =>
                               const _TextSizeSettingsView(),
                         ),

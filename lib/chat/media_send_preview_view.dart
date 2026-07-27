@@ -7,6 +7,7 @@ import 'package:video_player/video_player.dart';
 import '../components/app_icons.dart';
 import '../components/toast.dart';
 import '../l10n/app_localizations.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'image_edit_view.dart';
 import 'message_send_options.dart';
@@ -150,7 +151,7 @@ class _MediaSendPreviewViewState extends State<MediaSendPreviewView> {
     }
     final totalMs = video.value.duration.inMilliseconds;
     var trim = RangeValues(0, totalMs.toDouble());
-    final result = await showModalBottomSheet<(String?, int, RangeValues)>(
+    final result = await showAppModalSheet<(String?, int, RangeValues)>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,

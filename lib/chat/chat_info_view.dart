@@ -30,6 +30,7 @@ import '../profile/qr_code_view.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import 'add_members_view.dart';
@@ -99,7 +100,7 @@ class _ChatInfoViewState extends State<ChatInfoView> {
 
   void _openChatFolders() {
     Navigator.of(context).push(
-      PageRouteBuilder<void>(
+      AppPageRoute<void>(
         pageBuilder: (_, _, _) =>
             ChatFolderMembershipView(chatId: widget.chatId, title: _vm.title),
       ),
@@ -108,7 +109,7 @@ class _ChatInfoViewState extends State<ChatInfoView> {
 
   void _openWallpaper() {
     Navigator.of(context).push(
-      PageRouteBuilder<void>(
+      AppPageRoute<void>(
         pageBuilder: (_, _, _) =>
             ChatWallpaperView(chatId: widget.chatId, chatTitle: _vm.title),
       ),
@@ -117,7 +118,7 @@ class _ChatInfoViewState extends State<ChatInfoView> {
 
   void _openTheme() {
     Navigator.of(context).push(
-      PageRouteBuilder<void>(
+      AppPageRoute<void>(
         pageBuilder: (_, _, _) =>
             ChatThemeView(chatId: widget.chatId, chatTitle: _vm.title),
       ),

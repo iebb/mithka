@@ -8,16 +8,31 @@ const _scale = 2;
 const _centerLogicalX = 24;
 const _centerLogicalY = 18;
 
-void main() {
+void main(List<String> arguments) {
+  if (arguments.length != 1) {
+    stderr.writeln(
+      'Usage: dart run scripts/compact_generated_message_bubbles.dart '
+      '<source-directory>',
+    );
+    exitCode = 64;
+    return;
+  }
+  final sourceDirectory = Directory(arguments.single);
+  if (!sourceDirectory.existsSync()) {
+    stderr.writeln('Source directory does not exist: ${sourceDirectory.path}');
+    exitCode = 66;
+    return;
+  }
   final output = Directory('assets/message_bubbles')
     ..createSync(recursive: true);
   final retina = Directory('${output.path}/2.0x')..createSync(recursive: true);
 
   for (final source in _sources) {
-    final bytes = File(source.inputPath).readAsBytesSync();
+    final inputPath = source.inputPath(sourceDirectory.path);
+    final bytes = File(inputPath).readAsBytesSync();
     final decoded = image_lib.decodePng(bytes);
     if (decoded == null) {
-      throw StateError('Could not decode ${source.inputPath}');
+      throw StateError('Could not decode $inputPath');
     }
     final trimmed = image_lib.trim(
       decoded,
@@ -110,8 +125,7 @@ class _Source {
   final String name;
   final double cornerWidthFraction;
 
-  String get inputPath =>
-      'design/message_bubbles/gpt-image-2-sources/$name.png';
+  String inputPath(String sourceDirectory) => '$sourceDirectory/$name.png';
 }
 
 class _Band {

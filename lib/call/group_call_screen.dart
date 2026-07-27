@@ -8,6 +8,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
+import '../theme/app_motion.dart';
 import 'group_call_controller.dart';
 
 class GroupCallScreen extends StatefulWidget {
@@ -346,7 +347,7 @@ class _GroupCallScreenState extends State<GroupCallScreen> {
 
   void _showParticipants() {
     final participants = widget.controller.participants;
-    showModalBottomSheet<void>(
+    showAppModalSheet<void>(
       context: context,
       backgroundColor: const Color(0xFF202A34),
       showDragHandle: true,

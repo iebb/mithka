@@ -9,6 +9,7 @@ import '../profile/profile_icon_picker_view.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'chat_sticker_set_picker_view.dart';
 import 'chat_theme_view.dart';
@@ -213,13 +214,11 @@ class _GroupAppearanceViewState extends State<GroupAppearanceView> {
       return;
     }
     final id = await Navigator.of(context).push<int>(
-      PageRouteBuilder<int>(
+      AppFadePageRoute<int>(
         pageBuilder: (_, _, _) => ProfileIconPickerView(
           selectedId: _profileIconId,
           title: AppStringKeys.groupAppearanceProfileIcon,
         ),
-        transitionsBuilder: (_, animation, _, child) =>
-            FadeTransition(opacity: animation, child: child),
       ),
     );
     if (!mounted || id == null || id == _profileIconId) return;
@@ -249,14 +248,12 @@ class _GroupAppearanceViewState extends State<GroupAppearanceView> {
       return;
     }
     final id = await Navigator.of(context).push<int>(
-      PageRouteBuilder<int>(
+      AppFadePageRoute<int>(
         pageBuilder: (_, _, _) => ProfileIconPickerView(
           selectedId: _emojiStatusId,
           title: AppStringKeys.groupAppearanceEmojiStatus,
           source: ProfileIconSource.status,
         ),
-        transitionsBuilder: (_, animation, _, child) =>
-            FadeTransition(opacity: animation, child: child),
       ),
     );
     if (!mounted || id == null || id == _emojiStatusId) return;
@@ -292,7 +289,7 @@ class _GroupAppearanceViewState extends State<GroupAppearanceView> {
     }
     final current = customEmoji ? _customEmojiSetId : _stickerSetId;
     final id = await Navigator.of(context).push<int>(
-      PageRouteBuilder<int>(
+      AppFadePageRoute<int>(
         pageBuilder: (_, _, _) => ChatStickerSetPickerView(
           title: customEmoji
               ? AppStringKeys.groupAppearanceEmojiPack
@@ -300,8 +297,6 @@ class _GroupAppearanceViewState extends State<GroupAppearanceView> {
           customEmoji: customEmoji,
           selectedId: current,
         ),
-        transitionsBuilder: (_, animation, _, child) =>
-            FadeTransition(opacity: animation, child: child),
       ),
     );
     if (!mounted || id == null || id == current) return;
@@ -355,11 +350,9 @@ class _GroupAppearanceViewState extends State<GroupAppearanceView> {
       return;
     }
     Navigator.of(context).push(
-      PageRouteBuilder<void>(
+      AppFadePageRoute<void>(
         pageBuilder: (_, _, _) =>
             ChatWallpaperView(chatId: widget.chatId, chatTitle: widget.title),
-        transitionsBuilder: (_, animation, _, child) =>
-            FadeTransition(opacity: animation, child: child),
       ),
     );
   }
@@ -370,11 +363,9 @@ class _GroupAppearanceViewState extends State<GroupAppearanceView> {
       return;
     }
     Navigator.of(context).push(
-      PageRouteBuilder<void>(
+      AppFadePageRoute<void>(
         pageBuilder: (_, _, _) =>
             ChatThemeView(chatId: widget.chatId, chatTitle: widget.title),
-        transitionsBuilder: (_, animation, _, child) =>
-            FadeTransition(opacity: animation, child: child),
       ),
     );
   }

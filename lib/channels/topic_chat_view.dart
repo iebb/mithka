@@ -33,6 +33,7 @@ import '../settings/topic_group_display_mode.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
 import '../theme/theme_controller.dart';
@@ -654,7 +655,7 @@ class _TopicChatViewState extends State<TopicChatView> {
   }
 
   void _showReactionPicker(_TopicPost post) {
-    showModalBottomSheet<void>(
+    showAppModalSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) {

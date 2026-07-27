@@ -6,6 +6,7 @@ import '../components/app_icons.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'transfer_boost_config.dart';
 
@@ -58,7 +59,7 @@ class _TransferBoostViewState extends State<TransferBoostView> {
     required Color iconColor,
     required ValueChanged<int> onSelected,
   }) {
-    showModalBottomSheet<void>(
+    showAppModalSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) {

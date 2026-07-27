@@ -45,6 +45,7 @@ import '../settings/edit_profile_view.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import 'profile_contact_management_view.dart';
@@ -384,7 +385,7 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
   }
 
   Future<void> _showProfileContextMenu() async {
-    final action = await showModalBottomSheet<_ProfileContextAction>(
+    final action = await showAppModalSheet<_ProfileContextAction>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (_) => _ProfileContextMenu(
@@ -1458,7 +1459,7 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
     }
     final photos = List<_FeaturedProfilePhoto>.unmodifiable(_photos);
     await Navigator.of(context).push<void>(
-      PageRouteBuilder<void>(
+      AppPageRoute<void>(
         pageBuilder: (previewContext, _, _) => FullImageViewer(
           items: photos.map((photo) => photo.file).toList(growable: false),
           startIndex: startIndex,

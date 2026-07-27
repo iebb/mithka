@@ -6,6 +6,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import '../components/app_icons.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'auto_download_media_controller.dart';
 
@@ -266,7 +267,7 @@ class _AutoDownloadSettingsViewState extends State<AutoDownloadSettingsView> {
     int selected,
     Future<void> Function(int value) onChanged,
   ) async {
-    final value = await showModalBottomSheet<int>(
+    final value = await showAppModalSheet<int>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) {

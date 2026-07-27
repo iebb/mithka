@@ -29,6 +29,7 @@ import '../profile/profile_photo_policy.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'accent_color_picker_view.dart';
 import 'animated_avatar_crop_view.dart';
@@ -319,11 +320,9 @@ class _EditProfileViewState extends State<EditProfileView> {
 
   Future<void> _editProfileIcon() async {
     final id = await Navigator.of(context).push<int>(
-      PageRouteBuilder<int>(
+      AppFadePageRoute<int>(
         pageBuilder: (_, _, _) =>
             ProfileIconPickerView(selectedId: _profileBackgroundCustomEmojiId),
-        transitionsBuilder: (_, animation, _, child) =>
-            FadeTransition(opacity: animation, child: child),
       ),
     );
     if (id == null || id == _profileBackgroundCustomEmojiId) return;
@@ -361,7 +360,7 @@ class _EditProfileViewState extends State<EditProfileView> {
 
   Future<_AvatarKind?> _chooseAvatarKind() {
     final c = context.colors;
-    return showModalBottomSheet<_AvatarKind>(
+    return showAppModalSheet<_AvatarKind>(
       context: context,
       backgroundColor: Colors.transparent,
       barrierColor: Colors.black.withValues(alpha: 0.28),

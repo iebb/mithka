@@ -38,10 +38,12 @@ import '../settings/topic_group_display_mode.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import 'archived_chats_view.dart';
 import 'chat_delete_dialog.dart';
+import 'chat_list_preview.dart';
 import 'chat_list_view_model.dart';
 import 'chat_row_view.dart';
 import 'filtered_chats_view.dart';
@@ -869,9 +871,11 @@ class _ChatListViewState extends State<ChatListView>
               ],
             ),
           ),
-          if (_showPlusMenu) _plusMenuOverlay(),
-          if (folderMode == ChatFolderDisplayMode.menu && _showFilterMenu)
-            _filterMenuOverlay(),
+          _plusMenuOverlay(visible: _showPlusMenu),
+          _filterMenuOverlay(
+            visible:
+                folderMode == ChatFolderDisplayMode.menu && _showFilterMenu,
+          ),
         ],
       ),
     );
@@ -1257,7 +1261,6 @@ class _ChatListViewState extends State<ChatListView>
             visibleRows: visibleRows,
           );
           final showInlineArchive = hasArchive && archiveMode.isInline;
-
           Widget list;
           if (entries.isEmpty &&
               _model.isInitialLoading &&
@@ -1265,6 +1268,8 @@ class _ChatListViewState extends State<ChatListView>
               !hasFiltered) {
             list = ListView.builder(
               controller: _scrollController,
+              // Pull-down Archive depends on negative scroll extents, so this
+              // list intentionally keeps elastic physics on every platform.
               physics: const AlwaysScrollableScrollPhysics(
                 parent: BouncingScrollPhysics(),
               ),
@@ -1534,11 +1539,58 @@ class _ChatListViewState extends State<ChatListView>
       openRowId: _openSwipeChat,
       onOpenChanged: (id) => setState(() => _openSwipeChat = id),
       onTap: () => _openChat(chat),
+      onLongPress: () => _showChatPreview(chat),
       actions: actions,
       child: ChatRowView(
         chat: chat,
         selected: widget.selectedChatId == chat.id,
         onClearUnread: () => _model.markRead(chat),
+      ),
+    );
+  }
+
+  void _showChatPreview(ChatSummary chat) {
+    if (_openSwipeChat != null) setState(() => _openSwipeChat = null);
+    final hasUnread = chat.unreadCount > 0 || chat.isMarkedUnread;
+    unawaited(
+      showChatListPreview(
+        context,
+        chat: chat,
+        actions: [
+          ChatListPreviewAction(
+            label: AppStringKeys.linkHandlerOpenChat,
+            icon: HeroAppIcons.message,
+            onSelected: () => unawaited(_openChat(chat)),
+          ),
+          ChatListPreviewAction(
+            label: hasUnread
+                ? AppStringKeys.channelDirectMessagesMarkRead
+                : AppStringKeys.chatListMarkUnread,
+            icon: hasUnread ? HeroAppIcons.circleCheck : HeroAppIcons.eyeSlash,
+            onSelected: () =>
+                hasUnread ? _model.markRead(chat) : _model.markUnread(chat),
+          ),
+          ChatListPreviewAction(
+            label: chat.isPinned
+                ? AppStringKeys.chatListUnpin
+                : AppStringKeys.chatInfoPin,
+            icon: HeroAppIcons.thumbtack,
+            onSelected: () => _model.togglePin(chat),
+          ),
+          ChatListPreviewAction(
+            label: chat.isMuted
+                ? AppStringKeys.chatUnmute
+                : AppStringKeys.callMute,
+            icon: chat.isMuted ? HeroAppIcons.bell : HeroAppIcons.bellSlash,
+            onSelected: () => _model.toggleMute(chat),
+          ),
+          ChatListPreviewAction(
+            label: _deleteOrLeaveTitle(chat),
+            icon: HeroAppIcons.trash,
+            destructive: true,
+            onSelected: () => unawaited(_confirmDeleteChat(chat)),
+          ),
+        ],
       ),
     );
   }
@@ -1590,28 +1642,7 @@ class _ChatListViewState extends State<ChatListView>
   }
 
   PageRoute<T> _standardEntryRoute<T>(Widget child) {
-    return PageRouteBuilder<T>(
-      transitionDuration: const Duration(milliseconds: 260),
-      reverseTransitionDuration: const Duration(milliseconds: 220),
-      pageBuilder: (_, animation, secondaryAnimation) => child,
-      transitionsBuilder: (_, animation, secondaryAnimation, page) {
-        final entrance = CurvedAnimation(
-          parent: animation,
-          curve: Curves.easeOutCubic,
-          reverseCurve: Curves.easeInCubic,
-        );
-        return FadeTransition(
-          opacity: Tween<double>(begin: 0.82, end: 1).animate(entrance),
-          child: SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(0.055, 0),
-              end: Offset.zero,
-            ).animate(entrance),
-            child: page,
-          ),
-        );
-      },
-    );
+    return AppPageRoute<T>(pageBuilder: (_, _, _) => child);
   }
 
   Widget _assistantRow() {
@@ -1650,51 +1681,29 @@ class _ChatListViewState extends State<ChatListView>
 
   // MARK: - "+" dropdown
 
-  Widget _plusMenuOverlay() {
-    return Positioned.fill(
-      child: GestureDetector(
-        onTap: () => setState(() => _showPlusMenu = false),
-        child: Container(
-          color: Colors.black.withValues(alpha: 0.12),
-          padding: EdgeInsets.only(
-            top: MediaQuery.of(context).padding.top + 48,
-            right: 10,
-          ),
-          alignment: Alignment.topRight,
-          child: GestureDetector(
-            onTap: () {},
-            child: PlusMenu(
-              onSelect: _selectPlusMenuItem,
-              showCommunities:
-                  context.watch<ThemeController>().communitiesEnabled &&
-                  _model.availableCommunities.isNotEmpty,
-            ),
-          ),
-        ),
+  Widget _plusMenuOverlay({required bool visible}) {
+    return _AnimatedAnchoredMenuOverlay(
+      visible: visible,
+      top: MediaQuery.paddingOf(context).top + 48,
+      onDismiss: () => setState(() => _showPlusMenu = false),
+      child: PlusMenu(
+        onSelect: _selectPlusMenuItem,
+        showCommunities:
+            context.watch<ThemeController>().communitiesEnabled &&
+            _model.availableCommunities.isNotEmpty,
       ),
     );
   }
 
-  Widget _filterMenuOverlay() {
-    return Positioned.fill(
-      child: GestureDetector(
-        onTap: () => setState(() => _showFilterMenu = false),
-        child: Container(
-          color: Colors.black.withValues(alpha: 0.12),
-          padding: EdgeInsets.only(
-            top: MediaQuery.of(context).padding.top + 48,
-            right: 10,
-          ),
-          alignment: Alignment.topRight,
-          child: GestureDetector(
-            onTap: () {},
-            child: ChatFilterMenu(
-              filters: _model.filters,
-              selected: _model.selectedFilter,
-              onSelect: _selectFilter,
-            ),
-          ),
-        ),
+  Widget _filterMenuOverlay({required bool visible}) {
+    return _AnimatedAnchoredMenuOverlay(
+      visible: visible,
+      top: MediaQuery.paddingOf(context).top + 48,
+      onDismiss: () => setState(() => _showFilterMenu = false),
+      child: ChatFilterMenu(
+        filters: _model.filters,
+        selected: _model.selectedFilter,
+        onSelect: _selectFilter,
       ),
     );
   }
@@ -1720,6 +1729,127 @@ class _ChatListViewState extends State<ChatListView>
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Keeps anchored menus mounted through their reverse animation so the
+/// barrier, hit testing, and menu surface leave as one coherent motion.
+class _AnimatedAnchoredMenuOverlay extends StatefulWidget {
+  const _AnimatedAnchoredMenuOverlay({
+    required this.visible,
+    required this.top,
+    required this.onDismiss,
+    required this.child,
+  });
+
+  final bool visible;
+  final double top;
+  final VoidCallback onDismiss;
+  final Widget child;
+
+  @override
+  State<_AnimatedAnchoredMenuOverlay> createState() =>
+      _AnimatedAnchoredMenuOverlayState();
+}
+
+class _AnimatedAnchoredMenuOverlayState
+    extends State<_AnimatedAnchoredMenuOverlay>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: AppMotion.responsive,
+    reverseDuration: AppMotion.quick,
+    value: widget.visible ? 1 : 0,
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncDuration();
+    if (AppMotion.isReduced(context)) {
+      _controller.value = widget.visible ? 1 : 0;
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _AnimatedAnchoredMenuOverlay oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _syncDuration();
+    if (oldWidget.visible == widget.visible) return;
+    if (AppMotion.isReduced(context)) {
+      _controller.value = widget.visible ? 1 : 0;
+    } else if (widget.visible) {
+      _controller.forward();
+    } else {
+      _controller.reverse();
+    }
+  }
+
+  void _syncDuration() {
+    _controller.duration = AppMotion.duration(context, AppMotion.responsive);
+    _controller.reverseDuration = AppMotion.duration(context, AppMotion.quick);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: AnimatedBuilder(
+        animation: _controller,
+        child: widget.child,
+        builder: (context, child) {
+          if (_controller.isDismissed) return const SizedBox.shrink();
+          final progress = AppMotion.emphasized.transform(_controller.value);
+          return IgnorePointer(
+            ignoring: _controller.value == 0,
+            child: ExcludeSemantics(
+              excluding: _controller.value == 0,
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: widget.onDismiss,
+                      child: ColoredBox(
+                        color: Colors.black.withValues(
+                          alpha: 0.12 * _controller.value,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: EdgeInsets.only(top: widget.top, right: 10),
+                    child: Align(
+                      alignment: Alignment.topRight,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () {},
+                        child: Opacity(
+                          opacity: progress,
+                          child: Transform.translate(
+                            offset: Offset(0, -8 * (1 - progress)),
+                            child: Transform.scale(
+                              alignment: Alignment.topRight,
+                              scale: 0.94 + 0.06 * progress,
+                              child: child,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -2035,6 +2165,7 @@ class ChatSwipeRow extends StatefulWidget {
     required this.actions,
     required this.onTap,
     required this.child,
+    this.onLongPress,
     this.requiresLongPressDrag = false,
   });
 
@@ -2044,6 +2175,7 @@ class ChatSwipeRow extends StatefulWidget {
   final List<SwipeActionItem> actions;
   final VoidCallback onTap;
   final Widget child;
+  final VoidCallback? onLongPress;
   final bool requiresLongPressDrag;
 
   @override
@@ -2070,8 +2202,14 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 260),
+      duration: AppMotion.responsive,
     );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _controller.duration = AppMotion.duration(context, AppMotion.responsive);
   }
 
   @override
@@ -2107,10 +2245,14 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
 
   void _animateTo(double target) {
     _stopAnimation();
+    if (AppMotion.isReduced(context)) {
+      setState(() => _offset = target);
+      return;
+    }
     final anim = Tween<double>(
       begin: _offset,
       end: target,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
+    ).animate(CurvedAnimation(parent: _controller, curve: AppMotion.standard));
     void listener() => setState(() => _offset = anim.value);
     _animation = anim;
     _animationListener = listener;
@@ -2193,6 +2335,15 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: () => _offset != 0 ? _close() : widget.onTap(),
+              onLongPress: widget.requiresLongPressDrag
+                  ? null
+                  : () {
+                      if (_offset != 0) {
+                        _close();
+                        return;
+                      }
+                      widget.onLongPress?.call();
+                    },
               onLongPressStart: (_) {
                 _stopAnimation();
                 _longPressStartOffset = _offset;

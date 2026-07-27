@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 
 /// Project-owned modal surface with explicit dimensions, colors, and actions.
@@ -147,14 +148,8 @@ Future<String?> showAppTextEntryDialog(
     barrierDismissible: true,
     barrierLabel: cancelLabel,
     barrierColor: Colors.black.withValues(alpha: 0.52),
-    transitionDuration: const Duration(milliseconds: 160),
-    transitionBuilder: (_, animation, _, child) => FadeTransition(
-      opacity: animation,
-      child: ScaleTransition(
-        scale: Tween<double>(begin: 0.96, end: 1).animate(animation),
-        child: child,
-      ),
-    ),
+    transitionDuration: AppMotion.duration(context, AppMotion.responsive),
+    transitionBuilder: AppMotion.dialogTransition,
     pageBuilder: (dialogContext, _, _) => StatefulBuilder(
       builder: (dialogContext, setDialogState) {
         void submit() {

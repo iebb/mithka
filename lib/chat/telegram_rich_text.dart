@@ -50,6 +50,7 @@ class _TelegramRichTextState extends State<TelegramRichText> {
   );
 
   final _recognizers = <GestureRecognizer>[];
+  final Set<String> _revealedSpoilers = {};
 
   @override
   void dispose() {
@@ -198,6 +199,7 @@ class _TelegramRichTextState extends State<TelegramRichText> {
           userId: entity.userId,
           customEmojiId: entity.customEmojiId,
           language: entity.language,
+          typeData: entity.typeData,
         ),
       );
     }
@@ -261,8 +263,28 @@ class _TelegramRichTextState extends State<TelegramRichText> {
     TextStyle baseStyle,
     Color linkColor,
   ) {
-    final style = _entityStyle(context, active, baseStyle, linkColor);
-    final customEmojiId = _customEmojiId(active);
+    final spoilerKey = _spoilerKey(active);
+    if (spoilerKey != null && !_revealedSpoilers.contains(spoilerKey)) {
+      final recognizer = TapGestureRecognizer()
+        ..onTap = () {
+          if (mounted) setState(() => _revealedSpoilers.add(spoilerKey));
+        };
+      _recognizers.add(recognizer);
+      return [
+        TextSpan(
+          text: segment,
+          style: _entityStyle(context, active, baseStyle, linkColor),
+          recognizer: recognizer,
+        ),
+      ];
+    }
+    final effectiveActive = spoilerKey == null
+        ? active
+        : active
+              .where((entity) => entity.type != 'textEntityTypeSpoiler')
+              .toList(growable: false);
+    final style = _entityStyle(context, effectiveActive, baseStyle, linkColor);
+    final customEmojiId = _customEmojiId(effectiveActive);
     if (customEmojiId != null) {
       return [
         WidgetSpan(
@@ -275,10 +297,10 @@ class _TelegramRichTextState extends State<TelegramRichText> {
         ),
       ];
     }
-    if (_hasMath(active)) return [_mathSpan(segment, style)];
-    if (_hasCode(active)) return [_codeSpan(segment, style)];
+    if (_hasMath(effectiveActive)) return [_mathSpan(segment, style)];
+    if (_hasCode(effectiveActive)) return [_codeSpan(segment, style)];
 
-    final mentionUserId = _mentionUserId(active);
+    final mentionUserId = _mentionUserId(effectiveActive);
     if (mentionUserId != null) {
       final onTap = widget.onMentionTap;
       if (onTap != null) {
@@ -290,7 +312,7 @@ class _TelegramRichTextState extends State<TelegramRichText> {
       return [TextSpan(text: segment, style: style)];
     }
 
-    final target = _entityTapTarget(segment, active);
+    final target = _entityTapTarget(segment, effectiveActive);
     if (target == '__bot_command__') {
       final recognizer = TapGestureRecognizer()
         ..onTap = () => widget.onBotCommandTap?.call(segment.trim());
@@ -431,6 +453,15 @@ class _TelegramRichTextState extends State<TelegramRichText> {
     for (final entity in active.reversed) {
       if (entity.isCustomEmoji && entity.customEmojiId != null) {
         return entity.customEmojiId;
+      }
+    }
+    return null;
+  }
+
+  String? _spoilerKey(List<MessageTextEntity> active) {
+    for (final entity in active) {
+      if (entity.type == 'textEntityTypeSpoiler') {
+        return '${entity.offset}:${entity.length}';
       }
     }
     return null;

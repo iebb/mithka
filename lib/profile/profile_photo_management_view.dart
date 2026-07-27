@@ -14,6 +14,7 @@ import '../media/app_asset_picker.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'profile_contact_service.dart';
 
@@ -191,7 +192,7 @@ class _ProfilePhotoManagementViewState
   }
 
   Future<void> _showActions(_ProfilePhotoEntry entry) async {
-    final action = await showModalBottomSheet<_PhotoAction>(
+    final action = await showAppModalSheet<_PhotoAction>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) => _PhotoActionSheet(

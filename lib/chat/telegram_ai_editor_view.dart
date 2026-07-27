@@ -6,6 +6,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import '../components/app_icons.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'custom_emoji.dart';
 import 'telegram_ai_service.dart';
@@ -186,7 +187,7 @@ Future<T?> _aiChoiceSheet<T>(
   required String title,
   required List<(T, String, String?)> choices,
   required T selected,
-}) => showModalBottomSheet<T>(
+}) => showAppModalSheet<T>(
   context: context,
   backgroundColor: Colors.transparent,
   builder: (sheetContext) {
@@ -913,7 +914,7 @@ class _TelegramAiStylesViewState extends State<TelegramAiStylesView> {
     final title = TextEditingController(text: style?.title ?? '');
     final prompt = TextEditingController(text: style?.prompt ?? '');
     var showCreator = style?.isCreator ?? false;
-    final result = await showModalBottomSheet<(String, String, bool)>(
+    final result = await showAppModalSheet<(String, String, bool)>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,

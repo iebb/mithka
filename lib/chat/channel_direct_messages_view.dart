@@ -12,6 +12,7 @@ import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../media/app_asset_picker.dart';
 import '../tdlib/td_models.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
 import 'channel_direct_messages_service.dart';
@@ -196,7 +197,7 @@ class _ChannelDirectMessagesViewState extends State<ChannelDirectMessagesView> {
   }
 
   void _openTopicSettings(DirectMessagesTopic topic) {
-    showModalBottomSheet<void>(
+    showAppModalSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -686,7 +687,7 @@ class _ChannelDirectMessageTopicViewState
   Future<void> _composeSuggestedPost() async {
     final limits = await _controller.loadLimits();
     if (!mounted) return;
-    final draft = await showModalBottomSheet<SuggestedPostDraft>(
+    final draft = await showAppModalSheet<SuggestedPostDraft>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -750,7 +751,7 @@ class _ChannelDirectMessageTopicViewState
   Future<void> _editOffer(ChatMessage message) async {
     final limits = await _controller.loadLimits();
     if (!mounted) return;
-    final draft = await showModalBottomSheet<SuggestedPostDraft>(
+    final draft = await showAppModalSheet<SuggestedPostDraft>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -775,7 +776,7 @@ class _ChannelDirectMessageTopicViewState
   Future<void> _suggestChanges(ChatMessage message) async {
     final limits = await _controller.loadLimits();
     if (!mounted) return;
-    final draft = await showModalBottomSheet<SuggestedPostDraft>(
+    final draft = await showAppModalSheet<SuggestedPostDraft>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -839,7 +840,7 @@ class _ChannelDirectMessageTopicViewState
   );
 
   void _openSettings() {
-    showModalBottomSheet<void>(
+    showAppModalSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,

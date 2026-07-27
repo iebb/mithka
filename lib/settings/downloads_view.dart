@@ -10,6 +10,7 @@ import '../components/ui_components.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'data_storage_service.dart';
 
@@ -219,7 +220,7 @@ class _DownloadsViewState extends State<DownloadsView> {
   }
 
   Future<void> _remove(_DownloadItem item) async {
-    final action = await showModalBottomSheet<_RemoveDownloadAction>(
+    final action = await showAppModalSheet<_RemoveDownloadAction>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) {
@@ -312,7 +313,7 @@ class _DownloadsViewState extends State<DownloadsView> {
 
   Future<void> _showActions() async {
     final hasRunning = _items.any((item) => !item.completed && !item.isPaused);
-    await showModalBottomSheet<void>(
+    await showAppModalSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) {

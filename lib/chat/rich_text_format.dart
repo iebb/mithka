@@ -18,12 +18,49 @@ class _Marker {
   final String type;
 }
 
+typedef TelegramMarkdownQuery =
+    Future<Map<String, dynamic>> Function(Map<String, dynamic> request);
+
+/// Parses explicitly authored Markdown through TDLib, the protocol authority.
+/// The local parser is retained only as a compatibility fallback for older or
+/// temporarily unavailable TDLib builds.
+Future<FormattedTextPayload> parseTelegramMarkdownWithTdLib(
+  String text, {
+  required TelegramMarkdownQuery query,
+}) async {
+  try {
+    final response = await query({
+      '@type': 'parseMarkdown',
+      'text': {
+        '@type': 'formattedText',
+        'text': text,
+        'entities': const <Object>[],
+      },
+    });
+    final parsedText = response['text'];
+    final rawEntities = response['entities'];
+    if (parsedText is String && rawEntities is List) {
+      return FormattedTextPayload(
+        parsedText,
+        rawEntities
+            .whereType<Map<String, dynamic>>()
+            .map(Map<String, dynamic>.of)
+            .toList(growable: false),
+      );
+    }
+  } catch (_) {
+    // Fall back below so a temporary TDLib error does not block the post.
+  }
+  return parseTelegramMarkdown(text);
+}
+
 FormattedTextPayload parseTelegramMarkdown(String text) {
   const markers = [
     _Marker('```', 'textEntityTypePre'),
     _Marker('~~', 'textEntityTypeStrikethrough'),
+    _Marker('||', 'textEntityTypeSpoiler'),
     _Marker('**', 'textEntityTypeBold'),
-    _Marker('__', 'textEntityTypeUnderline'),
+    _Marker('__', 'textEntityTypeItalic'),
     _Marker('`', 'textEntityTypeCode'),
     _Marker('*', 'textEntityTypeItalic'),
     _Marker('_', 'textEntityTypeItalic'),

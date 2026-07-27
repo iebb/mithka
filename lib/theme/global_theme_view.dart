@@ -8,6 +8,7 @@ import '../components/app_confirm_dialog.dart';
 import '../components/app_icons.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
+import 'app_motion.dart';
 import 'app_theme.dart';
 import 'telegram_cloud_theme.dart';
 import 'theme_controller.dart';
@@ -619,7 +620,7 @@ class _GlobalThemeViewState extends State<GlobalThemeView> {
   ) async {
     final rgb = theme.accentColor.toARGB32() & 0x00FFFFFF;
     final result = await Navigator.of(context).push<ChatWallpaper>(
-      PageRouteBuilder<ChatWallpaper>(
+      AppFadePageRoute<ChatWallpaper>(
         pageBuilder: (_, _, _) => ChatWallpaperColorView(
           controller: ChatWallpaperController.shared,
           dark: _targetBrightness == Brightness.dark,
@@ -630,8 +631,6 @@ class _GlobalThemeViewState extends State<GlobalThemeView> {
             colors: [rgb],
           ),
         ),
-        transitionsBuilder: (_, animation, _, child) =>
-            FadeTransition(opacity: animation, child: child),
       ),
     );
     if (!mounted || result == null || result.colors.isEmpty) return;

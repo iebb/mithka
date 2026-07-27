@@ -36,6 +36,8 @@ migrate_working_dir/
 # Local platform builds and generated test/image-processing workspaces.
 /ios/build/
 /tmp/
+/.local/
+/design/message_bubbles/gpt-image-2-sources/
 /third_party/**/android/.gradle/
 /third_party/**/android/build/
 
@@ -103,3 +105,4 @@ android/app/src/main/jniLibs/
 # Generated native-player downloads and local Android CMake output.
 /third_party/fvp/android/.cxx/
 /third_party/fvp/android/mdk-sdk/
+/third_party/fvp/android/mdk-sdk-*.7z

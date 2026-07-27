@@ -19,6 +19,7 @@ import '../notifications/notification_settings_payload.dart';
 import '../notifications/scope_notification_settings.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 
 String _notificationExceptionCount(int count) => AppStrings.t(
@@ -260,7 +261,7 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
   void _openAccountSelection() {
     final accounts = context.read<AccountStore>();
     Navigator.of(context).push(
-      PageRouteBuilder<void>(
+      AppPageRoute<void>(
         pageBuilder: (_, _, _) => _AccountNotificationSelectionView(
           accounts: List<AccountSummary>.from(accounts.summaries),
           activeSlot: accounts.activeSlot,

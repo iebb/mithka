@@ -12,6 +12,7 @@ import 'dart:ui' as ui;
 
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -63,6 +64,7 @@ import 'settings/safety_notice_controller.dart';
 import 'settings/sensitive_content_controller.dart';
 import 'settings/translation_controller.dart';
 import 'tdlib/td_client.dart';
+import 'theme/app_motion.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_controller.dart';
 
@@ -369,8 +371,12 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
       ),
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: {
-          TargetPlatform.android: _NoRadiusPageTransitionsBuilder(),
-          TargetPlatform.fuchsia: _NoRadiusPageTransitionsBuilder(),
+          TargetPlatform.android: AppPageTransitionsBuilder(),
+          TargetPlatform.fuchsia: AppPageTransitionsBuilder(),
+          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.linux: AppPageTransitionsBuilder(),
+          TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.windows: AppPageTransitionsBuilder(),
         },
       ),
       extensions: [colors],
@@ -434,6 +440,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
               GlobalWidgetsLocalizations.delegate,
             ],
             navigatorObservers: _telemetryNavigatorObservers(),
+            scrollBehavior: const AppScrollBehavior(),
             theme: _themeData(Brightness.light, theme),
             darkTheme: _themeData(Brightness.dark, theme),
             themeMode: theme.themeMode,
@@ -536,49 +543,6 @@ List<NavigatorObserver> _telemetryNavigatorObservers() {
     // Sentry navigation breadcrumbs do not depend on Firebase availability.
   }
   return observers;
-}
-
-class _NoRadiusPageTransitionsBuilder extends PageTransitionsBuilder {
-  const _NoRadiusPageTransitionsBuilder();
-
-  @override
-  Widget buildTransitions<T>(
-    PageRoute<T> route,
-    BuildContext context,
-    Animation<double> animation,
-    Animation<double> secondaryAnimation,
-    Widget child,
-  ) {
-    if (route.fullscreenDialog) {
-      final curved = CurvedAnimation(
-        parent: animation,
-        curve: Curves.easeOutCubic,
-        reverseCurve: Curves.easeOutCubic,
-      );
-      final offset = Tween<Offset>(
-        begin: const Offset(0, 0.08),
-        end: Offset.zero,
-      ).animate(curved);
-      return FadeTransition(
-        opacity: curved,
-        child: SlideTransition(position: offset, child: child),
-      );
-    }
-
-    final curved = CurvedAnimation(
-      parent: animation,
-      curve: Curves.easeOutCubic,
-      reverseCurve: Curves.easeOutCubic,
-    );
-    final offset = Tween<Offset>(
-      begin: const Offset(0.08, 0),
-      end: Offset.zero,
-    ).animate(curved);
-    return FadeTransition(
-      opacity: curved,
-      child: SlideTransition(position: offset, child: child),
-    );
-  }
 }
 
 class _ScaledAppView extends StatelessWidget {

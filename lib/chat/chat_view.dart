@@ -49,6 +49,7 @@ import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
 import '../theme/telegram_cloud_theme.dart';
@@ -3741,7 +3742,7 @@ class _ChatViewState extends State<ChatView> {
       }
       final limits = await loader.loadLimits();
       if (!mounted) return;
-      final draft = await showModalBottomSheet<SuggestedPostDraft>(
+      final draft = await showAppModalSheet<SuggestedPostDraft>(
         context: context,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
@@ -4162,7 +4163,7 @@ class _ChatViewState extends State<ChatView> {
 
   Future<void> _showChatTranslationLanguagePicker() async {
     final c = context.colors;
-    await showModalBottomSheet<void>(
+    await showAppModalSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
@@ -4641,7 +4642,7 @@ class _ChatViewState extends State<ChatView> {
           : ChatView(chatId: senderChatId, title: title);
       final route = destination is ChatView
           ? AppChatPageRoute<void>(builder: (_) => destination)
-          : PageRouteBuilder<void>(pageBuilder: (_, _, _) => destination);
+          : AppPageRoute<void>(pageBuilder: (_, _, _) => destination);
       Navigator.of(context).push(route);
       return;
     }
@@ -5686,7 +5687,7 @@ class _ChatViewState extends State<ChatView> {
   }
 
   Future<void> _showBusinessBotControls() async {
-    final changed = await showModalBottomSheet<bool>(
+    final changed = await showAppModalSheet<bool>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (_) => BusinessBotChatControlSheet(
@@ -6115,7 +6116,7 @@ class _ChatViewState extends State<ChatView> {
       return;
     }
     final c = context.colors;
-    await showModalBottomSheet<void>(
+    await showAppModalSheet<void>(
       context: context,
       backgroundColor: c.background,
       shape: const RoundedRectangleBorder(
@@ -7801,7 +7802,7 @@ class _ChatViewState extends State<ChatView> {
                 _reactionExpanded = false;
               });
               Navigator.of(context).push(
-                PageRouteBuilder<void>(
+                AppPageRoute<void>(
                   pageBuilder: (_, _, _) => const QuickReactionSettingsView(),
                 ),
               );

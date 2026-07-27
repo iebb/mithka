@@ -14,6 +14,7 @@ import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
+import '../theme/app_motion.dart';
 
 class ShortVideoLauncher {
   const ShortVideoLauncher._();
@@ -208,7 +209,7 @@ class _ShortVideoViewState extends State<ShortVideoView> {
 
   Future<void> _configureDuration() async {
     var draft = _maxSeconds.toDouble();
-    final selected = await showModalBottomSheet<int>(
+    final selected = await showAppModalSheet<int>(
       context: context,
       backgroundColor: const Color(0xFF171719),
       showDragHandle: true,

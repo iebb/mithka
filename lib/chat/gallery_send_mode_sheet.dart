@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 
 enum GallerySendMode { media, highDefinition, livePhoto }
 
 Future<GallerySendMode?> showGallerySendModeSheet(BuildContext context) {
-  return showModalBottomSheet<GallerySendMode>(
+  return showAppModalSheet<GallerySendMode>(
     context: context,
     backgroundColor: Colors.transparent,
     builder: (_) => const _GallerySendModeSheet(),

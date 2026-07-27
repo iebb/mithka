@@ -14,6 +14,7 @@ import '../components/app_icons.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/telegram_language_controller.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'ai_settings_controller.dart';
 import 'ai_settings_view.dart';
@@ -349,7 +350,7 @@ class _TranslationSettingsViewState extends State<TranslationSettingsView> {
   }
 
   void _showProviderPicker(BuildContext context) {
-    showModalBottomSheet<void>(
+    showAppModalSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) {
@@ -432,7 +433,7 @@ class _TranslationSettingsViewState extends State<TranslationSettingsView> {
   }
 
   void _showTargetPicker(BuildContext context) {
-    showModalBottomSheet<void>(
+    showAppModalSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) {
@@ -532,7 +533,7 @@ class _TranslationSettingsViewState extends State<TranslationSettingsView> {
       };
 
   void _showIgnoredLanguagesPicker(BuildContext context) {
-    showModalBottomSheet<void>(
+    showAppModalSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,

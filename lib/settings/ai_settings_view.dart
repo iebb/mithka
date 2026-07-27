@@ -7,6 +7,7 @@ import '../components/app_icons.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'ai_endpoint_style.dart';
 import 'ai_settings_controller.dart';
@@ -553,7 +554,7 @@ class _AiProviderEditorViewState extends State<AiProviderEditorView> {
   }
 
   Future<void> _pickEndpointStyle() async {
-    final selected = await showModalBottomSheet<AiEndpointStyle>(
+    final selected = await showAppModalSheet<AiEndpointStyle>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) => _PickerCard(
@@ -941,7 +942,7 @@ class _AiModelEditorViewState extends State<AiModelEditorView> {
   }
 
   Future<void> _pickProvider(AiSettingsController settings) async {
-    final selected = await showModalBottomSheet<AiServerProvider>(
+    final selected = await showAppModalSheet<AiServerProvider>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) => _PickerCard(
@@ -1147,7 +1148,7 @@ class _AiModelEditorViewState extends State<AiModelEditorView> {
 
   Future<OpenAiCompatibleModelInfo?> _pickDiscoveredModel(
     List<OpenAiCompatibleModelInfo> models,
-  ) => showModalBottomSheet<OpenAiCompatibleModelInfo>(
+  ) => showAppModalSheet<OpenAiCompatibleModelInfo>(
     context: context,
     backgroundColor: Colors.transparent,
     builder: (sheetContext) => _PickerCard(
@@ -1273,7 +1274,7 @@ Future<AiModelCandidate?> showAiFeatureModelPicker(
   required AiFeature feature,
 }) async {
   final selectedId = settings.modelCandidateIdForFeature(feature);
-  return showModalBottomSheet<AiModelCandidate>(
+  return showAppModalSheet<AiModelCandidate>(
     context: context,
     backgroundColor: Colors.transparent,
     builder: (sheetContext) => KeyedSubtree(

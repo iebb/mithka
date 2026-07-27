@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 
 import '../l10n/app_localizations.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 
 /// Project-styled confirmation dialog without Material or Cupertino widgets.
@@ -19,7 +20,7 @@ Future<bool> showAppConfirmDialog(
     barrierDismissible: true,
     barrierLabel: cancelText.l10n(context),
     barrierColor: const Color(0x99000000),
-    transitionDuration: const Duration(milliseconds: 160),
+    transitionDuration: AppMotion.duration(context, AppMotion.responsive),
     pageBuilder: (dialogContext, _, _) => Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -100,13 +101,7 @@ Future<bool> showAppConfirmDialog(
         ),
       ),
     ),
-    transitionBuilder: (_, animation, _, child) => FadeTransition(
-      opacity: animation,
-      child: ScaleTransition(
-        scale: Tween<double>(begin: 0.96, end: 1).animate(animation),
-        child: child,
-      ),
-    ),
+    transitionBuilder: AppMotion.dialogTransition,
   );
   return result ?? false;
 }
