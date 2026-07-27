@@ -353,6 +353,8 @@ static UIViewController* _Nullable PictureInPictureRootViewController() {
 @property(copy, nonatomic) FlutterResult pendingPictureInPictureResult;
 @property(assign, nonatomic) BOOL pictureInPictureStartRequested;
 @property(assign, nonatomic) double pictureInPictureRate;
+@property(assign, nonatomic) BOOL pictureInPictureRestoreAccepted;
+@property(assign, nonatomic) BOOL pictureInPictureMuted;
 #endif
 @end
 
@@ -387,6 +389,8 @@ static UIViewController* _Nullable PictureInPictureRootViewController() {
     pictureInPictureGeneration.store(0);
     pictureInPictureTextureId = -1;
     _pictureInPictureRate = 1.0;
+    _pictureInPictureRestoreAccepted = NO;
+    _pictureInPictureMuted = NO;
     _pictureInPictureChannel = [FlutterMethodChannel
         methodChannelWithName:@"mithka/fvp_picture_in_picture"
         binaryMessenger:[registrar messenger]
@@ -491,6 +495,7 @@ static UIViewController* _Nullable PictureInPictureRootViewController() {
         pictureInPicturePlayer = playerIterator->second;
         pictureInPictureTextureId = textureId;
         self.pictureInPictureId = sessionId;
+        self.pictureInPictureRestoreAccepted = NO;
         self.pictureInPictureRate = [args[@"speed"] doubleValue] > 0.0
             ? [args[@"speed"] doubleValue]
             : 1.0;
@@ -635,8 +640,10 @@ static UIViewController* _Nullable PictureInPictureRootViewController() {
     if (!pictureInPicturePlayer)
         return;
     NSNumber* muted = args[@"muted"];
-    if ([muted isKindOfClass:[NSNumber class]])
+    if ([muted isKindOfClass:[NSNumber class]]) {
+        self.pictureInPictureMuted = muted.boolValue;
         pictureInPicturePlayer->setMute(muted.boolValue);
+    }
     NSNumber* speed = args[@"speed"];
     if ([speed isKindOfClass:[NSNumber class]] && speed.doubleValue > 0.0) {
         self.pictureInPictureRate = speed.doubleValue;
@@ -758,6 +765,10 @@ static UIViewController* _Nullable PictureInPictureRootViewController() {
 - (void)stopPictureInPictureAndNotifyFlutter:(BOOL)notifyFlutter {
     pictureInPictureGeneration.fetch_add(1);
     NSString* stoppedId = self.pictureInPictureId;
+    const int64_t stoppedPositionMs = pictureInPicturePlayer
+        ? std::max<int64_t>(0, pictureInPicturePlayer->position())
+        : 0;
+    const BOOL wasRestored = self.pictureInPictureRestoreAccepted;
     if (pictureInPicturePlayer)
         pictureInPicturePlayer->setPictureInPictureFrameCallback(nullptr);
     pictureInPicturePlayer.reset();
@@ -784,10 +795,16 @@ static UIViewController* _Nullable PictureInPictureRootViewController() {
     self.pictureInPictureId = nil;
     self.pictureInPictureStartRequested = NO;
     self.pictureInPictureRate = 1.0;
+    self.pictureInPictureRestoreAccepted = NO;
+    self.pictureInPictureMuted = NO;
 
     if (notifyFlutter && stoppedId) {
         [self.pictureInPictureChannel invokeMethod:@"didStop"
-                                        arguments:@{@"id": stoppedId}];
+                                        arguments:@{
+                                            @"id": stoppedId,
+                                            @"positionMs": @(stoppedPositionMs),
+                                            @"restored": @(wasRestored),
+                                        }];
     }
 }
 
@@ -819,7 +836,51 @@ static UIViewController* _Nullable PictureInPictureRootViewController() {
             (AVPictureInPictureController*)pictureInPictureController
     restoreUserInterfaceForPictureInPictureStopWithCompletionHandler:
             (void (^)(BOOL restored))completionHandler API_AVAILABLE(ios(15.0)) {
-    completionHandler(NO);
+    NSString* sessionId = [self.pictureInPictureId copy];
+    if (!sessionId || !pictureInPicturePlayer) {
+        completionHandler(NO);
+        return;
+    }
+    const int64_t positionMs = std::max<int64_t>(
+        0,
+        pictureInPicturePlayer->position()
+    );
+    __block BOOL completed = NO;
+    __weak FvpPlugin* weakSelf = self;
+    void (^finish)(BOOL) = ^(BOOL restored) {
+        if (completed)
+            return;
+        completed = YES;
+        FvpPlugin* strongSelf = weakSelf;
+        const BOOL validSession =
+            [strongSelf.pictureInPictureId isEqualToString:sessionId];
+        const BOOL accepted = restored && validSession;
+        if (validSession)
+            strongSelf.pictureInPictureRestoreAccepted = accepted;
+        completionHandler(accepted);
+    };
+    dispatch_after(
+        dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC),
+        dispatch_get_main_queue(),
+        ^{ finish(NO); }
+    );
+    [self.pictureInPictureChannel
+        invokeMethod:@"restoreRequested"
+           arguments:@{
+               @"id": sessionId,
+               @"positionMs": @(positionMs),
+               @"playing": @(pictureInPicturePlayer->state() == State::Playing),
+               @"speed": @(self.pictureInPictureRate),
+               @"muted": @(self.pictureInPictureMuted),
+           }
+              result:^(id response) {
+                  dispatch_async(dispatch_get_main_queue(), ^{
+                      const BOOL restored =
+                          [response respondsToSelector:@selector(boolValue)] &&
+                          [response boolValue];
+                      finish(restored);
+                  });
+              }];
 }
 
 - (void)pictureInPictureController:(AVPictureInPictureController*)pictureInPictureController

@@ -34,12 +34,41 @@ void main() {
     expect(ensureRange, isNot(contains('_startContinuousDownload')));
   });
 
-  test('native file handoff can still finish downloading in background', () {
+  test('loopback playback can still finish downloading in background', () {
     final backgroundDownload = section(
       'void startBackgroundDownload()',
       'void _updateFileInfo',
     );
 
     expect(backgroundDownload, contains('_startContinuousDownload(0)'));
+  });
+
+  test('sparse local files are completion-gated before file playback', () {
+    final load = section(
+      'Future<void> _load()',
+      'Future<String?> _completedLocalVideoPath',
+    );
+    final completionCheck = load.indexOf('_completedLocalVideoPath');
+    final fileControllerInitialization = load.indexOf('_initializeFromFile');
+
+    expect(completionCheck, isNonNegative);
+    expect(fileControllerInitialization, greaterThan(completionCheck));
+  });
+
+  test('incomplete playback retains the loopback range source', () {
+    final load = section(
+      'Future<void> _load()',
+      'Future<String?> _completedLocalVideoPath',
+    );
+    final loopbackStart = load.indexOf('final server = TdVideoStreamServer');
+    expect(loopbackStart, isNonNegative);
+    final loopbackFallback = load.substring(loopbackStart);
+
+    expect(loopbackFallback, contains('_streamServer = server'));
+    expect(loopbackFallback, contains('_localPath = uri.toString()'));
+    expect(loopbackFallback, contains('_initializeFromUri(uri)'));
+    expect(loopbackFallback, isNot(contains('_initializeFromFile')));
+    expect(loopbackFallback, isNot(contains('prepareNativeFile')));
+    expect(loopbackFallback, isNot(contains('Platform.isIOS')));
   });
 }

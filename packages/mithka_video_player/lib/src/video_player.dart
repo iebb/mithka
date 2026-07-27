@@ -41,6 +41,125 @@ typedef MithkaVideoRetryCallback = FutureOr<void> Function();
 typedef MithkaVideoChromeBuilder =
     Widget Function(BuildContext context, MithkaVideoChromeScope scope);
 
+/// Builds an action or inline menu at the safe-area-aware top-trailing edge of
+/// the package's default chrome.
+///
+/// The returned widget should have finite intrinsic dimensions and must not be
+/// a [Positioned] widget; the player owns its placement. It remains inside the
+/// default chrome's focus, semantics, visibility, and pointer lifecycle.
+typedef MithkaVideoTopTrailingBuilder =
+    Widget Function(BuildContext context, MithkaVideoChromeScope scope);
+
+/// Requests a host-owned picture-in-picture presentation change.
+///
+/// The package deliberately does not select a platform PiP implementation.
+/// Hosts can bridge this callback to AVPictureInPictureController, Android
+/// picture-in-picture, a desktop mini-player, or another presentation service.
+typedef MithkaVideoPictureInPictureChanged =
+    FutureOr<void> Function(bool pictureInPicture);
+
+/// Visual configuration for the dependency-free default player chrome.
+///
+/// Defaults use high-contrast transport surfaces that remain legible over
+/// bright or rapidly changing video without Material, Cupertino, or icon-font
+/// dependencies.
+@immutable
+class MithkaVideoChromeStyle {
+  const MithkaVideoChromeStyle({
+    this.foregroundColor = const Color(0xFFFFFFFF),
+    this.transportBackgroundColor = const Color(0xCC000000),
+    this.primaryTransportBackgroundColor = const Color(0xE6000000),
+    this.transportBorderColor = const Color(0x66FFFFFF),
+    this.transportBorderWidth = 1,
+    this.transportShadowColor = const Color(0xB3000000),
+    this.transportShadowBlurRadius = 12,
+    this.transportShadowOffset = const Offset(0, 3),
+    this.focusColor = const Color(0xFFFFFFFF),
+    this.hoverColor = const Color(0x26FFFFFF),
+    this.topScrimColor = const Color(0x80000000),
+    this.bottomScrimColor = const Color(0xE0000000),
+    this.bufferedTrackColor = const Color(0xB3FFFFFF),
+    this.inactiveTrackColor = const Color(0x66FFFFFF),
+    this.compactTransportButtonSize = 44,
+    this.compactPrimaryTransportButtonSize = 56,
+    this.wideTransportButtonSize = 56,
+    this.widePrimaryTransportButtonSize = 68,
+    this.compactTransportSpacing = 8,
+    this.wideTransportSpacing = 12,
+  }) : assert(
+         transportBorderWidth >= 0 && transportBorderWidth < double.infinity,
+       ),
+       assert(
+         transportShadowBlurRadius >= 0 &&
+             transportShadowBlurRadius < double.infinity,
+       ),
+       assert(
+         compactTransportButtonSize >= 44 &&
+             compactTransportButtonSize < double.infinity,
+       ),
+       assert(
+         compactPrimaryTransportButtonSize >= 44 &&
+             compactPrimaryTransportButtonSize < double.infinity,
+       ),
+       assert(
+         wideTransportButtonSize >= 44 &&
+             wideTransportButtonSize < double.infinity,
+       ),
+       assert(
+         widePrimaryTransportButtonSize >= 44 &&
+             widePrimaryTransportButtonSize < double.infinity,
+       ),
+       assert(
+         compactTransportSpacing >= 0 &&
+             compactTransportSpacing < double.infinity,
+       ),
+       assert(
+         wideTransportSpacing >= 0 && wideTransportSpacing < double.infinity,
+       );
+
+  /// Glyph, time-label, and volume-track foreground.
+  final Color foregroundColor;
+
+  /// Filled background for secondary previous/next transports.
+  final Color transportBackgroundColor;
+
+  /// Filled background for the primary play/pause transport.
+  final Color primaryTransportBackgroundColor;
+
+  /// Border shared by filled transport buttons.
+  final Color transportBorderColor;
+  final double transportBorderWidth;
+
+  /// Shadow shared by filled transport buttons.
+  final Color transportShadowColor;
+  final double transportShadowBlurRadius;
+  final Offset transportShadowOffset;
+
+  /// Focus ring and pointer-hover wash for default controls.
+  final Color focusColor;
+  final Color hoverColor;
+
+  /// Chrome gradient endpoints over the video surface.
+  final Color topScrimColor;
+  final Color bottomScrimColor;
+
+  /// Secondary timeline track colors.
+  final Color bufferedTrackColor;
+  final Color inactiveTrackColor;
+
+  /// Center-transport dimensions for compact player layouts.
+  final double compactTransportButtonSize;
+  final double compactPrimaryTransportButtonSize;
+
+  /// Center-transport dimensions for wide player layouts.
+  final double wideTransportButtonSize;
+  final double widePrimaryTransportButtonSize;
+
+  /// Gaps between center transports in compact and wide layouts.
+  final double compactTransportSpacing;
+  final double wideTransportSpacing;
+}
+
 enum MithkaVideoLifecycleBehavior {
   pauseAndResume,
   pause,
@@ -95,6 +214,11 @@ abstract interface class MithkaVideoActions {
 
   void requestFullscreen(bool fullscreen);
 
+  /// Requests that the host enter or leave picture-in-picture.
+  ///
+  /// Concurrent requests are coalesced until the host callback completes.
+  Future<void> requestPictureInPicture(bool pictureInPicture);
+
   void beginScrub(double fraction);
 
   void updateScrub(double fraction);
@@ -113,6 +237,8 @@ class MithkaVideoChromeSnapshot {
     required this.isScrubbing,
     required this.bufferingIndicatorVisible,
     required this.isFullscreen,
+    this.isPictureInPicture = false,
+    this.pictureInPictureRequestPending = false,
   });
 
   final VideoPlayerValue value;
@@ -122,6 +248,8 @@ class MithkaVideoChromeSnapshot {
   final bool isScrubbing;
   final bool bufferingIndicatorVisible;
   final bool isFullscreen;
+  final bool isPictureInPicture;
+  final bool pictureInPictureRequestPending;
 }
 
 /// Immutable dependencies supplied to custom player chrome.
@@ -167,6 +295,8 @@ class MithkaVideoPlayerLabels {
     this.unmute = 'Unmute',
     this.fullscreen = 'Fullscreen',
     this.exitFullscreen = 'Exit fullscreen',
+    this.pictureInPicture = 'Picture in picture',
+    this.exitPictureInPicture = 'Exit picture in picture',
     this.close = 'Close',
     this.loading = 'Loading video',
     this.buffering = 'Buffering',
@@ -187,6 +317,8 @@ class MithkaVideoPlayerLabels {
   final String unmute;
   final String fullscreen;
   final String exitFullscreen;
+  final String pictureInPicture;
+  final String exitPictureInPicture;
   final String close;
   final String loading;
   final String buffering;
@@ -222,7 +354,9 @@ class MithkaVideoPlayer extends StatefulWidget {
     this.onError,
     this.onRetry,
     this.onFullscreenChanged,
+    this.onPictureInPictureChanged,
     this.labels = const MithkaVideoPlayerLabels(),
+    this.chromeStyle = const MithkaVideoChromeStyle(),
     this.accentColor = const Color(0xFFFFFFFF),
     this.backgroundColor = const Color(0xFF000000),
     this.controller,
@@ -255,7 +389,9 @@ class MithkaVideoPlayer extends StatefulWidget {
     this.videoSurfaceBuilder,
     this.scrubPreviewBuilder,
     this.chromeBuilder,
+    this.topTrailingBuilder,
     this.isFullscreen = false,
+    this.isPictureInPicture = false,
   }) : assert(controller == null || controllerBuilder == null),
        assert(
          initialVolume == null || initialVolume >= 0 && initialVolume <= 1,
@@ -283,7 +419,19 @@ class MithkaVideoPlayer extends StatefulWidget {
   final MithkaVideoPlayerErrorCallback? onError;
   final MithkaVideoRetryCallback? onRetry;
   final ValueChanged<bool>? onFullscreenChanged;
+
+  /// Requests a host-owned picture-in-picture presentation change.
+  ///
+  /// The callback may be asynchronous. Rebuild with [isPictureInPicture]
+  /// after the platform transition succeeds; failed requests can throw and
+  /// are reported through [onError] as non-fatal command errors.
+  final MithkaVideoPictureInPictureChanged? onPictureInPictureChanged;
   final MithkaVideoPlayerLabels labels;
+
+  /// Visual configuration for the package's default ready chrome.
+  ///
+  /// This has no effect when [chromeBuilder] replaces that chrome.
+  final MithkaVideoChromeStyle chromeStyle;
   final Color accentColor;
   final Color backgroundColor;
 
@@ -329,7 +477,18 @@ class MithkaVideoPlayer extends StatefulWidget {
   final MithkaVideoSurfaceBuilder? videoSurfaceBuilder;
   final MithkaVideoScrubPreviewBuilder? scrubPreviewBuilder;
   final MithkaVideoChromeBuilder? chromeBuilder;
+
+  /// Adds an action or inline menu to the default chrome's top-trailing edge.
+  ///
+  /// This is ignored when [chromeBuilder] replaces the entire ready chrome.
+  final MithkaVideoTopTrailingBuilder? topTrailingBuilder;
   final bool isFullscreen;
+
+  /// The host-confirmed picture-in-picture state.
+  ///
+  /// This value drives default/custom chrome state and does not itself start a
+  /// platform transition.
+  final bool isPictureInPicture;
 
   @override
   State<MithkaVideoPlayer> createState() => _MithkaVideoPlayerState();
@@ -358,6 +517,7 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
   bool _resumeAfterLifecycle = false;
   bool _controlsHaveFocus = false;
   bool _accessibleNavigation = false;
+  bool _pictureInPictureRequestPending = false;
   double _volume = 1;
   double _lastAudibleVolume = 1;
   double _speed = 1;
@@ -1076,12 +1236,19 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
     } else if (key == LogicalKeyboardKey.keyF) {
       if (repeating) return KeyEventResult.handled;
       _requestFullscreen(!widget.isFullscreen);
+    } else if (key == LogicalKeyboardKey.keyP &&
+        widget.onPictureInPictureChanged != null) {
+      if (repeating) return KeyEventResult.handled;
+      unawaited(_requestPictureInPicture(!widget.isPictureInPicture));
     } else if (key == LogicalKeyboardKey.escape) {
       if (repeating) return KeyEventResult.handled;
       if (widget.isFullscreen &&
           (widget.onFullscreenChanged != null ||
               widget.onToggleFullscreen != null)) {
         _requestFullscreen(false);
+      } else if (widget.isPictureInPicture &&
+          widget.onPictureInPictureChanged != null) {
+        unawaited(_requestPictureInPicture(false));
       } else if (widget.onClose != null) {
         _invokeCallback(widget.onClose!, 'while closing the video player');
       } else {
@@ -1297,6 +1464,23 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
         'while toggling fullscreen video playback',
       );
     }
+    _showControls();
+  }
+
+  Future<void> _requestPictureInPicture(bool pictureInPicture) async {
+    final callback = widget.onPictureInPictureChanged;
+    if (callback == null || _pictureInPictureRequestPending) return;
+    _pictureInPictureRequestPending = true;
+    if (mounted) setState(() {});
+    try {
+      await _runCommand(
+        () => Future<void>.sync(() => callback(pictureInPicture)),
+      );
+    } finally {
+      _pictureInPictureRequestPending = false;
+      if (mounted) setState(() {});
+    }
+    if (!mounted) return;
     _showControls();
   }
 
@@ -1533,23 +1717,9 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
     bool wide,
     double availableHeight,
   ) {
+    final scope = _chromeScope(controller);
     final builder = widget.chromeBuilder;
     if (builder != null) {
-      final scope = MithkaVideoChromeScope(
-        snapshot: MithkaVideoChromeSnapshot(
-          value: controller.value,
-          playbackState: _stateFor(controller.value),
-          displayPosition: _scrubPosition ?? controller.value.position,
-          controlsVisible: _controlsVisible,
-          isScrubbing: _scrubActive,
-          bufferingIndicatorVisible: _showBuffering,
-          isFullscreen: widget.isFullscreen,
-        ),
-        actions: _actions,
-        labels: widget.labels,
-        previous: widget.onPrevious == null ? null : _requestPrevious,
-        next: widget.onNext == null ? null : _requestNext,
-      );
       return Focus(
         canRequestFocus: false,
         onFocusChange: _handleControlsFocusChange,
@@ -1569,7 +1739,13 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
             child: AnimatedOpacity(
               opacity: _controlsVisible ? 1 : 0,
               duration: const Duration(milliseconds: 170),
-              child: _controls(controller, wide, safePadding, availableHeight),
+              child: _controls(
+                controller,
+                scope,
+                wide,
+                safePadding,
+                availableHeight,
+              ),
             ),
           ),
         ),
@@ -1577,20 +1753,55 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
     );
   }
 
+  MithkaVideoChromeScope _chromeScope(VideoPlayerController controller) =>
+      MithkaVideoChromeScope(
+        snapshot: MithkaVideoChromeSnapshot(
+          value: controller.value,
+          playbackState: _stateFor(controller.value),
+          displayPosition: _scrubPosition ?? controller.value.position,
+          controlsVisible: _controlsVisible,
+          isScrubbing: _scrubActive,
+          bufferingIndicatorVisible: _showBuffering,
+          isFullscreen: widget.isFullscreen,
+          isPictureInPicture: widget.isPictureInPicture,
+          pictureInPictureRequestPending: _pictureInPictureRequestPending,
+        ),
+        actions: _actions,
+        labels: widget.labels,
+        previous: widget.onPrevious == null ? null : _requestPrevious,
+        next: widget.onNext == null ? null : _requestNext,
+      );
+
   Widget _videoSurface(VideoPlayerController controller) {
     final surface =
         widget.videoSurfaceBuilder?.call(context, controller) ??
         VideoPlayer(controller);
-    final aspectRatio = _aspectRatio(controller);
     return ClipRect(
-      child: FittedBox(
-        fit: widget.fit,
-        alignment: widget.alignment,
-        child: SizedBox(
-          width: aspectRatio * 1000,
-          height: 1000,
-          child: RepaintBoundary(child: surface),
-        ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final sourceSize = _sourceSize(controller);
+          final bounds = Size(
+            constraints.hasBoundedWidth
+                ? constraints.maxWidth
+                : sourceSize.width,
+            constraints.hasBoundedHeight
+                ? constraints.maxHeight
+                : sourceSize.height,
+          );
+          final fittedSize = _fittedSurfaceSize(sourceSize, bounds, widget.fit);
+          return OverflowBox(
+            alignment: widget.alignment,
+            minWidth: 0,
+            maxWidth: double.infinity,
+            minHeight: 0,
+            maxHeight: double.infinity,
+            child: SizedBox(
+              width: fittedSize.width,
+              height: fittedSize.height,
+              child: RepaintBoundary(child: surface),
+            ),
+          );
+        },
       ),
     );
   }
@@ -1625,16 +1836,60 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
     );
   }
 
-  double _aspectRatio(VideoPlayerController controller) {
+  Size _sourceSize(VideoPlayerController controller) {
     if (widget.width != null &&
         widget.height != null &&
         widget.width! > 0 &&
         widget.height! > 0) {
-      return widget.width! / widget.height!;
+      return Size(widget.width!.toDouble(), widget.height!.toDouble());
+    }
+    final size = controller.value.size;
+    if (size.width.isFinite &&
+        size.height.isFinite &&
+        size.width > 0 &&
+        size.height > 0) {
+      return size;
     }
     final ratio = controller.value.aspectRatio;
-    return ratio > 0 ? ratio : 16 / 9;
+    final effectiveRatio = ratio.isFinite && ratio > 0 ? ratio : 16 / 9;
+    return Size(effectiveRatio * 1000, 1000);
   }
+
+  double _aspectRatio(VideoPlayerController controller) =>
+      _sourceSize(controller).aspectRatio;
+
+  Size _fittedSurfaceSize(Size source, Size bounds, BoxFit fit) {
+    if (source.width <= 0 ||
+        source.height <= 0 ||
+        bounds.width <= 0 ||
+        bounds.height <= 0) {
+      return Size.zero;
+    }
+    return switch (fit) {
+      BoxFit.fill => bounds,
+      BoxFit.contain => _scaledSize(
+        source,
+        math.min(bounds.width / source.width, bounds.height / source.height),
+      ),
+      BoxFit.cover => _scaledSize(
+        source,
+        math.max(bounds.width / source.width, bounds.height / source.height),
+      ),
+      BoxFit.fitWidth => _scaledSize(source, bounds.width / source.width),
+      BoxFit.fitHeight => _scaledSize(source, bounds.height / source.height),
+      BoxFit.none => source,
+      BoxFit.scaleDown => _scaledSize(
+        source,
+        math.min(
+          1,
+          math.min(bounds.width / source.width, bounds.height / source.height),
+        ),
+      ),
+    };
+  }
+
+  Size _scaledSize(Size source, double scale) =>
+      Size(source.width * scale, source.height * scale);
 
   Widget _loadingView() =>
       widget.loadingBuilder?.call(context) ??
@@ -1683,6 +1938,7 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
 
   Widget _controls(
     VideoPlayerController controller,
+    MithkaVideoChromeScope scope,
     bool wide,
     EdgeInsets safePadding,
     double availableHeight,
@@ -1699,107 +1955,160 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
         !wide && availableHeight - safePadding.vertical < 220;
     final horizontalPadding = mergeTransport ? 8.0 : (wide ? 24.0 : 14.0);
     final bottomPadding = mergeTransport ? 4.0 : (wide ? 20.0 : 12.0);
-    return Stack(
-      children: [
-        const Positioned.fill(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Color(0x66000000),
-                  Color(0x00000000),
-                  Color(0xB8000000),
-                ],
-                stops: [0, 0.48, 1],
+    final textDirection = Directionality.maybeOf(context) ?? TextDirection.ltr;
+    final safeStart = textDirection == TextDirection.ltr
+        ? safePadding.left
+        : safePadding.right;
+    final safeEnd = textDirection == TextDirection.ltr
+        ? safePadding.right
+        : safePadding.left;
+    final chromeStyle = widget.chromeStyle;
+    return FocusTraversalGroup(
+      policy: OrderedTraversalPolicy(),
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    chromeStyle.topScrimColor,
+                    const Color(0x00000000),
+                    chromeStyle.bottomScrimColor,
+                  ],
+                  stops: [0, 0.48, 1],
+                ),
               ),
             ),
           ),
-        ),
-        if (widget.onClose != null)
+          if (widget.onClose != null)
+            PositionedDirectional(
+              top: 14 + safePadding.top,
+              start: 14 + safeStart,
+              child: FocusTraversalOrder(
+                order: const NumericFocusOrder(1),
+                child: _controlButton(
+                  glyph: _Glyph.close,
+                  label: widget.labels.close,
+                  onTap: widget.onClose!,
+                  size: 42,
+                ),
+              ),
+            ),
+          if (!mergeTransport)
+            Center(
+              child: FocusTraversalOrder(
+                order: const NumericFocusOrder(3),
+                child: _transportControls(value, wide),
+              ),
+            ),
           Positioned(
-            top: 14 + safePadding.top,
-            left: 14 + safePadding.left,
-            child: _controlButton(
-              glyph: _Glyph.close,
-              label: widget.labels.close,
-              onTap: widget.onClose!,
-              size: 42,
+            left: horizontalPadding + safePadding.left,
+            right: horizontalPadding + safePadding.right,
+            bottom: bottomPadding + safePadding.bottom,
+            child: FocusTraversalOrder(
+              order: const NumericFocusOrder(4),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (hasTimeline)
+                    LayoutBuilder(
+                      builder: (context, constraints) => SizedBox(
+                        height: wide ? 28 : 24,
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Positioned.fill(
+                              child: MithkaVideoSlider(
+                                value: fraction,
+                                bufferedValue: buffered,
+                                trackHeight: wide ? 4 : 3,
+                                thumbRadius: wide ? 7 : 6,
+                                activeColor: widget.accentColor,
+                                bufferedColor: chromeStyle.bufferedTrackColor,
+                                inactiveColor: chromeStyle.inactiveTrackColor,
+                                semanticLabel: widget.labels.position,
+                                semanticValue:
+                                    '${_format(position)} / ${_format(value.duration)}',
+                                semanticIncreasedValue: _format(
+                                  position + widget.seekInterval >
+                                          value.duration
+                                      ? value.duration
+                                      : position + widget.seekInterval,
+                                ),
+                                semanticDecreasedValue: _format(
+                                  position - widget.seekInterval < Duration.zero
+                                      ? Duration.zero
+                                      : position - widget.seekInterval,
+                                ),
+                                keyboardStep: math.min(
+                                  1,
+                                  widget.seekInterval.inMilliseconds /
+                                      durationMs,
+                                ),
+                                onChangeStart: _beginScrub,
+                                onChanged: _updateScrub,
+                                onChangeEnd: _endScrub,
+                              ),
+                            ),
+                            if (widget.showScrubPreview &&
+                                _scrubPosition != null)
+                              _scrubPreview(
+                                constraints.maxWidth,
+                                fraction,
+                                position,
+                                wide,
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 2),
+                  LayoutBuilder(
+                    builder: (context, constraints) => _bottomControlsRow(
+                      value: value,
+                      position: position,
+                      hasTimeline: hasTimeline,
+                      wide: wide,
+                      mergeTransport: mergeTransport,
+                      availableWidth: constraints.maxWidth,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-        if (!mergeTransport) Center(child: _transportControls(value, wide)),
-        Positioned(
-          left: horizontalPadding + safePadding.left,
-          right: horizontalPadding + safePadding.right,
-          bottom: bottomPadding + safePadding.bottom,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (hasTimeline)
-                LayoutBuilder(
-                  builder: (context, constraints) => SizedBox(
-                    height: wide ? 28 : 24,
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        Positioned.fill(
-                          child: MithkaVideoSlider(
-                            value: fraction,
-                            bufferedValue: buffered,
-                            trackHeight: wide ? 4 : 3,
-                            thumbRadius: wide ? 7 : 6,
-                            activeColor: widget.accentColor,
-                            bufferedColor: const Color(0x99FFFFFF),
-                            inactiveColor: const Color(0x55FFFFFF),
-                            semanticLabel: widget.labels.position,
-                            semanticValue:
-                                '${_format(position)} / ${_format(value.duration)}',
-                            semanticIncreasedValue: _format(
-                              position + widget.seekInterval > value.duration
-                                  ? value.duration
-                                  : position + widget.seekInterval,
-                            ),
-                            semanticDecreasedValue: _format(
-                              position - widget.seekInterval < Duration.zero
-                                  ? Duration.zero
-                                  : position - widget.seekInterval,
-                            ),
-                            keyboardStep: math.min(
-                              1,
-                              widget.seekInterval.inMilliseconds / durationMs,
-                            ),
-                            onChangeStart: _beginScrub,
-                            onChanged: _updateScrub,
-                            onChangeEnd: _endScrub,
-                          ),
-                        ),
-                        if (widget.showScrubPreview && _scrubPosition != null)
-                          _scrubPreview(
-                            constraints.maxWidth,
-                            fraction,
-                            position,
-                            wide,
-                          ),
-                      ],
+          if (widget.topTrailingBuilder != null)
+            PositionedDirectional(
+              top: 14 + safePadding.top,
+              start: (widget.onClose == null ? 14 : 70) + safeStart,
+              end: 14 + safeEnd,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: math.max(
+                    0,
+                    availableHeight - 28 - safePadding.top - safePadding.bottom,
+                  ),
+                ),
+                child: FocusTraversalOrder(
+                  order: const NumericFocusOrder(2),
+                  child: Align(
+                    alignment: AlignmentDirectional.topEnd,
+                    child: Semantics(
+                      container: true,
+                      explicitChildNodes: true,
+                      child: FocusTraversalGroup(
+                        child: widget.topTrailingBuilder!(context, scope),
+                      ),
                     ),
                   ),
                 ),
-              const SizedBox(height: 2),
-              LayoutBuilder(
-                builder: (context, constraints) => _bottomControlsRow(
-                  value: value,
-                  position: position,
-                  hasTimeline: hasTimeline,
-                  wide: wide,
-                  mergeTransport: mergeTransport,
-                  availableWidth: constraints.maxWidth,
-                ),
               ),
-            ],
-          ),
-        ),
-      ],
+            ),
+        ],
+      ),
     );
   }
 
@@ -1813,11 +2122,15 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
   }) {
     final hasFullscreen =
         widget.onToggleFullscreen != null || widget.onFullscreenChanged != null;
+    final hasPictureInPicture = widget.onPictureInPictureChanged != null;
     var fixedWidth = 44.0;
     if (mergeTransport && widget.onPrevious != null) fixedWidth += 48;
     if (mergeTransport && widget.onNext != null) fixedWidth += 48;
     final showFullscreen = hasFullscreen && availableWidth >= fixedWidth + 44;
     if (showFullscreen) fixedWidth += 44;
+    final showPictureInPicture =
+        hasPictureInPicture && availableWidth >= fixedWidth + 44;
+    if (showPictureInPicture) fixedWidth += 44;
     final showMute = availableWidth >= fixedWidth + 48;
     if (showMute) fixedWidth += 48;
     final showVolume = wide && showMute && availableWidth >= fixedWidth + 98;
@@ -1834,6 +2147,7 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
             glyph: _Glyph.previous,
             label: widget.labels.previous,
             onTap: _requestPrevious,
+            filled: true,
           ),
           const SizedBox(width: 4),
         ],
@@ -1841,6 +2155,8 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
           glyph: value.isPlaying ? _Glyph.pause : _Glyph.play,
           label: value.isPlaying ? widget.labels.pause : widget.labels.play,
           onTap: _togglePlayback,
+          filled: mergeTransport,
+          prominent: mergeTransport,
         ),
         if (mergeTransport && widget.onNext != null) ...[
           const SizedBox(width: 4),
@@ -1848,6 +2164,7 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
             glyph: _Glyph.next,
             label: widget.labels.next,
             onTap: _requestNext,
+            filled: true,
           ),
         ],
         if (showMute) ...[
@@ -1867,8 +2184,8 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
               value: _volume,
               trackHeight: 3,
               thumbRadius: 5,
-              activeColor: const Color(0xFFFFFFFF),
-              inactiveColor: const Color(0x55FFFFFF),
+              activeColor: widget.chromeStyle.foregroundColor,
+              inactiveColor: widget.chromeStyle.inactiveTrackColor,
               semanticLabel: widget.labels.volume,
               semanticValue: '${(_volume * 100).round()}%',
               keyboardStep: widget.volumeStep,
@@ -1887,7 +2204,7 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
               overflow: TextOverflow.fade,
               softWrap: false,
               style: TextStyle(
-                color: const Color(0xFFFFFFFF),
+                color: widget.chromeStyle.foregroundColor,
                 fontSize: wide ? 13 : 12,
                 fontFeatures: const [FontFeature.tabularFigures()],
               ),
@@ -1902,7 +2219,21 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
               label: widget.labels.speed,
               text: '${_speed.toStringAsFixed(_speed % 1 == 0 ? 0 : 2)}x',
               onTap: _cycleSpeed,
+              style: widget.chromeStyle,
             ),
+          ),
+        if (showPictureInPicture)
+          _controlButton(
+            glyph: widget.isPictureInPicture
+                ? _Glyph.exitPictureInPicture
+                : _Glyph.pictureInPicture,
+            label: widget.isPictureInPicture
+                ? widget.labels.exitPictureInPicture
+                : widget.labels.pictureInPicture,
+            toggled: widget.isPictureInPicture,
+            busy: _pictureInPictureRequestPending,
+            onTap: () =>
+                unawaited(_requestPictureInPicture(!widget.isPictureInPicture)),
           ),
         if (showFullscreen)
           _controlButton(
@@ -1912,6 +2243,7 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
             label: widget.isFullscreen
                 ? widget.labels.exitFullscreen
                 : widget.labels.fullscreen,
+            toggled: widget.isFullscreen,
             onTap: () => _requestFullscreen(!widget.isFullscreen),
           ),
       ],
@@ -1921,8 +2253,16 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
   Widget _transportControls(VideoPlayerValue value, bool wide) {
     final previous = widget.onPrevious;
     final next = widget.onNext;
-    final sideSize = wide ? 56.0 : 44.0;
-    final spacing = wide ? 12.0 : 8.0;
+    final style = widget.chromeStyle;
+    final sideSize = wide
+        ? style.wideTransportButtonSize
+        : style.compactTransportButtonSize;
+    final primarySize = wide
+        ? style.widePrimaryTransportButtonSize
+        : style.compactPrimaryTransportButtonSize;
+    final spacing = wide
+        ? style.wideTransportSpacing
+        : style.compactTransportSpacing;
     return FittedBox(
       fit: BoxFit.scaleDown,
       child: Row(
@@ -1934,6 +2274,7 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
               label: widget.labels.previous,
               onTap: _requestPrevious,
               size: sideSize,
+              filled: true,
             ),
             SizedBox(width: spacing),
           ],
@@ -1941,8 +2282,9 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
             glyph: value.isPlaying ? _Glyph.pause : _Glyph.play,
             label: value.isPlaying ? widget.labels.pause : widget.labels.play,
             onTap: _togglePlayback,
-            size: wide ? 68 : 56,
+            size: primarySize,
             filled: true,
+            prominent: true,
           ),
           if (next != null) ...[
             SizedBox(width: spacing),
@@ -1951,6 +2293,7 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
               label: widget.labels.next,
               onTap: _requestNext,
               size: sideSize,
+              filled: true,
             ),
           ],
         ],
@@ -2057,12 +2400,19 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
     required VoidCallback onTap,
     double size = 40,
     bool filled = false,
+    bool prominent = false,
+    bool busy = false,
+    bool? toggled,
   }) => _PlayerControlButton(
     glyph: glyph,
     label: label,
     onTap: onTap,
     size: math.max(44, size),
     filled: filled,
+    prominent: prominent,
+    busy: busy,
+    toggled: toggled,
+    style: widget.chromeStyle,
   );
 
   static String _format(Duration value) {
@@ -2127,6 +2477,11 @@ final class _MithkaVideoActions implements MithkaVideoActions {
   }
 
   @override
+  Future<void> requestPictureInPicture(bool pictureInPicture) => _active
+      ? _state._requestPictureInPicture(pictureInPicture)
+      : Future.value();
+
+  @override
   void beginScrub(double fraction) {
     if (_active) _state._beginScrub(fraction);
   }
@@ -2148,20 +2503,23 @@ enum _Glyph {
   next,
   volume,
   muted,
+  pictureInPicture,
+  exitPictureInPicture,
   fullscreen,
   exitFullscreen,
   close,
 }
 
 class _GlyphPainter extends CustomPainter {
-  const _GlyphPainter(this.glyph);
+  const _GlyphPainter(this.glyph, this.color);
 
   final _Glyph glyph;
+  final Color color;
 
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = const Color(0xFFFFFFFF)
+      ..color = color
       ..strokeWidth = math.max(1.8, size.width * 0.09)
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
@@ -2265,6 +2623,32 @@ class _GlyphPainter extends CustomPainter {
             paint,
           );
         }
+      case _Glyph.pictureInPicture:
+      case _Glyph.exitPictureInPicture:
+        final outer = RRect.fromRectAndRadius(
+          Rect.fromLTWH(w * 0.12, h * 0.2, w * 0.76, h * 0.6),
+          Radius.circular(w * 0.08),
+        );
+        canvas.drawRRect(outer, paint);
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(w * 0.5, h * 0.5, w * 0.27, h * 0.2),
+            Radius.circular(w * 0.035),
+          ),
+          paint,
+        );
+        if (glyph == _Glyph.exitPictureInPicture) {
+          canvas.drawPath(
+            Path()
+              ..moveTo(w * 0.53, h * 0.5)
+              ..lineTo(w * 0.35, h * 0.34)
+              ..moveTo(w * 0.35, h * 0.34)
+              ..lineTo(w * 0.36, h * 0.5)
+              ..moveTo(w * 0.35, h * 0.34)
+              ..lineTo(w * 0.51, h * 0.35),
+            paint,
+          );
+        }
       case _Glyph.fullscreen:
       case _Glyph.exitFullscreen:
         final inset = w * 0.16;
@@ -2319,7 +2703,8 @@ class _GlyphPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_GlyphPainter oldDelegate) => oldDelegate.glyph != glyph;
+  bool shouldRepaint(_GlyphPainter oldDelegate) =>
+      oldDelegate.glyph != glyph || oldDelegate.color != color;
 }
 
 class _PlayerControlButton extends StatelessWidget {
@@ -2329,6 +2714,10 @@ class _PlayerControlButton extends StatelessWidget {
     required this.onTap,
     required this.size,
     required this.filled,
+    required this.prominent,
+    required this.busy,
+    required this.toggled,
+    required this.style,
   });
 
   final _Glyph glyph;
@@ -2336,26 +2725,53 @@ class _PlayerControlButton extends StatelessWidget {
   final VoidCallback onTap;
   final double size;
   final bool filled;
+  final bool prominent;
+  final bool busy;
+  final bool? toggled;
+  final MithkaVideoChromeStyle style;
 
   @override
   Widget build(BuildContext context) => _FocusableTapRegion(
     label: label,
-    onTap: onTap,
+    toggled: toggled,
+    onTap: busy ? null : onTap,
     borderRadius: BorderRadius.circular(size / 2),
+    focusColor: style.focusColor,
+    hoverColor: style.hoverColor,
     child: Container(
       width: size,
       height: size,
       decoration: filled
-          ? const BoxDecoration(
-              color: Color(0x66000000),
+          ? BoxDecoration(
+              color: prominent
+                  ? style.primaryTransportBackgroundColor
+                  : style.transportBackgroundColor,
               shape: BoxShape.circle,
+              border: style.transportBorderWidth == 0
+                  ? null
+                  : Border.all(
+                      color: style.transportBorderColor,
+                      width: style.transportBorderWidth,
+                    ),
+              boxShadow: [
+                BoxShadow(
+                  color: style.transportShadowColor,
+                  blurRadius: style.transportShadowBlurRadius,
+                  offset: style.transportShadowOffset,
+                ),
+              ],
             )
           : null,
       alignment: Alignment.center,
-      child: CustomPaint(
-        size: Size.square(size * (filled ? 0.42 : 0.48)),
-        painter: _GlyphPainter(glyph),
-      ),
+      child: busy
+          ? SizedBox.square(
+              dimension: size * 0.4,
+              child: _ActivityIndicator(color: style.foregroundColor),
+            )
+          : CustomPaint(
+              size: Size.square(size * (filled ? 0.42 : 0.48)),
+              painter: _GlyphPainter(glyph, style.foregroundColor),
+            ),
     ),
   );
 }
@@ -2365,17 +2781,21 @@ class _BareTextControlButton extends StatelessWidget {
     required this.label,
     required this.text,
     required this.onTap,
+    required this.style,
   });
 
   final String label;
   final String text;
   final VoidCallback onTap;
+  final MithkaVideoChromeStyle style;
 
   @override
   Widget build(BuildContext context) => _FocusableTapRegion(
     label: label,
     onTap: onTap,
     borderRadius: BorderRadius.circular(6),
+    focusColor: style.focusColor,
+    hoverColor: style.hoverColor,
     child: Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       child: Text(
@@ -2383,8 +2803,8 @@ class _BareTextControlButton extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.fade,
         softWrap: false,
-        style: const TextStyle(
-          color: Color(0xFFFFFFFF),
+        style: TextStyle(
+          color: style.foregroundColor,
           fontSize: 13,
           fontWeight: FontWeight.w700,
         ),
@@ -2398,13 +2818,19 @@ class _FocusableTapRegion extends StatefulWidget {
     required this.label,
     required this.onTap,
     required this.borderRadius,
+    required this.focusColor,
+    required this.hoverColor,
     required this.child,
+    this.toggled,
   });
 
   final String label;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final BorderRadius borderRadius;
+  final Color focusColor;
+  final Color hoverColor;
   final Widget child;
+  final bool? toggled;
 
   @override
   State<_FocusableTapRegion> createState() => _FocusableTapRegionState();
@@ -2415,10 +2841,12 @@ class _FocusableTapRegionState extends State<_FocusableTapRegion> {
   bool _hovered = false;
 
   KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
+    final onTap = widget.onTap;
+    if (onTap == null) return KeyEventResult.ignored;
     if (event is KeyDownEvent &&
         (event.logicalKey == LogicalKeyboardKey.enter ||
             event.logicalKey == LogicalKeyboardKey.space)) {
-      widget.onTap();
+      onTap();
       return KeyEventResult.handled;
     }
     if (event is KeyRepeatEvent &&
@@ -2432,24 +2860,35 @@ class _FocusableTapRegionState extends State<_FocusableTapRegion> {
   @override
   Widget build(BuildContext context) => Semantics(
     button: true,
+    enabled: widget.onTap != null,
     label: widget.label,
+    toggled: widget.toggled,
     onTap: widget.onTap,
     child: Focus(
+      canRequestFocus: widget.onTap != null,
       onFocusChange: (focused) => setState(() => _focused = focused),
       onKeyEvent: _onKeyEvent,
       child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        onEnter: (_) => setState(() => _hovered = true),
-        onExit: (_) => setState(() => _hovered = false),
+        cursor: widget.onTap == null
+            ? SystemMouseCursors.basic
+            : SystemMouseCursors.click,
+        onEnter: widget.onTap == null
+            ? null
+            : (_) => setState(() => _hovered = true),
+        onExit: widget.onTap == null
+            ? null
+            : (_) => setState(() => _hovered = false),
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: widget.onTap,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 100),
             decoration: BoxDecoration(
-              color: _hovered ? const Color(0x18FFFFFF) : null,
+              color: _hovered && widget.onTap != null
+                  ? widget.hoverColor
+                  : null,
               border: _focused
-                  ? Border.all(color: const Color(0xFFFFFFFF), width: 2)
+                  ? Border.all(color: widget.focusColor, width: 2)
                   : null,
               borderRadius: widget.borderRadius,
             ),
@@ -2462,7 +2901,9 @@ class _FocusableTapRegionState extends State<_FocusableTapRegion> {
 }
 
 class _ActivityIndicator extends StatefulWidget {
-  const _ActivityIndicator();
+  const _ActivityIndicator({this.color = const Color(0xFFFFFFFF)});
+
+  final Color color;
 
   @override
   State<_ActivityIndicator> createState() => _ActivityIndicatorState();
@@ -2485,13 +2926,15 @@ class _ActivityIndicatorState extends State<_ActivityIndicator>
   Widget build(BuildContext context) => RepaintBoundary(
     child: RotationTransition(
       turns: _controller,
-      child: const CustomPaint(painter: _ActivityIndicatorPainter()),
+      child: CustomPaint(painter: _ActivityIndicatorPainter(widget.color)),
     ),
   );
 }
 
 class _ActivityIndicatorPainter extends CustomPainter {
-  const _ActivityIndicatorPainter();
+  const _ActivityIndicatorPainter(this.color);
+
+  final Color color;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -2503,7 +2946,7 @@ class _ActivityIndicatorPainter extends CustomPainter {
       math.pi * 1.35,
       false,
       Paint()
-        ..color = const Color(0xFFFFFFFF)
+        ..color = color
         ..strokeWidth = strokeWidth
         ..strokeCap = StrokeCap.round
         ..style = PaintingStyle.stroke,
@@ -2511,7 +2954,8 @@ class _ActivityIndicatorPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_ActivityIndicatorPainter oldDelegate) => false;
+  bool shouldRepaint(_ActivityIndicatorPainter oldDelegate) =>
+      oldDelegate.color != color;
 }
 
 class _TextControlButton extends StatelessWidget {

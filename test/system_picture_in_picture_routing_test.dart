@@ -42,8 +42,30 @@ void main() {
   test('display mode control opens split screen directly', () {
     final player = File('lib/chat/video_player_view.dart').readAsStringSync();
 
-    expect(player, contains('message: AppStringKeys.videoPlayerSplitScreen'));
+    expect(player, contains('label: AppStringKeys.videoPlayerSplitScreen'));
     expect(player, contains('callback(VideoDisplayMode.split);'));
     expect(player, isNot(contains('PopupMenuButton<VideoDisplayMode>')));
+  });
+
+  test('Apple PiP backends share the restore and final-position contract', () {
+    final fallback = File(
+      'third_party/system_picture_in_picture/ios/Classes/SystemPictureInPicturePlugin.swift',
+    ).readAsStringSync();
+    final fvpIos = File(
+      'third_party/fvp/ios/Classes/FvpPlugin.mm',
+    ).readAsStringSync();
+    final fvpDarwin = File(
+      'third_party/fvp/darwin/Classes/FvpPlugin.mm',
+    ).readAsStringSync();
+    final fvpSpm = File(
+      'third_party/fvp/darwin/fvp/Sources/fvp/FvpPlugin.mm',
+    ).readAsStringSync();
+
+    expect(fallback, contains('"restoreRequested"'));
+    expect(fallback, contains('"positionMs": stoppedPositionMs'));
+    expect(fvpSpm, contains('invokeMethod:@"restoreRequested"'));
+    expect(fvpSpm, contains('@"positionMs": @(stoppedPositionMs)'));
+    expect(fvpIos, fvpSpm);
+    expect(fvpDarwin, fvpSpm);
   });
 }

@@ -220,6 +220,404 @@ void main() {
     },
   );
 
+  testWidgets(
+    'top trailing actions respect safe areas, logical direction, focus, and semantics',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(390, 844);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      final controller = _FakeVideoPlayerController();
+      final actionFocus = FocusNode(debugLabel: 'test video actions');
+      addTearDown(actionFocus.dispose);
+      const actionKey = ValueKey('top-trailing-action');
+      const menuKey = ValueKey('top-trailing-menu');
+      const padding = EdgeInsets.fromLTRB(7, 59, 9, 34);
+      var actionCalls = 0;
+
+      Widget player(TextDirection direction) => _frame(
+        MithkaVideoPlayer(
+          key: const ValueKey('top-trailing-player'),
+          source: _source('top-trailing'),
+          controller: controller,
+          autoplay: false,
+          isFullscreen: true,
+          controlsAutoHideDuration: const Duration(milliseconds: 80),
+          onClose: () {},
+          topTrailingBuilder: (context, scope) => Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Semantics(
+                button: true,
+                label: 'More video actions',
+                onTap: () => actionCalls++,
+                child: Focus(
+                  focusNode: actionFocus,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => actionCalls++,
+                    child: const SizedBox.square(key: actionKey, dimension: 44),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              const SizedBox(key: menuKey, width: 180, height: 90),
+            ],
+          ),
+        ),
+        width: 390,
+        height: 844,
+        padding: padding,
+        textDirection: direction,
+      );
+
+      await tester.pumpWidget(player(TextDirection.ltr));
+      await tester.pumpAndSettle();
+      var playerRect = tester.getRect(find.byType(MithkaVideoPlayer));
+      var actionRect = tester.getRect(find.byKey(actionKey));
+      var menuRect = tester.getRect(find.byKey(menuKey));
+      expect(actionRect.top - playerRect.top, closeTo(14 + padding.top, 0.01));
+      expect(
+        playerRect.right - actionRect.right,
+        closeTo(14 + padding.right, 0.01),
+      );
+      expect(playerRect.contains(menuRect.bottomRight), isTrue);
+      expect(_semanticsWidget('More video actions'), findsOneWidget);
+      expect(find.byType(Overlay), findsNothing);
+
+      final semantics = tester.ensureSemantics();
+      tester.semantics.tap(find.semantics.byLabel('More video actions'));
+      await tester.pump();
+      expect(actionCalls, 1);
+
+      actionFocus.requestFocus();
+      await tester.pump();
+      expect(actionFocus.hasFocus, isTrue);
+      await controller.play();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(_controlOpacity(tester), 1);
+
+      actionFocus.unfocus();
+      await tester.pumpWidget(player(TextDirection.rtl));
+      await tester.pump();
+      playerRect = tester.getRect(find.byType(MithkaVideoPlayer));
+      actionRect = tester.getRect(find.byKey(actionKey));
+      menuRect = tester.getRect(find.byKey(menuKey));
+      final closeRect = tester.getRect(_semanticsWidget('Close'));
+      expect(
+        actionRect.left - playerRect.left,
+        closeTo(14 + padding.left, 0.01),
+      );
+      expect(
+        playerRect.right - closeRect.right,
+        closeTo(14 + padding.right, 0.01),
+      );
+      expect(menuRect.right, lessThan(closeRect.left));
+      expect(tester.takeException(), isNull);
+
+      semantics.dispose();
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      await controller.dispose();
+    },
+  );
+
+  testWidgets('default transport style is high contrast and configurable', (
+    tester,
+  ) async {
+    const defaults = MithkaVideoChromeStyle();
+    expect(defaults.transportBackgroundColor.a, greaterThanOrEqualTo(0.8));
+    expect(
+      defaults.primaryTransportBackgroundColor.a,
+      greaterThanOrEqualTo(0.9),
+    );
+    expect(defaults.transportBorderColor.a, greaterThanOrEqualTo(0.35));
+    expect(defaults.foregroundColor.computeLuminance(), greaterThan(0.9));
+    expect(defaults.transportBackgroundColor.computeLuminance(), lessThan(0.1));
+
+    final controller = _FakeVideoPlayerController();
+    const transport = Color(0xFF102030);
+    const primary = Color(0xFF304050);
+    await tester.pumpWidget(
+      _frame(
+        MithkaVideoPlayer(
+          source: _source('custom-transport-style'),
+          controller: controller,
+          autoplay: false,
+          onPrevious: () {},
+          onNext: () {},
+          chromeStyle: const MithkaVideoChromeStyle(
+            transportBackgroundColor: transport,
+            primaryTransportBackgroundColor: primary,
+            wideTransportButtonSize: 60,
+            widePrimaryTransportButtonSize: 80,
+            wideTransportSpacing: 17,
+          ),
+        ),
+        width: 720,
+        height: 600,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getSize(_semanticsWidget('Previous video')),
+      const Size.square(60),
+    );
+    expect(
+      _semanticsWidget('Play')
+          .evaluate()
+          .map(
+            (element) => tester.getSize(
+              find.byElementPredicate((value) => value == element),
+            ),
+          )
+          .toList(),
+      contains(const Size.square(80)),
+    );
+    final circularDecorations = find.byWidgetPredicate(
+      (widget) =>
+          widget is Container &&
+          widget.decoration is BoxDecoration &&
+          (widget.decoration! as BoxDecoration).shape == BoxShape.circle,
+    );
+    final colors = circularDecorations
+        .evaluate()
+        .map((element) => (element.widget as Container).decoration)
+        .cast<BoxDecoration>()
+        .map((decoration) => decoration.color)
+        .toList();
+    expect(colors, contains(transport));
+    expect(colors, contains(primary));
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    await controller.dispose();
+  });
+
+  testWidgets('full custom chrome suppresses the default top trailing slot', (
+    tester,
+  ) async {
+    final controller = _FakeVideoPlayerController();
+    var topTrailingBuilds = 0;
+    await tester.pumpWidget(
+      _frame(
+        MithkaVideoPlayer(
+          source: _source('top-trailing-with-custom-chrome'),
+          controller: controller,
+          autoplay: false,
+          chromeBuilder: (context, scope) =>
+              const SizedBox.expand(key: ValueKey('replacement-chrome')),
+          topTrailingBuilder: (context, scope) {
+            topTrailingBuilds++;
+            return const SizedBox.square(dimension: 44);
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('replacement-chrome')), findsOneWidget);
+    expect(topTrailingBuilds, 0);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    await controller.dispose();
+  });
+
+  testWidgets(
+    'portrait fullscreen gives surface final bounds and chrome viewport bounds',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(402.6, 875.2);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      final controller = _FakeVideoPlayerController(
+        videoSize: const Size(1920, 1080),
+      );
+      final surfaceKey = GlobalKey();
+      BoxConstraints? surfaceConstraints;
+      BoxConstraints? chromeConstraints;
+
+      await tester.pumpWidget(
+        _frame(
+          MithkaVideoPlayer(
+            source: _source('portrait-fullscreen-geometry'),
+            controller: controller,
+            width: 1920,
+            height: 1080,
+            autoplay: false,
+            isFullscreen: true,
+            alignment: const Alignment(0, -0.2),
+            interactionMode: MithkaVideoInteractionMode.delegateToChrome,
+            videoSurfaceBuilder: (context, value) => LayoutBuilder(
+              builder: (context, constraints) {
+                surfaceConstraints = constraints;
+                return SizedBox.expand(key: surfaceKey);
+              },
+            ),
+            chromeBuilder: (context, scope) => LayoutBuilder(
+              builder: (context, constraints) {
+                chromeConstraints = constraints;
+                return const SizedBox.expand();
+              },
+            ),
+          ),
+          width: 402.6,
+          height: 875.2,
+          padding: const EdgeInsets.fromLTRB(0, 62, 0, 34),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final expectedHeight = 402.6 * 9 / 16;
+      expect(surfaceConstraints, isNotNull);
+      expect(surfaceConstraints!.isTight, isTrue);
+      expect(surfaceConstraints!.maxWidth, closeTo(402.6, 0.01));
+      expect(surfaceConstraints!.maxHeight, closeTo(expectedHeight, 0.01));
+      expect(chromeConstraints, isNotNull);
+      expect(chromeConstraints!.isTight, isTrue);
+      expect(chromeConstraints!.biggest, const Size(402.6, 875.2));
+
+      final playerRect = tester.getRect(find.byType(MithkaVideoPlayer));
+      final surfaceRect = tester.getRect(find.byKey(surfaceKey));
+      expect(surfaceRect.width, closeTo(playerRect.width, 0.01));
+      expect(surfaceRect.height, closeTo(expectedHeight, 0.01));
+      expect(
+        surfaceRect.top - playerRect.top,
+        closeTo((playerRect.height - expectedHeight) * 0.4, 0.01),
+      );
+      expect(tester.takeException(), isNull);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      await controller.dispose();
+    },
+  );
+
+  testWidgets('surface sizing preserves every BoxFit mode', (tester) async {
+    final controller = _FakeVideoPlayerController(
+      videoSize: const Size(200, 100),
+    );
+    const expected = <BoxFit, Size>{
+      BoxFit.fill: Size(300, 300),
+      BoxFit.contain: Size(300, 150),
+      BoxFit.cover: Size(600, 300),
+      BoxFit.fitWidth: Size(300, 150),
+      BoxFit.fitHeight: Size(600, 300),
+      BoxFit.none: Size(200, 100),
+      BoxFit.scaleDown: Size(200, 100),
+    };
+
+    for (final entry in expected.entries) {
+      BoxConstraints? surfaceConstraints;
+      await tester.pumpWidget(
+        _frame(
+          MithkaVideoPlayer(
+            key: ValueKey(entry.key),
+            source: _source('fit-${entry.key.name}'),
+            controller: controller,
+            autoplay: false,
+            fit: entry.key,
+            videoSurfaceBuilder: (context, value) => LayoutBuilder(
+              builder: (context, constraints) {
+                surfaceConstraints = constraints;
+                return const SizedBox.expand();
+              },
+            ),
+          ),
+          width: 300,
+          height: 300,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        surfaceConstraints?.biggest,
+        entry.value,
+        reason: '${entry.key} surface size',
+      );
+      expect(tester.takeException(), isNull, reason: '${entry.key} overflow');
+    }
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    await controller.dispose();
+  });
+
+  testWidgets(
+    'default portrait fullscreen chrome stays usable with navigation and PiP',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(402.6, 875.2);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      final controller = _FakeVideoPlayerController();
+
+      await tester.pumpWidget(
+        _frame(
+          MithkaVideoPlayer(
+            source: _source('complete-portrait-chrome'),
+            controller: controller,
+            width: 1920,
+            height: 1080,
+            autoplay: false,
+            isFullscreen: true,
+            onClose: () {},
+            onPrevious: () {},
+            onNext: () {},
+            onFullscreenChanged: (_) {},
+            onPictureInPictureChanged: (_) {},
+          ),
+          width: 402.6,
+          height: 875.2,
+          padding: const EdgeInsets.fromLTRB(0, 62, 0, 34),
+          textScaler: const TextScaler.linear(1.3),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final player = tester.getRect(find.byType(MithkaVideoPlayer));
+      for (final label in <String>[
+        'Close',
+        'Previous video',
+        'Play',
+        'Next video',
+        'Picture in picture',
+        'Exit fullscreen',
+      ]) {
+        final control = _semanticsWidget(label);
+        expect(
+          control,
+          label == 'Play' ? findsWidgets : findsOneWidget,
+          reason: '$label is available',
+        );
+        final rect = tester.getRect(control.first);
+        expect(player.contains(rect.topLeft), isTrue, reason: '$label top');
+        expect(
+          player.contains(rect.bottomRight),
+          isTrue,
+          reason: '$label bottom',
+        );
+      }
+      expect(
+        tester.getRect(_semanticsWidget('Close')).top - player.top,
+        closeTo(76, 0.01),
+      );
+      expect(
+        player.bottom -
+            tester.getRect(_semanticsWidget('Picture in picture')).bottom,
+        greaterThanOrEqualTo(34),
+      );
+      expect(tester.takeException(), isNull);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      await controller.dispose();
+    },
+  );
+
   testWidgets('custom chrome receives nullable navigation and safe actions', (
     tester,
   ) async {
@@ -253,6 +651,8 @@ void main() {
     expect(scope!.next, isNull);
     expect(scope!.snapshot.playbackState, MithkaVideoPlaybackState.ready);
     expect(scope!.snapshot.displayPosition, Duration.zero);
+    expect(scope!.snapshot.isPictureInPicture, isFalse);
+    expect(scope!.snapshot.pictureInPictureRequestPending, isFalse);
 
     var previousCalls = 0;
     var nextCalls = 0;
@@ -291,6 +691,136 @@ void main() {
     expect(controller.pauseCalls, pauseCalls);
     await controller.dispose();
   });
+
+  testWidgets(
+    'controlled picture in picture coalesces requests and updates default chrome',
+    (tester) async {
+      final controller = _FakeVideoPlayerController();
+      final requests = <bool>[];
+      final errors = <MithkaVideoPlayerError>[];
+      final firstRequest = Completer<void>();
+
+      Widget player({required bool pictureInPicture}) => _frame(
+        MithkaVideoPlayer(
+          key: const ValueKey('picture-in-picture-player'),
+          source: _source('picture-in-picture'),
+          controller: controller,
+          autoplay: false,
+          autofocus: true,
+          isPictureInPicture: pictureInPicture,
+          onPictureInPictureChanged: (next) async {
+            requests.add(next);
+            if (requests.length == 1) await firstRequest.future;
+            if (requests.length == 2) {
+              throw StateError('picture in picture rejected');
+            }
+          },
+          onError: errors.add,
+        ),
+      );
+
+      await tester.pumpWidget(player(pictureInPicture: false));
+      await tester.pumpAndSettle();
+      expect(_semanticsWidget('Picture in picture'), findsOneWidget);
+      expect(_semanticsWidget('Exit picture in picture'), findsNothing);
+
+      final semantics = tester.ensureSemantics();
+      tester.semantics.tap(find.semantics.byLabel('Picture in picture'));
+      await tester.pump();
+      final pendingControl = tester.widget<Semantics>(
+        _semanticsWidget('Picture in picture'),
+      );
+      expect(pendingControl.properties.enabled, isFalse);
+      expect(
+        find.descendant(
+          of: _semanticsWidget('Picture in picture'),
+          matching: find.byType(RotationTransition),
+        ),
+        findsOneWidget,
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyP);
+      await tester.pump();
+      expect(requests, [isTrue]);
+
+      firstRequest.complete();
+      await tester.pump();
+      await tester.pumpWidget(player(pictureInPicture: true));
+      await tester.pump();
+      expect(_semanticsWidget('Picture in picture'), findsNothing);
+      expect(_semanticsWidget('Exit picture in picture'), findsOneWidget);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyP);
+      await tester.pump();
+      expect(requests, [isTrue, isFalse]);
+      expect(errors, hasLength(1));
+      expect(errors.single.cause, isA<StateError>());
+      expect(
+        tester
+            .widget<Semantics>(_semanticsWidget('Exit picture in picture'))
+            .properties
+            .enabled,
+        isTrue,
+      );
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyP);
+      await tester.pump();
+      expect(requests, [isTrue, isFalse, isFalse]);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      semantics.dispose();
+      await controller.dispose();
+    },
+  );
+
+  testWidgets(
+    'custom chrome sees pending PiP state and disposal ignores late completion',
+    (tester) async {
+      final controller = _FakeVideoPlayerController();
+      final request = Completer<void>();
+      MithkaVideoChromeScope? scope;
+      var requests = 0;
+
+      await tester.pumpWidget(
+        _frame(
+          MithkaVideoPlayer(
+            source: _source('custom-pip-pending'),
+            controller: controller,
+            autoplay: false,
+            interactionMode: MithkaVideoInteractionMode.delegateToChrome,
+            onPictureInPictureChanged: (next) async {
+              requests++;
+              await request.future;
+            },
+            chromeBuilder: (context, value) {
+              scope = value;
+              return GestureDetector(
+                key: const ValueKey('custom-pip-action'),
+                behavior: HitTestBehavior.opaque,
+                onTap: () =>
+                    unawaited(value.actions.requestPictureInPicture(true)),
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(scope!.snapshot.pictureInPictureRequestPending, isFalse);
+
+      await tester.tap(find.byKey(const ValueKey('custom-pip-action')));
+      await tester.pump();
+      expect(requests, 1);
+      expect(scope!.snapshot.pictureInPictureRequestPending, isTrue);
+      await scope!.actions.requestPictureInPicture(true);
+      expect(requests, 1);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      request.complete();
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      await controller.dispose();
+    },
+  );
 
   testWidgets(
     'delegated interaction leaves surface gestures to custom chrome',
@@ -1129,6 +1659,7 @@ Widget _frame(
   EdgeInsets padding = EdgeInsets.zero,
   bool accessibleNavigation = false,
   TextScaler textScaler = TextScaler.noScaling,
+  TextDirection textDirection = TextDirection.ltr,
 }) => MediaQuery(
   data: MediaQueryData(
     size: Size(width, height),
@@ -1137,7 +1668,7 @@ Widget _frame(
     textScaler: textScaler,
   ),
   child: Directionality(
-    textDirection: TextDirection.ltr,
+    textDirection: textDirection,
     child: Center(
       child: SizedBox(width: width, height: height, child: child),
     ),

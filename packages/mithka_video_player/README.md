@@ -14,10 +14,12 @@ does not require Material, Cupertino, or their built-in icon fonts.
 - Network, asset, native-file, caller-owned controller, and controller-builder
   sources.
 - Previous/play/next navigation, replay, mute, volume, playback speed, seek,
-  buffered progress, captions, fullscreen callbacks, and scrub previews where
-  supported.
+  buffered progress, captions, controlled fullscreen and picture-in-picture
+  callbacks, and scrub previews where supported.
 - Compact controls for narrow layouts and larger controls with inline volume
   on wide tablet/desktop layouts.
+- High-contrast, configurable default transport chrome plus a safe-area-aware
+  top-trailing slot for project actions and finite inline menus.
 - Keyboard, pointer, touch, touch-region double-tap seek, desktop double-click
   fullscreen, opt-in mouse-wheel volume, RTL timeline, and adjustable
   screen-reader semantics.
@@ -159,6 +161,13 @@ Pass the real encoded width and height when known. The player uses them for the
 initial aspect ratio and scrub-preview geometry; otherwise it falls back to the
 controller's reported ratio and then 16:9.
 
+The video surface is laid out at its final on-screen size for every `BoxFit`
+mode, then clipped and aligned within the player. An injected
+`videoSurfaceBuilder` therefore receives useful painted-size constraints
+instead of an arbitrary oversized transform canvas. Custom chrome always
+receives the full player viewport and remains responsible for placing any
+`Positioned` widgets directly under its own `Stack`.
+
 ### Sources
 
 ```dart
@@ -258,12 +267,14 @@ MithkaVideoPlayer(
 
 `MithkaVideoChromeSnapshot` is immutable and includes the current
 `VideoPlayerValue`, effective scrub/display position, playback state, control
-visibility, buffering visibility, scrubbing state, and fullscreen state.
+visibility, buffering visibility, scrubbing state, fullscreen state,
+picture-in-picture state, and whether a PiP request is in flight.
 `MithkaVideoActions` routes commands through the player's error handling and
 provides play/pause, absolute and relative seeking, volume/mute, speed, scrub
-lifecycle, control visibility, and fullscreen requests. Retaining the facade is safe:
-after the player is disposed its methods become no-ops and never dispose or
-mutate a caller-owned controller.
+lifecycle, control visibility, fullscreen requests, and asynchronous
+picture-in-picture requests. Retaining the facade is safe: after the player is
+disposed its methods become no-ops and never dispose or mutate a caller-owned
+controller.
 
 Choose `delegateToChrome` when the custom foreground implements tap,
 double-tap, pan, brightness, or volume gestures. It removes the package's
@@ -276,6 +287,60 @@ Navigation remains host-owned. `onPrevious` and `onNext` are nullable; the
 default chrome renders accessible transport buttons only for available
 callbacks, and custom chrome receives the same availability through
 `MithkaVideoChromeScope.previous` and `.next`.
+
+### Default chrome styling and top-trailing actions
+
+`MithkaVideoChromeStyle` configures the dependency-free default chrome without
+requiring a complete `chromeBuilder`. Its defaults use white foreground glyphs,
+80% black side transports, a 90% black primary transport, a 40% white one-pixel
+border, and a 70% black shadow with 12-pixel blur and a three-pixel vertical
+offset. The gradient uses 50% black at the top and 88% black at the bottom so
+unfilled secondary actions and timeline text remain legible over bright frames.
+Default center transports are 44/56 logical pixels on compact layouts and
+56/68 on wide layouts, with 8- and 12-pixel gaps respectively. All interactive
+controls retain a minimum 44-pixel target.
+
+Override only the concrete values your project owns:
+
+```dart
+MithkaVideoPlayer(
+  source: source,
+  chromeStyle: const MithkaVideoChromeStyle(
+    foregroundColor: Color(0xFFF7FAFC),
+    transportBackgroundColor: Color(0xE61A2029),
+    primaryTransportBackgroundColor: Color(0xF20B0E13),
+    transportBorderColor: Color(0x73FFFFFF),
+    focusColor: Color(0xFF63E6D4),
+    widePrimaryTransportButtonSize: 72,
+  ),
+)
+```
+
+Use `topTrailingBuilder` when the default chrome should host project actions or
+an inline menu. The package places the returned widget at the logical trailing
+edge, applies fullscreen top and horizontal safe-area insets, reserves space
+for the optional close button, bounds the available height above the bottom
+safe area, and keeps descendant focus from triggering control auto-hide.
+
+```dart
+MithkaVideoPlayer(
+  source: source,
+  onClose: dismissPlayer,
+  topTrailingBuilder: (context, scope) => ProjectVideoActions(
+    isMuted: scope.snapshot.value.volume == 0,
+    onToggleMute: scope.actions.toggleMute,
+    onShare: shareCurrentVideo,
+  ),
+)
+```
+
+Return an ordinary finite-size widget, never a `Positioned` widget. A `Column`
+can reveal a bounded menu directly below its 44-pixel action, so this contract
+works with foundational widgets and does not require Material, Cupertino, or
+an `Overlay`. The slot participates in the default chrome's focus traversal,
+visibility, semantics exclusion, and pointer exclusion, but the host must still
+give every child action an accurate button label and keyboard activation. It is
+ignored when `chromeBuilder` replaces the entire ready chrome.
 
 For built-in chrome shorter than 220 logical pixels, the player merges
 previous/play/next into the bottom action row and tightens its edge spacing.
@@ -319,6 +384,43 @@ callback exists, Escape requests `false` rather than closing. Otherwise Escape
 invokes `onClose`, or is ignored when neither action is available. Clicking the
 visible close control always invokes `onClose` directly.
 
+### Picture in picture
+
+Picture-in-picture uses a controlled, host-owned presentation contract. The
+package provides a responsive default PiP control, localized semantics,
+keyboard behavior, pending-request coalescing, custom-chrome state/actions,
+and error routing without forcing every application to ship the same native
+PiP plugin.
+
+```dart
+MithkaVideoPlayer(
+  source: source,
+  controller: playbackSession.controller,
+  isPictureInPicture: _pictureInPicture,
+  onPictureInPictureChanged: (requested) async {
+    final active = await playbackSession.setPictureInPicture(requested);
+    if (!context.mounted) return;
+    setState(() => _pictureInPicture = active);
+  },
+  onError: reportPlaybackError,
+)
+```
+
+The default control is present only when `onPictureInPictureChanged` is
+provided. Rebuild with the confirmed platform state after the transition
+succeeds; the package does not optimistically claim that native PiP started.
+Only one request is sent while the returned future is incomplete. Exceptions
+are non-fatal and reach `onError`. While a request is incomplete, the default
+control is disabled and replaces its glyph with a progress indicator. Custom
+chrome can call
+`scope.actions.requestPictureInPicture(...)` and read
+`scope.snapshot.isPictureInPicture` plus
+`scope.snapshot.pictureInPictureRequestPending`.
+
+The host callback can bridge to iOS/macOS system PiP, Android activity PiP, a
+desktop mini-player, or a project-owned floating presentation. Native setup,
+entitlements, background-audio policy, and restoration remain host concerns.
+
 ### Localization and custom states
 
 Pass `MithkaVideoPlayerLabels` for localized control, state, timeline, error,
@@ -340,7 +442,8 @@ screen. Set autofocus only for a dedicated player route or child window.
 | `Up` / `Down` | Raise/lower volume |
 | `M` | Mute/restore the last audible volume |
 | `F` | Ask the host to toggle fullscreen |
-| `Escape` | Exit controlled fullscreen first; otherwise close when `onClose` is present |
+| `P` | Ask the host to enter/leave picture in picture when configured |
+| `Escape` | Exit controlled fullscreen, then active controlled PiP; otherwise close when configured |
 | Touch double-tap left or right | Seek backward/forward |
 | Touch double-tap center | Play/pause |
 | Mouse/trackpad double-click | Ask the host to toggle fullscreen |
@@ -546,8 +649,9 @@ lifecycle.
 
 ## Deliberate boundaries
 
-The package does not own application routing, DRM/license acquisition, adaptive
-quality selection UI, analytics, sharing/forwarding, persistent resume storage,
-system picture-in-picture, casting, or playlist policy. Build those around the
-callbacks and controller ownership contract so the same player remains usable
-across unrelated applications.
+The package does not own application routing, DRM/license acquisition,
+adaptive quality selection UI, analytics, sharing/forwarding, persistent
+resume storage, a specific native picture-in-picture implementation, casting,
+or playlist policy. Build those around the controlled callbacks and controller
+ownership contract so the same player remains usable across unrelated
+applications.

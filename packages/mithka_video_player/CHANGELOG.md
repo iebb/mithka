@@ -1,5 +1,21 @@
 ## 0.3.0
 
+- Added `MithkaVideoChromeStyle` with high-contrast transport, scrim, timeline,
+  focus, hover, border, shadow, size, and spacing defaults that can be tailored
+  without replacing the ready chrome.
+- Added a safe-area- and RTL-aware top-trailing default-chrome builder for host
+  actions and finite inline menus, including focus retention, semantics
+  containment, close-button clearance, and bounded vertical placement without
+  Material, Cupertino, or Overlay dependencies.
+- Added a controlled, asynchronous picture-in-picture contract with a
+  responsive default control, localized labels, keyboard support, custom-chrome
+  snapshot/actions, request coalescing, and non-fatal error reporting.
+- Made pending picture-in-picture controls visibly busy and noninteractive,
+  with tests for callback errors, request coalescing, custom snapshots, and
+  disposal during an outstanding host transition.
+- Sized native and injected video surfaces at their final painted dimensions
+  for every `BoxFit` mode instead of compositing an arbitrary 1000-unit texture
+  through a scale transform.
 - Added an immutable custom-chrome scope with playback snapshots, localized
   labels, optional previous/next navigation, and a controller-safe actions
   facade for play, seek, scrub, volume, speed, visibility, and fullscreen.

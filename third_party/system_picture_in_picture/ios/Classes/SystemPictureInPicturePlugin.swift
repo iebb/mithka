@@ -18,6 +18,8 @@ public final class SystemPictureInPicturePlugin: NSObject, FlutterPlugin,
   private var possibleObservation: NSKeyValueObservation?
   private var statusObservation: NSKeyValueObservation?
   private var preferredRate: Float = 1.0
+  private var preferredPlaying = true
+  private var restoreAccepted = false
 
   public static func register(with registrar: FlutterPluginRegistrar) {
     let instance = SystemPictureInPicturePlugin(messenger: registrar.messenger())
@@ -75,7 +77,8 @@ public final class SystemPictureInPicturePlugin: NSObject, FlutterPlugin,
       let url = URL(string: rawURL)
     else { return false }
 
-    stop(notifyFlutter: false)
+    let replacingSession = activeId != nil && activeId != id
+    stop(notifyFlutter: replacingSession)
     let audioSession = AVAudioSession.sharedInstance()
     try? audioSession.setCategory(.playback, mode: .moviePlayback)
     try? audioSession.setActive(true)
@@ -112,21 +115,32 @@ public final class SystemPictureInPicturePlugin: NSObject, FlutterPlugin,
       let player
     else { return }
     applyPlaybackArguments(args, to: player, shouldSeek: true)
+    applyPreferredPlaybackState(to: player)
   }
 
   private func applyPlaybackArguments(_ args: [String: Any], to player: AVPlayer, shouldSeek: Bool) {
     player.isMuted = args["muted"] as? Bool ?? false
     preferredRate = (args["speed"] as? NSNumber)?.floatValue ?? 1.0
-    guard shouldSeek else { return }
-    let positionMs = (args["positionMs"] as? NSNumber)?.doubleValue ?? 0
-    guard positionMs > 0 else { return }
-    let currentMs = player.currentTime().seconds * 1000
-    if currentMs.isNaN || abs(currentMs - positionMs) > 750 {
-      player.seek(
-        to: CMTime(seconds: positionMs / 1000.0, preferredTimescale: 600),
-        toleranceBefore: .zero,
-        toleranceAfter: .zero
-      )
+    preferredPlaying = args["playing"] as? Bool ?? true
+    if shouldSeek {
+      let positionMs = (args["positionMs"] as? NSNumber)?.doubleValue ?? 0
+      let currentMs = player.currentTime().seconds * 1000
+      if positionMs > 0, currentMs.isNaN || abs(currentMs - positionMs) > 750 {
+        player.seek(
+          to: CMTime(seconds: positionMs / 1000.0, preferredTimescale: 600),
+          toleranceBefore: .zero,
+          toleranceAfter: .zero
+        )
+      }
+    }
+  }
+
+  private func applyPreferredPlaybackState(to player: AVPlayer) {
+    if preferredPlaying {
+      player.play()
+      if preferredRate > 0, preferredRate != 1 { player.rate = preferredRate }
+    } else {
+      player.pause()
     }
   }
 
@@ -137,8 +151,7 @@ public final class SystemPictureInPicturePlugin: NSObject, FlutterPlugin,
   ) {
     clearStartObservers()
     pendingStartResult = result
-    player.play()
-    if preferredRate > 0, preferredRate != 1 { player.rate = preferredRate }
+    applyPreferredPlaybackState(to: player)
 
     let timeout = DispatchWorkItem { [weak self] in
       guard let self, self.pendingStartResult != nil else { return }
@@ -220,6 +233,8 @@ public final class SystemPictureInPicturePlugin: NSObject, FlutterPlugin,
     pendingStartResult?(false)
     pendingStartResult = nil
     let stoppedId = activeId
+    let stoppedPositionMs = positionMilliseconds(player)
+    let wasRestored = restoreAccepted
     player?.pause()
     if pictureInPictureController?.isPictureInPictureActive == true {
       pictureInPictureController?.stopPictureInPicture()
@@ -234,8 +249,17 @@ public final class SystemPictureInPicturePlugin: NSObject, FlutterPlugin,
     player = nil
     activeId = nil
     preferredRate = 1
+    preferredPlaying = true
+    restoreAccepted = false
     if notifyFlutter, let stoppedId {
-      channel.invokeMethod("didStop", arguments: ["id": stoppedId])
+      channel.invokeMethod(
+        "didStop",
+        arguments: [
+          "id": stoppedId,
+          "positionMs": stoppedPositionMs,
+          "restored": wasRestored,
+        ]
+      )
     }
   }
 
@@ -270,7 +294,44 @@ public final class SystemPictureInPicturePlugin: NSObject, FlutterPlugin,
     _ pictureInPictureController: AVPictureInPictureController,
     restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void
   ) {
-    completionHandler(false)
+    guard let activeId, let player else {
+      completionHandler(false)
+      return
+    }
+    let requestedId = activeId
+    var completed = false
+    let finish: (Bool) -> Void = { [weak self] restored in
+      guard !completed else { return }
+      completed = true
+      let validSession = self?.activeId == requestedId
+      let accepted = restored && validSession
+      if validSession { self?.restoreAccepted = accepted }
+      completionHandler(accepted)
+    }
+    let timeout = DispatchWorkItem { finish(false) }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: timeout)
+    channel.invokeMethod(
+      "restoreRequested",
+      arguments: [
+        "id": requestedId,
+        "positionMs": positionMilliseconds(player),
+        "playing": player.timeControlStatus != .paused,
+        "speed": preferredRate,
+        "muted": player.isMuted,
+      ]
+    ) { response in
+      DispatchQueue.main.async {
+        timeout.cancel()
+        finish((response as? NSNumber)?.boolValue ?? false)
+      }
+    }
+  }
+
+  private func positionMilliseconds(_ player: AVPlayer?) -> Int64 {
+    guard let seconds = player?.currentTime().seconds, seconds.isFinite else {
+      return 0
+    }
+    return Int64(max(0, (seconds * 1000).rounded()))
   }
 
   private static func rootViewController() -> UIViewController? {

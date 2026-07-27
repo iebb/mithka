@@ -172,12 +172,23 @@ class _ExampleHomeState extends State<_ExampleHome> {
     autoplay: false,
     isFullscreen: _fullscreen,
     accentColor: _Palette.accent,
+    chromeStyle: const MithkaVideoChromeStyle(
+      foregroundColor: _Palette.text,
+      transportBackgroundColor: Color(0xE6151920),
+      primaryTransportBackgroundColor: Color(0xF20C0E12),
+      transportBorderColor: Color(0x73FFFFFF),
+      focusColor: _Palette.accent,
+      hoverColor: Color(0x2861D6C8),
+    ),
     interactionMode: _customChrome
         ? MithkaVideoInteractionMode.delegateToChrome
         : MithkaVideoInteractionMode.builtIn,
     chromeBuilder: _customChrome
         ? (context, scope) => _ExampleCustomChrome(scope: scope)
         : null,
+    topTrailingBuilder: _customChrome
+        ? null
+        : (context, scope) => _ExampleTopTrailingActions(scope: scope),
     onClose: _fullscreen ? _toggleFullscreen : null,
     onToggleFullscreen: _toggleFullscreen,
     onPrevious: () => setState(() => _status = 'Previous requested'),
@@ -454,6 +465,82 @@ class _ExampleCustomChrome extends StatelessWidget {
       ),
     ),
   );
+}
+
+class _ExampleTopTrailingActions extends StatefulWidget {
+  const _ExampleTopTrailingActions({required this.scope});
+
+  final MithkaVideoChromeScope scope;
+
+  @override
+  State<_ExampleTopTrailingActions> createState() =>
+      _ExampleTopTrailingActionsState();
+}
+
+class _ExampleTopTrailingActionsState
+    extends State<_ExampleTopTrailingActions> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scope = widget.scope;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 44),
+          child: _DemoButton(
+            label: _expanded ? 'Close player actions' : 'Player actions',
+            selected: _expanded,
+            onPressed: () => setState(() => _expanded = !_expanded),
+          ),
+        ),
+        if (_expanded) ...[
+          const SizedBox(height: 8),
+          SizedBox(
+            width: 190,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: const Color(0xF2151920),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0x73FFFFFF)),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x99000000),
+                    blurRadius: 18,
+                    offset: Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _DemoButton(
+                      label: scope.snapshot.value.volume == 0
+                          ? 'Restore audio'
+                          : 'Mute audio',
+                      onPressed: () => unawaited(scope.actions.toggleMute()),
+                    ),
+                    const SizedBox(height: 6),
+                    _DemoButton(
+                      label: 'Hide controls',
+                      onPressed: () {
+                        setState(() => _expanded = false);
+                        scope.actions.hideControls();
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
 }
 
 class _ShortcutReference extends StatelessWidget {

@@ -44,6 +44,15 @@ void main() {
     );
   });
 
+  test('default chrome example demonstrates styling and inline actions', () {
+    final source = File('lib/main.dart').readAsStringSync();
+
+    expect(source, contains('chromeStyle: const MithkaVideoChromeStyle('));
+    expect(source, contains('topTrailingBuilder: _customChrome'));
+    expect(source, contains('_ExampleTopTrailingActions(scope: scope)'));
+    expect(source, contains('scope.actions.toggleMute()'));
+  });
+
   test('default example uses a secure network source', () {
     final source = sourceForExampleMode(ExampleSourceMode.network);
 

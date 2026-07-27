@@ -1,7 +1,37 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+
+typedef SystemPictureInPictureStopped =
+    FutureOr<void> Function(Duration? finalPosition);
+typedef SystemPictureInPictureRestoreRequested =
+    FutureOr<bool> Function(SystemPictureInPictureSnapshot snapshot);
+
+@immutable
+final class SystemPictureInPictureSnapshot {
+  const SystemPictureInPictureSnapshot({
+    required this.position,
+    required this.playing,
+    required this.speed,
+    required this.muted,
+  });
+
+  final Duration position;
+  final bool playing;
+  final double speed;
+  final bool muted;
+}
+
+final class _SystemPictureInPictureSession {
+  _SystemPictureInPictureSession({this.onStop, this.onRestoreRequested});
+
+  final SystemPictureInPictureStopped? onStop;
+  final SystemPictureInPictureRestoreRequested? onRestoreRequested;
+  bool restoreAttempted = false;
+  bool stopping = false;
+}
 
 enum _PictureInPictureBackend { activeFvpPlayer, nativePlatform }
 
@@ -14,7 +44,7 @@ class SystemPictureInPicture {
   static const MethodChannel _activePlayerChannel = MethodChannel(
     'mithka/fvp_picture_in_picture',
   );
-  static final Map<String, Future<void> Function()> _cleanupById = {};
+  static final Map<String, _SystemPictureInPictureSession> _sessionsById = {};
   static final Map<String, _PictureInPictureBackend> _backendById = {};
   static bool _handlerAttached = false;
 
@@ -48,7 +78,8 @@ class SystemPictureInPicture {
     required bool playing,
     required Size videoSize,
     int? playerId,
-    Future<void> Function()? onStop,
+    SystemPictureInPictureStopped? onStop,
+    SystemPictureInPictureRestoreRequested? onRestoreRequested,
   }) async {
     if (!isSupportedPlatform) return false;
     final prepared = await prepare(
@@ -61,6 +92,7 @@ class SystemPictureInPicture {
       videoSize: videoSize,
       playerId: playerId,
       onStop: onStop,
+      onRestoreRequested: onRestoreRequested,
     );
     if (!prepared) return false;
     final started = await startPrepared(
@@ -87,11 +119,15 @@ class SystemPictureInPicture {
     required bool playing,
     required Size videoSize,
     int? playerId,
-    Future<void> Function()? onStop,
+    SystemPictureInPictureStopped? onStop,
+    SystemPictureInPictureRestoreRequested? onRestoreRequested,
   }) async {
     if (!isSupportedPlatform) return false;
     _attachHandler();
-    if (onStop != null) _cleanupById[id] = onStop;
+    _sessionsById[id] = _SystemPictureInPictureSession(
+      onStop: onStop,
+      onRestoreRequested: onRestoreRequested,
+    );
     if (playerId != null) {
       try {
         final prepared =
@@ -128,11 +164,11 @@ class SystemPictureInPicture {
       if (prepared) {
         _backendById[id] = _PictureInPictureBackend.nativePlatform;
       } else {
-        _cleanupById.remove(id);
+        _sessionsById.remove(id);
       }
       return prepared;
     } catch (_) {
-      _cleanupById.remove(id);
+      _sessionsById.remove(id);
       return false;
     }
   }
@@ -195,7 +231,7 @@ class SystemPictureInPicture {
   static Future<void> cancelPrepared(String id) async {
     if (!isSupportedPlatform) return;
     final backend = _backendById.remove(id);
-    _cleanupById.remove(id);
+    _sessionsById.remove(id);
     _attachHandler();
     final channel = backend == _PictureInPictureBackend.activeFvpPlayer
         ? _activePlayerChannel
@@ -222,17 +258,128 @@ class SystemPictureInPicture {
   static void _attachHandler() {
     if (_handlerAttached) return;
     _handlerAttached = true;
-    _channel.setMethodCallHandler(_handleNativeCallback);
-    _activePlayerChannel.setMethodCallHandler(_handleNativeCallback);
+    _channel.setMethodCallHandler(
+      (call) => _handleNativeCallback(
+        call,
+        sourceBackend: _PictureInPictureBackend.nativePlatform,
+      ),
+    );
+    _activePlayerChannel.setMethodCallHandler(
+      (call) => _handleNativeCallback(
+        call,
+        sourceBackend: _PictureInPictureBackend.activeFvpPlayer,
+      ),
+    );
   }
 
-  static Future<void> _handleNativeCallback(MethodCall call) async {
-    if (call.method != 'didStop') return;
+  static Future<Object?> _handleNativeCallback(
+    MethodCall call, {
+    _PictureInPictureBackend? sourceBackend,
+  }) async {
     final args = call.arguments as Map?;
     final id = args?['id'] as String?;
-    if (id == null) return;
-    final cleanup = _cleanupById.remove(id);
-    if (cleanup != null) await cleanup();
-    _backendById.remove(id);
+    if (id == null) {
+      return call.method == 'restoreRequested' ? false : null;
+    }
+    final registeredBackend = _backendById[id];
+    if (sourceBackend != null &&
+        registeredBackend != null &&
+        registeredBackend != sourceBackend) {
+      return call.method == 'restoreRequested' ? false : null;
+    }
+    final position = _positionFromArguments(args);
+    switch (call.method) {
+      case 'restoreRequested':
+        final session = _sessionsById[id];
+        final callback = session?.onRestoreRequested;
+        if (session == null ||
+            callback == null ||
+            session.restoreAttempted ||
+            session.stopping) {
+          return false;
+        }
+        session.restoreAttempted = true;
+        try {
+          return await Future<bool>.value(
+            callback(_snapshotFromArguments(args)),
+          );
+        } catch (_) {
+          return false;
+        }
+      case 'didStop':
+        final session = _sessionsById[id];
+        if (session == null || session.stopping) return null;
+        session.stopping = true;
+        try {
+          await Future<void>.value(session.onStop?.call(position));
+        } catch (_) {}
+        if (identical(_sessionsById[id], session)) {
+          _sessionsById.remove(id);
+          _backendById.remove(id);
+        }
+      default:
+        return null;
+    }
+    return null;
+  }
+
+  static Duration? _positionFromArguments(Map<dynamic, dynamic>? arguments) {
+    final value = arguments?['positionMs'];
+    if (value is! num || !value.isFinite || value < 0) return null;
+    return Duration(milliseconds: value.round());
+  }
+
+  static SystemPictureInPictureSnapshot _snapshotFromArguments(
+    Map<dynamic, dynamic>? arguments,
+  ) {
+    final rawSpeed = arguments?['speed'];
+    final speed = rawSpeed is num && rawSpeed.isFinite && rawSpeed > 0
+        ? rawSpeed.toDouble()
+        : 1.0;
+    return SystemPictureInPictureSnapshot(
+      position: _positionFromArguments(arguments) ?? Duration.zero,
+      playing: arguments?['playing'] is bool
+          ? arguments!['playing'] as bool
+          : true,
+      speed: speed,
+      muted: arguments?['muted'] is bool ? arguments!['muted'] as bool : false,
+    );
+  }
+
+  @visibleForTesting
+  static void debugRegisterSession({
+    required String id,
+    bool? usesActivePlayer,
+    SystemPictureInPictureStopped? onStop,
+    SystemPictureInPictureRestoreRequested? onRestoreRequested,
+  }) {
+    _sessionsById[id] = _SystemPictureInPictureSession(
+      onStop: onStop,
+      onRestoreRequested: onRestoreRequested,
+    );
+    if (usesActivePlayer != null) {
+      _backendById[id] = usesActivePlayer
+          ? _PictureInPictureBackend.activeFvpPlayer
+          : _PictureInPictureBackend.nativePlatform;
+    }
+  }
+
+  @visibleForTesting
+  static Future<Object?> debugHandleNativeCallback(
+    MethodCall call, {
+    bool? fromActivePlayer,
+  }) => _handleNativeCallback(
+    call,
+    sourceBackend: fromActivePlayer == null
+        ? null
+        : fromActivePlayer
+        ? _PictureInPictureBackend.activeFvpPlayer
+        : _PictureInPictureBackend.nativePlatform,
+  );
+
+  @visibleForTesting
+  static void debugClearSessions() {
+    _sessionsById.clear();
+    _backendById.clear();
   }
 }
