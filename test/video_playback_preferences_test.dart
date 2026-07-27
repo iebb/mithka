@@ -10,7 +10,7 @@ void main() {
 
     expect(
       preferences.horizontalSwipeAction,
-      VideoHorizontalSwipeAction.adjustProgress,
+      VideoHorizontalSwipeAction.changeVideo,
     );
     expect(
       preferences.leftVerticalSwipeAction,
@@ -27,7 +27,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
 
     await VideoPlaybackPreferences.saveHorizontalSwipeAction(
-      VideoHorizontalSwipeAction.changeVideo,
+      VideoHorizontalSwipeAction.adjustProgress,
     );
     await VideoPlaybackPreferences.saveLeftVerticalSwipeAction(
       VideoVerticalSwipeAction.volume,
@@ -42,7 +42,7 @@ void main() {
     final preferences = await VideoPlaybackPreferences.load();
     expect(
       preferences.horizontalSwipeAction,
-      VideoHorizontalSwipeAction.changeVideo,
+      VideoHorizontalSwipeAction.adjustProgress,
     );
     expect(
       preferences.leftVerticalSwipeAction,
@@ -67,7 +67,7 @@ void main() {
 
     expect(
       preferences.horizontalSwipeAction,
-      VideoHorizontalSwipeAction.adjustProgress,
+      VideoHorizontalSwipeAction.changeVideo,
     );
     expect(
       preferences.leftVerticalSwipeAction,

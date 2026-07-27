@@ -39,11 +39,16 @@ void main() {
     expect(mainActivity, isNot(contains('SystemPictureInPicturePlugin')));
   });
 
-  test('display mode control opens split screen directly', () {
+  test('one display mode control owns split and PiP routing', () {
     final player = File('lib/chat/video_player_view.dart').readAsStringSync();
 
-    expect(player, contains('label: AppStringKeys.videoPlayerSplitScreen'));
-    expect(player, contains('callback(VideoDisplayMode.split);'));
+    expect(player, contains('AppStringKeys.videoPlayerToggleDisplayMode'));
+    expect(player, contains('void _toggleModeMenu()'));
+    expect(player, contains('void _selectDisplayMode(VideoDisplayMode mode)'));
+    expect(player, contains('if (mode == VideoDisplayMode.pictureInPicture)'));
+    expect(player, contains('unawaited(_enterPictureInPicture());'));
+    expect(player, isNot(contains('Widget _modeSwitchButton(')));
+    expect(player, isNot(contains('Widget _systemPictureInPictureButton(')));
     expect(player, isNot(contains('PopupMenuButton<VideoDisplayMode>')));
   });
 

@@ -13,7 +13,7 @@ enum VideoCompletionAction { prompt, autoplayNext, replay, returnToChat }
 
 class VideoPlaybackPreferences {
   const VideoPlaybackPreferences({
-    this.horizontalSwipeAction = VideoHorizontalSwipeAction.adjustProgress,
+    this.horizontalSwipeAction = VideoHorizontalSwipeAction.changeVideo,
     this.leftVerticalSwipeAction = VideoVerticalSwipeAction.brightness,
     this.rightVerticalSwipeAction = VideoVerticalSwipeAction.volume,
     this.completionAction = VideoCompletionAction.prompt,
@@ -59,7 +59,7 @@ class VideoPlaybackPreferences {
       horizontalSwipeAction: _enumByName(
         VideoHorizontalSwipeAction.values,
         prefs.getString(horizontalSwipePreferenceKey),
-        VideoHorizontalSwipeAction.adjustProgress,
+        VideoHorizontalSwipeAction.changeVideo,
       ),
       leftVerticalSwipeAction: _enumByName(
         VideoVerticalSwipeAction.values,

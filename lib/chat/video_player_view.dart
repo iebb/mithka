@@ -737,6 +737,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   bool _failed = false;
   bool _controlsVisible = true;
   bool _moreMenuVisible = false;
+  bool _modeMenuVisible = false;
   Timer? _hideTimer;
   Timer? _progressRebuildTimer;
   StreamSubscription<TdFileProgress>? _progressSub;
@@ -767,7 +768,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   Duration _gestureSeekPosition = Duration.zero;
   int _gestureNavigationDelta = 0;
   VideoHorizontalSwipeAction _horizontalSwipeAction =
-      VideoHorizontalSwipeAction.adjustProgress;
+      VideoHorizontalSwipeAction.changeVideo;
   VideoVerticalSwipeAction _leftVerticalSwipeAction =
       VideoVerticalSwipeAction.brightness;
   VideoVerticalSwipeAction _rightVerticalSwipeAction =
@@ -779,6 +780,13 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   final FocusNode _completionPromptFocusNode = FocusNode(
     debugLabel: 'video-completion-primary-action',
   );
+  final FocusNode _moreButtonFocusNode = FocusNode(
+    debugLabel: 'video-more-button',
+  );
+  final FocusNode _modeButtonFocusNode = FocusNode(
+    debugLabel: 'video-display-mode-button',
+  );
+  final LayerLink _modeButtonLink = LayerLink();
   final GlobalKey _scrubberKey = GlobalKey(debugLabel: 'video-scrubber');
   final Map<int, Uint8List> _scrubPreviewCache = {};
   OverlayEntry? _scrubPreviewOverlay;
@@ -1005,6 +1013,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     _hideTimer = Timer(const Duration(seconds: 5), () {
       if (mounted &&
           !_moreMenuVisible &&
+          !_modeMenuVisible &&
           (_controller?.value.isPlaying ?? false)) {
         setState(() => _controlsVisible = false);
       }
@@ -1468,6 +1477,8 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     _scrubPreviewOverlay = null;
     _scrubPreviewGeneration++;
     _completionPromptFocusNode.dispose();
+    _moreButtonFocusNode.dispose();
+    _modeButtonFocusNode.dispose();
     _progressSub?.cancel();
     unawaited(_storePlaybackPosition(force: true));
     final controller = _controller;
@@ -1645,6 +1656,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
         if (controlsVisible) _closeButton(),
         if (controlsVisible) _topOverflowButton(),
         if (_moreMenuVisible) _moreMenuOverlay(),
+        if (_modeMenuVisible) _modeMenuOverlay(),
       ],
     );
   }
@@ -1715,6 +1727,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                     : _closeButton(),
               if (ready && _controlsVisible) _topOverflowButton(),
               if (_moreMenuVisible) _moreMenuOverlay(),
+              if (_modeMenuVisible) _modeMenuOverlay(),
             ],
           ),
         ),
@@ -1750,6 +1763,30 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
       return KeyEventResult.ignored;
     }
     final key = event.logicalKey;
+    if (_moreMenuVisible || _modeMenuVisible) {
+      if (key == LogicalKeyboardKey.escape) {
+        if (_moreMenuVisible) {
+          _closeMoreMenu();
+        } else {
+          _closeModeMenu();
+        }
+        return KeyEventResult.handled;
+      }
+      if (key == LogicalKeyboardKey.arrowUp) {
+        FocusScope.of(context).previousFocus();
+        return KeyEventResult.handled;
+      }
+      if (key == LogicalKeyboardKey.arrowDown) {
+        FocusScope.of(context).nextFocus();
+        return KeyEventResult.handled;
+      }
+      if (key == LogicalKeyboardKey.tab ||
+          key == LogicalKeyboardKey.enter ||
+          key == LogicalKeyboardKey.space) {
+        return KeyEventResult.ignored;
+      }
+      return KeyEventResult.handled;
+    }
     if (key == LogicalKeyboardKey.space || key == LogicalKeyboardKey.keyK) {
       unawaited(_togglePlay());
     } else if (key == LogicalKeyboardKey.arrowLeft ||
@@ -2325,7 +2362,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
 
   double _bottomChromeHeight(_VideoControlsLayout layout) {
     final timelineHeight = layout.playButtonSize.height;
-    final secondaryHeight = layout.actionButtonSize;
+    final secondaryHeight = math.max(44.0, layout.actionButtonSize);
     final contentHeight = layout.timelineAtBottom
         ? secondaryHeight + layout.actionGap + timelineHeight
         : timelineHeight + 24 + secondaryHeight;
@@ -2464,26 +2501,38 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     }
     final phoneFullscreen = _usesPhoneFullscreen(context);
     final size = phoneFullscreen ? 44.0 : 58.0;
-    return Positioned(
-      top: MediaQuery.of(context).padding.top + (phoneFullscreen ? 6 : 28),
-      right: phoneFullscreen ? 8 : 30,
+    final media = MediaQuery.of(context);
+    final rtl = Directionality.of(context) == TextDirection.rtl;
+    final trailingSafeInset = rtl ? media.padding.left : media.padding.right;
+    return PositionedDirectional(
+      top: media.padding.top + (phoneFullscreen ? 6 : 28),
+      end: (phoneFullscreen ? 8 : 30) + trailingSafeInset,
       child: _roundIconButton(
         HeroAppIcons.ellipsisVertical,
         _toggleMoreMenu,
         label: AppStringKeys.momentsMore.l10n(context),
         size: size,
+        focusNode: _moreButtonFocusNode,
       ),
     );
   }
 
   void _toggleMoreMenu() {
     _hideTimer?.cancel();
-    setState(() => _moreMenuVisible = !_moreMenuVisible);
+    setState(() {
+      _moreMenuVisible = !_moreMenuVisible;
+      _modeMenuVisible = false;
+    });
   }
 
   void _closeMoreMenu() {
     if (!_moreMenuVisible) return;
     setState(() => _moreMenuVisible = false);
+    if (_isDesktopPlatform) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _moreButtonFocusNode.requestFocus();
+      });
+    }
     _scheduleHide();
   }
 
@@ -2495,7 +2544,10 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   Widget _moreMenuOverlay() {
     final media = MediaQuery.of(context);
     final phoneFullscreen = _usesPhoneFullscreen(context);
-    final menuWidth = math.min(228.0, media.size.width - 24);
+    final menuWidth = math.min(212.0, media.size.width - 24);
+    final rtl = Directionality.of(context) == TextDirection.rtl;
+    final trailingSafeInset = rtl ? media.padding.left : media.padding.right;
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
     return Positioned.fill(
       child: Stack(
         children: [
@@ -2506,83 +2558,250 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
               onTap: _closeMoreMenu,
             ),
           ),
-          Positioned(
-            top: media.padding.top + (phoneFullscreen ? 56 : 94),
-            right: phoneFullscreen ? 10 : 30,
+          PositionedDirectional(
+            top: media.padding.top + (phoneFullscreen ? 54 : 88),
+            end: (phoneFullscreen ? 10 : 30) + trailingSafeInset,
             width: menuWidth,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: const Color(0xF21C1C1E),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x66000000),
-                    blurRadius: 24,
-                    offset: Offset(0, 10),
-                  ),
-                ],
+            child: TweenAnimationBuilder<double>(
+              duration: reduceMotion
+                  ? Duration.zero
+                  : const Duration(milliseconds: 140),
+              curve: Curves.easeOutCubic,
+              tween: Tween(begin: 0, end: 1),
+              builder: (context, progress, child) => Opacity(
+                opacity: progress,
+                child: Transform.scale(
+                  alignment: AlignmentDirectional.topEnd,
+                  scale: 0.96 + progress * 0.04,
+                  child: child,
+                ),
               ),
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    KeyedSubtree(
-                      key: const ValueKey('video-more-download'),
-                      child: SizedBox(
-                        width: double.infinity,
-                        child: _FocusableVideoActionButton(
-                          icon: HeroAppIcons.download,
-                          label: AppStringKeys.musicPlayerDownload.l10n(
-                            context,
+              child: KeyedSubtree(
+                key: const ValueKey('video-more-menu-surface'),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.13),
+                    ),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x73000000),
+                        blurRadius: 28,
+                        offset: Offset(0, 12),
+                      ),
+                    ],
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(1),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(13),
+                      child: ColoredBox(
+                        color: const Color(0xF21F1F21),
+                        child: Padding(
+                          padding: const EdgeInsets.all(5),
+                          child: FocusTraversalGroup(
+                            policy: OrderedTraversalPolicy(),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                KeyedSubtree(
+                                  key: const ValueKey('video-more-download'),
+                                  child: _FocusableVideoMenuItem(
+                                    icon: HeroAppIcons.download,
+                                    label: AppStringKeys.musicPlayerDownload
+                                        .l10n(context),
+                                    autofocus: true,
+                                    onPressed: () => _runMoreMenuAction(
+                                      () =>
+                                          unawaited(_downloadVideoForOffline()),
+                                    ),
+                                  ),
+                                ),
+                                const _VideoMenuSeparator(),
+                                KeyedSubtree(
+                                  key: const ValueKey(
+                                    'video-more-save-to-photos',
+                                  ),
+                                  child: _FocusableVideoMenuItem(
+                                    icon: HeroAppIcons.image,
+                                    label: AppStringKeys
+                                        .messageActionSaveToPhotos
+                                        .l10n(context),
+                                    onPressed: () => _runMoreMenuAction(
+                                      () => unawaited(_saveVideoToPhotos()),
+                                    ),
+                                  ),
+                                ),
+                                const _VideoMenuSeparator(),
+                                KeyedSubtree(
+                                  key: const ValueKey('video-more-share'),
+                                  child: _FocusableVideoMenuItem(
+                                    icon: HeroAppIcons.share,
+                                    label: AppStringKeys.topicChatShare.l10n(
+                                      context,
+                                    ),
+                                    onPressed: () => _runMoreMenuAction(
+                                      () => unawaited(_forwardVideo()),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                          onPressed: () => _runMoreMenuAction(
-                            () => unawaited(_downloadVideoForOffline()),
-                          ),
-                          primary: false,
-                          autofocus: true,
-                          fillWidth: true,
                         ),
                       ),
                     ),
-                    const SizedBox(height: 6),
-                    KeyedSubtree(
-                      key: const ValueKey('video-more-save-to-photos'),
-                      child: SizedBox(
-                        width: double.infinity,
-                        child: _FocusableVideoActionButton(
-                          icon: HeroAppIcons.image,
-                          label: AppStringKeys.messageActionSaveToPhotos.l10n(
-                            context,
-                          ),
-                          onPressed: () => _runMoreMenuAction(
-                            () => unawaited(_saveVideoToPhotos()),
-                          ),
-                          primary: false,
-                          autofocus: false,
-                          fillWidth: true,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _toggleModeMenu() {
+    _hideTimer?.cancel();
+    setState(() {
+      _modeMenuVisible = !_modeMenuVisible;
+      _moreMenuVisible = false;
+    });
+  }
+
+  void _closeModeMenu() {
+    if (!_modeMenuVisible) return;
+    setState(() => _modeMenuVisible = false);
+    if (_isDesktopPlatform) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _modeButtonFocusNode.requestFocus();
+      });
+    }
+    _scheduleHide();
+  }
+
+  void _selectDisplayMode(VideoDisplayMode mode) {
+    _closeModeMenu();
+    if (mode == widget.currentMode) return;
+    if (mode == VideoDisplayMode.pictureInPicture) {
+      unawaited(_enterPictureInPicture());
+      return;
+    }
+    widget.onSwitchMode?.call(mode);
+    _scheduleHide();
+  }
+
+  Widget _modeMenuOverlay() {
+    final media = MediaQuery.of(context);
+    final menuWidth = math.min(220.0, media.size.width - 24);
+    final rtl = Directionality.of(context) == TextDirection.rtl;
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    final options = <({VideoDisplayMode mode, AppIconData icon, String label})>[
+      if (widget.onSwitchMode != null ||
+          widget.currentMode == VideoDisplayMode.fullscreen)
+        (
+          mode: VideoDisplayMode.fullscreen,
+          icon: HeroAppIcons.expand,
+          label: AppStringKeys.videoPlayerFullscreen.l10n(context),
+        ),
+      if (widget.onSwitchMode != null)
+        (
+          mode: VideoDisplayMode.split,
+          icon: HeroAppIcons.tableColumns,
+          label: AppStringKeys.videoPlayerSplitScreen.l10n(context),
+        ),
+      if (_canOfferPictureInPicture ||
+          widget.currentMode == VideoDisplayMode.pictureInPicture)
+        (
+          mode: VideoDisplayMode.pictureInPicture,
+          icon: HeroAppIcons.pictureInPicture,
+          label: AppStringKeys.videoPlayerPictureInPicture.l10n(context),
+        ),
+    ];
+    return Positioned.fill(
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              excludeFromSemantics: true,
+              onTap: _closeModeMenu,
+            ),
+          ),
+          CompositedTransformFollower(
+            link: _modeButtonLink,
+            showWhenUnlinked: false,
+            targetAnchor: rtl ? Alignment.topLeft : Alignment.topRight,
+            followerAnchor: rtl ? Alignment.bottomLeft : Alignment.bottomRight,
+            offset: const Offset(0, -8),
+            child: SizedBox(
+              width: menuWidth,
+              child: TweenAnimationBuilder<double>(
+                duration: reduceMotion
+                    ? Duration.zero
+                    : const Duration(milliseconds: 120),
+                curve: Curves.easeOutCubic,
+                tween: Tween(begin: 0, end: 1),
+                builder: (context, progress, child) => Opacity(
+                  opacity: progress,
+                  child: Transform.scale(
+                    alignment: AlignmentDirectional.bottomEnd,
+                    scale: 0.97 + progress * 0.03,
+                    child: child,
+                  ),
+                ),
+                child: KeyedSubtree(
+                  key: const ValueKey('video-mode-menu-surface'),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: const Color(0xF21F1F21),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.13),
+                      ),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x73000000),
+                          blurRadius: 28,
+                          offset: Offset(0, 12),
+                        ),
+                      ],
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(5),
+                      child: FocusTraversalGroup(
+                        policy: OrderedTraversalPolicy(),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            for (
+                              var index = 0;
+                              index < options.length;
+                              index++
+                            ) ...[
+                              if (index > 0) const _VideoMenuSeparator(),
+                              KeyedSubtree(
+                                key: ValueKey(
+                                  'video-mode-${options[index].mode.name}',
+                                ),
+                                child: _FocusableVideoMenuItem(
+                                  icon: options[index].icon,
+                                  label: options[index].label,
+                                  selected:
+                                      options[index].mode == widget.currentMode,
+                                  autofocus:
+                                      options[index].mode == widget.currentMode,
+                                  onPressed: () =>
+                                      _selectDisplayMode(options[index].mode),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                       ),
                     ),
-                    const SizedBox(height: 6),
-                    KeyedSubtree(
-                      key: const ValueKey('video-more-share'),
-                      child: SizedBox(
-                        width: double.infinity,
-                        child: _FocusableVideoActionButton(
-                          icon: HeroAppIcons.share,
-                          label: AppStringKeys.topicChatShare.l10n(context),
-                          onPressed: () => _runMoreMenuAction(
-                            () => unawaited(_forwardVideo()),
-                          ),
-                          primary: false,
-                          autofocus: false,
-                          fillWidth: true,
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -2812,13 +3031,9 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                if (!pip && widget.onSwitchMode != null) ...[
+                if (_showsDisplayModeButton) ...[
                   const SizedBox(width: 8),
-                  _modeSwitchButton(size: 34),
-                ],
-                if (pip && widget.onSwitchMode != null) ...[
-                  const SizedBox(width: 8),
-                  _fullscreenButton(size: 34),
+                  _displayModeButton(size: 34),
                 ],
               ],
             );
@@ -2999,13 +3214,8 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
         if (!compact || width >= 220) {
           addAction(_speedMenu(compact: compact));
         }
-        if (widget.onSwitchMode != null && (!compact || width >= 240)) {
-          addAction(_modeSwitchButton(size: layout.actionButtonSize));
-        }
-        if (_showsSystemPictureInPictureButton && (!compact || width >= 300)) {
-          addAction(
-            _systemPictureInPictureButton(size: layout.actionButtonSize),
-          );
+        if (_showsDisplayModeButton && (!compact || width >= 240)) {
+          addAction(_displayModeButton(size: layout.actionButtonSize));
         }
         return Row(children: [const Spacer(), ...actions]);
       },
@@ -3030,20 +3240,8 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
             if (constraints.maxWidth < 220) {
               return _scrubber(c);
             }
-            final showSystemPiP =
-                !pip &&
-                _showsSystemPictureInPictureButton &&
-                constraints.maxWidth >= 360;
             return Row(
               children: [
-                if (!pip && widget.onSwitchMode != null) ...[
-                  _modeSwitchButton(size: 34),
-                  const SizedBox(width: 8),
-                ],
-                if (showSystemPiP) ...[
-                  _systemPictureInPictureButton(size: 34),
-                  const SizedBox(width: 8),
-                ],
                 Text(
                   _fmt(_displayPosition(c)),
                   style: const TextStyle(color: Colors.white70, fontSize: 11),
@@ -3065,9 +3263,9 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-                if (pip && widget.onSwitchMode != null) ...[
+                if (_showsDisplayModeButton) ...[
                   const SizedBox(width: 8),
-                  _fullscreenButton(size: 34),
+                  _displayModeButton(size: 34),
                 ],
               ],
             );
@@ -3480,47 +3678,91 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     );
   }
 
-  Widget _fullscreenButton({required double size}) {
-    final callback = widget.onSwitchMode;
-    if (callback == null) return const SizedBox.shrink();
-    return _roundIconButton(
-      HeroAppIcons.expand,
-      () {
-        callback(VideoDisplayMode.fullscreen);
-        _scheduleHide();
-      },
-      label: AppStringKeys.videoPlayerFullscreen.l10n(context),
-      size: size,
-    );
-  }
-
-  bool get _showsSystemPictureInPictureButton =>
+  bool get _canOfferPictureInPicture =>
       (widget.onSwitchMode != null ||
-          _systemPiPSupported ||
-          SystemPictureInPicture.isSupportedPlatform) &&
-      widget.presentation != VideoPlayerPresentation.pictureInPicture;
+      _systemPiPSupported ||
+      SystemPictureInPicture.isSupportedPlatform);
 
-  Widget _systemPictureInPictureButton({required double size}) {
-    if (!_showsSystemPictureInPictureButton) return const SizedBox.shrink();
-    final label = AppStringKeys.videoPlayerPictureInPicture.l10n(context);
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        _FocusableVideoIconButton(
-          icon: HeroAppIcons.pictureInPicture,
-          label: label,
-          enabled: !_systemPiPBusy,
-          onPressed: () {
-            unawaited(_enterPictureInPicture());
-            _scheduleHide();
-          },
-          size: Size.square(size),
-          iconSize: size * 0.5,
-          opacity: _systemPiPBusy ? 0 : 0.92,
-        ),
-        if (_systemPiPBusy)
-          IgnorePointer(child: _VideoLoadingRing(size: size * 0.42)),
-      ],
+  bool get _showsDisplayModeButton =>
+      widget.onSwitchMode != null || _canOfferPictureInPicture;
+
+  AppIconData get _displayModeIcon => switch (widget.currentMode) {
+    VideoDisplayMode.fullscreen => HeroAppIcons.expand,
+    VideoDisplayMode.pictureInPicture => HeroAppIcons.pictureInPicture,
+    VideoDisplayMode.split => HeroAppIcons.tableColumns,
+  };
+
+  Widget _displayModeButton({required double size}) {
+    if (!_showsDisplayModeButton) return const SizedBox.shrink();
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    final directFullscreenRestore =
+        widget.presentation == VideoPlayerPresentation.pictureInPicture &&
+        widget.onSwitchMode != null;
+    final currentModeLabel = switch (widget.currentMode) {
+      VideoDisplayMode.fullscreen => AppStringKeys.videoPlayerFullscreen.l10n(
+        context,
+      ),
+      VideoDisplayMode.pictureInPicture =>
+        AppStringKeys.videoPlayerPictureInPicture.l10n(context),
+      VideoDisplayMode.split => AppStringKeys.videoPlayerSplitScreen.l10n(
+        context,
+      ),
+    };
+    return CompositedTransformTarget(
+      link: _modeButtonLink,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          _FocusableVideoIconButton(
+            icon: directFullscreenRestore
+                ? HeroAppIcons.expand
+                : _displayModeIcon,
+            label:
+                (directFullscreenRestore
+                        ? AppStringKeys.videoPlayerFullscreen
+                        : AppStringKeys.videoPlayerToggleDisplayMode)
+                    .l10n(context),
+            enabled: !_systemPiPBusy,
+            onPressed: directFullscreenRestore
+                ? () => widget.onSwitchMode!(VideoDisplayMode.fullscreen)
+                : _toggleModeMenu,
+            size: Size.square(size),
+            iconSize: math.max(18, size * 0.44),
+            opacity: _systemPiPBusy ? 0 : 0.92,
+            backgroundColor: _modeMenuVisible
+                ? const Color(0xE238383A)
+                : const Color(0xB82C2C2E),
+            borderColor: Colors.white.withValues(
+              alpha: _modeMenuVisible ? 0.24 : 0.12,
+            ),
+            cornerRadius: math.max(22, size / 2),
+            focusNode: _modeButtonFocusNode,
+            semanticValue: directFullscreenRestore ? null : currentModeLabel,
+            expanded: directFullscreenRestore ? null : _modeMenuVisible,
+          ),
+          if (!_systemPiPBusy && !directFullscreenRestore)
+            PositionedDirectional(
+              end: math.max(6, size * 0.16),
+              bottom: math.max(6, size * 0.16),
+              child: IgnorePointer(
+                child: AnimatedRotation(
+                  turns: _modeMenuVisible ? 0.5 : 0,
+                  duration: reduceMotion
+                      ? Duration.zero
+                      : const Duration(milliseconds: 120),
+                  curve: Curves.easeOut,
+                  child: AppIcon(
+                    HeroAppIcons.chevronDown,
+                    color: Colors.white.withValues(alpha: 0.72),
+                    size: 8,
+                  ),
+                ),
+              ),
+            ),
+          if (_systemPiPBusy)
+            IgnorePointer(child: _VideoLoadingRing(size: size * 0.42)),
+        ],
+      ),
     );
   }
 
@@ -3541,20 +3783,6 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     if (callback != null) {
       callback(VideoDisplayMode.pictureInPicture);
     }
-  }
-
-  Widget _modeSwitchButton({double size = 50}) {
-    final callback = widget.onSwitchMode;
-    if (callback == null) return const SizedBox.shrink();
-    return _roundIconButton(
-      HeroAppIcons.tableColumns,
-      () {
-        callback(VideoDisplayMode.split);
-        _scheduleHide();
-      },
-      label: AppStringKeys.videoPlayerSplitScreen.l10n(context),
-      size: size,
-    );
   }
 
   bool get _showsNavigationControls =>
@@ -3597,6 +3825,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     VoidCallback onTap, {
     required String label,
     double size = 50,
+    FocusNode? focusNode,
   }) {
     return _FocusableVideoIconButton(
       icon: icon,
@@ -3605,6 +3834,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
       size: Size.square(size),
       iconSize: size * 0.5,
       opacity: 0.92,
+      focusNode: focusNode,
     );
   }
 
@@ -3886,6 +4116,9 @@ class _FocusableVideoIconButton extends StatefulWidget {
     this.backgroundColor = Colors.transparent,
     this.borderColor,
     this.cornerRadius = 10,
+    this.focusNode,
+    this.semanticValue,
+    this.expanded,
   });
 
   final AppIconData icon;
@@ -3899,6 +4132,9 @@ class _FocusableVideoIconButton extends StatefulWidget {
   final Color backgroundColor;
   final Color? borderColor;
   final double cornerRadius;
+  final FocusNode? focusNode;
+  final String? semanticValue;
+  final bool? expanded;
 
   @override
   State<_FocusableVideoIconButton> createState() =>
@@ -3916,6 +4152,7 @@ class _FocusableVideoIconButtonState extends State<_FocusableVideoIconButton> {
   Widget build(BuildContext context) {
     return FocusableActionDetector(
       enabled: widget.enabled,
+      focusNode: widget.focusNode,
       shortcuts: const <ShortcutActivator, Intent>{
         SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
         SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
@@ -3939,6 +4176,8 @@ class _FocusableVideoIconButtonState extends State<_FocusableVideoIconButton> {
         button: true,
         enabled: widget.enabled,
         label: widget.label,
+        value: widget.semanticValue,
+        expanded: widget.expanded,
         onTap: widget.enabled ? _activate : null,
         child: Opacity(
           opacity: widget.opacity,
@@ -3997,7 +4236,6 @@ class _FocusableVideoActionButton extends StatefulWidget {
     required this.primary,
     required this.autofocus,
     this.focusNode,
-    this.fillWidth = false,
   });
 
   final AppIconData icon;
@@ -4006,7 +4244,6 @@ class _FocusableVideoActionButton extends StatefulWidget {
   final bool primary;
   final bool autofocus;
   final FocusNode? focusNode;
-  final bool fillWidth;
 
   @override
   State<_FocusableVideoActionButton> createState() =>
@@ -4062,34 +4299,165 @@ class _FocusableVideoActionButtonState
               borderRadius: BorderRadius.circular(22),
             ),
             child: Row(
-              mainAxisSize: widget.fillWidth
-                  ? MainAxisSize.max
-                  : MainAxisSize.min,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 AppIcon(widget.icon, size: 18, color: foreground),
                 const SizedBox(width: 8),
-                if (widget.fillWidth)
-                  Expanded(
-                    child: Text(
-                      widget.label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: foreground,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  )
-                else
-                  Text(
-                    widget.label,
-                    style: TextStyle(
-                      color: foreground,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
+                Text(
+                  widget.label,
+                  style: TextStyle(
+                    color: foreground,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _VideoMenuSeparator extends StatelessWidget {
+  const _VideoMenuSeparator();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 1,
+      margin: const EdgeInsets.only(left: 44, right: 8),
+      color: Colors.white.withValues(alpha: 0.09),
+    );
+  }
+}
+
+class _FocusableVideoMenuItem extends StatefulWidget {
+  const _FocusableVideoMenuItem({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+    this.autofocus = false,
+    this.selected = false,
+  });
+
+  final AppIconData icon;
+  final String label;
+  final VoidCallback onPressed;
+  final bool autofocus;
+  final bool selected;
+
+  @override
+  State<_FocusableVideoMenuItem> createState() =>
+      _FocusableVideoMenuItemState();
+}
+
+class _FocusableVideoMenuItemState extends State<_FocusableVideoMenuItem> {
+  bool _focused = false;
+  bool _hovered = false;
+  bool _pressed = false;
+
+  void _activate() => widget.onPressed();
+
+  @override
+  Widget build(BuildContext context) {
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    final fillAlpha = _pressed
+        ? 0.14
+        : _focused
+        ? 0.13
+        : _hovered
+        ? 0.08
+        : widget.selected
+        ? 0.07
+        : 0.0;
+    return FocusableActionDetector(
+      autofocus: widget.autofocus,
+      shortcuts: const <ShortcutActivator, Intent>{
+        SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+        SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
+      },
+      actions: <Type, Action<Intent>>{
+        ActivateIntent: CallbackAction<ActivateIntent>(
+          onInvoke: (_) {
+            _activate();
+            return null;
+          },
+        ),
+      },
+      onShowFocusHighlight: (focused) {
+        if (_focused == focused) return;
+        setState(() => _focused = focused);
+      },
+      onShowHoverHighlight: (hovered) {
+        if (_hovered == hovered) return;
+        setState(() => _hovered = hovered);
+      },
+      mouseCursor: SystemMouseCursors.click,
+      child: Semantics(
+        button: true,
+        selected: widget.selected,
+        label: widget.label,
+        onTap: _activate,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          excludeFromSemantics: true,
+          onTapDown: (_) => setState(() => _pressed = true),
+          onTapUp: (_) => setState(() => _pressed = false),
+          onTapCancel: () => setState(() => _pressed = false),
+          onTap: _activate,
+          child: AnimatedContainer(
+            duration: reduceMotion
+                ? Duration.zero
+                : const Duration(milliseconds: 90),
+            curve: Curves.easeOut,
+            constraints: const BoxConstraints(minHeight: 48),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: fillAlpha),
+              border: Border.all(
+                color: _focused
+                    ? Colors.white.withValues(alpha: 0.72)
+                    : Colors.transparent,
+                width: 2,
+              ),
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 24,
+                  child: Center(
+                    child: AppIcon(
+                      widget.icon,
+                      color: Colors.white.withValues(alpha: 0.82),
+                      size: 20,
                     ),
                   ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    widget.label,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.96),
+                      fontSize: 14.5,
+                      height: 1.2,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                if (widget.selected) ...[
+                  const SizedBox(width: 8),
+                  AppIcon(
+                    HeroAppIcons.check,
+                    color: Colors.white.withValues(alpha: 0.92),
+                    size: 16,
+                  ),
+                ],
               ],
             ),
           ),

@@ -139,12 +139,17 @@ void main() {
 
         await tester.tap(_semanticsWidget('More'));
         await tester.pump();
+        await tester.pump(const Duration(milliseconds: 160));
         expect(tester.takeException(), isNull);
+        final menuSurface = find.byKey(
+          const ValueKey('video-more-menu-surface'),
+        );
         final download = find.byKey(const ValueKey('video-more-download'));
         final saveToPhotos = find.byKey(
           const ValueKey('video-more-save-to-photos'),
         );
         final share = find.byKey(const ValueKey('video-more-share'));
+        expect(menuSurface, findsOneWidget);
         expect(download, findsOneWidget);
         expect(saveToPhotos, findsOneWidget);
         expect(share, findsOneWidget);
@@ -163,14 +168,24 @@ void main() {
           find.descendant(of: share, matching: find.text('Share')),
           findsOneWidget,
         );
+        final menuRect = tester.getRect(menuSurface);
         final downloadRect = tester.getRect(download);
         final saveRect = tester.getRect(saveToPhotos);
         final shareRect = tester.getRect(share);
-        expect(downloadRect.top, greaterThanOrEqualTo(47 + 56 + 8));
-        expect(downloadRect.right, lessThanOrEqualTo(390 - 10 - 8));
+        expect(menuRect.left, 168);
+        expect(menuRect.top, 101);
+        expect(menuRect.width, 212);
+        expect(menuRect.height, inInclusiveRange(158, 180));
+        expect(downloadRect.height, greaterThanOrEqualTo(48));
+        expect(saveRect.height, greaterThanOrEqualTo(48));
+        expect(shareRect.height, greaterThanOrEqualTo(48));
+        expect(saveRect.top - downloadRect.bottom, 1);
+        expect(shareRect.top - saveRect.bottom, 1);
+        expect(downloadRect.top, greaterThanOrEqualTo(menuRect.top + 6));
+        expect(downloadRect.right, lessThanOrEqualTo(menuRect.right - 6));
         expect(downloadRect.left, greaterThanOrEqualTo(8));
-        expect(downloadRect.bottom, lessThanOrEqualTo(saveRect.top));
-        expect(saveRect.bottom, lessThanOrEqualTo(shareRect.top));
+        expect(downloadRect.bottom, lessThan(saveRect.top));
+        expect(saveRect.bottom, lessThan(shareRect.top));
         expect(shareRect.bottom, lessThanOrEqualTo(844 - 34));
         await tester.tapAt(const Offset(20, 200));
         await tester.pump();
@@ -286,6 +301,178 @@ void main() {
       }
     },
   );
+
+  testWidgets(
+    'single display-mode button exposes a compact stateful chooser and PiP',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.padding = const FakeViewPadding(top: 47, bottom: 34);
+      tester.view.viewPadding = const FakeViewPadding(top: 47, bottom: 34);
+      addTearDown(() {
+        tester.view.resetDevicePixelRatio();
+        tester.view.resetPhysicalSize();
+        tester.view.resetPadding();
+        tester.view.resetViewPadding();
+      });
+
+      final previousPlatform = VideoPlayerPlatform.instance;
+      final platform = _FakeMobileVideoPlatform();
+      VideoPlayerPlatform.instance = platform;
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      try {
+        SharedPreferences.setMockInitialValues(const {});
+        final sourcePath = File('pubspec.yaml').absolute.path;
+        var currentMode = VideoDisplayMode.fullscreen;
+        final requestedModes = <VideoDisplayMode>[];
+        await tester.pumpWidget(
+          MaterialApp(
+            locale: const Locale('en'),
+            localizationsDelegates: const [AppLocalizations.delegate],
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: StatefulBuilder(
+              builder: (context, setState) => Scaffold(
+                body: VideoPlayerView(
+                  video: TdFileRef(id: 704, localPath: sourcePath),
+                  width: 1920,
+                  height: 1080,
+                  currentMode: currentMode,
+                  onSwitchMode: (mode) {
+                    requestedModes.add(mode);
+                    setState(() => currentMode = mode);
+                  },
+                  onClose: () {},
+                  streamQuery: _completedVideoQuery(sourcePath, fileId: 704),
+                ),
+              ),
+            ),
+          ),
+        );
+        await _pumpUntilPlayerReady(tester);
+
+        final modeButton = _semanticsWidget('Switch display mode');
+        expect(modeButton, findsOneWidget);
+        var modeButtonSemantics = tester.widget<Semantics>(modeButton);
+        expect(modeButtonSemantics.properties.value, 'Fullscreen');
+        expect(modeButtonSemantics.properties.expanded, isFalse);
+        expect(_semanticsWidget('Fullscreen'), findsNothing);
+        expect(_semanticsWidget('Split Screen'), findsNothing);
+        expect(_semanticsWidget('Picture in Picture'), findsNothing);
+
+        await tester.tap(modeButton);
+        await tester.pump(const Duration(milliseconds: 140));
+
+        expect(_selectedSemanticsWidget('Fullscreen'), findsOneWidget);
+        expect(_semanticsWidget('Split Screen'), findsOneWidget);
+        expect(_semanticsWidget('Picture in Picture'), findsOneWidget);
+        modeButtonSemantics = tester.widget<Semantics>(modeButton);
+        expect(modeButtonSemantics.properties.expanded, isTrue);
+        final chooserRect = tester.getRect(
+          find.byKey(const ValueKey('video-mode-menu-surface')),
+        );
+        final modeButtonRect = tester.getRect(modeButton);
+        expect(chooserRect.bottom, closeTo(modeButtonRect.top - 8, 0.01));
+        final optionBounds = <Rect>[
+          tester.getRect(_semanticsWidget('Fullscreen')),
+          tester.getRect(_semanticsWidget('Split Screen')),
+          tester.getRect(_semanticsWidget('Picture in Picture')),
+        ].reduce((bounds, option) => bounds.expandToInclude(option));
+        expect(optionBounds.width, lessThanOrEqualTo(260));
+        expect(optionBounds.height, lessThanOrEqualTo(180));
+        expect(optionBounds.left, greaterThanOrEqualTo(8));
+        expect(optionBounds.right, lessThanOrEqualTo(382));
+        expect(optionBounds.top, greaterThanOrEqualTo(47));
+        expect(optionBounds.bottom, lessThanOrEqualTo(810));
+
+        await tester.tap(_semanticsWidget('Split Screen'));
+        await tester.pump();
+        expect(requestedModes, [VideoDisplayMode.split]);
+        expect(_semanticsWidget('Split Screen'), findsNothing);
+
+        await tester.tap(modeButton);
+        await tester.pump(const Duration(milliseconds: 140));
+        modeButtonSemantics = tester.widget<Semantics>(modeButton);
+        expect(modeButtonSemantics.properties.value, 'Split Screen');
+        expect(_selectedSemanticsWidget('Split Screen'), findsOneWidget);
+
+        await tester.tap(_semanticsWidget('Picture in Picture'));
+        await tester.pump();
+        expect(requestedModes, [
+          VideoDisplayMode.split,
+          VideoDisplayMode.pictureInPicture,
+        ]);
+        expect(_semanticsWidget('Picture in Picture'), findsNothing);
+        expect(tester.takeException(), isNull);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await _pumpUntilDisposed(tester, platform);
+        expect(platform.disposeCalls, 1);
+      } finally {
+        VideoPlayerPlatform.instance = previousPlatform;
+        debugDefaultTargetPlatformOverride = null;
+      }
+    },
+  );
+
+  testWidgets('default horizontal swipes navigate previous and next', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(() {
+      tester.view.resetDevicePixelRatio();
+      tester.view.resetPhysicalSize();
+    });
+
+    final previousPlatform = VideoPlayerPlatform.instance;
+    final platform = _FakeMobileVideoPlatform();
+    VideoPlayerPlatform.instance = platform;
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    try {
+      SharedPreferences.setMockInitialValues(const {});
+      final sourcePath = File('pubspec.yaml').absolute.path;
+      final navigation = <int>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: const [AppLocalizations.delegate],
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: VideoPlayerView(
+              video: TdFileRef(id: 706, localPath: sourcePath),
+              width: 1920,
+              height: 1080,
+              previousVideo: VideoPlaybackItem(video: TdFileRef(id: 705)),
+              nextVideo: VideoPlaybackItem(video: TdFileRef(id: 707)),
+              onNavigate: navigation.add,
+              onSwitchMode: (_) {},
+              onClose: () {},
+              streamQuery: _completedVideoQuery(sourcePath, fileId: 706),
+            ),
+          ),
+        ),
+      );
+      await _pumpUntilPlayerReady(tester);
+      await tester.pump();
+
+      await tester.dragFrom(const Offset(320, 355), const Offset(-90, 0));
+      await tester.pump();
+      expect(navigation, [1]);
+
+      await tester.dragFrom(const Offset(70, 355), const Offset(90, 0));
+      await tester.pump();
+      expect(navigation, [1, -1]);
+      expect(tester.takeException(), isNull);
+      await tester.pump(const Duration(milliseconds: 50));
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await _pumpUntilDisposed(tester, platform);
+      expect(platform.disposeCalls, 1);
+    } finally {
+      VideoPlayerPlatform.instance = previousPlatform;
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
 
   testWidgets('iOS sparse files retain the loopback network controller', (
     tester,
@@ -592,6 +779,13 @@ final Finder _compactScrubPreview = find.byWidgetPredicate(
 
 Finder _semanticsWidget(String label) => find.byWidgetPredicate(
   (widget) => widget is Semantics && widget.properties.label == label,
+);
+
+Finder _selectedSemanticsWidget(String label) => find.byWidgetPredicate(
+  (widget) =>
+      widget is Semantics &&
+      widget.properties.label == label &&
+      widget.properties.selected == true,
 );
 
 Matcher closeToDuration(Duration expected) => predicate<Duration>(
