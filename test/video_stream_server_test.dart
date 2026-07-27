@@ -30,6 +30,28 @@ void main() {
     },
   );
 
+  test('positive exact size wins over a larger expected size', () async {
+    final fixture = await _VideoServerFixture.create(
+      bytes: List<int>.generate(64, (index) => index),
+      totalBytes: 64,
+      expectedBytes: 1000000,
+      maxResponseBytes: 16,
+    );
+    try {
+      final response = await fixture.get(range: 'bytes=48-63');
+
+      expect(response.statusCode, HttpStatus.partialContent);
+      expect(response.contentLength, 16);
+      expect(
+        response.headers.value(HttpHeaders.contentRangeHeader),
+        'bytes 48-63/64',
+      );
+      expect(await _readBody(response), fixture.bytes.sublist(48, 64));
+    } finally {
+      await fixture.close();
+    }
+  });
+
   test('an incomplete file stays on its loopback range source', () async {
     final fixture = await _VideoServerFixture.create(
       bytes: List<int>.generate(64, (index) => index),
@@ -54,6 +76,110 @@ void main() {
       await fixture.close();
     }
   });
+
+  test(
+    'prepareForPlayback waits for bounded head and tail bootstrap ranges',
+    () async {
+      final fixture = await _PlaybackBootstrapFixture.create();
+      var preparationCompleted = false;
+      try {
+        final preparation = fixture.server.prepareForPlayback().whenComplete(
+          () => preparationCompleted = true,
+        );
+
+        await _waitFor(() => fixture.backend.boundedRequests.isNotEmpty);
+        expect(
+          fixture.backend.boundedRequests.first,
+          containsPair('offset', 0),
+        );
+        expect(
+          fixture.backend.boundedRequests.first,
+          containsPair('limit', 2 * 1024 * 1024),
+        );
+        expect(
+          fixture.backend.boundedRequests.first,
+          containsPair('synchronous', true),
+        );
+        expect(preparationCompleted, isFalse);
+        expect(
+          fixture.backend.unlimitedRequests,
+          0,
+          reason: 'bootstrap must contain only bounded TDLib requests',
+        );
+
+        fixture.backend.completeBounded(0);
+        await _waitFor(() => fixture.backend.boundedRequests.length == 2);
+        expect(
+          fixture.backend.boundedRequests[1],
+          containsPair(
+            'offset',
+            _PlaybackBootstrapFixture.totalBytes - 4 * 1024 * 1024,
+          ),
+        );
+        expect(
+          fixture.backend.boundedRequests[1],
+          containsPair('limit', 4 * 1024 * 1024),
+        );
+        expect(
+          fixture.backend.boundedRequests[1],
+          containsPair('synchronous', true),
+        );
+        expect(preparationCompleted, isFalse);
+        expect(fixture.backend.unlimitedRequests, 0);
+
+        fixture.backend.completeBounded(1);
+        await preparation;
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+
+        expect(preparationCompleted, isTrue);
+        expect(fixture.backend.boundedRequests, hasLength(2));
+        expect(
+          fixture.backend.unlimitedRequests,
+          0,
+          reason: 'preparation alone must not start a background download',
+        );
+      } finally {
+        await fixture.close();
+      }
+    },
+  );
+
+  test(
+    'background download requested during preparation waits for bounded work',
+    () async {
+      final fixture = await _PlaybackBootstrapFixture.create();
+      try {
+        final preparation = fixture.server.prepareForPlayback();
+        await _waitFor(() => fixture.backend.boundedRequests.isNotEmpty);
+
+        fixture.server.startBackgroundDownload();
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        expect(
+          fixture.backend.unlimitedRequests,
+          0,
+          reason: 'the head bootstrap range is still pending',
+        );
+
+        fixture.backend.completeBounded(0);
+        await _waitFor(() => fixture.backend.boundedRequests.length == 2);
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        expect(
+          fixture.backend.unlimitedRequests,
+          0,
+          reason: 'the tail bootstrap range is still pending',
+        );
+
+        fixture.backend.completeBounded(1);
+        await preparation;
+        await _waitFor(() => fixture.backend.unlimitedRequests == 1);
+
+        expect(fixture.backend.boundedRequests, hasLength(2));
+        expect(fixture.backend.unlimitedRequests, 1);
+      } finally {
+        await fixture.close();
+      }
+    },
+  );
 
   test('identical concurrent ranges share one bounded TDLib request', () async {
     late _ControlledRangeBackend backend;
@@ -115,6 +241,7 @@ void main() {
               backend.prefixOffsets.contains(16),
         );
         await _waitFor(() => backend.boundedRequests.isNotEmpty);
+        fixture.server.startBackgroundDownload();
         await Future<void>.delayed(const Duration(milliseconds: 10));
         expect(backend.unlimitedRequests, 0);
 
@@ -309,6 +436,7 @@ final class _VideoServerFixture {
     required List<int> bytes,
     required int totalBytes,
     required int maxResponseBytes,
+    int? expectedBytes,
     int? reportedReadableBytes,
     TdVideoStreamQuery Function(File file)? queryBuilder,
   }) async {
@@ -320,6 +448,7 @@ final class _VideoServerFixture {
     final backend = _FakeTdVideoBackend(
       file: file,
       totalBytes: totalBytes,
+      expectedBytes: expectedBytes ?? totalBytes,
       reportedReadableBytes: reportedReadableBytes ?? bytes.length,
     );
     final server = TdVideoStreamServer(
@@ -372,11 +501,13 @@ final class _FakeTdVideoBackend {
   const _FakeTdVideoBackend({
     required this.file,
     required this.totalBytes,
+    required this.expectedBytes,
     required this.reportedReadableBytes,
   });
 
   final File file;
   final int totalBytes;
+  final int expectedBytes;
   final int reportedReadableBytes;
 
   Future<Map<String, dynamic>> query(Map<String, dynamic> request) async {
@@ -399,7 +530,7 @@ final class _FakeTdVideoBackend {
     '@type': 'file',
     'id': 42,
     'size': totalBytes,
-    'expected_size': totalBytes,
+    'expected_size': expectedBytes,
     'local': {
       '@type': 'localFile',
       'path': file.path,
@@ -467,6 +598,130 @@ final class _ControlledRangeBackend {
       'path': file.path,
       'download_offset': 0,
       'downloaded_prefix_size': readableBytes,
+      'is_downloading_completed': false,
+    },
+  };
+}
+
+final class _PlaybackBootstrapFixture {
+  _PlaybackBootstrapFixture._({
+    required this.directory,
+    required this.server,
+    required this.backend,
+  });
+
+  static const totalBytes = 10 * 1024 * 1024;
+
+  final Directory directory;
+  final TdVideoStreamServer server;
+  final _PlaybackBootstrapBackend backend;
+
+  static Future<_PlaybackBootstrapFixture> create() async {
+    final directory = await Directory.systemTemp.createTemp(
+      'mithka-video-bootstrap-test-',
+    );
+    final file = File('${directory.path}/video.mp4');
+    final handle = await file.open(mode: FileMode.write);
+    await handle.truncate(totalBytes);
+    await handle.close();
+    final backend = _PlaybackBootstrapBackend(
+      file: file,
+      totalBytes: totalBytes,
+    );
+    final server = TdVideoStreamServer(
+      42,
+      query: backend.query,
+      rangeWaitTimeout: const Duration(seconds: 1),
+      rangePollInterval: const Duration(milliseconds: 1),
+    );
+    final uri = await server.start();
+    if (uri == null) {
+      await directory.delete(recursive: true);
+      throw StateError('The video stream server did not start');
+    }
+    return _PlaybackBootstrapFixture._(
+      directory: directory,
+      server: server,
+      backend: backend,
+    );
+  }
+
+  Future<void> close() async {
+    backend.completeAllBounded();
+    await server.close();
+    if (await directory.exists()) await directory.delete(recursive: true);
+  }
+}
+
+final class _PlaybackBootstrapBackend {
+  _PlaybackBootstrapBackend({required this.file, required this.totalBytes});
+
+  final File file;
+  final int totalBytes;
+  final boundedRequests = <Map<String, dynamic>>[];
+  final _boundedGates = <Completer<void>>[];
+  final _readableRanges = <(int, int)>[];
+  var unlimitedRequests = 0;
+
+  Future<Map<String, dynamic>> query(Map<String, dynamic> request) async {
+    switch (request['@type']) {
+      case 'getFile':
+        return _fileInfo();
+      case 'getFileDownloadedPrefixSize':
+        final offset = request['offset'] as int? ?? 0;
+        return {
+          '@type': 'fileDownloadedPrefixSize',
+          'size': _readablePrefixFrom(offset),
+        };
+      case 'downloadFile':
+        final limit = request['limit'] as int? ?? 0;
+        if (limit == 0) {
+          unlimitedRequests++;
+          return _fileInfo();
+        }
+        final copy = Map<String, dynamic>.from(request);
+        final gate = Completer<void>();
+        boundedRequests.add(copy);
+        _boundedGates.add(gate);
+        await gate.future;
+        final offset = copy['offset'] as int? ?? 0;
+        _readableRanges.add((offset, offset + limit));
+        return _fileInfo();
+      default:
+        throw UnsupportedError('Unexpected TDLib query ${request['@type']}');
+    }
+  }
+
+  void completeBounded(int index) {
+    final gate = _boundedGates[index];
+    if (!gate.isCompleted) gate.complete();
+  }
+
+  void completeAllBounded() {
+    for (final gate in _boundedGates) {
+      if (!gate.isCompleted) gate.complete();
+    }
+  }
+
+  int _readablePrefixFrom(int offset) {
+    for (final (start, end) in _readableRanges) {
+      if (start <= offset && offset < end) return end - offset;
+    }
+    return 0;
+  }
+
+  int get _downloadedHeadBytes => _readablePrefixFrom(0);
+
+  Map<String, dynamic> _fileInfo() => {
+    '@type': 'file',
+    'id': 42,
+    'size': totalBytes,
+    'expected_size': totalBytes,
+    'local': {
+      '@type': 'localFile',
+      'path': file.path,
+      'download_offset': 0,
+      'downloaded_prefix_size': _downloadedHeadBytes,
       'is_downloading_completed': false,
     },
   };

@@ -469,16 +469,14 @@ enum _SearchTab {
   voice;
 
   String get label => switch (this) {
-    _SearchTab.chats => AppStrings.t(AppStringKeys.audioSearchChatTab),
-    _SearchTab.miniApps => 'Mini App',
-    _SearchTab.posts => telegramText(
-      AppStringKeys.chatSearchMessageResultLabel,
-    ).replaceAll('[', '').replaceAll(']', ''),
-    _SearchTab.media => telegramText(AppStringKeys.sharedMediaPhotosAndVideos),
-    _SearchTab.links => telegramText(AppStringKeys.sharedMediaLinks),
-    _SearchTab.files => telegramText(AppStringKeys.topicPostContentFile),
-    _SearchTab.music => AppStrings.t(AppStringKeys.profileDetailMusic),
-    _SearchTab.voice => telegramText(AppStringKeys.sharedMediaVoice),
+    _SearchTab.chats => AppStrings.t(AppStringKeys.searchTabChats),
+    _SearchTab.miniApps => AppStrings.t(AppStringKeys.searchTabMiniApps),
+    _SearchTab.posts => AppStrings.t(AppStringKeys.searchTabMessages),
+    _SearchTab.media => AppStrings.t(AppStringKeys.searchTabMedia),
+    _SearchTab.links => AppStrings.t(AppStringKeys.searchTabLinks),
+    _SearchTab.files => AppStrings.t(AppStringKeys.searchTabFiles),
+    _SearchTab.music => AppStrings.t(AppStringKeys.searchTabMusic),
+    _SearchTab.voice => AppStrings.t(AppStringKeys.searchTabVoiceMessages),
   };
 
   String? get filter => switch (this) {

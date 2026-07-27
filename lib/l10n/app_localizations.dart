@@ -2213,6 +2213,14 @@ abstract final class AppStringKeys {
   static const sensitiveContentUnblockMessage =
       'sensitiveContentUnblockMessage';
   static const sensitiveContentUnblockTitle = 'sensitiveContentUnblockTitle';
+  static const searchTabChats = 'searchTabChats';
+  static const searchTabFiles = 'searchTabFiles';
+  static const searchTabLinks = 'searchTabLinks';
+  static const searchTabMedia = 'searchTabMedia';
+  static const searchTabMessages = 'searchTabMessages';
+  static const searchTabMiniApps = 'searchTabMiniApps';
+  static const searchTabMusic = 'searchTabMusic';
+  static const searchTabVoiceMessages = 'searchTabVoiceMessages';
   static const settingsAboutMithka = 'settingsAboutMithka';
   static const settingsLogOut = 'settingsLogOut';
   static const sharedMediaCacheDeleted = 'sharedMediaCacheDeleted';

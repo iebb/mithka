@@ -696,6 +696,118 @@ msgOutBg: #f3b4bd;
     expect(theme.uiColors.pinnedRow.a, 1);
   });
 
+  test('vivid imported divider becomes a quiet structural separator', () {
+    const surface = Color(0xFF242D4B);
+    const theme = TelegramCloudTheme(
+      slug: 'MeowChristmas3',
+      rawTitle: 'MeowChristmas3',
+      baseTheme: 'builtInThemeNight',
+      accentColorValue: 0xFFF9F7F4,
+      outgoingColors: [0xD0313D66],
+      palette: {'windowBackgroundWhite': 0xFF242D4B, 'divider': 0xA92EA430},
+    );
+
+    expect(
+      theme.uiColors.divider,
+      Color.alphaBlend(
+        readableForeground(surface).withValues(alpha: 0.12),
+        surface,
+      ),
+    );
+    expect(theme.uiColors.divider.a, 1);
+  });
+
+  test('subtle imported divider remains theme-authored', () {
+    const divider = Color(0xFF30384F);
+    const theme = TelegramCloudTheme(
+      slug: 'SubtleDivider',
+      rawTitle: 'Subtle divider',
+      baseTheme: 'builtInThemeNight',
+      accentColorValue: 0xFF80C0FF,
+      outgoingColors: [0xFF80C0FF],
+      palette: {'windowBackgroundWhite': 0xFF242D4B, 'divider': 0xFF30384F},
+    );
+
+    expect(theme.uiColors.divider, divider);
+  });
+
+  test('vivid divider is stable over a translucent imported surface', () {
+    const importedSurface = Color(0x80242D4B);
+    const theme = TelegramCloudTheme(
+      slug: 'TranslucentSurface',
+      rawTitle: 'Translucent surface',
+      baseTheme: 'builtInThemeNight',
+      accentColorValue: 0xFFF9F7F4,
+      outgoingColors: [0xD0313D66],
+      palette: {'windowBackgroundWhite': 0x80242D4B, 'divider': 0xA92EA430},
+    );
+    final background = Color.alphaBlend(
+      importedSurface,
+      AppColors.dark.background,
+    );
+    final surface = Color.alphaBlend(importedSurface, background);
+
+    expect(
+      theme.uiColors.divider,
+      Color.alphaBlend(
+        readableForeground(surface).withValues(alpha: 0.12),
+        surface,
+      ),
+    );
+    expect(theme.uiColors.divider.a, 1);
+  });
+
+  test('vivid same-hue divider is still treated as structural', () {
+    const surface = Color(0xFF101B33);
+    const theme = TelegramCloudTheme(
+      slug: 'BlueStructure',
+      rawTitle: 'Blue structure',
+      baseTheme: 'builtInThemeNight',
+      accentColorValue: 0xFF7CA9FF,
+      outgoingColors: [0xFF235DD4],
+      palette: {'windowBackgroundWhite': 0xFF101B33, 'divider': 0xFF235DD4},
+    );
+
+    expect(
+      theme.uiColors.divider,
+      Color.alphaBlend(
+        readableForeground(surface).withValues(alpha: 0.12),
+        surface,
+      ),
+    );
+  });
+
+  test(
+    'identical grouped and card colors retain a rounded-card silhouette',
+    () {
+      const surface = Color(0xFF242D4B);
+      const theme = TelegramCloudTheme(
+        slug: 'MeowChristmas3',
+        rawTitle: 'MeowChristmas3',
+        baseTheme: 'builtInThemeNight',
+        accentColorValue: 0xFFF9F7F4,
+        outgoingColors: [0xD0313D66],
+        palette: {
+          'windowBackgroundWhite': 0xFF242D4B,
+          'windowBackgroundGray': 0xFF242D4B,
+        },
+      );
+
+      expect(theme.uiColors.card, surface);
+      expect(
+        theme.uiColors.groupedBackground,
+        Color.alphaBlend(
+          const Color(0xFF000000).withValues(alpha: 0.12),
+          surface,
+        ),
+      );
+      expect(
+        theme.uiColors.groupedBackground.computeLuminance(),
+        lessThan(theme.uiColors.card.computeLuminance()),
+      );
+    },
+  );
+
   test(
     'built-in tint updates reusable UI accent and survives persistence',
     () async {

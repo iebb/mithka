@@ -6,6 +6,7 @@ import 'package:mithka/chat/music_playlist_service.dart';
 import 'package:mithka/chat/shared_media_view.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/tdlib/td_models.dart';
+import 'package:mithka/theme/app_theme.dart';
 import 'package:mithka/theme/theme_controller.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -17,7 +18,11 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
     final theme = ThemeController(prefs);
-    addTearDown(theme.dispose);
+    theme.brandColor = const Color(0xFFF9F7F4);
+    addTearDown(() {
+      AppTheme.applyBrand(const Color(0xFF0099FF));
+      theme.dispose();
+    });
 
     await tester.pumpWidget(
       ChangeNotifierProvider<ThemeController>.value(
@@ -37,6 +42,12 @@ void main() {
     expect(
       tester.getCenter(find.text('All')).dy,
       greaterThan(tester.getCenter(find.text('File')).dy),
+    );
+    final selectedFilter = tester.widget<Text>(find.text('All'));
+    expect(selectedFilter.style?.color, AppTheme.onBrand);
+    expect(
+      _contrastRatio(AppTheme.brand, AppTheme.onBrand),
+      greaterThanOrEqualTo(4.5),
     );
   });
 
@@ -123,4 +134,14 @@ void main() {
         .reduce((a, b) => a > b ? a : b);
     expect(playerBottom, lessThan(bottomPlaylistLabel));
   });
+}
+
+double _contrastRatio(Color first, Color second) {
+  final lighter = first.computeLuminance() > second.computeLuminance()
+      ? first.computeLuminance()
+      : second.computeLuminance();
+  final darker = first.computeLuminance() > second.computeLuminance()
+      ? second.computeLuminance()
+      : first.computeLuminance();
+  return (lighter + 0.05) / (darker + 0.05);
 }

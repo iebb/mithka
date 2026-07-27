@@ -71,12 +71,15 @@ class TdVideoStreamServer {
   int _downloadedPrefixSize = 0;
   bool _downloadComplete = false;
   bool _closed = false;
+  bool _backgroundDownloadRequested = false;
+  int _playbackPreparationCount = 0;
   int? _continuousDownloadOffset;
   Future<void> _downloadQueue = Future<void>.value();
   final Map<(int, int), Future<Map<String, dynamic>?>> _rangeDownloads = {};
 
   static const _chunkSize = 2 * 1024 * 1024;
   static const _defaultMaxResponseBytes = 2 * 1024 * 1024;
+  static const _metadataTailSize = 4 * 1024 * 1024;
 
   Future<Uri?> start() async {
     if (_closed) return null;
@@ -97,7 +100,6 @@ class TdVideoStreamServer {
       } catch (_) {}
     }
     if (_closed || _total <= 0) return null;
-
     final server = await HttpServer.bind(
       InternetAddress.loopbackIPv4,
       0,
@@ -118,8 +120,34 @@ class TdVideoStreamServer {
     _server = null;
   }
 
+  /// Makes the MP4 header and trailing metadata readable before a native
+  /// player probes the loopback URL. Many Telegram videos keep the `moov` atom
+  /// at EOF; exposing the URL before both ranges exist makes a transient TDLib
+  /// range miss look like an unsupported file to native media backends.
+  Future<bool> prepareForPlayback() async {
+    if (_closed || _total <= 0) return false;
+    _playbackPreparationCount++;
+    try {
+      final headEnd = math.min(_total - 1, _chunkSize - 1);
+      if (!await _ensureRange(0, headEnd)) return false;
+      final tailStart = math.max(0, _total - _metadataTailSize);
+      return await _ensureRange(tailStart, _total - 1);
+    } finally {
+      _playbackPreparationCount--;
+      if (_playbackPreparationCount == 0 &&
+          _backgroundDownloadRequested &&
+          _rangeDownloads.isEmpty) {
+        unawaited(_startContinuousDownload(0));
+      }
+    }
+  }
+
   void startBackgroundDownload() {
-    unawaited(_startContinuousDownload(0));
+    if (_closed || _downloadComplete) return;
+    _backgroundDownloadRequested = true;
+    if (_playbackPreparationCount == 0 && _rangeDownloads.isEmpty) {
+      unawaited(_startContinuousDownload(0));
+    }
   }
 
   /// Creates TDLib's partial file using a bounded request. Keeping the first
@@ -145,8 +173,8 @@ class TdVideoStreamServer {
   void _updateFileInfo(Map<String, dynamic> file) {
     final expected = file.integer('expected_size') ?? 0;
     final size = file.integer('size') ?? 0;
-    if (expected > 0 || size > 0) {
-      _total = expected > 0 ? expected : size;
+    if (size > 0 || expected > 0) {
+      _total = size > 0 ? size : expected;
     }
     final path = file.obj('local')?.str('path');
     if (path != null && path.isNotEmpty) _path = path;
@@ -164,7 +192,14 @@ class TdVideoStreamServer {
   }
 
   Future<void> _startContinuousDownload(int offset) async {
-    if (_closed || _downloadComplete) return;
+    if (_closed ||
+        _downloadComplete ||
+        !_backgroundDownloadRequested ||
+        _playbackPreparationCount > 0 ||
+        _rangeDownloads.isNotEmpty ||
+        _continuousDownloadOffset == offset) {
+      return;
+    }
     _continuousDownloadOffset = offset;
     try {
       final file = await _query({
@@ -412,7 +447,11 @@ class TdVideoStreamServer {
         if (identical(_rangeDownloads[key], task)) {
           _rangeDownloads.remove(key);
         }
-        if (!_closed && _rangeDownloads.isEmpty && !_downloadComplete) {
+        if (!_closed &&
+            _backgroundDownloadRequested &&
+            _playbackPreparationCount == 0 &&
+            _rangeDownloads.isEmpty &&
+            !_downloadComplete) {
           unawaited(_startContinuousDownload(0));
         }
       }),
@@ -748,6 +787,10 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   int _lastSavedPositionMs = 0;
   TdVideoStreamServer? _streamServer;
   bool _openedCompletedLocalFile = false;
+  bool _streamRecoveryInFlight = false;
+  int _automaticStreamRecoveryCount = 0;
+  bool _lastKnownPlaybackWasPlaying = false;
+  Duration _lastKnownPlaybackPosition = Duration.zero;
   bool _systemPiPHandoff = false;
   bool _systemPiPUsesActivePlayer = false;
   bool _systemPiPSupported = false;
@@ -810,6 +853,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   void initState() {
     super.initState();
     _brightnessSession = PlayerBrightnessSession.capture();
+    _lastKnownPlaybackWasPlaying = widget.initialPlaying;
     if (widget.initialMuted) _volume = 0;
     if (widget.initialSpeed.isFinite && widget.initialSpeed > 0) {
       _speed = widget.initialSpeed;
@@ -868,10 +912,22 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
       showToast(context, AppStringKeys.videoPlayerLoadFailed);
       return;
     }
-    server.startBackgroundDownload();
     _localPath = uri.toString();
-    final initialized = await _initializeFromUri(uri);
-    if (initialized || !mounted) return;
+    var prepared = await server.prepareForPlayback();
+    if (!mounted) return;
+    var initialized = prepared && await _initializeFromUri(uri);
+    if (!initialized && mounted) {
+      // A player probe can still lose a TDLib request race to an existing
+      // download from another view. Revalidate the bootstrap ranges and retry
+      // inside this route instead of requiring the user to close and reopen it.
+      prepared = await server.prepareForPlayback();
+      if (prepared && mounted) initialized = await _initializeFromUri(uri);
+    }
+    if (initialized) {
+      server.startBackgroundDownload();
+      return;
+    }
+    if (!mounted) return;
     setState(() => _failed = true);
     showToast(context, AppStringKeys.videoPlayerCannotPlay);
   }
@@ -893,7 +949,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
       if (length <= 0) return null;
       final expected = file.integer('expected_size') ?? 0;
       final size = file.integer('size') ?? 0;
-      final total = expected > 0 ? expected : size;
+      final total = size > 0 ? size : expected;
       if (total > 0 && length < total) return null;
       _progress = TdFileProgress(
         fileId: widget.video.id,
@@ -918,18 +974,31 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     return _initializeController(VideoPlayerController.networkUrl(uri));
   }
 
-  Future<bool> _initializeController(VideoPlayerController c) async {
+  Future<bool> _initializeController(
+    VideoPlayerController c, {
+    Duration? resumeOverride,
+    bool? playOverride,
+  }) async {
     try {
       await c.initialize().timeout(const Duration(seconds: 45));
       await c.setLooping(false);
       await c.setPlaybackSpeed(_speed);
       await c.setVolume(_volume);
-      final resume = widget.initialPosition == null
+      final resume = resumeOverride != null
+          ? _clampPlaybackPosition(resumeOverride, c.value.duration)
+          : widget.initialPosition == null
           ? await _loadResumePosition(c.value.duration)
           : _clampPlaybackPosition(widget.initialPosition!, c.value.duration);
       if (resume > Duration.zero) await c.seekTo(resume);
-      if (widget.initialPlaying) await c.play();
-    } catch (_) {
+      _lastKnownPlaybackPosition = resume;
+      final shouldPlay = playOverride ?? widget.initialPlaying;
+      if (shouldPlay) await c.play();
+      _lastKnownPlaybackWasPlaying = shouldPlay;
+    } catch (error, stackTrace) {
+      debugPrint(
+        'VideoPlayerView failed to initialize ${c.dataSource}: $error\n'
+        '$stackTrace',
+      );
       await c.dispose();
       return false;
     }
@@ -945,9 +1014,88 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     return true;
   }
 
+  void _handleReusablePlayerError(MithkaVideoPlayerError error) {
+    final controller = _controller;
+    final source = _localPath;
+    if (controller?.value.hasError != true ||
+        _streamRecoveryInFlight ||
+        _automaticStreamRecoveryCount >= 1 ||
+        _systemPiPHandoff ||
+        _systemPiPBusy ||
+        _systemPiPPrepareOperation != null ||
+        _systemPiPStartOperation != null ||
+        _streamServer == null ||
+        source == null ||
+        !(source.startsWith('http://') || source.startsWith('https://'))) {
+      return;
+    }
+    debugPrint('VideoPlayerView runtime error for ${widget.video.id}: $error');
+    _automaticStreamRecoveryCount++;
+    unawaited(_recoverStreamingPlayback(Uri.parse(source)));
+  }
+
+  Future<void> _recoverStreamingPlayback(Uri uri) async {
+    if (_streamRecoveryInFlight || !mounted) return;
+    final server = _streamServer;
+    if (server == null) return;
+    _streamRecoveryInFlight = true;
+    final oldController = _controller;
+    final resume = _lastKnownPlaybackPosition;
+    final shouldPlay = _lastKnownPlaybackWasPlaying;
+    oldController?.removeListener(_onTick);
+
+    final preparedPiPId = _systemPiPId;
+    final pendingPiPPreparation = _systemPiPPrepareOperation;
+    final pendingPiPStart = _systemPiPStartOperation;
+    _systemPiPId = null;
+    _systemPiPPrepared = false;
+    _systemPiPBusy = false;
+    _systemPiPUsesActivePlayer = false;
+    _systemPiPPrepareOperation = null;
+    _systemPiPStartOperation = null;
+    setState(() {
+      _controller = null;
+      _failed = false;
+    });
+    _updateWakelock();
+
+    try {
+      await WidgetsBinding.instance.endOfFrame;
+      await _releasePlaybackResources(
+        controller: oldController,
+        disposeController: true,
+        preparedPiPId: preparedPiPId,
+        pendingPiPPreparation: pendingPiPPreparation,
+        pendingPiPStart: pendingPiPStart,
+        streamServer: null,
+      );
+      await server.prepareForPlayback();
+      if (!mounted) return;
+      final initialized = await _initializeController(
+        VideoPlayerController.networkUrl(uri),
+        resumeOverride: resume,
+        playOverride: shouldPlay,
+      );
+      if (initialized) {
+        server.startBackgroundDownload();
+        return;
+      }
+      if (mounted) {
+        setState(() => _failed = true);
+        showToast(context, AppStringKeys.videoPlayerCannotPlay);
+      }
+    } finally {
+      _streamRecoveryInFlight = false;
+    }
+  }
+
   // Rebuild for play/pause + scrubber position changes.
   void _onTick() {
     final value = _controller?.value;
+    if (value != null && !value.hasError) {
+      _lastKnownPlaybackWasPlaying = value.isPlaying;
+      _lastKnownPlaybackPosition = value.position;
+    }
     final completed = value != null && isStoppedVideoPlaybackComplete(value);
     if (completed && !_completionHandled) {
       _completionHandled = true;
@@ -972,8 +1120,8 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   /// wakelock when paused or finished so the system idle timer resumes.
   void _updateWakelock() {
     final c = _controller;
-    if (c == null || !c.value.isInitialized) return;
-    final shouldKeepAwake = c.value.isPlaying;
+    final shouldKeepAwake =
+        c != null && c.value.isInitialized && c.value.isPlaying;
     if (shouldKeepAwake == _wakelockActive) return;
     _wakelockActive = shouldKeepAwake;
     unawaited(
@@ -1593,6 +1741,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
       enableKeyboardShortcuts: !_showCompletionPrompt,
       showScrubPreview: false,
       isFullscreen: true,
+      onError: _handleReusablePlayerError,
       loadingBuilder: (_) => _loadingState(),
       chromeBuilder: (_, scope) => _mobileFullscreenChrome(controller, scope),
     );

@@ -566,6 +566,131 @@ void main() {
     }
   });
 
+  testWidgets(
+    'iOS loopback runtime errors replace the controller once and restore playback',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(390, 844);
+      addTearDown(() {
+        tester.view.resetDevicePixelRatio();
+        tester.view.resetPhysicalSize();
+      });
+
+      late Directory directory;
+      late File sparseFile;
+      await tester.runAsync(() async {
+        directory = await Directory.systemTemp.createTemp(
+          'mithka-runtime-recovery-test-',
+        );
+        sparseFile = File('${directory.path}/sparse.mp4');
+        final handle = await sparseFile.open(mode: FileMode.write);
+        await handle.writeFrom(List<int>.generate(64, (index) => index));
+        await handle.truncate(1024 * 1024);
+        await handle.close();
+      });
+
+      final query = _SparseVideoQuery(
+        fileId: 708,
+        path: sparseFile.path,
+        totalBytes: 1024 * 1024,
+        downloadedBytes: 64,
+      );
+      final previousPlatform = VideoPlayerPlatform.instance;
+      final platform = _FakeMobileVideoPlatform();
+      VideoPlayerPlatform.instance = platform;
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      try {
+        SharedPreferences.setMockInitialValues(const {});
+        await tester.pumpWidget(
+          MaterialApp(
+            locale: const Locale('en'),
+            localizationsDelegates: const [AppLocalizations.delegate],
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: VideoPlayerView(
+                video: TdFileRef(id: 708, localPath: sparseFile.path),
+                width: 1920,
+                height: 1080,
+                onClose: () {},
+                streamQuery: query.call,
+              ),
+            ),
+          ),
+        );
+        await _pumpUntilPlayerReady(tester);
+
+        expect(tester.takeException(), isNull);
+        expect(platform.createCalls, 1);
+        expect(platform.initializedEvents, 1);
+        expect(platform.createdPlayerIds, [1]);
+        expect(platform.playCalls, 1);
+
+        final firstPlayer = tester.widget<MithkaVideoPlayer>(
+          find.byType(MithkaVideoPlayer),
+        );
+        final firstController = firstPlayer.controller!;
+        const resumePosition = Duration(seconds: 37);
+        await firstController.seekTo(resumePosition);
+        await tester.pump();
+        expect(firstController.value.position, resumePosition);
+        expect(firstController.value.isPlaying, isTrue);
+
+        firstPlayer.onError?.call(
+          const MithkaVideoPlayerError('A non-fatal command failed.'),
+        );
+        await tester.pump(const Duration(milliseconds: 50));
+        expect(
+          platform.createCalls,
+          1,
+          reason: 'non-fatal command errors must retain the active controller',
+        );
+
+        platform.emitRuntimeError(platform.createdPlayerIds.single);
+        await _pumpUntilReplacementPlayerReady(
+          tester,
+          platform,
+          previousController: firstController,
+        );
+
+        expect(tester.takeException(), isNull);
+        expect(platform.createCalls, 2);
+        expect(platform.initializedEvents, 2);
+        expect(platform.createdPlayerIds, [1, 2]);
+        expect(platform.disposedPlayerIds, [1]);
+        expect(platform.creationOptions, hasLength(2));
+        expect(
+          platform.creationOptions[1].dataSource.uri,
+          platform.creationOptions[0].dataSource.uri,
+        );
+
+        final replacementPlayer = tester.widget<MithkaVideoPlayer>(
+          find.byType(MithkaVideoPlayer),
+        );
+        final replacementController = replacementPlayer.controller!;
+        expect(replacementController, isNot(same(firstController)));
+        expect(replacementController.value.position, resumePosition);
+        expect(replacementController.value.isPlaying, isTrue);
+        expect(platform.seekPositions, [resumePosition, resumePosition]);
+        expect(platform.playCalls, 2);
+
+        await tester.pump(const Duration(milliseconds: 250));
+        expect(platform.createCalls, 2);
+        expect(platform.initializedEvents, 2);
+        expect(platform.disposedPlayerIds, [1]);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await _pumpUntilDisposed(tester, platform, expectedCalls: 2);
+        expect(platform.disposedPlayerIds, [1, 2]);
+      } finally {
+        VideoPlayerPlatform.instance = previousPlatform;
+        debugDefaultTargetPlatformOverride = null;
+        await tester.runAsync(() async {
+          if (await directory.exists()) await directory.delete(recursive: true);
+        });
+      }
+    },
+  );
+
   testWidgets('app scrub preview recovers after a thumbnail timeout', (
     tester,
   ) async {
@@ -744,13 +869,41 @@ Future<void> _pumpUntilPlayerReady(WidgetTester tester) async {
 
 Future<void> _pumpUntilDisposed(
   WidgetTester tester,
-  _FakeMobileVideoPlatform platform,
-) async {
-  for (var attempt = 0; attempt < 40 && platform.disposeCalls == 0; attempt++) {
+  _FakeMobileVideoPlatform platform, {
+  int expectedCalls = 1,
+}) async {
+  for (
+    var attempt = 0;
+    attempt < 40 && platform.disposeCalls < expectedCalls;
+    attempt++
+  ) {
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(milliseconds: 5)),
     );
     await tester.pump(const Duration(milliseconds: 10));
+  }
+}
+
+Future<void> _pumpUntilReplacementPlayerReady(
+  WidgetTester tester,
+  _FakeMobileVideoPlatform platform, {
+  required Object previousController,
+}) async {
+  for (var attempt = 0; attempt < 80; attempt++) {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 5)),
+    );
+    await tester.pump(const Duration(milliseconds: 10));
+    final players = find.byType(MithkaVideoPlayer).evaluate();
+    if (platform.createCalls == 2 &&
+        platform.initializedEvents == 2 &&
+        players.length == 1 &&
+        !identical(
+          (players.single.widget as MithkaVideoPlayer).controller,
+          previousController,
+        )) {
+      return;
+    }
   }
 }
 
@@ -846,14 +999,25 @@ final class _SparseVideoQuery {
   final int fileId;
   final String path;
   final int totalBytes;
-  final int downloadedBytes;
+  int downloadedBytes;
   final requests = <Map<String, dynamic>>[];
 
   Future<Map<String, dynamic>> call(Map<String, dynamic> request) async {
     requests.add(Map<String, dynamic>.from(request));
     switch (request['@type']) {
       case 'getFile':
+        return _tdFileInfo(
+          fileId: fileId,
+          path: path,
+          totalBytes: totalBytes,
+          downloadedBytes: downloadedBytes,
+          completed: false,
+        );
       case 'downloadFile':
+        final limit = request['limit'] as int? ?? 0;
+        if (limit > 0 && request['synchronous'] == true) {
+          downloadedBytes = totalBytes;
+        }
         return _tdFileInfo(
           fileId: fileId,
           path: path,
@@ -884,6 +1048,8 @@ class _FakeMobileVideoPlatform extends VideoPlayerPlatform {
   var pauseCalls = 0;
   var disposeCalls = 0;
   final creationOptions = <VideoCreationOptions>[];
+  final createdPlayerIds = <int>[];
+  final disposedPlayerIds = <int>[];
   final seekPositions = <Duration>[];
 
   @override
@@ -894,6 +1060,7 @@ class _FakeMobileVideoPlatform extends VideoPlayerPlatform {
     createCalls++;
     creationOptions.add(options);
     final playerId = _nextPlayerId++;
+    createdPlayerIds.add(playerId);
     _events[playerId] = StreamController<VideoEvent>.broadcast();
     _positions[playerId] = Duration.zero;
     return playerId;
@@ -922,8 +1089,18 @@ class _FakeMobileVideoPlatform extends VideoPlayerPlatform {
   @override
   Future<void> dispose(int playerId) async {
     disposeCalls++;
+    disposedPlayerIds.add(playerId);
     await _events.remove(playerId)?.close();
     _positions.remove(playerId);
+  }
+
+  void emitRuntimeError(int playerId) {
+    _events[playerId]!.addError(
+      PlatformException(
+        code: 'runtime_video_error',
+        message: 'The loopback stream stopped during playback.',
+      ),
+    );
   }
 
   @override
