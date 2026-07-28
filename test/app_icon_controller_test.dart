@@ -52,4 +52,53 @@ void main() {
       expect(project, contains('${entry.value}.icon in Resources'));
     }
   });
+
+  test('abstract variants have Android launcher aliases and resources', () {
+    const nativeNames = {
+      'aurora': 'Aurora',
+      'prism': 'Prism',
+      'signal': 'Signal',
+    };
+    const densities = ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi'];
+    final activity = File(
+      'android/app/src/main/kotlin/ad/neko/mithka/MainActivity.kt',
+    ).readAsStringSync();
+    final manifest = File(
+      'android/app/src/main/AndroidManifest.xml',
+    ).readAsStringSync();
+
+    for (final entry in nativeNames.entries) {
+      expect(
+        activity,
+        contains(
+          '"${entry.key}" to "\$packageName.MainActivity${entry.value}"',
+        ),
+      );
+      expect(manifest, contains('android:name=".MainActivity${entry.value}"'));
+      expect(
+        manifest,
+        contains('android:icon="@mipmap/ic_launcher_${entry.key}"'),
+      );
+      expect(
+        File(
+          'android/app/src/main/res/mipmap-anydpi-v26/'
+          'ic_launcher_${entry.key}.xml',
+        ).existsSync(),
+        isTrue,
+      );
+      for (final density in densities) {
+        final directory = 'android/app/src/main/res/mipmap-$density';
+        expect(
+          File('$directory/ic_launcher_${entry.key}.png').existsSync(),
+          isTrue,
+        );
+        expect(
+          File(
+            '$directory/ic_launcher_${entry.key}_background.png',
+          ).existsSync(),
+          isTrue,
+        );
+      }
+    }
+  });
 }

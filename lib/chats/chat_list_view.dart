@@ -10,6 +10,7 @@
 
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
@@ -219,6 +220,24 @@ ChatListMultiFingerSwipeAction chatListMultiFingerSwipeAction({
   return pointerCount == 2
       ? ChatListMultiFingerSwipeAction.switchFolders
       : ChatListMultiFingerSwipeAction.switchAccounts;
+}
+
+Set<ui.PointerDeviceKind> chatFolderTabDragDevices(
+  Set<ui.PointerDeviceKind> inherited,
+) => {...inherited, ui.PointerDeviceKind.mouse};
+
+extension on Widget {
+  Widget _withChatFolderMouseDrag(BuildContext context) {
+    final inheritedScrollBehavior = ScrollConfiguration.of(context);
+    return ScrollConfiguration(
+      behavior: inheritedScrollBehavior.copyWith(
+        dragDevices: chatFolderTabDragDevices(
+          inheritedScrollBehavior.dragDevices,
+        ),
+      ),
+      child: this,
+    );
+  }
 }
 
 class CommunityListSelection {
@@ -1180,7 +1199,7 @@ class _ChatListViewState extends State<ChatListView>
             ),
           );
         },
-      ),
+      )._withChatFolderMouseDrag(context),
     );
   }
 

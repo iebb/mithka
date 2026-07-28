@@ -3806,11 +3806,37 @@ abstract final class TDParse {
     final last = user.str('last_name') ?? '';
     final full = [first, last].where((s) => s.isNotEmpty).join(' ');
     if (full.isNotEmpty) return full;
-    final username = user.obj('usernames')?.str('editable_username');
-    if (username != null && username.isNotEmpty) return '@$username';
+    final usernames = activeUsernames(user);
+    if (usernames.isNotEmpty) return '@${usernames.first}';
     return AppStrings.t(AppStringKeys.chatUserFallbackName, {
       'value1': user.int64('id') ?? 0,
     });
+  }
+
+  /// Enabled usernames in TDLib's display-priority order.
+  ///
+  /// `active_usernames` includes enabled collectible usernames and defines the
+  /// primary username as its first entry. Older/incomplete payloads may omit
+  /// that array, so only then do we fall back to `editable_username`.
+  static List<String> activeUsernames(Map<String, dynamic> user) {
+    final usernames = user.obj('usernames');
+    if (usernames == null) return const [];
+
+    final active = usernames['active_usernames'];
+    final candidates = active is List
+        ? active.whereType<String>()
+        : <String>[
+            if ((usernames.str('editable_username') ?? '').isNotEmpty)
+              usernames.str('editable_username')!,
+          ];
+    final result = <String>[];
+    final seen = <String>{};
+    for (final candidate in candidates) {
+      final normalized = candidate.trim().replaceFirst(RegExp(r'^@+'), '');
+      if (normalized.isEmpty || !seen.add(normalized.toLowerCase())) continue;
+      result.add(normalized);
+    }
+    return List.unmodifiable(result);
   }
 
   /// The custom emoji that represents a TDLib `emojiStatus` in compact UI.

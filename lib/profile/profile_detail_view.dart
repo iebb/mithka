@@ -69,7 +69,7 @@ class ProfileDetailView extends StatefulWidget {
 
 class _ProfileDetailViewState extends State<ProfileDetailView> {
   String _name = '';
-  String? _username;
+  List<String> _usernames = const [];
   String _phone = '';
   String _bio = '';
   List<MessageTextEntity> _bioEntities = const [];
@@ -143,7 +143,7 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
           _name = TDParse.userName(user);
           _firstName = user.str('first_name') ?? '';
           _lastName = user.str('last_name') ?? '';
-          _username = user.obj('usernames')?.str('editable_username');
+          _usernames = TDParse.activeUsernames(user);
           _rawPhone = user.str('phone_number') ?? '';
           _phone = TDParse.formatPhone(_rawPhone);
           _photo = TDParse.smallPhoto(user.obj('profile_photo'));
@@ -377,8 +377,8 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
   }
 
   void _copyProfileLink() {
-    final link = (_username?.isNotEmpty ?? false)
-        ? 'https://t.me/$_username'
+    final link = _usernames.isNotEmpty
+        ? 'https://t.me/${_usernames.first}'
         : 'tg://user?id=${widget.userId}';
     Clipboard.setData(ClipboardData(text: link));
     showToast(context, AppStrings.t(AppStringKeys.profileDetailCardLinkCopied));
@@ -786,12 +786,10 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
 
   Widget _identityPanel(String status) {
     final c = context.colors;
-    final idText = (_username?.isNotEmpty ?? false)
-        ? 'ID: $_username'
-        : (widget.userId > 0 ? 'ID: ${widget.userId}' : '');
     final identityLines = [
       if (_phone.isNotEmpty && !_hideIdentity) _phone,
-      if (idText.isNotEmpty) idText,
+      if (_usernames.isEmpty && widget.userId > 0) 'ID: ${widget.userId}',
+      for (final username in _usernames) 'ID: $username',
     ];
     return Container(
       transform: Matrix4.translationValues(0, -34, 0),

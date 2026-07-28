@@ -743,6 +743,21 @@ const jaMessages = <String, String>{
   'chatWallpaperThemesShared': "テーマは両方のユーザーに適用されます",
   'chatWallpaperThemesSharedWithChat': "テーマはチャットの全員に表示されます",
   'chatWallpaperTitle': "壁紙",
+  'chatSendFailedBlocked': "どちらかが相手をブロックしているため、このメッセージは送信できません。",
+  'chatSendFailedGeneric': "Telegram がメッセージを拒否しました：{value1}",
+  'chatSendFailedInsufficientStars': "このメッセージを送信するための Telegram スターが不足しています。",
+  'chatSendFailedMutualContact': "このユーザーは相互の連絡先からのメッセージのみ受け付けています。",
+  'chatSendFailedPaid': "このチャットでは有料メッセージのみ受け付けています。スターの料金を確認して再試行してください。",
+  'chatSendFailedPaidCount':
+      "このチャットではメッセージ1件につき {value1} スターが必要です。有料メッセージを確認して再試行してください。",
+  'chatSendFailedPermission': "このチャットでメッセージを送信する権限がないか、トピックが閉じられています。",
+  'chatSendFailedPremium':
+      "このユーザーへの新しいチャットは、連絡先または Telegram Premium ユーザーのみ開始できます。連絡先に追加するか、Premium を利用してください。",
+  'chatSendFailedPrivacy': "相手のプライバシー設定により、このメッセージは送信できません。",
+  'chatSendFailedRateLimited':
+      "Telegram がメッセージ送信を一時的に制限しています。少し待ってから再試行してください。",
+  'chatSendFailedTitle': "メッセージを送信できませんでした",
+  'chatSendFailedUnavailable': "このアカウントまたはチャットは利用できなくなりました。",
   'chatYouAreMuted': "発言が制限されています",
   'chatYouWereRemovedFromGroup': "このグループから削除されました",
   'checklistComposerAddTask': "タスクを追加",

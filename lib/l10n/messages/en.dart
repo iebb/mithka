@@ -790,6 +790,27 @@ const enMessages = <String, String>{
   'chatWallpaperThemesSharedWithChat':
       "Themes are visible to everyone in the chat",
   'chatWallpaperTitle': "Wallpaper",
+  'chatSendFailedBlocked':
+      "This message can’t be sent because one side has blocked the other.",
+  'chatSendFailedGeneric': "Telegram rejected the message: {value1}",
+  'chatSendFailedInsufficientStars':
+      "You don’t have enough Telegram Stars to send this message.",
+  'chatSendFailedMutualContact':
+      "This person accepts messages only from mutual contacts.",
+  'chatSendFailedPaid':
+      "This chat only accepts paid messages. Confirm the Star charge and try again.",
+  'chatSendFailedPaidCount':
+      "This chat charges {value1} Stars per message. Confirm the paid message and try again.",
+  'chatSendFailedPermission':
+      "You don’t have permission to send messages in this chat, or this topic is closed.",
+  'chatSendFailedPremium':
+      "This person accepts new chats only from contacts or Telegram Premium users. Add them as a contact or use Premium.",
+  'chatSendFailedPrivacy':
+      "The recipient’s privacy settings don’t allow this message.",
+  'chatSendFailedRateLimited':
+      "Telegram is temporarily limiting message sends. Wait a moment and try again.",
+  'chatSendFailedTitle': "Message not sent",
+  'chatSendFailedUnavailable': "This account or chat is no longer available.",
   'chatYouAreMuted': "You are muted",
   'chatYouWereRemovedFromGroup': "You were removed from this group",
   'checklistComposerAddTask': "Add task",

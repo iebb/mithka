@@ -139,6 +139,17 @@ class _ChatInfoViewState extends State<ChatInfoView> {
     Navigator.of(context).push(route);
   }
 
+  Future<void> _openSearchHistory() async {
+    final messageId = await Navigator.of(context).push<int>(
+      MaterialPageRoute<int>(
+        builder: (_) =>
+            ChatSearchView(chatId: widget.chatId, title: widget.title),
+      ),
+    );
+    if (!mounted || messageId == null) return;
+    Navigator.of(context).pop(messageId);
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
@@ -462,12 +473,7 @@ class _ChatInfoViewState extends State<ChatInfoView> {
         children: [
           _infoRow(
             AppStrings.t(AppStringKeys.chatInfoSearchHistory),
-            () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) =>
-                    ChatSearchView(chatId: widget.chatId, title: widget.title),
-              ),
-            ),
+            () => unawaited(_openSearchHistory()),
           ),
           const InsetDivider(leadingInset: 14),
           _infoRow(AppStrings.t(AppStringKeys.chatThemeTitle), _openTheme),

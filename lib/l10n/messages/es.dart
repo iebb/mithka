@@ -803,6 +803,27 @@ const esMessages = <String, String>{
   'chatWallpaperThemesSharedWithChat':
       "Los temas son visibles para todos en el chat",
   'chatWallpaperTitle': "Fondo",
+  'chatSendFailedBlocked':
+      "No se puede enviar este mensaje porque una de las dos personas bloqueó a la otra.",
+  'chatSendFailedGeneric': "Telegram rechazó el mensaje: {value1}",
+  'chatSendFailedInsufficientStars':
+      "No tienes suficientes estrellas de Telegram para enviar este mensaje.",
+  'chatSendFailedMutualContact':
+      "Esta persona solo acepta mensajes de contactos mutuos.",
+  'chatSendFailedPaid':
+      "Este chat solo acepta mensajes de pago. Confirma el coste en estrellas e inténtalo de nuevo.",
+  'chatSendFailedPaidCount':
+      "Este chat cobra {value1} estrellas por mensaje. Confirma el mensaje de pago e inténtalo de nuevo.",
+  'chatSendFailedPermission':
+      "No tienes permiso para enviar mensajes en este chat o el tema está cerrado.",
+  'chatSendFailedPremium':
+      "Esta persona solo acepta chats nuevos de contactos o usuarios de Telegram Premium. Añádela a contactos o usa Premium.",
+  'chatSendFailedPrivacy':
+      "La configuración de privacidad del destinatario no permite este mensaje.",
+  'chatSendFailedRateLimited':
+      "Telegram está limitando temporalmente los envíos. Espera un momento e inténtalo de nuevo.",
+  'chatSendFailedTitle': "Mensaje no enviado",
+  'chatSendFailedUnavailable': "Esta cuenta o este chat ya no está disponible.",
   'chatYouAreMuted': "No puedes enviar mensajes",
   'chatYouWereRemovedFromGroup': "Te han expulsado de este grupo",
   'checklistComposerAddTask': "Añadir tarea",

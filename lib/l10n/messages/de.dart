@@ -809,6 +809,28 @@ const deMessages = <String, String>{
   'chatWallpaperThemesShared': "Themen gelten für beide Nutzer",
   'chatWallpaperThemesSharedWithChat': "Themen sind für alle im Chat sichtbar",
   'chatWallpaperTitle': "Hintergrund",
+  'chatSendFailedBlocked':
+      "Diese Nachricht kann nicht gesendet werden, weil eine Seite die andere blockiert hat.",
+  'chatSendFailedGeneric': "Telegram hat die Nachricht abgelehnt: {value1}",
+  'chatSendFailedInsufficientStars':
+      "Du hast nicht genug Telegram-Sterne, um diese Nachricht zu senden.",
+  'chatSendFailedMutualContact':
+      "Diese Person akzeptiert nur Nachrichten von gegenseitigen Kontakten.",
+  'chatSendFailedPaid':
+      "Dieser Chat akzeptiert nur kostenpflichtige Nachrichten. Bestätige die Stern-Kosten und versuche es erneut.",
+  'chatSendFailedPaidCount':
+      "Dieser Chat kostet {value1} Sterne pro Nachricht. Bestätige die kostenpflichtige Nachricht und versuche es erneut.",
+  'chatSendFailedPermission':
+      "Du darfst in diesem Chat keine Nachrichten senden oder das Thema ist geschlossen.",
+  'chatSendFailedPremium':
+      "Diese Person akzeptiert neue Chats nur von Kontakten oder Telegram-Premium-Nutzern. Füge sie als Kontakt hinzu oder nutze Premium.",
+  'chatSendFailedPrivacy':
+      "Die Privatsphäre-Einstellungen des Empfängers erlauben diese Nachricht nicht.",
+  'chatSendFailedRateLimited':
+      "Telegram begrenzt das Senden vorübergehend. Warte kurz und versuche es erneut.",
+  'chatSendFailedTitle': "Nachricht nicht gesendet",
+  'chatSendFailedUnavailable':
+      "Dieses Konto oder dieser Chat ist nicht mehr verfügbar.",
   'chatYouAreMuted': "Du bist stummgeschaltet",
   'chatYouWereRemovedFromGroup': "Du wurdest aus dieser Gruppe entfernt",
   'checklistComposerAddTask': "Aufgabe hinzufügen",

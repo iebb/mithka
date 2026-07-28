@@ -28,6 +28,7 @@ import 'ai_reply_service.dart';
 import 'chat_first_contact_info.dart';
 import 'chat_message_merge.dart';
 import 'chat_open_performance.dart';
+import 'chat_send_failure.dart';
 import 'chat_unread_progress.dart';
 import 'checklist_composer_view.dart';
 import 'checklist_service.dart';
@@ -65,6 +66,10 @@ class _SenderInfo {
 @visibleForTesting
 int unreadMentionCountAfterReading(int currentCount, int readCount) =>
     math.max(0, currentCount - math.max(0, readCount));
+
+@visibleForTesting
+int? messageSendUpdateChatId(Map<String, dynamic> update) =>
+    update.int64('chat_id') ?? update.obj('message')?.int64('chat_id');
 
 class _MessageSendResult {
   const _MessageSendResult.success() : error = null;
@@ -375,6 +380,8 @@ class ChatViewModel extends ChangeNotifier {
   List<ForumTopicOption> forumTopics = const [];
   int messageAutoDeleteTime = 0;
   int paidMessageStarCount = 0;
+  bool peerRequiresPremiumOrContact = false;
+  bool peerIsUnavailable = false;
 
   /// Loaded for channels and bot chats, but not yet rendered in the transcript.
   SponsoredMessagesSnapshot? sponsoredMessages;
@@ -419,6 +426,12 @@ class ChatViewModel extends ChangeNotifier {
   final Set<int> _acknowledgedPendingMessageIds = {};
   final Map<int, Completer<void>> _messageSendWaiters = {};
   final Map<int, _MessageSendResult> _recentMessageSendResults = {};
+  ChatSendFailure? _pendingSendFailure;
+  String? _lastSendFailureKey;
+  int _lastSendFailureAtMilliseconds = 0;
+  Future<void>? _privateMessageInfoLoad;
+  int? _privateMessageInfoUserId;
+  bool _privateMessageInfoLoaded = false;
 
   // Transient chat actions: sender ids currently acting, auto-cleared shortly.
   final Map<int, _ChatActionInfo> _chatActions = {};
@@ -507,6 +520,12 @@ class ChatViewModel extends ChangeNotifier {
 
   List<int> consumeLiveIncomingMessageIds() => _liveIncomingMessages.takeAll();
 
+  ChatSendFailure? consumeSendFailure() {
+    final failure = _pendingSendFailure;
+    _pendingSendFailure = null;
+    return failure;
+  }
+
   void useNextSendConfiguration(MessageSendConfiguration configuration) {
     _nextSendConfiguration = configuration;
   }
@@ -539,6 +558,61 @@ class ChatViewModel extends ChangeNotifier {
     if (paidMessageStarCount == next) return;
     paidMessageStarCount = next;
     if (notify) notifyListeners();
+  }
+
+  Future<bool> prepareMessageSend() async {
+    if (!canSendMessages) return false;
+    final userId = peerUserId;
+    if (isGroup || isSecretChat || peerIsBot || userId == null) return true;
+    await _loadPrivatePaidMessageInfo(userId);
+    if (peerIsUnavailable) {
+      _publishSendFailure(ChatSendFailure.recipientUnavailable());
+      return false;
+    }
+    if (peerRequiresPremiumOrContact) {
+      _publishSendFailure(ChatSendFailure.premiumOrContactRequired());
+      return false;
+    }
+    return true;
+  }
+
+  Future<bool> _submitMessageRequest(Map<String, dynamic> request) async {
+    try {
+      await _client.query(_withPaidMessageOptions(request));
+      return true;
+    } catch (error) {
+      _publishSendFailure(
+        ChatSendFailure.fromError(
+          error,
+          paidMessageStarCount: paidMessageStarCount,
+        ),
+      );
+      return false;
+    }
+  }
+
+  void _submitMessageRequestWithoutWaiting(Map<String, dynamic> request) {
+    unawaited(_submitMessageRequest(request));
+  }
+
+  void _publishSendFailure(ChatSendFailure failure) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (_lastSendFailureKey == failure.deduplicationKey &&
+        now - _lastSendFailureAtMilliseconds < 1500) {
+      return;
+    }
+    _lastSendFailureKey = failure.deduplicationKey;
+    _lastSendFailureAtMilliseconds = now;
+    _pendingSendFailure = failure;
+    notifyListeners();
+
+    if (failure.kind == ChatSendFailureKind.paidMessageRequired ||
+        failure.kind == ChatSendFailureKind.premiumRequired) {
+      final userId = peerUserId;
+      if (!isGroup && !isSecretChat && userId != null) {
+        unawaited(_loadPrivatePaidMessageInfo(userId, force: true));
+      }
+    }
   }
 
   // MARK: - Lifecycle
@@ -991,11 +1065,10 @@ class ChatViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  void send() {
-    if (!canSendMessages) return;
+  Future<bool> send() async {
+    if (!canSendMessages) return false;
     final trimmed = draft.trim();
-    if (trimmed.isEmpty) return;
-    _clearDraft();
+    if (trimmed.isEmpty) return false;
 
     final request = <String, dynamic>{
       '@type': 'sendMessage',
@@ -1011,9 +1084,12 @@ class ChatViewModel extends ChangeNotifier {
         'message_id': replyTo!.id,
       };
     }
+    final sent = await _submitMessageRequest(request);
+    if (!sent) return false;
     replyTo = null;
-    _client.send(_withPaidMessageOptions(request));
+    _clearDraft();
     notifyListeners();
+    return true;
   }
 
   Future<void> sendSuggestedPost({
@@ -1091,27 +1167,29 @@ class ChatViewModel extends ChangeNotifier {
     if (!canSendMessages) return;
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
-    _client.send(
-      _withPaidMessageOptions({
-        '@type': 'sendMessage',
-        'chat_id': chatId,
-        'input_message_content': {
-          '@type': 'inputMessageText',
-          'text': {'@type': 'formattedText', 'text': trimmed},
-        },
-      }),
-    );
+    _submitMessageRequestWithoutWaiting({
+      '@type': 'sendMessage',
+      'chat_id': chatId,
+      'input_message_content': {
+        '@type': 'inputMessageText',
+        'text': {'@type': 'formattedText', 'text': trimmed},
+      },
+    });
   }
 
   /// Sends text that may contain inline custom emoji — [entities] is the list of
   /// TDLib textEntity objects (e.g. textEntityTypeCustomEmoji) over [text]
   /// (offsets in UTF-16 of [text], which already has the fallback chars).
-  void sendFormatted(String text, List<Map<String, dynamic>> entities) {
-    if (!canSendMessages) return;
-    if (text.trim().isEmpty) return;
-    if (entities.isEmpty && _sendDiceIfNeeded(text)) return;
+  Future<bool> sendFormatted(
+    String text,
+    List<Map<String, dynamic>> entities,
+  ) async {
+    if (!canSendMessages) return false;
+    if (text.trim().isEmpty) return false;
+    if (entities.isEmpty && _diceEmojis.contains(text.trim())) {
+      return _sendDice(text);
+    }
     final allEntities = [...entities, ..._mentionEntitiesFor(text, entities)];
-    _clearDraft();
     final request = <String, dynamic>{
       '@type': 'sendMessage',
       'chat_id': chatId,
@@ -1130,9 +1208,12 @@ class ChatViewModel extends ChangeNotifier {
         'message_id': replyTo!.id,
       };
     }
+    final sent = await _submitMessageRequest(request);
+    if (!sent) return false;
     replyTo = null;
-    _client.send(_withPaidMessageOptions(request));
+    _clearDraft();
     notifyListeners();
+    return true;
   }
 
   Future<void> sendRichMessageHtml(
@@ -1270,10 +1351,9 @@ class ChatViewModel extends ChangeNotifier {
 
   static const _diceEmojis = {'🎲', '🎯', '🏀', '⚽', '🎳', '🎰'};
 
-  bool _sendDiceIfNeeded(String text) {
+  Future<bool> _sendDice(String text) async {
     final emoji = text.trim();
     if (!_diceEmojis.contains(emoji)) return false;
-    _clearDraft();
     final request = <String, dynamic>{
       '@type': 'sendMessage',
       'chat_id': chatId,
@@ -1285,8 +1365,10 @@ class ChatViewModel extends ChangeNotifier {
         'message_id': replyTo!.id,
       };
     }
+    final sent = await _submitMessageRequest(request);
+    if (!sent) return false;
     replyTo = null;
-    _client.send(_withPaidMessageOptions(request));
+    _clearDraft();
     notifyListeners();
     return true;
   }
@@ -1362,14 +1444,24 @@ class ChatViewModel extends ChangeNotifier {
     replyTo = null;
     _clearDraft();
     notifyListeners();
-    for (final request in requests) {
-      await _client.query(
-        _withPaidMessageOptions(
-          request,
-          sendConfiguration: sendConfiguration,
-          consumePendingConfiguration: false,
+    try {
+      for (final request in requests) {
+        await _client.query(
+          _withPaidMessageOptions(
+            request,
+            sendConfiguration: sendConfiguration,
+            consumePendingConfiguration: false,
+          ),
+        );
+      }
+    } catch (error) {
+      _publishSendFailure(
+        ChatSendFailure.fromError(
+          error,
+          paidMessageStarCount: paidMessageStarCount,
         ),
       );
+      rethrow;
     }
   }
 
@@ -1379,25 +1471,23 @@ class ChatViewModel extends ChangeNotifier {
     List<Map<String, dynamic>> captionEntities = const [],
   }) {
     final captionText = captionEntities.isEmpty ? caption.trim() : caption;
-    _client.send(
-      _withPaidMessageOptions({
-        '@type': 'sendMessage',
-        'chat_id': chatId,
-        'input_message_content': {
-          '@type': 'inputMessagePhoto',
-          'photo': {
-            '@type': 'inputPhoto',
-            'photo': {'@type': 'inputFileLocal', 'path': path},
-          },
-          if (captionText.trim().isNotEmpty)
-            'caption': {
-              '@type': 'formattedText',
-              'text': captionText,
-              if (captionEntities.isNotEmpty) 'entities': captionEntities,
-            },
+    _submitMessageRequestWithoutWaiting({
+      '@type': 'sendMessage',
+      'chat_id': chatId,
+      'input_message_content': {
+        '@type': 'inputMessagePhoto',
+        'photo': {
+          '@type': 'inputPhoto',
+          'photo': {'@type': 'inputFileLocal', 'path': path},
         },
-      }),
-    );
+        if (captionText.trim().isNotEmpty)
+          'caption': {
+            '@type': 'formattedText',
+            'text': captionText,
+            if (captionEntities.isNotEmpty) 'entities': captionEntities,
+          },
+      },
+    });
   }
 
   void sendVideo(
@@ -1406,26 +1496,24 @@ class ChatViewModel extends ChangeNotifier {
     List<Map<String, dynamic>> captionEntities = const [],
   }) {
     final captionText = captionEntities.isEmpty ? caption.trim() : caption;
-    _client.send(
-      _withPaidMessageOptions({
-        '@type': 'sendMessage',
-        'chat_id': chatId,
-        'input_message_content': {
-          '@type': 'inputMessageVideo',
-          'video': {
-            '@type': 'inputVideo',
-            'video': {'@type': 'inputFileLocal', 'path': path},
-            'supports_streaming': true,
-          },
-          if (captionText.trim().isNotEmpty)
-            'caption': {
-              '@type': 'formattedText',
-              'text': captionText,
-              if (captionEntities.isNotEmpty) 'entities': captionEntities,
-            },
+    _submitMessageRequestWithoutWaiting({
+      '@type': 'sendMessage',
+      'chat_id': chatId,
+      'input_message_content': {
+        '@type': 'inputMessageVideo',
+        'video': {
+          '@type': 'inputVideo',
+          'video': {'@type': 'inputFileLocal', 'path': path},
+          'supports_streaming': true,
         },
-      }),
-    );
+        if (captionText.trim().isNotEmpty)
+          'caption': {
+            '@type': 'formattedText',
+            'text': captionText,
+            if (captionEntities.isNotEmpty) 'entities': captionEntities,
+          },
+      },
+    });
   }
 
   void sendAnimation(
@@ -1434,28 +1522,26 @@ class ChatViewModel extends ChangeNotifier {
     List<Map<String, dynamic>> captionEntities = const [],
   }) {
     final captionText = captionEntities.isEmpty ? caption.trim() : caption;
-    _client.send(
-      _withPaidMessageOptions({
-        '@type': 'sendMessage',
-        'chat_id': chatId,
-        'input_message_content': {
-          '@type': 'inputMessageAnimation',
-          'animation': {
-            '@type': 'inputAnimation',
-            'animation': {'@type': 'inputFileLocal', 'path': path},
-            'duration': 0,
-            'width': 0,
-            'height': 0,
-          },
-          if (captionText.trim().isNotEmpty)
-            'caption': {
-              '@type': 'formattedText',
-              'text': captionText,
-              if (captionEntities.isNotEmpty) 'entities': captionEntities,
-            },
+    _submitMessageRequestWithoutWaiting({
+      '@type': 'sendMessage',
+      'chat_id': chatId,
+      'input_message_content': {
+        '@type': 'inputMessageAnimation',
+        'animation': {
+          '@type': 'inputAnimation',
+          'animation': {'@type': 'inputFileLocal', 'path': path},
+          'duration': 0,
+          'width': 0,
+          'height': 0,
         },
-      }),
-    );
+        if (captionText.trim().isNotEmpty)
+          'caption': {
+            '@type': 'formattedText',
+            'text': captionText,
+            if (captionEntities.isNotEmpty) 'entities': captionEntities,
+          },
+      },
+    });
   }
 
   Future<bool> sendGif(GifItem gif) async {
@@ -1472,6 +1558,12 @@ class ChatViewModel extends ChangeNotifier {
       return true;
     } catch (error) {
       debugPrint('Failed to send GIF: $error');
+      _publishSendFailure(
+        ChatSendFailure.fromError(
+          error,
+          paidMessageStarCount: paidMessageStarCount,
+        ),
+      );
       return false;
     }
   }
@@ -1490,6 +1582,12 @@ class ChatViewModel extends ChangeNotifier {
       return true;
     } catch (error) {
       debugPrint('Failed to send sticker: $error');
+      _publishSendFailure(
+        ChatSendFailure.fromError(
+          error,
+          paidMessageStarCount: paidMessageStarCount,
+        ),
+      );
       return false;
     }
   }
@@ -1519,39 +1617,35 @@ class ChatViewModel extends ChangeNotifier {
   }
 
   void sendDocument(String path, {String caption = ''}) {
-    _client.send(
-      _withPaidMessageOptions({
-        '@type': 'sendMessage',
-        'chat_id': chatId,
-        'input_message_content': {
-          '@type': 'inputMessageDocument',
-          'document': {
-            '@type': 'inputDocument',
-            'document': {'@type': 'inputFileLocal', 'path': path},
-          },
-          if (caption.trim().isNotEmpty)
-            'caption': {'@type': 'formattedText', 'text': caption.trim()},
+    _submitMessageRequestWithoutWaiting({
+      '@type': 'sendMessage',
+      'chat_id': chatId,
+      'input_message_content': {
+        '@type': 'inputMessageDocument',
+        'document': {
+          '@type': 'inputDocument',
+          'document': {'@type': 'inputFileLocal', 'path': path},
         },
-      }),
-    );
+        if (caption.trim().isNotEmpty)
+          'caption': {'@type': 'formattedText', 'text': caption.trim()},
+      },
+    });
   }
 
   void sendLocation(double latitude, double longitude) {
-    _client.send(
-      _withPaidMessageOptions({
-        '@type': 'sendMessage',
-        'chat_id': chatId,
-        'input_message_content': {
-          '@type': 'inputMessageLocation',
-          'location': {
-            '@type': 'location',
-            'latitude': latitude,
-            'longitude': longitude,
-            'horizontal_accuracy': 0,
-          },
+    _submitMessageRequestWithoutWaiting({
+      '@type': 'sendMessage',
+      'chat_id': chatId,
+      'input_message_content': {
+        '@type': 'inputMessageLocation',
+        'location': {
+          '@type': 'location',
+          'latitude': latitude,
+          'longitude': longitude,
+          'horizontal_accuracy': 0,
         },
-      }),
-    );
+      },
+    });
   }
 
   Future<bool> sendVenue({
@@ -1587,7 +1681,13 @@ class ChatViewModel extends ChangeNotifier {
         }),
       );
       return true;
-    } catch (_) {
+    } catch (error) {
+      _publishSendFailure(
+        ChatSendFailure.fromError(
+          error,
+          paidMessageStarCount: paidMessageStarCount,
+        ),
+      );
       return false;
     }
   }
@@ -1613,7 +1713,13 @@ class ChatViewModel extends ChangeNotifier {
         }),
       );
       return true;
-    } catch (_) {
+    } catch (error) {
+      _publishSendFailure(
+        ChatSendFailure.fromError(
+          error,
+          paidMessageStarCount: paidMessageStarCount,
+        ),
+      );
       return false;
     }
   }
@@ -1645,6 +1751,12 @@ class ChatViewModel extends ChangeNotifier {
       return true;
     } catch (error) {
       debugPrint('Failed to send voice note: $error');
+      _publishSendFailure(
+        ChatSendFailure.fromError(
+          error,
+          paidMessageStarCount: paidMessageStarCount,
+        ),
+      );
       return false;
     }
   }
@@ -1675,28 +1787,32 @@ class ChatViewModel extends ChangeNotifier {
       return true;
     } catch (error) {
       debugPrint('Failed to send video note: $error');
+      _publishSendFailure(
+        ChatSendFailure.fromError(
+          error,
+          paidMessageStarCount: paidMessageStarCount,
+        ),
+      );
       return false;
     }
   }
 
   /// 音频: send a picked audio file as a music message (TDLib computes metadata).
   void sendAudio(String path) {
-    _client.send(
-      _withPaidMessageOptions({
-        '@type': 'sendMessage',
-        'chat_id': chatId,
-        'input_message_content': {
-          '@type': 'inputMessageAudio',
-          'audio': {
-            '@type': 'inputAudio',
-            'audio': {'@type': 'inputFileLocal', 'path': path},
-            'duration': 0,
-            'title': '',
-            'performer': '',
-          },
+    _submitMessageRequestWithoutWaiting({
+      '@type': 'sendMessage',
+      'chat_id': chatId,
+      'input_message_content': {
+        '@type': 'inputMessageAudio',
+        'audio': {
+          '@type': 'inputAudio',
+          'audio': {'@type': 'inputFileLocal', 'path': path},
+          'duration': 0,
+          'title': '',
+          'performer': '',
         },
-      }),
-    );
+      },
+    });
   }
 
   /// 音频搜索: send a clean copy of an existing Telegram audio message.
@@ -1749,16 +1865,14 @@ class ChatViewModel extends ChangeNotifier {
   /// 清单: send a checklist (to-do list). Creating checklists needs Premium.
   void sendChecklist(ChecklistComposerResult draft) {
     if (draft.title.trim().isEmpty || draft.tasks.isEmpty) return;
-    _client.send(
-      _withPaidMessageOptions({
-        '@type': 'sendMessage',
-        'chat_id': chatId,
-        'input_message_content': {
-          '@type': 'inputMessageChecklist',
-          'checklist': ChecklistRequests.inputChecklist(draft),
-        },
-      }),
-    );
+    _submitMessageRequestWithoutWaiting({
+      '@type': 'sendMessage',
+      'chat_id': chatId,
+      'input_message_content': {
+        '@type': 'inputMessageChecklist',
+        'checklist': ChecklistRequests.inputChecklist(draft),
+      },
+    });
   }
 
   Future<void> editChecklist(
@@ -1850,6 +1964,12 @@ class ChatViewModel extends ChangeNotifier {
       return true;
     } catch (error) {
       debugPrint('Failed to send poll: $error');
+      _publishSendFailure(
+        ChatSendFailure.fromError(
+          error,
+          paidMessageStarCount: paidMessageStarCount,
+        ),
+      );
       return false;
     }
   }
@@ -2011,45 +2131,39 @@ class ChatViewModel extends ChangeNotifier {
     // Photo: send a clean copy (forwardMessages send_copy drops the "转发"
     // header and works regardless of the original file's upload state).
     if (message.isPhoto && message.image != null) {
-      _client.send(
-        _withPaidMessageOptions({
-          '@type': 'forwardMessages',
-          'chat_id': chatId,
-          'from_chat_id': chatId,
-          'message_ids': [message.id],
-          'send_copy': true,
-        }),
-      );
+      _submitMessageRequestWithoutWaiting({
+        '@type': 'forwardMessages',
+        'chat_id': chatId,
+        'from_chat_id': chatId,
+        'message_ids': [message.id],
+        'send_copy': true,
+      });
       return;
     }
     if (!message.isPlainText) return;
     final text = message.text.trim();
     if (text.isEmpty) return;
-    _client.send(
-      _withPaidMessageOptions({
-        '@type': 'sendMessage',
-        'chat_id': chatId,
-        'input_message_content': {
-          '@type': 'inputMessageText',
-          'text': {'@type': 'formattedText', 'text': text},
-        },
-      }),
-    );
+    _submitMessageRequestWithoutWaiting({
+      '@type': 'sendMessage',
+      'chat_id': chatId,
+      'input_message_content': {
+        '@type': 'inputMessageText',
+        'text': {'@type': 'formattedText', 'text': text},
+      },
+    });
   }
 
   bool sendKeyboardButtonText(String text) {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return false;
-    _client.send(
-      _withPaidMessageOptions({
-        '@type': 'sendMessage',
-        'chat_id': chatId,
-        'input_message_content': {
-          '@type': 'inputMessageText',
-          'text': {'@type': 'formattedText', 'text': trimmed},
-        },
-      }),
-    );
+    _submitMessageRequestWithoutWaiting({
+      '@type': 'sendMessage',
+      'chat_id': chatId,
+      'input_message_content': {
+        '@type': 'inputMessageText',
+        'text': {'@type': 'formattedText', 'text': trimmed},
+      },
+    });
     return true;
   }
 
@@ -3163,8 +3277,31 @@ class ChatViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _loadPrivatePaidMessageInfo(int userId) async {
+  Future<void> _loadPrivatePaidMessageInfo(int userId, {bool force = false}) {
+    if (!force &&
+        _privateMessageInfoLoaded &&
+        _privateMessageInfoUserId == userId) {
+      return Future.value();
+    }
+    final current = _privateMessageInfoLoad;
+    if (current != null && _privateMessageInfoUserId == userId) return current;
+    _privateMessageInfoUserId = userId;
+    final future = _fetchPrivateMessageInfo(userId);
+    _privateMessageInfoLoad = future;
+    unawaited(
+      future.whenComplete(() {
+        if (identical(_privateMessageInfoLoad, future)) {
+          _privateMessageInfoLoad = null;
+        }
+      }),
+    );
+    return future;
+  }
+
+  Future<void> _fetchPrivateMessageInfo(int userId) async {
     var next = 0;
+    var restrictsNewChats = false;
+    var isUnavailable = false;
     try {
       final full = await _client.query({
         '@type': 'getUserFullInfo',
@@ -3172,19 +3309,37 @@ class ChatViewModel extends ChangeNotifier {
       });
       next = _paidMessageStars(full);
     } catch (_) {}
-    if (next <= 0) {
-      try {
-        final result = await _client.query({
-          '@type': 'canSendMessageToUser',
-          'user_id': userId,
-          'only_local': false,
-        });
-        if (result.type == 'canSendMessageToUserResultUserHasPaidMessages') {
+    try {
+      final result = await _client.query({
+        '@type': 'canSendMessageToUser',
+        'user_id': userId,
+        'only_local': false,
+      });
+      switch (result.type) {
+        case 'canSendMessageToUserResultUserHasPaidMessages':
           next = _paidMessageStars(result);
-        }
-      } catch (_) {}
+        case 'canSendMessageToUserResultUserRestrictsNewChats':
+          next = 0;
+          restrictsNewChats = true;
+        case 'canSendMessageToUserResultUserIsDeleted':
+          next = 0;
+          isUnavailable = true;
+        case 'canSendMessageToUserResultOk':
+          next = 0;
+      }
+    } catch (_) {}
+    if (_isDisposed || peerUserId != userId) return;
+    _privateMessageInfoLoaded = true;
+    final paidCountChanged = paidMessageStarCount != next;
+    final requirementChanged =
+        peerRequiresPremiumOrContact != restrictsNewChats ||
+        peerIsUnavailable != isUnavailable;
+    peerRequiresPremiumOrContact = restrictsNewChats;
+    peerIsUnavailable = isUnavailable;
+    _setPaidMessageStarCount(next, notify: false);
+    if (paidCountChanged || requirementChanged) {
+      notifyListeners();
     }
-    _setPaidMessageStarCount(next);
   }
 
   Future<void> loadForumTopics() async {
@@ -4058,7 +4213,7 @@ class ChatViewModel extends ChangeNotifier {
         );
 
       case 'updateMessageSendSucceeded':
-        if (update.int64('chat_id') != chatId) return;
+        if (messageSendUpdateChatId(update) != chatId) return;
         final oldMessageId = update.int64('old_message_id');
         final rawSentMessage = update.obj('message');
         if (oldMessageId == null || rawSentMessage == null) return;
@@ -4091,7 +4246,7 @@ class ChatViewModel extends ChangeNotifier {
         _applyKeywordFilter();
 
       case 'updateMessageSendFailed':
-        if (update.int64('chat_id') != chatId) return;
+        if (messageSendUpdateChatId(update) != chatId) return;
         final oldMessageId = update.int64('old_message_id');
         if (oldMessageId == null) return;
         _acknowledgedPendingMessageIds.remove(oldMessageId);
@@ -4112,6 +4267,12 @@ class ChatViewModel extends ChangeNotifier {
         _recordMessageSendResult(
           oldMessageId,
           _MessageSendResult.failure(error),
+        );
+        _publishSendFailure(
+          ChatSendFailure.fromError(
+            error,
+            paidMessageStarCount: paidMessageStarCount,
+          ),
         );
 
       case 'updateSecretChat':

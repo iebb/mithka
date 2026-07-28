@@ -385,6 +385,9 @@ class MainActivity : FlutterFragmentActivity() {
         "blue" to "$packageName.MainActivityBlue",
         "purple" to "$packageName.MainActivityPurple",
         "pixel" to "$packageName.MainActivityPixel",
+        "aurora" to "$packageName.MainActivityAurora",
+        "prism" to "$packageName.MainActivityPrism",
+        "signal" to "$packageName.MainActivitySignal",
     )
 
     private fun currentLauncherIcon(): String {

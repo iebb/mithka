@@ -118,7 +118,6 @@ void main() {
 
     vm.applyLiveUpdateForTesting({
       '@type': 'updateMessageSendSucceeded',
-      'chat_id': 42,
       'old_message_id': 77,
       'message': {
         '@type': 'message',
@@ -149,6 +148,17 @@ void main() {
     expect(confirmed.imageHeight, 1920);
     expect(confirmed.videoDuration, 7);
     vm.dispose();
+  });
+
+  test('send update chat id falls back to the nested TDLib message', () {
+    expect(
+      messageSendUpdateChatId({
+        '@type': 'updateMessageSendFailed',
+        'old_message_id': 77,
+        'message': {'@type': 'message', 'id': 77, 'chat_id': 42},
+      }),
+      42,
+    );
   });
 
   test('server acknowledgement settles the visual sending state', () {

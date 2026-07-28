@@ -849,6 +849,19 @@ abstract final class AppStringKeys {
   static const chatRestrictedTelegramTosMessage =
       'chatRestrictedTelegramTosMessage';
   static const chatRestrictedTitle = 'chatRestrictedTitle';
+  static const chatSendFailedBlocked = 'chatSendFailedBlocked';
+  static const chatSendFailedGeneric = 'chatSendFailedGeneric';
+  static const chatSendFailedInsufficientStars =
+      'chatSendFailedInsufficientStars';
+  static const chatSendFailedMutualContact = 'chatSendFailedMutualContact';
+  static const chatSendFailedPaid = 'chatSendFailedPaid';
+  static const chatSendFailedPaidCount = 'chatSendFailedPaidCount';
+  static const chatSendFailedPermission = 'chatSendFailedPermission';
+  static const chatSendFailedPremium = 'chatSendFailedPremium';
+  static const chatSendFailedPrivacy = 'chatSendFailedPrivacy';
+  static const chatSendFailedRateLimited = 'chatSendFailedRateLimited';
+  static const chatSendFailedTitle = 'chatSendFailedTitle';
+  static const chatSendFailedUnavailable = 'chatSendFailedUnavailable';
   static const chatSavedToPhotos = 'chatSavedToPhotos';
   static const chatSavedToSavedMessages = 'chatSavedToSavedMessages';
   static const chatSaveFailed = 'chatSaveFailed';

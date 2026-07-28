@@ -807,6 +807,27 @@ const frMessages = <String, String>{
   'chatWallpaperThemesSharedWithChat':
       "Les thèmes sont visibles par tout le monde dans la discussion",
   'chatWallpaperTitle': "Fond d’écran",
+  'chatSendFailedBlocked':
+      "Ce message ne peut pas être envoyé, car l’une des deux personnes a bloqué l’autre.",
+  'chatSendFailedGeneric': "Telegram a refusé le message : {value1}",
+  'chatSendFailedInsufficientStars':
+      "Vous n’avez pas assez d’étoiles Telegram pour envoyer ce message.",
+  'chatSendFailedMutualContact':
+      "Cette personne n’accepte que les messages de contacts mutuels.",
+  'chatSendFailedPaid':
+      "Ce chat n’accepte que les messages payants. Confirmez le coût en étoiles et réessayez.",
+  'chatSendFailedPaidCount':
+      "Ce chat facture {value1} étoiles par message. Confirmez le message payant et réessayez.",
+  'chatSendFailedPermission':
+      "Vous n’avez pas l’autorisation d’envoyer des messages dans ce chat, ou ce sujet est fermé.",
+  'chatSendFailedPremium':
+      "Cette personne n’accepte les nouveaux chats que de ses contacts ou des utilisateurs Telegram Premium. Ajoutez-la aux contacts ou utilisez Premium.",
+  'chatSendFailedPrivacy':
+      "Les paramètres de confidentialité du destinataire n’autorisent pas ce message.",
+  'chatSendFailedRateLimited':
+      "Telegram limite temporairement l’envoi de messages. Patientez un instant et réessayez.",
+  'chatSendFailedTitle': "Message non envoyé",
+  'chatSendFailedUnavailable': "Ce compte ou ce chat n’est plus disponible.",
   'chatYouAreMuted': "Vous ne pouvez pas envoyer de messages",
   'chatYouWereRemovedFromGroup': "Vous avez été retiré de ce groupe",
   'checklistComposerAddTask': "Ajouter une tâche",

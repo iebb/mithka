@@ -1194,6 +1194,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
   Future<void> _sendCurrentText() async {
     if (_aiReplyWorkingTargetId != null) return;
     if (_controller.text.trim().isEmpty) return;
+    final canAttemptSend = await vm.prepareMessageSend();
+    if (!mounted || !canAttemptSend) return;
     final (text, entities) = _controller.toFormatted();
     final lengthTier = telegramMessageLengthTier(text);
     if (lengthTier == TelegramMessageLengthTier.exceeded) {
@@ -1230,7 +1232,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
       final ok = await _confirmPaidMessageSend();
       if (!mounted || !ok) return;
     }
-    vm.sendFormatted(text, entities);
+    final sent = await vm.sendFormatted(text, entities);
+    if (!mounted || !sent) return;
     widget.onMessageSent();
     _controller.clear();
     _focus.requestFocus();
@@ -1757,6 +1760,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
     );
     if (result == null || !mounted) return;
     if (result.text.trim().isEmpty && result.attachments.isEmpty) return;
+    final canAttemptSend = await vm.prepareMessageSend();
+    if (!mounted || !canAttemptSend) return;
     if (vm.requiresPaidMessage) {
       final ok = await _confirmPaidMessageSend();
       if (!mounted || !ok) return;
@@ -4572,6 +4577,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
     );
     if (result == null || !mounted) return;
     if (result.text.trim().isEmpty && result.attachments.isEmpty) return;
+    final canAttemptSend = await vm.prepareMessageSend();
+    if (!mounted || !canAttemptSend) return;
     if (vm.requiresPaidMessage) {
       final ok = await _confirmPaidMessageSend();
       if (!mounted || !ok) return;
