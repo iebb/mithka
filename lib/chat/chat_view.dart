@@ -867,7 +867,7 @@ class _ChatViewState extends State<ChatView> {
       ? _liveNewMessageCount
       : _showEntryUnreadBanner
       ? _entryUnreadCount
-      : _unreadProgress.remaining(initialUnreadCount: _vm.unreadCount);
+      : _unreadProgress.remaining(entryUnreadCount: _entryUnreadCount);
   int _entryUnreadCount = 0;
   int _entryLastReadInboxId = 0;
   int? _entryFirstUnreadMessageId;
@@ -1476,7 +1476,7 @@ class _ChatViewState extends State<ChatView> {
         changed =
             _unreadProgress.markVisible(
               messageId: message.id,
-              initialUnread: message.id > _vm.lastReadInboxId,
+              initialUnread: message.id > _entryLastReadInboxId,
             ) ||
             changed;
       }

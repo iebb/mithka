@@ -131,8 +131,8 @@ class ChatUnreadProgress {
 
   int get liveCount => _liveMessageIds.length;
 
-  int remaining({required int initialUnreadCount}) =>
-      (initialUnreadCount - _seenInitialMessageIds.length).clamp(0, 1 << 30) +
+  int remaining({required int entryUnreadCount}) =>
+      (entryUnreadCount - _seenInitialMessageIds.length).clamp(0, 1 << 30) +
       _liveMessageIds.length;
 
   bool addLiveMessage(int messageId) => _liveMessageIds.add(messageId);
