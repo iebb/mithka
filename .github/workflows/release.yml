@@ -86,10 +86,11 @@ jobs:
           read -r build_stamp build_day release_date release_title_date <<< "$(
             date -u '+%y%m%d%H %y%m%d %Y%m%d %Y-%m-%d'
           )"
-          compat_build_stamp="$((10#$build_stamp + 2000))"
           if [ "$((10#$build_day))" -lt 260801 ]; then
+            compat_build_stamp="$((10#$build_stamp + 2000))"
             produce_compat_apk="true"
           else
+            compat_build_stamp=""
             produce_compat_apk="false"
           fi
           short_sha="${GITHUB_SHA::7}"
@@ -945,9 +946,6 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
-          BUILD_STAMP: ${{ needs.prepare.outputs.build_stamp }}
-          COMPAT_BUILD_STAMP: ${{ needs.prepare.outputs.compat_build_stamp }}
-          PRODUCE_COMPAT_APK: ${{ needs.prepare.outputs.produce_compat_apk }}
         run: |
           : > change-summary.md
           if [ "$PRERELEASE" = "true" ]; then
@@ -1033,23 +1031,12 @@ jobs:
             echo >> release-notes.md
           fi
 
-          {
-            echo "## Android APKs / Android APK"
-            if [ "$PRODUCE_COMPAT_APK" = "true" ] && [ "$COMPAT_APK_COUNT" -eq 2 ]; then
-              echo "- **English:** This pre-August release contains only compatibility APKs with version code \`$COMPAT_BUILD_STAMP\`. They are valid for every user, including new installs and normal updates. Choose only the APK matching your device ABI. From 2026-08-01 UTC, releases return to the standard version code."
-              echo "- **中文：** 本次 8 月前的发布仅提供版本代码为 \`$COMPAT_BUILD_STAMP\` 的兼容 APK。它们适用于所有用户，包括新安装和常规更新。只需选择与设备 ABI 匹配的 APK。从 2026-08-01 UTC 起，发布将恢复使用标准版本代码。"
-            elif [ "$PRODUCE_COMPAT_APK" = "true" ]; then
-              echo "- **English:** Compatibility publication passed for $COMPAT_APK_COUNT of 2 ABIs. This release still contains exactly one APK per ABI: the \`vc$COMPAT_BUILD_STAMP\` compatibility APK where available, or the \`vc$BUILD_STAMP\` standard fallback otherwise. A compatibility APK works for every user. A standard fallback may be rejected only when updating from an older offset build. Choose the file matching your device ABI."
-              echo "- **中文：** 2 种 ABI 中有 $COMPAT_APK_COUNT 种成功发布了兼容 APK。本次发布对每种 ABI 仍只提供一个 APK：成功时为 \`vc$COMPAT_BUILD_STAMP\` 兼容 APK，否则为 \`vc$BUILD_STAMP\` 标准后备 APK。兼容 APK 适用于所有用户；只有从较旧的偏移版本更新时，标准后备 APK 才可能被 Android 判定为降级。请选择与设备 ABI 匹配的文件。"
-            else
-              echo "- **English:** Only the standard APK is produced from 2026-08-01 UTC. The temporary compatibility APK is no longer generated. Choose the APK matching your device ABI."
-              echo "- **中文：** 从 2026-08-01 UTC 起仅生成标准 APK，不再生成临时兼容 APK。请选择与设备 ABI 匹配的 APK。"
-            fi
-            if [ "$PRERELEASE" = "true" ]; then
+          if [ "$PRERELEASE" = "true" ]; then
+            {
               echo
               echo "**Full changelog:** [$compare_label]($compare_url)"
-            fi
-          } >> release-notes.md
+            } >> release-notes.md
+          fi
 
       - name: Remove old Mithka package assets
         env:
