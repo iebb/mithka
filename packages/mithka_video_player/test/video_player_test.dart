@@ -692,6 +692,67 @@ void main() {
     await controller.dispose();
   });
 
+  testWidgets('explicit custom chrome toggle hides focused playing controls', (
+    tester,
+  ) async {
+    final controller = _FakeVideoPlayerController();
+    final controlFocus = FocusNode(debugLabel: 'custom chrome control');
+    MithkaVideoChromeScope? scope;
+    addTearDown(controlFocus.dispose);
+
+    await tester.pumpWidget(
+      _frame(
+        MithkaVideoPlayer(
+          source: _source('focused-custom-chrome'),
+          controller: controller,
+          autoplay: false,
+          controlsAutoHideDuration: const Duration(milliseconds: 80),
+          interactionMode: MithkaVideoInteractionMode.delegateToChrome,
+          chromeBuilder: (context, value) {
+            scope = value;
+            return Stack(
+              fit: StackFit.expand,
+              children: [
+                GestureDetector(
+                  key: const ValueKey('custom-chrome-surface'),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: value.actions.toggleControls,
+                ),
+                if (value.snapshot.controlsVisible)
+                  Center(
+                    child: Focus(
+                      focusNode: controlFocus,
+                      child: const SizedBox.square(dimension: 44),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    controlFocus.requestFocus();
+    await tester.pump();
+    expect(controlFocus.hasFocus, isTrue);
+    await controller.play();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(scope!.snapshot.controlsVisible, isTrue);
+
+    tester
+        .widget<GestureDetector>(
+          find.byKey(const ValueKey('custom-chrome-surface')),
+        )
+        .onTap!();
+    await tester.pump();
+    expect(scope!.snapshot.controlsVisible, isFalse);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    await controller.dispose();
+  });
+
   testWidgets(
     'controlled picture in picture coalesces requests and updates default chrome',
     (tester) async {

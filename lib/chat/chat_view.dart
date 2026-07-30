@@ -6559,9 +6559,6 @@ class _ChatViewState extends State<ChatView> {
   }
 
   Future<void> _openPinnedFromBar(ChatMessage pinned) async {
-    if (_vm.pinnedMessage?.id == pinned.id && _isKeyMostlyVisible(_pinnedKey)) {
-      return;
-    }
     await _scrollToMessage(pinned.id, pinnedJump: true);
   }
 
@@ -6645,6 +6642,36 @@ class _ChatViewState extends State<ChatView> {
       final activeKey = _scrollTargetId == messageId ? _targetKey : _pinnedKey;
       final ctx = activeKey.currentContext;
       if (ctx != null && ctx.mounted) {
+        if (pinnedJump && alignment == null && _scroll.hasClients) {
+          final targetObject = ctx.findRenderObject();
+          final viewportObject = _transcriptViewportKey.currentContext
+              ?.findRenderObject();
+          if (targetObject is RenderBox &&
+              targetObject.attached &&
+              viewportObject is RenderBox &&
+              viewportObject.attached) {
+            final target = pinnedMessageTargetScrollOffset(
+              _scroll.position,
+              targetTop: targetObject.localToGlobal(Offset.zero).dy,
+              viewportTop: viewportObject.localToGlobal(Offset.zero).dy,
+            );
+            if ((target - _scroll.position.pixels).abs() > 0.5) {
+              if (instant) {
+                _scroll.jumpTo(target);
+              } else {
+                await _scroll.animateTo(
+                  target,
+                  duration: const Duration(milliseconds: 140),
+                  curve: Curves.easeOutCubic,
+                );
+              }
+            }
+            if (mounted && _scrollTargetId == messageId) {
+              setState(() => _setScrollTarget(null));
+            }
+            return;
+          }
+        }
         // Do not realign a message that is already on screen. Reply, search,
         // and other linked-message jumps used to always force the row to 30%
         // of the viewport, which made an already-visible target bounce.
@@ -6663,9 +6690,6 @@ class _ChatViewState extends State<ChatView> {
               ? const Duration(milliseconds: 140)
               : const Duration(milliseconds: 220),
           curve: Curves.easeOutCubic,
-          alignmentPolicy: pinnedJump && alignment == null
-              ? pinnedMessageScrollAlignmentPolicy
-              : ScrollPositionAlignmentPolicy.explicit,
         );
         if (mounted && _scrollTargetId == messageId) {
           setState(() => _setScrollTarget(null));

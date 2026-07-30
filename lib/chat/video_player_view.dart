@@ -1737,7 +1737,6 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
       controlsAutoHideDuration: const Duration(seconds: 5),
       positionUpdateInterval: const Duration(milliseconds: 200),
       interactionMode: MithkaVideoInteractionMode.delegateToChrome,
-      autofocus: true,
       enableKeyboardShortcuts: !_showCompletionPrompt,
       showScrubPreview: false,
       isFullscreen: true,

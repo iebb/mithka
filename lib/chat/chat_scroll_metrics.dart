@@ -1,9 +1,7 @@
-import 'package:flutter/widgets.dart'
-    show ScrollMetrics, ScrollPositionAlignmentPolicy;
+import 'package:flutter/widgets.dart' show ScrollMetrics;
 
 const pinnedMessageScrollAlignment = 0.08;
-const pinnedMessageScrollAlignmentPolicy =
-    ScrollPositionAlignmentPolicy.explicit;
+const pinnedMessageTargetTopInset = 72.0;
 
 /// Distance from the viewport to the oldest loaded chat content.
 ///
@@ -78,6 +76,22 @@ bool isNearLatest(ScrollMetrics metrics, {required double threshold}) {
 /// content before a center sliver gives them a negative minimum extent.
 double clampScrollOffset(ScrollMetrics metrics, double offset) =>
     offset.clamp(metrics.minScrollExtent, metrics.maxScrollExtent);
+
+/// Resolves a pinned-message jump so the target's leading edge clears the
+/// floating pinned banner.
+///
+/// The coordinates are global because both render boxes are measured after
+/// layout. The scroll delta is the target's current leading edge minus its
+/// desired leading edge within the transcript viewport.
+double pinnedMessageTargetScrollOffset(
+  ScrollMetrics metrics, {
+  required double targetTop,
+  required double viewportTop,
+  double topInset = pinnedMessageTargetTopInset,
+}) => clampScrollOffset(
+  metrics,
+  metrics.pixels + targetTop - (viewportTop + topInset),
+);
 
 /// Returns the normalized position of [offset] in the complete scroll range.
 ///

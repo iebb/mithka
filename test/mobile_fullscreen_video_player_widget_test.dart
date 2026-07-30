@@ -124,6 +124,7 @@ void main() {
 
         expect(playerRect, const Rect.fromLTWH(0, 0, 390, 844));
         expect(reusablePlayer.alignment, Alignment.center);
+        expect(reusablePlayer.autofocus, isFalse);
         expect(surfaceRect.width, closeTo(390, 0.01));
         expect(surfaceRect.height, closeTo(390 * 9 / 16, 0.01));
         expect(surfaceRect.center.dx, closeTo(playerRect.center.dx, 0.01));
@@ -136,6 +137,13 @@ void main() {
         expect(playerRect.contains(nextRect.bottomRight), isTrue);
         expect(previousRect.right, lessThanOrEqualTo(pauseRect.left));
         expect(pauseRect.right, lessThanOrEqualTo(nextRect.left));
+
+        await tester.tapAt(const Offset(195, 200));
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(_semanticsWidget('Pause'), findsNothing);
+        await tester.tapAt(const Offset(195, 200));
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(_semanticsWidget('Pause'), findsOneWidget);
 
         await tester.tap(_semanticsWidget('More'));
         await tester.pump();

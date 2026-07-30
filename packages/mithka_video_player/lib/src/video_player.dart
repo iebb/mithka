@@ -1093,7 +1093,12 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
 
   void _toggleControls() {
     if (_controlsVisible) {
-      _hideControls();
+      _hideTimer?.cancel();
+      if (_accessibleNavigation) {
+        _showControls();
+        return;
+      }
+      setState(() => _controlsVisible = false);
     } else {
       _showControls();
     }
@@ -1688,12 +1693,7 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
   }
 
   void _handleSurfaceTap() {
-    if (_controlsVisible && _accessibleNavigation) {
-      _showControls();
-      return;
-    }
-    setState(() => _controlsVisible = !_controlsVisible);
-    if (_controlsVisible) _scheduleHide();
+    _toggleControls();
   }
 
   void _handleSurfaceDoubleTap(TapDownDetails details, double width) {

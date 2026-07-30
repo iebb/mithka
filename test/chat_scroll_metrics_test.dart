@@ -1,4 +1,3 @@
-import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/chat_scroll_metrics.dart';
@@ -115,13 +114,45 @@ void main() {
       expect(isNearOldest(metrics, threshold: 0), isTrue);
       expect(isNearLatest(metrics, threshold: 0), isTrue);
     });
+
+    test('pinned target offsets reserve the banner inset and clamp', () {
+      final metrics = _metrics(min: -200, max: 800, pixels: 300);
+
+      expect(
+        pinnedMessageTargetScrollOffset(
+          metrics,
+          targetTop: 420,
+          viewportTop: 100,
+        ),
+        548,
+      );
+      expect(
+        pinnedMessageTargetScrollOffset(
+          metrics,
+          targetTop: -1000,
+          viewportTop: 100,
+        ),
+        -200,
+      );
+      expect(
+        pinnedMessageTargetScrollOffset(
+          metrics,
+          targetTop: 2000,
+          viewportTop: 100,
+        ),
+        800,
+      );
+    });
   });
 
-  testWidgets('pinned targets align from either scroll direction', (
+  testWidgets('pinned targets clear the floating banner in either direction', (
     tester,
   ) async {
-    final controller = ScrollController(initialScrollOffset: 400);
-    final itemKeys = List<GlobalKey>.generate(12, (_) => GlobalKey());
+    final controller = ScrollController(initialScrollOffset: 700);
+    final shortTargetKey = GlobalKey();
+    final tallTargetKey = GlobalKey();
+    const viewportKey = ValueKey('viewport');
+    const bannerKey = ValueKey('pinned-banner');
     addTearDown(controller.dispose);
 
     await tester.pumpWidget(
@@ -131,43 +162,58 @@ void main() {
           child: SizedBox(
             width: 300,
             height: 400,
-            child: ListView(
-              controller: controller,
-              scrollCacheExtent: const ScrollCacheExtent.pixels(2000),
-              padding: EdgeInsets.zero,
+            child: Stack(
               children: [
-                for (var index = 0; index < itemKeys.length; index++)
-                  SizedBox(key: itemKeys[index], height: 100),
+                SingleChildScrollView(
+                  key: viewportKey,
+                  controller: controller,
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 100),
+                      SizedBox(key: shortTargetKey, height: 100),
+                      const SizedBox(height: 800),
+                      SizedBox(key: tallTargetKey, height: 620),
+                      const SizedBox(height: 800),
+                    ],
+                  ),
+                ),
+                const Positioned(
+                  top: 12,
+                  left: 0,
+                  right: 0,
+                  child: SizedBox(key: bannerKey, height: 48),
+                ),
               ],
             ),
           ),
         ),
       ),
     );
-    Future<void> expectPinnedAlignment(int index) async {
-      await Scrollable.ensureVisible(
-        itemKeys[index].currentContext!,
-        alignment: pinnedMessageScrollAlignment,
-        // Passing the app policy is the regression seam: keepVisibleAtStart
-        // ignores the requested alignment and can refuse newer-target moves.
-        // ignore: avoid_redundant_argument_values
-        alignmentPolicy: pinnedMessageScrollAlignmentPolicy,
+    Future<void> expectPinnedAlignment(GlobalKey targetKey) async {
+      final viewportTop = tester.getTopLeft(find.byKey(viewportKey)).dy;
+      final targetTop = tester.getTopLeft(find.byKey(targetKey)).dy;
+      controller.jumpTo(
+        pinnedMessageTargetScrollOffset(
+          controller.position,
+          targetTop: targetTop,
+          viewportTop: viewportTop,
+        ),
       );
       await tester.pump();
 
-      final viewportTop = tester.getTopLeft(find.byType(ListView)).dy;
-      final targetTop = tester.getTopLeft(find.byKey(itemKeys[index])).dy;
-      final availableAlignmentExtent =
-          tester.getSize(find.byType(ListView)).height -
-          tester.getSize(find.byKey(itemKeys[index])).height;
+      final alignedViewportTop = tester.getTopLeft(find.byKey(viewportKey)).dy;
+      final alignedTargetTop = tester.getTopLeft(find.byKey(targetKey)).dy;
+      final bannerBottom = tester.getBottomLeft(find.byKey(bannerKey)).dy;
       expect(
-        targetTop - viewportTop,
-        closeTo(availableAlignmentExtent * pinnedMessageScrollAlignment, 0.01),
+        alignedTargetTop - alignedViewportTop,
+        closeTo(pinnedMessageTargetTopInset, 0.01),
       );
+      expect(alignedTargetTop, greaterThan(bannerBottom));
     }
 
-    await expectPinnedAlignment(8);
-    await expectPinnedAlignment(1);
+    await expectPinnedAlignment(tallTargetKey);
+    await expectPinnedAlignment(shortTargetKey);
+    await expectPinnedAlignment(tallTargetKey);
   });
 }
 
