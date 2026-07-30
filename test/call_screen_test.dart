@@ -1,11 +1,11 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/call/call_manager.dart';
 import 'package:mithka/call/call_media_engine.dart';
 import 'package:mithka/call/call_screen.dart';
 import 'package:mithka/call/calls_view.dart';
+import 'package:mithka/components/app_interactive_surface.dart';
 import 'package:mithka/components/photo_avatar.dart';
 
 void main() {
@@ -16,6 +16,30 @@ void main() {
       'limit': 25,
       'only_missed': false,
     });
+  });
+
+  test('unsupported media engines cannot signal outgoing calls', () {
+    final manager = CallManager(engine: NoopCallMediaEngine());
+    addTearDown(manager.dispose);
+
+    expect(manager.supportsMediaCalls, isFalse);
+    expect(manager.startCall(42, false), CallStartResult.unsupported);
+    expect(manager.call, isNull);
+  });
+
+  test('an active call is reported as busy instead of successful', () {
+    final manager = CallManager(engine: _RecordingCallMediaEngine());
+    addTearDown(manager.dispose);
+    manager.call = ActiveCall(
+      callId: 41,
+      peerUserId: 7,
+      isOutgoing: true,
+      isVideo: false,
+      phase: CallPhase.active,
+    );
+
+    expect(manager.startCall(42, false), CallStartResult.busy);
+    expect(manager.call?.callId, 41);
   });
 
   test(
@@ -35,6 +59,42 @@ void main() {
         ),
         isNull,
       );
+    },
+  );
+
+  testWidgets(
+    'unsupported incoming calls explain the limitation and omit accept',
+    (tester) async {
+      final manager = CallManager(engine: NoopCallMediaEngine());
+      addTearDown(manager.dispose);
+      manager.call = ActiveCall(
+        callId: 48,
+        peerUserId: 12,
+        peerName: 'Incoming contact',
+        isOutgoing: false,
+        isVideo: false,
+        phase: CallPhase.ringingIncoming,
+      );
+
+      await tester.pumpWidget(MaterialApp(home: CallScreen(manager: manager)));
+
+      expect(
+        find.text('Calls aren’t available in this desktop build yet.'),
+        findsOneWidget,
+      );
+      expect(find.text('Accept'), findsNothing);
+      expect(find.text('Decline'), findsOneWidget);
+
+      final declineSurface = find.byWidgetPredicate(
+        (widget) =>
+            widget is AppInteractiveSurface &&
+            widget.semanticLabel == 'Decline',
+      );
+      expect(declineSurface, findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pump();
+      expect(manager.call, isNull);
     },
   );
 

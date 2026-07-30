@@ -251,8 +251,17 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
 
   // MARK: - Actions
 
-  void _call(bool isVideo) =>
-      context.read<CallManager>().startCall(widget.userId, isVideo);
+  void _call(bool isVideo) {
+    final started = context.read<CallManager>().startCall(
+      widget.userId,
+      isVideo,
+    );
+    if (started == CallStartResult.unsupported) {
+      showToast(context, AppStringKeys.callsUnavailableOnDesktop);
+    } else if (started == CallStartResult.busy) {
+      showToast(context, AppStringKeys.callAlreadyInProgress);
+    }
+  }
 
   Future<void> _addToContacts() async {
     final fallbackName = _name.trim().isNotEmpty ? _name.trim() : widget.name;
@@ -278,7 +287,7 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
   }
 
   void _callMenu() {
-    showCupertinoModalPopup<void>(
+    showAppCupertinoModalPopup<void>(
       context: context,
       builder: (sheet) => CupertinoActionSheet(
         actions: [

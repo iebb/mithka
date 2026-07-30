@@ -17,6 +17,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
 import '../components/confirm_dialog.dart';
+import '../components/desktop_content_constraint.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../tdlib/json_helpers.dart';
@@ -130,45 +131,49 @@ class _ProxyViewState extends State<ProxyView> {
             onBack: () => Navigator.of(context).pop(),
           ),
           Expanded(
-            child: _loading
-                ? const Center(
-                    child: SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator.adaptive(strokeWidth: 2),
-                    ),
-                  )
-                : ListView(
-                    padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
-                    children: [
-                      _card([_noneRow()]),
-                      if (_proxies.isNotEmpty) ...[
-                        const SizedBox(height: 14),
-                        _card([
-                          for (var i = 0; i < _proxies.length; i++) ...[
-                            if (i > 0) const InsetDivider(leadingInset: 16),
-                            _proxyRow(_proxies[i]),
-                          ],
-                        ]),
-                      ],
-                      const SizedBox(height: 14),
-                      _card([
-                        _addRow(),
-                        const InsetDivider(leadingInset: 16),
-                        _addFromLinkRow(),
-                      ]),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                        child: Text(
-                          AppStrings.t(AppStringKeys.proxyDescription),
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: c.textSecondary,
-                          ),
+            child: DesktopContentConstraint(
+              child: _loading
+                  ? const Center(
+                      child: SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator.adaptive(
+                          strokeWidth: 2,
                         ),
                       ),
-                    ],
-                  ),
+                    )
+                  : ListView(
+                      padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
+                      children: [
+                        _card([_noneRow()]),
+                        if (_proxies.isNotEmpty) ...[
+                          const SizedBox(height: 14),
+                          _card([
+                            for (var i = 0; i < _proxies.length; i++) ...[
+                              if (i > 0) const InsetDivider(leadingInset: 16),
+                              _proxyRow(_proxies[i]),
+                            ],
+                          ]),
+                        ],
+                        const SizedBox(height: 14),
+                        _card([
+                          _addRow(),
+                          const InsetDivider(leadingInset: 16),
+                          _addFromLinkRow(),
+                        ]),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                          child: Text(
+                            AppStrings.t(AppStringKeys.proxyDescription),
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: c.textSecondary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
           ),
         ],
       ),

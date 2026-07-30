@@ -6,6 +6,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 
 import '../auth/telegram_passkey_service.dart';
 import '../components/app_icons.dart';
+import '../components/app_interactive_surface.dart';
 import '../components/confirm_dialog.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
@@ -122,9 +123,11 @@ class _PasskeysViewState extends State<PasskeysView> {
           NavHeader(
             title: AppStrings.t(AppStringKeys.passkeysTitle),
             onBack: () => Navigator.of(context).pop(),
-            trailing: GestureDetector(
-              behavior: HitTestBehavior.opaque,
+            trailing: AppInteractiveSurface(
+              semanticLabel: AppStrings.t(AppStringKeys.passkeysAdd),
               onTap: _working ? null : () => unawaited(_add()),
+              enabled: !_working,
+              borderRadius: BorderRadius.circular(8),
               child: Padding(
                 padding: const EdgeInsets.only(left: 12),
                 child: AppIcon(

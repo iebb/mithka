@@ -15,6 +15,7 @@ import 'package:provider/provider.dart';
 import '../app/app_navigator.dart';
 import '../chat/chat_view.dart';
 import '../components/app_icons.dart';
+import '../components/app_interactive_surface.dart';
 import '../components/drawer_controller.dart' as dc;
 import '../components/photo_avatar.dart';
 import '../components/ui_components.dart';
@@ -27,6 +28,16 @@ import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import 'add_people_view.dart';
 
+bool contactMatchesQuery(Contact contact, String rawQuery) {
+  final query = rawQuery.trim().toLowerCase().replaceFirst(RegExp(r'^@+'), '');
+  if (query.isEmpty) return true;
+  return contact.name.toLowerCase().contains(query) ||
+      contact.usernames.any(
+        (username) => username.toLowerCase().contains(query),
+      ) ||
+      (contact.username?.toLowerCase().contains(query) ?? false);
+}
+
 class ContactsView extends StatefulWidget {
   const ContactsView({super.key, this.onOpenDetail});
 
@@ -38,6 +49,7 @@ class ContactsView extends StatefulWidget {
 
 class _ContactsViewState extends State<ContactsView> {
   final _vm = ContactsViewModel();
+  final _searchController = TextEditingController();
   String _meName = AppStringKeys.chatMeLabel;
   TdFileRef? _mePhoto;
   int _tab = 0; // 0 好友, 1 群聊, 2 频道, 3 机器人
@@ -54,6 +66,7 @@ class _ContactsViewState extends State<ContactsView> {
 
   @override
   void dispose() {
+    _searchController.dispose();
     _vm.dispose();
     super.dispose();
   }
@@ -94,6 +107,27 @@ class _ContactsViewState extends State<ContactsView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final query = _searchController.text;
+    final contacts = _vm.contacts
+        .where((contact) => contactMatchesQuery(contact, query))
+        .toList(growable: false);
+    final bots = _vm.bots
+        .where((contact) => contactMatchesQuery(contact, query))
+        .toList(growable: false);
+    final groups = _vm.groups
+        .where(
+          (chat) =>
+              query.trim().isEmpty ||
+              chat.title.toLowerCase().contains(query.trim().toLowerCase()),
+        )
+        .toList(growable: false);
+    final channels = _vm.channels
+        .where(
+          (chat) =>
+              query.trim().isEmpty ||
+              chat.title.toLowerCase().contains(query.trim().toLowerCase()),
+        )
+        .toList(growable: false);
     return Container(
       color: c.groupedBackground,
       child: Column(
@@ -106,10 +140,10 @@ class _ContactsViewState extends State<ContactsView> {
                 _searchPill(),
                 _tabs(),
                 switch (_tab) {
-                  0 => _contactList(_vm.contacts, loading: _vm.contactsLoading),
-                  1 => _chatList(_vm.groups, loading: _vm.chatsLoading),
-                  2 => _chatList(_vm.channels, loading: _vm.chatsLoading),
-                  _ => _contactList(_vm.bots, loading: _vm.contactsLoading),
+                  0 => _contactList(contacts, loading: _vm.contactsLoading),
+                  1 => _chatList(groups, loading: _vm.chatsLoading),
+                  2 => _chatList(channels, loading: _vm.chatsLoading),
+                  _ => _contactList(bots, loading: _vm.contactsLoading),
                 },
               ],
             ),
@@ -128,8 +162,10 @@ class _ContactsViewState extends State<ContactsView> {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(
           children: [
-            GestureDetector(
+            AppInteractiveSurface(
+              semanticLabel: _meName.l10n(context),
               onTap: () => context.read<dc.DrawerController>().open(),
+              borderRadius: BorderRadius.circular(17),
               child: PhotoAvatar(title: _meName, photo: _mePhoto, size: 34),
             ),
             const SizedBox(width: 12),
@@ -142,13 +178,17 @@ class _ContactsViewState extends State<ContactsView> {
               ),
             ),
             const Spacer(),
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
+            AppInteractiveSurface(
+              semanticLabel: AppStringKeys.addPeopleFindPeople.l10n(context),
               onTap: _showAddMenu,
-              child: AppIcon(
-                HeroAppIcons.userPlus,
-                size: 22,
-                color: c.textPrimary,
+              borderRadius: BorderRadius.circular(10),
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: AppIcon(
+                  HeroAppIcons.userPlus,
+                  size: 22,
+                  color: c.textPrimary,
+                ),
               ),
             ),
           ],
@@ -176,10 +216,37 @@ class _ContactsViewState extends State<ContactsView> {
               color: c.textTertiary,
             ),
             const SizedBox(width: 6),
-            Text(
-              AppStringKeys.topicChatSearch.l10n(context),
-              style: TextStyle(fontSize: 14, color: c.textTertiary),
+            Expanded(
+              child: TextField(
+                controller: _searchController,
+                textInputAction: TextInputAction.search,
+                onChanged: (_) => setState(() {}),
+                style: TextStyle(fontSize: 14, color: c.textPrimary),
+                decoration: InputDecoration(
+                  isCollapsed: true,
+                  border: InputBorder.none,
+                  hintText: AppStringKeys.topicChatSearch.l10n(context),
+                  hintStyle: TextStyle(fontSize: 14, color: c.textTertiary),
+                ),
+              ),
             ),
+            if (_searchController.text.isNotEmpty)
+              AppInteractiveSurface(
+                semanticLabel: AppStringKeys.countryPickerCancel.l10n(context),
+                onTap: () {
+                  _searchController.clear();
+                  setState(() {});
+                },
+                borderRadius: BorderRadius.circular(9),
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: AppIcon(
+                    HeroAppIcons.xmark,
+                    size: 14,
+                    color: c.textTertiary,
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -204,8 +271,9 @@ class _ContactsViewState extends State<ContactsView> {
         children: [
           for (var i = 0; i < labels.length; i++)
             Expanded(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
+              child: AppInteractiveSurface(
+                semanticLabel: labels[i].l10n(context),
+                selected: _tab == i,
                 onTap: () => setState(() => _tab = i),
                 child: SizedBox(
                   height: 50,
@@ -266,8 +334,11 @@ class _ContactsViewState extends State<ContactsView> {
     }
     return _card([
       for (final contact in contacts) ...[
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
+        AppInteractiveSurface(
+          semanticLabel: contact.name,
+          semanticValue: contact.statusText.isEmpty
+              ? null
+              : contact.statusText.l10n(context),
           onTap: () => _openDetail(
             ProfileDetailView(
               userId: contact.id,
@@ -337,8 +408,8 @@ class _ContactsViewState extends State<ContactsView> {
     }
     return _card([
       for (final group in chats) ...[
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
+        AppInteractiveSurface(
+          semanticLabel: group.title,
           onTap: () => _openDetail(
             ChatView(
               chatId: group.id,
@@ -475,16 +546,20 @@ class ContactsViewModel extends ChangeNotifier {
     }
   }
 
-  Contact _contactFromUser(int id, Map<String, dynamic> user) => Contact(
-    id: id,
-    name: TDParse.userName(user),
-    username: user.obj('usernames')?.str('editable_username'),
-    statusText: _isBotUser(user)
-        ? AppStringKeys.chatsSearchBots
-        : TDParse.userStatus(user),
-    photo: TDParse.smallPhoto(user.obj('profile_photo')),
-    isOnline: TDParse.isUserOnline(user),
-  );
+  Contact _contactFromUser(int id, Map<String, dynamic> user) {
+    final usernames = TDParse.activeUsernames(user);
+    return Contact(
+      id: id,
+      name: TDParse.userName(user),
+      username: usernames.isEmpty ? null : usernames.first,
+      usernames: usernames,
+      statusText: _isBotUser(user)
+          ? AppStringKeys.chatsSearchBots
+          : TDParse.userStatus(user),
+      photo: TDParse.smallPhoto(user.obj('profile_photo')),
+      isOnline: TDParse.isUserOnline(user),
+    );
+  }
 
   bool _isBotUser(Map<String, dynamic> user) =>
       user.obj('type')?.type == 'userTypeBot' ||

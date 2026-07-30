@@ -418,8 +418,12 @@ class _MithkaProViewState extends State<MithkaProView> {
                 ),
               ),
               const SizedBox(width: 12),
-              IgnorePointer(
-                child: AppCheckbox(value: selected, onChanged: (_) {}),
+              ExcludeSemantics(
+                child: ExcludeFocus(
+                  child: IgnorePointer(
+                    child: AppCheckbox(value: selected, onChanged: (_) {}),
+                  ),
+                ),
               ),
             ],
           ),

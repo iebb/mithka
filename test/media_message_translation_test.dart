@@ -68,6 +68,41 @@ void main() {
     return theme;
   }
 
+  testWidgets('secondary mouse click invokes message action callback', (
+    tester,
+  ) async {
+    final message = ChatMessage(
+      id: 100,
+      isOutgoing: false,
+      text: 'Open message actions',
+      date: 1,
+    );
+    ChatMessage? actionTarget;
+
+    await pumpBubble(
+      tester,
+      message,
+      onLongPress: (message) => actionTarget = message,
+    );
+
+    final contextGesture = find.descendant(
+      of: find.byType(MessageBubble),
+      matching: find.byWidgetPredicate(
+        (widget) => widget is GestureDetector && widget.onSecondaryTap != null,
+      ),
+    );
+    expect(contextGesture, findsOneWidget);
+
+    await tester.tap(
+      contextGesture,
+      buttons: kSecondaryMouseButton,
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+
+    expect(actionTarget, same(message));
+  });
+
   testWidgets('grouped photo captions render their translation', (
     tester,
   ) async {

@@ -1,4 +1,9 @@
-import 'package:flutter/widgets.dart' show ScrollMetrics;
+import 'package:flutter/widgets.dart'
+    show ScrollMetrics, ScrollPositionAlignmentPolicy;
+
+const pinnedMessageScrollAlignment = 0.08;
+const pinnedMessageScrollAlignmentPolicy =
+    ScrollPositionAlignmentPolicy.explicit;
 
 /// Distance from the viewport to the oldest loaded chat content.
 ///

@@ -1,4 +1,11 @@
+import 'dart:math' as math;
+import 'dart:ui' as ui;
+
+import 'package:flutter/cupertino.dart' as cupertino;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+
+import '../platform/adaptive_platform.dart';
 
 /// Shared timing, easing, navigation, and scrolling behavior for Mithka.
 ///
@@ -74,6 +81,7 @@ Future<T?> showAppModalSheet<T>({
   AnimationStyle? sheetAnimationStyle,
   bool? requestFocus,
 }) {
+  final useDesktopPresentation = !kIsWeb && isDesktopTargetPlatform();
   final effectiveAnimationStyle =
       sheetAnimationStyle ??
       (AppMotion.isReduced(context)
@@ -84,15 +92,25 @@ Future<T?> showAppModalSheet<T>({
               duration: AppMotion.deliberate,
               reverseDuration: AppMotion.responsive,
             ));
+  final effectiveConstraints = useDesktopPresentation
+      ? _desktopSheetConstraints(constraints)
+      : constraints;
+  final effectiveShape = useDesktopPresentation
+      ? RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: shape is RoundedRectangleBorder ? shape.side : BorderSide.none,
+        )
+      : shape;
   return showModalBottomSheet<T>(
     context: context,
     builder: builder,
     backgroundColor: backgroundColor,
     barrierLabel: barrierLabel,
     elevation: elevation,
-    shape: shape,
-    clipBehavior: clipBehavior,
-    constraints: constraints,
+    shape: effectiveShape,
+    clipBehavior:
+        clipBehavior ?? (useDesktopPresentation ? Clip.antiAlias : null),
+    constraints: effectiveConstraints,
     barrierColor: barrierColor,
     isScrollControlled: isScrollControlled,
     scrollControlDisabledMaxHeightRatio: scrollControlDisabledMaxHeightRatio,
@@ -106,6 +124,74 @@ Future<T?> showAppModalSheet<T>({
     anchorPoint: anchorPoint,
     sheetAnimationStyle: effectiveAnimationStyle,
     requestFocus: requestFocus,
+  );
+}
+
+/// Preserves the native Cupertino popup route on touch platforms while
+/// presenting the same content in Mithka's bounded desktop modal surface.
+///
+/// The arguments mirror [cupertino.showCupertinoModalPopup]. Desktop ignores
+/// the optional backdrop filter because Material's bottom-sheet route does not
+/// expose one, but keeps the barrier, navigator, route, anchor, and focus
+/// contracts intact.
+Future<T?> showAppCupertinoModalPopup<T>({
+  required BuildContext context,
+  required WidgetBuilder builder,
+  ui.ImageFilter? filter,
+  Color barrierColor = cupertino.kCupertinoModalBarrierColor,
+  bool barrierDismissible = true,
+  bool useRootNavigator = true,
+  bool semanticsDismissible = false,
+  RouteSettings? routeSettings,
+  Offset? anchorPoint,
+  bool? requestFocus,
+}) {
+  if (kIsWeb || !isDesktopTargetPlatform()) {
+    return cupertino.showCupertinoModalPopup<T>(
+      context: context,
+      builder: builder,
+      filter: filter,
+      barrierColor: barrierColor,
+      barrierDismissible: barrierDismissible,
+      useRootNavigator: useRootNavigator,
+      semanticsDismissible: semanticsDismissible,
+      routeSettings: routeSettings,
+      anchorPoint: anchorPoint,
+      requestFocus: requestFocus,
+    );
+  }
+
+  return showAppModalSheet<T>(
+    context: context,
+    builder: builder,
+    backgroundColor: Colors.transparent,
+    barrierColor: cupertino.CupertinoDynamicColor.resolve(
+      barrierColor,
+      context,
+    ),
+    isScrollControlled: true,
+    useRootNavigator: useRootNavigator,
+    isDismissible: barrierDismissible,
+    enableDrag: false,
+    showDragHandle: false,
+    useSafeArea: true,
+    routeSettings: routeSettings,
+    anchorPoint: anchorPoint,
+    requestFocus: requestFocus,
+  );
+}
+
+BoxConstraints _desktopSheetConstraints(BoxConstraints? requested) {
+  const desktopMaxWidth = 560.0;
+  if (requested == null) {
+    return const BoxConstraints(maxWidth: desktopMaxWidth);
+  }
+  final maxWidth = math.min(requested.maxWidth, desktopMaxWidth);
+  return BoxConstraints(
+    minWidth: math.min(requested.minWidth, maxWidth),
+    maxWidth: maxWidth,
+    minHeight: requested.minHeight,
+    maxHeight: requested.maxHeight,
   );
 }
 

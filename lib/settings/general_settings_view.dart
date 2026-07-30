@@ -10,6 +10,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../components/app_icons.dart';
+import '../components/desktop_content_constraint.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
@@ -107,15 +108,17 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
             onBack: () => Navigator.of(context).pop(),
           ),
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
-              children: [
-                _storageCard(),
-                const SizedBox(height: 14),
-                _autoDownloadCard(),
-                const SizedBox(height: 14),
-                _chatCard(),
-              ],
+            child: DesktopContentConstraint(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
+                children: [
+                  _storageCard(),
+                  const SizedBox(height: 14),
+                  _autoDownloadCard(),
+                  const SizedBox(height: 14),
+                  _chatCard(),
+                ],
+              ),
             ),
           ),
         ],
@@ -432,7 +435,11 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
               ),
             ),
             const SizedBox(width: 12),
-            AppSwitch(value: value, onChanged: onChanged),
+            AppSwitch(
+              value: value,
+              semanticLabel: title.l10n(context),
+              onChanged: onChanged,
+            ),
           ],
         ),
       ),
@@ -479,7 +486,12 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
               ),
             ),
             const SizedBox(width: 12),
-            AppSwitch(value: value, enabled: !disabled, onChanged: onChanged),
+            AppSwitch(
+              value: value,
+              enabled: !disabled,
+              semanticLabel: title.l10n(context),
+              onChanged: onChanged,
+            ),
           ],
         ),
       ),

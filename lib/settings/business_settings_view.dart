@@ -12,6 +12,7 @@ import '../profile/emoji_status_picker.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'business_service.dart';
 import 'business_tools_views.dart';
@@ -832,7 +833,7 @@ class _BusinessOpeningHoursViewState extends State<_BusinessOpeningHoursView> {
 
   Future<void> _chooseTimeZone() async {
     if (_zones.isEmpty) return;
-    final selected = await showCupertinoModalPopup<_BusinessTimeZone>(
+    final selected = await showAppCupertinoModalPopup<_BusinessTimeZone>(
       context: context,
       builder: (context) =>
           _TimeZoneSheet(zones: _zones, selected: _timeZoneId),
@@ -844,7 +845,7 @@ class _BusinessOpeningHoursViewState extends State<_BusinessOpeningHoursView> {
     final value = _days[day];
     final range = value.ranges[rangeIndex];
     final current = start ? range.start : range.end;
-    final selected = await showCupertinoModalPopup<int>(
+    final selected = await showAppCupertinoModalPopup<int>(
       context: context,
       builder: (_) => _MinutePicker(initial: current, isEnd: !start),
     );

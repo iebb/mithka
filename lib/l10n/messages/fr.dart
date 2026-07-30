@@ -1,4 +1,14 @@
 const frMessages = <String, String>{
+  'navigationBack': "Retour",
+  'appearanceArchivedChatsDesktopHint':
+      "Sur ordinateur, les archives accessibles par glissement restent visibles en haut pour être utilisables à la souris. Le choix enregistré continue de s’appliquer sur mobile.",
+  'callAlreadyInProgress': "Un autre appel est déjà en cours.",
+  'composerEmoji': "Emoji",
+  'composerMediaSelectionLimit':
+      "Sélectionnez jusqu’à {value1} photos ou vidéos.",
+  'composerStickers': "Autocollants",
+  'loginHidePassword': "Masquer le mot de passe",
+  'loginShowPassword': "Afficher le mot de passe",
   'aboutReportProblem': "Signaler un problème",
   'aboutReportProblemDetail': "Inclut des diagnostics sans données privées",
   'aboutTelegramChannel': "Chaîne Telegram",
@@ -894,6 +904,7 @@ const frMessages = <String, String>{
   'composerNoGifs': "Aucun GIF enregistré",
   'composerOpenAttachmentFailed': "Impossible d’ouvrir {value1}",
   'composerOpenMenu': "Ouvrir le menu",
+  'composerCloseMenu': "Fermer le menu",
   'composerPaidMessageCost': "L’envoi de ce message coûte {value1} étoiles.",
   'composerPastedImageReadFailed': "Impossible de lire l’image collée",
   'composerPoll': "Sondage",
@@ -1492,6 +1503,7 @@ const frMessages = <String, String>{
   'pollComposerSingleChoiceLimitHint': "Choix unique · 10 options maximum",
   'premiumLabel': "Premium",
   'passkeysAdded': "Clé d’accès ajoutée",
+  'passkeysAdd': "Ajouter une clé d’accès",
   'passkeysCreatedOn': "Créée le {value1}",
   'passkeysDelete': "Supprimer",
   'passkeysDeleteMessage': "Supprimer « {value1} » ?",
@@ -2172,6 +2184,8 @@ const frMessages = <String, String>{
   'callsOutgoing': "Sortant",
   'callsRetry': "Réessayer",
   'callsTitle': "Appels",
+  'callsUnavailableOnDesktop':
+      "Les appels ne sont pas encore disponibles dans cette version pour ordinateur.",
   'callsUnknownConversation': "Conversation inconnue",
   'channelDirectMessages': "Channel Direct Messages",
   'channelDirectMessagesAllowAndRefund': "Allow and Refund",

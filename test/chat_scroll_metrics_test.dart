@@ -1,3 +1,4 @@
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/chat_scroll_metrics.dart';
@@ -114,6 +115,59 @@ void main() {
       expect(isNearOldest(metrics, threshold: 0), isTrue);
       expect(isNearLatest(metrics, threshold: 0), isTrue);
     });
+  });
+
+  testWidgets('pinned targets align from either scroll direction', (
+    tester,
+  ) async {
+    final controller = ScrollController(initialScrollOffset: 400);
+    final itemKeys = List<GlobalKey>.generate(12, (_) => GlobalKey());
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: Center(
+          child: SizedBox(
+            width: 300,
+            height: 400,
+            child: ListView(
+              controller: controller,
+              scrollCacheExtent: const ScrollCacheExtent.pixels(2000),
+              padding: EdgeInsets.zero,
+              children: [
+                for (var index = 0; index < itemKeys.length; index++)
+                  SizedBox(key: itemKeys[index], height: 100),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    Future<void> expectPinnedAlignment(int index) async {
+      await Scrollable.ensureVisible(
+        itemKeys[index].currentContext!,
+        alignment: pinnedMessageScrollAlignment,
+        // Passing the app policy is the regression seam: keepVisibleAtStart
+        // ignores the requested alignment and can refuse newer-target moves.
+        // ignore: avoid_redundant_argument_values
+        alignmentPolicy: pinnedMessageScrollAlignmentPolicy,
+      );
+      await tester.pump();
+
+      final viewportTop = tester.getTopLeft(find.byType(ListView)).dy;
+      final targetTop = tester.getTopLeft(find.byKey(itemKeys[index])).dy;
+      final availableAlignmentExtent =
+          tester.getSize(find.byType(ListView)).height -
+          tester.getSize(find.byKey(itemKeys[index])).height;
+      expect(
+        targetTop - viewportTop,
+        closeTo(availableAlignmentExtent * pinnedMessageScrollAlignment, 0.01),
+      );
+    }
+
+    await expectPinnedAlignment(8);
+    await expectPinnedAlignment(1);
   });
 }
 

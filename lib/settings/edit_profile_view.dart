@@ -228,7 +228,7 @@ class _EditProfileViewState extends State<EditProfileView> {
   }
 
   Future<void> _editBirthday() async {
-    final result = await showCupertinoModalPopup<_BdayResult>(
+    final result = await showAppCupertinoModalPopup<_BdayResult>(
       context: context,
       builder: (_) => _BirthdayPickerSheet(
         day: _bDay,

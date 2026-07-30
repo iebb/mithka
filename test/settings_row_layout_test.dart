@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/components/app_icons.dart';
 import 'package:mithka/components/ui_components.dart';
+import 'package:mithka/theme/app_theme.dart';
 
 void main() {
   testWidgets('colored settings tiles always use white project icons', (
@@ -87,6 +88,41 @@ void main() {
     expect(
       constrainedValueRect.right,
       lessThanOrEqualTo(constrainedChevronRect.left),
+    );
+  });
+
+  testWidgets('settings rows grow instead of clipping large accessible text', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: MediaQuery(
+          data: MediaQueryData(textScaler: TextScaler.linear(2)),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SettingsRow(
+                key: ValueKey('large-text-settings-row'),
+                title: 'A long accessibility label that needs two lines',
+                value: 'Enabled',
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey('large-text-settings-row')))
+          .height,
+      greaterThan(AppMetric.settingsRowHeight),
     );
   });
 }

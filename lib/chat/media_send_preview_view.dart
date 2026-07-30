@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:video_player/video_player.dart';
 
 import '../components/app_icons.dart';
+import '../components/app_interactive_surface.dart';
 import '../components/toast.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_motion.dart';
@@ -436,6 +437,7 @@ class _MediaSendPreviewViewState extends State<MediaSendPreviewView> {
             child: _mediaAction(
               key: const ValueKey('mediaPreviewDelete'),
               icon: HeroAppIcons.trash,
+              semanticLabel: AppStrings.t(AppStringKeys.chatMediaDelete),
               color: const Color(0xFFFF6B63),
               onTap: _removeSelected,
             ),
@@ -447,6 +449,7 @@ class _MediaSendPreviewViewState extends State<MediaSendPreviewView> {
               child: _mediaAction(
                 key: const ValueKey('mediaPreviewEdit'),
                 icon: HeroAppIcons.pen,
+                semanticLabel: AppStrings.t(AppStringKeys.imageEditTitle),
                 color: Colors.white,
                 onTap: _editSelected,
               ),
@@ -458,6 +461,9 @@ class _MediaSendPreviewViewState extends State<MediaSendPreviewView> {
               child: _mediaAction(
                 key: const ValueKey('mediaPreviewVideoMetadata'),
                 icon: HeroAppIcons.solidFileVideo,
+                semanticLabel: AppStrings.t(
+                  AppStringKeys.mediaSendPreviewVideoPresentation,
+                ),
                 color: Colors.white,
                 onTap: _editVideoMetadata,
               ),
@@ -470,13 +476,15 @@ class _MediaSendPreviewViewState extends State<MediaSendPreviewView> {
   Widget _mediaAction({
     required Key key,
     required AppIconData icon,
+    required String semanticLabel,
     required Color color,
     required VoidCallback onTap,
   }) {
-    return GestureDetector(
+    return AppInteractiveSurface(
       key: key,
-      behavior: HitTestBehavior.opaque,
+      semanticLabel: semanticLabel,
       onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
       child: Container(
         width: 38,
         height: 38,
@@ -526,11 +534,12 @@ class _MediaSendPreviewViewState extends State<MediaSendPreviewView> {
     Key? key,
     VoidCallback? onLongPress,
   }) {
-    return GestureDetector(
+    return AppInteractiveSurface(
       key: key,
-      behavior: HitTestBehavior.opaque,
+      semanticLabel: label,
       onTap: onTap,
       onLongPress: onLongPress,
+      borderRadius: BorderRadius.circular(8),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Text(
@@ -572,9 +581,13 @@ class _MediaSendPreviewViewState extends State<MediaSendPreviewView> {
               padding: EdgeInsets.only(
                 right: index == _attachments.length - 1 ? 0 : 8,
               ),
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
+              child: AppInteractiveSurface(
+                semanticLabel:
+                    attachment.fileName ??
+                    AppStrings.t(AppStringKeys.composerImage),
+                selected: selected,
                 onTap: () => setState(() => _selectedIndex = index),
+                borderRadius: BorderRadius.circular(8),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 140),
                   width: 72,
@@ -609,10 +622,12 @@ class _MediaSendPreviewViewState extends State<MediaSendPreviewView> {
       );
 
   Widget _sendAsFileControl(AppColors c) {
-    return GestureDetector(
+    return AppInteractiveSurface(
       key: const ValueKey('mediaPreviewSendAsFile'),
-      behavior: HitTestBehavior.opaque,
+      semanticLabel: AppStrings.t(AppStringKeys.composerSendAsFile),
+      toggled: _sendAsFile,
       onTap: () => setState(() => _sendAsFile = !_sendAsFile),
+      borderRadius: BorderRadius.circular(12),
       child: Container(
         margin: const EdgeInsets.fromLTRB(12, 6, 12, 2),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -753,15 +768,35 @@ class _MediaSendPreviewViewState extends State<MediaSendPreviewView> {
   }
 
   Widget _fallback(AppColors c, OutgoingAttachment attachment) {
+    final fileName =
+        attachment.fileName ?? File(attachment.path).uri.pathSegments.last;
     return ColoredBox(
       color: c.searchFill,
       child: Center(
-        child: AppIcon(
-          attachment.kind == OutgoingAttachmentKind.video
-              ? HeroAppIcons.video
-              : HeroAppIcons.image,
-          size: 34,
-          color: c.textSecondary,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppIcon(
+                attachment.kind == OutgoingAttachmentKind.video
+                    ? HeroAppIcons.video
+                    : HeroAppIcons.image,
+                size: 34,
+                color: c.textSecondary,
+              ),
+              if (fileName.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  fileName,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: AppTextStyle.footnote(c.textSecondary),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );

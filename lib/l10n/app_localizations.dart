@@ -123,6 +123,7 @@ extension AppLocalizationsContext on BuildContext {
 }
 
 abstract final class AppStringKeys {
+  static const navigationBack = 'navigationBack';
   static const aboutReportProblem = 'aboutReportProblem';
   static const aboutReportProblemDetail = 'aboutReportProblemDetail';
   static const aboutTelegramChannel = 'aboutTelegramChannel';
@@ -381,6 +382,8 @@ abstract final class AppStringKeys {
   static const appearanceLivePreviewUnavailable =
       'appearanceLivePreviewUnavailable';
   static const appearanceArchivedChats = 'appearanceArchivedChats';
+  static const appearanceArchivedChatsDesktopHint =
+      'appearanceArchivedChatsDesktopHint';
   static const appearanceArchivedChatsHidden = 'appearanceArchivedChatsHidden';
   static const appearanceArchivedChatsPullDown =
       'appearanceArchivedChatsPullDown';
@@ -645,6 +648,7 @@ abstract final class AppStringKeys {
   static const businessSettingsTuesday = 'businessSettingsTuesday';
   static const businessSettingsWednesday = 'businessSettingsWednesday';
   static const callAccept = 'callAccept';
+  static const callAlreadyInProgress = 'callAlreadyInProgress';
   static const callCamera = 'callCamera';
   static const callConnecting = 'callConnecting';
   static const callDecline = 'callDecline';
@@ -666,6 +670,7 @@ abstract final class AppStringKeys {
   static const callsOutgoing = 'callsOutgoing';
   static const callsRetry = 'callsRetry';
   static const callsTitle = 'callsTitle';
+  static const callsUnavailableOnDesktop = 'callsUnavailableOnDesktop';
   static const callsUnknownConversation = 'callsUnknownConversation';
   static const channelsFileAttachment = 'channelsFileAttachment';
   static const channelsLoading = 'channelsLoading';
@@ -975,6 +980,7 @@ abstract final class AppStringKeys {
   static const composerAnimatedEmojiPreview = 'composerAnimatedEmojiPreview';
   static const composerAudio = 'composerAudio';
   static const composerCamera = 'composerCamera';
+  static const composerEmoji = 'composerEmoji';
   static const composerChecklist = 'composerChecklist';
   static const composerClipboardNoImage = 'composerClipboardNoImage';
   static const composerEditInRichText = 'composerEditInRichText';
@@ -991,6 +997,7 @@ abstract final class AppStringKeys {
   static const composerHoldToTalk = 'composerHoldToTalk';
   static const composerImage = 'composerImage';
   static const composerImagePreview = 'composerImagePreview';
+  static const composerMediaSelectionLimit = 'composerMediaSelectionLimit';
   static const composerLoadingEmoji = 'composerLoadingEmoji';
   static const composerLoadingGifs = 'composerLoadingGifs';
   static const composerLocation = 'composerLocation';
@@ -1009,6 +1016,7 @@ abstract final class AppStringKeys {
   static const composerNoGifs = 'composerNoGifs';
   static const composerOpenAttachmentFailed = 'composerOpenAttachmentFailed';
   static const composerOpenMenu = 'composerOpenMenu';
+  static const composerCloseMenu = 'composerCloseMenu';
   static const composerPaidMessageCost = 'composerPaidMessageCost';
   static const composerPastedImageReadFailed = 'composerPastedImageReadFailed';
   static const composerPoll = 'composerPoll';
@@ -1025,6 +1033,7 @@ abstract final class AppStringKeys {
   static const composerSendAsRichText = 'composerSendAsRichText';
   static const composerSendPaidMessageQuestion =
       'composerSendPaidMessageQuestion';
+  static const composerStickers = 'composerStickers';
   static const composerVideoCall = 'composerVideoCall';
   static const composerVoiceCall = 'composerVoiceCall';
   static const composerVoicePreview = 'composerVoicePreview';
@@ -1614,6 +1623,8 @@ abstract final class AppStringKeys {
   static const loginTermsAccept = 'loginTermsAccept';
   static const loginTermsBody = 'loginTermsBody';
   static const loginTermsButton = 'loginTermsButton';
+  static const loginHidePassword = 'loginHidePassword';
+  static const loginShowPassword = 'loginShowPassword';
   static const loginTermsOpenTelegram = 'loginTermsOpenTelegram';
   static const loginTermsTitle = 'loginTermsTitle';
   static const loginTwoStepPassword = 'loginTwoStepPassword';
@@ -1898,6 +1909,7 @@ abstract final class AppStringKeys {
       'pollComposerSingleChoiceLimitHint';
   static const premiumLabel = 'premiumLabel';
   static const passkeysAdded = 'passkeysAdded';
+  static const passkeysAdd = 'passkeysAdd';
   static const passkeysCreatedOn = 'passkeysCreatedOn';
   static const passkeysDelete = 'passkeysDelete';
   static const passkeysDeleteMessage = 'passkeysDeleteMessage';

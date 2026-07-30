@@ -3,8 +3,65 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chats/chat_list_view.dart';
+import 'package:mithka/theme/theme_controller.dart';
 
 void main() {
+  test('native desktop makes pull-down archives an explicit top row', () {
+    for (final platform in const [
+      TargetPlatform.macOS,
+      TargetPlatform.windows,
+      TargetPlatform.linux,
+    ]) {
+      final mode = effectiveChatListArchiveDisplayMode(
+        ArchivedChatsDisplayMode.pullDown,
+        platform: platform,
+        isWeb: false,
+      );
+
+      expect(mode, ArchivedChatsDisplayMode.firstPosition);
+      expect(mode.insertionIndex(chatCount: 8, visibleRows: 6), 0);
+    }
+  });
+
+  test('touch platforms preserve pull-down archive behavior', () {
+    for (final platform in const [TargetPlatform.android, TargetPlatform.iOS]) {
+      expect(
+        effectiveChatListArchiveDisplayMode(
+          ArchivedChatsDisplayMode.pullDown,
+          platform: platform,
+          isWeb: false,
+        ),
+        ArchivedChatsDisplayMode.pullDown,
+      );
+    }
+  });
+
+  test('web and explicit desktop archive modes are not overridden', () {
+    expect(
+      effectiveChatListArchiveDisplayMode(
+        ArchivedChatsDisplayMode.pullDown,
+        platform: TargetPlatform.macOS,
+        isWeb: true,
+      ),
+      ArchivedChatsDisplayMode.pullDown,
+    );
+
+    for (final mode in const [
+      ArchivedChatsDisplayMode.firstPosition,
+      ArchivedChatsDisplayMode.nextPage,
+      ArchivedChatsDisplayMode.hidden,
+    ]) {
+      expect(
+        effectiveChatListArchiveDisplayMode(
+          mode,
+          platform: TargetPlatform.windows,
+          isWeb: false,
+        ),
+        mode,
+      );
+    }
+  });
+
   test('top overscroll offset ignores in-range scrolling', () {
     expect(chatListTopOverscrollOffset(24), 0);
     expect(chatListTopOverscrollOffset(0), 0);

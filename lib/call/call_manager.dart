@@ -33,6 +33,8 @@ enum CallPhase {
   ending, // hanging up / discarded
 }
 
+enum CallStartResult { started, unsupported, busy }
+
 @visibleForTesting
 String? selectCallLibraryVersion({
   required List<String> localVersions,
@@ -101,6 +103,9 @@ class CallManager extends ChangeNotifier {
   bool isSpeaker = false;
   bool isVideoEnabled = false;
   bool useFrontCamera = true; // last-selected lens (front by default)
+
+  /// False on builds that do not bundle a real 1:1 call media transport.
+  bool get supportsMediaCalls => _engine is! NoopCallMediaEngine;
 
   // Protocol advertised in createCall/acceptCall. Defaults are overwritten at
   // start() with the media engine's own supported protocol (so TDLib negotiates
@@ -174,8 +179,9 @@ class CallManager extends ChangeNotifier {
 
   /// Places an outgoing call. Sets a `.requesting` placeholder immediately and
   /// resolves the peer's name/photo in the background.
-  void startCall(int userId, bool isVideo) {
-    if (groups.session != null) return;
+  CallStartResult startCall(int userId, bool isVideo) {
+    if (!supportsMediaCalls) return CallStartResult.unsupported;
+    if (call != null || groups.session != null) return CallStartResult.busy;
     isMuted = false;
     isSpeaker = false;
     isVideoEnabled = isVideo;
@@ -190,6 +196,7 @@ class CallManager extends ChangeNotifier {
     unawaited(_ensureSystemConversation(call!));
     _resolvePeer(userId);
     unawaited(_createCall(call!));
+    return CallStartResult.started;
   }
 
   Future<void> startGroupCall({
@@ -224,10 +231,13 @@ class CallManager extends ChangeNotifier {
     );
   }
 
-  void accept() {
+  bool accept() {
     final active = call;
-    if (active == null || active.callId == 0) return;
+    if (!supportsMediaCalls || active == null || active.callId == 0) {
+      return false;
+    }
     unawaited(_acceptCall(active));
+    return true;
   }
 
   Future<void> _loadProtocol() async {
@@ -264,14 +274,17 @@ class CallManager extends ChangeNotifier {
     if (requestedCall.isVideo && isVideoEnabled) {
       _engine.setVideoEnabled(true, front: useFrontCamera);
     }
-    await _client
-        .query({
-          '@type': 'createCall',
-          'user_id': requestedCall.peerUserId,
-          'protocol': _callProtocol,
-          'is_video': requestedCall.isVideo,
-        })
-        .catchError((_) => <String, dynamic>{});
+    try {
+      await _client.query({
+        '@type': 'createCall',
+        'user_id': requestedCall.peerUserId,
+        'protocol': _callProtocol,
+        'is_video': requestedCall.isVideo,
+      });
+    } catch (error, stackTrace) {
+      debugPrint('Failed to create Telegram call: $error\n$stackTrace');
+      if (identical(call, requestedCall)) _end(reportSystem: true);
+    }
   }
 
   Future<void> _acceptCall(ActiveCall requestedCall) async {
@@ -283,13 +296,16 @@ class CallManager extends ChangeNotifier {
     if (requestedCall.isVideo && isVideoEnabled) {
       _engine.setVideoEnabled(true, front: useFrontCamera);
     }
-    await _client
-        .query({
-          '@type': 'acceptCall',
-          'call_id': requestedCall.callId,
-          'protocol': _callProtocol,
-        })
-        .catchError((_) => <String, dynamic>{});
+    try {
+      await _client.query({
+        '@type': 'acceptCall',
+        'call_id': requestedCall.callId,
+        'protocol': _callProtocol,
+      });
+    } catch (error, stackTrace) {
+      debugPrint('Failed to accept Telegram call: $error\n$stackTrace');
+      if (identical(call, requestedCall)) _end(reportSystem: true);
+    }
   }
 
   /// Ensures mic (and camera, for video) permission before placing/answering a

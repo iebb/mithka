@@ -769,7 +769,7 @@ class _ChatInfoViewState extends State<ChatInfoView> {
       (AppStrings.t(AppStringKeys.chatInfoAutoDeleteSevenDays), 604800),
       (AppStrings.t(AppStringKeys.chatInfoAutoDeleteOneMonth), 2592000),
     ];
-    final selected = await showCupertinoModalPopup<int>(
+    final selected = await showAppCupertinoModalPopup<int>(
       context: context,
       builder: (context) => CupertinoActionSheet(
         title: Text(AppStrings.t(AppStringKeys.chatInfoAutoDeleteMessages)),

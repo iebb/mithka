@@ -24,9 +24,11 @@ import '../app/unread_badge_model.dart';
 import '../chat/chat_wallpaper_view.dart';
 import '../chat/message_bubble.dart';
 import '../components/app_icons.dart';
+import '../components/desktop_content_constraint.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
+import '../platform/adaptive_platform.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
@@ -58,111 +60,114 @@ class AppearanceView extends StatelessWidget {
             onBack: () => Navigator.of(context).pop(),
           ),
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.lg,
-                AppSpacing.xl,
-                AppSpacing.lg,
-                AppSpacing.section,
-              ),
-              children: [
-                _card(context, [
-                  KeyedSubtree(
-                    key: const ValueKey('appearance-theme-settings-row'),
-                    child: _navigationRow(
-                      context,
-                      AppStrings.t(AppStringKeys.appearanceTheme),
-                      AppStrings.t(theme.mode.label),
-                      () => Navigator.of(context).push(
-                        AppPageRoute<void>(
-                          pageBuilder: (_, _, _) => const ThemeSettingsView(),
+            child: DesktopContentConstraint(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  AppSpacing.xl,
+                  AppSpacing.lg,
+                  AppSpacing.section,
+                ),
+                children: [
+                  _card(context, [
+                    KeyedSubtree(
+                      key: const ValueKey('appearance-theme-settings-row'),
+                      child: _navigationRow(
+                        context,
+                        AppStrings.t(AppStringKeys.appearanceTheme),
+                        AppStrings.t(theme.mode.label),
+                        () => Navigator.of(context).push(
+                          AppPageRoute<void>(
+                            pageBuilder: (_, _, _) => const ThemeSettingsView(),
+                          ),
                         ),
+                        icon: HeroAppIcons.palette.data,
                       ),
-                      icon: HeroAppIcons.palette.data,
                     ),
-                  ),
-                  KeyedSubtree(
-                    key: const ValueKey('appearance-interface-settings-row'),
-                    child: _navigationRow(
+                    KeyedSubtree(
+                      key: const ValueKey('appearance-interface-settings-row'),
+                      child: _navigationRow(
+                        context,
+                        AppStrings.t(AppStringKeys.appearanceSize),
+                        null,
+                        () => Navigator.of(context).push(
+                          AppPageRoute<void>(
+                            pageBuilder: (_, _, _) =>
+                                const DisplaySettingsView(),
+                          ),
+                        ),
+                        icon: HeroAppIcons.tableCells.data,
+                      ),
+                    ),
+                    KeyedSubtree(
+                      key: const ValueKey('appearance-scaling-settings-row'),
+                      child: _navigationRow(
+                        context,
+                        AppStrings.t(AppStringKeys.appearanceInterfaceSize),
+                        '${(theme.interfaceScale * 100).round()}%',
+                        () => Navigator.of(context).push(
+                          AppPageRoute<void>(
+                            pageBuilder: (_, _, _) =>
+                                const InterfaceSizeSettingsView(),
+                          ),
+                        ),
+                        icon: HeroAppIcons.expand.data,
+                      ),
+                    ),
+                    KeyedSubtree(
+                      key: const ValueKey('appearance-font-settings-row'),
+                      child: _navigationRow(
+                        context,
+                        AppStrings.t(AppStringKeys.appearanceFont),
+                        theme.effectiveFontChainLabel,
+                        () => Navigator.of(context).push(
+                          AppPageRoute<void>(
+                            pageBuilder: (_, _, _) => const FontSettingsView(),
+                          ),
+                        ),
+                        icon: HeroAppIcons.font.data,
+                      ),
+                    ),
+                  ]),
+                  const SizedBox(height: AppSpacing.xl),
+                  _card(context, [
+                    KeyedSubtree(
+                      key: const ValueKey('appearance-message-bubbles-row'),
+                      child: _navigationRow(
+                        context,
+                        AppStrings.t(AppStringKeys.appearanceMessageBubbles),
+                        _messageBubbleBackgroundLabel(theme),
+                        () => Navigator.of(context).push(
+                          AppPageRoute<void>(
+                            pageBuilder: (_, _, _) =>
+                                const MessageBubbleSettingsView(),
+                          ),
+                        ),
+                        icon: HeroAppIcons.message.data,
+                      ),
+                    ),
+                  ]),
+                  const SizedBox(height: AppSpacing.xl),
+                  _label(context, AppStrings.t(AppStringKeys.appIconTitle)),
+                  _card(context, [
+                    _navigationRow(
                       context,
-                      AppStrings.t(AppStringKeys.appearanceSize),
+                      AppStrings.t(AppStringKeys.appIconTitle),
                       null,
                       () => Navigator.of(context).push(
                         AppPageRoute<void>(
-                          pageBuilder: (_, _, _) => const DisplaySettingsView(),
+                          pageBuilder: (_, _, _) => const AppIconSettingsView(),
                         ),
                       ),
-                      icon: HeroAppIcons.tableCells.data,
-                    ),
-                  ),
-                  KeyedSubtree(
-                    key: const ValueKey('appearance-scaling-settings-row'),
-                    child: _navigationRow(
-                      context,
-                      AppStrings.t(AppStringKeys.appearanceInterfaceSize),
-                      '${(theme.interfaceScale * 100).round()}%',
-                      () => Navigator.of(context).push(
-                        AppPageRoute<void>(
-                          pageBuilder: (_, _, _) =>
-                              const InterfaceSizeSettingsView(),
-                        ),
-                      ),
-                      icon: HeroAppIcons.expand.data,
-                    ),
-                  ),
-                  KeyedSubtree(
-                    key: const ValueKey('appearance-font-settings-row'),
-                    child: _navigationRow(
-                      context,
-                      AppStrings.t(AppStringKeys.appearanceFont),
-                      theme.effectiveFontChainLabel,
-                      () => Navigator.of(context).push(
-                        AppPageRoute<void>(
-                          pageBuilder: (_, _, _) => const FontSettingsView(),
-                        ),
-                      ),
-                      icon: HeroAppIcons.font.data,
-                    ),
-                  ),
-                ]),
-                const SizedBox(height: AppSpacing.xl),
-                _card(context, [
-                  KeyedSubtree(
-                    key: const ValueKey('appearance-message-bubbles-row'),
-                    child: _navigationRow(
-                      context,
-                      AppStrings.t(AppStringKeys.appearanceMessageBubbles),
-                      _messageBubbleBackgroundLabel(theme),
-                      () => Navigator.of(context).push(
-                        AppPageRoute<void>(
-                          pageBuilder: (_, _, _) =>
-                              const MessageBubbleSettingsView(),
-                        ),
-                      ),
-                      icon: HeroAppIcons.message.data,
-                    ),
-                  ),
-                ]),
-                const SizedBox(height: AppSpacing.xl),
-                _label(context, AppStrings.t(AppStringKeys.appIconTitle)),
-                _card(context, [
-                  _navigationRow(
-                    context,
-                    AppStrings.t(AppStringKeys.appIconTitle),
-                    null,
-                    () => Navigator.of(context).push(
-                      AppPageRoute<void>(
-                        pageBuilder: (_, _, _) => const AppIconSettingsView(),
+                      preview: Image.asset(
+                        appIcons.variant.asset,
+                        width: AppIconSize.nav,
+                        height: AppIconSize.nav,
                       ),
                     ),
-                    preview: Image.asset(
-                      appIcons.variant.asset,
-                      width: AppIconSize.nav,
-                      height: AppIconSize.nav,
-                    ),
-                  ),
-                ]),
-              ],
+                  ]),
+                ],
+              ),
             ),
           ),
         ],
@@ -1642,25 +1647,41 @@ class ArchivedChatsSettingsView extends StatelessWidget {
             onBack: () => Navigator.of(context).pop(),
           ),
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.lg,
-                AppSpacing.xl,
-                AppSpacing.lg,
-                AppSpacing.section,
-              ),
-              children: [
-                const AppearanceView()._card(context, [
-                  for (final mode in ArchivedChatsDisplayMode.values)
-                    const AppearanceView()._choiceRow(
-                      context,
-                      mode.icon,
-                      mode.label,
-                      theme.archivedChatsDisplayMode == mode,
-                      () => theme.archivedChatsDisplayMode = mode,
+            child: DesktopContentConstraint(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  AppSpacing.xl,
+                  AppSpacing.lg,
+                  AppSpacing.section,
+                ),
+                children: [
+                  const AppearanceView()._card(context, [
+                    for (final mode in ArchivedChatsDisplayMode.values)
+                      const AppearanceView()._choiceRow(
+                        context,
+                        mode.icon,
+                        mode.label,
+                        theme.archivedChatsDisplayMode == mode,
+                        () => theme.archivedChatsDisplayMode = mode,
+                      ),
+                  ]),
+                  if (!kIsWeb && isDesktopTargetPlatform()) ...[
+                    const SizedBox(height: AppSpacing.md),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.md,
+                      ),
+                      child: Text(
+                        AppStringKeys.appearanceArchivedChatsDesktopHint.l10n(
+                          context,
+                        ),
+                        style: AppTextStyle.footnote(c.textSecondary),
+                      ),
                     ),
-                ]),
-              ],
+                  ],
+                ],
+              ),
             ),
           ),
         ],

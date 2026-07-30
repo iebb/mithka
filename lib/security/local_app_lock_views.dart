@@ -662,9 +662,73 @@ class _CredentialChallenge extends StatefulWidget {
 }
 
 class _CredentialChallengeState extends State<_CredentialChallenge> {
+  static final Map<LogicalKeyboardKey, int> _keyboardDigits = {
+    LogicalKeyboardKey.digit0: 0,
+    LogicalKeyboardKey.digit1: 1,
+    LogicalKeyboardKey.digit2: 2,
+    LogicalKeyboardKey.digit3: 3,
+    LogicalKeyboardKey.digit4: 4,
+    LogicalKeyboardKey.digit5: 5,
+    LogicalKeyboardKey.digit6: 6,
+    LogicalKeyboardKey.digit7: 7,
+    LogicalKeyboardKey.digit8: 8,
+    LogicalKeyboardKey.digit9: 9,
+    LogicalKeyboardKey.numpad0: 0,
+    LogicalKeyboardKey.numpad1: 1,
+    LogicalKeyboardKey.numpad2: 2,
+    LogicalKeyboardKey.numpad3: 3,
+    LogicalKeyboardKey.numpad4: 4,
+    LogicalKeyboardKey.numpad5: 5,
+    LogicalKeyboardKey.numpad6: 6,
+    LogicalKeyboardKey.numpad7: 7,
+    LogicalKeyboardKey.numpad8: 8,
+    LogicalKeyboardKey.numpad9: 9,
+  };
+
+  final FocusNode _keyboardFocusNode = FocusNode(
+    debugLabel: 'app-lock-credential-keyboard',
+  );
   String _pin = '';
   bool _busy = false;
   String? _error;
+
+  @override
+  void dispose() {
+    _keyboardFocusNode.dispose();
+    super.dispose();
+  }
+
+  KeyEventResult _handleKeyboardInput(FocusNode node, KeyEvent event) {
+    if (widget.type != AppLockCredentialType.pin ||
+        event is! KeyDownEvent ||
+        _busy) {
+      return KeyEventResult.ignored;
+    }
+
+    final digit = _keyboardDigits[event.logicalKey];
+    if (digit != null) {
+      _addDigit(digit);
+      return KeyEventResult.handled;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.backspace ||
+        event.logicalKey == LogicalKeyboardKey.delete) {
+      _deleteDigit();
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
+  }
+
+  Widget _withKeyboardInput(Widget child) {
+    if (widget.type != AppLockCredentialType.pin) return child;
+    return Focus(
+      focusNode: _keyboardFocusNode,
+      autofocus: true,
+      onKeyEvent: _handleKeyboardInput,
+      child: child,
+    );
+  }
 
   Future<void> _submit(String credential) async {
     if (_busy) return;
@@ -729,8 +793,13 @@ class _CredentialChallengeState extends State<_CredentialChallenge> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    if (widget.lockScreenStyle) return _buildLockScreen(context);
+  Widget build(BuildContext context) => _withKeyboardInput(
+    widget.lockScreenStyle
+        ? _buildLockScreen(context)
+        : _buildCredentialScreen(context),
+  );
+
+  Widget _buildCredentialScreen(BuildContext context) {
     final c = context.colors;
     return LayoutBuilder(
       builder: (context, constraints) => SingleChildScrollView(

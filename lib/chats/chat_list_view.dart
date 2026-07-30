@@ -12,10 +12,12 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
+import '../app/adaptive_split_layout.dart';
 import '../app/app_navigator.dart';
 import '../auth/account_store.dart';
 import '../auth/auth_manager.dart';
@@ -26,6 +28,7 @@ import '../chat/link_handler.dart';
 import '../communities/community_models.dart';
 import '../communities/community_view.dart';
 import '../components/app_icons.dart';
+import '../components/app_press_ripple.dart';
 import '../components/drawer_controller.dart' as dc;
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
@@ -112,6 +115,21 @@ double chatListItemScrollOffset({
 /// Keeps the pull-down archive slot after the search row when search is shown.
 int chatListPullDownArchiveItemIndex({required bool showSearch}) =>
     showSearch ? 1 : 0;
+
+/// Keeps the touch-first pull-down archive interaction on mobile while making
+/// the same preference explicitly reachable with a mouse on native desktop.
+ArchivedChatsDisplayMode effectiveChatListArchiveDisplayMode(
+  ArchivedChatsDisplayMode requested, {
+  TargetPlatform? platform,
+  bool isWeb = kIsWeb,
+}) {
+  if (!isWeb &&
+      isDesktopTargetPlatform(platform) &&
+      requested == ArchivedChatsDisplayMode.pullDown) {
+    return ArchivedChatsDisplayMode.firstPosition;
+  }
+  return requested;
+}
 
 /// Returns the distance that leading chat-list content must move up to cancel
 /// the viewport's native top overscroll in the same frame.
@@ -407,10 +425,13 @@ class _ChatListViewState extends State<ChatListView>
     final position = positions.single;
     final theme = context.read<ThemeController>();
     final rowHeight = theme.rowHeight + 0.5;
+    final archiveMode = effectiveChatListArchiveDisplayMode(
+      theme.archivedChatsDisplayMode,
+    );
     final archiveEnabled =
         _model.isAllFilter &&
         _model.archived.isNotEmpty &&
-        theme.archivedChatsDisplayMode == ArchivedChatsDisplayMode.pullDown;
+        archiveMode == ArchivedChatsDisplayMode.pullDown;
     if (archiveEnabled && position.hasContentDimensions) {
       final pullOffset = chatListTopOverscrollOffset(
         position.pixels,
@@ -816,9 +837,9 @@ class _ChatListViewState extends State<ChatListView>
 
     var itemIndex = entryIndex;
     if (_model.isAllFilter && _model.filtered.isNotEmpty) itemIndex++;
-    final archiveMode = context
-        .read<ThemeController>()
-        .archivedChatsDisplayMode;
+    final archiveMode = effectiveChatListArchiveDisplayMode(
+      context.read<ThemeController>().archivedChatsDisplayMode,
+    );
     final pullDownArchiveVisible =
         archiveMode == ArchivedChatsDisplayMode.pullDown && _archiveRevealed;
     if (_model.isAllFilter &&
@@ -1255,7 +1276,9 @@ class _ChatListViewState extends State<ChatListView>
     final c = context.colors;
     final theme = context.watch<ThemeController>();
     final showSearch = theme.showChatListSearch;
-    final archiveMode = theme.archivedChatsDisplayMode;
+    final archiveMode = effectiveChatListArchiveDisplayMode(
+      theme.archivedChatsDisplayMode,
+    );
     return Container(
       color: c.background,
       child: LayoutBuilder(
@@ -2211,7 +2234,6 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
   Animation<double>? _animation;
   VoidCallback? _animationListener;
   double _offset = 0;
-  bool _longPressHighlighted = false;
   double _longPressStartOffset = 0;
 
   double get _totalWidth => widget.actions.length * _buttonWidth;
@@ -2297,6 +2319,14 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
     if (widget.openRowId == widget.rowId) widget.onOpenChanged(null);
   }
 
+  void _handleContextRequest() {
+    if (_offset != 0) {
+      _close();
+      return;
+    }
+    widget.onLongPress?.call();
+  }
+
   void _settle(double velocity) {
     if (velocity < -520 || (velocity <= 360 && _offset < -_totalWidth * 0.38)) {
       _animateTo(-_totalWidth);
@@ -2351,70 +2381,53 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
           // The row, sliding left to uncover the blocks.
           Transform.translate(
             offset: Offset(_offset, 0),
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => _offset != 0 ? _close() : widget.onTap(),
-              onLongPress: widget.requiresLongPressDrag
-                  ? null
-                  : () {
-                      if (_offset != 0) {
-                        _close();
-                        return;
+            child: AppPressRipple(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _offset != 0 ? _close() : widget.onTap(),
+                onLongPress: widget.requiresLongPressDrag
+                    ? null
+                    : widget.onLongPress == null
+                    ? null
+                    : _handleContextRequest,
+                onSecondaryTap: widget.onLongPress == null
+                    ? null
+                    : _handleContextRequest,
+                onLongPressStart: (_) {
+                  _stopAnimation();
+                  _longPressStartOffset = _offset;
+                },
+                onLongPressMoveUpdate: widget.requiresLongPressDrag
+                    ? (details) {
+                        setState(() {
+                          _offset = _rubberBandOffset(
+                            _longPressStartOffset +
+                                details.localOffsetFromOrigin.dx,
+                          );
+                        });
                       }
-                      widget.onLongPress?.call();
-                    },
-              onLongPressStart: (_) {
-                _stopAnimation();
-                _longPressStartOffset = _offset;
-                setState(() => _longPressHighlighted = true);
-              },
-              onLongPressMoveUpdate: widget.requiresLongPressDrag
-                  ? (details) {
-                      setState(() {
-                        _offset = _rubberBandOffset(
-                          _longPressStartOffset +
-                              details.localOffsetFromOrigin.dx,
-                        );
-                      });
-                    }
-                  : null,
-              onLongPressEnd: (details) {
-                setState(() => _longPressHighlighted = false);
-                if (widget.requiresLongPressDrag) {
-                  _settle(details.velocity.pixelsPerSecond.dx);
-                }
-              },
-              onLongPressCancel: () =>
-                  setState(() => _longPressHighlighted = false),
-              onHorizontalDragStart: widget.requiresLongPressDrag
-                  ? null
-                  : (_) => _stopAnimation(),
-              onHorizontalDragUpdate: widget.requiresLongPressDrag
-                  ? null
-                  : (details) {
-                      setState(
-                        () => _offset = _rubberBandOffset(
-                          _offset + details.delta.dx,
-                        ),
-                      );
-                    },
-              onHorizontalDragEnd: widget.requiresLongPressDrag
-                  ? null
-                  : (details) => _settle(details.primaryVelocity ?? 0),
-              child: Stack(
-                children: [
-                  widget.child,
-                  if (_longPressHighlighted)
-                    Positioned.fill(
-                      child: IgnorePointer(
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.08),
+                    : null,
+                onLongPressEnd: (details) {
+                  if (widget.requiresLongPressDrag) {
+                    _settle(details.velocity.pixelsPerSecond.dx);
+                  }
+                },
+                onHorizontalDragStart: widget.requiresLongPressDrag
+                    ? null
+                    : (_) => _stopAnimation(),
+                onHorizontalDragUpdate: widget.requiresLongPressDrag
+                    ? null
+                    : (details) {
+                        setState(
+                          () => _offset = _rubberBandOffset(
+                            _offset + details.delta.dx,
                           ),
-                        ),
-                      ),
-                    ),
-                ],
+                        );
+                      },
+                onHorizontalDragEnd: widget.requiresLongPressDrag
+                    ? null
+                    : (details) => _settle(details.primaryVelocity ?? 0),
+                child: widget.child,
               ),
             ),
           ),

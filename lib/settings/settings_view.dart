@@ -15,6 +15,8 @@ import '../app/app_version.dart';
 import '../auth/account_store.dart';
 import '../auth/auth_manager.dart';
 import '../components/app_icons.dart';
+import '../components/app_interactive_surface.dart';
+import '../components/desktop_content_constraint.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../pro/mithka_pro_service.dart';
@@ -59,131 +61,133 @@ class _SettingsViewState extends State<SettingsView> {
             onBack: () => Navigator.of(context).pop(),
           ),
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
-              children: [
-                _card([
-                  _navRow(
-                    context,
-                    HeroAppIcons.solidCircleUser,
-                    AppStrings.t(AppStringKeys.editProfileTitle),
-                    const Color(0xFF3C8CF0),
-                    () => const EditProfileView(),
-                  ),
-                ]),
-                const SizedBox(height: 14),
-                _card([
-                  _navRow(
-                    context,
-                    HeroAppIcons.solidStar,
-                    AppStrings.t(AppStringKeys.mithkaProTitle),
-                    const Color(0xFF7C5CFC),
-                    () => const MithkaProView(),
-                    trailing: context.watch<MithkaProService>().isPro
-                        ? AppStrings.t(AppStringKeys.mithkaProActive)
-                        : null,
-                    platformNeutralRoute: true,
-                  ),
-                ]),
-                const SizedBox(height: 14),
-                _card([
-                  _navRow(
-                    context,
-                    HeroAppIcons.solidBell,
-                    AppStrings.t(AppStringKeys.notificationTitle),
-                    const Color(0xFFF5A623),
-                    () => const NotificationSettingsView(),
-                  ),
-                  const InsetDivider(leadingInset: 56),
-                  _navRow(
-                    context,
-                    HeroAppIcons.shieldHalved,
-                    AppStrings.t(AppStringKeys.privacySecurityTitle),
-                    const Color(0xFF16B05A),
-                    () => const PrivacySecurityView(),
-                  ),
-                  const InsetDivider(leadingInset: 56),
-                  _navRow(
-                    context,
-                    HeroAppIcons.ban,
-                    AppStrings.t(AppStringKeys.blockingTitle),
-                    const Color(0xFFDA405B),
-                    () => const BlockingSettingsView(),
-                  ),
-                ]),
-                const SizedBox(height: 14),
-                _card([
-                  _navRow(
-                    context,
-                    HeroAppIcons.gear,
-                    AppStrings.t(AppStringKeys.generalTitle),
-                    const Color(0xFF8E8E93),
-                    () => const GeneralSettingsView(),
-                  ),
-                  const InsetDivider(leadingInset: 56),
-                  _navRow(
-                    context,
-                    HeroAppIcons.language,
-                    AppStrings.t(AppStringKeys.languageTitle),
-                    const Color(0xFF34A2DF),
-                    () => const LanguageSettingsView(),
-                  ),
-                  const InsetDivider(leadingInset: 56),
-                  _navRow(
-                    context,
-                    HeroAppIcons.grip,
-                    AppStrings.t(AppStringKeys.featureTitle),
-                    const Color(0xFF3C8CF0),
-                    () => const FeatureSettingsView(),
-                  ),
-                  const InsetDivider(leadingInset: 56),
-                  _navRow(
-                    context,
-                    HeroAppIcons.cpuChip,
-                    AppStrings.t(AppStringKeys.aiSettingsTitle),
-                    const Color(0xFF7467F0),
-                    () => const AiSettingsView(),
-                  ),
-                  const InsetDivider(leadingInset: 56),
-                  _navRow(
-                    context,
-                    HeroAppIcons.wandMagicSparkles,
-                    AppStrings.t(AppStringKeys.appearanceTitle),
-                    const Color(0xFF8E7BFF),
-                    () => const AppearanceView(),
-                  ),
-                  const InsetDivider(leadingInset: 56),
-                  _navRow(
-                    context,
-                    HeroAppIcons.globe,
-                    AppStrings.t(AppStringKeys.proxyTitle),
-                    const Color(0xFF34A2DF),
-                    () => const ProxyView(),
-                  ),
-                  const InsetDivider(leadingInset: 56),
-                  _navRow(
-                    context,
-                    HeroAppIcons.objectGroup,
-                    AppStrings.t(AppStringKeys.advancedTitle),
-                    const Color(0xFF16B0A0),
-                    () => const AdvancedSettingsView(),
-                  ),
-                  if (developer.unlocked) ...[
+            child: DesktopContentConstraint(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
+                children: [
+                  _card([
+                    _navRow(
+                      context,
+                      HeroAppIcons.solidCircleUser,
+                      AppStrings.t(AppStringKeys.editProfileTitle),
+                      const Color(0xFF3C8CF0),
+                      () => const EditProfileView(),
+                    ),
+                  ]),
+                  const SizedBox(height: 14),
+                  _card([
+                    _navRow(
+                      context,
+                      HeroAppIcons.solidStar,
+                      AppStrings.t(AppStringKeys.mithkaProTitle),
+                      const Color(0xFF7C5CFC),
+                      () => const MithkaProView(),
+                      trailing: context.watch<MithkaProService>().isPro
+                          ? AppStrings.t(AppStringKeys.mithkaProActive)
+                          : null,
+                      platformNeutralRoute: true,
+                    ),
+                  ]),
+                  const SizedBox(height: 14),
+                  _card([
+                    _navRow(
+                      context,
+                      HeroAppIcons.solidBell,
+                      AppStrings.t(AppStringKeys.notificationTitle),
+                      const Color(0xFFF5A623),
+                      () => const NotificationSettingsView(),
+                    ),
                     const InsetDivider(leadingInset: 56),
                     _navRow(
                       context,
-                      HeroAppIcons.code,
-                      AppStrings.t(AppStringKeys.developerModeTitle),
-                      const Color(0xFFFF5A5F),
-                      () => const DeveloperSettingsView(),
+                      HeroAppIcons.shieldHalved,
+                      AppStrings.t(AppStringKeys.privacySecurityTitle),
+                      const Color(0xFF16B05A),
+                      () => const PrivacySecurityView(),
                     ),
-                  ],
-                  const InsetDivider(leadingInset: 56),
-                  _aboutRow(context),
-                ]),
-                const SizedBox(height: 14),
-                _logoutCard(context),
-              ],
+                    const InsetDivider(leadingInset: 56),
+                    _navRow(
+                      context,
+                      HeroAppIcons.ban,
+                      AppStrings.t(AppStringKeys.blockingTitle),
+                      const Color(0xFFDA405B),
+                      () => const BlockingSettingsView(),
+                    ),
+                  ]),
+                  const SizedBox(height: 14),
+                  _card([
+                    _navRow(
+                      context,
+                      HeroAppIcons.gear,
+                      AppStrings.t(AppStringKeys.generalTitle),
+                      const Color(0xFF8E8E93),
+                      () => const GeneralSettingsView(),
+                    ),
+                    const InsetDivider(leadingInset: 56),
+                    _navRow(
+                      context,
+                      HeroAppIcons.language,
+                      AppStrings.t(AppStringKeys.languageTitle),
+                      const Color(0xFF34A2DF),
+                      () => const LanguageSettingsView(),
+                    ),
+                    const InsetDivider(leadingInset: 56),
+                    _navRow(
+                      context,
+                      HeroAppIcons.grip,
+                      AppStrings.t(AppStringKeys.featureTitle),
+                      const Color(0xFF3C8CF0),
+                      () => const FeatureSettingsView(),
+                    ),
+                    const InsetDivider(leadingInset: 56),
+                    _navRow(
+                      context,
+                      HeroAppIcons.cpuChip,
+                      AppStrings.t(AppStringKeys.aiSettingsTitle),
+                      const Color(0xFF7467F0),
+                      () => const AiSettingsView(),
+                    ),
+                    const InsetDivider(leadingInset: 56),
+                    _navRow(
+                      context,
+                      HeroAppIcons.wandMagicSparkles,
+                      AppStrings.t(AppStringKeys.appearanceTitle),
+                      const Color(0xFF8E7BFF),
+                      () => const AppearanceView(),
+                    ),
+                    const InsetDivider(leadingInset: 56),
+                    _navRow(
+                      context,
+                      HeroAppIcons.globe,
+                      AppStrings.t(AppStringKeys.proxyTitle),
+                      const Color(0xFF34A2DF),
+                      () => const ProxyView(),
+                    ),
+                    const InsetDivider(leadingInset: 56),
+                    _navRow(
+                      context,
+                      HeroAppIcons.objectGroup,
+                      AppStrings.t(AppStringKeys.advancedTitle),
+                      const Color(0xFF16B0A0),
+                      () => const AdvancedSettingsView(),
+                    ),
+                    if (developer.unlocked) ...[
+                      const InsetDivider(leadingInset: 56),
+                      _navRow(
+                        context,
+                        HeroAppIcons.code,
+                        AppStrings.t(AppStringKeys.developerModeTitle),
+                        const Color(0xFFFF5A5F),
+                        () => const DeveloperSettingsView(),
+                      ),
+                    ],
+                    const InsetDivider(leadingInset: 56),
+                    _aboutRow(context),
+                  ]),
+                  const SizedBox(height: 14),
+                  _logoutCard(context),
+                ],
+              ),
             ),
           ),
         ],
@@ -256,38 +260,44 @@ class _SettingsViewState extends State<SettingsView> {
     String? trailing,
     bool platformNeutralRoute = false,
   }) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+    return AppInteractiveSurface(
+      semanticLabel: title.l10n(context),
+      semanticValue: trailing,
       onTap: () => Navigator.of(context).push(
         platformNeutralRoute
             ? AppPageRoute<void>(pageBuilder: (_, _, _) => destination())
             : MaterialPageRoute<void>(builder: (_) => destination()),
       ),
+      borderRadius: BorderRadius.circular(12),
       child: _rowLabel(context, icon, title, color, trailing: trailing),
     );
   }
 
-  Widget _aboutRow(BuildContext context) => GestureDetector(
-    behavior: HitTestBehavior.opaque,
-    onTap: () => Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const AboutView())),
-    child: FutureBuilder<AppVersion>(
-      future: _versionFuture,
-      builder: (context, snapshot) => _rowLabel(
-        context,
-        HeroAppIcons.circleInfo,
-        AppStrings.t(AppStringKeys.settingsAboutMithka),
-        const Color(0xFF8E8E93),
-        trailing: 'v${snapshot.data?.version ?? '...'}',
-      ),
-    ),
+  Widget _aboutRow(BuildContext context) => FutureBuilder<AppVersion>(
+    future: _versionFuture,
+    builder: (context, snapshot) {
+      final version = 'v${snapshot.data?.version ?? '...'}';
+      return AppInteractiveSurface(
+        semanticLabel: AppStrings.t(AppStringKeys.settingsAboutMithka),
+        semanticValue: version,
+        onTap: () => Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const AboutView())),
+        child: _rowLabel(
+          context,
+          HeroAppIcons.circleInfo,
+          AppStrings.t(AppStringKeys.settingsAboutMithka),
+          const Color(0xFF8E8E93),
+          trailing: version,
+        ),
+      );
+    },
   );
 
   Widget _logoutCard(BuildContext context) {
     final c = context.colors;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+    return AppInteractiveSurface(
+      semanticLabel: AppStrings.t(AppStringKeys.settingsLogOut),
       onTap: () {
         Navigator.of(context).pop();
         unawaited(
@@ -296,6 +306,7 @@ class _SettingsViewState extends State<SettingsView> {
           ),
         );
       },
+      borderRadius: BorderRadius.circular(12),
       child: Container(
         height: 52,
         alignment: Alignment.center,

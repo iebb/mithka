@@ -1210,6 +1210,7 @@ class Contact {
     required this.id,
     required this.name,
     required this.username,
+    this.usernames = const [],
     required this.statusText,
     this.photo,
     this.isOnline = false,
@@ -1217,6 +1218,7 @@ class Contact {
   final int id;
   final String name;
   final String? username;
+  final List<String> usernames;
   final String statusText;
   TdFileRef? photo;
   bool isOnline;

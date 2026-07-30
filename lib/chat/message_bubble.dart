@@ -25,6 +25,7 @@ import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/telegram_language_controller.dart';
+import '../platform/adaptive_platform.dart';
 import '../profile/profile_detail_view.dart';
 import '../settings/sensitive_content_controller.dart';
 import '../tdlib/json_helpers.dart';
@@ -167,6 +168,7 @@ class _MessageBubbleState extends State<MessageBubble>
   static const double _replyRestingLimit = 72;
   static const double _replyHardLimit = 104;
   static const double _bubbleMaxWidthFraction = 0.75;
+  static const double _desktopBubbleMaxWidth = 720;
 
   final VoicePlayer _voice = VoicePlayer();
   final GlobalKey _bubbleKey = GlobalKey();
@@ -350,7 +352,10 @@ class _MessageBubbleState extends State<MessageBubble>
 
   double _bubbleMaxWidth() {
     final width = _layoutWidth ?? MediaQuery.sizeOf(context).width;
-    return math.max(1.0, width * _bubbleMaxWidthFraction);
+    final proportional = math.max(1.0, width * _bubbleMaxWidthFraction);
+    return isDesktopTargetPlatform()
+        ? math.min(proportional, _desktopBubbleMaxWidth)
+        : proportional;
   }
 
   double _mediaMaxWidth() =>
@@ -479,6 +484,7 @@ class _MessageBubbleState extends State<MessageBubble>
       onTapDown: _handleTapDown,
       onTap: () => _handleTap(alwaysShowTime),
       onLongPress: _handleLongPress,
+      onSecondaryTap: _handleLongPress,
       onHorizontalDragStart: (_) => _swipeController.stop(),
       onHorizontalDragUpdate: _onDragUpdate,
       onHorizontalDragEnd: _onDragEnd,
@@ -4081,6 +4087,7 @@ class _MessageBubbleState extends State<MessageBubble>
     final media = GestureDetector(
       onTap: () => widget.onPlayVideo?.call(message),
       onLongPress: () => _handleLongPress(MessageActionSource.video),
+      onSecondaryTap: () => _handleLongPress(MessageActionSource.video),
       child: SizedBox(
         width: size.width,
         height: size.height,
@@ -4157,6 +4164,7 @@ class _MessageBubbleState extends State<MessageBubble>
     final media = GestureDetector(
       onTap: () => widget.onPlayVideo?.call(message),
       onLongPress: () => _handleLongPress(MessageActionSource.video),
+      onSecondaryTap: () => _handleLongPress(MessageActionSource.video),
       child: ClipRRect(
         borderRadius: _messageBorderRadius(mediaRadius),
         child: SizedBox(
@@ -4582,6 +4590,7 @@ class _MessageBubbleState extends State<MessageBubble>
         context,
       ).push(MaterialPageRoute(builder: (_) => FileDetailView(doc: doc))),
       onLongPress: () => _handleGroupedFileLongPress(source, itemKey),
+      onSecondaryTap: () => _handleGroupedFileLongPress(source, itemKey),
       child: isGif && doc.file != null
           ? SizedBox(
               key: itemKey,

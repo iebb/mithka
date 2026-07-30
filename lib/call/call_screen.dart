@@ -18,6 +18,7 @@ import 'package:flutter/services.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
+import '../components/app_interactive_surface.dart';
 import '../components/photo_avatar.dart'; // PhotoAvatar + TDImage
 import 'call_manager.dart';
 
@@ -445,19 +446,43 @@ class _CallScreenState extends State<CallScreen> {
   Widget _controls(ActiveCall call, {bool horizontal = false}) {
     final m = widget.manager;
     if (call.phase == CallPhase.ringingIncoming) {
+      if (!m.supportsMediaCalls) {
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Text(
+                AppStrings.t(AppStringKeys.callsUnavailableOnDesktop),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.35,
+                  color: Colors.white.withValues(alpha: 0.72),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            _CallButton(
+              icon: HeroAppIcons.phoneSlash,
+              label: AppStrings.t(AppStringKeys.callDecline),
+              background: const Color(0xFFFF3B30),
+              onTap: m.end,
+            ),
+          ],
+        );
+      }
       return Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
           _CallButton(
-            icon: HeroAppIcons.phoneSlash.data,
+            icon: HeroAppIcons.phoneSlash,
             label: AppStrings.t(AppStringKeys.callDecline),
             background: const Color(0xFFFF3B30),
             onTap: m.end,
           ),
           _CallButton(
-            icon: call.isVideo
-                ? HeroAppIcons.video.data
-                : HeroAppIcons.phone.data,
+            icon: call.isVideo ? HeroAppIcons.video : HeroAppIcons.phone,
             label: AppStrings.t(AppStringKeys.callAccept),
             background: const Color(0xFF07C160),
             onTap: m.accept,
@@ -472,8 +497,8 @@ class _CallScreenState extends State<CallScreen> {
           width: slotWidth,
           child: _CallToggle(
             icon: m.isMuted
-                ? HeroAppIcons.microphoneSlash.data
-                : HeroAppIcons.microphone.data,
+                ? HeroAppIcons.microphoneSlash
+                : HeroAppIcons.microphone,
             label: AppStrings.t(AppStringKeys.callMute),
             isOn: m.isMuted,
             compact: compact,
@@ -487,7 +512,7 @@ class _CallScreenState extends State<CallScreen> {
           key: const Key('callControlCamera'),
           width: slotWidth,
           child: _CallToggle(
-            icon: HeroAppIcons.video.data,
+            icon: HeroAppIcons.video,
             label: AppStrings.t(
               m.isVideoEnabled
                   ? AppStringKeys.callDisableVideo
@@ -502,7 +527,7 @@ class _CallScreenState extends State<CallScreen> {
           key: const Key('callControlSpeaker'),
           width: slotWidth,
           child: _CallToggle(
-            icon: HeroAppIcons.volumeHigh.data,
+            icon: HeroAppIcons.volumeHigh,
             label: AppStrings.t(AppStringKeys.callSpeakerphone),
             isOn: m.isSpeaker,
             compact: compact,
@@ -517,7 +542,7 @@ class _CallScreenState extends State<CallScreen> {
 
     Widget buildHangUp({required bool compact}) => _CallButton(
       key: const Key('callControlHangup'),
-      icon: HeroAppIcons.phoneSlash.data,
+      icon: HeroAppIcons.phoneSlash,
       label: AppStrings.t(AppStringKeys.callHangUp),
       background: const Color(0xFFFF3B30),
       size: compact ? 56 : 66,
@@ -593,7 +618,7 @@ class _CallButton extends StatelessWidget {
     this.compact = false,
     required this.onTap,
   });
-  final IconData icon;
+  final AppIconData icon;
   final String label;
   final Color background;
   final double size;
@@ -605,9 +630,10 @@ class _CallButton extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
+        AppInteractiveSurface(
+          semanticLabel: label,
           onTap: onTap,
+          borderRadius: BorderRadius.circular(size / 2),
           child: Container(
             width: size,
             height: size,
@@ -616,17 +642,19 @@ class _CallButton extends StatelessWidget {
               color: background,
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, size: size * 0.42, color: Colors.white),
+            child: AppIcon(icon, size: size * 0.42, color: Colors.white),
           ),
         ),
         const SizedBox(height: 10),
-        Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: compact ? 11 : 13,
-            color: Colors.white.withValues(alpha: 0.85),
+        ExcludeSemantics(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: compact ? 11 : 13,
+              color: Colors.white.withValues(alpha: 0.85),
+            ),
           ),
         ),
       ],
@@ -644,7 +672,7 @@ class _CallToggle extends StatelessWidget {
     this.compact = false,
     required this.onTap,
   });
-  final IconData icon;
+  final AppIconData icon;
   final String label;
   final bool isOn;
   final bool compact;
@@ -655,9 +683,11 @@ class _CallToggle extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
+        AppInteractiveSurface(
+          semanticLabel: label,
+          toggled: isOn,
           onTap: onTap,
+          borderRadius: BorderRadius.circular((compact ? 52 : 60) / 2),
           child: Container(
             width: compact ? 52 : 60,
             height: compact ? 52 : 60,
@@ -666,7 +696,7 @@ class _CallToggle extends StatelessWidget {
               color: isOn ? Colors.white : Colors.white.withValues(alpha: 0.18),
               shape: BoxShape.circle,
             ),
-            child: Icon(
+            child: AppIcon(
               icon,
               size: compact ? 22 : 24,
               color: isOn ? Colors.black : Colors.white,
@@ -674,13 +704,15 @@ class _CallToggle extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 10),
-        Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: compact ? 11 : 13,
-            color: Colors.white.withValues(alpha: 0.85),
+        ExcludeSemantics(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: compact ? 11 : 13,
+              color: Colors.white.withValues(alpha: 0.85),
+            ),
           ),
         ),
       ],

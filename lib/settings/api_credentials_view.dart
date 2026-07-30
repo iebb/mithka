@@ -11,6 +11,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../components/app_interactive_surface.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
@@ -101,9 +102,11 @@ class _ApiCredentialsViewState extends State<ApiCredentialsView> {
           NavHeader(
             title: AppStringKeys.apiCredentialsTitle,
             onBack: () => Navigator.of(context).pop(),
-            trailing: GestureDetector(
-              behavior: HitTestBehavior.opaque,
+            trailing: AppInteractiveSurface(
+              semanticLabel: AppStrings.t(AppStringKeys.accentColorPickerSave),
               onTap: _valid && !_saving ? _save : null,
+              enabled: _valid && !_saving,
+              borderRadius: BorderRadius.circular(8),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: Text(
@@ -254,6 +257,9 @@ class _ApiCredentialsViewState extends State<ApiCredentialsView> {
             ),
             AppSwitch(
               value: _enabled,
+              semanticLabel: AppStrings.t(
+                AppStringKeys.apiCredentialsCustomClientApi,
+              ),
               onChanged: (value) => setState(() => _enabled = value),
             ),
           ],

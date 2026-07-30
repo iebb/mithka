@@ -15,6 +15,7 @@ import 'package:provider/provider.dart';
 
 import '../auth/telegram_passkey_service.dart';
 import '../components/app_icons.dart';
+import '../components/desktop_content_constraint.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../security/local_app_lock_controller.dart';
@@ -253,118 +254,127 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
             onBack: () => Navigator.of(context).pop(),
           ),
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
-              children: [
-                _group(AppStrings.t(AppStringKeys.privacySectionTitle), [
-                  for (final entry in _privacyRules)
-                    _Row(
-                      entry.icon,
-                      AppStrings.t(entry.title),
-                      _ruleValue[entry.setting] ?? '',
-                      () {
-                        unawaited(
-                          _open(
-                            PrivacyRuleView(
-                              title: entry.title,
-                              setting: entry.setting,
-                            ),
-                          ).then((_) => _loadRule(entry.setting)),
-                        );
-                      },
-                    ),
-                  _SwitchRow(
-                    HeroAppIcons.eyeSlash,
-                    AppStrings.t(AppStringKeys.appearanceHidePhoneInSidebar),
-                    theme.hideSidebarPhone,
-                    (value) => theme.hideSidebarPhone = value,
-                  ),
-                ]),
-                const SizedBox(height: 14),
-                _group(
-                  AppStrings.t(AppStringKeys.privacySecuritySectionTitle),
-                  [
-                    _Row(
-                      HeroAppIcons.lock,
-                      AppStrings.t(AppStringKeys.appLockTitle),
-                      appLock.enabled
-                          ? (appLock.credentialType == AppLockCredentialType.pin
-                                ? AppStringKeys.appLockPin
-                                : AppStringKeys.appLockGesture)
-                          : AppStringKeys.privacyDisabled,
-                      () => _open(const AppLockSettingsView()),
-                    ),
-                    _Row(
-                      HeroAppIcons.lock,
-                      AppStrings.t(AppStringKeys.privacyTwoStepVerification),
-                      _twoStep,
-                      () => _open(
-                        const TwoStepPasswordView(),
-                      ).then((_) => _load()),
-                    ),
-                    _Row(
-                      HeroAppIcons.phone,
-                      AppStrings.t(
-                        AppStringKeys.accountSecurityChangePhoneNumber,
+            child: DesktopContentConstraint(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
+                children: [
+                  _group(AppStrings.t(AppStringKeys.privacySectionTitle), [
+                    for (final entry in _privacyRules)
+                      _Row(
+                        entry.icon,
+                        AppStrings.t(entry.title),
+                        _ruleValue[entry.setting] ?? '',
+                        () {
+                          unawaited(
+                            _open(
+                              PrivacyRuleView(
+                                title: entry.title,
+                                setting: entry.setting,
+                              ),
+                            ).then((_) => _loadRule(entry.setting)),
+                          );
+                        },
                       ),
-                      '',
-                      () => _open(const ChangePhoneNumberView()),
+                    _SwitchRow(
+                      HeroAppIcons.eyeSlash,
+                      AppStrings.t(AppStringKeys.appearanceHidePhoneInSidebar),
+                      theme.hideSidebarPhone,
+                      (value) => theme.hideSidebarPhone = value,
                     ),
-                    _Row(
-                      HeroAppIcons.networkWired,
-                      AppStrings.t(AppStringKeys.privacyLoggedInDevices),
-                      '',
-                      () => _open(const ActiveSessionsView()),
-                    ),
-                    if (_passkeyCount != null)
+                  ]),
+                  const SizedBox(height: 14),
+                  _group(
+                    AppStrings.t(AppStringKeys.privacySecuritySectionTitle),
+                    [
+                      _Row(
+                        HeroAppIcons.lock,
+                        AppStrings.t(AppStringKeys.appLockTitle),
+                        appLock.enabled
+                            ? (appLock.credentialType ==
+                                      AppLockCredentialType.pin
+                                  ? AppStringKeys.appLockPin
+                                  : AppStringKeys.appLockGesture)
+                            : AppStringKeys.privacyDisabled,
+                        () => _open(const AppLockSettingsView()),
+                      ),
+                      _Row(
+                        HeroAppIcons.lock,
+                        AppStrings.t(AppStringKeys.privacyTwoStepVerification),
+                        _twoStep,
+                        () => _open(
+                          const TwoStepPasswordView(),
+                        ).then((_) => _load()),
+                      ),
+                      _Row(
+                        HeroAppIcons.phone,
+                        AppStrings.t(
+                          AppStringKeys.accountSecurityChangePhoneNumber,
+                        ),
+                        '',
+                        () => _open(const ChangePhoneNumberView()),
+                      ),
+                      _Row(
+                        HeroAppIcons.networkWired,
+                        AppStrings.t(AppStringKeys.privacyLoggedInDevices),
+                        '',
+                        () => _open(const ActiveSessionsView()),
+                      ),
+                      if (_passkeyCount != null)
+                        _Row(
+                          HeroAppIcons.key,
+                          AppStrings.t(AppStringKeys.passkeysTitle),
+                          '$_passkeyCount',
+                          () => _open(
+                            const PasskeysView(),
+                          ).then((_) => _loadPasskeys()),
+                        ),
                       _Row(
                         HeroAppIcons.key,
-                        AppStrings.t(AppStringKeys.passkeysTitle),
-                        '$_passkeyCount',
-                        () => _open(
-                          const PasskeysView(),
-                        ).then((_) => _loadPasskeys()),
+                        AppStrings.t(AppStringKeys.accountBackupTitle),
+                        '',
+                        () => _open(const AccountBackupView()),
                       ),
-                    _Row(
-                      HeroAppIcons.key,
-                      AppStrings.t(AppStringKeys.accountBackupTitle),
-                      '',
-                      () => _open(const AccountBackupView()),
-                    ),
-                    if (sensitiveContent.shouldShowToggle)
-                      _SwitchRow(
-                        HeroAppIcons.eye,
-                        AppStrings.t(AppStringKeys.privacySensitiveContent),
-                        sensitiveContent.enabled,
-                        (value) =>
-                            unawaited(_setSensitiveContentEnabled(value)),
+                      if (sensitiveContent.shouldShowToggle)
+                        _SwitchRow(
+                          HeroAppIcons.eye,
+                          AppStrings.t(AppStringKeys.privacySensitiveContent),
+                          sensitiveContent.enabled,
+                          (value) =>
+                              unawaited(_setSensitiveContentEnabled(value)),
+                        ),
+                      _Row(
+                        HeroAppIcons.stopwatch,
+                        AppStringKeys.chatInfoAutoDeleteMessages,
+                        '',
+                        () => _open(const AutoDeleteView()),
                       ),
-                    _Row(
-                      HeroAppIcons.stopwatch,
-                      AppStringKeys.chatInfoAutoDeleteMessages,
-                      '',
-                      () => _open(const AutoDeleteView()),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                _group(AppStrings.t(AppStringKeys.privacyDangerZone), [
-                  _Row(
-                    HeroAppIcons.stopwatch,
-                    AppStrings.t(
-                      AppStringKeys.accountSecurityDeleteAccountIfAwayFor,
-                    ),
-                    '',
-                    () => _open(const AccountInactivityView()),
+                    ],
                   ),
-                  _Row(
-                    HeroAppIcons.trash,
-                    AppStrings.t(AppStringKeys.privacyDeleteTelegramAccount),
-                    '',
-                    () => _open(const DeleteTelegramAccountView()),
+                  const SizedBox(height: 14),
+                  _group(
+                    AppStrings.t(AppStringKeys.privacyDangerZone),
+                    [
+                      _Row(
+                        HeroAppIcons.stopwatch,
+                        AppStrings.t(
+                          AppStringKeys.accountSecurityDeleteAccountIfAwayFor,
+                        ),
+                        '',
+                        () => _open(const AccountInactivityView()),
+                      ),
+                      _Row(
+                        HeroAppIcons.trash,
+                        AppStrings.t(
+                          AppStringKeys.privacyDeleteTelegramAccount,
+                        ),
+                        '',
+                        () => _open(const DeleteTelegramAccountView()),
+                      ),
+                    ],
+                    destructive: true,
                   ),
-                ], destructive: true),
-              ],
+                ],
+              ),
             ),
           ),
         ],

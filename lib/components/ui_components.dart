@@ -19,6 +19,7 @@ import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
 import '../theme/theme_controller.dart';
 import 'app_icons.dart';
+import 'app_interactive_surface.dart';
 
 /// Flat reference-style header bar: optional back chevron, leading title,
 /// optional trailing icon.
@@ -34,7 +35,7 @@ class NavHeader extends StatelessWidget {
 
   final String title;
   final VoidCallback? onBack;
-  final IconData? trailingIcon;
+  final AppIconData? trailingIcon;
   final VoidCallback? onTrailing;
   final Widget? trailing;
 
@@ -46,7 +47,9 @@ class NavHeader extends StatelessWidget {
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: systemUiOverlayStyleForSurface(c.navBar),
       child: Container(
-        height: headerHeight + MediaQuery.of(context).padding.top,
+        constraints: BoxConstraints(
+          minHeight: headerHeight + MediaQuery.of(context).padding.top,
+        ),
         padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
         decoration: BoxDecoration(
           color: c.navBar,
@@ -59,9 +62,10 @@ class NavHeader extends StatelessWidget {
           child: Row(
             children: [
               if (onBack != null)
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
+                AppInteractiveSurface(
+                  semanticLabel: AppStringKeys.navigationBack.l10n(context),
                   onTap: onBack,
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
                   child: Padding(
                     padding: const EdgeInsets.only(right: AppSpacing.lg),
                     child: AppIcon(
@@ -81,13 +85,17 @@ class NavHeader extends StatelessWidget {
               ),
               ?trailing,
               if (trailing == null && trailingIcon != null)
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
+                AppInteractiveSurface(
+                  semanticLabel: title.l10n(context),
                   onTap: onTrailing,
-                  child: Icon(
-                    trailingIcon!,
-                    size: metrics.scaled(AppIconSize.nav - 1),
-                    color: c.textPrimary,
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpacing.xs),
+                    child: AppIcon(
+                      trailingIcon!,
+                      size: metrics.scaled(AppIconSize.nav - 1),
+                      color: c.textPrimary,
+                    ),
                   ),
                 ),
             ],
@@ -485,15 +493,21 @@ class SettingsRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+    final trailingSwitch = trailing is AppSwitch
+        ? trailing! as AppSwitch
+        : null;
+    return AppInteractiveSurface(
       onTap: onTap,
-      child: SizedBox(
-        height: height,
+      toggled: onTap == null ? null : trailingSwitch?.value,
+      borderRadius: BorderRadius.circular(AppRadius.sm),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: height),
         child: Padding(
           padding: EdgeInsets.only(
             left: leadingInset,
+            top: AppSpacing.md,
             right: AppMetric.settingsTrailingInset,
+            bottom: AppSpacing.md,
           ),
           child: Row(
             children: [
@@ -502,15 +516,19 @@ class SettingsRow extends StatelessWidget {
                 flex: trailing == null && value.isNotEmpty ? 3 : 1,
                 child: Text(
                   title.l10n(context),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                   style: AppTextStyle.body(c.textPrimary),
                 ),
               ),
               if (trailing != null || value.isNotEmpty) ...[
                 const SizedBox(width: 12),
                 if (trailing != null)
-                  trailing!
+                  onTap == null
+                      ? trailing!
+                      : ExcludeSemantics(
+                          child: ExcludeFocus(
+                            child: IgnorePointer(child: trailing!),
+                          ),
+                        )
                 else
                   Expanded(
                     flex: 2,
@@ -520,8 +538,6 @@ class SettingsRow extends StatelessWidget {
                         constraints: const BoxConstraints(maxWidth: 190),
                         child: Text(
                           value.l10n(context),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                           textAlign: TextAlign.right,
                           style: AppTextStyle.footnote(c.textTertiary),
                         ),
@@ -552,53 +568,59 @@ class AppSwitch extends StatelessWidget {
     required this.value,
     required this.onChanged,
     this.enabled = true,
+    this.semanticLabel,
   });
 
   final bool value;
   final ValueChanged<bool> onChanged;
   final bool enabled;
+  final String? semanticLabel;
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return Semantics(
-      button: true,
-      enabled: enabled,
+    return AppInteractiveSurface(
+      semanticLabel:
+          semanticLabel ??
+          AppStrings.t(
+            value
+                ? AppStringKeys.privacyEnabled
+                : AppStringKeys.privacyDisabled,
+          ),
       toggled: value,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: enabled ? () => onChanged(!value) : null,
-        child: AnimatedOpacity(
+      onTap: enabled ? () => onChanged(!value) : null,
+      enabled: enabled,
+      borderRadius: BorderRadius.circular(15),
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 160),
+        opacity: enabled ? 1 : 0.45,
+        child: AnimatedContainer(
           duration: const Duration(milliseconds: 160),
-          opacity: enabled ? 1 : 0.45,
-          child: AnimatedContainer(
+          curve: Curves.easeOut,
+          width: 50,
+          height: 30,
+          padding: const EdgeInsets.all(2),
+          decoration: BoxDecoration(
+            color: value ? c.linkBlue : c.textTertiary,
+            borderRadius: BorderRadius.circular(15),
+          ),
+          child: AnimatedAlign(
             duration: const Duration(milliseconds: 160),
             curve: Curves.easeOut,
-            width: 50,
-            height: 30,
-            padding: const EdgeInsets.all(2),
-            decoration: BoxDecoration(
-              color: value ? c.linkBlue : c.textTertiary,
-              borderRadius: BorderRadius.circular(15),
-            ),
-            child: AnimatedAlign(
-              duration: const Duration(milliseconds: 160),
-              curve: Curves.easeOut,
-              alignment: value ? Alignment.centerRight : Alignment.centerLeft,
-              child: Container(
-                width: 26,
-                height: 26,
-                decoration: const BoxDecoration(
-                  color: Color(0xFFFFFFFF),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Color(0x30000000),
-                      blurRadius: 3,
-                      offset: Offset(0, 1),
-                    ),
-                  ],
-                ),
+            alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+            child: Container(
+              width: 26,
+              height: 26,
+              decoration: const BoxDecoration(
+                color: Color(0xFFFFFFFF),
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Color(0x30000000),
+                    blurRadius: 3,
+                    offset: Offset(0, 1),
+                  ),
+                ],
               ),
             ),
           ),
@@ -628,36 +650,34 @@ class AppCheckbox extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.colors;
     final foreground = enabled ? c.textPrimary : c.textTertiary;
-    return Semantics(
+    return AppInteractiveSurface(
       checked: value,
+      onTap: enabled ? () => onChanged(!value) : null,
       enabled: enabled,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: enabled ? () => onChanged(!value) : null,
-        child: AnimatedOpacity(
+      borderRadius: BorderRadius.circular(6),
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 150),
+        opacity: enabled ? 1 : 0.42,
+        child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
-          opacity: enabled ? 1 : 0.42,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
-            width: size,
-            height: size,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: value ? AppTheme.brand : Colors.transparent,
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(
-                color: value ? AppTheme.brand : foreground,
-                width: 1.6,
-              ),
+          width: size,
+          height: size,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: value ? AppTheme.brand : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color: value ? AppTheme.brand : foreground,
+              width: 1.6,
             ),
-            child: value
-                ? AppIcon(
-                    HeroAppIcons.check,
-                    size: size * 0.62,
-                    color: const Color(0xFFFFFFFF),
-                  )
-                : null,
           ),
+          child: value
+              ? AppIcon(
+                  HeroAppIcons.check,
+                  size: size * 0.62,
+                  color: const Color(0xFFFFFFFF),
+                )
+              : null,
         ),
       ),
     );
@@ -685,15 +705,18 @@ class SettingsSwitchRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+    return AppInteractiveSurface(
+      toggled: value,
       onTap: () => onChanged(!value),
-      child: SizedBox(
-        height: height,
+      borderRadius: BorderRadius.circular(AppRadius.sm),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: height),
         child: Padding(
           padding: EdgeInsets.only(
             left: leadingInset,
+            top: AppSpacing.md,
             right: AppMetric.settingsTrailingInset,
+            bottom: AppSpacing.md,
           ),
           child: Row(
             children: [
@@ -701,14 +724,16 @@ class SettingsSwitchRow extends StatelessWidget {
               Expanded(
                 child: Text(
                   title.l10n(context),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
                   style: AppTextStyle.body(c.textPrimary),
                 ),
               ),
               const SizedBox(width: 12),
-              IgnorePointer(
-                child: AppSwitch(value: value, onChanged: onChanged),
+              ExcludeSemantics(
+                child: ExcludeFocus(
+                  child: IgnorePointer(
+                    child: AppSwitch(value: value, onChanged: onChanged),
+                  ),
+                ),
               ),
             ],
           ),

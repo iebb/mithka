@@ -12,6 +12,7 @@ import 'package:provider/provider.dart';
 
 import '../auth/account_store.dart';
 import '../components/app_icons.dart';
+import '../components/desktop_content_constraint.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../notifications/notification_preferences.dart';
@@ -330,138 +331,150 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
             )
           else
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 32),
-                children: [
-                  if (_client.configuredSlots.length > 1) ...[
+              child: DesktopContentConstraint(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 32),
+                  children: [
+                    if (_client.configuredSlots.length > 1) ...[
+                      _sectionTitle(
+                        AppStrings.t(
+                          AppStringKeys.notificationShowNotificationsFrom,
+                        ),
+                      ),
+                      _card([
+                        _navigationRow(
+                          icon: HeroAppIcons.users,
+                          color: const Color(0xFF3295F6),
+                          title: AppStrings.t(
+                            AppStringKeys.notificationAccounts,
+                          ),
+                          subtitle: '',
+                          value: _accountSelectionSummary,
+                          onTap: _openAccountSelection,
+                        ),
+                      ]),
+                      _footnote(
+                        AppStrings.t(
+                          AppStringKeys.notificationAccountSelectionDescription,
+                        ),
+                      ),
+                    ],
                     _sectionTitle(
                       AppStrings.t(
-                        AppStringKeys.notificationShowNotificationsFrom,
+                        AppStringKeys.notificationMessageNotifications,
                       ),
                     ),
                     _card([
                       _navigationRow(
-                        icon: HeroAppIcons.users,
+                        icon: HeroAppIcons.circleUser,
                         color: const Color(0xFF3295F6),
-                        title: AppStrings.t(AppStringKeys.notificationAccounts),
-                        subtitle: '',
-                        value: _accountSelectionSummary,
-                        onTap: _openAccountSelection,
+                        title: AppStrings.t(
+                          AppStringKeys.notificationPrivateMessages,
+                        ),
+                        subtitle: _exceptionsLabel(_private),
+                        value: _enabledLabel(_enabled(_private)),
+                        onTap: () => _openScope(
+                          _private,
+                          AppStrings.t(
+                            AppStringKeys.notificationPrivateMessages,
+                          ),
+                        ),
+                      ),
+                      const InsetDivider(leadingInset: 62),
+                      _navigationRow(
+                        icon: HeroAppIcons.users,
+                        color: const Color(0xFF37C961),
+                        title: AppStrings.t(
+                          AppStringKeys.notificationGroupMessages,
+                        ),
+                        subtitle: _exceptionsLabel(_group),
+                        value: _enabledLabel(_enabled(_group)),
+                        onTap: () => _openScope(
+                          _group,
+                          AppStrings.t(AppStringKeys.notificationGroupMessages),
+                        ),
+                      ),
+                      const InsetDivider(leadingInset: 62),
+                      _navigationRow(
+                        icon: HeroAppIcons.towerBroadcast,
+                        color: const Color(0xFFFFA928),
+                        title: AppStrings.t(AppStringKeys.notificationChannels),
+                        subtitle: _exceptionsLabel(_channel),
+                        value: _enabledLabel(_enabled(_channel)),
+                        onTap: () => _openScope(
+                          _channel,
+                          AppStrings.t(AppStringKeys.notificationChannels),
+                        ),
+                      ),
+                      const InsetDivider(leadingInset: 62),
+                      _navigationRow(
+                        icon: HeroAppIcons.circleNotch,
+                        color: const Color(0xFF6B63F6),
+                        title: AppStrings.t(AppStringKeys.notificationStories),
+                        subtitle: _exceptionsLabel('stories'),
+                        value: _storySummary,
+                        onTap: _openStories,
+                      ),
+                      const InsetDivider(leadingInset: 62),
+                      _navigationRow(
+                        icon: HeroAppIcons.heart,
+                        color: const Color(0xFFFF3C69),
+                        title: AppStrings.t(
+                          AppStringKeys.notificationReactions,
+                        ),
+                        subtitle: _reactionSummary,
+                        value: _enabledLabel(
+                          reactionSourceEnabled(
+                                _reactionSettings.obj(
+                                  'message_reaction_source',
+                                ),
+                              ) ||
+                              reactionSourceEnabled(
+                                _reactionSettings.obj('story_reaction_source'),
+                              ),
+                        ),
+                        onTap: _openReactions,
+                      ),
+                    ]),
+                    _sectionTitle(
+                      AppStrings.t(AppStringKeys.notificationInAppSection),
+                    ),
+                    _card([
+                      _plainSwitchRow(
+                        AppStrings.t(AppStringKeys.notificationInAppSounds),
+                        _preferences.inAppSounds,
+                        _preferences.setInAppSounds,
+                      ),
+                      const InsetDivider(leadingInset: 16),
+                      _plainSwitchRow(
+                        AppStrings.t(AppStringKeys.notificationInAppVibrate),
+                        _preferences.inAppVibrate,
+                        _preferences.setInAppVibrate,
+                      ),
+                      const InsetDivider(leadingInset: 16),
+                      _plainSwitchRow(
+                        AppStrings.t(AppStringKeys.notificationInAppPreview),
+                        _preferences.inAppPreview,
+                        _preferences.setInAppPreview,
+                      ),
+                    ]),
+                    const SizedBox(height: 22),
+                    _card([
+                      _plainSwitchRow(
+                        AppStrings.t(
+                          AppStringKeys.notificationNamesOnLockScreen,
+                        ),
+                        _preferences.namesOnLockScreen,
+                        _preferences.setNamesOnLockScreen,
                       ),
                     ]),
                     _footnote(
                       AppStrings.t(
-                        AppStringKeys.notificationAccountSelectionDescription,
+                        AppStringKeys.notificationNamesOnLockScreenDescription,
                       ),
                     ),
                   ],
-                  _sectionTitle(
-                    AppStrings.t(
-                      AppStringKeys.notificationMessageNotifications,
-                    ),
-                  ),
-                  _card([
-                    _navigationRow(
-                      icon: HeroAppIcons.circleUser,
-                      color: const Color(0xFF3295F6),
-                      title: AppStrings.t(
-                        AppStringKeys.notificationPrivateMessages,
-                      ),
-                      subtitle: _exceptionsLabel(_private),
-                      value: _enabledLabel(_enabled(_private)),
-                      onTap: () => _openScope(
-                        _private,
-                        AppStrings.t(AppStringKeys.notificationPrivateMessages),
-                      ),
-                    ),
-                    const InsetDivider(leadingInset: 62),
-                    _navigationRow(
-                      icon: HeroAppIcons.users,
-                      color: const Color(0xFF37C961),
-                      title: AppStrings.t(
-                        AppStringKeys.notificationGroupMessages,
-                      ),
-                      subtitle: _exceptionsLabel(_group),
-                      value: _enabledLabel(_enabled(_group)),
-                      onTap: () => _openScope(
-                        _group,
-                        AppStrings.t(AppStringKeys.notificationGroupMessages),
-                      ),
-                    ),
-                    const InsetDivider(leadingInset: 62),
-                    _navigationRow(
-                      icon: HeroAppIcons.towerBroadcast,
-                      color: const Color(0xFFFFA928),
-                      title: AppStrings.t(AppStringKeys.notificationChannels),
-                      subtitle: _exceptionsLabel(_channel),
-                      value: _enabledLabel(_enabled(_channel)),
-                      onTap: () => _openScope(
-                        _channel,
-                        AppStrings.t(AppStringKeys.notificationChannels),
-                      ),
-                    ),
-                    const InsetDivider(leadingInset: 62),
-                    _navigationRow(
-                      icon: HeroAppIcons.circleNotch,
-                      color: const Color(0xFF6B63F6),
-                      title: AppStrings.t(AppStringKeys.notificationStories),
-                      subtitle: _exceptionsLabel('stories'),
-                      value: _storySummary,
-                      onTap: _openStories,
-                    ),
-                    const InsetDivider(leadingInset: 62),
-                    _navigationRow(
-                      icon: HeroAppIcons.heart,
-                      color: const Color(0xFFFF3C69),
-                      title: AppStrings.t(AppStringKeys.notificationReactions),
-                      subtitle: _reactionSummary,
-                      value: _enabledLabel(
-                        reactionSourceEnabled(
-                              _reactionSettings.obj('message_reaction_source'),
-                            ) ||
-                            reactionSourceEnabled(
-                              _reactionSettings.obj('story_reaction_source'),
-                            ),
-                      ),
-                      onTap: _openReactions,
-                    ),
-                  ]),
-                  _sectionTitle(
-                    AppStrings.t(AppStringKeys.notificationInAppSection),
-                  ),
-                  _card([
-                    _plainSwitchRow(
-                      AppStrings.t(AppStringKeys.notificationInAppSounds),
-                      _preferences.inAppSounds,
-                      _preferences.setInAppSounds,
-                    ),
-                    const InsetDivider(leadingInset: 16),
-                    _plainSwitchRow(
-                      AppStrings.t(AppStringKeys.notificationInAppVibrate),
-                      _preferences.inAppVibrate,
-                      _preferences.setInAppVibrate,
-                    ),
-                    const InsetDivider(leadingInset: 16),
-                    _plainSwitchRow(
-                      AppStrings.t(AppStringKeys.notificationInAppPreview),
-                      _preferences.inAppPreview,
-                      _preferences.setInAppPreview,
-                    ),
-                  ]),
-                  const SizedBox(height: 22),
-                  _card([
-                    _plainSwitchRow(
-                      AppStrings.t(AppStringKeys.notificationNamesOnLockScreen),
-                      _preferences.namesOnLockScreen,
-                      _preferences.setNamesOnLockScreen,
-                    ),
-                  ]),
-                  _footnote(
-                    AppStrings.t(
-                      AppStringKeys.notificationNamesOnLockScreenDescription,
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
         ],

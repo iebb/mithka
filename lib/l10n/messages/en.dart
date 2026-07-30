@@ -1,4 +1,13 @@
 const enMessages = <String, String>{
+  'navigationBack': "Back",
+  'appearanceArchivedChatsDesktopHint':
+      "On desktop, pull-down archives stay visible at the top so they remain mouse-accessible. The saved choice still applies on mobile.",
+  'callAlreadyInProgress': "Another call is already in progress.",
+  'composerEmoji': "Emoji",
+  'composerMediaSelectionLimit': "Select up to {value1} photos or videos.",
+  'composerStickers': "Stickers",
+  'loginHidePassword': "Hide password",
+  'loginShowPassword': "Show password",
   'aboutReportProblem': "Report a Problem",
   'aboutReportProblemDetail': "Includes privacy-safe diagnostics",
   'aboutTelegramChannel': "Telegram Channel",
@@ -530,6 +539,8 @@ const enMessages = <String, String>{
   'callsOutgoing': "Outgoing",
   'callsRetry': "Try again",
   'callsTitle': "Calls",
+  'callsUnavailableOnDesktop':
+      "Calls aren’t available in this desktop build yet.",
   'callsUnknownConversation': "Unknown conversation",
   'channelsFileAttachment': "[File]",
   'channelsLoading': "Loading channels…",
@@ -875,6 +886,7 @@ const enMessages = <String, String>{
   'composerNoGifs': "No saved GIFs",
   'composerOpenAttachmentFailed': "Cannot open {value1}",
   'composerOpenMenu': "Open menu",
+  'composerCloseMenu': "Close menu",
   'composerPaidMessageCost': "Sending this message costs {value1} Stars.",
   'composerPastedImageReadFailed': "Could not read pasted image",
   'composerPoll': "Poll",
@@ -1525,6 +1537,7 @@ const enMessages = <String, String>{
   'pollComposerSingleChoiceLimitHint': "Single choice · Up to 10 options",
   'premiumLabel': "Premium",
   'passkeysAdded': "Passkey added",
+  'passkeysAdd': "Add passkey",
   'passkeysCreatedOn': "Created {value1}",
   'passkeysDelete': "Delete",
   'passkeysDeleteMessage': "Delete “{value1}”?",

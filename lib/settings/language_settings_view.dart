@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../components/app_icons.dart';
+import '../components/desktop_content_constraint.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_locale_controller.dart';
 import '../l10n/app_localizations.dart';
@@ -26,54 +27,61 @@ class LanguageSettingsView extends StatelessWidget {
             onBack: () => Navigator.of(context).pop(),
           ),
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
-              children: [
-                SettingsCard(
-                  children: [
-                    _NavLanguageRow(
-                      icon: HeroAppIcons.language,
-                      title: AppStringKeys.languageMithkaLanguage.l10n(context),
-                      subtitle: locale.selectedLabel(context),
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const MithkaLanguageSettingsView(),
+            child: DesktopContentConstraint(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
+                children: [
+                  SettingsCard(
+                    children: [
+                      _NavLanguageRow(
+                        icon: HeroAppIcons.language,
+                        title: AppStringKeys.languageMithkaLanguage.l10n(
+                          context,
+                        ),
+                        subtitle: locale.selectedLabel(context),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const MithkaLanguageSettingsView(),
+                          ),
                         ),
                       ),
-                    ),
-                    const InsetDivider(leadingInset: 56),
-                    _NavLanguageRow(
-                      icon: HeroAppIcons.globe,
-                      title: AppStringKeys.languageTelegramLanguage.l10n(
-                        context,
-                      ),
-                      subtitle: _telegramSummary(
-                        context,
-                        telegramLanguage,
-                        fallbackName: locale.selectedLabel(context),
-                      ),
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const TelegramLanguageSettingsView(),
+                      const InsetDivider(leadingInset: 56),
+                      _NavLanguageRow(
+                        icon: HeroAppIcons.globe,
+                        title: AppStringKeys.languageTelegramLanguage.l10n(
+                          context,
+                        ),
+                        subtitle: _telegramSummary(
+                          context,
+                          telegramLanguage,
+                          fallbackName: locale.selectedLabel(context),
+                        ),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                const TelegramLanguageSettingsView(),
+                          ),
                         ),
                       ),
-                    ),
-                    const InsetDivider(leadingInset: 56),
-                    _NavLanguageRow(
-                      icon: HeroAppIcons.comment,
-                      title: telegramText(AppStringKeys.messageActionTranslate),
-                      subtitle: AppStrings.t(
-                        AppStringKeys.translationSettingsTitle,
-                      ),
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const TranslationSettingsView(),
+                      const InsetDivider(leadingInset: 56),
+                      _NavLanguageRow(
+                        icon: HeroAppIcons.comment,
+                        title: telegramText(
+                          AppStringKeys.messageActionTranslate,
+                        ),
+                        subtitle: AppStrings.t(
+                          AppStringKeys.translationSettingsTitle,
+                        ),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const TranslationSettingsView(),
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ],

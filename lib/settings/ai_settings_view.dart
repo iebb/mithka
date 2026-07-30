@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../components/app_icons.dart';
+import '../components/desktop_content_constraint.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
@@ -48,128 +49,142 @@ class _AiSettingsViewState extends State<AiSettingsView> {
           Expanded(
             child: !settings.initialized
                 ? const Center(child: AppActivityIndicator())
-                : ListView(
-                    padding: const EdgeInsets.fromLTRB(
-                      AppSpacing.lg,
-                      AppSpacing.xl,
-                      AppSpacing.lg,
-                      AppSpacing.section,
-                    ),
-                    children: [
-                      SettingsCard(
-                        children: [
-                          SettingsSwitchRow(
-                            title: AppStringKeys.aiUnreadSummary.l10n(context),
-                            value: settings.enabled,
-                            leading: const SettingsIconTile(
-                              icon: HeroAppIcons.cpuChip,
-                              backgroundColor: Color(0xFF7467F0),
+                : DesktopContentConstraint(
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.lg,
+                        AppSpacing.xl,
+                        AppSpacing.lg,
+                        AppSpacing.section,
+                      ),
+                      children: [
+                        SettingsCard(
+                          children: [
+                            SettingsSwitchRow(
+                              title: AppStringKeys.aiUnreadSummary.l10n(
+                                context,
+                              ),
+                              value: settings.enabled,
+                              leading: const SettingsIconTile(
+                                icon: HeroAppIcons.cpuChip,
+                                backgroundColor: Color(0xFF7467F0),
+                              ),
+                              onChanged: (value) =>
+                                  unawaited(settings.setEnabled(value)),
                             ),
-                            onChanged: (value) =>
-                                unawaited(settings.setEnabled(value)),
+                            const InsetDivider(leadingInset: 56),
+                            SettingsRow(
+                              title: AppStringKeys.aiOutputLanguage.l10n(
+                                context,
+                              ),
+                              value: AppStringKeys.aiOutputSameLanguage.l10n(
+                                context,
+                              ),
+                              leading: const SettingsIconTile(
+                                icon: HeroAppIcons.language,
+                                backgroundColor: Color(0xFF16A085),
+                              ),
+                              showChevron: false,
+                            ),
+                          ],
+                        ),
+                        _note(
+                          context,
+                          AppStringKeys.aiUnreadSummaryDescription.l10n(
+                            context,
                           ),
-                          const InsetDivider(leadingInset: 56),
-                          SettingsRow(
-                            title: AppStringKeys.aiOutputLanguage.l10n(context),
-                            value: AppStringKeys.aiOutputSameLanguage.l10n(
-                              context,
+                        ),
+                        const SizedBox(height: AppSpacing.section),
+                        _sectionTitle(
+                          context,
+                          AppStringKeys.aiModels.l10n(context),
+                        ),
+                        SettingsCard(
+                          children: [
+                            SettingsRow(
+                              title: AppStringKeys.aiProviders.l10n(context),
+                              value: '${settings.serverProviders.length}',
+                              leading: const SettingsIconTile(
+                                icon: HeroAppIcons.server,
+                                backgroundColor: Color(0xFF3478F6),
+                              ),
+                              onTap: () =>
+                                  _push(context, const AiProviderListView()),
                             ),
-                            leading: const SettingsIconTile(
+                            const InsetDivider(leadingInset: 56),
+                            SettingsRow(
+                              title: AppStringKeys.aiModels.l10n(context),
+                              value: '${settings.modelCandidates.length}',
+                              leading: const SettingsIconTile(
+                                icon: HeroAppIcons.cube,
+                                backgroundColor: Color(0xFF7467F0),
+                              ),
+                              onTap: () =>
+                                  _push(context, const AiModelListView()),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: AppSpacing.section),
+                        _sectionTitle(
+                          context,
+                          AppStringKeys.aiModelConfiguration.l10n(context),
+                        ),
+                        SettingsCard(
+                          children: [
+                            _featureModelRow(
+                              context,
+                              settings: settings,
+                              feature: AiFeature.translation,
+                              title: AppStringKeys.aiTranslateUsing.l10n(
+                                context,
+                              ),
                               icon: HeroAppIcons.language,
-                              backgroundColor: Color(0xFF16A085),
+                              color: const Color(0xFF16A085),
                             ),
-                            showChevron: false,
-                          ),
-                        ],
-                      ),
-                      _note(
-                        context,
-                        AppStringKeys.aiUnreadSummaryDescription.l10n(context),
-                      ),
-                      const SizedBox(height: AppSpacing.section),
-                      _sectionTitle(
-                        context,
-                        AppStringKeys.aiModels.l10n(context),
-                      ),
-                      SettingsCard(
-                        children: [
-                          SettingsRow(
-                            title: AppStringKeys.aiProviders.l10n(context),
-                            value: '${settings.serverProviders.length}',
-                            leading: const SettingsIconTile(
-                              icon: HeroAppIcons.server,
-                              backgroundColor: Color(0xFF3478F6),
-                            ),
-                            onTap: () =>
-                                _push(context, const AiProviderListView()),
-                          ),
-                          const InsetDivider(leadingInset: 56),
-                          SettingsRow(
-                            title: AppStringKeys.aiModels.l10n(context),
-                            value: '${settings.modelCandidates.length}',
-                            leading: const SettingsIconTile(
-                              icon: HeroAppIcons.cube,
-                              backgroundColor: Color(0xFF7467F0),
-                            ),
-                            onTap: () =>
-                                _push(context, const AiModelListView()),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: AppSpacing.section),
-                      _sectionTitle(
-                        context,
-                        AppStringKeys.aiModelConfiguration.l10n(context),
-                      ),
-                      SettingsCard(
-                        children: [
-                          _featureModelRow(
-                            context,
-                            settings: settings,
-                            feature: AiFeature.translation,
-                            title: AppStringKeys.aiTranslateUsing.l10n(context),
-                            icon: HeroAppIcons.language,
-                            color: const Color(0xFF16A085),
-                          ),
-                          const InsetDivider(leadingInset: 56),
-                          _featureModelRow(
-                            context,
-                            settings: settings,
-                            feature: AiFeature.summary,
-                            title: AppStringKeys.aiSummarizeUsing.l10n(context),
-                            icon: HeroAppIcons.listCheck,
-                            color: const Color(0xFF7467F0),
-                          ),
-                          const InsetDivider(leadingInset: 56),
-                          _featureModelRow(
-                            context,
-                            settings: settings,
-                            feature: AiFeature.reply,
-                            title: AppStringKeys.aiReplyUsing.l10n(context),
-                            icon: HeroAppIcons.reply,
-                            color: const Color(0xFF229ED9),
-                          ),
-                          const InsetDivider(leadingInset: 56),
-                          SettingsRow(
-                            key: const ValueKey('aiReplyPromptRow'),
-                            title: AppStringKeys.aiReplyGuidance.l10n(context),
-                            value: settings.hasCustomAiReplyPrompt
-                                ? settings.aiReplyPrompt.replaceAll('\n', ' ')
-                                : AppStringKeys.editProfileDefault.l10n(
-                                    context,
-                                  ),
-                            leading: const SettingsIconTile(
-                              icon: HeroAppIcons.penToSquare,
-                              backgroundColor: Color(0xFF20A45B),
-                            ),
-                            onTap: () => _push(
+                            const InsetDivider(leadingInset: 56),
+                            _featureModelRow(
                               context,
-                              AiReplyPromptEditorView(settings: settings),
+                              settings: settings,
+                              feature: AiFeature.summary,
+                              title: AppStringKeys.aiSummarizeUsing.l10n(
+                                context,
+                              ),
+                              icon: HeroAppIcons.listCheck,
+                              color: const Color(0xFF7467F0),
                             ),
-                          ),
-                        ],
-                      ),
-                    ],
+                            const InsetDivider(leadingInset: 56),
+                            _featureModelRow(
+                              context,
+                              settings: settings,
+                              feature: AiFeature.reply,
+                              title: AppStringKeys.aiReplyUsing.l10n(context),
+                              icon: HeroAppIcons.reply,
+                              color: const Color(0xFF229ED9),
+                            ),
+                            const InsetDivider(leadingInset: 56),
+                            SettingsRow(
+                              key: const ValueKey('aiReplyPromptRow'),
+                              title: AppStringKeys.aiReplyGuidance.l10n(
+                                context,
+                              ),
+                              value: settings.hasCustomAiReplyPrompt
+                                  ? settings.aiReplyPrompt.replaceAll('\n', ' ')
+                                  : AppStringKeys.editProfileDefault.l10n(
+                                      context,
+                                    ),
+                              leading: const SettingsIconTile(
+                                icon: HeroAppIcons.penToSquare,
+                                backgroundColor: Color(0xFF20A45B),
+                              ),
+                              onTap: () => _push(
+                                context,
+                                AiReplyPromptEditorView(settings: settings),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
           ),
         ],

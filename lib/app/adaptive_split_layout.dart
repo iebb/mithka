@@ -3,18 +3,15 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
+import '../platform/adaptive_platform.dart';
+
+export '../platform/adaptive_platform.dart' show isDesktopTargetPlatform;
+
 const double splitSidebarMinWidth = 300;
 const double splitSidebarDefaultMinWidth = 320;
 const double splitSidebarDefaultMaxWidth = 420;
 const double splitDetailMinWidth = 440;
 const double splitResizeHandleWidth = 8;
-
-bool isDesktopTargetPlatform([TargetPlatform? platform]) {
-  final target = platform ?? defaultTargetPlatform;
-  return target == TargetPlatform.macOS ||
-      target == TargetPlatform.windows ||
-      target == TargetPlatform.linux;
-}
 
 bool usesAdaptiveSplitLayout(
   Size size, {

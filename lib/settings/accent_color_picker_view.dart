@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
+import '../components/app_interactive_surface.dart';
 import '../components/ui_components.dart';
 import '../theme/app_theme.dart';
 
@@ -58,9 +59,10 @@ class _AccentColorPickerViewState extends State<AccentColorPickerView> {
           NavHeader(
             title: widget.title,
             onBack: () => Navigator.of(context).pop(),
-            trailing: GestureDetector(
-              behavior: HitTestBehavior.opaque,
+            trailing: AppInteractiveSurface(
+              semanticLabel: AppStrings.t(AppStringKeys.accentColorPickerSave),
               onTap: () => Navigator.of(context).pop(_sel),
+              borderRadius: BorderRadius.circular(8),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: Text(

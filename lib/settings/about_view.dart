@@ -15,6 +15,7 @@ import '../app/app_version.dart';
 import '../app/telemetry_config.dart';
 import '../chat/link_handler.dart';
 import '../components/app_icons.dart';
+import '../components/desktop_content_constraint.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../theme/app_theme.dart';
@@ -66,125 +67,131 @@ class _AboutViewState extends State<AboutView> {
             onBack: () => Navigator.of(context).pop(),
           ),
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(12, 32, 12, 24),
-              children: [
-                Center(
-                  child: Column(
-                    children: [
-                      Container(
-                        width: 84,
-                        height: 84,
-                        decoration: BoxDecoration(
-                          gradient: AppTheme.brandGradient,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: const Padding(
-                          padding: EdgeInsets.all(10),
-                          child: Image(
-                            image: AssetImage('assets/penguin.png'),
-                            fit: BoxFit.contain,
+            child: DesktopContentConstraint(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(12, 32, 12, 24),
+                children: [
+                  Center(
+                    child: Column(
+                      children: [
+                        Container(
+                          width: 84,
+                          height: 84,
+                          decoration: BoxDecoration(
+                            gradient: AppTheme.brandGradient,
+                            borderRadius: BorderRadius.circular(20),
                           ),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      Text(
-                        'Mithka',
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: c.textPrimary,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () => unawaited(_handleVersionTap()),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
-                          ),
-                          child: FutureBuilder<AppVersion>(
-                            future: _versionFuture,
-                            builder: (context, snapshot) {
-                              final version = snapshot.data?.display ?? '...';
-                              return Text(
-                                AppStrings.t(AppStringKeys.aboutVersion, {
-                                  'value1': version,
-                                }),
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: c.textSecondary,
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 30),
-                Container(
-                  decoration: BoxDecoration(
-                    color: c.card,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: Column(
-                    children: [
-                      if (sentryEnabled) ...[
-                        _AboutLinkRow(
-                          icon: HeroAppIcons.comments.data,
-                          title: AppStrings.t(AppStringKeys.aboutReportProblem),
-                          value: AppStrings.t(
-                            AppStringKeys.aboutReportProblemDetail,
-                          ),
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              settings: const RouteSettings(
-                                name: '/settings/feedback',
-                              ),
-                              builder: (_) => const FeedbackReportView(),
+                          child: const Padding(
+                            padding: EdgeInsets.all(10),
+                            child: Image(
+                              image: AssetImage('assets/penguin.png'),
+                              fit: BoxFit.contain,
                             ),
                           ),
+                        ),
+                        const SizedBox(height: 14),
+                        Text(
+                          'Mithka',
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            color: c.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => unawaited(_handleVersionTap()),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
+                            child: FutureBuilder<AppVersion>(
+                              future: _versionFuture,
+                              builder: (context, snapshot) {
+                                final version = snapshot.data?.display ?? '...';
+                                return Text(
+                                  AppStrings.t(AppStringKeys.aboutVersion, {
+                                    'value1': version,
+                                  }),
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: c.textSecondary,
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 30),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: c.card,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: Column(
+                      children: [
+                        if (sentryEnabled) ...[
+                          _AboutLinkRow(
+                            icon: HeroAppIcons.comments.data,
+                            title: AppStrings.t(
+                              AppStringKeys.aboutReportProblem,
+                            ),
+                            value: AppStrings.t(
+                              AppStringKeys.aboutReportProblemDetail,
+                            ),
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                settings: const RouteSettings(
+                                  name: '/settings/feedback',
+                                ),
+                                builder: (_) => const FeedbackReportView(),
+                              ),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.only(left: 48),
+                            child: Divider(height: 1, color: c.divider),
+                          ),
+                        ],
+                        _AboutLinkRow(
+                          icon: HeroAppIcons.globe.data,
+                          title: AppStrings.t(AppStringKeys.aboutWebsite),
+                          value: 'mithka.ieb.app',
+                          onTap: () => openLink(context, _websiteUrl),
                         ),
                         Padding(
                           padding: const EdgeInsets.only(left: 48),
                           child: Divider(height: 1, color: c.divider),
                         ),
+                        _AboutLinkRow(
+                          icon: HeroAppIcons.solidPaperPlane.data,
+                          title: AppStrings.t(
+                            AppStringKeys.aboutTelegramChannel,
+                          ),
+                          value: 't.me/mithka',
+                          onTap: () => openLink(context, _channelUrl),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.only(left: 48),
+                          child: Divider(height: 1, color: c.divider),
+                        ),
+                        _AboutLinkRow(
+                          icon: HeroAppIcons.code.data,
+                          title: 'GitHub',
+                          value: 'github.com/iebb/mithka',
+                          onTap: () => openLink(context, _githubUrl),
+                        ),
                       ],
-                      _AboutLinkRow(
-                        icon: HeroAppIcons.globe.data,
-                        title: AppStrings.t(AppStringKeys.aboutWebsite),
-                        value: 'mithka.ieb.app',
-                        onTap: () => openLink(context, _websiteUrl),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.only(left: 48),
-                        child: Divider(height: 1, color: c.divider),
-                      ),
-                      _AboutLinkRow(
-                        icon: HeroAppIcons.solidPaperPlane.data,
-                        title: AppStrings.t(AppStringKeys.aboutTelegramChannel),
-                        value: 't.me/mithka',
-                        onTap: () => openLink(context, _channelUrl),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.only(left: 48),
-                        child: Divider(height: 1, color: c.divider),
-                      ),
-                      _AboutLinkRow(
-                        icon: HeroAppIcons.code.data,
-                        title: 'GitHub',
-                        value: 'github.com/iebb/mithka',
-                        onTap: () => openLink(context, _githubUrl),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],

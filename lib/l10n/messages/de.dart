@@ -1,4 +1,13 @@
 const deMessages = <String, String>{
+  'navigationBack': "Zurück",
+  'appearanceArchivedChatsDesktopHint':
+      "Auf dem Desktop bleiben Archive zum Herunterziehen oben sichtbar, damit sie mit der Maus erreichbar sind. Die gespeicherte Auswahl gilt weiterhin auf Mobilgeräten.",
+  'callAlreadyInProgress': "Ein anderer Anruf läuft bereits.",
+  'composerEmoji': "Emoji",
+  'composerMediaSelectionLimit': "Wähle bis zu {value1} Fotos oder Videos aus.",
+  'composerStickers': "Sticker",
+  'loginHidePassword': "Passwort verbergen",
+  'loginShowPassword': "Passwort anzeigen",
   'aboutReportProblem': "Problem melden",
   'aboutReportProblemDetail': "Enthält datenschutzfreundliche Diagnosedaten",
   'aboutTelegramChannel': "Telegram-Kanal",
@@ -896,6 +905,7 @@ const deMessages = <String, String>{
   'composerNoGifs': "Keine gespeicherten GIFs",
   'composerOpenAttachmentFailed': "{value1} kann nicht geöffnet werden",
   'composerOpenMenu': "Menü öffnen",
+  'composerCloseMenu': "Menü schließen",
   'composerPaidMessageCost':
       "Das Senden dieser Nachricht kostet {value1} Sterne.",
   'composerPastedImageReadFailed': "Eingefügtes Bild kann nicht gelesen werden",
@@ -1498,6 +1508,7 @@ const deMessages = <String, String>{
   'pollComposerSingleChoiceLimitHint': "Einfachauswahl · Max. 10 Optionen",
   'premiumLabel': "Premium",
   'passkeysAdded': "Passkey hinzugefügt",
+  'passkeysAdd': "Passkey hinzufügen",
   'passkeysCreatedOn': "Erstellt am {value1}",
   'passkeysDelete': "Löschen",
   'passkeysDeleteMessage': "„{value1}“ löschen?",
@@ -2173,6 +2184,8 @@ const deMessages = <String, String>{
   'callsOutgoing': "Ausgehend",
   'callsRetry': "Erneut versuchen",
   'callsTitle': "Anrufe",
+  'callsUnavailableOnDesktop':
+      "Anrufe sind in dieser Desktop-Version noch nicht verfügbar.",
   'callsUnknownConversation': "Unbekanntes Gespräch",
   'channelDirectMessages': "Channel Direct Messages",
   'channelDirectMessagesAllowAndRefund': "Allow and Refund",

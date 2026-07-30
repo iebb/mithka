@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:provider/provider.dart';
 
 import '../components/app_icons.dart';
+import '../components/desktop_content_constraint.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_motion.dart';
@@ -30,116 +31,119 @@ class BlockingSettingsView extends StatelessWidget {
             onBack: () => Navigator.of(context).pop(),
           ),
           Expanded(
-            child: ListenableBuilder(
-              listenable: country,
-              builder: (context, _) => ListView(
-                padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
-                children: [
-                  _card(context, [
-                    SettingsSwitchRow(
-                      title: AppStringKeys.appearanceHideBlockedUserMessages,
-                      value: theme.hideBlockedUserMessages,
-                      leading: AppIcon(
-                        HeroAppIcons.eyeSlash,
-                        size: 20,
-                        color: AppTheme.brand,
+            child: DesktopContentConstraint(
+              child: ListenableBuilder(
+                listenable: country,
+                builder: (context, _) => ListView(
+                  padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
+                  children: [
+                    _card(context, [
+                      SettingsSwitchRow(
+                        title: AppStringKeys.appearanceHideBlockedUserMessages,
+                        value: theme.hideBlockedUserMessages,
+                        leading: AppIcon(
+                          HeroAppIcons.eyeSlash,
+                          size: 20,
+                          color: AppTheme.brand,
+                        ),
+                        onChanged: (value) {
+                          theme.hideBlockedUserMessages = value;
+                          BlockedUserService.shared.enabled = value;
+                          if (value) {
+                            BlockedUserService.shared.loadBlockedUsers();
+                          }
+                        },
                       ),
-                      onChanged: (value) {
-                        theme.hideBlockedUserMessages = value;
-                        BlockedUserService.shared.enabled = value;
-                        if (value) {
-                          BlockedUserService.shared.loadBlockedUsers();
-                        }
-                      },
-                    ),
-                    const InsetDivider(leadingInset: 52),
-                    SettingsRow(
-                      title: AppStringKeys.blockingBlocklist,
-                      leading: AppIcon(
-                        HeroAppIcons.users,
-                        size: 20,
-                        color: AppTheme.brand,
-                      ),
-                      onTap: () => Navigator.of(context).push(
-                        AppPageRoute<void>(
-                          pageBuilder: (_, _, _) => const BlockedUsersView(),
+                      const InsetDivider(leadingInset: 52),
+                      SettingsRow(
+                        title: AppStringKeys.blockingBlocklist,
+                        leading: AppIcon(
+                          HeroAppIcons.users,
+                          size: 20,
+                          color: AppTheme.brand,
+                        ),
+                        onTap: () => Navigator.of(context).push(
+                          AppPageRoute<void>(
+                            pageBuilder: (_, _, _) => const BlockedUsersView(),
+                          ),
                         ),
                       ),
-                    ),
-                    const InsetDivider(leadingInset: 52),
-                    SettingsRow(
-                      title: AppStringKeys.keywordBlockerTitle,
-                      leading: AppIcon(
-                        HeroAppIcons.ban,
-                        size: 20,
-                        color: AppTheme.brand,
-                      ),
-                      onTap: () => Navigator.of(context).push(
-                        AppPageRoute<void>(
-                          pageBuilder: (_, _, _) => const KeywordBlockerView(),
+                      const InsetDivider(leadingInset: 52),
+                      SettingsRow(
+                        title: AppStringKeys.keywordBlockerTitle,
+                        leading: AppIcon(
+                          HeroAppIcons.ban,
+                          size: 20,
+                          color: AppTheme.brand,
+                        ),
+                        onTap: () => Navigator.of(context).push(
+                          AppPageRoute<void>(
+                            pageBuilder: (_, _, _) =>
+                                const KeywordBlockerView(),
+                          ),
                         ),
                       ),
-                    ),
-                  ]),
-                  const SizedBox(height: 14),
-                  _label(context, AppStringKeys.blockingCountry),
-                  _card(context, [
-                    SettingsRow(
-                      title: AppStringKeys.blockingCountry,
-                      value: country.selectedCountries.isEmpty
-                          ? AppStringKeys.blockingCountryOff
-                          : AppStrings.t(
-                              AppStringKeys.blockingCountrySelected,
-                              {'value1': country.selectedCountries.length},
-                            ),
-                      leading: AppIcon(
-                        HeroAppIcons.globe,
-                        size: 20,
-                        color: AppTheme.brand,
-                      ),
-                      onTap: () => Navigator.of(context).push(
-                        AppPageRoute<void>(
-                          pageBuilder: (_, _, _) =>
-                              const CountryMessageFilterView(),
+                    ]),
+                    const SizedBox(height: 14),
+                    _label(context, AppStringKeys.blockingCountry),
+                    _card(context, [
+                      SettingsRow(
+                        title: AppStringKeys.blockingCountry,
+                        value: country.selectedCountries.isEmpty
+                            ? AppStringKeys.blockingCountryOff
+                            : AppStrings.t(
+                                AppStringKeys.blockingCountrySelected,
+                                {'value1': country.selectedCountries.length},
+                              ),
+                        leading: AppIcon(
+                          HeroAppIcons.globe,
+                          size: 20,
+                          color: AppTheme.brand,
+                        ),
+                        onTap: () => Navigator.of(context).push(
+                          AppPageRoute<void>(
+                            pageBuilder: (_, _, _) =>
+                                const CountryMessageFilterView(),
+                          ),
                         ),
                       ),
+                    ]),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 7, 16, 0),
+                      child: Text(
+                        AppStringKeys.blockingCountryDescription.l10n(context),
+                        style: TextStyle(fontSize: 12, color: c.textTertiary),
+                      ),
                     ),
-                  ]),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 7, 16, 0),
-                    child: Text(
-                      AppStringKeys.blockingCountryDescription.l10n(context),
-                      style: TextStyle(fontSize: 12, color: c.textTertiary),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  _label(context, AppStringKeys.blockingExemptions),
-                  _card(context, [
-                    SettingsSwitchRow(
-                      title: AppStringKeys.blockingExemptCommonPrivateGroup,
-                      value: country.exemptCommonPrivateGroup,
-                      onChanged: country.setExemptCommonPrivateGroup,
-                    ),
-                    const InsetDivider(leadingInset: 16),
-                    SettingsSwitchRow(
-                      title: AppStringKeys.blockingExemptThreeCommonGroups,
-                      value: country.exemptThreeCommonGroups,
-                      onChanged: country.setExemptThreeCommonGroups,
-                    ),
-                    const InsetDivider(leadingInset: 16),
-                    SettingsSwitchRow(
-                      title: AppStringKeys.blockingExemptPlainText,
-                      value: country.exemptPlainText,
-                      onChanged: country.setExemptPlainText,
-                    ),
-                    const InsetDivider(leadingInset: 16),
-                    SettingsSwitchRow(
-                      title: AppStringKeys.blockingExemptNonDefaultAvatar,
-                      value: country.exemptNonDefaultAvatar,
-                      onChanged: country.setExemptNonDefaultAvatar,
-                    ),
-                  ]),
-                ],
+                    const SizedBox(height: 14),
+                    _label(context, AppStringKeys.blockingExemptions),
+                    _card(context, [
+                      SettingsSwitchRow(
+                        title: AppStringKeys.blockingExemptCommonPrivateGroup,
+                        value: country.exemptCommonPrivateGroup,
+                        onChanged: country.setExemptCommonPrivateGroup,
+                      ),
+                      const InsetDivider(leadingInset: 16),
+                      SettingsSwitchRow(
+                        title: AppStringKeys.blockingExemptThreeCommonGroups,
+                        value: country.exemptThreeCommonGroups,
+                        onChanged: country.setExemptThreeCommonGroups,
+                      ),
+                      const InsetDivider(leadingInset: 16),
+                      SettingsSwitchRow(
+                        title: AppStringKeys.blockingExemptPlainText,
+                        value: country.exemptPlainText,
+                        onChanged: country.setExemptPlainText,
+                      ),
+                      const InsetDivider(leadingInset: 16),
+                      SettingsSwitchRow(
+                        title: AppStringKeys.blockingExemptNonDefaultAvatar,
+                        value: country.exemptNonDefaultAvatar,
+                        onChanged: country.setExemptNonDefaultAvatar,
+                      ),
+                    ]),
+                  ],
+                ),
               ),
             ),
           ),

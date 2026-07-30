@@ -1468,7 +1468,7 @@ class _BusinessAwayMessageViewState extends State<BusinessAwayMessageView> {
 
   Future<void> _pickDate(bool start) async {
     final initial = start ? _start : _end;
-    final selected = await showCupertinoModalPopup<DateTime>(
+    final selected = await showAppCupertinoModalPopup<DateTime>(
       context: context,
       builder: (context) => _BusinessDateTimeSheet(initial: initial),
     );

@@ -7,6 +7,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../components/desktop_content_constraint.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
@@ -30,72 +31,74 @@ class FeatureSettingsView extends StatelessWidget {
             onBack: () => Navigator.of(context).pop(),
           ),
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.lg,
-                AppSpacing.xl,
-                AppSpacing.lg,
-                AppSpacing.section,
+            child: DesktopContentConstraint(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  AppSpacing.xl,
+                  AppSpacing.lg,
+                  AppSpacing.section,
+                ),
+                children: [
+                  _sectionHeader(
+                    context,
+                    AppStrings.t(AppStringKeys.featureBottomTabs),
+                  ),
+                  SettingsCard(
+                    children: [
+                      SettingsSwitchRow(
+                        title: AppStrings.t(AppStringKeys.tabChannels),
+                        value: theme.showChannelsTab,
+                        onChanged: (value) => theme.showChannelsTab = value,
+                      ),
+                      const InsetDivider(leadingInset: 16),
+                      SettingsSwitchRow(
+                        title: AppStrings.t(AppStringKeys.tabMoments),
+                        value: theme.showMomentsTab,
+                        onChanged: (value) => theme.showMomentsTab = value,
+                      ),
+                      const InsetDivider(leadingInset: 16),
+                      SettingsSwitchRow(
+                        title: AppStrings.t(AppStringKeys.momentsShortVideos),
+                        value: theme.showShortVideos,
+                        onChanged: (value) => theme.showShortVideos = value,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.section),
+                  _sectionHeader(
+                    context,
+                    AppStrings.t(AppStringKeys.communityTitle),
+                  ),
+                  SettingsCard(
+                    children: [
+                      SettingsSwitchRow(
+                        title: AppStrings.t(
+                          AppStringKeys.featureCommunitiesEnabled,
+                        ),
+                        value: theme.communitiesEnabled,
+                        onChanged: (value) => theme.communitiesEnabled = value,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.section),
+                  _sectionHeader(
+                    context,
+                    AppStrings.t(AppStringKeys.featureSafety),
+                  ),
+                  SettingsCard(
+                    children: [
+                      SettingsSwitchRow(
+                        title: AppStrings.t(
+                          AppStringKeys.featureDisableSafetyNotice,
+                        ),
+                        value: safetyNotice.disabled,
+                        onChanged: (value) => safetyNotice.disabled = value,
+                      ),
+                    ],
+                  ),
+                ],
               ),
-              children: [
-                _sectionHeader(
-                  context,
-                  AppStrings.t(AppStringKeys.featureBottomTabs),
-                ),
-                SettingsCard(
-                  children: [
-                    SettingsSwitchRow(
-                      title: AppStrings.t(AppStringKeys.tabChannels),
-                      value: theme.showChannelsTab,
-                      onChanged: (value) => theme.showChannelsTab = value,
-                    ),
-                    const InsetDivider(leadingInset: 16),
-                    SettingsSwitchRow(
-                      title: AppStrings.t(AppStringKeys.tabMoments),
-                      value: theme.showMomentsTab,
-                      onChanged: (value) => theme.showMomentsTab = value,
-                    ),
-                    const InsetDivider(leadingInset: 16),
-                    SettingsSwitchRow(
-                      title: AppStrings.t(AppStringKeys.momentsShortVideos),
-                      value: theme.showShortVideos,
-                      onChanged: (value) => theme.showShortVideos = value,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.section),
-                _sectionHeader(
-                  context,
-                  AppStrings.t(AppStringKeys.communityTitle),
-                ),
-                SettingsCard(
-                  children: [
-                    SettingsSwitchRow(
-                      title: AppStrings.t(
-                        AppStringKeys.featureCommunitiesEnabled,
-                      ),
-                      value: theme.communitiesEnabled,
-                      onChanged: (value) => theme.communitiesEnabled = value,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.section),
-                _sectionHeader(
-                  context,
-                  AppStrings.t(AppStringKeys.featureSafety),
-                ),
-                SettingsCard(
-                  children: [
-                    SettingsSwitchRow(
-                      title: AppStrings.t(
-                        AppStringKeys.featureDisableSafetyNotice,
-                      ),
-                      value: safetyNotice.disabled,
-                      onChanged: (value) => safetyNotice.disabled = value,
-                    ),
-                  ],
-                ),
-              ],
             ),
           ),
         ],

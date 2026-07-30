@@ -1,4 +1,13 @@
 const esMessages = <String, String>{
+  'navigationBack': "Atrás",
+  'appearanceArchivedChatsDesktopHint':
+      "En el escritorio, los chats archivados al deslizar permanecen visibles arriba para poder acceder con el ratón. La opción guardada sigue aplicándose en el móvil.",
+  'callAlreadyInProgress': "Ya hay otra llamada en curso.",
+  'composerEmoji': "Emoji",
+  'composerMediaSelectionLimit': "Selecciona hasta {value1} fotos o vídeos.",
+  'composerStickers': "Stickers",
+  'loginHidePassword': "Ocultar contraseña",
+  'loginShowPassword': "Mostrar contraseña",
   'aboutReportProblem': "Informar de un problema",
   'aboutReportProblemDetail': "Incluye diagnósticos sin datos privados",
   'aboutTelegramChannel': "Canal de Telegram",
@@ -889,6 +898,7 @@ const esMessages = <String, String>{
   'composerNoGifs': "No hay GIF guardados",
   'composerOpenAttachmentFailed': "No se puede abrir {value1}",
   'composerOpenMenu': "Abrir menú",
+  'composerCloseMenu': "Cerrar menú",
   'composerPaidMessageCost': "Enviar este mensaje cuesta {value1} estrellas.",
   'composerPastedImageReadFailed': "No se pudo leer la imagen pegada",
   'composerPoll': "Encuesta",
@@ -1485,6 +1495,7 @@ const esMessages = <String, String>{
   'pollComposerSingleChoiceLimitHint': "Opción única · Máximo 10 opciones",
   'premiumLabel': "Premium",
   'passkeysAdded': "Llave de acceso añadida",
+  'passkeysAdd': "Añadir llave de acceso",
   'passkeysCreatedOn': "Creada el {value1}",
   'passkeysDelete': "Eliminar",
   'passkeysDeleteMessage': "¿Eliminar «{value1}»?",
@@ -2161,6 +2172,8 @@ const esMessages = <String, String>{
   'callsOutgoing': "Saliente",
   'callsRetry': "Reintentar",
   'callsTitle': "Llamadas",
+  'callsUnavailableOnDesktop':
+      "Las llamadas aún no están disponibles en esta versión de escritorio.",
   'callsUnknownConversation': "Conversación desconocida",
   'channelDirectMessages': "Channel Direct Messages",
   'channelDirectMessagesAllowAndRefund': "Allow and Refund",

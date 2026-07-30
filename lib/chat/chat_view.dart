@@ -3367,7 +3367,18 @@ class _ChatViewState extends State<ChatView> {
         }
       case SharedContactAction.call:
         if (contact.userId > 0) {
-          context.read<CallManager>().startCall(contact.userId, false);
+          final started = context.read<CallManager>().startCall(
+            contact.userId,
+            false,
+          );
+          if (started != CallStartResult.started && mounted) {
+            showToast(
+              context,
+              started == CallStartResult.unsupported
+                  ? AppStringKeys.callsUnavailableOnDesktop
+                  : AppStringKeys.callAlreadyInProgress,
+            );
+          }
         }
       case SharedContactAction.copyNumber:
         await Clipboard.setData(ClipboardData(text: contact.phoneNumber));
@@ -4798,7 +4809,15 @@ class _ChatViewState extends State<ChatView> {
       showToast(context, AppStringKeys.chatContactCallsOnly);
       return;
     }
-    context.read<CallManager>().startCall(uid, isVideo);
+    final started = context.read<CallManager>().startCall(uid, isVideo);
+    if (started != CallStartResult.started && mounted) {
+      showToast(
+        context,
+        started == CallStartResult.unsupported
+            ? AppStringKeys.callsUnavailableOnDesktop
+            : AppStringKeys.callAlreadyInProgress,
+      );
+    }
   }
 
   Future<void> _forwardMessage(ChatMessage message) async {
@@ -6620,7 +6639,8 @@ class _ChatViewState extends State<ChatView> {
     double? alignment,
     bool forceAlignment = false,
   }) async {
-    final targetAlignment = alignment ?? (pinnedJump ? 0.08 : 0.3);
+    final targetAlignment =
+        alignment ?? (pinnedJump ? pinnedMessageScrollAlignment : 0.3);
     for (var tries = 0; tries < 6; tries++) {
       final activeKey = _scrollTargetId == messageId ? _targetKey : _pinnedKey;
       final ctx = activeKey.currentContext;
@@ -6644,7 +6664,7 @@ class _ChatViewState extends State<ChatView> {
               : const Duration(milliseconds: 220),
           curve: Curves.easeOutCubic,
           alignmentPolicy: pinnedJump && alignment == null
-              ? ScrollPositionAlignmentPolicy.keepVisibleAtStart
+              ? pinnedMessageScrollAlignmentPolicy
               : ScrollPositionAlignmentPolicy.explicit,
         );
         if (mounted && _scrollTargetId == messageId) {
@@ -7543,6 +7563,20 @@ class _ChatViewState extends State<ChatView> {
     required int extraCount,
   }) {
     final tileKey = GlobalKey();
+    void showActions() {
+      final box = tileKey.currentContext?.findRenderObject() as RenderBox?;
+      final rect = box != null && box.hasSize
+          ? box.localToGlobal(Offset.zero) & box.size
+          : null;
+      _showActionMenuForMessage(
+        message,
+        rect,
+        message.video != null
+            ? MessageActionSource.video
+            : MessageActionSource.normal,
+      );
+    }
+
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () {
@@ -7556,22 +7590,8 @@ class _ChatViewState extends State<ChatView> {
           _openImage(message);
         }
       },
-      onLongPress: _isSelecting
-          ? null
-          : () {
-              final box =
-                  tileKey.currentContext?.findRenderObject() as RenderBox?;
-              final rect = box != null && box.hasSize
-                  ? box.localToGlobal(Offset.zero) & box.size
-                  : null;
-              _showActionMenuForMessage(
-                message,
-                rect,
-                message.video != null
-                    ? MessageActionSource.video
-                    : MessageActionSource.normal,
-              );
-            },
+      onLongPress: _isSelecting ? null : showActions,
+      onSecondaryTap: _isSelecting ? null : showActions,
       child: SizedBox(
         key: tileKey,
         width: width,

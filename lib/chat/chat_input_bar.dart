@@ -25,6 +25,7 @@ import 'package:provider/provider.dart';
 
 import '../components/app_dialog.dart';
 import '../components/app_icons.dart';
+import '../components/app_interactive_surface.dart';
 import '../components/confirm_dialog.dart';
 import '../components/icon_grid.dart';
 import '../components/photo_avatar.dart';
@@ -4015,37 +4016,64 @@ class _ChatInputBarState extends State<ChatInputBar> {
       child: Row(
         children: [
           _icon(
-            HeroAppIcons.microphone.data,
+            HeroAppIcons.microphone,
+            AppStrings.t(AppStringKeys.composerHoldToTalk),
             _panel == _Panel.voice,
             _toggleVoice,
           ),
-          _icon(HeroAppIcons.image.data, false, _pickPhotos),
-          _icon(HeroAppIcons.camera.data, false, _takePhoto),
-          _icon(HeroAppIcons.grip.data, _panel == _Panel.sticker, () {
-            _toggle(_Panel.sticker);
-            if (_panel == _Panel.sticker) {
-              StickerStore.shared.loadIfNeeded();
-              GifStore.shared.loadIfNeeded();
-              if (_isPanelSearchSelected &&
-                  _panelSearch.text.trim().isNotEmpty) {
-                _queuePanelSearch();
+          _icon(
+            HeroAppIcons.image,
+            AppStrings.t(AppStringKeys.composerImage),
+            false,
+            _pickPhotos,
+          ),
+          if (Platform.isAndroid || Platform.isIOS)
+            _icon(
+              HeroAppIcons.camera,
+              AppStrings.t(AppStringKeys.composerCamera),
+              false,
+              _takePhoto,
+            ),
+          _icon(
+            HeroAppIcons.grip,
+            AppStrings.t(AppStringKeys.composerStickers),
+            _panel == _Panel.sticker,
+            () {
+              _toggle(_Panel.sticker);
+              if (_panel == _Panel.sticker) {
+                StickerStore.shared.loadIfNeeded();
+                GifStore.shared.loadIfNeeded();
+                if (_isPanelSearchSelected &&
+                    _panelSearch.text.trim().isNotEmpty) {
+                  _queuePanelSearch();
+                }
               }
-            }
-          }),
-          _icon(HeroAppIcons.solidFaceSmile.data, _panel == _Panel.emoji, () {
-            _toggle(_Panel.emoji);
-            if (_panel == _Panel.emoji) {
-              EmojiStore.shared.loadIfNeeded();
-              if (_isPanelSearchSelected &&
-                  _panelSearch.text.trim().isNotEmpty) {
-                _queuePanelSearch();
+            },
+          ),
+          _icon(
+            HeroAppIcons.solidFaceSmile,
+            AppStrings.t(AppStringKeys.composerEmoji),
+            _panel == _Panel.emoji,
+            () {
+              _toggle(_Panel.emoji);
+              if (_panel == _Panel.emoji) {
+                EmojiStore.shared.loadIfNeeded();
+                if (_isPanelSearchSelected &&
+                    _panelSearch.text.trim().isNotEmpty) {
+                  _queuePanelSearch();
+                }
               }
-            }
-          }),
+            },
+          ),
           _icon(
             _panel != _Panel.none
-                ? HeroAppIcons.xmark.data
-                : HeroAppIcons.circlePlus.data,
+                ? HeroAppIcons.xmark
+                : HeroAppIcons.circlePlus,
+            AppStrings.t(
+              _panel != _Panel.none
+                  ? AppStringKeys.composerCloseMenu
+                  : AppStringKeys.composerOpenMenu,
+            ),
             _panel == _Panel.function,
             () => _toggle(_Panel.function),
           ),
@@ -4054,15 +4082,27 @@ class _ChatInputBarState extends State<ChatInputBar> {
     );
   }
 
-  Widget _icon(IconData name, bool active, VoidCallback onTap) {
+  Widget _icon(
+    AppIconData icon,
+    String semanticLabel,
+    bool active,
+    VoidCallback onTap,
+  ) {
     return Expanded(
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
+      child: AppInteractiveSurface(
+        semanticLabel: semanticLabel,
+        selected: active,
         onTap: onTap,
-        child: Icon(
-          name,
-          size: 24,
-          color: active ? AppTheme.brand : context.colors.textSecondary,
+        borderRadius: BorderRadius.circular(10),
+        child: SizedBox(
+          height: 40,
+          child: Center(
+            child: AppIcon(
+              icon,
+              size: 24,
+              color: active ? AppTheme.brand : context.colors.textSecondary,
+            ),
+          ),
         ),
       ),
     );
@@ -4073,6 +4113,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
   /// 图片: pick one or more photos/videos and preserve their album order.
   Future<void> _pickPhotos() async {
     try {
+      if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
+        await _pickDesktopPhotos();
+        return;
+      }
       final sendMode = await showGallerySendModeSheet(context);
       if (!mounted || sendMode == null) return;
       final sendLivePhoto = sendMode == GallerySendMode.livePhoto;
@@ -4122,6 +4166,55 @@ class _ChatInputBarState extends State<ChatInputBar> {
       debugPrint('Failed to send selected media: $error\n$stackTrace');
       _pickFailed(AppStrings.t(AppStringKeys.composerImage));
     }
+  }
+
+  Future<void> _pickDesktopPhotos() async {
+    final result = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      type: FileType.custom,
+      allowedExtensions: const [
+        'jpg',
+        'jpeg',
+        'png',
+        'gif',
+        'webp',
+        'heic',
+        'heif',
+        'mp4',
+        'mov',
+        'mkv',
+        'webm',
+      ],
+    );
+    final files = result?.files
+        .where((file) => file.path != null)
+        .toList(growable: false);
+    if (files == null || files.isEmpty || !mounted) return;
+    if (files.length > 10) {
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.composerMediaSelectionLimit, {'value1': 10}),
+      );
+      return;
+    }
+    final selected = files
+        .map((file) {
+          final path = file.path!;
+          final pickedFile = XFile(path, name: file.name);
+          return OutgoingAttachment(
+            path: path,
+            kind: galleryAttachmentKind(
+              sendAsFile: false,
+              isVideo: isPickedAssetVideo(pickedFile),
+              isAnimation: isPickedAssetGif(pickedFile),
+            ),
+            fileName: file.name,
+          );
+        })
+        .toList(growable: false);
+    final attachments = await resolveAttachmentListDimensions(selected);
+    if (!mounted) return;
+    await _previewAndSendAttachments(attachments);
   }
 
   /// 相机: capture a photo and send it.

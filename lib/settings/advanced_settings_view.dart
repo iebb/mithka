@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../components/app_icons.dart';
+import '../components/desktop_content_constraint.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
@@ -63,78 +64,81 @@ class _AdvancedSettingsViewState extends State<AdvancedSettingsView> {
             onBack: () => Navigator.of(context).pop(),
           ),
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.lg,
-                AppSpacing.xl,
-                AppSpacing.lg,
-                AppSpacing.section,
+            child: DesktopContentConstraint(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  AppSpacing.xl,
+                  AppSpacing.lg,
+                  AppSpacing.section,
+                ),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(
+                      left: 4,
+                      bottom: AppSpacing.sm,
+                    ),
+                    child: Text(
+                      AppStringKeys.advancedInput.l10n(context),
+                      style: TextStyle(
+                        fontSize: AppTextSize.caption,
+                        color: c.textTertiary,
+                      ),
+                    ),
+                  ),
+                  SettingsCard(
+                    children: [
+                      SettingsRow(
+                        title: AppStringKeys.richTextRelayBotTitle,
+                        value:
+                            (_relayConfigured
+                                    ? AppStringKeys.richTextRelayBotConfigured
+                                    : AppStringKeys
+                                          .richTextRelayBotNotConfigured)
+                                .l10n(context),
+                        leading: AppIcon(
+                          HeroAppIcons.key,
+                          size: 21,
+                          color: AppTheme.brand,
+                        ),
+                        onTap: _openRelaySettings,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.xl),
+                  Padding(
+                    padding: const EdgeInsets.only(
+                      left: 4,
+                      bottom: AppSpacing.sm,
+                    ),
+                    child: Text(
+                      AppStringKeys.advancedNetwork.l10n(context),
+                      style: TextStyle(
+                        fontSize: AppTextSize.caption,
+                        color: c.textTertiary,
+                      ),
+                    ),
+                  ),
+                  SettingsCard(
+                    children: [
+                      SettingsRow(
+                        title: AppStringKeys.transferBoostTitle,
+                        value:
+                            (_transferBoostEnabled
+                                    ? AppStringKeys.transferBoostEnabled
+                                    : AppStringKeys.transferBoostDisabled)
+                                .l10n(context),
+                        leading: AppIcon(
+                          HeroAppIcons.arrowsUpDown,
+                          size: 21,
+                          color: AppTheme.brand,
+                        ),
+                        onTap: _openTransferBoostSettings,
+                      ),
+                    ],
+                  ),
+                ],
               ),
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(
-                    left: 4,
-                    bottom: AppSpacing.sm,
-                  ),
-                  child: Text(
-                    AppStringKeys.advancedInput.l10n(context),
-                    style: TextStyle(
-                      fontSize: AppTextSize.caption,
-                      color: c.textTertiary,
-                    ),
-                  ),
-                ),
-                SettingsCard(
-                  children: [
-                    SettingsRow(
-                      title: AppStringKeys.richTextRelayBotTitle,
-                      value:
-                          (_relayConfigured
-                                  ? AppStringKeys.richTextRelayBotConfigured
-                                  : AppStringKeys.richTextRelayBotNotConfigured)
-                              .l10n(context),
-                      leading: AppIcon(
-                        HeroAppIcons.key,
-                        size: 21,
-                        color: AppTheme.brand,
-                      ),
-                      onTap: _openRelaySettings,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.xl),
-                Padding(
-                  padding: const EdgeInsets.only(
-                    left: 4,
-                    bottom: AppSpacing.sm,
-                  ),
-                  child: Text(
-                    AppStringKeys.advancedNetwork.l10n(context),
-                    style: TextStyle(
-                      fontSize: AppTextSize.caption,
-                      color: c.textTertiary,
-                    ),
-                  ),
-                ),
-                SettingsCard(
-                  children: [
-                    SettingsRow(
-                      title: AppStringKeys.transferBoostTitle,
-                      value:
-                          (_transferBoostEnabled
-                                  ? AppStringKeys.transferBoostEnabled
-                                  : AppStringKeys.transferBoostDisabled)
-                              .l10n(context),
-                      leading: AppIcon(
-                        HeroAppIcons.arrowsUpDown,
-                        size: 21,
-                        color: AppTheme.brand,
-                      ),
-                      onTap: _openTransferBoostSettings,
-                    ),
-                  ],
-                ),
-              ],
             ),
           ),
         ],
