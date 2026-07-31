@@ -1,8 +1,194 @@
+import 'dart:io';
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/chat_scroll_metrics.dart';
 
 void main() {
+  test('loaded message jumps wait for the retargeted key layout', () {
+    final source = File('lib/chat/chat_view.dart').readAsStringSync();
+    final methodStart = source.indexOf(
+      'Future<bool> _scrollToMessageAndReport(',
+    );
+    final methodEnd = source.indexOf(
+      'Future<void> _openHashtagSearch(',
+      methodStart,
+    );
+    expect(methodStart, greaterThanOrEqualTo(0));
+    expect(methodEnd, greaterThan(methodStart));
+
+    final method = source.substring(methodStart, methodEnd);
+    final layoutWait = method.indexOf(
+      'await WidgetsBinding.instance.endOfFrame;',
+    );
+    final mountedGuard = method.indexOf('if (!mounted ||', layoutWait);
+    final loadedFastPath = method.indexOf('if (_vm.messages.any');
+    expect(layoutWait, greaterThanOrEqualTo(0));
+    expect(mountedGuard, greaterThan(layoutWait));
+    expect(mountedGuard, lessThan(loadedFastPath));
+  });
+
+  test('session unread history loads carry cancellation through mutation', () {
+    final viewSource = File('lib/chat/chat_view.dart').readAsStringSync();
+    final sessionJumpStart = viewSource.indexOf(
+      'Future<bool> _jumpToFirstUnreadImpl(',
+    );
+    final sessionJumpEnd = viewSource.indexOf(
+      'void _scheduleSendFailureDialog(',
+      sessionJumpStart,
+    );
+    final sessionJump = viewSource.substring(sessionJumpStart, sessionJumpEnd);
+    final boundaryLoad = sessionJump.indexOf('await _vm.loadAroundMessage(');
+    final boundaryLoadEnd = sessionJump.indexOf(');', boundaryLoad);
+    expect(boundaryLoad, greaterThanOrEqualTo(0));
+    expect(
+      sessionJump.substring(boundaryLoad, boundaryLoadEnd),
+      contains('isCancelled: isCancelled'),
+    );
+
+    final scrollStart = viewSource.indexOf(
+      'Future<bool> _scrollToMessageAndReport(',
+    );
+    final scrollEnd = viewSource.indexOf(
+      'Future<void> _openHashtagSearch(',
+      scrollStart,
+    );
+    final sessionScroll = viewSource.substring(scrollStart, scrollEnd);
+    final targetLoad = sessionScroll.indexOf('await _vm.loadAroundMessage(');
+    final targetLoadEnd = sessionScroll.indexOf(');', targetLoad);
+    expect(targetLoad, greaterThanOrEqualTo(0));
+    expect(
+      sessionScroll.substring(targetLoad, targetLoadEnd),
+      contains('isCancelled: isCancelled'),
+    );
+
+    final modelSource = File(
+      'lib/chat/chat_view_model.dart',
+    ).readAsStringSync();
+    final modelMethodStart = modelSource.indexOf(
+      'Future<bool> loadAroundMessage(',
+    );
+    final modelMethodEnd = modelSource.indexOf(
+      'Future<int?> openNextUnreadMention(',
+      modelMethodStart,
+    );
+    final modelMethod = modelSource.substring(modelMethodStart, modelMethodEnd);
+    expect(modelMethod, contains('bool Function()? isCancelled'));
+
+    final initialCancellation = modelMethod.indexOf(
+      'if (_chatOpenWorkIsStale || cancelled()) return false;',
+    );
+    final generationMutation = modelMethod.indexOf(
+      '++_historyWindowGeneration',
+    );
+    expect(initialCancellation, greaterThanOrEqualTo(0));
+    expect(initialCancellation, lessThan(generationMutation));
+
+    final firstAwait = modelMethod.indexOf(
+      'final targetRaw = await _client.query(',
+    );
+    final firstPostAwaitCancellation = modelMethod.indexOf(
+      'if (cancelled()) return false;',
+      firstAwait,
+    );
+    final targetParse = modelMethod.indexOf(
+      'final target = TDParse.message(targetRaw);',
+      firstAwait,
+    );
+    expect(firstPostAwaitCancellation, greaterThan(firstAwait));
+    expect(firstPostAwaitCancellation, lessThan(targetParse));
+
+    final secondAwait = modelMethod.indexOf(
+      'final response = await _client.query(',
+      targetParse,
+    );
+    final secondPostAwaitCancellation = modelMethod.indexOf(
+      'if (cancelled()) return false;',
+      secondAwait,
+    );
+    final batchMutation = modelMethod.indexOf('batch.addAll(', secondAwait);
+    expect(secondPostAwaitCancellation, greaterThan(secondAwait));
+    expect(secondPostAwaitCancellation, lessThan(batchMutation));
+
+    final sharedMutation = modelMethod.indexOf(
+      'if (replaceCurrentWindow)',
+      batchMutation,
+    );
+    final finalCancellation = modelMethod.lastIndexOf(
+      'cancelled()',
+      sharedMutation,
+    );
+    expect(finalCancellation, greaterThan(batchMutation));
+    expect(finalCancellation, lessThan(sharedMutation));
+  });
+
+  test('external target navigation invalidates session reopen navigation', () {
+    final source = File('lib/chat/chat_view.dart').readAsStringSync();
+
+    final unreadWrapperStart = source.indexOf(
+      'Future<void> _jumpToFirstUnread()',
+    );
+    final unreadWrapperEnd = source.indexOf(
+      'Future<bool> _jumpToFirstUnreadForSession(',
+      unreadWrapperStart,
+    );
+    final unreadWrapper = source.substring(
+      unreadWrapperStart,
+      unreadWrapperEnd,
+    );
+    final unreadCancellation = unreadWrapper.indexOf(
+      '_cancelSessionReopenNavigation(userClaimedViewport: true);',
+    );
+    final unreadDelegate = unreadWrapper.indexOf(
+      'await _jumpToFirstUnreadImpl();',
+    );
+    expect(unreadCancellation, greaterThanOrEqualTo(0));
+    expect(unreadCancellation, lessThan(unreadDelegate));
+
+    final sessionUnreadWrapperEnd = source.indexOf(
+      'Future<bool> _jumpToFirstUnreadImpl(',
+      unreadWrapperEnd,
+    );
+    final sessionUnreadWrapper = source.substring(
+      unreadWrapperEnd,
+      sessionUnreadWrapperEnd,
+    );
+    expect(
+      sessionUnreadWrapper,
+      isNot(contains('_cancelSessionReopenNavigation')),
+    );
+
+    final targetWrapperStart = source.indexOf('Future<void> _scrollToMessage(');
+    final targetWrapperEnd = source.indexOf(
+      'Future<bool> _scrollToMessageAndReport(',
+      targetWrapperStart,
+    );
+    final targetWrapper = source.substring(
+      targetWrapperStart,
+      targetWrapperEnd,
+    );
+    final targetCancellation = targetWrapper.indexOf(
+      '_cancelSessionReopenNavigation(userClaimedViewport: true);',
+    );
+    final targetDelegate = targetWrapper.indexOf(
+      'await _scrollToMessageAndReport(',
+    );
+    expect(targetCancellation, greaterThanOrEqualTo(0));
+    expect(targetCancellation, lessThan(targetDelegate));
+
+    final reportEnd = source.indexOf(
+      'Future<void> _openHashtagSearch(',
+      targetWrapperEnd,
+    );
+    final sessionReport = source.substring(targetWrapperEnd, reportEnd);
+    expect(sessionReport, isNot(contains('_cancelSessionReopenNavigation')));
+
+    expect(source, contains('unawaited(_jumpToFirstUnread())'));
+    expect(source, contains('_scrollToMessage(pinned.id, pinnedJump: true)'));
+    expect(source, contains('await _scrollToMessage(messageId)'));
+    expect(source, contains('await _scrollToMessage(result)'));
+  });
+
   group('oldest history pull', () {
     test(
       'fires once after accumulated clamped overscroll crosses threshold',

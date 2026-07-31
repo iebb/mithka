@@ -137,6 +137,49 @@ void main() {
     await tester.pump(const Duration(minutes: 3, seconds: 1));
   });
 
+  testWidgets('forwarded photos keep attribution above attached comments', (
+    tester,
+  ) async {
+    final message = ChatMessage(
+      id: 6,
+      isOutgoing: false,
+      text: '',
+      date: 1,
+      contentType: 'messagePhoto',
+      image: TdFileRef(
+        id: 106,
+        miniThumb: base64Decode(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+        ),
+      ),
+      imageWidth: 600,
+      imageHeight: 400,
+    )..forwardOrigin = 'Original Channel';
+
+    await pumpBubble(
+      tester,
+      message,
+      showCommentAttachment: true,
+      channelHasLinkedDiscussion: true,
+    );
+
+    final combined = find.byKey(const ValueKey('messageCombinedBubble-6'));
+    final header = find.byKey(const ValueKey('messageForwardHeader-6'));
+    final comments = find.byKey(const ValueKey('messageCommentsAttachment-6'));
+    expect(combined, findsOneWidget);
+    expect(header, findsOneWidget);
+    expect(find.text('Forwarded from Original Channel'), findsOneWidget);
+    expect(find.descendant(of: combined, matching: header), findsOneWidget);
+    expect(find.descendant(of: combined, matching: comments), findsOneWidget);
+    expect(
+      tester.getBottomLeft(header).dy,
+      lessThan(tester.getTopLeft(comments).dy),
+    );
+
+    // Expire the mocked TDLib image lookup timeout before test teardown.
+    await tester.pump(const Duration(minutes: 3, seconds: 1));
+  });
+
   testWidgets('document captions render their translation', (tester) async {
     final message = ChatMessage(
       id: 2,

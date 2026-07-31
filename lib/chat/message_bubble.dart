@@ -1093,6 +1093,7 @@ class _MessageBubbleState extends State<MessageBubble>
           else if (outgoing)
             _MessageDeliveryIndicator(
               isSending: message.isSending && !message.isSendAcknowledged,
+              isRead: widget.isRead,
               pendingColor: _outgoingTextColor,
               size: 10,
             ),
@@ -1338,7 +1339,11 @@ class _MessageBubbleState extends State<MessageBubble>
     );
   }
 
-  Widget _textBubble(String text, bool outgoing) {
+  Widget _textBubble(
+    String text,
+    bool outgoing, {
+    bool includeForwardHeader = true,
+  }) {
     final c = context.colors;
     final baseColor = outgoing ? _outgoingTextColor : _incomingTextColor;
     final linkColor = _bubbleBackgroundStyle.isDecorative
@@ -1375,7 +1380,8 @@ class _MessageBubbleState extends State<MessageBubble>
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          if ((message.forwardOrigin ?? '').isNotEmpty) ...[
+          if (includeForwardHeader &&
+              (message.forwardOrigin ?? '').isNotEmpty) ...[
             _forwardHeader(outgoing),
             const SizedBox(height: 3),
           ],
@@ -3035,6 +3041,7 @@ class _MessageBubbleState extends State<MessageBubble>
     final c = context.colors;
     final accent = outgoing ? _outgoingTextColor : AppTheme.brand;
     return Row(
+      key: ValueKey('messageForwardHeader-${message.id}'),
       mainAxisSize: MainAxisSize.min,
       children: [
         AppIcon(
@@ -3182,6 +3189,7 @@ class _MessageBubbleState extends State<MessageBubble>
             else if (outgoing)
               _MessageDeliveryIndicator(
                 isSending: message.isSending && !message.isSendAcknowledged,
+                isRead: widget.isRead,
                 pendingColor: _outgoingTextColor,
                 size: 10,
               ),
@@ -4004,17 +4012,42 @@ class _MessageBubbleState extends State<MessageBubble>
     required String? caption,
     required bool outgoing,
   }) {
+    final hasForwardHeader = message.forwardOrigin?.trim().isNotEmpty ?? false;
     if (!_groupsMediaCaption(caption)) {
+      final attributedMedia = hasForwardHeader
+          ? _bubbleBackground(
+              key: ValueKey('messageForwardedMedia-${message.id}'),
+              outgoing: outgoing,
+              constraints: BoxConstraints(maxWidth: _mediaMaxWidth()),
+              padding: EdgeInsets.zero,
+              borderRadius: _messageBorderRadius(8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 7, 10, 6),
+                    child: _forwardHeader(outgoing),
+                  ),
+                  media,
+                ],
+              ),
+            )
+          : media;
       return Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: outgoing
             ? CrossAxisAlignment.end
             : CrossAxisAlignment.start,
         children: [
-          media,
+          attributedMedia,
           if (caption != null) ...[
             const SizedBox(height: 4),
-            _textBubble(caption, outgoing),
+            _textBubble(
+              caption,
+              outgoing,
+              includeForwardHeader: !hasForwardHeader,
+            ),
           ],
         ],
       );
@@ -4034,6 +4067,11 @@ class _MessageBubbleState extends State<MessageBubble>
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (hasForwardHeader)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 7, 10, 6),
+              child: _forwardHeader(outgoing),
+            ),
           media,
           Padding(
             padding: const EdgeInsets.fromLTRB(6, 7, 6, 3),
@@ -4966,11 +5004,13 @@ class _LatexView extends StatelessWidget {
 class _MessageDeliveryIndicator extends StatefulWidget {
   const _MessageDeliveryIndicator({
     required this.isSending,
+    required this.isRead,
     required this.pendingColor,
     required this.size,
   });
 
   final bool isSending;
+  final bool isRead;
   final Color pendingColor;
   final double size;
 
@@ -4981,14 +5021,15 @@ class _MessageDeliveryIndicator extends StatefulWidget {
 
 class _MessageDeliveryIndicatorState extends State<_MessageDeliveryIndicator>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 900),
-  );
+  late final AnimationController _controller;
 
   @override
   void initState() {
     super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
     if (widget.isSending) _controller.repeat();
   }
 
@@ -5011,21 +5052,46 @@ class _MessageDeliveryIndicatorState extends State<_MessageDeliveryIndicator>
   }
 
   @override
-  Widget build(BuildContext context) => SizedBox.square(
-    key: ValueKey(
-      widget.isSending ? 'messageDeliverySending' : 'messageDeliverySent',
-    ),
-    dimension: widget.size,
-    child: CustomPaint(
-      painter: _MessageDeliveryPainter(
-        rotation: _controller,
-        isSending: widget.isSending,
-        color: widget.isSending
-            ? widget.pendingColor.withValues(alpha: 0.72)
-            : const Color(0xFF34C759),
+  Widget build(BuildContext context) {
+    if (!widget.isSending) {
+      final diameter = widget.size * 0.36;
+      Widget dot(int index) => Container(
+        key: ValueKey('messageDeliveryDot-$index'),
+        width: diameter,
+        height: diameter,
+        decoration: const BoxDecoration(
+          color: Color(0xFF34C759),
+          shape: BoxShape.circle,
+        ),
+      );
+      return SizedBox.square(
+        key: ValueKey(
+          widget.isRead ? 'messageDeliveryRead' : 'messageDeliverySent',
+        ),
+        dimension: widget.size,
+        child: Center(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              dot(0),
+              if (widget.isRead) ...[SizedBox(width: diameter * 0.75), dot(1)],
+            ],
+          ),
+        ),
+      );
+    }
+    return SizedBox.square(
+      key: const ValueKey('messageDeliverySending'),
+      dimension: widget.size,
+      child: CustomPaint(
+        painter: _MessageDeliveryPainter(
+          rotation: _controller,
+          isSending: true,
+          color: widget.pendingColor.withValues(alpha: 0.72),
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _MessageDeliveryPainter extends CustomPainter {

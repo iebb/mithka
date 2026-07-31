@@ -2510,7 +2510,12 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
 
   double _bottomChromeHeight(_VideoControlsLayout layout) {
     final timelineHeight = layout.playButtonSize.height;
-    final secondaryHeight = math.max(44.0, layout.actionButtonSize);
+    final minimumSecondaryHeight =
+        layout.timelineCompact && _showsNavigationControls ? 48.0 : 44.0;
+    final secondaryHeight = math.max(
+      minimumSecondaryHeight,
+      layout.actionButtonSize,
+    );
     final contentHeight = layout.timelineAtBottom
         ? secondaryHeight + layout.actionGap + timelineHeight
         : timelineHeight + 24 + secondaryHeight;
@@ -3043,14 +3048,9 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     if (widget.compactControls) return _pendingCompactControls();
     final layout = _controlsLayout(context);
     final bottom = _controlsBottom(layout);
-    final centerTransport = layout.timelineCompact && _showsNavigationControls;
-    final timeline = _pendingTimelineRow(
-      layout,
-      showTransport: !centerTransport,
-    );
+    final timeline = _pendingTimelineRow(layout);
     final secondary = _pendingSecondaryControls(layout);
     return [
-      if (centerTransport) Center(child: _pendingTransportControls()),
       Positioned(
         left: layout.left,
         right: layout.right,
@@ -3065,21 +3065,20 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     ];
   }
 
-  Widget _pendingTimelineRow(
-    _VideoControlsLayout layout, {
-    bool showTransport = true,
-  }) {
-    final showNavigation = showTransport && _showsNavigationControls;
+  Widget _pendingTimelineRow(_VideoControlsLayout layout) {
+    final showNavigation = _showsNavigationControls && !layout.timelineCompact;
     return Row(
       children: [
         if (showNavigation) ...[
           _navigationControl(-1, size: layout.playButtonSize.height),
           SizedBox(width: layout.playGap),
         ],
-        if (showTransport)
-          SizedBox(
-            width: layout.playButtonSize.width,
-            height: layout.playButtonSize.height,
+        SizedBox(
+          width: layout.playButtonSize.width,
+          height: layout.playButtonSize.height,
+          child: Semantics(
+            label: AppStringKeys.videoPlayerLoading.l10n(context),
+            excludeSemantics: true,
             child: Center(
               child: AppIcon(
                 HeroAppIcons.play,
@@ -3088,42 +3087,17 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
               ),
             ),
           ),
+        ),
         if (showNavigation) ...[
           SizedBox(width: layout.playGap),
           _navigationControl(1, size: layout.playButtonSize.height),
         ],
-        if (showTransport) SizedBox(width: layout.playGap),
+        SizedBox(width: layout.playGap),
         Text('00:00', style: layout.timeStyle),
         SizedBox(width: layout.timeGap),
         Expanded(child: _loadingScrubber(compact: layout.timelineCompact)),
         SizedBox(width: layout.timeGap),
         Text('--:--', style: layout.timeStyle),
-      ],
-    );
-  }
-
-  Widget _pendingTransportControls() {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _navigationControl(-1, size: 54),
-        const SizedBox(width: 14),
-        Semantics(
-          label: AppStringKeys.videoPlayerLoading.l10n(context),
-          child: SizedBox(
-            width: 54,
-            height: 54,
-            child: Center(
-              child: AppIcon(
-                HeroAppIcons.play,
-                color: Colors.white.withValues(alpha: 0.7),
-                size: 32,
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 14),
-        _navigationControl(1, size: 54),
       ],
     );
   }
@@ -3245,11 +3219,9 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     if (widget.compactControls) return _compactControls(c);
     final layout = _controlsLayout(context);
     final bottom = _controlsBottom(layout);
-    final centerTransport = layout.timelineCompact && _showsNavigationControls;
-    final timeline = _timelineRow(c, layout, showTransport: !centerTransport);
+    final timeline = _timelineRow(c, layout);
     final secondary = _secondaryActionRow(layout);
     return [
-      if (centerTransport) Center(child: _transportControls(c)),
       Positioned(
         left: layout.left,
         right: layout.right,
@@ -3264,41 +3236,36 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     ];
   }
 
-  Widget _timelineRow(
-    VideoPlayerController c,
-    _VideoControlsLayout layout, {
-    bool showTransport = true,
-  }) {
+  Widget _timelineRow(VideoPlayerController c, _VideoControlsLayout layout) {
     final value = c.value;
     final playing = value.isPlaying;
-    final showNavigation = showTransport && _showsNavigationControls;
+    final showNavigation = _showsNavigationControls && !layout.timelineCompact;
     return Row(
       children: [
         if (showNavigation) ...[
           _navigationControl(-1, size: layout.playButtonSize.height),
           SizedBox(width: layout.playGap),
         ],
-        if (showTransport)
-          _FocusableVideoIconButton(
-            icon: playing ? HeroAppIcons.pause : HeroAppIcons.play,
-            label:
-                (playing
-                        ? AppStringKeys.musicPlayerPause
-                        : AppStringKeys.musicPlayerPlay)
-                    .l10n(context),
-            onPressed: _togglePlay,
-            size: layout.playButtonSize,
-            iconSize: layout.playIconSize,
-            foregroundColor: Colors.black,
-            backgroundColor: Colors.white.withValues(alpha: 0.96),
-            borderColor: Colors.white,
-            cornerRadius: layout.playButtonSize.height / 2,
-          ),
+        _FocusableVideoIconButton(
+          icon: playing ? HeroAppIcons.pause : HeroAppIcons.play,
+          label:
+              (playing
+                      ? AppStringKeys.musicPlayerPause
+                      : AppStringKeys.musicPlayerPlay)
+                  .l10n(context),
+          onPressed: _togglePlay,
+          size: layout.playButtonSize,
+          iconSize: layout.playIconSize,
+          foregroundColor: Colors.black,
+          backgroundColor: Colors.white.withValues(alpha: 0.96),
+          borderColor: Colors.white,
+          cornerRadius: layout.playButtonSize.height / 2,
+        ),
         if (showNavigation) ...[
           SizedBox(width: layout.playGap),
           _navigationControl(1, size: layout.playButtonSize.height),
         ],
-        if (showTransport) SizedBox(width: layout.playGap),
+        SizedBox(width: layout.playGap),
         Text(_fmt(_displayPosition(c)), style: layout.timeStyle),
         SizedBox(width: layout.timeGap),
         Expanded(child: _scrubber(c, compact: layout.timelineCompact)),
@@ -3362,10 +3329,20 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
         if (!compact || width >= 220) {
           addAction(_speedMenu(compact: compact));
         }
-        if (_showsDisplayModeButton && (!compact || width >= 240)) {
+        final displayModeMinimumWidth = compact && _showsNavigationControls
+            ? 252.0
+            : 240.0;
+        if (_showsDisplayModeButton &&
+            (!compact || width >= displayModeMinimumWidth)) {
           addAction(_displayModeButton(size: layout.actionButtonSize));
         }
-        return Row(children: [const Spacer(), ...actions]);
+        final navigation = <Widget>[];
+        if (compact && _showsNavigationControls) {
+          navigation.add(_navigationControl(-1, size: layout.actionButtonSize));
+          navigation.add(SizedBox(width: layout.actionGap));
+          navigation.add(_navigationControl(1, size: layout.actionButtonSize));
+        }
+        return Row(children: [...navigation, const Spacer(), ...actions]);
       },
     );
   }

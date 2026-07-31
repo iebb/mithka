@@ -135,8 +135,10 @@ void main() {
         expect(playerRect.contains(timelineRect.bottomLeft), isTrue);
         expect(playerRect.contains(previousRect.topLeft), isTrue);
         expect(playerRect.contains(nextRect.bottomRight), isTrue);
-        expect(previousRect.right, lessThanOrEqualTo(pauseRect.left));
-        expect(pauseRect.right, lessThanOrEqualTo(nextRect.left));
+        expect(pauseRect.center.dy, closeTo(timelineRect.center.dy, 0.01));
+        expect(previousRect.center.dy, closeTo(nextRect.center.dy, 0.01));
+        expect(previousRect.bottom, lessThanOrEqualTo(pauseRect.top));
+        expect(nextRect.bottom, lessThanOrEqualTo(pauseRect.top));
 
         await tester.tapAt(const Offset(195, 200));
         await tester.pump(const Duration(milliseconds: 400));
@@ -309,6 +311,156 @@ void main() {
       }
     },
   );
+
+  testWidgets(
+    'Android queue keeps play pause in the same bottom timeline position',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.padding = const FakeViewPadding(top: 24, bottom: 24);
+      tester.view.viewPadding = const FakeViewPadding(top: 24, bottom: 24);
+      addTearDown(() {
+        tester.view.resetDevicePixelRatio();
+        tester.view.resetPhysicalSize();
+        tester.view.resetPadding();
+        tester.view.resetViewPadding();
+      });
+
+      final previousPlatform = VideoPlayerPlatform.instance;
+      final platform = _FakeMobileVideoPlatform();
+      VideoPlayerPlatform.instance = platform;
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      try {
+        SharedPreferences.setMockInitialValues(const {});
+        final sourcePath = File('pubspec.yaml').absolute.path;
+        var previousCalls = 0;
+        var nextCalls = 0;
+
+        Widget player({required bool withNeighbors}) => MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: const [AppLocalizations.delegate],
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: VideoPlayerView(
+              video: TdFileRef(id: 702, localPath: sourcePath),
+              width: 1920,
+              height: 1080,
+              previousVideo: withNeighbors
+                  ? VideoPlaybackItem(video: TdFileRef(id: 701))
+                  : null,
+              nextVideo: withNeighbors
+                  ? VideoPlaybackItem(video: TdFileRef(id: 703))
+                  : null,
+              onNavigate: withNeighbors
+                  ? (delta) {
+                      if (delta < 0) {
+                        previousCalls++;
+                      } else {
+                        nextCalls++;
+                      }
+                    }
+                  : null,
+              onSwitchMode: (_) {},
+              onClose: () {},
+              streamQuery: _completedVideoQuery(sourcePath, fileId: 702),
+            ),
+          ),
+        );
+
+        await tester.pumpWidget(player(withNeighbors: true));
+        await _pumpUntilPlayerReady(tester);
+        final queuedPause = tester.getRect(_semanticsWidget('Pause'));
+        final queuedTimeline = tester.getRect(_timeline);
+        final previousRect = tester.getRect(_semanticsWidget('Previous video'));
+        final nextRect = tester.getRect(_semanticsWidget('Next video'));
+
+        expect(queuedPause.center.dy, closeTo(queuedTimeline.center.dy, 0.01));
+        expect(previousRect.bottom, lessThanOrEqualTo(queuedPause.top));
+        expect(nextRect.bottom, lessThanOrEqualTo(queuedPause.top));
+        await tester.tap(_semanticsWidget('Previous video'));
+        await tester.tap(_semanticsWidget('Next video'));
+        expect(previousCalls, 1);
+        expect(nextCalls, 1);
+
+        await tester.pumpWidget(player(withNeighbors: false));
+        await tester.pump();
+        final singlePause = tester.getRect(_semanticsWidget('Pause'));
+        final singleTimeline = tester.getRect(_timeline);
+
+        expect(singlePause, queuedPause);
+        expect(singlePause.center.dy, closeTo(singleTimeline.center.dy, 0.01));
+        expect(_semanticsWidget('Previous video'), findsNothing);
+        expect(_semanticsWidget('Next video'), findsNothing);
+        expect(tester.takeException(), isNull);
+
+        tester.view.physicalSize = const Size(270, 844);
+        await tester.pumpWidget(player(withNeighbors: true));
+        await tester.pump();
+        expect(_semanticsWidget('Previous video'), findsOneWidget);
+        expect(_semanticsWidget('Next video'), findsOneWidget);
+        expect(_semanticsWidget('Switch display mode'), findsNothing);
+        expect(tester.takeException(), isNull);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await _pumpUntilDisposed(tester, platform);
+        expect(platform.disposeCalls, 1);
+      } finally {
+        VideoPlayerPlatform.instance = previousPlatform;
+        debugDefaultTargetPlatformOverride = null;
+      }
+    },
+  );
+
+  testWidgets('queued loading controls retain a semantic status', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(() {
+      tester.view.resetDevicePixelRatio();
+      tester.view.resetPhysicalSize();
+    });
+    SharedPreferences.setMockInitialValues(const {});
+    final fileResponse = Completer<Map<String, dynamic>>();
+    final sourcePath = File('pubspec.yaml').absolute.path;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('en'),
+        localizationsDelegates: const [AppLocalizations.delegate],
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: VideoPlayerView(
+            video: TdFileRef(id: 709, localPath: sourcePath),
+            width: 1920,
+            height: 1080,
+            previousVideo: VideoPlaybackItem(video: TdFileRef(id: 708)),
+            nextVideo: VideoPlaybackItem(video: TdFileRef(id: 710)),
+            onNavigate: (_) {},
+            onClose: () {},
+            streamQuery: (_) => fileResponse.future,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(_semanticsWidget('Loading video'), findsOneWidget);
+    expect(_semanticsWidget('Previous video'), findsOneWidget);
+    expect(_semanticsWidget('Next video'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    fileResponse.complete(
+      _tdFileInfo(
+        fileId: 709,
+        path: sourcePath,
+        totalBytes: 1,
+        downloadedBytes: 0,
+        completed: false,
+      ),
+    );
+  });
 
   testWidgets(
     'single display-mode button exposes a compact stateful chooser and PiP',

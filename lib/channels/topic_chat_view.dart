@@ -39,6 +39,55 @@ import '../theme/date_text.dart';
 import '../theme/theme_controller.dart';
 import 'topic_post_content.dart';
 
+/// Keeps a forum browser suspended while its topic route is replaced by other
+/// views in the same conversation. Only the newest route can reveal it.
+class TopicChatRouteSession {
+  final _browserRevealed = Completer<void>();
+  var _routeGeneration = 0;
+
+  Future<void> get whenBrowserRevealed => _browserRevealed.future;
+
+  void trackRoute<T>(Future<T> Function() openRoute) {
+    final generation = ++_routeGeneration;
+    final route = openRoute();
+    unawaited(_completeWhenCurrentRouteCloses(generation, route));
+  }
+
+  Future<void> _completeWhenCurrentRouteCloses<T>(
+    int generation,
+    Future<T> route,
+  ) async {
+    try {
+      await route;
+    } catch (_) {
+      // A failed route still uncovers the browser; refresh its cached topics.
+    }
+    if (generation == _routeGeneration && !_browserRevealed.isCompleted) {
+      _browserRevealed.complete();
+    }
+  }
+}
+
+void _replaceTrackedChatWithTopic(
+  BuildContext context,
+  ChatSummary chat,
+  TopicChatRouteSession routeSession,
+  int? threadId,
+) {
+  routeSession.trackRoute(
+    () => replaceWithAppChatRoute<void, void>(
+      context,
+      AppChatPageRoute<void>(
+        builder: (_) => TopicChatView(
+          chat: chat,
+          initialThreadId: threadId,
+          routeSession: routeSession,
+        ),
+      ),
+    ),
+  );
+}
+
 class TopicChatView extends StatefulWidget {
   const TopicChatView({
     super.key,
@@ -50,6 +99,7 @@ class TopicChatView extends StatefulWidget {
     this.headerColor,
     this.chatRouteBelow = false,
     this.onOpenChatView,
+    this.routeSession,
   });
 
   final ChatSummary chat;
@@ -60,6 +110,7 @@ class TopicChatView extends StatefulWidget {
   final Color? headerColor;
   final bool chatRouteBelow;
   final VoidCallback? onOpenChatView;
+  final TopicChatRouteSession? routeSession;
 
   @override
   State<TopicChatView> createState() => _TopicChatViewState();
@@ -75,6 +126,7 @@ class _ForumTopic {
     required this.unreadCount,
     required this.iconCustomEmojiId,
     required this.iconColor,
+    required this.lastMessageIsSynthetic,
   });
 
   final int id;
@@ -85,13 +137,19 @@ class _ForumTopic {
   final int unreadCount;
   final int iconCustomEmojiId;
   final Color? iconColor;
+  final bool lastMessageIsSynthetic;
 }
 
 class _TopicPost {
-  const _TopicPost({required this.topic, required this.message});
+  const _TopicPost({
+    required this.topic,
+    required this.message,
+    required this.isSynthetic,
+  });
 
   final _ForumTopic topic;
   final ChatMessage message;
+  final bool isSynthetic;
 }
 
 const _topicHeartReactions = {'❤️', '❤'};
@@ -102,6 +160,44 @@ bool _isTopicLikeReaction(MessageReaction reaction) {
   return emoji != null && _topicLikeReactionCandidates.contains(emoji);
 }
 
+bool isReportableForumTopicMessage(
+  ChatMessage message, {
+  required bool isSynthetic,
+}) {
+  return !isSynthetic &&
+      message.id > 0 &&
+      !message.isOutgoing &&
+      !message.isService;
+}
+
+List<int> takeNewlyVisibleForumTopicMessageIds({
+  required Rect viewport,
+  required Map<int, Rect> messageBounds,
+  required Set<int> alreadyReported,
+}) {
+  final visible = <int>[];
+  for (final entry in messageBounds.entries) {
+    if (alreadyReported.contains(entry.key) ||
+        !entry.value.overlaps(viewport)) {
+      continue;
+    }
+    alreadyReported.add(entry.key);
+    visible.add(entry.key);
+  }
+  return visible;
+}
+
+Map<String, dynamic> forumTopicViewMessagesRequest({
+  required int chatId,
+  required List<int> messageIds,
+}) => {
+  '@type': 'viewMessages',
+  'chat_id': chatId,
+  'message_ids': messageIds,
+  'source': {'@type': 'messageSourceForumTopicHistory'},
+  'force_read': true,
+};
+
 class _SenderInfo {
   const _SenderInfo({required this.name, this.photo});
 
@@ -111,18 +207,23 @@ class _SenderInfo {
 
 class _TopicChatViewState extends State<TopicChatView> {
   final _scroll = ScrollController();
+  final _topicViewportKey = GlobalKey();
+  final _postVisibilityKeys = <int, GlobalKey>{};
+  final _reportedVisibleMessageIds = <int>{};
   final _input = TextEditingController();
   final _topics = <_ForumTopic>[];
   final _topicMessages = <int, List<ChatMessage>>{};
   final _loadingThreads = <int>{};
   final _senderCache = <int, _SenderInfo>{};
   bool _loading = true;
+  bool _visibleMessageUpdateScheduled = false;
   int? _selectedThreadId;
 
   @override
   void initState() {
     super.initState();
     _selectedThreadId = widget.initialThreadId;
+    _scroll.addListener(_scheduleVisibleMessageUpdate);
     _loadTopics();
   }
 
@@ -170,6 +271,7 @@ class _TopicChatViewState extends State<TopicChatView> {
             unreadCount: _topicUnreadCount(topic, info),
             iconCustomEmojiId: _topicCustomEmojiId(topic, info),
             iconColor: _topicIconColor(topic, info),
+            lastMessageIsSynthetic: message == null,
           ),
         );
       }
@@ -329,13 +431,74 @@ class _TopicChatViewState extends State<TopicChatView> {
     final posts = <_TopicPost>[];
     for (final topic in _topics) {
       if (selected != null && topic.id != selected) continue;
-      final messages = _topicMessages[topic.id] ?? [topic.lastMessage];
+      final loadedMessages = _topicMessages[topic.id];
+      final messages = loadedMessages ?? [topic.lastMessage];
       for (final message in messages) {
-        posts.add(_TopicPost(topic: topic, message: message));
+        posts.add(
+          _TopicPost(
+            topic: topic,
+            message: message,
+            isSynthetic:
+                topic.lastMessageIsSynthetic &&
+                (loadedMessages == null ||
+                    identical(message, topic.lastMessage)),
+          ),
+        );
       }
     }
     posts.sort((a, b) => b.message.date.compareTo(a.message.date));
     return posts;
+  }
+
+  void _scheduleVisibleMessageUpdate() {
+    if (_visibleMessageUpdateScheduled || !mounted) return;
+    _visibleMessageUpdateScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _visibleMessageUpdateScheduled = false;
+      if (mounted) _updateVisibleMessages();
+    });
+  }
+
+  void _updateVisibleMessages() {
+    if (!TickerMode.valuesOf(context).enabled ||
+        ModalRoute.of(context)?.isCurrent == false) {
+      return;
+    }
+    final viewportContext = _topicViewportKey.currentContext;
+    final viewportRenderObject = viewportContext?.findRenderObject();
+    if (viewportRenderObject is! RenderBox || !viewportRenderObject.attached) {
+      return;
+    }
+    final viewportOrigin = viewportRenderObject.localToGlobal(Offset.zero);
+    final viewport = viewportOrigin & viewportRenderObject.size;
+    final bounds = <int, Rect>{};
+    for (final post in _posts) {
+      if (!isReportableForumTopicMessage(
+        post.message,
+        isSynthetic: post.isSynthetic,
+      )) {
+        continue;
+      }
+      final itemContext = _postVisibilityKeys[post.message.id]?.currentContext;
+      final itemRenderObject = itemContext?.findRenderObject();
+      if (itemRenderObject is! RenderBox || !itemRenderObject.attached) {
+        continue;
+      }
+      final origin = itemRenderObject.localToGlobal(Offset.zero);
+      bounds[post.message.id] = origin & itemRenderObject.size;
+    }
+    final visible = takeNewlyVisibleForumTopicMessageIds(
+      viewport: viewport,
+      messageBounds: bounds,
+      alreadyReported: _reportedVisibleMessageIds,
+    );
+    if (visible.isEmpty) return;
+    TdClient.shared.send(
+      forumTopicViewMessagesRequest(
+        chatId: widget.chat.id,
+        messageIds: visible,
+      ),
+    );
   }
 
   Future<void> _resolveSenders(List<ChatMessage> messages) async {
@@ -501,18 +664,30 @@ class _TopicChatViewState extends State<TopicChatView> {
       Navigator.of(context).pop();
       return;
     }
-    unawaited(
-      replaceWithAppChatRoute(
-        context,
-        AppChatPageRoute(
-          builder: (_) => ChatView(
-            chatId: widget.chat.id,
-            title: widget.chat.title,
-            seedMessage: widget.chat.lastChatMessage,
-          ),
-        ),
+    final routeSession = widget.routeSession;
+    final chat = widget.chat;
+    final route = AppChatPageRoute<void>(
+      builder: (chatContext) => ChatView(
+        chatId: chat.id,
+        title: chat.title,
+        seedMessage: chat.lastChatMessage,
+        onOpenTopicMode: routeSession == null
+            ? null
+            : (threadId) => _replaceTrackedChatWithTopic(
+                chatContext,
+                chat,
+                routeSession,
+                threadId,
+              ),
       ),
     );
+    if (routeSession == null) {
+      unawaited(replaceWithAppChatRoute<void, void>(context, route));
+    } else {
+      routeSession.trackRoute(
+        () => replaceWithAppChatRoute<void, void>(context, route),
+      );
+    }
   }
 
   void _openComments(_TopicPost post) {
@@ -937,20 +1112,32 @@ class _TopicChatViewState extends State<TopicChatView> {
         ),
       );
     }
+    _scheduleVisibleMessageUpdate();
     return ListView.separated(
+      key: _topicViewportKey,
       controller: _scroll,
       padding: EdgeInsets.zero,
       itemCount: posts.length,
       separatorBuilder: (_, _) => const InsetDivider(leadingInset: 0),
-      itemBuilder: (context, index) => _TopicPostRow(
-        chatId: widget.chat.id,
-        post: posts[index],
-        sender: _senderCache[posts[index].message.senderId],
-        onLike: () => _addReaction(posts[index], '❤️'),
-        onPickReaction: () => _showReactionPicker(posts[index]),
-        onComments: () => _openComments(posts[index]),
-        onShare: () => _sharePost(posts[index]),
-      ),
+      itemBuilder: (context, index) {
+        final post = posts[index];
+        final visibilityKey = _postVisibilityKeys.putIfAbsent(
+          post.message.id,
+          GlobalKey.new,
+        );
+        return KeyedSubtree(
+          key: visibilityKey,
+          child: _TopicPostRow(
+            chatId: widget.chat.id,
+            post: post,
+            sender: _senderCache[post.message.senderId],
+            onLike: () => _addReaction(post, '❤️'),
+            onPickReaction: () => _showReactionPicker(post),
+            onComments: () => _openComments(post),
+            onShare: () => _sharePost(post),
+          ),
+        );
+      },
     );
   }
 

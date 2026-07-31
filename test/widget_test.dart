@@ -3307,7 +3307,7 @@ void main() {
       expect(richTextContaining('Retained original text'), findsNothing);
     });
 
-    testWidgets('shows sending progress that becomes a green sent circle', (
+    testWidgets('shows distinct sending, sent, and read delivery states', (
       tester,
     ) async {
       SharedPreferences.setMockInitialValues({
@@ -3322,6 +3322,7 @@ void main() {
         text: 'sent',
         date: 1,
       );
+      var isRead = false;
 
       Future<void> pumpBubble() {
         return tester.pumpWidget(
@@ -3333,6 +3334,7 @@ void main() {
                   message: message,
                   peerTitle: 'Test',
                   isGroup: false,
+                  isRead: isRead,
                 ),
               ),
             ),
@@ -3356,18 +3358,41 @@ void main() {
         find.byKey(const ValueKey('messageDeliverySending')),
         findsNothing,
       );
+      expect(
+        find.byKey(const ValueKey('messageDeliveryDot-0')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('messageDeliveryDot-1')), findsNothing);
 
       message.isSending = false;
       await pumpBubble();
       expect(find.byKey(const ValueKey('messageDeliverySent')), findsOneWidget);
-      final sentPaint = tester.widget<CustomPaint>(
-        find.descendant(
-          of: find.byKey(const ValueKey('messageDeliverySent')),
-          matching: find.byType(CustomPaint),
-        ),
+      expect(
+        find.byKey(const ValueKey('messageDeliveryDot-0')),
+        findsOneWidget,
       );
-      expect((sentPaint.painter as dynamic).color, const Color(0xFF34C759));
+      expect(find.byKey(const ValueKey('messageDeliveryDot-1')), findsNothing);
 
+      isRead = true;
+      await pumpBubble();
+      expect(find.byKey(const ValueKey('messageDeliveryRead')), findsOneWidget);
+      expect(find.byKey(const ValueKey('messageDeliverySent')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('messageDeliveryDot-0')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('messageDeliveryDot-1')),
+        findsOneWidget,
+      );
+
+      isRead = false;
+      await pumpBubble();
+      expect(find.byKey(const ValueKey('messageDeliverySent')), findsOneWidget);
+      expect(find.byKey(const ValueKey('messageDeliveryRead')), findsNothing);
+      expect(find.byKey(const ValueKey('messageDeliveryDot-1')), findsNothing);
+
+      isRead = true;
       message.isEdited = true;
       await pumpBubble();
       expect(
@@ -3375,7 +3400,68 @@ void main() {
         findsOneWidget,
       );
       expect(find.byKey(const ValueKey('messageDeliverySent')), findsNothing);
+      expect(find.byKey(const ValueKey('messageDeliveryRead')), findsNothing);
       expect(find.byIcon(HeroAppIcons.penToSquare.data), findsOneWidget);
+    });
+
+    testWidgets('uses the same sent and read distinction on media bubbles', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final theme = ThemeController(prefs);
+      addTearDown(theme.dispose);
+      final message = ChatMessage(
+        id: 2,
+        isOutgoing: true,
+        text: '',
+        date: 1,
+        contentType: 'messagePhoto',
+        image: TdFileRef(id: 22, miniThumb: Uint8List(0)),
+        imageWidth: 640,
+        imageHeight: 480,
+      );
+      var isRead = false;
+
+      Future<void> pumpBubble() => tester.pumpWidget(
+        ChangeNotifierProvider<ThemeController>.value(
+          value: theme,
+          child: MaterialApp(
+            home: Scaffold(
+              body: MessageBubble(
+                message: message,
+                peerTitle: 'Test',
+                isGroup: false,
+                isRead: isRead,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await pumpBubble();
+      expect(find.byKey(const ValueKey('messageDeliverySent')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('messageDeliveryDot-0')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('messageDeliveryDot-1')), findsNothing);
+
+      isRead = true;
+      await pumpBubble();
+      expect(find.byKey(const ValueKey('messageDeliveryRead')), findsOneWidget);
+      expect(find.byKey(const ValueKey('messageDeliverySent')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('messageDeliveryDot-0')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('messageDeliveryDot-1')),
+        findsOneWidget,
+      );
+
+      // Expire the media lookup timeout scheduled by the image placeholder.
+      await tester.pump(const Duration(minutes: 3, seconds: 1));
     });
 
     testWidgets('keeps an outgoing photo repeat badge beside its bubble', (

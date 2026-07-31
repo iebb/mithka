@@ -1,8 +1,28 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:mithka/security/local_app_lock_controller.dart';
 
 void main() {
+  test('Android registers the app-lock platform plugins', () {
+    final activity = File(
+      'android/app/src/main/kotlin/ad/neko/mithka/MainActivity.kt',
+    ).readAsStringSync();
+
+    expect(activity, contains('registerPlugins(flutterEngine)'));
+    expect(
+      activity,
+      contains(
+        'add("com.it_nomads.fluttersecurestorage.FlutterSecureStoragePlugin")',
+      ),
+    );
+    expect(
+      activity,
+      contains('add("io.flutter.plugins.localauth.LocalAuthPlugin")'),
+    );
+  });
+
   test('four-digit PIN is hashed, verified, and restored as locked', () async {
     final storage = <String, String>{};
     final controller = _controller(storage);

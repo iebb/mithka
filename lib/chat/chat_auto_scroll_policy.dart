@@ -54,6 +54,156 @@ class ChatAutoScrollPolicy {
       !_preserveViewport && wasNearBottom;
 }
 
+enum ChatReopenDisposition {
+  explicitTarget,
+  firstUnread,
+  savedPosition,
+  defaultPosition,
+}
+
+ChatReopenDisposition resolveChatReopenDisposition({
+  required bool hasExplicitTarget,
+  required bool hasSavedPosition,
+  required bool hasConfirmedNewUnread,
+}) {
+  if (hasExplicitTarget) return ChatReopenDisposition.explicitTarget;
+  if (hasConfirmedNewUnread) return ChatReopenDisposition.firstUnread;
+  if (hasSavedPosition) return ChatReopenDisposition.savedPosition;
+  return ChatReopenDisposition.defaultPosition;
+}
+
+bool shouldLoadLatestChatHistory({
+  required bool anchoredHistory,
+  required bool historyReachesLatest,
+}) => anchoredHistory || !historyReachesLatest;
+
+/// Whether one concrete message proves that a new unread arrived after the
+/// saved session. Counts are intentionally excluded: reads on another device,
+/// deletions, and an exit-time read can all make the count stay flat or fall.
+bool isNewIncomingUnreadSinceChatSession({
+  required int messageId,
+  required bool isOutgoing,
+  required bool isService,
+  required int savedKnownLatestMessageId,
+  required int currentLastReadInboxId,
+}) {
+  return savedKnownLatestMessageId > 0 &&
+      !isOutgoing &&
+      !isService &&
+      messageId > savedKnownLatestMessageId &&
+      messageId > currentLastReadInboxId;
+}
+
+bool shouldProbeChatSessionUnreadHistory({
+  required int savedKnownLatestMessageId,
+  required int currentKnownLatestMessageId,
+  required int currentUnreadCount,
+}) =>
+    savedKnownLatestMessageId > 0 &&
+    currentUnreadCount > 0 &&
+    currentKnownLatestMessageId > savedKnownLatestMessageId;
+
+bool shouldContinueChatSessionUnreadHistoryProbe({
+  required int pagesScanned,
+  int maximumPages = 5,
+}) => pagesScanned < maximumPages;
+
+/// A delayed initial `getChat` response must not replace a newer live inbox
+/// boundary received while that request was in flight.
+bool shouldApplyInitialChatReadState({
+  required int readInboxRevisionAtRequestStart,
+  required int currentReadInboxRevision,
+}) => readInboxRevisionAtRequestStart == currentReadInboxRevision;
+
+/// Invalidates asynchronous session-reopen work when a newer resolution starts
+/// or the user claims/exits the viewport.
+class ChatSessionReopenNavigationGuard {
+  int _generation = 0;
+
+  int begin() => ++_generation;
+
+  void cancel() => ++_generation;
+
+  bool isCurrent(int generation) => generation == _generation;
+}
+
+bool shouldMarkChatReadOnExit({
+  required bool isAtLoadedBottom,
+  required bool sessionReopenPending,
+  required bool restoredPositionProtected,
+  required bool preservesViewport,
+  required bool historyReachesLatest,
+}) =>
+    isAtLoadedBottom &&
+    shouldAllowAutomaticChatRead(
+      sessionReopenPending: sessionReopenPending,
+      restoredPositionProtected: restoredPositionProtected,
+      preservesViewport: preservesViewport,
+      historyReachesLatest: historyReachesLatest,
+    );
+
+bool shouldAllowAutomaticChatRead({
+  required bool sessionReopenPending,
+  required bool restoredPositionProtected,
+  required bool preservesViewport,
+  required bool historyReachesLatest,
+}) =>
+    !sessionReopenPending &&
+    !restoredPositionProtected &&
+    !preservesViewport &&
+    historyReachesLatest;
+
+bool shouldSaveChatSessionScrollSnapshot({
+  required bool sessionReopenPending,
+  required bool preservingSnapshotAfterFailedJump,
+}) => !sessionReopenPending && !preservingSnapshotAfterFailedJump;
+
+/// Protects the first real gesture after restoring a non-bottom viewport.
+///
+/// Centered history windows can report their loaded edge as "near latest".
+/// Consuming the first gesture prevents that edge from immediately replacing
+/// the restored window with the newest messages.
+class ChatRestoredPositionGuard {
+  ChatRestoredPositionGuard(this._armed);
+
+  bool _armed;
+  bool _gestureActive = false;
+
+  bool get blocksAutomaticReturn => _armed;
+
+  void noteUserScroll() {
+    if (_armed) _gestureActive = true;
+  }
+
+  bool finishUserScroll() {
+    if (!_armed || !_gestureActive) return false;
+    _armed = false;
+    _gestureActive = false;
+    return true;
+  }
+
+  void cancel() {
+    _armed = false;
+    _gestureActive = false;
+  }
+}
+
+bool shouldRequestAutomaticReturnToLatest({
+  required bool anchoredHistory,
+  required bool restoredPositionProtected,
+  required bool pointerDown,
+  required bool hasScrollTarget,
+  required bool hasScrollClients,
+  required bool isNearLatestEdge,
+}) {
+  return anchoredHistory &&
+      !restoredPositionProtected &&
+      !pointerDown &&
+      !hasScrollTarget &&
+      hasScrollClients &&
+      isNearLatestEdge;
+}
+
 class ChatInitialScrollPlan {
   const ChatInitialScrollPlan({
     required this.initialOffset,

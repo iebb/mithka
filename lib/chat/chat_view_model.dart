@@ -25,6 +25,7 @@ import '../tdlib/td_models.dart';
 import '../tdlib/td_requests.dart';
 import '../tdlib/td_user_index.dart';
 import 'ai_reply_service.dart';
+import 'chat_auto_scroll_policy.dart';
 import 'chat_first_contact_info.dart';
 import 'chat_message_merge.dart';
 import 'chat_open_performance.dart';
@@ -286,6 +287,7 @@ class ChatViewModel extends ChangeNotifier {
     if (sessionMessages != null && sessionMessages.isNotEmpty) {
       _allMessages = List<ChatMessage>.from(sessionMessages);
       messages = List<ChatMessage>.from(sessionMessages);
+      _knownLatestMessageId = latestServerMessageId(sessionMessages);
       anchoredHistory = sessionAnchoredHistory;
       firstContactInfo = sessionFirstContactInfo;
       initialLoaded = true;
@@ -404,8 +406,15 @@ class ChatViewModel extends ChangeNotifier {
   int? _lastForcedReadMessageId;
   bool _markReadInFlight = false;
   bool _restoredFromSession = false;
+  bool _chatReadStateLoaded = false;
+  bool get chatReadStateLoaded => _chatReadStateLoaded;
+  int _chatReadStateRevision = 0;
+  int get chatReadStateRevision => _chatReadStateRevision;
+  int _chatReadInboxRevision = 0;
   bool _historyReachesLatest = false;
+  bool get historyReachesLatest => _historyReachesLatest;
   int _knownLatestMessageId = 0;
+  int get knownLatestMessageId => _knownLatestMessageId;
   bool _latestHistoryLoadInFlight = false;
   final Map<int, ChatMessage> _latestHistoryLiveArrivals = {};
   final Set<int> _latestHistoryDeletedMessageIds = {};
@@ -2921,6 +2930,8 @@ class ChatViewModel extends ChangeNotifier {
   // MARK: - Header
 
   Future<void> _loadChatHeader() async {
+    final readStateRevisionAtRequestStart = _chatReadStateRevision;
+    final readInboxRevisionAtRequestStart = _chatReadInboxRevision;
     Map<String, dynamic> chat;
     try {
       chat = await _client.query({'@type': 'getChat', 'chat_id': chatId});
@@ -2938,8 +2949,13 @@ class ChatViewModel extends ChangeNotifier {
     );
     _applyBusinessBotManageBar(chat.obj('business_bot_manage_bar'));
     lastReadOutboxId = chat.int64('last_read_outbox_message_id') ?? 0;
-    lastReadInboxId = chat.int64('last_read_inbox_message_id') ?? 0;
-    unreadCount = chat.integer('unread_count') ?? 0;
+    if (shouldApplyInitialChatReadState(
+      readInboxRevisionAtRequestStart: readInboxRevisionAtRequestStart,
+      currentReadInboxRevision: _chatReadInboxRevision,
+    )) {
+      lastReadInboxId = chat.int64('last_read_inbox_message_id') ?? 0;
+      unreadCount = chat.integer('unread_count') ?? 0;
+    }
     unreadMentionCount = chat.integer('unread_mention_count') ?? 0;
     isMarkedUnread = chat.boolean('is_marked_as_unread') ?? false;
     hasProtectedContent =
@@ -2973,7 +2989,15 @@ class ChatViewModel extends ChangeNotifier {
         );
       }
     }
-    _primeLastMessage(chat);
+    _primeLastMessage(
+      chat,
+      preserveNewer: _chatReadStateRevision != readStateRevisionAtRequestStart,
+    );
+    _chatReadStateLoaded = true;
+    ++_chatReadStateRevision;
+    // Reopen positioning and safe read marking need only the coherent getChat
+    // read/latest snapshot. Publish it before optional peer metadata awaits.
+    notifyListeners();
     // Chat-wide default send permission + permissive membership defaults
     // (refined per type below).
     _chatCanSend =
@@ -3188,13 +3212,19 @@ class ChatViewModel extends ChangeNotifier {
     }
   }
 
-  void _primeLastMessage(Map<String, dynamic> chat) {
+  void _primeLastMessage(
+    Map<String, dynamic> chat, {
+    bool preserveNewer = false,
+  }) {
     final lastRaw = chat.obj('last_message');
     final lastMessage = lastRaw == null ? null : TDParse.message(lastRaw);
     if (lastMessage == null) return;
-    _knownLatestMessageId = isPendingChatMessage(lastMessage)
+    final lastMessageId = isPendingChatMessage(lastMessage)
         ? 0
         : lastMessage.id;
+    _knownLatestMessageId = preserveNewer
+        ? math.max(_knownLatestMessageId, lastMessageId)
+        : lastMessageId;
     if (_restoredFromSession) {
       // A restored transcript may predate this item. Appending it here would
       // create a visible hole until history hydration completes.
@@ -3759,8 +3789,11 @@ class ChatViewModel extends ChangeNotifier {
     bool onlyLocal = false,
     bool scrollToTarget = true,
     bool replaceCurrentWindow = true,
+    bool Function()? isCancelled,
   }) async {
-    if (_chatOpenWorkIsStale) return false;
+    bool cancelled() => isCancelled?.call() ?? false;
+
+    if (_chatOpenWorkIsStale || cancelled()) return false;
     final requestGeneration = replaceCurrentWindow
         ? ++_historyWindowGeneration
         : _historyWindowGeneration;
@@ -3773,14 +3806,18 @@ class ChatViewModel extends ChangeNotifier {
         'chat_id': chatId,
         'message_id': messageId,
       });
+      if (cancelled()) return false;
       final target = TDParse.message(targetRaw);
       if (target != null) batch.add(target);
     } catch (_) {
+      if (cancelled()) return false;
       // A missing or restricted target message doesn't imply the containing
       // chat is restricted. Load its surrounding history when available.
     }
 
-    if (_chatOpenWorkIsStale || requestGeneration != _historyWindowGeneration) {
+    if (_chatOpenWorkIsStale ||
+        cancelled() ||
+        requestGeneration != _historyWindowGeneration) {
       return false;
     }
 
@@ -3793,16 +3830,20 @@ class ChatViewModel extends ChangeNotifier {
         'limit': 80,
         'only_local': onlyLocal,
       });
+      if (cancelled()) return false;
       batch.addAll(
         (response.objects('messages') ?? const <Map<String, dynamic>>[])
             .map(TDParse.message)
             .whereType<ChatMessage>(),
       );
     } catch (error) {
+      if (cancelled()) return false;
       if (_markPeerRestricted(error)) notifyListeners();
     }
 
-    if (_chatOpenWorkIsStale || requestGeneration != _historyWindowGeneration) {
+    if (_chatOpenWorkIsStale ||
+        cancelled() ||
+        requestGeneration != _historyWindowGeneration) {
       return false;
     }
     if (batch.isEmpty) return false;
@@ -4040,7 +4081,108 @@ class ChatViewModel extends ChangeNotifier {
     await _client.query({'@type': 'leaveChat', 'chat_id': chatId});
   }
 
+  /// Confirms a session-reopen override from concrete messages rather than an
+  /// unread-count delta. The latter can shrink after another-device reads,
+  /// deletions, or the exit-time read that follows snapshot capture.
+  Future<int?> confirmedNewIncomingUnreadSinceSession({
+    required int savedKnownLatestMessageId,
+    required int expectedReadStateRevision,
+  }) async {
+    if (!_chatReadStateLoaded ||
+        expectedReadStateRevision != _chatReadStateRevision) {
+      return null;
+    }
+
+    bool qualifies(ChatMessage message, int readBoundary) =>
+        !isPendingChatMessage(message) &&
+        isNewIncomingUnreadSinceChatSession(
+          messageId: message.id,
+          isOutgoing: message.isOutgoing,
+          isService: message.isService,
+          savedKnownLatestMessageId: savedKnownLatestMessageId,
+          currentLastReadInboxId: readBoundary,
+        );
+
+    final readBoundary = lastReadInboxId;
+    int? earliestConfirmedMessageId;
+    for (final message in _allMessages) {
+      if (qualifies(message, readBoundary)) {
+        earliestConfirmedMessageId = earliestConfirmedMessageId == null
+            ? message.id
+            : math.min(earliestConfirmedMessageId, message.id);
+      }
+    }
+
+    // A loaded concrete message is sufficient even if its paired unread-count
+    // update has not arrived yet. The count only controls whether a read-only
+    // history probe is warranted to find an earlier unread target.
+    if (!shouldProbeChatSessionUnreadHistory(
+      savedKnownLatestMessageId: savedKnownLatestMessageId,
+      currentKnownLatestMessageId: _knownLatestMessageId,
+      currentUnreadCount: unreadCount,
+    )) {
+      return earliestConfirmedMessageId;
+    }
+
+    final stopAtMessageId = math.max(savedKnownLatestMessageId, readBoundary);
+    var fromMessageId = 0;
+    var previousOldestMessageId = 0;
+    var pagesScanned = 0;
+    while (!_chatOpenWorkIsStale &&
+        expectedReadStateRevision == _chatReadStateRevision &&
+        shouldContinueChatSessionUnreadHistoryProbe(
+          pagesScanned: pagesScanned,
+        )) {
+      Map<String, dynamic> response;
+      try {
+        response = await _client.query({
+          '@type': 'getChatHistory',
+          'chat_id': chatId,
+          'from_message_id': fromMessageId,
+          'offset': 0,
+          'limit': 100,
+          'only_local': false,
+        });
+      } catch (_) {
+        return earliestConfirmedMessageId;
+      }
+      if (_chatOpenWorkIsStale ||
+          expectedReadStateRevision != _chatReadStateRevision) {
+        return null;
+      }
+      pagesScanned++;
+      final page =
+          (response.objects('messages') ?? const <Map<String, dynamic>>[])
+              .map(TDParse.message)
+              .whereType<ChatMessage>()
+              .where(
+                (message) => !isPendingChatMessage(message) && message.id > 0,
+              )
+              .toList(growable: false);
+      for (final message in page) {
+        if (qualifies(message, readBoundary)) {
+          earliestConfirmedMessageId = earliestConfirmedMessageId == null
+              ? message.id
+              : math.min(earliestConfirmedMessageId, message.id);
+        }
+      }
+      if (page.isEmpty) return earliestConfirmedMessageId;
+
+      final oldestMessageId = page
+          .map((message) => message.id)
+          .reduce(math.min);
+      if (oldestMessageId <= stopAtMessageId ||
+          oldestMessageId == previousOldestMessageId) {
+        return earliestConfirmedMessageId;
+      }
+      previousOldestMessageId = oldestMessageId;
+      fromMessageId = oldestMessageId;
+    }
+    return earliestConfirmedMessageId;
+  }
+
   Future<void> markLoadedMessagesRead() async {
+    if (!_chatReadStateLoaded || !_historyReachesLatest) return;
     if (_markReadInFlight) return;
     _markReadInFlight = true;
     try {
@@ -4074,6 +4216,8 @@ class ChatViewModel extends ChangeNotifier {
       if (shouldClearMarker) isMarkedUnread = false;
       if (messageId > lastReadInboxId) lastReadInboxId = messageId;
       if (unreadCount != 0) unreadCount = 0;
+      ++_chatReadInboxRevision;
+      ++_chatReadStateRevision;
       notifyListeners();
 
       if (shouldClearMarker) {
@@ -4152,6 +4296,7 @@ class ChatViewModel extends ChangeNotifier {
         }
         if (!isPendingChatMessage(message)) {
           _knownLatestMessageId = math.max(_knownLatestMessageId, message.id);
+          ++_chatReadStateRevision;
         }
         if (!canAppendToTranscript) {
           notifyListeners();
@@ -4285,6 +4430,15 @@ class ChatViewModel extends ChangeNotifier {
       case 'updateChat':
         final chat = update.obj('chat');
         if (chat == null || chat.int64('id') != chatId) return;
+        if (chat.containsKey('last_read_inbox_message_id') &&
+            chat.containsKey('unread_count')) {
+          lastReadInboxId =
+              chat.int64('last_read_inbox_message_id') ?? lastReadInboxId;
+          unreadCount = chat.integer('unread_count') ?? unreadCount;
+          _primeLastMessage(chat, preserveNewer: true);
+          ++_chatReadInboxRevision;
+          ++_chatReadStateRevision;
+        }
         messageAutoDeleteTime = _autoDeleteSeconds(chat);
         _setPaidMessageStarCount(_paidMessageStars(chat), notify: false);
         hasProtectedContent =
@@ -4345,6 +4499,7 @@ class ChatViewModel extends ChangeNotifier {
         // from the UI — the messages still exist on the server.
         if (update.boolean('is_permanent') != true) return;
         final deletedIds = update.int64Array('message_ids') ?? const <int>[];
+        ++_chatReadStateRevision;
         if (_latestHistoryLoadInFlight) {
           _latestHistoryDeletedMessageIds.addAll(deletedIds);
           for (final messageId in deletedIds) {
@@ -4369,6 +4524,7 @@ class ChatViewModel extends ChangeNotifier {
         _historyAnchorMessageId = null;
         _historyReachesLatest = true;
         _knownLatestMessageId = 0;
+        ++_chatReadStateRevision;
         _pendingScrollToId = null;
         notifyListeners();
 
@@ -4393,6 +4549,8 @@ class ChatViewModel extends ChangeNotifier {
         lastReadInboxId =
             update.int64('last_read_inbox_message_id') ?? lastReadInboxId;
         unreadCount = update.integer('unread_count') ?? unreadCount;
+        ++_chatReadInboxRevision;
+        ++_chatReadStateRevision;
         notifyListeners();
 
       case 'updateChatIsMarkedAsUnread':
