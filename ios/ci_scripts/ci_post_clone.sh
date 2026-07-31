@@ -23,7 +23,9 @@
 #                      override the pinned official Telegram iOS group-call XCFramework
 #   TGVOIP_WEBRTC_XCFRAMEWORK_SHA256
 #                      SHA-256 for the TgVoip override
-#   REVIEW_RELAY             https://relay.example|sha256(normalized-phone-digits)
+#   REVIEW_RELAY             legacy real-phone OTP relay URL and phone hash:
+#                            https://relay.example|sha256(normalized-phone-digits)
+#                            Pseudo-account sessions use the built-in scoped dispenser.
 #   SENTRY_AUTH_TOKEN        upload iOS dSYMs to Sentry when set
 #   SENTRY_ORG               Sentry org slug for dSYM upload; defaults to nekoko
 #   SENTRY_PROJECT           Sentry project slug for dSYM upload; defaults to mithka

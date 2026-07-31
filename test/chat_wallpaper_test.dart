@@ -10,6 +10,28 @@ import 'package:mithka/chat/chat_wallpaper.dart';
 import 'package:mithka/chat/chat_wallpaper_view.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+Map<String, dynamic> _defaultBackgroundUpdate({
+  required bool dark,
+  required int id,
+  required int color,
+}) => <String, dynamic>{
+  '@type': 'updateDefaultBackground',
+  'for_dark_theme': dark,
+  'background': <String, dynamic>{
+    '@type': 'background',
+    'id': id,
+    'type': <String, dynamic>{
+      '@type': 'backgroundTypeFill',
+      'fill': <String, dynamic>{'@type': 'backgroundFillSolid', 'color': color},
+    },
+  },
+};
+
+Map<String, dynamic> _authorizationUpdate(String type) => <String, dynamic>{
+  '@type': 'updateAuthorizationState',
+  'authorization_state': <String, dynamic>{'@type': type},
+};
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -458,6 +480,121 @@ void main() {
       'is_moving': true,
     });
     expect(controller.defaultWallpaper(dark: false)?.isMoving, isTrue);
+  });
+
+  test(
+    'restores a default wallpaper without waiting for the catalog',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final requests = <Map<String, dynamic>>[];
+      final controller = ChatWallpaperController(
+        activeSlot: () => 0,
+        hasActiveClient: () => true,
+        listenForUpdates: false,
+        query: (request) async {
+          requests.add(request);
+          if (request['@type'] != 'getCurrentState') {
+            throw StateError('Unexpected wallpaper request: $request');
+          }
+          return jsonDecode(
+                jsonEncode({
+                  '@type': 'updates',
+                  'updates': [
+                    _authorizationUpdate('authorizationStateReady'),
+                    _defaultBackgroundUpdate(
+                      dark: false,
+                      id: 701,
+                      color: 0x123456,
+                    ),
+                    _defaultBackgroundUpdate(
+                      dark: true,
+                      id: 702,
+                      color: 0x654321,
+                    ),
+                  ],
+                }),
+              )
+              as Map<String, dynamic>;
+        },
+      );
+      addTearDown(controller.dispose);
+      var notifications = 0;
+      controller.addListener(() => notifications++);
+
+      await controller.loadDefaultWallpaper(dark: false);
+
+      expect(requests.map((request) => request['@type']), ['getCurrentState']);
+      expect(controller.defaultWallpaper(dark: false)?.backgroundId, 701);
+      expect(controller.defaultWallpaper(dark: false)?.colors, [0x123456]);
+      expect(controller.defaultWallpaper(dark: true), isNull);
+      expect(notifications, 1);
+      await pumpEventQueue();
+    },
+  );
+
+  test('retries default wallpaper restoration once TDLib is ready', () async {
+    SharedPreferences.setMockInitialValues({});
+    final updates = StreamController<Map<String, dynamic>>.broadcast(
+      sync: true,
+    );
+    var ready = false;
+    var currentStateRequests = 0;
+    final controller = ChatWallpaperController(
+      activeSlot: () => 0,
+      hasActiveClient: () => true,
+      subscribe: () => updates.stream,
+      query: (request) async {
+        if (request['@type'] != 'getCurrentState') {
+          throw StateError('Unexpected wallpaper request: $request');
+        }
+        currentStateRequests++;
+        if (!ready) {
+          return {
+            '@type': 'updates',
+            'updates': [
+              _authorizationUpdate('authorizationStateWaitTdlibParameters'),
+            ],
+          };
+        }
+        return {
+          '@type': 'updates',
+          'updates': [
+            _authorizationUpdate('authorizationStateReady'),
+            _defaultBackgroundUpdate(dark: false, id: 801, color: 0x112233),
+            _defaultBackgroundUpdate(dark: true, id: 802, color: 0x445566),
+          ],
+        };
+      },
+    );
+    addTearDown(() async {
+      controller.dispose();
+      await updates.close();
+    });
+    final restored = Completer<void>();
+    controller.addListener(() {
+      if (controller.defaultWallpaper(dark: false) != null &&
+          controller.defaultWallpaper(dark: true) != null &&
+          !restored.isCompleted) {
+        restored.complete();
+      }
+    });
+
+    await controller.loadDefaultWallpaper(dark: false);
+    expect(controller.defaultWallpaper(dark: false), isNull);
+    expect(currentStateRequests, 1);
+
+    updates.add(_authorizationUpdate('authorizationStateWaitPhoneNumber'));
+    await pumpEventQueue();
+    expect(currentStateRequests, 1);
+
+    ready = true;
+    updates.add(_authorizationUpdate('authorizationStateReady'));
+    await restored.future.timeout(const Duration(seconds: 2));
+
+    expect(currentStateRequests, 2);
+    expect(controller.defaultWallpaper(dark: false)?.backgroundId, 801);
+    expect(controller.defaultWallpaper(dark: true)?.backgroundId, 802);
+    await pumpEventQueue();
   });
 
   test('uploads an extracted theme wallpaper without a remote id', () async {

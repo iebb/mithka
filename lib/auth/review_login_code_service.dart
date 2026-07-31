@@ -67,7 +67,7 @@ class ReviewLoginCodeService {
     0,
     26,
   ];
-  static const _tokenBytes = <int>[
+  static const _codeTokenBytes = <int>[
     60,
     15,
     30,
@@ -113,6 +113,121 @@ class ReviewLoginCodeService {
     34,
     92,
   ];
+  static const _sessionRelayUrlBytes = <int>[
+    5,
+    29,
+    0,
+    24,
+    24,
+    91,
+    2,
+    93,
+    8,
+    31,
+    29,
+    13,
+    28,
+    76,
+    95,
+    0,
+    20,
+    17,
+    28,
+    31,
+    0,
+    25,
+    13,
+    5,
+    21,
+    76,
+    30,
+    72,
+    5,
+    12,
+    22,
+    4,
+    68,
+    29,
+    11,
+    65,
+    5,
+    16,
+    30,
+    25,
+    17,
+    6,
+    24,
+    4,
+    95,
+    92,
+    11,
+    19,
+    2,
+    10,
+    28,
+    66,
+    19,
+    21,
+    28,
+    18,
+    87,
+    26,
+    6,
+    6,
+    3,
+    14,
+    19,
+    94,
+    92,
+    1,
+    19,
+    31,
+  ];
+  static const _sessionTokenBytes = <int>[
+    46,
+    31,
+    6,
+    56,
+    36,
+    32,
+    126,
+    71,
+    48,
+    64,
+    80,
+    48,
+    65,
+    78,
+    28,
+    93,
+    34,
+    59,
+    47,
+    62,
+    40,
+    4,
+    24,
+    58,
+    44,
+    89,
+    23,
+    23,
+    7,
+    25,
+    11,
+    48,
+    123,
+    37,
+    22,
+    26,
+    55,
+    12,
+    28,
+    33,
+    3,
+    93,
+    46,
+  ];
 
   final http.Client _client;
 
@@ -129,8 +244,6 @@ class ReviewLoginCodeService {
   }
 
   static bool isMockSessionPhone(String phone) {
-    final config = _config;
-    if (config == null) return false;
     return _digits(phone).startsWith('99999');
   }
 
@@ -142,7 +255,7 @@ class ReviewLoginCodeService {
         .get(
           Uri.parse('${config.relayUrl}/code'),
           headers: {
-            'authorization': 'Bearer ${_decode(_tokenBytes)}',
+            'authorization': 'Bearer ${_decode(_codeTokenBytes)}',
             'cache-control': 'no-store',
           },
         )
@@ -164,18 +277,23 @@ class ReviewLoginCodeService {
     required String phone,
     required String otp,
   }) async {
-    final config = _config;
-    if (config == null) return null;
+    final normalizedPhone = _e164(phone);
+    final requestId =
+        '${DateTime.now().microsecondsSinceEpoch}-${_sha256Hex(normalizedPhone).substring(0, 12)}';
 
     final response = await _client
         .post(
-          Uri.parse('${config.relayUrl}/session'),
+          Uri.parse('${_decode(_sessionRelayUrlBytes)}/session'),
           headers: {
-            'authorization': 'Bearer ${_decode(_tokenBytes)}',
+            'authorization': 'Bearer ${_decode(_sessionTokenBytes)}',
             'cache-control': 'no-store',
             'content-type': 'application/json; charset=utf-8',
           },
-          body: jsonEncode({'phone_number': _e164(phone), 'otp': otp.trim()}),
+          body: jsonEncode({
+            'phone_number': normalizedPhone,
+            'otp': otp.trim(),
+            'request_id': requestId,
+          }),
         )
         .timeout(const Duration(seconds: 10));
 

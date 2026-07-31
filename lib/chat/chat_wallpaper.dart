@@ -1212,17 +1212,23 @@ class ChatWallpaperController extends ChangeNotifier {
   ChatWallpaper? defaultWallpaper({required bool dark}) =>
       _defaultBackgrounds[_globalId(dark)];
 
-  Future<void> loadDefaultWallpaper({required bool dark}) async {
+  Future<void> loadDefaultWallpaper({required bool dark}) =>
+      _loadDefaultWallpapers(dark: dark);
+
+  Future<void> _loadDefaultWallpapers({bool? dark}) async {
     if (!_hasActiveClient()) return;
-    await installedBackgrounds(dark: dark);
     try {
       final state = await _query({'@type': 'getCurrentState'});
-      for (final update in state.objects('updates') ?? const []) {
-        if (update.type == 'updateDefaultBackground' &&
-            (update.boolean('for_dark_theme') ?? false) == dark) {
-          _ingestDefaultBackground(update);
-        }
+      var ingested = false;
+      for (final update
+          in state.objects('updates') ?? const <Map<String, dynamic>>[]) {
+        if (update.type != 'updateDefaultBackground') continue;
+        final updateDark = update.boolean('for_dark_theme') ?? false;
+        if (dark != null && updateDark != dark) continue;
+        _ingestDefaultBackground(update);
+        ingested = true;
       }
+      if (ingested) notifyListeners();
     } catch (_) {}
   }
 
@@ -1585,6 +1591,11 @@ class ChatWallpaperController extends ChangeNotifier {
 
   void _handleTdUpdate(Map<String, dynamic> update) {
     switch (update.type) {
+      case 'updateAuthorizationState':
+        if (update.obj('authorization_state')?.type ==
+            'authorizationStateReady') {
+          unawaited(_loadDefaultWallpapers());
+        }
       case 'updateEmojiChatThemes':
         _ingestEmojiThemes(update);
         notifyListeners();
