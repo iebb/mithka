@@ -767,6 +767,77 @@ void main() {
         isFalse,
       );
     });
+
+    test('AI summary prompt persists, bounds Unicode, and resets', () async {
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final controller = AiSettingsController(
+        preferences,
+        pccApi: _pccApi(available: false),
+        secureRead: (_) async => null,
+        secureWrite: (_, _) async {},
+      );
+      await controller.initialize();
+
+      expect(controller.aiSummaryPrompt, defaultAiSummaryPrompt.trim());
+      expect(controller.hasCustomAiSummaryPrompt, isFalse);
+      expect(
+        preferences.containsKey(
+          AiSettingsController.summaryPromptPreferenceKey,
+        ),
+        isFalse,
+      );
+
+      const customPrompt =
+          '  Lead with decisions, unanswered questions, and next actions.  ';
+      await controller.setAiSummaryPrompt(customPrompt);
+      expect(
+        controller.aiSummaryPrompt,
+        'Lead with decisions, unanswered questions, and next actions.',
+      );
+      expect(controller.hasCustomAiSummaryPrompt, isTrue);
+      expect(
+        preferences.getString(AiSettingsController.summaryPromptPreferenceKey),
+        controller.aiSummaryPrompt,
+      );
+
+      final restored = AiSettingsController(
+        preferences,
+        pccApi: _pccApi(available: false),
+        secureRead: (_) async => null,
+        secureWrite: (_, _) async {},
+      );
+      await restored.initialize();
+      expect(restored.aiSummaryPrompt, controller.aiSummaryPrompt);
+      expect(restored.hasCustomAiSummaryPrompt, isTrue);
+
+      final oversized = List.filled(
+        AiSettingsController.summaryPromptMaximumCharacters + 1,
+        '🦊',
+      ).join();
+      await restored.setAiSummaryPrompt(oversized);
+      expect(
+        restored.aiSummaryPrompt.runes.length,
+        AiSettingsController.summaryPromptMaximumCharacters,
+      );
+      expect(
+        preferences
+            .getString(AiSettingsController.summaryPromptPreferenceKey)!
+            .runes
+            .length,
+        AiSettingsController.summaryPromptMaximumCharacters,
+      );
+
+      await restored.resetAiSummaryPrompt();
+      expect(restored.aiSummaryPrompt, defaultAiSummaryPrompt.trim());
+      expect(restored.hasCustomAiSummaryPrompt, isFalse);
+      expect(
+        preferences.containsKey(
+          AiSettingsController.summaryPromptPreferenceKey,
+        ),
+        isFalse,
+      );
+    });
   });
 
   group('hosted AI endpoint validation', () {

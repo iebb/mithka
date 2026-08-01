@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/custom_emoji.dart';
 import 'package:mithka/chat/message_bubble.dart';
 import 'package:mithka/chat/stretchable_message_bubble_background.dart';
+import 'package:mithka/components/photo_avatar.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/tdlib/td_models.dart';
 import 'package:mithka/theme/app_theme.dart';
@@ -32,6 +34,7 @@ void main() {
     bool showCommentAttachment = false,
     bool channelHasLinkedDiscussion = false,
     bool themingEnabled = true,
+    AppColors? colors,
     ValueChanged<ChatMessage>? onLongPress,
   }) async {
     SharedPreferences.setMockInitialValues({
@@ -46,6 +49,7 @@ void main() {
       ChangeNotifierProvider<ThemeController>.value(
         value: theme,
         child: MaterialApp(
+          theme: colors == null ? null : ThemeData(extensions: [colors]),
           locale: const Locale('en'),
           localizationsDelegates: const [AppLocalizations.delegate],
           supportedLocales: AppLocalizations.supportedLocales,
@@ -180,6 +184,65 @@ void main() {
     await tester.pump(const Duration(minutes: 3, seconds: 1));
   });
 
+  testWidgets('photo replies keep one quote above the media', (tester) async {
+    final message =
+        ChatMessage(
+            id: 7,
+            isOutgoing: false,
+            text: '',
+            date: 1,
+            contentType: 'messagePhoto',
+            image: TdFileRef(
+              id: 107,
+              miniThumb: base64Decode(
+                'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+              ),
+            ),
+            imageWidth: 600,
+            imageHeight: 400,
+            replyToMessageId: 5,
+            replyToDate: 1,
+          )
+          ..replyToSender = 'Original Channel'
+          ..replyToPreview = 'Earlier post';
+
+    final theme = await pumpBubble(tester, message);
+
+    final quote = find.byKey(const ValueKey('messageReplyQuote'));
+    final media = find.byType(TDImage);
+    expect(quote, findsOneWidget);
+    expect(media, findsOneWidget);
+    expect(find.byKey(const ValueKey('messageForwardHeader-7')), findsNothing);
+    expect(
+      tester.getRect(quote).bottom,
+      lessThanOrEqualTo(tester.getRect(media).top),
+    );
+
+    message.text = 'Photo caption';
+    theme.groupImageMessages = true;
+    await tester.pump();
+
+    expect(quote, findsOneWidget);
+    expect(find.text('Photo caption', findRichText: true), findsOneWidget);
+    expect(
+      tester.getRect(quote).bottom,
+      lessThanOrEqualTo(tester.getRect(media).top),
+    );
+
+    theme.groupImageMessages = false;
+    await tester.pump();
+
+    expect(quote, findsOneWidget);
+    expect(find.text('Photo caption', findRichText: true), findsOneWidget);
+    expect(
+      tester.getRect(quote).bottom,
+      lessThanOrEqualTo(tester.getRect(media).top),
+    );
+
+    // Expire the mocked TDLib image lookup timeout before test teardown.
+    await tester.pump(const Duration(minutes: 3, seconds: 1));
+  });
+
   testWidgets('document captions render their translation', (tester) async {
     final message = ChatMessage(
       id: 2,
@@ -281,6 +344,71 @@ void main() {
     expect(entityLink.style?.decoration, isNot(TextDecoration.underline));
     expect(autoLink.style?.decoration, isNot(TextDecoration.underline));
     expect(explicitUnderline.style?.decoration, TextDecoration.underline);
+  });
+
+  testWidgets('block quotes stay readable when search fill is dark', (
+    tester,
+  ) async {
+    const text = 'Quoted copy';
+    final colors = AppColors.light.copyWith(
+      searchFill: Colors.black,
+      bubbleIncoming: Colors.white,
+      bubbleIncomingText: const Color(0xFF1A1A1A),
+    );
+    final message = ChatMessage(
+      id: 42,
+      isOutgoing: false,
+      text: text,
+      date: 1,
+      contentType: 'messageText',
+      textEntities: const [
+        MessageTextEntity(
+          offset: 0,
+          length: text.length,
+          type: 'textEntityTypeBlockQuote',
+        ),
+      ],
+    );
+
+    await pumpBubble(tester, message, colors: colors);
+
+    final quote = find.descendant(
+      of: find.byKey(const ValueKey('messageTextBubble-42')),
+      matching: find.byWidgetPredicate((widget) {
+        if (widget case Container(decoration: final BoxDecoration decoration)) {
+          final border = decoration.border;
+          return border is Border &&
+              border.left.width == 3 &&
+              border.left.color == AppTheme.brand;
+        }
+        return false;
+      }),
+    );
+    expect(quote, findsOneWidget);
+    final decoration =
+        tester.widget<Container>(quote).decoration! as BoxDecoration;
+    final paintedBackground = Color.alphaBlend(
+      decoration.color!,
+      colors.bubbleIncoming,
+    );
+
+    double contrast(Color first, Color second) {
+      final lighter = math.max(
+        first.computeLuminance(),
+        second.computeLuminance(),
+      );
+      final darker = math.min(
+        first.computeLuminance(),
+        second.computeLuminance(),
+      );
+      return (lighter + 0.05) / (darker + 0.05);
+    }
+
+    expect(decoration.color, colors.bubbleIncomingText.withValues(alpha: 0.07));
+    expect(
+      contrast(colors.bubbleIncomingText, paintedBackground),
+      greaterThanOrEqualTo(4.5),
+    );
   });
 
   testWidgets('message custom emoji does not leak through a spoiler', (

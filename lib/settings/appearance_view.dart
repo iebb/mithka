@@ -797,6 +797,20 @@ class ChatListAppearanceSettingsView extends StatelessWidget {
           ),
           icon: HeroAppIcons.folder.data,
         ),
+        KeyedSubtree(
+          key: const ValueKey('chat-list-swipe-settings-row'),
+          child: appearance._navigationRow(
+            context,
+            AppStrings.t(AppStringKeys.gesturesChatListSwipe),
+            AppStrings.t(theme.chatListSwipeMode.label),
+            () => Navigator.of(context).push(
+              AppPageRoute<void>(
+                pageBuilder: (_, _, _) => const ChatListGestureSettingsView(),
+              ),
+            ),
+            icon: HeroAppIcons.arrowsRightLeft.data,
+          ),
+        ),
         appearance._navigationRow(
           context,
           telegramText(AppStringKeys.appearanceArchivedChats),
@@ -1626,6 +1640,111 @@ class ChatFolderSettingsView extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class ChatListGestureSettingsView extends StatelessWidget {
+  const ChatListGestureSettingsView({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final theme = context.watch<ThemeController>();
+    const appearance = AppearanceView();
+    return Scaffold(
+      backgroundColor: c.groupedBackground,
+      body: Column(
+        children: [
+          NavHeader(
+            title: AppStrings.t(AppStringKeys.gesturesChatListSwipe),
+            onBack: () => Navigator.of(context).pop(),
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                AppSpacing.xl,
+                AppSpacing.lg,
+                AppSpacing.section,
+              ),
+              children: [
+                appearance._card(context, [
+                  for (final mode in ChatListSwipeMode.values)
+                    _modeRow(context, theme, mode),
+                ]),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _modeRow(
+    BuildContext context,
+    ThemeController theme,
+    ChatListSwipeMode mode,
+  ) {
+    final c = context.colors;
+    final selected = theme.chatListSwipeMode == mode;
+    final label = AppStrings.t(mode.label);
+    final description = AppStrings.t(mode.description);
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: '$label. $description',
+      child: GestureDetector(
+        key: ValueKey('chat-list-swipe-mode-${mode.name}'),
+        behavior: HitTestBehavior.opaque,
+        onTap: () => theme.chatListSwipeMode = mode,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 80),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.xxl,
+              vertical: AppSpacing.md,
+            ),
+            child: Row(
+              children: [
+                AppIcon(mode.icon, size: AppIconSize.xl, color: AppTheme.brand),
+                const SizedBox(width: AppSpacing.xl),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: AppTextSize.bodyLarge,
+                          color: c.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.xxs),
+                      Text(
+                        description,
+                        style: TextStyle(
+                          fontSize: AppTextSize.footnote,
+                          height: 1.25,
+                          color: c.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.md),
+                if (selected)
+                  AppIcon(
+                    HeroAppIcons.check,
+                    size: AppIconSize.lg,
+                    color: AppTheme.brand,
+                  ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

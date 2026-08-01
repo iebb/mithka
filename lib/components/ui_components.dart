@@ -579,6 +579,8 @@ class AppSwitch extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final trackColor = value ? c.linkBlue : c.textTertiary;
+    final handleColor = value ? c.onAccent : const Color(0xFFFFFFFF);
     return AppInteractiveSurface(
       semanticLabel:
           semanticLabel ??
@@ -601,7 +603,7 @@ class AppSwitch extends StatelessWidget {
           height: 30,
           padding: const EdgeInsets.all(2),
           decoration: BoxDecoration(
-            color: value ? c.linkBlue : c.textTertiary,
+            color: trackColor,
             borderRadius: BorderRadius.circular(15),
           ),
           child: AnimatedAlign(
@@ -611,10 +613,10 @@ class AppSwitch extends StatelessWidget {
             child: Container(
               width: 26,
               height: 26,
-              decoration: const BoxDecoration(
-                color: Color(0xFFFFFFFF),
+              decoration: BoxDecoration(
+                color: handleColor,
                 shape: BoxShape.circle,
-                boxShadow: [
+                boxShadow: const [
                   BoxShadow(
                     color: Color(0x30000000),
                     blurRadius: 3,

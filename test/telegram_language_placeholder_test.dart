@@ -43,6 +43,20 @@ void main() {
     );
   });
 
+  test('keeps the source name in forwarded-message attribution', () {
+    final controller = TelegramLanguageController.test(
+      strings: const {'ForwardedFrom': 'Forwarded from'},
+    );
+
+    expect(
+      controller.text(
+        AppStringKeys.messageBubbleForwardedFrom,
+        placeholders: const {'value1': 'Original Channel'},
+      ),
+      'Forwarded from Original Channel',
+    );
+  });
+
   test('familiar glossary keeps familiar archived-chat wording', () {
     final controller = TelegramLanguageController.test(
       activePackId: 'zhhanscn-qq',
@@ -71,6 +85,19 @@ void main() {
       controller.resolveMappedText(AppStringKeys.momentsStories, const {}),
       isNull,
     );
+  });
+
+  test('keeps the Moments music label in natural localized casing', () {
+    final controller = TelegramLanguageController.test(
+      strings: const {'SharedMusicTab': 'MUSIC'},
+    );
+
+    expect(controller.text(AppStringKeys.profileDetailMusic), 'MUSIC');
+    expect(
+      controller.resolveMappedText(AppStringKeys.momentsMusic, const {}),
+      isNull,
+    );
+    expect(controller.text(AppStringKeys.momentsMusic), 'Music');
   });
 
   test('uses Telegram Business bot permission wording', () {

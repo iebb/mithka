@@ -45,9 +45,7 @@ class ApplePccUnreadSummaryProvider implements UnreadChatSummaryProvider {
         final result = await api.summarize(
           prompt:
               '$unreadChatSummaryPromptPrefix${jsonEncode(request.payload)}',
-          instructions: model == AppleAiModel.onDevice
-              ? unreadChatSummaryCompactTrustedInstructions
-              : request.trustedInstructions,
+          instructions: request.trustedInstructions,
           model: model,
           reasoningLevel: reasoningLevel,
           maximumResponseTokens:

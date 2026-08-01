@@ -87,18 +87,35 @@ class ChatListSelection {
     required this.title,
     this.chat,
     this.initialMessageId,
+    this.composerFocusRequestId = 0,
   });
 
-  ChatListSelection.fromChat(ChatSummary chat)
-    : this(chatId: chat.id, title: chat.title, chat: chat);
+  ChatListSelection.fromChat(
+    ChatSummary chat, {
+    this.composerFocusRequestId = 0,
+  }) : chatId = chat.id,
+       title = chat.title,
+       chat = chat,
+       initialMessageId = null;
 
   final int chatId;
   final String title;
   final ChatSummary? chat;
   final int? initialMessageId;
+  final int composerFocusRequestId;
 
   bool get isForum => chat?.isForum ?? false;
 }
+
+bool chatListPreviewSupportsQuickReply(ChatSummary chat) =>
+    !chat.isForum &&
+    switch (chat.kind) {
+      ChatKind.privateChat ||
+      ChatKind.group ||
+      ChatKind.bot ||
+      ChatKind.secret => true,
+      ChatKind.channel || ChatKind.unknown => false,
+    };
 
 /// Returns the exact leading offset for a chat-list item.
 ///
@@ -223,21 +240,152 @@ class ChatListPullDownArchiveSlot extends StatelessWidget {
   }
 }
 
-enum ChatListMultiFingerSwipeAction { none, switchFolders, switchAccounts }
+enum ChatListSwipeAction { none, switchFolders, switchAccounts }
 
-ChatListMultiFingerSwipeAction chatListMultiFingerSwipeAction({
-  required int pointerCount,
-  required Offset delta,
+class ChatListSwipeDecision {
+  const ChatListSwipeDecision(this.action, this.horizontalDelta);
+
+  static const none = ChatListSwipeDecision(ChatListSwipeAction.none, 0);
+
+  final ChatListSwipeAction action;
+  final double horizontalDelta;
+}
+
+ChatListSwipeDecision chatListSwipeDecision({
+  required ChatListSwipeMode mode,
+  required int peakPointerCount,
+  required List<Offset> pointerDeltas,
   double distanceThreshold = 64,
+  double individualDistanceThreshold = 24,
 }) {
-  if ((pointerCount != 2 && pointerCount != 3) ||
-      delta.dx.abs() < distanceThreshold ||
-      delta.dx.abs() < delta.dy.abs() * 1.25) {
-    return ChatListMultiFingerSwipeAction.none;
+  final action = switch ((mode, peakPointerCount)) {
+    (ChatListSwipeMode.chatActions, 2) => ChatListSwipeAction.switchFolders,
+    (ChatListSwipeMode.chatActions, 3) => ChatListSwipeAction.switchAccounts,
+    (ChatListSwipeMode.switchFolders, 1) => ChatListSwipeAction.switchFolders,
+    (ChatListSwipeMode.switchFolders, 3) => ChatListSwipeAction.switchAccounts,
+    _ => ChatListSwipeAction.none,
+  };
+  if (action == ChatListSwipeAction.none ||
+      pointerDeltas.length != peakPointerCount ||
+      pointerDeltas.isEmpty) {
+    return ChatListSwipeDecision.none;
   }
-  return pointerCount == 2
-      ? ChatListMultiFingerSwipeAction.switchFolders
-      : ChatListMultiFingerSwipeAction.switchAccounts;
+  final direction = pointerDeltas.first.dx.sign;
+  if (direction == 0 ||
+      pointerDeltas.any(
+        (delta) =>
+            delta.dx.sign != direction ||
+            delta.dx.abs() < individualDistanceThreshold,
+      )) {
+    return ChatListSwipeDecision.none;
+  }
+  final centroidDelta =
+      pointerDeltas.reduce((a, b) => a + b) / pointerDeltas.length.toDouble();
+  if (centroidDelta.dx.abs() < distanceThreshold ||
+      centroidDelta.dx.abs() < centroidDelta.dy.abs() * 1.25) {
+    return ChatListSwipeDecision.none;
+  }
+  return ChatListSwipeDecision(action, centroidDelta.dx);
+}
+
+bool chatListRowSwipeActionsEnabled({
+  required ChatListSwipeMode mode,
+  required bool multiTouchActive,
+}) => mode == ChatListSwipeMode.chatActions && !multiTouchActive;
+
+/// Tracks one uninterrupted touch contact sequence and classifies it only
+/// after every finger lifts. Deferring dispatch prevents a two-finger folder
+/// swipe from also becoming a three-finger account swipe when the third finger
+/// lands slightly later.
+class ChatListSwipeSession {
+  final Map<int, Offset> _activePositions = <int, Offset>{};
+  final Map<int, Offset> _candidateOrigins = <int, Offset>{};
+  final Map<int, Offset> _finalPositions = <int, Offset>{};
+  ChatListSwipeMode? _mode;
+  int _peakPointerCount = 0;
+  bool _blocked = false;
+  bool _hadPointerEnd = false;
+
+  bool get isActive => _activePositions.isNotEmpty;
+  bool get suppressRowSwipes => isActive && _peakPointerCount > 1;
+
+  bool pointerDown({
+    required int pointer,
+    required Offset position,
+    required ui.PointerDeviceKind kind,
+    required ChatListSwipeMode mode,
+  }) {
+    if (kind != ui.PointerDeviceKind.touch ||
+        _activePositions.containsKey(pointer)) {
+      return false;
+    }
+    if (_activePositions.isEmpty) {
+      _reset();
+      _mode = mode;
+    } else if (_hadPointerEnd || _mode != mode) {
+      _blocked = true;
+    }
+    _activePositions[pointer] = position;
+    if (_activePositions.length > _peakPointerCount) {
+      _peakPointerCount = _activePositions.length;
+      _candidateOrigins
+        ..clear()
+        ..addAll(_activePositions);
+      _finalPositions.clear();
+    }
+    if (_peakPointerCount > 3) _blocked = true;
+    return true;
+  }
+
+  void pointerMove({required int pointer, required Offset position}) {
+    if (_activePositions.containsKey(pointer)) {
+      _activePositions[pointer] = position;
+    }
+  }
+
+  ChatListSwipeDecision? pointerEnd({
+    required int pointer,
+    required Offset position,
+    required ChatListSwipeMode currentMode,
+    bool canceled = false,
+  }) {
+    if (!_activePositions.containsKey(pointer)) return null;
+    _activePositions[pointer] = position;
+    _finalPositions[pointer] = position;
+    _activePositions.remove(pointer);
+    _hadPointerEnd = true;
+    if (canceled) _blocked = true;
+    if (_activePositions.isNotEmpty) return null;
+
+    final deltas = <Offset>[];
+    for (final entry in _candidateOrigins.entries) {
+      final finalPosition = _finalPositions[entry.key];
+      if (finalPosition == null) {
+        _blocked = true;
+        break;
+      }
+      deltas.add(finalPosition - entry.value);
+    }
+    final decision = !_blocked && _mode == currentMode
+        ? chatListSwipeDecision(
+            mode: currentMode,
+            peakPointerCount: _peakPointerCount,
+            pointerDeltas: deltas,
+          )
+        : ChatListSwipeDecision.none;
+    _reset();
+    return decision;
+  }
+
+  void _reset() {
+    _activePositions.clear();
+    _candidateOrigins.clear();
+    _finalPositions.clear();
+    _mode = null;
+    _peakPointerCount = 0;
+    _blocked = false;
+    _hadPointerEnd = false;
+  }
 }
 
 Set<ui.PointerDeviceKind> chatFolderTabDragDevices(
@@ -334,10 +482,8 @@ class _ChatListViewState extends State<ChatListView>
   bool _modelDirtyWhileInactive = false;
   bool _reactivationSyncScheduled = false;
   int _lastVisibleRows = 1;
-  final Map<int, Offset> _gesturePointers = <int, Offset>{};
-  Offset? _multiFingerSwipeOrigin;
-  int _multiFingerSwipeCount = 0;
-  bool _multiFingerSwipeHandled = false;
+  final ChatListSwipeSession _chatListSwipeSession = ChatListSwipeSession();
+  int _nextComposerFocusRequestId = 0;
 
   static const double _refreshPullThreshold = 72;
 
@@ -489,10 +635,18 @@ class _ChatListViewState extends State<ChatListView>
     } catch (_) {}
   }
 
-  Future<void> _openChat(ChatSummary chat) async {
+  Future<void> _openChat(ChatSummary chat, {bool focusComposer = false}) async {
+    final composerFocusRequestId = focusComposer
+        ? ++_nextComposerFocusRequestId
+        : 0;
     final onChatSelected = widget.onChatSelected;
     if (onChatSelected != null) {
-      onChatSelected(ChatListSelection.fromChat(chat));
+      onChatSelected(
+        ChatListSelection.fromChat(
+          chat,
+          composerFocusRequestId: composerFocusRequestId,
+        ),
+      );
       return;
     }
     if (chat.isSavedMessages) {
@@ -504,6 +658,7 @@ class _ChatListViewState extends State<ChatListView>
               chatId: chat.id,
               title: AppStrings.t(AppStringKeys.savedMessages),
               seedMessage: chat.lastChatMessage,
+              requestComposerFocusOnReady: focusComposer,
             ),
           ),
         ),
@@ -522,6 +677,7 @@ class _ChatListViewState extends State<ChatListView>
                 chatId: chat.id,
                 title: chat.title,
                 seedMessage: chat.lastChatMessage,
+                requestComposerFocusOnReady: focusComposer,
               ),
             ),
           ),
@@ -553,6 +709,7 @@ class _ChatListViewState extends State<ChatListView>
             chatId: chat.id,
             title: chat.title,
             seedMessage: chat.lastChatMessage,
+            requestComposerFocusOnReady: focusComposer,
           ),
         ),
       ),
@@ -890,95 +1047,86 @@ class _ChatListViewState extends State<ChatListView>
         }
       });
     }
-    return Listener(
-      behavior: HitTestBehavior.translucent,
-      onPointerDown: _handleGesturePointerDown,
-      onPointerMove: _handleGesturePointerMove,
-      onPointerUp: _handleGesturePointerEnd,
-      onPointerCancel: _handleGesturePointerEnd,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Container(
-            color: c.background,
-            child: Column(
-              children: [
-                _header(),
-                if (folderMode == ChatFolderDisplayMode.tabs &&
-                    _model.filters.length > 1)
-                  _chatFolderTabs(),
-                Expanded(child: _chatList()),
-              ],
-            ),
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Container(
+          color: c.background,
+          child: Column(
+            children: [
+              _header(),
+              if (folderMode == ChatFolderDisplayMode.tabs &&
+                  _model.filters.length > 1)
+                _chatFolderTabs(),
+              Expanded(
+                child: Listener(
+                  behavior: HitTestBehavior.translucent,
+                  onPointerDown: _handleGesturePointerDown,
+                  onPointerMove: _handleGesturePointerMove,
+                  onPointerUp: _handleGesturePointerUp,
+                  onPointerCancel: _handleGesturePointerCancel,
+                  child: _chatList(),
+                ),
+              ),
+            ],
           ),
-          _plusMenuOverlay(visible: _showPlusMenu),
-          _filterMenuOverlay(
-            visible:
-                folderMode == ChatFolderDisplayMode.menu && _showFilterMenu,
-          ),
-        ],
-      ),
+        ),
+        _plusMenuOverlay(visible: _showPlusMenu),
+        _filterMenuOverlay(
+          visible: folderMode == ChatFolderDisplayMode.menu && _showFilterMenu,
+        ),
+      ],
     );
   }
 
-  Offset _gestureCentroid() {
-    var dx = 0.0;
-    var dy = 0.0;
-    for (final position in _gesturePointers.values) {
-      dx += position.dx;
-      dy += position.dy;
-    }
-    return Offset(dx / _gesturePointers.length, dy / _gesturePointers.length);
-  }
-
   void _handleGesturePointerDown(PointerDownEvent event) {
-    _gesturePointers[event.pointer] = event.position;
-    if (_gesturePointers.length == 2 || _gesturePointers.length == 3) {
-      // Restart when another finger joins. This prevents the first few pixels
-      // of a three-finger account gesture from being mistaken for a folder
-      // change while the third finger is still landing.
-      _multiFingerSwipeCount = _gesturePointers.length;
-      _multiFingerSwipeOrigin = _gestureCentroid();
-      _multiFingerSwipeHandled = false;
-    } else if (_gesturePointers.length > 3) {
-      _multiFingerSwipeOrigin = null;
-      _multiFingerSwipeCount = 0;
+    final wasSuppressingRows = _chatListSwipeSession.suppressRowSwipes;
+    final tracked = _chatListSwipeSession.pointerDown(
+      pointer: event.pointer,
+      position: event.position,
+      kind: event.kind,
+      mode: context.read<ThemeController>().chatListSwipeMode,
+    );
+    if (tracked &&
+        wasSuppressingRows != _chatListSwipeSession.suppressRowSwipes) {
+      setState(() {});
     }
   }
 
   void _handleGesturePointerMove(PointerMoveEvent event) {
-    if (!_gesturePointers.containsKey(event.pointer)) return;
-    _gesturePointers[event.pointer] = event.position;
-    final origin = _multiFingerSwipeOrigin;
-    if ((_gesturePointers.length != 2 && _gesturePointers.length != 3) ||
-        _gesturePointers.length != _multiFingerSwipeCount ||
-        origin == null ||
-        _multiFingerSwipeHandled) {
-      return;
-    }
-    final delta = _gestureCentroid() - origin;
-    final action = chatListMultiFingerSwipeAction(
-      pointerCount: _multiFingerSwipeCount,
-      delta: delta,
+    _chatListSwipeSession.pointerMove(
+      pointer: event.pointer,
+      position: event.position,
     );
-    if (action == ChatListMultiFingerSwipeAction.none) return;
-    _multiFingerSwipeHandled = true;
-    switch (action) {
-      case ChatListMultiFingerSwipeAction.switchFolders:
-        _switchFolderBySwipe(delta.dx < 0 ? -1000 : 1000);
-      case ChatListMultiFingerSwipeAction.switchAccounts:
-        _switchAccountBySwipe(delta.dx);
-      case ChatListMultiFingerSwipeAction.none:
-        return;
-    }
   }
 
-  void _handleGesturePointerEnd(PointerEvent event) {
-    _gesturePointers.remove(event.pointer);
-    if (_gesturePointers.length < _multiFingerSwipeCount) {
-      _multiFingerSwipeOrigin = null;
-      _multiFingerSwipeCount = 0;
-      _multiFingerSwipeHandled = false;
+  void _handleGesturePointerUp(PointerUpEvent event) {
+    _handleGesturePointerEnd(event, canceled: false);
+  }
+
+  void _handleGesturePointerCancel(PointerCancelEvent event) {
+    _handleGesturePointerEnd(event, canceled: true);
+  }
+
+  void _handleGesturePointerEnd(PointerEvent event, {required bool canceled}) {
+    final wasSuppressingRows = _chatListSwipeSession.suppressRowSwipes;
+    final decision = _chatListSwipeSession.pointerEnd(
+      pointer: event.pointer,
+      position: event.position,
+      currentMode: context.read<ThemeController>().chatListSwipeMode,
+      canceled: canceled,
+    );
+    if (wasSuppressingRows != _chatListSwipeSession.suppressRowSwipes) {
+      setState(() {});
+    }
+    switch (decision?.action) {
+      case ChatListSwipeAction.switchFolders:
+        _switchFolderBySwipe(decision!.horizontalDelta < 0 ? -1000 : 1000);
+      case ChatListSwipeAction.switchAccounts:
+        _switchAccountBySwipe(decision!.horizontalDelta);
+      case ChatListSwipeAction.none:
+      case null:
+        return;
     }
   }
 
@@ -1485,6 +1633,10 @@ class _ChatListViewState extends State<ChatListView>
 
   void _switchFolderBySwipe(double? velocity) {
     if (velocity == null || velocity.abs() < 240) return;
+    if (context.read<ThemeController>().chatFolderDisplayMode ==
+        ChatFolderDisplayMode.hidden) {
+      return;
+    }
     final filters = _model.filters;
     if (filters.length < 2) return;
     final current = filters.indexWhere(
@@ -1540,6 +1692,7 @@ class _ChatListViewState extends State<ChatListView>
   }
 
   Widget _swipeRow(ChatSummary chat) {
+    final swipeMode = context.watch<ThemeController>().chatListSwipeMode;
     final actions = chat.isPinned
         ? [
             SwipeActionItem(
@@ -1582,6 +1735,10 @@ class _ChatListViewState extends State<ChatListView>
       onOpenChanged: (id) => setState(() => _openSwipeChat = id),
       onTap: () => _openChat(chat),
       onLongPress: () => _showChatPreview(chat),
+      horizontalSwipeEnabled: chatListRowSwipeActionsEnabled(
+        mode: swipeMode,
+        multiTouchActive: _chatListSwipeSession.suppressRowSwipes,
+      ),
       actions: actions,
       child: ChatRowView(
         chat: chat,
@@ -1599,6 +1756,12 @@ class _ChatListViewState extends State<ChatListView>
         context,
         chat: chat,
         actions: [
+          if (chatListPreviewSupportsQuickReply(chat))
+            ChatListPreviewAction(
+              label: AppStringKeys.chatInputBarReply,
+              icon: HeroAppIcons.reply,
+              onSelected: () => unawaited(_openChat(chat, focusComposer: true)),
+            ),
           ChatListPreviewAction(
             label: AppStringKeys.linkHandlerOpenChat,
             icon: HeroAppIcons.message,
@@ -2209,6 +2372,7 @@ class ChatSwipeRow extends StatefulWidget {
     required this.child,
     this.onLongPress,
     this.requiresLongPressDrag = false,
+    this.horizontalSwipeEnabled = true,
   });
 
   final int rowId;
@@ -2219,6 +2383,7 @@ class ChatSwipeRow extends StatefulWidget {
   final Widget child;
   final VoidCallback? onLongPress;
   final bool requiresLongPressDrag;
+  final bool horizontalSwipeEnabled;
 
   @override
   State<ChatSwipeRow> createState() => _ChatSwipeRowState();
@@ -2256,8 +2421,20 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
   @override
   void didUpdateWidget(ChatSwipeRow old) {
     super.didUpdateWidget(old);
-    // Another row opened — snap this one shut.
-    if (widget.openRowId != widget.rowId && _offset != 0) {
+    final horizontalSwipeWasDisabled =
+        old.horizontalSwipeEnabled && !widget.horizontalSwipeEnabled;
+    if (horizontalSwipeWasDisabled && widget.openRowId == widget.rowId) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted &&
+            !widget.horizontalSwipeEnabled &&
+            widget.openRowId == widget.rowId) {
+          widget.onOpenChanged(null);
+        }
+      });
+    }
+    // Snap shut when horizontal actions are disabled or another row opens.
+    if (_offset != 0 &&
+        (horizontalSwipeWasDisabled || widget.openRowId != widget.rowId)) {
       _animateTo(0);
     }
   }
@@ -2339,6 +2516,8 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
 
   @override
   Widget build(BuildContext context) {
+    final horizontalDragEnabled =
+        widget.horizontalSwipeEnabled && !widget.requiresLongPressDrag;
     return ClipRect(
       child: Stack(
         children: [
@@ -2412,10 +2591,10 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
                     _settle(details.velocity.pixelsPerSecond.dx);
                   }
                 },
-                onHorizontalDragStart: widget.requiresLongPressDrag
+                onHorizontalDragStart: !horizontalDragEnabled
                     ? null
                     : (_) => _stopAnimation(),
-                onHorizontalDragUpdate: widget.requiresLongPressDrag
+                onHorizontalDragUpdate: !horizontalDragEnabled
                     ? null
                     : (details) {
                         setState(
@@ -2424,7 +2603,7 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
                           ),
                         );
                       },
-                onHorizontalDragEnd: widget.requiresLongPressDrag
+                onHorizontalDragEnd: !horizontalDragEnabled
                     ? null
                     : (details) => _settle(details.primaryVelocity ?? 0),
                 child: widget.child,

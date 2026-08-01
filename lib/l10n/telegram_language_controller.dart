@@ -897,7 +897,6 @@ const _telegramKeyForAppKey = <String, String>{
   AppStringKeys.messageBubbleCallMissed: 'CallMessageIncomingMissed',
   AppStringKeys.messageBubbleCallNoAnswer: 'CallMessageIncomingMissed',
   AppStringKeys.messageBubbleCollapse: 'PollCollapse',
-  AppStringKeys.messageBubbleForwardedFrom: 'ForwardedFrom',
   AppStringKeys.messageBubbleTranslating: 'TranslateMessage',
   AppStringKeys.messageRepliesEmpty: 'NoReplies',
   AppStringKeys.messageRepliesTitle: 'RepliesTitle',

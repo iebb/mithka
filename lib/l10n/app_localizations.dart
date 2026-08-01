@@ -366,6 +366,9 @@ abstract final class AppStringKeys {
   static const aiReplyUnavailable = 'aiReplyUnavailable';
   static const aiReplyUseReply = 'aiReplyUseReply';
   static const aiReplyUsing = 'aiReplyUsing';
+  static const aiReplyPrompts = 'aiReplyPrompts';
+  static const aiTranslatePrompts = 'aiTranslatePrompts';
+  static const aiSummarizePrompts = 'aiSummarizePrompts';
   static const aiTestFailed = 'aiTestFailed';
   static const aiTestModel = 'aiTestModel';
   static const aiTestPrompt = 'aiTestPrompt';
@@ -431,11 +434,15 @@ abstract final class AppStringKeys {
   static const appearanceFontUnused = 'appearanceFontUnused';
   static const appearanceGoogleDownloaded = 'appearanceGoogleDownloaded';
   static const gesturesChatActions = 'gesturesChatActions';
+  static const gesturesChatActionsModeDescription =
+      'gesturesChatActionsModeDescription';
   static const gesturesChatListSwipe = 'gesturesChatListSwipe';
   static const gesturesDoNothing = 'gesturesDoNothing';
   static const gesturesHoldSwipeActions = 'gesturesHoldSwipeActions';
   static const gesturesSwitchAccounts = 'gesturesSwitchAccounts';
   static const gesturesSwitchFolders = 'gesturesSwitchFolders';
+  static const gesturesSwitchFoldersModeDescription =
+      'gesturesSwitchFoldersModeDescription';
   static const gesturesThreeFingerSwipe = 'gesturesThreeFingerSwipe';
   static const appearanceGroupAssistantPosition =
       'appearanceGroupAssistantPosition';
@@ -1752,6 +1759,7 @@ abstract final class AppStringKeys {
   static const momentsLikeFailed = 'momentsLikeFailed';
   static const momentsLoadingPosts = 'momentsLoadingPosts';
   static const momentsMore = 'momentsMore';
+  static const momentsMusic = 'momentsMusic';
   static const momentsNewPostsCount = 'momentsNewPostsCount';
   static const momentsNoChannelContent = 'momentsNoChannelContent';
   static const momentsNoComments = 'momentsNoComments';

@@ -236,6 +236,33 @@ void main() {
     );
     expect(find.text('Mithka Users'), findsOneWidget);
     expect(find.text('Jennie: See you in the chat'), findsOneWidget);
+    final swipeSettings = find.byKey(
+      const ValueKey('chat-list-swipe-settings-row'),
+    );
+    expect(swipeSettings, findsOneWidget);
+    await tester.ensureVisible(swipeSettings);
+    await tester.tap(swipeSettings);
+    await tester.pumpAndSettle();
+    expect(find.byType(ChatListGestureSettingsView), findsOneWidget);
+    expect(
+      find.text(
+        '1 finger: chat actions · 2 fingers: folders · 3 fingers: accounts',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.text('1 finger: folders · 3 fingers: accounts'),
+      findsOneWidget,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('chat-list-swipe-mode-switchFolders')),
+    );
+    await tester.pump();
+    expect(controller.chatListSwipeMode, ChatListSwipeMode.switchFolders);
+    tester.state<NavigatorState>(find.byType(Navigator).first).pop();
+    await tester.pumpAndSettle();
+    expect(find.byType(ChatListAppearanceSettingsView), findsOneWidget);
+    expect(find.text('Switch folders'), findsOneWidget);
     controller.showChatListSearch = false;
     await tester.pump();
     await returnToInterface();

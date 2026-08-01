@@ -337,15 +337,13 @@ class _MomentsViewState extends State<MomentsView> {
                       _menuRow(
                         icon: HeroAppIcons.music.data,
                         iconColor: const Color(0xFFFF8A2A),
-                        title: AppStrings.t(AppStringKeys.profileDetailMusic),
+                        title: AppStrings.t(AppStringKeys.momentsMusic),
                         onTap: () => _openDetail(
                           SharedMediaView(
                             chatId: 0,
-                            title: AppStrings.t(
-                              AppStringKeys.profileDetailMusic,
-                            ),
+                            title: AppStrings.t(AppStringKeys.momentsMusic),
                             initialTab: 5,
-                            displayTitle: AppStringKeys.profileDetailMusic,
+                            displayTitle: AppStringKeys.momentsMusic,
                             lockedTab: true,
                           ),
                         ),

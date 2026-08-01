@@ -118,6 +118,25 @@ enum ChatFolderDisplayMode {
   IconData get icon => _icon.data;
 }
 
+enum ChatListSwipeMode {
+  chatActions(
+    AppStringKeys.gesturesChatActions,
+    AppStringKeys.gesturesChatActionsModeDescription,
+    HeroAppIcons.message,
+  ),
+  switchFolders(
+    AppStringKeys.gesturesSwitchFolders,
+    AppStringKeys.gesturesSwitchFoldersModeDescription,
+    HeroAppIcons.folder,
+  );
+
+  const ChatListSwipeMode(this.label, this.description, this.icon);
+
+  final String label;
+  final String description;
+  final AppIconData icon;
+}
+
 enum NameColorAudience {
   premium(AppStringKeys.appearanceNameColorPremium, HeroAppIcons.star),
   allUsers(AppStringKeys.appearanceNameColorAllUsers, HeroAppIcons.users),
@@ -964,6 +983,31 @@ class ThemeController extends ChangeNotifier {
             : ChatFolderDisplayMode.hidden;
       },
     );
+    final storedChatListSwipeMode = _prefs.getString(_chatListSwipeModeKey);
+    final hasStoredChatListSwipeMode = ChatListSwipeMode.values.any(
+      (mode) => mode.name == storedChatListSwipeMode,
+    );
+    _chatListSwipeMode = ChatListSwipeMode.values.firstWhere(
+      (mode) => mode.name == storedChatListSwipeMode,
+      orElse: () {
+        final legacyBehavior = _prefs.getString(
+          _legacyChatListSwipeBehaviorKey,
+        );
+        final legacySwitchesFolders =
+            legacyBehavior == ChatListSwipeMode.switchFolders.name ||
+            (legacyBehavior == null &&
+                (_prefs.getBool(_legacyDisableChatListSwipeActionsKey) ??
+                    false) &&
+                (_prefs.getBool(_legacyChatListFolderSwipeSwitchingKey) ??
+                    false));
+        return legacySwitchesFolders
+            ? ChatListSwipeMode.switchFolders
+            : ChatListSwipeMode.chatActions;
+      },
+    );
+    if (!hasStoredChatListSwipeMode) {
+      _prefs.setString(_chatListSwipeModeKey, _chatListSwipeMode.name);
+    }
     _showChatListSearch = _prefs.getBool(_chatListSearchKey) ?? true;
     _hideSidebarPhone = _prefs.getBool(_hideSidebarPhoneKey) ?? false;
     _showMemberTags = _prefs.getBool(_memberTagsKey) ?? false;
@@ -1088,6 +1132,12 @@ class ThemeController extends ChangeNotifier {
   static const _animateAvatarsKey = 'animateAvatars';
   static const _animateStatusEmojiKey = 'animateStatusEmoji';
   static const _chatFolderDisplayModeKey = 'chatFolderDisplayMode';
+  static const _chatListSwipeModeKey = 'chatListSwipeMode.v1';
+  static const _legacyChatListSwipeBehaviorKey = 'chatListSwipeBehavior';
+  static const _legacyDisableChatListSwipeActionsKey =
+      'disableChatListSwipeActions';
+  static const _legacyChatListFolderSwipeSwitchingKey =
+      'chatListFolderSwipeSwitching';
   // Retained only to migrate the former show/hide toggle.
   static const _chatFolderFilterKey = 'showChatFolderFilter';
   static const _chatListSearchKey = 'showChatListSearch';
@@ -1155,6 +1205,7 @@ class ThemeController extends ChangeNotifier {
   late bool _animateAvatars;
   late bool _animateStatusEmoji;
   late ChatFolderDisplayMode _chatFolderDisplayMode;
+  late ChatListSwipeMode _chatListSwipeMode;
   bool _showChatListSearch = true;
   bool _hideSidebarPhone = false;
   bool _showMemberTags = false;
@@ -1487,6 +1538,7 @@ class ThemeController extends ChangeNotifier {
   bool get animateAvatars => _animateAvatars;
   bool get animateStatusEmoji => _animateStatusEmoji;
   ChatFolderDisplayMode get chatFolderDisplayMode => _chatFolderDisplayMode;
+  ChatListSwipeMode get chatListSwipeMode => _chatListSwipeMode;
   bool get showChatListSearch => _showChatListSearch;
   bool get hideSidebarPhone => _hideSidebarPhone;
   bool get showMemberTags => _showMemberTags;
@@ -2022,6 +2074,13 @@ class ThemeController extends ChangeNotifier {
     if (_chatFolderDisplayMode == value) return;
     _chatFolderDisplayMode = value;
     _prefs.setString(_chatFolderDisplayModeKey, value.name);
+    notifyListeners();
+  }
+
+  set chatListSwipeMode(ChatListSwipeMode value) {
+    if (_chatListSwipeMode == value) return;
+    _chatListSwipeMode = value;
+    _prefs.setString(_chatListSwipeModeKey, value.name);
     notifyListeners();
   }
 

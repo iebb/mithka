@@ -15,6 +15,11 @@ request directly. In groups, keep participant identities clear and avoid
 unnecessary replies.
 ''';
 
+const defaultAiSummaryPrompt = '''
+Keep the summary concise and practical. Prioritize unanswered questions,
+decisions, concrete next actions, and recent substantial topics.
+''';
+
 enum AiProviderMode {
   applePcc('apple_pcc'),
   appleOnDevice('apple_on_device'),
@@ -315,6 +320,8 @@ class AiSettingsController extends ChangeNotifier {
       'ai.feature.reply.model_candidate.v1';
   static const replyPromptPreferenceKey = 'ai.feature.reply.prompt.v1';
   static const replyPromptMaximumCharacters = 1000;
+  static const summaryPromptPreferenceKey = 'ai.feature.summary.prompt.v1';
+  static const summaryPromptMaximumCharacters = 1000;
   static const applePccModelCandidateId = 'builtin:apple_pcc';
   static const appleOnDeviceModelCandidateId = 'builtin:apple_on_device';
   static const telegramCocoonModelCandidateId = 'builtin:telegram_cocoon';
@@ -343,6 +350,7 @@ class AiSettingsController extends ChangeNotifier {
   String _summaryModelCandidateId = applePccModelCandidateId;
   String _replyModelCandidateId = telegramCocoonModelCandidateId;
   String _replyPrompt = defaultAiReplyPrompt.trim();
+  String _summaryPrompt = defaultAiSummaryPrompt.trim();
   final Map<String, String> _profileApiKeys = {};
   ApplePccCapabilities? _pccCapabilities;
 
@@ -398,6 +406,9 @@ class AiSettingsController extends ChangeNotifier {
   String get aiReplyPrompt => _replyPrompt;
   bool get hasCustomAiReplyPrompt =>
       _replyPrompt != defaultAiReplyPrompt.trim();
+  String get aiSummaryPrompt => _summaryPrompt;
+  bool get hasCustomAiSummaryPrompt =>
+      _summaryPrompt != defaultAiSummaryPrompt.trim();
   AiModelCandidate get translationModelCandidate =>
       modelCandidateByIdForFeature(
         AiFeature.translation,
@@ -553,6 +564,9 @@ class AiSettingsController extends ChangeNotifier {
     );
     _replyPrompt = _normalizeReplyPrompt(
       _preferences.getString(replyPromptPreferenceKey),
+    );
+    _summaryPrompt = _normalizeSummaryPrompt(
+      _preferences.getString(summaryPromptPreferenceKey),
     );
     _serverProviders = _readStoredProviders();
     _modelProfiles = _readStoredModels();
@@ -739,6 +753,21 @@ class AiSettingsController extends ChangeNotifier {
   }
 
   Future<void> resetAiReplyPrompt() => setAiReplyPrompt(defaultAiReplyPrompt);
+
+  Future<void> setAiSummaryPrompt(String value) async {
+    final normalized = _normalizeSummaryPrompt(value);
+    if (_summaryPrompt == normalized) return;
+    _summaryPrompt = normalized;
+    if (normalized == defaultAiSummaryPrompt.trim()) {
+      await _preferences.remove(summaryPromptPreferenceKey);
+    } else {
+      await _preferences.setString(summaryPromptPreferenceKey, normalized);
+    }
+    notifyListeners();
+  }
+
+  Future<void> resetAiSummaryPrompt() =>
+      setAiSummaryPrompt(defaultAiSummaryPrompt);
 
   Future<List<OpenAiCompatibleModelInfo>> discoverModels({
     required String endpoint,
@@ -1440,6 +1469,14 @@ class AiSettingsController extends ChangeNotifier {
     final runes = trimmed.runes.toList(growable: false);
     if (runes.length <= replyPromptMaximumCharacters) return trimmed;
     return String.fromCharCodes(runes.take(replyPromptMaximumCharacters));
+  }
+
+  static String _normalizeSummaryPrompt(String? value) {
+    final trimmed = value?.trim() ?? '';
+    if (trimmed.isEmpty) return defaultAiSummaryPrompt.trim();
+    final runes = trimmed.runes.toList(growable: false);
+    if (runes.length <= summaryPromptMaximumCharacters) return trimmed;
+    return String.fromCharCodes(runes.take(summaryPromptMaximumCharacters));
   }
 
   static String _profileKey(String profileId) =>

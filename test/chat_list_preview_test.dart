@@ -155,6 +155,45 @@ void main() {
     );
   });
 
+  test('quick reply is limited to chats with an unambiguous composer', () {
+    expect(
+      chatListPreviewSupportsQuickReply(_chat()),
+      isTrue,
+    );
+    expect(
+      chatListPreviewSupportsQuickReply(_chat(kind: ChatKind.group)),
+      isTrue,
+    );
+    expect(
+      chatListPreviewSupportsQuickReply(_chat(kind: ChatKind.bot)),
+      isTrue,
+    );
+    expect(
+      chatListPreviewSupportsQuickReply(_chat(kind: ChatKind.secret)),
+      isTrue,
+    );
+    expect(
+      chatListPreviewSupportsQuickReply(_chat(kind: ChatKind.channel)),
+      isFalse,
+    );
+    expect(
+      chatListPreviewSupportsQuickReply(_chat(kind: ChatKind.unknown)),
+      isFalse,
+    );
+    expect(
+      chatListPreviewSupportsQuickReply(
+        _chat(kind: ChatKind.group, isForum: true),
+      ),
+      isFalse,
+    );
+
+    final selection = ChatListSelection.fromChat(
+      _chat(),
+      composerFocusRequestId: 7,
+    );
+    expect(selection.composerFocusRequestId, 7);
+  });
+
   testWidgets('compact preview viewport stays within its constraints', (
     tester,
   ) async {
@@ -417,8 +456,8 @@ void main() {
                   loadMessages: () async => [chat.lastChatMessage!],
                   actions: [
                     ChatListPreviewAction(
-                      label: AppStringKeys.linkHandlerOpenChat,
-                      icon: HeroAppIcons.message,
+                      label: AppStringKeys.chatInputBarReply,
+                      icon: HeroAppIcons.reply,
                       onSelected: () => selected = true,
                     ),
                   ],
@@ -437,10 +476,14 @@ void main() {
       find.byKey(const ValueKey('chat-list-preview-card')),
       findsOneWidget,
     );
-
-    await tester.tap(
-      find.text(AppStrings.t(AppStringKeys.linkHandlerOpenChat)),
+    final actionIcons = find.descendant(
+      of: find.byKey(const ValueKey('chat-list-preview-actions')),
+      matching: find.byType(AppIcon),
     );
+    expect(actionIcons, findsOneWidget);
+    expect(tester.widget<AppIcon>(actionIcons).icon, HeroAppIcons.reply);
+
+    await tester.tap(find.text(AppStrings.t(AppStringKeys.chatInputBarReply)));
     await tester.pumpAndSettle();
 
     expect(selected, isTrue);
@@ -448,7 +491,10 @@ void main() {
   });
 }
 
-ChatSummary _chat({ChatKind kind = ChatKind.privateChat}) => ChatSummary(
+ChatSummary _chat({
+  ChatKind kind = ChatKind.privateChat,
+  bool isForum = false,
+}) => ChatSummary(
   id: 42,
   title: 'Preview chat',
   lastMessage: 'Latest message',
@@ -458,6 +504,7 @@ ChatSummary _chat({ChatKind kind = ChatKind.privateChat}) => ChatSummary(
   order: 1,
   isMuted: false,
   kind: kind,
+  isForum: isForum,
   lastChatMessage: ChatMessage(
     id: 22,
     isOutgoing: true,

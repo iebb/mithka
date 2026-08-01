@@ -10,8 +10,11 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/settings/ai_endpoint_style.dart';
 import 'package:mithka/settings/ai_settings_controller.dart';
 import 'package:mithka/settings/ai_settings_view.dart';
+import 'package:mithka/settings/ai_translation_prompt.dart';
 import 'package:mithka/settings/apple_pcc_api.dart';
 import 'package:mithka/settings/openai_compatible_models_api.dart';
+import 'package:mithka/settings/translation_controller.dart';
+import 'package:mithka/theme/app_theme.dart';
 import 'package:mithka/theme/theme_controller.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -61,8 +64,10 @@ void main() {
       secureRead: (_) async => null,
       secureWrite: (_, value) async => secureKey = value,
     );
+    final translation = TranslationController(preferences);
     final theme = ThemeController(preferences);
     addTearDown(settings.dispose);
+    addTearDown(translation.dispose);
     addTearDown(theme.dispose);
     await settings.initialize();
 
@@ -70,6 +75,7 @@ void main() {
       MultiProvider(
         providers: [
           ChangeNotifierProvider.value(value: settings),
+          ChangeNotifierProvider.value(value: translation),
           ChangeNotifierProvider.value(value: theme),
         ],
         child: const MaterialApp(
@@ -101,6 +107,25 @@ void main() {
     expect(find.text('Translate using'), findsOneWidget);
     expect(find.text('Summarize using'), findsOneWidget);
     expect(find.text(replyUsingLabel), findsOneWidget);
+    final modelConfigurationCard = tester.widget<SettingsCard>(
+      find.ancestor(
+        of: find.byKey(const ValueKey('aiTranslationPromptRow')),
+        matching: find.byType(SettingsCard),
+      ),
+    );
+    expect(
+      modelConfigurationCard.children.whereType<SettingsRow>().map(
+        (row) => row.title,
+      ),
+      [
+        'Translate using',
+        'Translate Prompts',
+        'Summarize using',
+        'Summarize Prompts',
+        replyUsingLabel,
+        'Reply Prompts',
+      ],
+    );
     expect(tester.widget<AppSwitch>(find.byType(AppSwitch)).value, isFalse);
 
     await tester.tap(find.byType(SettingsSwitchRow));
@@ -267,113 +292,204 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
   });
 
-  testWidgets('AI reply prompt editor saves and resets the shared prompt', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(390, 844);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    SharedPreferences.setMockInitialValues({});
-    final preferences = await SharedPreferences.getInstance();
-    final settings = AiSettingsController(
-      preferences,
-      pccApi: ApplePccApi(
-        invokeMethod: (_, _) async => {
-          'sdkAvailable': false,
-          'available': false,
-          'reason': 'unavailable',
-        },
-      ),
-      secureRead: (_) async => null,
-      secureWrite: (_, _) async {},
-    );
-    final theme = ThemeController(preferences);
-    addTearDown(settings.dispose);
-    addTearDown(theme.dispose);
-    await settings.initialize();
-
-    await tester.pumpWidget(
-      MultiProvider(
-        providers: [
-          ChangeNotifierProvider.value(value: settings),
-          ChangeNotifierProvider.value(value: theme),
-        ],
-        child: const MaterialApp(
-          locale: Locale('en'),
-          localizationsDelegates: [
-            AppLocalizations.delegate,
-            GlobalMaterialLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-          ],
-          supportedLocales: AppLocalizations.supportedLocales,
-          home: AiSettingsView(),
+  testWidgets(
+    'AI prompt editors save and reset reply, translation, and summary',
+    (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final settings = AiSettingsController(
+        preferences,
+        pccApi: ApplePccApi(
+          invokeMethod: (_, _) async => {
+            'sdkAvailable': false,
+            'available': false,
+            'reason': 'unavailable',
+          },
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+        secureRead: (_) async => null,
+        secureWrite: (_, _) async {},
+      );
+      final translation = TranslationController(preferences);
+      final theme = ThemeController(preferences);
+      final originalBrand = AppTheme.brand;
+      addTearDown(settings.dispose);
+      addTearDown(translation.dispose);
+      addTearDown(theme.dispose);
+      addTearDown(() => AppTheme.brand = originalBrand);
+      await settings.initialize();
+      AppTheme.brand = Colors.white;
 
-    final promptRow = find.byKey(const ValueKey('aiReplyPromptRow'));
-    expect(promptRow, findsOneWidget);
-    expect(tester.widget<SettingsRow>(promptRow).value, 'Default');
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider.value(value: settings),
+            ChangeNotifierProvider.value(value: translation),
+            ChangeNotifierProvider.value(value: theme),
+          ],
+          child: const MaterialApp(
+            locale: Locale('en'),
+            localizationsDelegates: [
+              AppLocalizations.delegate,
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: AiSettingsView(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    await tester.tap(promptRow);
-    await tester.pumpAndSettle();
-    final promptField = find.byKey(const ValueKey('aiReplyPromptField'));
-    expect(promptField, findsOneWidget);
-    expect(
-      tester.widget<TextField>(promptField).controller!.text,
-      defaultAiReplyPrompt.trim(),
-    );
-    expect(
-      tester.widget<TextField>(promptField).maxLength,
-      AiSettingsController.replyPromptMaximumCharacters,
-    );
+      final replyRow = find.byKey(const ValueKey('aiReplyPromptRow'));
+      final translationRow = find.byKey(
+        const ValueKey('aiTranslationPromptRow'),
+      );
+      final summaryRow = find.byKey(const ValueKey('aiSummaryPromptRow'));
 
-    const customPrompt = 'Reply with a warm tone and preserve emoji.';
-    await tester.enterText(promptField, customPrompt);
-    await tester.scrollUntilVisible(
-      find.text('Save'),
-      220,
-      scrollable: find.byType(Scrollable).last,
-    );
-    await tester.tap(find.text('Save'));
-    await tester.pumpAndSettle();
+      expect(replyRow, findsOneWidget);
+      expect(translationRow, findsOneWidget);
+      expect(summaryRow, findsOneWidget);
+      expect(find.text('Reply Prompts'), findsOneWidget);
+      expect(find.text('Translate Prompts'), findsOneWidget);
+      expect(find.text('Summarize Prompts'), findsOneWidget);
+      expect(tester.widget<SettingsRow>(replyRow).value, 'Default');
+      expect(tester.widget<SettingsRow>(translationRow).value, 'Default');
+      expect(tester.widget<SettingsRow>(summaryRow).value, 'Default');
 
-    expect(settings.aiReplyPrompt, customPrompt);
-    expect(settings.hasCustomAiReplyPrompt, isTrue);
-    expect(
-      preferences.getString(AiSettingsController.replyPromptPreferenceKey),
-      customPrompt,
-    );
-    expect(tester.widget<SettingsRow>(promptRow).value, customPrompt);
+      Future<void> savePrompt({
+        required Finder row,
+        required Key fieldKey,
+        required String expectedDefault,
+        required String customValue,
+        int? maximumCharacters,
+      }) async {
+        await tester.ensureVisible(row);
+        await tester.pumpAndSettle();
+        await tester.tap(row);
+        await tester.pumpAndSettle();
 
-    await tester.tap(promptRow);
-    await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(
-      find.text('Default'),
-      220,
-      scrollable: find.byType(Scrollable).last,
-    );
-    await tester.tap(find.text('Default'));
-    expect(
-      tester
-          .widget<TextField>(find.byKey(const ValueKey('aiReplyPromptField')))
-          .controller!
-          .text,
-      defaultAiReplyPrompt.trim(),
-    );
-    await tester.tap(find.text('Save'));
-    await tester.pumpAndSettle();
+        final field = find.byKey(fieldKey);
+        expect(field, findsOneWidget);
+        expect(
+          tester.widget<TextField>(field).controller!.text,
+          expectedDefault,
+        );
+        expect(tester.widget<TextField>(field).maxLength, maximumCharacters);
+        expect(
+          tester.widget<Text>(find.text('Save')).style?.color,
+          readableForeground(AppTheme.brand),
+        );
 
-    expect(settings.aiReplyPrompt, defaultAiReplyPrompt.trim());
-    expect(settings.hasCustomAiReplyPrompt, isFalse);
-    expect(
-      preferences.containsKey(AiSettingsController.replyPromptPreferenceKey),
-      isFalse,
-    );
-    expect(tester.widget<SettingsRow>(promptRow).value, 'Default');
-    await tester.pump(const Duration(seconds: 2));
-  });
+        await tester.enterText(field, customValue);
+        await tester.scrollUntilVisible(
+          find.text('Save'),
+          220,
+          scrollable: find.byType(Scrollable).last,
+        );
+        await tester.tap(find.text('Save'));
+        await tester.pumpAndSettle();
+        expect(tester.widget<SettingsRow>(row).value, 'Custom');
+      }
+
+      Future<void> resetPrompt({required Finder row}) async {
+        await tester.ensureVisible(row);
+        await tester.pumpAndSettle();
+        await tester.tap(row);
+        await tester.pumpAndSettle();
+        await tester.scrollUntilVisible(
+          find.text('Reset to Default'),
+          220,
+          scrollable: find.byType(Scrollable).last,
+        );
+        await tester.tap(find.text('Reset to Default'));
+        await tester.pumpAndSettle();
+        expect(tester.widget<SettingsRow>(row).value, 'Default');
+      }
+
+      const customReply = 'Reply with a warm tone and preserve emoji.';
+      await savePrompt(
+        row: replyRow,
+        fieldKey: const ValueKey('aiReplyPromptField'),
+        expectedDefault: defaultAiReplyPrompt.trim(),
+        customValue: customReply,
+        maximumCharacters: AiSettingsController.replyPromptMaximumCharacters,
+      );
+      expect(settings.aiReplyPrompt, customReply);
+      expect(settings.hasCustomAiReplyPrompt, isTrue);
+      expect(
+        preferences.getString(AiSettingsController.replyPromptPreferenceKey),
+        customReply,
+      );
+
+      const customTranslation =
+          'Translate casually while preserving emoji and line breaks.';
+      await savePrompt(
+        row: translationRow,
+        fieldKey: const ValueKey('aiTranslationPromptField'),
+        expectedDefault: defaultAiTranslationPrompt.trim(),
+        customValue: customTranslation,
+      );
+      expect(translation.aiTranslationPrompt, customTranslation);
+      expect(translation.hasCustomAiTranslationPrompt, isTrue);
+      expect(
+        preferences.getString(
+          TranslationController.aiTranslationPromptPreferenceKey,
+        ),
+        customTranslation,
+      );
+
+      const customSummary =
+          'Lead with decisions, unanswered questions, and concrete next steps.';
+      await savePrompt(
+        row: summaryRow,
+        fieldKey: const ValueKey('aiSummaryPromptField'),
+        expectedDefault: defaultAiSummaryPrompt.trim(),
+        customValue: customSummary,
+        maximumCharacters: AiSettingsController.summaryPromptMaximumCharacters,
+      );
+      expect(settings.aiSummaryPrompt, customSummary);
+      expect(settings.hasCustomAiSummaryPrompt, isTrue);
+      expect(
+        preferences.getString(AiSettingsController.summaryPromptPreferenceKey),
+        customSummary,
+      );
+
+      await resetPrompt(row: replyRow);
+      expect(settings.aiReplyPrompt, defaultAiReplyPrompt.trim());
+      expect(settings.hasCustomAiReplyPrompt, isFalse);
+      expect(
+        preferences.containsKey(AiSettingsController.replyPromptPreferenceKey),
+        isFalse,
+      );
+
+      await resetPrompt(row: translationRow);
+      expect(
+        translation.aiTranslationPrompt,
+        defaultAiTranslationPrompt.trim(),
+      );
+      expect(translation.hasCustomAiTranslationPrompt, isFalse);
+      expect(
+        preferences.containsKey(
+          TranslationController.aiTranslationPromptPreferenceKey,
+        ),
+        isFalse,
+      );
+
+      await resetPrompt(row: summaryRow);
+      expect(settings.aiSummaryPrompt, defaultAiSummaryPrompt.trim());
+      expect(settings.hasCustomAiSummaryPrompt, isFalse);
+      expect(
+        preferences.containsKey(
+          AiSettingsController.summaryPromptPreferenceKey,
+        ),
+        isFalse,
+      );
+      await tester.pump(const Duration(seconds: 2));
+    },
+  );
 }

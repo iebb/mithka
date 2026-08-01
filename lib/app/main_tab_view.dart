@@ -661,7 +661,8 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
       0 when _selectedMessageChat != null => ValueKey(
         'tablet-message-chat-${_selectedMessageChat!.chatId}-'
         '${_selectedMessageChat!.isForum}-'
-        '${_selectedMessageChat!.initialMessageId ?? 0}',
+        '${_selectedMessageChat!.initialMessageId ?? 0}-'
+        '${_selectedMessageChat!.composerFocusRequestId}',
       ),
       0 => const ValueKey('tablet-message-empty'),
       1 when _selectedChannelDetail != null => ObjectKey(
@@ -712,7 +713,8 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
     final headerColor = context.colors.chatBackground;
     return KeyedSubtree(
       key: ValueKey(
-        'message-detail-${selected.chatId}-${selected.isForum}-${selected.initialMessageId ?? 0}',
+        'message-detail-${selected.chatId}-${selected.isForum}-'
+        '${selected.initialMessageId ?? 0}-${selected.composerFocusRequestId}',
       ),
       child:
           selected.isForum && chat != null && selected.initialMessageId == null
@@ -730,6 +732,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
               headerHeight: headerHeight,
               headerColor: headerColor,
               showHeaderDivider: false,
+              requestComposerFocusOnReady: selected.composerFocusRequestId != 0,
               onBack: () => setState(() => _selectedMessageChat = null),
             ),
     );

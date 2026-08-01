@@ -285,6 +285,7 @@ class ChatInputBar extends StatefulWidget {
     this.onPanelGeometryChanged,
     this.onMediaSendTapped,
     this.gifPreviewBuilder,
+    this.requestInitialFocus = false,
     this.quickRepliesEnabled = true,
     this.quickReplyLoader,
     this.quickReplySender,
@@ -300,6 +301,7 @@ class ChatInputBar extends StatefulWidget {
   final VoidCallback? onMediaSendTapped;
   @visibleForTesting
   final Widget Function(GifItem item)? gifPreviewBuilder;
+  final bool requestInitialFocus;
   final bool quickRepliesEnabled;
   @visibleForTesting
   final Future<List<BusinessQuickReplyShortcut>> Function()? quickReplyLoader;
@@ -391,6 +393,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
   int? _aiReplyWorkingTargetFingerprint;
   _AiReplyContextSnapshot? _aiReplyWorkingContextSnapshot;
   bool _applyingAiReplyDraft = false;
+  bool _initialFocusRequestConsumed = false;
   AiReplyProvider? _activeAiReplyProvider;
   List<AiReplyProgressPhase> _aiReplyProgressPhases = const [];
   bool _aiReplyProgressExpanded = false;
@@ -434,6 +437,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
       _adoptQuickReplyCache(rebuild: false);
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _requestInitialFocusIfReady();
       if (mounted && _canUseQuickReplies) {
         unawaited(_loadQuickReplies(userInitiated: false));
       }
@@ -713,7 +717,26 @@ class _ChatInputBarState extends State<ChatInputBar> {
     _aiDraftEligible = isTelegramAiDraftEligible(_controller.text);
     if (_hasText) _quickReplyContextVisible = false;
     _updateBotCommandSuggestions(force: true, rebuild: false);
+    _requestInitialFocusIfReady();
     if (mounted) setState(() {});
+  }
+
+  void _requestInitialFocusIfReady() {
+    if (_initialFocusRequestConsumed ||
+        !widget.requestInitialFocus ||
+        !vm.initialLoaded) {
+      return;
+    }
+    if (vm.draft != _controller.text) {
+      _controller.value = TextEditingValue(
+        text: vm.draft,
+        selection: TextSelection.collapsed(offset: vm.draft.length),
+      );
+    }
+    _initialFocusRequestConsumed = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focus.requestFocus();
+    });
   }
 
   void _syncQuickReplyCache() => _adoptQuickReplyCache(rebuild: true);
@@ -735,7 +758,11 @@ class _ChatInputBarState extends State<ChatInputBar> {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.vm, widget.vm)) {
       _invalidateAiReplyGeneration(discardGeneratedDraft: true);
+      _initialFocusRequestConsumed = false;
+    } else if (!oldWidget.requestInitialFocus && widget.requestInitialFocus) {
+      _initialFocusRequestConsumed = false;
     }
+    _requestInitialFocusIfReady();
     if (oldWidget.quickRepliesEnabled && !widget.quickRepliesEnabled) {
       _quickReplyContextVisible = false;
     } else if (!oldWidget.quickRepliesEnabled &&

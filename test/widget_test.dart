@@ -128,6 +128,12 @@ class _FocusTestChatViewModel extends ChatViewModel {
     ];
     notifyListeners();
   }
+
+  void completeInitialLoad({String remoteDraft = ''}) {
+    draft = remoteDraft;
+    initialLoaded = true;
+    notifyListeners();
+  }
 }
 
 class _ControlledMediaChatViewModel extends ChatViewModel {
@@ -997,6 +1003,49 @@ void main() {
 
       return (vm, target);
     }
+
+    testWidgets('quick reply focuses only after restoring the remote draft', (
+      tester,
+    ) async {
+      final vm = _FocusTestChatViewModel();
+      addTearDown(vm.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.bottomCenter,
+              child: ChatInputBar(
+                vm: vm,
+                requestInitialFocus: true,
+                onStartCall: (_) {},
+                onMessageSent: () {},
+              ),
+            ),
+          ),
+        ),
+      );
+
+      var field = tester.widget<TextField>(find.byType(TextField));
+      expect(field.focusNode?.hasFocus, isFalse);
+      expect(field.controller?.text, isEmpty);
+
+      vm.completeInitialLoad(remoteDraft: 'Preserved Telegram draft');
+      await tester.pump();
+      await tester.pump();
+
+      field = tester.widget<TextField>(find.byType(TextField));
+      expect(field.controller?.text, 'Preserved Telegram draft');
+      expect(field.focusNode?.hasFocus, isTrue);
+    });
 
     testWidgets('shows AI Reply inside an empty input and inserts its draft', (
       tester,
@@ -3324,6 +3373,20 @@ void main() {
       );
       var isRead = false;
 
+      ({Color color, bool isSending}) indicatorPaint(String statusKey) {
+        final customPaint = tester.widget<CustomPaint>(
+          find.descendant(
+            of: find.byKey(ValueKey(statusKey)),
+            matching: find.byType(CustomPaint),
+          ),
+        );
+        final dynamic painter = customPaint.painter;
+        return (
+          color: painter.color as Color,
+          isSending: painter.isSending as bool,
+        );
+      }
+
       Future<void> pumpBubble() {
         return tester.pumpWidget(
           ChangeNotifierProvider<ThemeController>.value(
@@ -3348,8 +3411,7 @@ void main() {
         find.byKey(const ValueKey('messageDeliverySending')),
         findsOneWidget,
       );
-      expect(find.byKey(const ValueKey('messageDeliveryDot-0')), findsNothing);
-      expect(find.byKey(const ValueKey('messageDeliveryDot-1')), findsNothing);
+      expect(indicatorPaint('messageDeliverySending').isSending, isTrue);
 
       message.isSendAcknowledged = true;
       await pumpBubble();
@@ -3358,39 +3420,36 @@ void main() {
         find.byKey(const ValueKey('messageDeliverySending')),
         findsNothing,
       );
-      expect(
-        find.byKey(const ValueKey('messageDeliveryDot-0')),
-        findsOneWidget,
-      );
-      expect(find.byKey(const ValueKey('messageDeliveryDot-1')), findsNothing);
+      expect(indicatorPaint('messageDeliverySent'), (
+        color: const Color(0xFFFFFFFF),
+        isSending: false,
+      ));
 
       message.isSending = false;
       await pumpBubble();
       expect(find.byKey(const ValueKey('messageDeliverySent')), findsOneWidget);
-      expect(
-        find.byKey(const ValueKey('messageDeliveryDot-0')),
-        findsOneWidget,
-      );
-      expect(find.byKey(const ValueKey('messageDeliveryDot-1')), findsNothing);
+      expect(indicatorPaint('messageDeliverySent'), (
+        color: const Color(0xFFFFFFFF),
+        isSending: false,
+      ));
 
       isRead = true;
       await pumpBubble();
       expect(find.byKey(const ValueKey('messageDeliveryRead')), findsOneWidget);
       expect(find.byKey(const ValueKey('messageDeliverySent')), findsNothing);
-      expect(
-        find.byKey(const ValueKey('messageDeliveryDot-0')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey('messageDeliveryDot-1')),
-        findsOneWidget,
-      );
+      expect(indicatorPaint('messageDeliveryRead'), (
+        color: const Color(0xFF34C759),
+        isSending: false,
+      ));
 
       isRead = false;
       await pumpBubble();
       expect(find.byKey(const ValueKey('messageDeliverySent')), findsOneWidget);
       expect(find.byKey(const ValueKey('messageDeliveryRead')), findsNothing);
-      expect(find.byKey(const ValueKey('messageDeliveryDot-1')), findsNothing);
+      expect(indicatorPaint('messageDeliverySent'), (
+        color: const Color(0xFFFFFFFF),
+        isSending: false,
+      ));
 
       isRead = true;
       message.isEdited = true;
@@ -3423,6 +3482,20 @@ void main() {
       );
       var isRead = false;
 
+      ({Color color, bool isSending}) indicatorPaint(String statusKey) {
+        final customPaint = tester.widget<CustomPaint>(
+          find.descendant(
+            of: find.byKey(ValueKey(statusKey)),
+            matching: find.byType(CustomPaint),
+          ),
+        );
+        final dynamic painter = customPaint.painter;
+        return (
+          color: painter.color as Color,
+          isSending: painter.isSending as bool,
+        );
+      }
+
       Future<void> pumpBubble() => tester.pumpWidget(
         ChangeNotifierProvider<ThemeController>.value(
           value: theme,
@@ -3441,24 +3514,19 @@ void main() {
 
       await pumpBubble();
       expect(find.byKey(const ValueKey('messageDeliverySent')), findsOneWidget);
-      expect(
-        find.byKey(const ValueKey('messageDeliveryDot-0')),
-        findsOneWidget,
-      );
-      expect(find.byKey(const ValueKey('messageDeliveryDot-1')), findsNothing);
+      expect(indicatorPaint('messageDeliverySent'), (
+        color: const Color(0xFFFFFFFF),
+        isSending: false,
+      ));
 
       isRead = true;
       await pumpBubble();
       expect(find.byKey(const ValueKey('messageDeliveryRead')), findsOneWidget);
       expect(find.byKey(const ValueKey('messageDeliverySent')), findsNothing);
-      expect(
-        find.byKey(const ValueKey('messageDeliveryDot-0')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey('messageDeliveryDot-1')),
-        findsOneWidget,
-      );
+      expect(indicatorPaint('messageDeliveryRead'), (
+        color: const Color(0xFF34C759),
+        isSending: false,
+      ));
 
       // Expire the media lookup timeout scheduled by the image placeholder.
       await tester.pump(const Duration(minutes: 3, seconds: 1));

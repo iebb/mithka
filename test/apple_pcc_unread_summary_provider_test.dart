@@ -24,9 +24,10 @@ Map<String, dynamic> _summaryJson() => {
 
 UnreadChatSummaryProviderRequest _request({
   UnreadChatSummaryStage stage = UnreadChatSummaryStage.chunk,
+  String trustedInstructions = unreadChatSummaryTrustedInstructions,
 }) => UnreadChatSummaryProviderRequest(
   stage: stage,
-  trustedInstructions: unreadChatSummaryTrustedInstructions,
+  trustedInstructions: trustedInstructions,
   payload: {
     'stage': 'summarize_chunk',
     'output_language': 'zh-Hans',
@@ -111,6 +112,31 @@ void main() {
       expect(capturedLimits, [700, 1300]);
     },
   );
+
+  test('on-device model honors the request trusted instructions', () async {
+    const selectedInstructions =
+        'FIXED COMPACT RULES: return grounded JSON only.';
+    late Map<String, Object?> captured;
+    final provider = ApplePccUnreadSummaryProvider(
+      api: ApplePccApi(
+        invokeMethod: (_, arguments) async {
+          captured = Map<String, Object?>.from(arguments! as Map);
+          return {
+            'text': jsonEncode(_summaryJson()),
+            'provider': 'apple_on_device',
+          };
+        },
+      ),
+      model: AppleAiModel.onDevice,
+    );
+
+    await provider.complete(
+      _request(trustedInstructions: selectedInstructions),
+    );
+
+    expect(captured['modelMode'], AppleAiModel.onDevice.bridgeValue);
+    expect(captured['instructions'], selectedInstructions);
+  });
 
   test('retries transient PCC service failures', () async {
     var attempts = 0;

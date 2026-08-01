@@ -751,6 +751,7 @@ class ChatView extends StatefulWidget {
     this.showHeaderDivider = true,
     this.headerBottom,
     this.headerBottomHeight = 44,
+    this.requestComposerFocusOnReady = false,
     this.onOpenTopicMode,
     this.onBack,
   });
@@ -764,6 +765,7 @@ class ChatView extends StatefulWidget {
   final bool showHeaderDivider;
   final Widget? headerBottom;
   final double headerBottomHeight;
+  final bool requestComposerFocusOnReady;
   final ValueChanged<int?>? onOpenTopicMode;
   final VoidCallback? onBack;
 
@@ -5674,6 +5676,7 @@ class _ChatViewState extends State<ChatView> {
       pccContextSize: pccContextSize,
       onDeviceContextSize: onDeviceContextSize,
       outputLanguage: outputLanguage,
+      summaryGuidance: settings.aiSummaryPrompt,
     );
     int? messageId;
     try {
@@ -5707,6 +5710,7 @@ class _ChatViewState extends State<ChatView> {
     required int? pccContextSize,
     required int? onDeviceContextSize,
     required String outputLanguage,
+    required String summaryGuidance,
   }) {
     final loader = UnreadChatHistoryLoader(
       query: (accountSlot, request) {
@@ -5717,6 +5721,11 @@ class _ChatViewState extends State<ChatView> {
         return TdClient.shared.queryTo(request, clientId);
       },
     );
+    final guidanceTokenEstimate = estimateUnreadSummaryPromptTokens({
+      'user_guidance': summaryGuidance,
+    });
+    int messagePayloadBudget(int totalPayloadTokens) =>
+        math.max(1, totalPayloadTokens - guidanceTokenEstimate);
 
     switch (candidateKind) {
       case AiModelCandidateKind.telegramCocoon:
@@ -5733,9 +5742,12 @@ class _ChatViewState extends State<ChatView> {
             maxChunkMessages: 180,
             maxChunks: 5,
             maxConcurrentRequests: 1,
-            maxChunkTokenEstimate: tokenBudget.payloadTokens,
+            maxChunkTokenEstimate: messagePayloadBudget(
+              tokenBudget.payloadTokens,
+            ),
             mergeChunkSummariesLocally: true,
             trustedInstructions: unreadChatSummaryCompactTrustedInstructions,
+            summaryGuidance: summaryGuidance,
             providerCode: 'telegram_cocoon',
             contextWindowTokens: contextWindow,
             outputLanguage: outputLanguage,
@@ -5762,8 +5774,12 @@ class _ChatViewState extends State<ChatView> {
             historyLoader: loader,
             maxChunkMessages: 180,
             maxChunks: 5,
-            maxChunkTokenEstimate: math.min(7000, tokenBudget.payloadTokens),
+            maxChunkTokenEstimate: math.min(
+              7000,
+              messagePayloadBudget(tokenBudget.payloadTokens),
+            ),
             mergeChunkSummariesLocally: true,
+            summaryGuidance: summaryGuidance,
             providerCode: 'apple_pcc',
             contextWindowTokens: contextWindow,
             outputLanguage: outputLanguage,
@@ -5794,9 +5810,12 @@ class _ChatViewState extends State<ChatView> {
             maxChunkMessages: 70,
             maxChunks: 4,
             maxConcurrentRequests: 1,
-            maxChunkTokenEstimate: tokenBudget.payloadTokens,
+            maxChunkTokenEstimate: messagePayloadBudget(
+              tokenBudget.payloadTokens,
+            ),
             mergeChunkSummariesLocally: true,
             trustedInstructions: unreadChatSummaryCompactTrustedInstructions,
+            summaryGuidance: summaryGuidance,
             providerCode: 'apple_on_device',
             contextWindowTokens: contextWindow,
             outputLanguage: outputLanguage,
@@ -5841,9 +5860,12 @@ class _ChatViewState extends State<ChatView> {
             maxChunkMessages: 1000000,
             maxChunks: 4,
             maxConcurrentRequests: 4,
-            maxChunkTokenEstimate: tokenBudget.payloadTokens,
+            maxChunkTokenEstimate: messagePayloadBudget(
+              tokenBudget.payloadTokens,
+            ),
             maxChunkTimeGapSeconds: 0,
             trustedInstructions: unreadChatSummaryCompactTrustedInstructions,
+            summaryGuidance: summaryGuidance,
             providerCode: '${endpointStyle.storageValue}/$model',
             contextWindowTokens: contextWindow,
             outputLanguage: outputLanguage,
@@ -5937,6 +5959,7 @@ class _ChatViewState extends State<ChatView> {
           if (_vm.businessBotUserId != 0) _businessBotManageBar(),
           ChatInputBar(
             vm: _vm,
+            requestInitialFocus: widget.requestComposerFocusOnReady,
             quickRepliesEnabled: context
                 .watch<ThemeController>()
                 .quickRepliesEnabled,

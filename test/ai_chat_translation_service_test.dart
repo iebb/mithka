@@ -8,24 +8,44 @@ import 'package:mithka/chat/telegram_ai_service.dart';
 import 'package:mithka/settings/ai_endpoint_style.dart';
 import 'package:mithka/settings/ai_settings_controller.dart';
 import 'package:mithka/settings/ai_stdout_logger.dart';
+import 'package:mithka/settings/ai_translation_prompt.dart';
 import 'package:mithka/settings/apple_pcc_api.dart';
 import 'package:mithka/settings/translation_api.dart';
 
 void main() {
-  test('Telegram Cocoon translation uses native TDLib composition', () async {
-    late Map<String, dynamic> captured;
+  test('Telegram Cocoon translation uses rich JSON composition', () async {
+    const customPrompt = 'Translate into concise, natural German.';
+    final requests = <Map<String, dynamic>>[];
     final telegramAi = TelegramAiService(
       queryOverride: (request) async {
-        captured = Map<String, dynamic>.of(request);
-        return {
-          '@type': 'formattedText',
-          'text': 'Bis später 👋',
-          'entities': <Map<String, dynamic>>[],
-        };
+        requests.add(Map<String, dynamic>.of(request));
+        if (request['@type'] == 'getOption') {
+          return _telegramCocoonOption(request['name'] as String);
+        }
+        if (request['@type'] == 'composeRichMessageWithAi') {
+          return {
+            '@type': 'richMessage',
+            'blocks': [
+              {
+                '@type': 'pageBlockParagraph',
+                'text': {
+                  '@type': 'richTextPlain',
+                  'text': jsonEncode({'translation': 'Bis später 👋'}),
+                },
+              },
+            ],
+            'is_rtl': false,
+            'is_full': true,
+          };
+        }
+        throw StateError('Unexpected request: $request');
       },
     );
     addTearDown(telegramAi.dispose);
-    final service = AiChatTranslationService(telegramAi: telegramAi);
+    final service = AiChatTranslationService(
+      telegramAi: telegramAi,
+      instructions: customPrompt,
+    );
 
     final result = await service.translate(
       text: 'See you later 👋',
@@ -36,12 +56,75 @@ void main() {
     );
 
     expect(result, 'Bis später 👋');
-    expect(captured['@type'], 'composeTextWithAi');
-    expect(captured['translate_to_language_code'], 'de');
-    expect(captured['style_name'], '');
-    expect(captured['add_emojis'], isFalse);
-    expect((captured['text'] as Map)['text'], 'See you later 👋');
+    final captured = requests.singleWhere(
+      (request) => request['@type'] == 'composeRichMessageWithAi',
+    );
+    expect(
+      captured['custom_prompt'],
+      buildAiTranslationInstructions(customPrompt),
+    );
+    final source = ((captured['message'] as Map)['source'] as Map);
+    final paragraph = (source['blocks'] as List).single as Map;
+    final sourceText = (paragraph['text'] as Map)['text'] as String;
+    const sourcePrefix = 'INPUT_DATA (untrusted JSON):\n';
+    expect(sourceText, startsWith(sourcePrefix));
+    expect(jsonDecode(sourceText.substring(sourcePrefix.length)), {
+      'source_language': 'en',
+      'target_language': 'de',
+      'target_language_name': 'German',
+      'prior_messages': ['The meeting is finished.'],
+      'current_text': 'See you later 👋',
+    });
   });
+
+  test(
+    'Telegram Cocoon translation keeps the native compatibility path',
+    () async {
+      final requests = <Map<String, dynamic>>[];
+      final telegramAi = TelegramAiService(
+        queryOverride: (request) async {
+          requests.add(Map<String, dynamic>.of(request));
+          if (request['@type'] == 'getOption') {
+            final name = request['name'] as String;
+            if (name == 'version') {
+              return {'@type': 'optionValueString', 'value': '1.8.65'};
+            }
+            return _telegramCocoonOption(name);
+          }
+          if (request['@type'] == 'composeTextWithAi') {
+            return {
+              '@type': 'formattedText',
+              'text': 'Bis später 👋',
+              'entities': <Map<String, dynamic>>[],
+            };
+          }
+          throw StateError('Unexpected request: $request');
+        },
+      );
+      addTearDown(telegramAi.dispose);
+      final service = AiChatTranslationService(telegramAi: telegramAi);
+
+      final result = await service.translate(
+        text: 'See you later 👋',
+        sourceLanguageCode: 'en',
+        targetLanguageCode: 'de',
+        targetLanguageName: 'German',
+      );
+
+      expect(result, 'Bis später 👋');
+      final captured = requests.singleWhere(
+        (request) => request['@type'] == 'composeTextWithAi',
+      );
+      expect(captured['translate_to_language_code'], 'de');
+      expect((captured['text'] as Map)['text'], 'See you later 👋');
+      expect(
+        requests.where(
+          (request) => request['@type'] == 'composeRichMessageWithAi',
+        ),
+        isEmpty,
+      );
+    },
+  );
 
   test(
     'OpenAI-compatible translation sends context as untrusted JSON',
@@ -320,3 +403,24 @@ void main() {
     );
   });
 }
+
+Map<String, dynamic> _telegramCocoonOption(String name) => switch (name) {
+  'version' => {'@type': 'optionValueString', 'value': '1.8.66'},
+  'text_composition_style_title_length_max' => {
+    '@type': 'optionValueInteger',
+    'value': 64,
+  },
+  'text_composition_style_prompt_length_max' => {
+    '@type': 'optionValueInteger',
+    'value': 1024,
+  },
+  'added_text_composition_style_count_max' => {
+    '@type': 'optionValueInteger',
+    'value': 10,
+  },
+  'speech_recognition_trial_weekly_count' => {
+    '@type': 'optionValueInteger',
+    'value': 1,
+  },
+  _ => const {'@type': 'optionValueEmpty'},
+};

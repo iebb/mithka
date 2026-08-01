@@ -1343,6 +1343,7 @@ class _MessageBubbleState extends State<MessageBubble>
     String text,
     bool outgoing, {
     bool includeForwardHeader = true,
+    bool includeReplyQuote = true,
   }) {
     final c = context.colors;
     final baseColor = outgoing ? _outgoingTextColor : _incomingTextColor;
@@ -1385,7 +1386,7 @@ class _MessageBubbleState extends State<MessageBubble>
             _forwardHeader(outgoing),
             const SizedBox(height: 3),
           ],
-          if (message.replyToPreview != null) ...[
+          if (includeReplyQuote && message.replyToPreview != null) ...[
             _replyQuote(outgoing),
             const SizedBox(height: 5),
           ],
@@ -3347,7 +3348,6 @@ class _MessageBubbleState extends State<MessageBubble>
     List<MessageTextEntity> entities,
     double fontSize,
   ) {
-    final c = context.colors;
     final key = '${quote.offset}:${quote.length}';
     final expanded =
         !quote.isExpandableBlockQuote || _expandedQuotes.contains(key);
@@ -3366,7 +3366,7 @@ class _MessageBubbleState extends State<MessageBubble>
           : null,
       child: Container(
         decoration: BoxDecoration(
-          color: c.searchFill.withValues(alpha: 0.65),
+          color: base.withValues(alpha: 0.07),
           borderRadius: BorderRadius.circular(6),
           border: Border(left: BorderSide(color: AppTheme.brand, width: 3)),
         ),
@@ -4013,10 +4013,15 @@ class _MessageBubbleState extends State<MessageBubble>
     required bool outgoing,
   }) {
     final hasForwardHeader = message.forwardOrigin?.trim().isNotEmpty ?? false;
+    final hasReplyQuote = message.replyToPreview != null;
     if (!_groupsMediaCaption(caption)) {
-      final attributedMedia = hasForwardHeader
+      final attributedMedia = hasForwardHeader || hasReplyQuote
           ? _bubbleBackground(
-              key: ValueKey('messageForwardedMedia-${message.id}'),
+              key: ValueKey(
+                hasForwardHeader
+                    ? 'messageForwardedMedia-${message.id}'
+                    : 'messageRepliedMedia-${message.id}',
+              ),
               outgoing: outgoing,
               constraints: BoxConstraints(maxWidth: _mediaMaxWidth()),
               padding: EdgeInsets.zero,
@@ -4025,10 +4030,21 @@ class _MessageBubbleState extends State<MessageBubble>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(10, 7, 10, 6),
-                    child: _forwardHeader(outgoing),
-                  ),
+                  if (hasForwardHeader)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(10, 7, 10, 6),
+                      child: _forwardHeader(outgoing),
+                    ),
+                  if (hasReplyQuote)
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        6,
+                        hasForwardHeader ? 0 : 6,
+                        6,
+                        6,
+                      ),
+                      child: _replyQuote(outgoing),
+                    ),
                   media,
                 ],
               ),
@@ -4047,6 +4063,7 @@ class _MessageBubbleState extends State<MessageBubble>
               caption,
               outgoing,
               includeForwardHeader: !hasForwardHeader,
+              includeReplyQuote: false,
             ),
           ],
         ],
@@ -4071,6 +4088,11 @@ class _MessageBubbleState extends State<MessageBubble>
             Padding(
               padding: const EdgeInsets.fromLTRB(10, 7, 10, 6),
               child: _forwardHeader(outgoing),
+            ),
+          if (hasReplyQuote)
+            Padding(
+              padding: EdgeInsets.fromLTRB(6, hasForwardHeader ? 0 : 6, 6, 6),
+              child: _replyQuote(outgoing),
             ),
           media,
           Padding(
@@ -5052,46 +5074,27 @@ class _MessageDeliveryIndicatorState extends State<_MessageDeliveryIndicator>
   }
 
   @override
-  Widget build(BuildContext context) {
-    if (!widget.isSending) {
-      final diameter = widget.size * 0.36;
-      Widget dot(int index) => Container(
-        key: ValueKey('messageDeliveryDot-$index'),
-        width: diameter,
-        height: diameter,
-        decoration: const BoxDecoration(
-          color: Color(0xFF34C759),
-          shape: BoxShape.circle,
-        ),
-      );
-      return SizedBox.square(
-        key: ValueKey(
-          widget.isRead ? 'messageDeliveryRead' : 'messageDeliverySent',
-        ),
-        dimension: widget.size,
-        child: Center(
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              dot(0),
-              if (widget.isRead) ...[SizedBox(width: diameter * 0.75), dot(1)],
-            ],
-          ),
-        ),
-      );
-    }
-    return SizedBox.square(
-      key: const ValueKey('messageDeliverySending'),
-      dimension: widget.size,
-      child: CustomPaint(
-        painter: _MessageDeliveryPainter(
-          rotation: _controller,
-          isSending: true,
-          color: widget.pendingColor.withValues(alpha: 0.72),
-        ),
+  Widget build(BuildContext context) => SizedBox.square(
+    key: ValueKey(
+      widget.isSending
+          ? 'messageDeliverySending'
+          : widget.isRead
+          ? 'messageDeliveryRead'
+          : 'messageDeliverySent',
+    ),
+    dimension: widget.size,
+    child: CustomPaint(
+      painter: _MessageDeliveryPainter(
+        rotation: _controller,
+        isSending: widget.isSending,
+        color: widget.isSending
+            ? widget.pendingColor.withValues(alpha: 0.72)
+            : widget.isRead
+            ? const Color(0xFF34C759)
+            : const Color(0xFFFFFFFF),
       ),
-    );
-  }
+    ),
+  );
 }
 
 class _MessageDeliveryPainter extends CustomPainter {

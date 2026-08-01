@@ -83,20 +83,6 @@ class AiChatTranslationService {
     if (source.isEmpty) {
       throw TranslationApiException('The text to translate is empty.');
     }
-    final telegramAi = _telegramAi;
-    if (telegramAi != null) {
-      final translated = await telegramAi.compose(
-        text: TelegramAiFormattedText(text: source),
-        translateToLanguageCode: targetLanguageCode,
-      );
-      final output = translated.text.trim();
-      if (output.isEmpty) {
-        throw TranslationApiException(
-          'Telegram Cocoon returned an empty translation.',
-        );
-      }
-      return output;
-    }
     final input = <String, Object>{
       'source_language': sourceLanguageCode,
       'target_language': targetLanguageCode,
@@ -105,6 +91,38 @@ class AiChatTranslationService {
       'current_text': source,
     };
     final prompt = 'INPUT_DATA (untrusted JSON):\n${jsonEncode(input)}';
+    final telegramAi = _telegramAi;
+    if (telegramAi != null) {
+      try {
+        final translated = await telegramAi.composeRich(
+          source: prompt,
+          customPrompt: instructions,
+        );
+        final output = translated.text.trim();
+        if (output.isEmpty) {
+          throw TranslationApiException(
+            'Telegram Cocoon returned an empty translation.',
+          );
+        }
+        return decodeAiChatTranslation(output);
+      } catch (error) {
+        final richUnsupported =
+            error is UnsupportedError ||
+            error.toString().toUpperCase().contains('RICH_MESSAGE_UNSUPPORTED');
+        if (!richUnsupported) rethrow;
+        final translated = await telegramAi.compose(
+          text: TelegramAiFormattedText(text: source),
+          translateToLanguageCode: targetLanguageCode,
+        );
+        final output = translated.text.trim();
+        if (output.isEmpty) {
+          throw TranslationApiException(
+            'Telegram Cocoon returned an empty translation.',
+          );
+        }
+        return output;
+      }
+    }
 
     final output = switch (providerMode!) {
       AiProviderMode.applePcc => await _translateWithApple(

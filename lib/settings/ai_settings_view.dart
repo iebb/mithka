@@ -12,7 +12,9 @@ import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'ai_endpoint_style.dart';
 import 'ai_settings_controller.dart';
+import 'ai_translation_prompt.dart';
 import 'openai_compatible_models_api.dart';
+import 'translation_controller.dart';
 
 class AiSettingsView extends StatefulWidget {
   const AiSettingsView({super.key});
@@ -38,6 +40,7 @@ class _AiSettingsViewState extends State<AiSettingsView> {
   Widget build(BuildContext context) {
     final c = context.colors;
     final settings = context.watch<AiSettingsController>();
+    final translation = context.watch<TranslationController>();
     return Scaffold(
       backgroundColor: c.groupedBackground,
       body: Column(
@@ -142,6 +145,30 @@ class _AiSettingsViewState extends State<AiSettingsView> {
                               color: const Color(0xFF16A085),
                             ),
                             const InsetDivider(leadingInset: 56),
+                            SettingsRow(
+                              key: const ValueKey('aiTranslationPromptRow'),
+                              title: AppStringKeys.aiTranslatePrompts.l10n(
+                                context,
+                              ),
+                              value: translation.hasCustomAiTranslationPrompt
+                                  ? AppStringKeys
+                                        .translationSettingsAiPromptCustom
+                                        .l10n(context)
+                                  : AppStringKeys.editProfileDefault.l10n(
+                                      context,
+                                    ),
+                              leading: const SettingsIconTile(
+                                icon: HeroAppIcons.language,
+                                backgroundColor: Color(0xFF16A085),
+                              ),
+                              onTap: () => _push(
+                                context,
+                                AiTranslationPromptEditorView(
+                                  translation: translation,
+                                ),
+                              ),
+                            ),
+                            const InsetDivider(leadingInset: 56),
                             _featureModelRow(
                               context,
                               settings: settings,
@@ -151,6 +178,28 @@ class _AiSettingsViewState extends State<AiSettingsView> {
                               ),
                               icon: HeroAppIcons.listCheck,
                               color: const Color(0xFF7467F0),
+                            ),
+                            const InsetDivider(leadingInset: 56),
+                            SettingsRow(
+                              key: const ValueKey('aiSummaryPromptRow'),
+                              title: AppStringKeys.aiSummarizePrompts.l10n(
+                                context,
+                              ),
+                              value: settings.hasCustomAiSummaryPrompt
+                                  ? AppStringKeys
+                                        .translationSettingsAiPromptCustom
+                                        .l10n(context)
+                                  : AppStringKeys.editProfileDefault.l10n(
+                                      context,
+                                    ),
+                              leading: const SettingsIconTile(
+                                icon: HeroAppIcons.listCheck,
+                                backgroundColor: Color(0xFF7467F0),
+                              ),
+                              onTap: () => _push(
+                                context,
+                                AiSummaryPromptEditorView(settings: settings),
+                              ),
                             ),
                             const InsetDivider(leadingInset: 56),
                             _featureModelRow(
@@ -164,11 +213,11 @@ class _AiSettingsViewState extends State<AiSettingsView> {
                             const InsetDivider(leadingInset: 56),
                             SettingsRow(
                               key: const ValueKey('aiReplyPromptRow'),
-                              title: AppStringKeys.aiReplyGuidance.l10n(
-                                context,
-                              ),
+                              title: AppStringKeys.aiReplyPrompts.l10n(context),
                               value: settings.hasCustomAiReplyPrompt
-                                  ? settings.aiReplyPrompt.replaceAll('\n', ' ')
+                                  ? AppStringKeys
+                                        .translationSettingsAiPromptCustom
+                                        .l10n(context)
                                   : AppStringKeys.editProfileDefault.l10n(
                                       context,
                                     ),
@@ -214,19 +263,77 @@ class _AiSettingsViewState extends State<AiSettingsView> {
   }
 }
 
-class AiReplyPromptEditorView extends StatefulWidget {
+class AiReplyPromptEditorView extends StatelessWidget {
   const AiReplyPromptEditorView({super.key, required this.settings});
 
   final AiSettingsController settings;
 
   @override
-  State<AiReplyPromptEditorView> createState() =>
-      _AiReplyPromptEditorViewState();
+  Widget build(BuildContext context) => _AiPromptEditorView(
+    titleKey: AppStringKeys.aiReplyPrompts,
+    fieldKey: const ValueKey('aiReplyPromptField'),
+    initialValue: settings.aiReplyPrompt,
+    defaultValue: defaultAiReplyPrompt.trim(),
+    maximumCharacters: AiSettingsController.replyPromptMaximumCharacters,
+    onSave: settings.setAiReplyPrompt,
+  );
 }
 
-class _AiReplyPromptEditorViewState extends State<AiReplyPromptEditorView> {
+class AiTranslationPromptEditorView extends StatelessWidget {
+  const AiTranslationPromptEditorView({super.key, required this.translation});
+
+  final TranslationController translation;
+
+  @override
+  Widget build(BuildContext context) => _AiPromptEditorView(
+    titleKey: AppStringKeys.aiTranslatePrompts,
+    fieldKey: const ValueKey('aiTranslationPromptField'),
+    initialValue: translation.aiTranslationPrompt,
+    defaultValue: defaultAiTranslationPrompt.trim(),
+    onSave: translation.setAiTranslationPrompt,
+  );
+}
+
+class AiSummaryPromptEditorView extends StatelessWidget {
+  const AiSummaryPromptEditorView({super.key, required this.settings});
+
+  final AiSettingsController settings;
+
+  @override
+  Widget build(BuildContext context) => _AiPromptEditorView(
+    titleKey: AppStringKeys.aiSummarizePrompts,
+    fieldKey: const ValueKey('aiSummaryPromptField'),
+    initialValue: settings.aiSummaryPrompt,
+    defaultValue: defaultAiSummaryPrompt.trim(),
+    maximumCharacters: AiSettingsController.summaryPromptMaximumCharacters,
+    onSave: settings.setAiSummaryPrompt,
+  );
+}
+
+class _AiPromptEditorView extends StatefulWidget {
+  const _AiPromptEditorView({
+    required this.titleKey,
+    required this.fieldKey,
+    required this.initialValue,
+    required this.defaultValue,
+    required this.onSave,
+    this.maximumCharacters,
+  });
+
+  final String titleKey;
+  final Key fieldKey;
+  final String initialValue;
+  final String defaultValue;
+  final int? maximumCharacters;
+  final FutureOr<void> Function(String value) onSave;
+
+  @override
+  State<_AiPromptEditorView> createState() => _AiPromptEditorViewState();
+}
+
+class _AiPromptEditorViewState extends State<_AiPromptEditorView> {
   late final TextEditingController _prompt = TextEditingController(
-    text: widget.settings.aiReplyPrompt,
+    text: widget.initialValue,
   );
   bool _saving = false;
 
@@ -244,7 +351,7 @@ class _AiReplyPromptEditorViewState extends State<AiReplyPromptEditorView> {
       body: Column(
         children: [
           NavHeader(
-            title: AppStringKeys.aiReplyTitle.l10n(context),
+            title: widget.titleKey.l10n(context),
             onBack: () => Navigator.of(context).pop(),
           ),
           Expanded(
@@ -258,7 +365,7 @@ class _AiReplyPromptEditorViewState extends State<AiReplyPromptEditorView> {
               children: [
                 Semantics(
                   textField: true,
-                  label: AppStringKeys.aiReplyGuidance.l10n(context),
+                  label: widget.titleKey.l10n(context),
                   child: Container(
                     constraints: const BoxConstraints(minHeight: 260),
                     padding: const EdgeInsets.all(14),
@@ -268,12 +375,13 @@ class _AiReplyPromptEditorViewState extends State<AiReplyPromptEditorView> {
                       border: Border.all(color: c.divider, width: 0.5),
                     ),
                     child: TextField(
-                      key: const ValueKey('aiReplyPromptField'),
+                      key: widget.fieldKey,
                       controller: _prompt,
                       minLines: 11,
                       maxLines: null,
-                      maxLength:
-                          AiSettingsController.replyPromptMaximumCharacters,
+                      maxLength: widget.maximumCharacters,
+                      autocorrect: false,
+                      enableSuggestions: false,
                       keyboardType: TextInputType.multiline,
                       textCapitalization: TextCapitalization.sentences,
                       style: AppTextStyle.body(
@@ -283,9 +391,7 @@ class _AiReplyPromptEditorViewState extends State<AiReplyPromptEditorView> {
                       decoration: InputDecoration(
                         border: InputBorder.none,
                         isCollapsed: true,
-                        hintText: AppStringKeys.aiReplyGuidanceHint.l10n(
-                          context,
-                        ),
+                        hintText: widget.defaultValue,
                         hintStyle: AppTextStyle.body(
                           c.textTertiary,
                         ).copyWith(height: 1.4),
@@ -304,11 +410,11 @@ class _AiReplyPromptEditorViewState extends State<AiReplyPromptEditorView> {
                 const SizedBox(height: AppSpacing.sm),
                 _actionButton(
                   context,
-                  label: AppStringKeys.editProfileDefault.l10n(context),
-                  saving: _saving,
-                  onTap: () => setState(
-                    () => _prompt.text = defaultAiReplyPrompt.trim(),
+                  label: AppStringKeys.translationSettingsAiPromptReset.l10n(
+                    context,
                   ),
+                  saving: _saving,
+                  onTap: _reset,
                   backgroundColor: c.card,
                   foregroundColor: AppTheme.brand,
                   borderColor: AppTheme.brand,
@@ -324,7 +430,19 @@ class _AiReplyPromptEditorViewState extends State<AiReplyPromptEditorView> {
   Future<void> _save() async {
     if (_saving) return;
     setState(() => _saving = true);
-    await widget.settings.setAiReplyPrompt(_prompt.text);
+    await widget.onSave(_prompt.text);
+    if (!mounted) return;
+    showToast(context, AppStringKeys.aiSaved.l10n(context));
+    Navigator.of(context).pop();
+  }
+
+  Future<void> _reset() async {
+    if (_saving) return;
+    setState(() {
+      _saving = true;
+      _prompt.text = widget.defaultValue;
+    });
+    await widget.onSave(widget.defaultValue);
     if (!mounted) return;
     showToast(context, AppStringKeys.aiSaved.l10n(context));
     Navigator.of(context).pop();
@@ -1589,11 +1707,18 @@ Widget _actionButton(
           border: borderColor == null ? null : Border.all(color: borderColor),
         ),
         child: saving
-            ? const AppActivityIndicator(size: 20, color: Color(0xFFFFFFFF))
+            ? AppActivityIndicator(
+                size: 20,
+                color:
+                    foregroundColor ??
+                    readableForeground(backgroundColor ?? AppTheme.brand),
+              )
             : Text(
                 label,
                 style: TextStyle(
-                  color: foregroundColor ?? const Color(0xFFFFFFFF),
+                  color:
+                      foregroundColor ??
+                      readableForeground(backgroundColor ?? AppTheme.brand),
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
                 ),
