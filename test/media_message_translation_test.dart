@@ -8,6 +8,7 @@ import 'package:mithka/chat/custom_emoji.dart';
 import 'package:mithka/chat/message_bubble.dart';
 import 'package:mithka/chat/stretchable_message_bubble_background.dart';
 import 'package:mithka/components/app_icons.dart';
+import 'package:mithka/components/document_file_icon.dart';
 import 'package:mithka/components/photo_avatar.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/tdlib/td_models.dart';
@@ -395,6 +396,18 @@ void main() {
       moreOrLessEquals(tester.getSize(bubble).width * 0.75),
     );
     expect(tester.getSize(card).width, greaterThan(244));
+
+    final fileIcon = find.byKey(const ValueKey('documentFileIcon-3'));
+    expect(fileIcon, findsOneWidget);
+    final glyph = tester.widget<AppIcon>(
+      find.descendant(of: fileIcon, matching: find.byType(AppIcon)).first,
+    );
+    expect(glyph.icon.data, HeroAppIcons.solidFile.data);
+    expect(glyph.color, DocumentFilePalette.green.color);
+    expect(
+      find.descendant(of: fileIcon, matching: find.text('ipa')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('message links have no generated underline', (tester) async {

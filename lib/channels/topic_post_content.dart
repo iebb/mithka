@@ -5,7 +5,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import '../chat/file_detail_view.dart';
 import '../chat/link_handler.dart';
 import '../chat/telegram_rich_text.dart';
-import '../components/app_icons.dart';
+import '../components/document_file_icon.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../l10n/telegram_language_controller.dart';
@@ -178,7 +178,10 @@ class _TopicFileCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 10),
-                _FileGlyph(ext: document.ext),
+                DocumentFileIcon(
+                  fileName: document.fileName,
+                  extension: document.ext,
+                ),
               ],
             ),
             if (caption.isNotEmpty) ...[
@@ -220,59 +223,6 @@ class _TopicFileCard extends StatelessWidget {
         ? value.toStringAsFixed(0)
         : value.toStringAsFixed(1);
     return '$number ${units[unit]}';
-  }
-}
-
-class _FileGlyph extends StatelessWidget {
-  const _FileGlyph({required this.ext});
-
-  final String ext;
-
-  @override
-  Widget build(BuildContext context) {
-    final normalized = ext.toUpperCase();
-    return SizedBox(
-      width: 42,
-      height: 46,
-      child: Stack(
-        clipBehavior: Clip.none,
-        alignment: Alignment.center,
-        children: [
-          AppIcon(
-            HeroAppIcons.solidFile,
-            size: 40,
-            color: _fileColor(normalized),
-          ),
-          Positioned(
-            bottom: 8,
-            child: Text(
-              _fileBadge(normalized),
-              style: const TextStyle(
-                fontSize: 8,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Color _fileColor(String ext) {
-    return switch (ext) {
-      'PDF' => const Color(0xFFFF3B30),
-      'DOC' || 'DOCX' => const Color(0xFF2F80ED),
-      'XLS' || 'XLSX' => const Color(0xFF22A06B),
-      'PPT' || 'PPTX' => const Color(0xFFFF9500),
-      'ZIP' || 'RAR' || '7Z' => const Color(0xFF8E8E93),
-      _ => AppTheme.brand,
-    };
-  }
-
-  String _fileBadge(String ext) {
-    if (ext.isEmpty) return 'FILE';
-    return ext.length > 4 ? ext.substring(0, 4) : ext;
   }
 }
 

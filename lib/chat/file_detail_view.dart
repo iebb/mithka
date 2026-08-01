@@ -15,6 +15,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:open_filex/open_filex.dart';
 
 import '../components/app_icons.dart';
+import '../components/document_file_icon.dart';
 import '../components/toast.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -310,33 +311,17 @@ class _FileDetailViewState extends State<FileDetailView> {
     );
   }
 
-  /// custom large file glyph: a neutral rounded square + doc icon + extension.
+  /// Large version of the same extension-colored file glyph used in messages.
   Widget _glyph() {
-    return Container(
+    return SizedBox(
       width: 100,
       height: 100,
-      decoration: BoxDecoration(
-        color: const Color(0xFF8E99A3),
-        borderRadius: BorderRadius.circular(22),
-      ),
-      alignment: Alignment.center,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          const AppIcon(HeroAppIcons.solidFile, size: 60, color: Colors.white),
-          if (widget.doc.ext.isNotEmpty)
-            Positioned(
-              bottom: 24,
-              child: Text(
-                widget.doc.ext.toUpperCase(),
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF8E99A3),
-                ),
-              ),
-            ),
-        ],
+      child: Center(
+        child: DocumentFileIcon(
+          fileName: widget.doc.fileName,
+          extension: widget.doc.ext,
+          size: 76,
+        ),
       ),
     );
   }

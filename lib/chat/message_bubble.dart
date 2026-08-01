@@ -21,6 +21,7 @@ import 'package:provider/provider.dart';
 
 import '../components/app_icons.dart';
 import '../components/confirm_dialog.dart';
+import '../components/document_file_icon.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
@@ -4885,7 +4886,7 @@ class _MessageBubbleState extends State<MessageBubble>
                     ),
                   ),
                   const SizedBox(width: 8),
-                  _fileGlyph(doc.ext, surfaceColor: surfaceColor),
+                  _fileGlyph(doc, source.id, surfaceColor: surfaceColor),
                 ],
               ),
             ),
@@ -4910,7 +4911,11 @@ class _MessageBubbleState extends State<MessageBubble>
     return text.trim().isEmpty ? '' : text;
   }
 
-  Widget _fileGlyph(String ext, {required Color surfaceColor}) {
+  Widget _fileGlyph(
+    MessageDocument document,
+    int messageId, {
+    required Color surfaceColor,
+  }) {
     return SizedBox(
       width: 44,
       height: 48,
@@ -4918,17 +4923,10 @@ class _MessageBubbleState extends State<MessageBubble>
         clipBehavior: Clip.none,
         alignment: Alignment.center,
         children: [
-          AppIcon(HeroAppIcons.solidFile, size: 40, color: _fileColor(ext)),
-          Positioned(
-            bottom: 8,
-            child: Text(
-              _fileBadge(ext),
-              style: const TextStyle(
-                fontSize: 9,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
+          DocumentFileIcon(
+            key: ValueKey('documentFileIcon-$messageId'),
+            fileName: document.fileName,
+            extension: document.ext,
           ),
           Positioned(
             right: -2,
@@ -4966,47 +4964,6 @@ class _MessageBubbleState extends State<MessageBubble>
       i++;
     }
     return '${size.toStringAsFixed(size >= 100 ? 0 : 1)} ${units[i]}';
-  }
-
-  static Color _fileColor(String ext) {
-    switch (ext) {
-      case 'DOC':
-      case 'DOCX':
-        return const Color(0xFF2B7CD3);
-      case 'XLS':
-      case 'XLSX':
-      case 'CSV':
-        return const Color(0xFF21A366);
-      case 'PPT':
-      case 'PPTX':
-        return const Color(0xFFD24726);
-      case 'PDF':
-        return const Color(0xFFE2453C);
-      case 'ZIP':
-      case 'RAR':
-      case '7Z':
-        return const Color(0xFFF4A100);
-      default:
-        return AppColors.light.textTertiary;
-    }
-  }
-
-  static String _fileBadge(String ext) {
-    switch (ext) {
-      case 'DOC':
-      case 'DOCX':
-        return 'W';
-      case 'XLS':
-      case 'XLSX':
-        return 'X';
-      case 'PPT':
-      case 'PPTX':
-        return 'P';
-      case '':
-        return 'FILE';
-      default:
-        return ext.length > 4 ? ext.substring(0, 4) : ext;
-    }
   }
 }
 
