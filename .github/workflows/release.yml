@@ -341,13 +341,13 @@ jobs:
         run: |
           mkdir -p dist
           cp "build/app/outputs/flutter-apk/app-${{ matrix.abi }}-release.apk" \
-            "dist/mithka-${{ needs.prepare.outputs.artifact_label }}-${{ matrix.abi }}-vc${{ needs.prepare.outputs.build_stamp }}-release.apk"
+            "dist/mithka-${{ needs.prepare.outputs.app_version }}-${{ matrix.abi }}.apk"
 
       - name: Upload standard APK artifact
         uses: actions/upload-artifact@v6
         with:
-          name: apk-standard-${{ matrix.abi }}-${{ needs.prepare.outputs.release_date }}-${{ needs.prepare.outputs.build_stamp }}
-          path: dist/mithka-${{ needs.prepare.outputs.artifact_label }}-${{ matrix.abi }}-vc${{ needs.prepare.outputs.build_stamp }}-release.apk
+          name: apk-${{ needs.prepare.outputs.app_version }}-${{ matrix.abi }}
+          path: dist/mithka-${{ needs.prepare.outputs.app_version }}-${{ matrix.abi }}.apk
           if-no-files-found: error
 
   build-desktop:
@@ -609,10 +609,12 @@ jobs:
           merge-multiple: true
 
       - name: Verify and list artifacts
+        env:
+          APP_VERSION: ${{ needs.prepare.outputs.app_version }}
         run: |
           ls -lhR release-assets
           apk_count="$(
-            find release-assets -maxdepth 1 -type f -name '*-release.apk' \
+            find release-assets -maxdepth 1 -type f -name 'mithka-*.apk' \
               | wc -l \
               | tr -d ' '
           )"
@@ -621,13 +623,9 @@ jobs:
             exit 1
           fi
           for abi in arm64-v8a armeabi-v7a; do
-            abi_apk_count="$(
-              find release-assets -maxdepth 1 -type f -name "*-${abi}-vc*-release.apk" \
-                | wc -l \
-                | tr -d ' '
-            )"
-            if [ "$abi_apk_count" -ne 1 ]; then
-              echo "Expected exactly one published $abi APK, found $abi_apk_count" >&2
+            apk="release-assets/mithka-${APP_VERSION}-${abi}.apk"
+            if [ ! -f "$apk" ]; then
+              echo "Missing expected $abi APK: $apk" >&2
               exit 1
             fi
           done
