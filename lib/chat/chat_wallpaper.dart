@@ -417,11 +417,13 @@ class ChatThemeStyle {
   const ChatThemeStyle({
     required this.outgoingColors,
     required this.accentColor,
+    this.outgoingMessageAccentColor = 0,
     required this.isDark,
   });
 
   final List<int> outgoingColors;
   final int accentColor;
+  final int outgoingMessageAccentColor;
   final bool isDark;
 
   Color? get outgoingColor {
@@ -455,6 +457,10 @@ class ChatThemeStyle {
   Color get nameColor => accentColor == 0
       ? (isDark ? const Color(0xFF8FB8F8) : const Color(0xFF377FD1))
       : _rgbColor(accentColor);
+
+  Color get outgoingAccentColor => outgoingMessageAccentColor == 0
+      ? nameColor
+      : _rgbColor(outgoingMessageAccentColor);
 }
 
 @immutable
@@ -1731,6 +1737,10 @@ class ChatWallpaperController extends ChangeNotifier {
         accentColor:
             settings.integer('accent_color') ??
             settings.integer('outgoing_message_accent_color') ??
+            0,
+        outgoingMessageAccentColor:
+            settings.integer('outgoing_message_accent_color') ??
+            settings.integer('accent_color') ??
             0,
         isDark:
             settings.obj('base_theme')?.type == 'builtInThemeNight' ||

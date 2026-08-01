@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
@@ -150,7 +151,30 @@ windowShadowFg: #01020380;
       await android.writeAsString('''
 windowBackgroundWhite=#ff334455
 chat_inBubble=#ff445566
-chat_outBubble=#ff95ec69
+chat_outBubble=#ff204060
+chat_outBubbleGradient=#ff406080
+chat_messageTextIn=#ff0a0b0c
+chat_messageTextOut=#fffaf9f8
+chat_messageLinkIn=#ff102030
+chat_messageLinkOut=#ff203040
+chat_inQuote=#ff304050
+chat_outQuote=#ff405060
+chat_inReplyLine=#ff506070
+chat_outReplyLine=#ff607080
+chat_inReplyNameText=#ff708090
+chat_outReplyNameText=#ff8090a0
+chat_inReplyMessageText=#ff90a0b0
+chat_outReplyMessageText=#ffa0b0c0
+chat_inReplyMediaMessageText=#ff91a1b1
+chat_outReplyMediaMessageText=#ffa1b1c1
+chat_inForwardedNameText=#ffb0c0d0
+chat_outForwardedNameText=#ffc0d0e0
+chat_inPreviewLine=#ffd0e0f0
+chat_outPreviewLine=#ffe0f010
+chat_inSiteNameText=#fff01020
+chat_outSiteNameText=#ff102040
+chat_inTimeText=#ff204060
+chat_outTimeText=#ff406080
 avatar_nameInMessageRed=#ff112233
 ''');
       await macos.writeAsString('groupPeerNameOrange=cc7722');
@@ -182,9 +206,29 @@ avatar_nameInMessageRed=#ff112233
 
       expect(theme.palette['list.plainBg'], 0x101820);
       expect(theme.incomingColor?.toARGB32(), 0xFF445566);
-      expect(theme.outgoingColor?.toARGB32(), 0xFF95EC69);
-      expect(theme.incomingTextColor?.toARGB32(), 0xFFF2F5F7);
-      expect(theme.outgoingTextColor?.toARGB32(), 0xFF101820);
+      expect(theme.outgoingColor?.toARGB32(), 0xFF305070);
+      expect(theme.incomingTextColor?.toARGB32(), 0xFF0A0B0C);
+      expect(theme.outgoingTextColor?.toARGB32(), 0xFFFAF9F8);
+      expect(theme.messageColors.incomingLink.toARGB32(), 0xFF102030);
+      expect(theme.messageColors.outgoingLink.toARGB32(), 0xFF203040);
+      expect(theme.messageColors.incomingQuote.toARGB32(), 0xFF304050);
+      expect(theme.messageColors.outgoingQuote.toARGB32(), 0xFF405060);
+      expect(theme.messageColors.incomingReplyLine.toARGB32(), 0xFF506070);
+      expect(theme.messageColors.outgoingReplyLine.toARGB32(), 0xFF607080);
+      expect(theme.messageColors.incomingReplyName.toARGB32(), 0xFF708090);
+      expect(theme.messageColors.outgoingReplyName.toARGB32(), 0xFF8090A0);
+      expect(theme.messageColors.incomingReplyText.toARGB32(), 0xFF90A0B0);
+      expect(theme.messageColors.outgoingReplyText.toARGB32(), 0xFFA0B0C0);
+      expect(theme.messageColors.incomingReplyMediaText.toARGB32(), 0xFF91A1B1);
+      expect(theme.messageColors.outgoingReplyMediaText.toARGB32(), 0xFFA1B1C1);
+      expect(theme.messageColors.incomingForwardedName.toARGB32(), 0xFFB0C0D0);
+      expect(theme.messageColors.outgoingForwardedName.toARGB32(), 0xFFC0D0E0);
+      expect(theme.messageColors.incomingPreviewLine.toARGB32(), 0xFFD0E0F0);
+      expect(theme.messageColors.outgoingPreviewLine.toARGB32(), 0xFFE0F010);
+      expect(theme.messageColors.incomingSiteName.toARGB32(), 0xFFF01020);
+      expect(theme.messageColors.outgoingSiteName.toARGB32(), 0xFF102040);
+      expect(theme.messageColors.incomingTime.toARGB32(), 0xFF204060);
+      expect(theme.messageColors.outgoingTime.toARGB32(), 0xFF406080);
       expect(
         theme.uiColors.pinnedRow.toARGB32(),
         isNot(theme.uiColors.background.toARGB32()),
@@ -238,6 +282,7 @@ avatar_nameInMessageRed=#ff112233
 windowBackgroundWhite=#ff334455
 chat_inBubble=#ff445566
 chat_outBubble=#ff556677
+chat_outBubbleGradient=0
 '''),
         ...ascii.encode('\nWPS\n'),
         0xFF,
@@ -679,6 +724,67 @@ msgOutBg: #f3b4bd;
     expect(readableForeground(const Color(0xFF101820)).toARGB32(), 0xFFFFFFFF);
   });
 
+  test('built-in message fallbacks retain directional contrast', () {
+    final classic = builtInTelegramCloudThemes.firstWhere(
+      (theme) => theme.slug == 'builtin:classic',
+    );
+    final dark = builtInTelegramCloudThemes.firstWhere(
+      (theme) => theme.slug == 'builtin:dark',
+    );
+    final day = builtInTelegramCloudThemes.firstWhere(
+      (theme) => theme.slug == 'builtin:day',
+    );
+    final night = builtInTelegramCloudThemes.firstWhere(
+      (theme) => theme.slug == 'builtin:night',
+    );
+
+    expect(classic.messageColors.incomingQuote, classic.accentColor);
+    expect(classic.messageColors.outgoingQuote.toARGB32(), 0xFF171717);
+    expect(day.messageColors.incomingLink, day.accentColor);
+    expect(day.messageColors.outgoingLink.toARGB32(), 0xFF171717);
+    expect(dark.messageColors.incomingReplyLine, dark.accentColor);
+    expect(dark.messageColors.outgoingReplyLine.toARGB32(), 0xFFFFFFFF);
+    expect(night.messageColors.outgoingLink.toARGB32(), 0xFFFFFFFF);
+
+    const androidMessageOnlyKeys = [
+      'chat_messageLinkIn',
+      'chat_messageLinkOut',
+      'chat_inQuote',
+      'chat_outQuote',
+      'chat_inReplyLine',
+      'chat_outReplyLine',
+      'chat_inReplyNameText',
+      'chat_outReplyNameText',
+      'chat_inReplyMessageText',
+      'chat_outReplyMessageText',
+    ];
+    for (final theme in builtInTelegramCloudThemes) {
+      for (final key in androidMessageOnlyKeys) {
+        expect(theme.palette, isNot(contains(key)));
+      }
+      final bubble = theme.outgoingColor!;
+      for (final foreground in [
+        theme.messageColors.outgoingLink,
+        theme.messageColors.outgoingQuote,
+      ]) {
+        final lighter = math.max(
+          foreground.computeLuminance(),
+          bubble.computeLuminance(),
+        );
+        final darker = math.min(
+          foreground.computeLuminance(),
+          bubble.computeLuminance(),
+        );
+        expect((lighter + 0.05) / (darker + 0.05), greaterThanOrEqualTo(4.5));
+      }
+    }
+
+    final tinted = day.withBuiltInAccent(const Color(0xFFFF9500));
+    for (final key in androidMessageOnlyKeys) {
+      expect(tinted.palette, isNot(contains(key)));
+    }
+  });
+
   test('translucent pinned overlays resolve to an opaque row surface', () {
     const background = Color(0xFF101820);
     const overlay = Color(0x6680C0FF);
@@ -825,6 +931,14 @@ msgOutBg: #f3b4bd;
       expect(
         restored.uiColorsFor(Brightness.light).linkBlue.toARGB32(),
         0xFFFF9500,
+      );
+      expect(
+        restored.lightCloudTheme?.messageColors.incomingQuote.toARGB32(),
+        0xFFFF9500,
+      );
+      expect(
+        restored.lightCloudTheme?.messageColors.outgoingQuote.toARGB32(),
+        0xFF171717,
       );
       expect(restored.usesCloudThemeForUi(Brightness.light), isTrue);
     },

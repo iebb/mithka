@@ -7,11 +7,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/custom_emoji.dart';
 import 'package:mithka/chat/message_bubble.dart';
 import 'package:mithka/chat/stretchable_message_bubble_background.dart';
+import 'package:mithka/components/app_icons.dart';
 import 'package:mithka/components/photo_avatar.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/tdlib/td_models.dart';
 import 'package:mithka/theme/app_theme.dart';
 import 'package:mithka/theme/message_bubble_background.dart';
+import 'package:mithka/theme/telegram_cloud_theme.dart';
 import 'package:mithka/theme/theme_controller.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -35,6 +37,13 @@ void main() {
     bool channelHasLinkedDiscussion = false,
     bool themingEnabled = true,
     AppColors? colors,
+    Color? outgoingBubbleColor,
+    Color? outgoingBubbleTextColor,
+    Color? incomingBubbleColor,
+    Color? incomingBubbleTextColor,
+    TelegramMessageColors? messageColors,
+    TelegramCloudTheme? cloudTheme,
+    MessageBubbleBackground? bubbleBackground,
     ValueChanged<ChatMessage>? onLongPress,
   }) async {
     SharedPreferences.setMockInitialValues({
@@ -43,6 +52,10 @@ void main() {
     });
     final preferences = await SharedPreferences.getInstance();
     final theme = ThemeController(preferences);
+    if (cloudTheme != null) theme.installCloudTheme(cloudTheme);
+    if (bubbleBackground != null) {
+      theme.messageBubbleBackground = bubbleBackground;
+    }
     addTearDown(theme.dispose);
 
     await tester.pumpWidget(
@@ -61,6 +74,11 @@ void main() {
               isGroup: false,
               showCommentAttachment: showCommentAttachment,
               channelHasLinkedDiscussion: channelHasLinkedDiscussion,
+              outgoingBubbleColor: outgoingBubbleColor,
+              outgoingBubbleTextColor: outgoingBubbleTextColor,
+              incomingBubbleColor: incomingBubbleColor,
+              incomingBubbleTextColor: incomingBubbleTextColor,
+              messageColors: messageColors,
               onLongPress: onLongPress == null
                   ? null
                   : (message, _, _) => onLongPress(message),
@@ -71,6 +89,29 @@ void main() {
     );
     return theme;
   }
+
+  const messageColors = TelegramMessageColors(
+    incomingLink: Color(0xFF0055AA),
+    outgoingLink: Color(0xFFFF66AA),
+    incomingQuote: Color(0xFF008844),
+    outgoingQuote: Color(0xFFFF8800),
+    incomingReplyLine: Color(0xFF117733),
+    outgoingReplyLine: Color(0xFFDD7700),
+    incomingReplyName: Color(0xFF226644),
+    outgoingReplyName: Color(0xFFCC6600),
+    incomingReplyText: Color(0xFF335544),
+    outgoingReplyText: Color(0xFFBB5500),
+    incomingReplyMediaText: Color(0xFF123443),
+    outgoingReplyMediaText: Color(0xFF432112),
+    incomingForwardedName: Color(0xFF4444AA),
+    outgoingForwardedName: Color(0xFFAA44AA),
+    incomingPreviewLine: Color(0x805555AA),
+    outgoingPreviewLine: Color(0xFFAA55AA),
+    incomingSiteName: Color(0xFF6666AA),
+    outgoingSiteName: Color(0xFFAA66AA),
+    incomingTime: Color(0xFF777788),
+    outgoingTime: Color(0xFF887788),
+  );
 
   testWidgets('secondary mouse click invokes message action callback', (
     tester,
@@ -273,6 +314,61 @@ void main() {
     );
   });
 
+  testWidgets('document cards use directional Android message colors', (
+    tester,
+  ) async {
+    final message = ChatMessage(
+      id: 427,
+      isOutgoing: true,
+      text: 'Document link',
+      date: 1,
+      contentType: 'messageDocument',
+      textEntities: const [
+        MessageTextEntity(
+          offset: 9,
+          length: 4,
+          type: 'textEntityTypeTextUrl',
+          url: 'https://example.com',
+        ),
+      ],
+      document: MessageDocument(
+        fileName: 'themed.pdf',
+        size: 1024,
+        ext: 'PDF',
+        file: null,
+      ),
+    );
+    const bubble = Color(0xFF234567);
+    const foreground = Color(0xFFF5F7FA);
+
+    await pumpBubble(
+      tester,
+      message,
+      outgoingBubbleColor: bubble,
+      outgoingBubbleTextColor: foreground,
+      messageColors: messageColors,
+    );
+
+    final card = find.byKey(const ValueKey('messageDocumentAlbumCard-427'));
+    final decoration =
+        tester.widget<Container>(card).decoration! as BoxDecoration;
+    expect(decoration.color, bubble);
+    expect(decoration.border, isNull);
+    expect(
+      tester.widget<Text>(find.text('themed.pdf')).style?.color,
+      foreground,
+    );
+    final spans = tester
+        .widgetList<RichText>(
+          find.descendant(of: card, matching: find.byType(RichText)),
+        )
+        .expand((widget) => _textSpans(widget.text));
+    expect(
+      spans.singleWhere((span) => span.text == 'link').style?.color,
+      messageColors.outgoingLink,
+    );
+  });
+
   testWidgets('document cards expand to the standard message width', (
     tester,
   ) async {
@@ -346,6 +442,575 @@ void main() {
     expect(explicitUnderline.style?.decoration, TextDecoration.underline);
   });
 
+  testWidgets('incoming message surfaces use Android theme colors', (
+    tester,
+  ) async {
+    const text = 'body link\nquote';
+    final message = ChatMessage(
+      id: 420,
+      isOutgoing: false,
+      text: text,
+      date: 1,
+      contentType: 'messageText',
+      textEntities: const [
+        MessageTextEntity(
+          offset: 5,
+          length: 4,
+          type: 'textEntityTypeTextUrl',
+          url: 'https://example.com',
+        ),
+        MessageTextEntity(
+          offset: 10,
+          length: 5,
+          type: 'textEntityTypeExpandableBlockQuote',
+        ),
+        MessageTextEntity(
+          offset: 10,
+          length: 5,
+          type: 'textEntityTypeTextUrl',
+          url: 'https://example.com/quote',
+        ),
+      ],
+    );
+    const bubble = Color(0xFFE8F1FA);
+    const foreground = Color(0xFF18212A);
+
+    await pumpBubble(
+      tester,
+      message,
+      incomingBubbleColor: bubble,
+      incomingBubbleTextColor: foreground,
+      messageColors: messageColors,
+    );
+
+    final textBubble = find.byKey(const ValueKey('messageTextBubble-420'));
+    final background = tester.widget<StretchableMessageBubbleBackground>(
+      textBubble,
+    );
+    expect(background.fallbackColor, bubble);
+    expect(background.fallbackBorder, isNull);
+
+    final spans = tester
+        .widgetList<RichText>(
+          find.descendant(of: textBubble, matching: find.byType(RichText)),
+        )
+        .expand((widget) => _textSpans(widget.text))
+        .toList();
+    expect(
+      spans.singleWhere((span) => span.text == 'link').style?.color,
+      messageColors.incomingLink,
+    );
+    expect(
+      spans.singleWhere((span) => span.text == 'quote').style?.color,
+      messageColors.incomingQuote,
+    );
+    final body = tester
+        .widgetList<RichText>(
+          find.descendant(of: textBubble, matching: find.byType(RichText)),
+        )
+        .firstWhere((widget) => widget.text.toPlainText().contains('body'));
+    expect(body.text.style?.color, foreground);
+
+    final quote = tester.widget<Container>(
+      find.byKey(const ValueKey('messageBlockQuote-420-10:5')),
+    );
+    final decoration = quote.decoration! as BoxDecoration;
+    expect(
+      decoration.color,
+      messageColors.incomingQuote.withValues(alpha: 0.10),
+    );
+    expect(
+      (decoration.border! as Border).left.color,
+      messageColors.incomingQuote,
+    );
+    expect(
+      tester
+          .widget<Text>(
+            find.text(AppStrings.t(AppStringKeys.messageBubbleExpandQuote)),
+          )
+          .style
+          ?.color,
+      messageColors.incomingQuote,
+    );
+    final paintedBackground = Color.alphaBlend(decoration.color!, bubble);
+    final lighter = math.max(
+      foreground.computeLuminance(),
+      paintedBackground.computeLuminance(),
+    );
+    final darker = math.min(
+      foreground.computeLuminance(),
+      paintedBackground.computeLuminance(),
+    );
+    expect((lighter + 0.05) / (darker + 0.05), greaterThanOrEqualTo(4.5));
+  });
+
+  testWidgets('structured block quotes use Android theme colors', (
+    tester,
+  ) async {
+    const quoteText = 'Rich link';
+    final message = ChatMessage(
+      id: 423,
+      isOutgoing: false,
+      text: '',
+      date: 1,
+      contentType: 'messageRichMessage',
+      richBlocks: const [
+        RichMessageBlock.container(
+          kind: RichMessageBlockKind.blockQuote,
+          children: [
+            RichMessageBlock.text(
+              kind: RichMessageBlockKind.paragraph,
+              text: quoteText,
+              entities: [
+                MessageTextEntity(
+                  offset: 5,
+                  length: 4,
+                  type: 'textEntityTypeTextUrl',
+                  url: 'https://example.com',
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+
+    await pumpBubble(tester, message, messageColors: messageColors);
+
+    final block = find.byKey(const ValueKey('rich-message-block-0-blockQuote'));
+    final quote = find.descendant(
+      of: block,
+      matching: find.byWidgetPredicate((widget) {
+        if (widget case Container(decoration: final BoxDecoration decoration)) {
+          final border = decoration.border;
+          return border is Border &&
+              border.left.width == 3 &&
+              border.left.color == messageColors.incomingQuote;
+        }
+        return false;
+      }),
+    );
+    expect(quote, findsOneWidget);
+    final decoration =
+        tester.widget<Container>(quote).decoration! as BoxDecoration;
+    expect(
+      decoration.color,
+      messageColors.incomingQuote.withValues(alpha: 0.10),
+    );
+    final spans = tester
+        .widgetList<RichText>(
+          find.descendant(of: quote, matching: find.byType(RichText)),
+        )
+        .expand((widget) => _textSpans(widget.text));
+    expect(
+      spans.singleWhere((span) => span.text == 'link').style?.color,
+      messageColors.incomingQuote,
+    );
+  });
+
+  testWidgets('outgoing message surfaces use Android theme colors', (
+    tester,
+  ) async {
+    const text = 'body link\nquote';
+    final message =
+        ChatMessage(
+            id: 421,
+            isOutgoing: true,
+            text: text,
+            date: 1,
+            contentType: 'messageText',
+            replyToMessageId: 8,
+            replyToDate: 1,
+            isEdited: true,
+            linkPreview: const MessageLinkPreview(
+              url: 'https://example.com',
+              displayUrl: 'example.com',
+              siteName: 'Outgoing site',
+              title: 'Outgoing preview',
+              description: 'Outgoing preview body',
+            ),
+            textEntities: const [
+              MessageTextEntity(
+                offset: 5,
+                length: 4,
+                type: 'textEntityTypeTextUrl',
+                url: 'https://example.com',
+              ),
+              MessageTextEntity(
+                offset: 10,
+                length: 5,
+                type: 'textEntityTypeBlockQuote',
+              ),
+              MessageTextEntity(
+                offset: 10,
+                length: 5,
+                type: 'textEntityTypeTextUrl',
+                url: 'https://example.com/quote',
+              ),
+            ],
+          )
+          ..forwardOrigin = 'Outgoing Channel'
+          ..replyToSender = 'Outgoing sender'
+          ..replyToPreview = 'Outgoing earlier message';
+    const bubble = Color(0xFF234567);
+    const foreground = Color(0xFFF5F7FA);
+
+    await pumpBubble(
+      tester,
+      message,
+      outgoingBubbleColor: bubble,
+      outgoingBubbleTextColor: foreground,
+      messageColors: messageColors,
+    );
+
+    final textBubble = find.byKey(const ValueKey('messageTextBubble-421'));
+    final background = tester.widget<StretchableMessageBubbleBackground>(
+      textBubble,
+    );
+    expect(background.fallbackColor, bubble);
+
+    final spans = tester
+        .widgetList<RichText>(
+          find.descendant(of: textBubble, matching: find.byType(RichText)),
+        )
+        .expand((widget) => _textSpans(widget.text))
+        .toList();
+    expect(
+      spans.singleWhere((span) => span.text == 'link').style?.color,
+      messageColors.outgoingLink,
+    );
+    expect(
+      spans.singleWhere((span) => span.text == 'quote').style?.color,
+      messageColors.outgoingLink,
+    );
+    final body = tester
+        .widgetList<RichText>(
+          find.descendant(of: textBubble, matching: find.byType(RichText)),
+        )
+        .firstWhere((widget) => widget.text.toPlainText().contains('body'));
+    expect(body.text.style?.color, foreground);
+
+    final quote = tester.widget<Container>(
+      find.byKey(const ValueKey('messageBlockQuote-421-10:5')),
+    );
+    final decoration = quote.decoration! as BoxDecoration;
+    expect(
+      decoration.color,
+      messageColors.outgoingQuote.withValues(alpha: 0.10),
+    );
+    expect(
+      (decoration.border! as Border).left.color,
+      messageColors.outgoingQuote,
+    );
+
+    expect(
+      tester
+          .widget<Text>(find.text('Forwarded from Outgoing Channel'))
+          .style
+          ?.color,
+      messageColors.outgoingForwardedName,
+    );
+    final reply = find.byKey(const ValueKey('messageReplyQuote'));
+    final replyDecoration =
+        tester.widget<Container>(reply).decoration! as BoxDecoration;
+    expect(
+      replyDecoration.color,
+      messageColors.outgoingReplyLine.withValues(alpha: 0.10),
+    );
+    expect(
+      (replyDecoration.border! as Border).left.color,
+      messageColors.outgoingReplyLine,
+    );
+    expect(
+      tester.widget<Text>(find.text('Outgoing earlier message')).style?.color,
+      messageColors.outgoingReplyText,
+    );
+    expect(
+      tester
+          .widgetList<Text>(
+            find.descendant(of: reply, matching: find.byType(Text)),
+          )
+          .firstWhere((text) => text.textSpan != null)
+          .style
+          ?.color,
+      messageColors.outgoingReplyName,
+    );
+    expect(
+      tester
+          .widget<AppIcon>(find.byKey(const ValueKey('messageDeliveryEdited')))
+          .color,
+      messageColors.outgoingTime,
+    );
+    final previewDecoration =
+        tester
+                .widget<Container>(
+                  find.byKey(const ValueKey('messageLinkPreviewCard-421')),
+                )
+                .decoration!
+            as BoxDecoration;
+    expect(
+      previewDecoration.color,
+      messageColors.outgoingPreviewLine.withValues(alpha: 0.10),
+    );
+    expect(
+      (previewDecoration.border! as Border).left.color,
+      messageColors.outgoingPreviewLine,
+    );
+    expect(
+      tester.widget<Text>(find.text('Outgoing site')).style?.color,
+      messageColors.outgoingSiteName,
+    );
+  });
+
+  testWidgets('standalone bubbles inherit the installed cloud theme', (
+    tester,
+  ) async {
+    const cloudTheme = TelegramCloudTheme(
+      slug: 'standalone-message-colors',
+      rawTitle: 'Standalone message colors',
+      baseTheme: 'builtInThemeDay',
+      accentColorValue: 0x224466,
+      outgoingColors: [0x315273],
+      palette: {
+        'chat_messageTextOut': 0xF7F8F9,
+        'chat_messageLinkOut': 0xE8C45A,
+      },
+    );
+    const text = 'body link';
+    final message = ChatMessage(
+      id: 423,
+      isOutgoing: true,
+      text: text,
+      date: 1,
+      contentType: 'messageText',
+      textEntities: const [
+        MessageTextEntity(
+          offset: 5,
+          length: 4,
+          type: 'textEntityTypeTextUrl',
+          url: 'https://example.com',
+        ),
+      ],
+    );
+
+    await pumpBubble(tester, message, cloudTheme: cloudTheme);
+
+    final textBubble = find.byKey(const ValueKey('messageTextBubble-423'));
+    expect(
+      tester
+          .widget<StretchableMessageBubbleBackground>(textBubble)
+          .fallbackColor,
+      const Color(0xFF315273),
+    );
+    final richText = tester
+        .widgetList<RichText>(
+          find.descendant(of: textBubble, matching: find.byType(RichText)),
+        )
+        .firstWhere((widget) => widget.text.toPlainText().contains(text));
+    expect(richText.text.style?.color, const Color(0xFFF7F8F9));
+    expect(
+      _textSpans(
+        richText.text,
+      ).singleWhere((span) => span.text == 'link').style?.color,
+      const Color(0xFFE8C45A),
+    );
+  });
+
+  testWidgets('decorative bubbles retain their owned foreground palette', (
+    tester,
+  ) async {
+    const text = 'link\nquote';
+    final message = ChatMessage(
+      id: 424,
+      isOutgoing: true,
+      text: text,
+      date: 1,
+      contentType: 'messageText',
+      textEntities: const [
+        MessageTextEntity(
+          offset: 0,
+          length: 4,
+          type: 'textEntityTypeTextUrl',
+          url: 'https://example.com',
+        ),
+        MessageTextEntity(
+          offset: 5,
+          length: 5,
+          type: 'textEntityTypeBlockQuote',
+        ),
+      ],
+    );
+
+    await pumpBubble(
+      tester,
+      message,
+      messageColors: messageColors,
+      bubbleBackground: MessageBubbleBackground.midnightAurora,
+    );
+
+    final textBubble = find.byKey(const ValueKey('messageTextBubble-424'));
+    final spans = tester
+        .widgetList<RichText>(
+          find.descendant(of: textBubble, matching: find.byType(RichText)),
+        )
+        .expand((widget) => _textSpans(widget.text))
+        .toList();
+    expect(
+      spans.singleWhere((span) => span.text == 'link').style?.color,
+      MessageBubbleBackgroundSpec.midnightAurora.foregroundColor,
+    );
+    final quote = tester.widget<Container>(
+      find.byKey(const ValueKey('messageBlockQuote-424-5:5')),
+    );
+    expect(
+      ((quote.decoration! as BoxDecoration).border! as Border).left.color,
+      MessageBubbleBackgroundSpec.midnightAurora.foregroundColor,
+    );
+  });
+
+  testWidgets('reply, forward, and metadata use Android theme colors', (
+    tester,
+  ) async {
+    const incomingMessageText = Color(0xFF192A3B);
+    final message =
+        ChatMessage(
+            id: 422,
+            isOutgoing: false,
+            text: 'Body',
+            date: 1,
+            contentType: 'messageText',
+            replyToMessageId: 7,
+            replyToDate: 1,
+            replyToImage: TdFileRef(
+              id: 1422,
+              miniThumb: base64Decode(
+                'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+              ),
+            ),
+            isEdited: true,
+            linkPreview: const MessageLinkPreview(
+              url: 'https://example.com',
+              displayUrl: 'example.com',
+              siteName: 'Example site',
+              title: 'Preview title',
+              description: 'Preview body',
+            ),
+          )
+          ..forwardOrigin = 'Original Channel'
+          ..replyToSender = 'Sender'
+          ..replyToPreview = 'Earlier message';
+
+    await pumpBubble(
+      tester,
+      message,
+      incomingBubbleTextColor: incomingMessageText,
+      messageColors: messageColors,
+    );
+
+    final forwardHeader = find.byKey(
+      const ValueKey('messageForwardHeader-422'),
+    );
+    final forwardText = tester.widget<Text>(
+      find.descendant(
+        of: forwardHeader,
+        matching: find.text('Forwarded from Original Channel'),
+      ),
+    );
+    expect(forwardText.style?.color, messageColors.incomingForwardedName);
+
+    final reply = find.byKey(const ValueKey('messageReplyQuote'));
+    final replyDecoration =
+        tester.widget<Container>(reply).decoration! as BoxDecoration;
+    expect(
+      replyDecoration.color,
+      messageColors.incomingReplyLine.withValues(alpha: 0.10),
+    );
+    expect(
+      (replyDecoration.border! as Border).left.color,
+      messageColors.incomingReplyLine,
+    );
+    expect(
+      tester.widget<Text>(find.text('Earlier message')).style?.color,
+      messageColors.incomingReplyText,
+    );
+    final replyLabels = tester.widgetList<Text>(
+      find.descendant(of: reply, matching: find.byType(Text)),
+    );
+    expect(
+      replyLabels.firstWhere((text) => text.textSpan != null).style?.color,
+      messageColors.incomingReplyName,
+    );
+
+    final edited = tester.widget<AppIcon>(
+      find.byKey(const ValueKey('messageDeliveryEdited')),
+    );
+    expect(edited.color, messageColors.incomingTime);
+
+    final preview = tester.widget<Container>(
+      find.byKey(const ValueKey('messageLinkPreviewCard-422')),
+    );
+    final previewDecoration = preview.decoration! as BoxDecoration;
+    expect(
+      previewDecoration.color,
+      messageColors.incomingPreviewLine.withValues(
+        alpha: messageColors.incomingPreviewLine.a * 0.10,
+      ),
+    );
+    expect(
+      (previewDecoration.border! as Border).left.color,
+      messageColors.incomingPreviewLine,
+    );
+    expect(
+      tester.widget<Text>(find.text('Example site')).style?.color,
+      messageColors.incomingSiteName,
+    );
+    expect(
+      tester.widget<Text>(find.text('Preview title')).style?.color,
+      incomingMessageText,
+    );
+
+    // Expire the mocked TDLib image lookup timeout before test teardown.
+    await tester.pump(const Duration(minutes: 3, seconds: 1));
+  });
+
+  testWidgets('media-only replies use Android media reply text color', (
+    tester,
+  ) async {
+    final message =
+        ChatMessage(
+            id: 425,
+            isOutgoing: false,
+            text: 'Body',
+            date: 1,
+            contentType: 'messageText',
+            replyToMessageId: 9,
+            replyToDate: 1,
+            replyToImage: TdFileRef(
+              id: 1425,
+              miniThumb: base64Decode(
+                'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+              ),
+            ),
+          )
+          ..replyToSender = 'Media sender'
+          ..replyToPreview = '';
+
+    await pumpBubble(tester, message, messageColors: messageColors);
+
+    final openOriginal = find.byKey(const ValueKey('messageReplyOpenOriginal'));
+    expect(
+      tester
+          .widget<AppIcon>(
+            find.descendant(of: openOriginal, matching: find.byType(AppIcon)),
+          )
+          .color,
+      messageColors.incomingReplyMediaText,
+    );
+
+    // Expire the mocked TDLib image lookup timeout before test teardown.
+    await tester.pump(const Duration(minutes: 3, seconds: 1));
+  });
+
   testWidgets('block quotes stay readable when search fill is dark', (
     tester,
   ) async {
@@ -354,6 +1019,18 @@ void main() {
       searchFill: Colors.black,
       bubbleIncoming: Colors.white,
       bubbleIncomingText: const Color(0xFF1A1A1A),
+    );
+    const disabledCloudTheme = TelegramCloudTheme(
+      slug: 'disabled-cloud-theme',
+      rawTitle: 'Disabled Cloud Theme',
+      baseTheme: 'builtInThemeDay',
+      accentColorValue: 0xFFFF00FF,
+      outgoingColors: [0xFF112233],
+      palette: {
+        'chat_inBubble': 0xFF334455,
+        'chat_messageTextIn': 0xFF556677,
+        'chat_messageLinkIn': 0xFF778899,
+      },
     );
     final message = ChatMessage(
       id: 42,
@@ -367,13 +1044,31 @@ void main() {
           length: text.length,
           type: 'textEntityTypeBlockQuote',
         ),
+        MessageTextEntity(
+          offset: 0,
+          length: text.length,
+          type: 'textEntityTypeTextUrl',
+          url: 'https://example.com',
+        ),
       ],
     );
 
-    await pumpBubble(tester, message, colors: colors);
+    await pumpBubble(
+      tester,
+      message,
+      colors: colors,
+      themingEnabled: false,
+      messageColors: messageColors,
+      cloudTheme: disabledCloudTheme,
+    );
 
+    final textBubble = find.byKey(const ValueKey('messageTextBubble-42'));
+    final bubble = tester.widget<StretchableMessageBubbleBackground>(
+      textBubble,
+    );
+    expect(bubble.fallbackColor, colors.bubbleIncoming);
     final quote = find.descendant(
-      of: find.byKey(const ValueKey('messageTextBubble-42')),
+      of: textBubble,
       matching: find.byWidgetPredicate((widget) {
         if (widget case Container(decoration: final BoxDecoration decoration)) {
           final border = decoration.border;
@@ -405,6 +1100,15 @@ void main() {
     }
 
     expect(decoration.color, colors.bubbleIncomingText.withValues(alpha: 0.07));
+    final quoteText = tester.widget<RichText>(
+      find.descendant(of: quote, matching: find.byType(RichText)),
+    );
+    expect(
+      _textSpans(
+        quoteText.text,
+      ).singleWhere((span) => span.text == text).style?.color,
+      colors.linkBlue,
+    );
     expect(
       contrast(colors.bubbleIncomingText, paintedBackground),
       greaterThanOrEqualTo(4.5),

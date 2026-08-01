@@ -35,6 +35,7 @@ import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
 import '../theme/message_bubble_background.dart';
 import '../theme/message_name_colors.dart';
+import '../theme/telegram_cloud_theme.dart';
 import '../theme/theme_controller.dart';
 import 'animated_sticker_view.dart';
 import 'bot_button_presentation.dart';
@@ -101,6 +102,7 @@ class MessageBubble extends StatefulWidget {
     this.outgoingBubbleTextColor,
     this.incomingBubbleColor,
     this.incomingBubbleTextColor,
+    this.messageColors,
   });
 
   final ChatMessage message;
@@ -157,6 +159,7 @@ class MessageBubble extends StatefulWidget {
   final Color? outgoingBubbleTextColor;
   final Color? incomingBubbleColor;
   final Color? incomingBubbleTextColor;
+  final TelegramMessageColors? messageColors;
 
   @override
   State<MessageBubble> createState() => _MessageBubbleState();
@@ -277,9 +280,16 @@ class _MessageBubbleState extends State<MessageBubble>
         .effectiveMessageBubbleBackgroundSpecFor(outgoing: message.isOutgoing);
   }
 
+  TelegramCloudTheme? get _activeCloudTheme {
+    final theme = context.watch<ThemeController>();
+    if (!theme.themingEnabled) return null;
+    return theme.cloudThemeFor(Theme.of(context).brightness);
+  }
+
   Color get _outgoingBubbleColor =>
       _bubbleBackgroundStyle.backgroundColor ??
       widget.outgoingBubbleColor ??
+      _activeCloudTheme?.outgoingColor ??
       AppTheme.bubbleOutgoing;
 
   Color get _outgoingTextColor {
@@ -288,13 +298,16 @@ class _MessageBubbleState extends State<MessageBubble>
     }
     return _bubbleBackgroundStyle.foregroundColor ??
         widget.outgoingBubbleTextColor ??
+        _activeCloudTheme?.outgoingTextColor ??
         (_outgoingBubbleColor.computeLuminance() > 0.64
             ? const Color(0xFF171717)
             : AppTheme.bubbleOutgoingText);
   }
 
   Color get _incomingThemeBubbleColor =>
-      widget.incomingBubbleColor ?? context.colors.bubbleIncoming;
+      widget.incomingBubbleColor ??
+      _activeCloudTheme?.incomingColor ??
+      context.colors.bubbleIncoming;
 
   Color get _incomingBubbleColor =>
       _bubbleBackgroundStyle.backgroundColor ?? _incomingThemeBubbleColor;
@@ -302,7 +315,129 @@ class _MessageBubbleState extends State<MessageBubble>
   Color get _incomingTextColor =>
       _bubbleBackgroundStyle.foregroundColor ??
       widget.incomingBubbleTextColor ??
+      _activeCloudTheme?.incomingTextColor ??
       context.colors.bubbleIncomingText;
+
+  TelegramMessageColors? get _messageColors {
+    final theme = context.watch<ThemeController>();
+    if (!theme.themingEnabled || _bubbleBackgroundStyle.isDecorative) {
+      return null;
+    }
+    return widget.messageColors ??
+        theme.cloudThemeFor(Theme.of(context).brightness)?.messageColors;
+  }
+
+  double get _messageAccentFillOpacity =>
+      Theme.of(context).brightness == Brightness.dark ? 0.12 : 0.10;
+
+  Color _messageAccentFill(Color color) =>
+      color.withValues(alpha: color.a * _messageAccentFillOpacity);
+
+  Color _messageLinkColor(bool outgoing) {
+    final base = outgoing ? _outgoingTextColor : _incomingTextColor;
+    if (_bubbleBackgroundStyle.isDecorative) return base;
+    final colors = _messageColors;
+    if (colors == null) {
+      return outgoing ? _outgoingTextColor : context.colors.linkBlue;
+    }
+    return outgoing ? colors.outgoingLink : colors.incomingLink;
+  }
+
+  Color _messageQuoteColor(bool outgoing) {
+    if (_bubbleBackgroundStyle.isDecorative) {
+      return outgoing ? _outgoingTextColor : _incomingTextColor;
+    }
+    final colors = _messageColors;
+    if (colors == null) return AppTheme.brand;
+    return outgoing ? colors.outgoingQuote : colors.incomingQuote;
+  }
+
+  Color _messageReplyLineColor(bool outgoing) {
+    if (_bubbleBackgroundStyle.isDecorative) {
+      return outgoing ? _outgoingTextColor : _incomingTextColor;
+    }
+    final colors = _messageColors;
+    if (colors == null) {
+      return outgoing ? _outgoingTextColor : AppTheme.brand;
+    }
+    return outgoing ? colors.outgoingReplyLine : colors.incomingReplyLine;
+  }
+
+  Color _messageReplyNameColor(bool outgoing) {
+    if (_bubbleBackgroundStyle.isDecorative) {
+      return outgoing ? _outgoingTextColor : _incomingTextColor;
+    }
+    final colors = _messageColors;
+    if (colors == null) {
+      return outgoing ? _outgoingTextColor : context.colors.textPrimary;
+    }
+    return outgoing ? colors.outgoingReplyName : colors.incomingReplyName;
+  }
+
+  Color _messageReplyTextColor(bool outgoing) {
+    if (_bubbleBackgroundStyle.isDecorative) {
+      final foreground = outgoing ? _outgoingTextColor : _incomingTextColor;
+      return foreground.withValues(alpha: 0.72);
+    }
+    final colors = _messageColors;
+    if (colors == null) {
+      return outgoing
+          ? _outgoingTextColor.withValues(alpha: 0.72)
+          : context.colors.textSecondary;
+    }
+    if (message.replyToImage != null &&
+        (message.replyToPreview?.trim().isEmpty ?? true)) {
+      return outgoing
+          ? colors.outgoingReplyMediaText
+          : colors.incomingReplyMediaText;
+    }
+    return outgoing ? colors.outgoingReplyText : colors.incomingReplyText;
+  }
+
+  Color _messageForwardedNameColor(bool outgoing) {
+    if (_bubbleBackgroundStyle.isDecorative) {
+      return outgoing ? _outgoingTextColor : _incomingTextColor;
+    }
+    final colors = _messageColors;
+    if (colors == null) {
+      return outgoing ? _outgoingTextColor : context.colors.textSecondary;
+    }
+    return outgoing
+        ? colors.outgoingForwardedName
+        : colors.incomingForwardedName;
+  }
+
+  Color _messagePreviewLineColor(bool outgoing) {
+    if (_bubbleBackgroundStyle.isDecorative) {
+      return outgoing ? _outgoingTextColor : _incomingTextColor;
+    }
+    final colors = _messageColors;
+    if (colors == null) return _messageLinkColor(outgoing);
+    return outgoing ? colors.outgoingPreviewLine : colors.incomingPreviewLine;
+  }
+
+  Color _messageSiteNameColor(bool outgoing) {
+    if (_bubbleBackgroundStyle.isDecorative) {
+      return outgoing ? _outgoingTextColor : _incomingTextColor;
+    }
+    final colors = _messageColors;
+    if (colors == null) return _messageLinkColor(outgoing);
+    return outgoing ? colors.outgoingSiteName : colors.incomingSiteName;
+  }
+
+  Color _messageTimeColor(bool outgoing) {
+    if (_bubbleBackgroundStyle.isDecorative) {
+      final foreground = outgoing ? _outgoingTextColor : _incomingTextColor;
+      return foreground.withValues(alpha: 0.65);
+    }
+    final colors = _messageColors;
+    if (colors == null) {
+      return outgoing
+          ? _outgoingTextColor.withValues(alpha: 0.65)
+          : context.colors.textTertiary;
+    }
+    return outgoing ? colors.outgoingTime : colors.incomingTime;
+  }
 
   bool get _showsAttachedComments =>
       !message.isContentRestricted &&
@@ -342,7 +477,7 @@ class _MessageBubbleState extends State<MessageBubble>
       fallbackColor: outgoing ? _outgoingBubbleColor : _incomingBubbleColor,
       fallbackBorderRadius: borderRadius,
       fallbackPadding: padding,
-      fallbackBorder: outgoing
+      fallbackBorder: outgoing || _messageColors != null
           ? null
           : Border.all(color: context.colors.divider, width: 0.5),
       constraints: constraints,
@@ -1073,7 +1208,16 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   Widget _floatingMeta(bool outgoing) {
-    final faint = outgoing
+    final usesMediaOverlayColor =
+        message.animatedSticker != null ||
+        message.videoSticker != null ||
+        message.isDice ||
+        (message.stickerFileId != null && message.image != null) ||
+        ((message.video != null || message.image != null) &&
+            (_caption()?.trim().isEmpty ?? true));
+    final faint = _messageColors != null && !usesMediaOverlayColor
+        ? _messageTimeColor(outgoing)
+        : outgoing
         ? _outgoingTextColor.withValues(alpha: 0.72)
         : context.colors.textTertiary;
     final content = Padding(
@@ -1345,13 +1489,8 @@ class _MessageBubbleState extends State<MessageBubble>
     bool includeForwardHeader = true,
     bool includeReplyQuote = true,
   }) {
-    final c = context.colors;
     final baseColor = outgoing ? _outgoingTextColor : _incomingTextColor;
-    final linkColor = _bubbleBackgroundStyle.isDecorative
-        ? baseColor
-        : outgoing
-        ? _outgoingTextColor
-        : c.linkBlue;
+    final linkColor = _messageLinkColor(outgoing);
     for (final r in _linkRecognizers) {
       r.dispose();
     }
@@ -1520,12 +1659,20 @@ class _MessageBubbleState extends State<MessageBubble>
       (rune >= 0x2934 && rune <= 0x2935) ||
       (rune >= 0x1F000 && rune <= 0x1FAFF);
 
-  List<Widget> _richBlockWidgets(List<RichMessageBlock> blocks, bool outgoing) {
+  List<Widget> _richBlockWidgets(
+    List<RichMessageBlock> blocks,
+    bool outgoing, {
+    Color? textLinkColor,
+  }) {
     final widgets = <Widget>[];
     for (var index = 0; index < blocks.length; index++) {
       final block = blocks[index];
       if (widgets.isNotEmpty) widgets.add(const SizedBox(height: 8));
-      final widget = _richBlockWidget(block, outgoing);
+      final widget = _richBlockWidget(
+        block,
+        outgoing,
+        textLinkColor: textLinkColor,
+      );
       if (widget != null) {
         widgets.add(
           KeyedSubtree(
@@ -1538,13 +1685,21 @@ class _MessageBubbleState extends State<MessageBubble>
     return widgets;
   }
 
-  Widget? _richBlockWidget(RichMessageBlock block, bool outgoing) {
+  Widget? _richBlockWidget(
+    RichMessageBlock block,
+    bool outgoing, {
+    Color? textLinkColor,
+  }) {
     return switch (block.kind) {
       RichMessageBlockKind.paragraph ||
       RichMessageBlockKind.heading ||
       RichMessageBlockKind.preformatted ||
       RichMessageBlockKind.footer ||
-      RichMessageBlockKind.thinking => _richTextBlock(block, outgoing),
+      RichMessageBlockKind.thinking => _richTextBlock(
+        block,
+        outgoing,
+        linkColor: textLinkColor,
+      ),
       RichMessageBlockKind.divider => Divider(
         height: 12,
         color: context.colors.divider,
@@ -1570,12 +1725,16 @@ class _MessageBubbleState extends State<MessageBubble>
     };
   }
 
-  Widget _richTextBlock(RichMessageBlock block, bool outgoing) {
+  Widget _richTextBlock(
+    RichMessageBlock block,
+    bool outgoing, {
+    Color? linkColor,
+  }) {
     final c = context.colors;
     final base = block.kind == RichMessageBlockKind.footer
         ? c.textSecondary
         : (outgoing ? _outgoingTextColor : _incomingTextColor);
-    final link = outgoing ? _outgoingTextColor : c.linkBlue;
+    final link = linkColor ?? _messageLinkColor(outgoing);
     final entities = <MessageTextEntity>[...block.textEntities];
     final fontSize = switch (block.kind) {
       RichMessageBlockKind.heading => switch (block.size.clamp(1, 6)) {
@@ -1693,11 +1852,12 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   Widget _richQuoteContainer(RichMessageBlock block, bool outgoing) {
-    final c = context.colors;
     final base = outgoing ? _outgoingTextColor : _incomingTextColor;
-    final link = outgoing ? _outgoingTextColor : c.linkBlue;
+    final link = _messageLinkColor(outgoing);
+    final quote = _messageColors == null ? base : _messageQuoteColor(outgoing);
+    final quoteLink = !outgoing && _messageColors != null ? quote : link;
     final body = block.kind == RichMessageBlockKind.pullQuote
-        ? _richTextWidgets(block.text, base, link, outgoing, false, [
+        ? _richTextWidgets(block.text, base, quoteLink, outgoing, false, [
             ...block.textEntities,
             if (block.text.isNotEmpty)
               MessageTextEntity(
@@ -1706,13 +1866,15 @@ class _MessageBubbleState extends State<MessageBubble>
                 type: 'textEntityTypeItalic',
               ),
           ])
-        : _richBlockWidgets(block.children, outgoing);
+        : _richBlockWidgets(block.children, outgoing, textLinkColor: quoteLink);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(10, 7, 8, 7),
       decoration: BoxDecoration(
-        color: base.withValues(alpha: 0.07),
-        border: Border(left: BorderSide(color: base, width: 3)),
+        color: _messageColors == null
+            ? base.withValues(alpha: 0.07)
+            : _messageAccentFill(quote),
+        border: Border(left: BorderSide(color: quote, width: 3)),
       ),
       child: Column(
         crossAxisAlignment: block.kind == RichMessageBlockKind.pullQuote
@@ -1726,7 +1888,7 @@ class _MessageBubbleState extends State<MessageBubble>
             ..._richTextWidgets(
               block.caption,
               base.withValues(alpha: 0.78),
-              link,
+              quoteLink,
               outgoing,
               false,
               block.captionEntities,
@@ -1739,9 +1901,8 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   Widget _richDetailsBlock(RichMessageBlock block, bool outgoing) {
-    final c = context.colors;
     final base = outgoing ? _outgoingTextColor : _incomingTextColor;
-    final link = outgoing ? _outgoingTextColor : c.linkBlue;
+    final link = _messageLinkColor(outgoing);
     return _RichDetailsBlock(
       initiallyOpen: block.isOpen,
       color: base,
@@ -2085,7 +2246,6 @@ class _MessageBubbleState extends State<MessageBubble>
     bool outgoing,
   ) {
     if (block.caption.trim().isEmpty) return media;
-    final c = context.colors;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -2095,7 +2255,7 @@ class _MessageBubbleState extends State<MessageBubble>
         ..._richTextWidgets(
           block.caption,
           outgoing ? _outgoingTextColor : _incomingTextColor,
-          outgoing ? _outgoingTextColor : c.linkBlue,
+          _messageLinkColor(outgoing),
           outgoing,
           false,
           block.captionEntities,
@@ -2150,7 +2310,7 @@ class _MessageBubbleState extends State<MessageBubble>
 
   Widget _richMathBlock(String expression, bool outgoing) {
     final c = context.colors;
-    final base = outgoing ? _outgoingTextColor : c.textPrimary;
+    final base = outgoing ? _outgoingTextColor : _incomingTextColor;
     final fill = outgoing
         ? _outgoingTextColor.withValues(alpha: 0.14)
         : c.searchFill.withValues(alpha: 0.72);
@@ -2180,8 +2340,8 @@ class _MessageBubbleState extends State<MessageBubble>
   Widget _richMapBlock(RichMessageBlock block, bool outgoing) {
     final location = block.mapLocation!;
     final c = context.colors;
-    final base = outgoing ? _outgoingTextColor : c.textPrimary;
-    final link = outgoing ? _outgoingTextColor : c.linkBlue;
+    final base = outgoing ? _outgoingTextColor : _incomingTextColor;
+    final link = _messageLinkColor(outgoing);
     final sourceWidth = math.max(block.mapWidth, 1);
     final sourceHeight = math.max(block.mapHeight, 1);
     final previewHeight = (220 * sourceHeight / sourceWidth).clamp(100, 220);
@@ -2244,11 +2404,11 @@ class _MessageBubbleState extends State<MessageBubble>
 
   Widget _richTableBlock(RichMessageBlock block, bool outgoing) {
     final c = context.colors;
-    final base = outgoing ? _outgoingTextColor : c.textPrimary;
+    final base = outgoing ? _outgoingTextColor : _incomingTextColor;
     final secondary = outgoing
         ? _outgoingTextColor.withValues(alpha: 0.72)
         : c.textSecondary;
-    final link = outgoing ? _outgoingTextColor : c.linkBlue;
+    final link = _messageLinkColor(outgoing);
     final border = outgoing
         ? _outgoingTextColor.withValues(alpha: 0.22)
         : c.divider.withValues(alpha: 0.9);
@@ -2392,11 +2552,11 @@ class _MessageBubbleState extends State<MessageBubble>
 
   Widget _aiSummaryBlock(bool outgoing, {double? width}) {
     final c = context.colors;
-    final base = outgoing ? _outgoingTextColor : c.textPrimary;
+    final base = outgoing ? _outgoingTextColor : _incomingTextColor;
     final secondary = outgoing
         ? _outgoingTextColor.withValues(alpha: 0.70)
         : c.textSecondary;
-    final link = outgoing ? _outgoingTextColor : c.linkBlue;
+    final link = _messageLinkColor(outgoing);
     return Container(
       key: const ValueKey('messageAiSummaryBlock'),
       width: width ?? _bubbleMaxWidth(),
@@ -2466,11 +2626,11 @@ class _MessageBubbleState extends State<MessageBubble>
   }) {
     source ??= message;
     final c = context.colors;
-    final base = outgoing ? _outgoingTextColor : c.textPrimary;
+    final base = outgoing ? _outgoingTextColor : _incomingTextColor;
     final secondary = outgoing
         ? _outgoingTextColor.withValues(alpha: 0.70)
         : c.textSecondary;
-    final link = outgoing ? _outgoingTextColor : c.linkBlue;
+    final link = _messageLinkColor(outgoing);
     return Container(
       key: const ValueKey('messageTranslationBlock'),
       width: width ?? _bubbleMaxWidth(),
@@ -2533,11 +2693,12 @@ class _MessageBubbleState extends State<MessageBubble>
     required double maxWidth,
   }) {
     final c = context.colors;
-    final base = outgoing ? _outgoingTextColor : c.textPrimary;
+    final base = outgoing ? _outgoingTextColor : _incomingTextColor;
     final secondary = outgoing
         ? _outgoingTextColor.withValues(alpha: 0.75)
         : c.textSecondary;
-    final link = outgoing ? _outgoingTextColor : c.linkBlue;
+    final link = _messageLinkColor(outgoing);
+    final previewLine = _messagePreviewLineColor(outgoing);
     const accentWidth = 3.0;
     final media = _linkPreviewMedia(
       preview,
@@ -2552,7 +2713,7 @@ class _MessageBubbleState extends State<MessageBubble>
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: link,
+            color: _messageSiteNameColor(outgoing),
           ),
         ),
       if (preview.title.isNotEmpty)
@@ -2583,9 +2744,11 @@ class _MessageBubbleState extends State<MessageBubble>
         ),
     ];
 
-    final translucentBackground = outgoing
-        ? _outgoingTextColor.withValues(alpha: 0.10)
-        : c.searchFill.withValues(alpha: 0.85);
+    final translucentBackground = _messageColors == null
+        ? outgoing
+              ? _outgoingTextColor.withValues(alpha: 0.10)
+              : c.searchFill.withValues(alpha: 0.85)
+        : _messageAccentFill(previewLine);
     // Decorative bubbles may contain ornaments across their stretchable
     // center. Precomposing the preview fill keeps those pixels from showing
     // through the card while retaining the same tint.
@@ -2606,10 +2769,7 @@ class _MessageBubbleState extends State<MessageBubble>
           color: cardBackground,
           borderRadius: BorderRadius.circular(7),
           border: Border(
-            left: BorderSide(
-              color: outgoing ? _outgoingTextColor : link,
-              width: accentWidth,
-            ),
+            left: BorderSide(color: previewLine, width: accentWidth),
           ),
         ),
         clipBehavior: Clip.antiAlias,
@@ -3039,8 +3199,12 @@ class _MessageBubbleState extends State<MessageBubble>
 
   /// 转发 attribution shown above forwarded content: `转发自 …`.
   Widget _forwardHeader(bool outgoing) {
-    final c = context.colors;
-    final accent = outgoing ? _outgoingTextColor : AppTheme.brand;
+    final textColor = _messageForwardedNameColor(outgoing);
+    final accent = _bubbleBackgroundStyle.isDecorative
+        ? textColor
+        : _messageColors == null && !outgoing
+        ? AppTheme.brand
+        : textColor;
     return Row(
       key: ValueKey('messageForwardHeader-${message.id}'),
       mainAxisSize: MainAxisSize.min,
@@ -3061,7 +3225,7 @@ class _MessageBubbleState extends State<MessageBubble>
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w500,
-              color: outgoing ? _outgoingTextColor : c.textSecondary,
+              color: textColor,
             ),
           ),
         ),
@@ -3071,11 +3235,9 @@ class _MessageBubbleState extends State<MessageBubble>
 
   /// 引用 quote block shown above a reply's text.
   Widget _replyQuote(bool outgoing) {
-    final c = context.colors;
-    final labelColor = outgoing ? _outgoingTextColor : c.textPrimary;
-    final faded = outgoing
-        ? _outgoingTextColor.withValues(alpha: 0.72)
-        : c.textSecondary;
+    final labelColor = _messageReplyNameColor(outgoing);
+    final faded = _messageReplyTextColor(outgoing);
+    final line = _messageReplyLineColor(outgoing);
     final sender = message.replyToSender ?? '';
     final time = DateText.quoteLabel(message.replyToDate ?? 0);
     final targetId = message.replyToMessageId;
@@ -3086,6 +3248,9 @@ class _MessageBubbleState extends State<MessageBubble>
       decoration: BoxDecoration(
         color: _replyQuoteBackground(outgoing),
         borderRadius: BorderRadius.circular(8),
+        border: _messageColors == null
+            ? null
+            : Border(left: BorderSide(color: line, width: 3)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3155,6 +3320,9 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   Color _replyQuoteBackground(bool outgoing) {
+    if (_messageColors != null) {
+      return _messageAccentFill(_messageReplyLineColor(outgoing));
+    }
     final base = outgoing ? _outgoingBubbleColor : _incomingBubbleColor;
     final dark = Theme.of(context).brightness == Brightness.dark;
     return Color.lerp(base, dark ? Colors.white : Colors.black, 0.10)!;
@@ -3171,9 +3339,7 @@ class _MessageBubbleState extends State<MessageBubble>
 
   /// Trailing inline meta: delivery progress, replaced by edit status.
   InlineSpan _metaSpan(bool outgoing) {
-    final faint = outgoing
-        ? _outgoingTextColor.withValues(alpha: 0.65)
-        : context.colors.textTertiary;
+    final faint = _messageTimeColor(outgoing);
     return WidgetSpan(
       child: Padding(
         padding: const EdgeInsets.only(left: 6, top: 2),
@@ -3271,6 +3437,7 @@ class _MessageBubbleState extends State<MessageBubble>
                 end,
                 base,
                 link,
+                outgoing,
                 sourceEntities,
                 fontSize,
               ),
@@ -3345,10 +3512,13 @@ class _MessageBubbleState extends State<MessageBubble>
     int end,
     Color base,
     Color link,
+    bool outgoing,
     List<MessageTextEntity> entities,
     double fontSize,
   ) {
     final key = '${quote.offset}:${quote.length}';
+    final quoteColor = _messageQuoteColor(outgoing);
+    final quoteLink = !outgoing && _messageColors != null ? quoteColor : link;
     final expanded =
         !quote.isExpandableBlockQuote || _expandedQuotes.contains(key);
     return GestureDetector(
@@ -3365,10 +3535,13 @@ class _MessageBubbleState extends State<MessageBubble>
             }
           : null,
       child: Container(
+        key: ValueKey('messageBlockQuote-${message.id}-$key'),
         decoration: BoxDecoration(
-          color: base.withValues(alpha: 0.07),
+          color: _messageColors == null
+              ? base.withValues(alpha: 0.07)
+              : _messageAccentFill(quoteColor),
           borderRadius: BorderRadius.circular(6),
-          border: Border(left: BorderSide(color: AppTheme.brand, width: 3)),
+          border: Border(left: BorderSide(color: quoteColor, width: 3)),
         ),
         padding: const EdgeInsets.fromLTRB(9, 7, 8, 7),
         child: Column(
@@ -3378,7 +3551,7 @@ class _MessageBubbleState extends State<MessageBubble>
             _richText(
               text,
               base,
-              link,
+              quoteLink,
               start,
               end,
               false,
@@ -3397,7 +3570,7 @@ class _MessageBubbleState extends State<MessageBubble>
                 ),
                 style: TextStyle(
                   fontSize: 12,
-                  color: AppTheme.brand,
+                  color: quoteColor,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -4072,12 +4245,14 @@ class _MessageBubbleState extends State<MessageBubble>
 
     final c = context.colors;
     final baseColor = outgoing ? _outgoingTextColor : _incomingTextColor;
-    final linkColor = outgoing ? _outgoingTextColor : c.linkBlue;
+    final linkColor = _messageLinkColor(outgoing);
     return Container(
       decoration: BoxDecoration(
         color: outgoing ? _outgoingBubbleColor : _incomingBubbleColor,
         borderRadius: _messageBorderRadius(8),
-        border: outgoing ? null : Border.all(color: c.divider, width: 0.5),
+        border: outgoing || _messageColors != null
+            ? null
+            : Border.all(color: c.divider, width: 0.5),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -4559,6 +4734,19 @@ class _MessageBubbleState extends State<MessageBubble>
 
   Widget _fileAlbumCard(List<ChatMessage> sources, bool outgoing) {
     final c = context.colors;
+    final themed = _messageColors != null;
+    final messageSurface = outgoing
+        ? _outgoingBubbleColor
+        : _incomingBubbleColor;
+    final messageText = outgoing ? _outgoingTextColor : _incomingTextColor;
+    final surface = themed ? messageSurface : c.card;
+    final itemText = themed ? messageText : _incomingTextColor;
+    final secondary = themed
+        ? messageText.withValues(alpha: 0.70)
+        : c.textSecondary;
+    final divider = themed ? messageText.withValues(alpha: 0.16) : c.divider;
+    final captionText = themed ? messageText : c.textPrimary;
+    final captionLink = themed ? _messageLinkColor(outgoing) : c.linkBlue;
     ChatMessage? captionSource;
     var caption = '';
     for (final source in sources) {
@@ -4585,9 +4773,9 @@ class _MessageBubbleState extends State<MessageBubble>
       width: _bubbleMaxWidth(),
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: c.card,
+        color: surface,
         borderRadius: _messageBorderRadius(6),
-        border: Border.all(color: c.divider, width: 0.5),
+        border: themed ? null : Border.all(color: c.divider, width: 0.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -4596,16 +4784,21 @@ class _MessageBubbleState extends State<MessageBubble>
             if (index > 0)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Container(height: 0.5, color: c.divider),
+                child: Container(height: 0.5, color: divider),
               ),
-            _fileAlbumItem(sources[index]),
+            _fileAlbumItem(
+              sources[index],
+              primaryColor: itemText,
+              secondaryColor: secondary,
+              surfaceColor: surface,
+            ),
           ],
           if (captionSource != null) ...[
             SizedBox(height: sources.length == 1 ? 10 : 2),
             if (!singleGif)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Container(height: 0.5, color: c.divider),
+                child: Container(height: 0.5, color: divider),
               ),
             Padding(
               padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
@@ -4613,8 +4806,8 @@ class _MessageBubbleState extends State<MessageBubble>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: _richTextWidgets(
                   caption,
-                  c.textPrimary,
-                  c.linkBlue,
+                  captionText,
+                  captionLink,
                   outgoing,
                   false,
                   captionSource.textEntities,
@@ -4639,7 +4832,12 @@ class _MessageBubbleState extends State<MessageBubble>
     );
   }
 
-  Widget _fileAlbumItem(ChatMessage source) {
+  Widget _fileAlbumItem(
+    ChatMessage source, {
+    required Color primaryColor,
+    required Color secondaryColor,
+    required Color surfaceColor,
+  }) {
     final doc = source.document!;
     final isGif = _isGifDocument(doc);
     final itemKey = GlobalKey();
@@ -4676,24 +4874,18 @@ class _MessageBubbleState extends State<MessageBubble>
                           doc.fileName,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 15,
-                            color: _incomingTextColor,
-                          ),
+                          style: TextStyle(fontSize: 15, color: primaryColor),
                         ),
                         const SizedBox(height: 6),
                         Text(
                           _byteString(doc.size),
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: c.textSecondary,
-                          ),
+                          style: TextStyle(fontSize: 12, color: secondaryColor),
                         ),
                       ],
                     ),
                   ),
                   const SizedBox(width: 8),
-                  _fileGlyph(doc.ext),
+                  _fileGlyph(doc.ext, surfaceColor: surfaceColor),
                 ],
               ),
             ),
@@ -4718,7 +4910,7 @@ class _MessageBubbleState extends State<MessageBubble>
     return text.trim().isEmpty ? '' : text;
   }
 
-  Widget _fileGlyph(String ext) {
+  Widget _fileGlyph(String ext, {required Color surfaceColor}) {
     return SizedBox(
       width: 44,
       height: 48,
@@ -4748,7 +4940,7 @@ class _MessageBubbleState extends State<MessageBubble>
               decoration: BoxDecoration(
                 color: AppTheme.brand,
                 shape: BoxShape.circle,
-                border: Border.all(color: c.card, width: 1.5),
+                border: Border.all(color: surfaceColor, width: 1.5),
               ),
               child: const AppIcon(
                 HeroAppIcons.arrowDown,

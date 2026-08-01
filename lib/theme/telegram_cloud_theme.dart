@@ -167,6 +167,84 @@ enum TelegramThemeSemanticColor {
 }
 
 @immutable
+class TelegramMessageColors {
+  const TelegramMessageColors({
+    required this.incomingLink,
+    required this.outgoingLink,
+    required this.incomingQuote,
+    required this.outgoingQuote,
+    required this.incomingReplyLine,
+    required this.outgoingReplyLine,
+    required this.incomingReplyName,
+    required this.outgoingReplyName,
+    required this.incomingReplyText,
+    required this.outgoingReplyText,
+    required this.incomingReplyMediaText,
+    required this.outgoingReplyMediaText,
+    required this.incomingForwardedName,
+    required this.outgoingForwardedName,
+    required this.incomingPreviewLine,
+    required this.outgoingPreviewLine,
+    required this.incomingSiteName,
+    required this.outgoingSiteName,
+    required this.incomingTime,
+    required this.outgoingTime,
+  });
+
+  factory TelegramMessageColors.fromChatThemeStyle(ChatThemeStyle style) {
+    final incomingText = style.incomingTextColor;
+    final outgoingText = style.outgoingTextColor;
+    final incomingAccent = style.nameColor;
+    final outgoingAccent = style.outgoingMessageAccentColor == 0
+        ? outgoingText
+        : style.outgoingAccentColor;
+    return TelegramMessageColors(
+      incomingLink: incomingAccent,
+      outgoingLink: outgoingAccent,
+      incomingQuote: incomingAccent,
+      outgoingQuote: outgoingAccent,
+      incomingReplyLine: incomingAccent,
+      outgoingReplyLine: outgoingAccent,
+      incomingReplyName: incomingAccent,
+      outgoingReplyName: outgoingAccent,
+      incomingReplyText: incomingText.withValues(alpha: 0.72),
+      outgoingReplyText: outgoingText.withValues(alpha: 0.72),
+      incomingReplyMediaText: incomingText.withValues(alpha: 0.72),
+      outgoingReplyMediaText: outgoingText.withValues(alpha: 0.72),
+      incomingForwardedName: incomingAccent,
+      outgoingForwardedName: outgoingAccent,
+      incomingPreviewLine: incomingAccent,
+      outgoingPreviewLine: outgoingAccent,
+      incomingSiteName: incomingAccent,
+      outgoingSiteName: outgoingAccent,
+      incomingTime: incomingText.withValues(alpha: 0.65),
+      outgoingTime: outgoingText.withValues(alpha: 0.65),
+    );
+  }
+
+  final Color incomingLink;
+  final Color outgoingLink;
+  final Color incomingQuote;
+  final Color outgoingQuote;
+  final Color incomingReplyLine;
+  final Color outgoingReplyLine;
+  final Color incomingReplyName;
+  final Color outgoingReplyName;
+  final Color incomingReplyText;
+  final Color outgoingReplyText;
+  final Color incomingReplyMediaText;
+  final Color outgoingReplyMediaText;
+  final Color incomingForwardedName;
+  final Color outgoingForwardedName;
+  final Color incomingPreviewLine;
+  final Color outgoingPreviewLine;
+  final Color incomingSiteName;
+  final Color outgoingSiteName;
+  final Color incomingTime;
+  final Color outgoingTime;
+}
+
+@immutable
 class TelegramCloudTheme {
   const TelegramCloudTheme({
     required this.slug,
@@ -278,6 +356,88 @@ class TelegramCloudTheme {
     'textBubble_incoming',
     'historyTextInFg',
   ]);
+
+  TelegramMessageColors get messageColors {
+    final ui = uiColors;
+    final incomingText = incomingTextColor ?? ui.bubbleIncomingText;
+    final outgoingText =
+        outgoingTextColor ??
+        ((outgoingColor?.computeLuminance() ?? 1) > 0.58
+            ? const Color(0xFF171717)
+            : const Color(0xFFFFFFFF));
+    final incomingLink =
+        _paletteColor(const [
+          'chat_messageLinkIn',
+          'chat.message.incoming.linkText',
+          'linkBubble_incoming',
+          'historyLinkInFg',
+        ]) ??
+        accentColor;
+    final outgoingLink =
+        _paletteColor(const [
+          'chat_messageLinkOut',
+          'chat.message.outgoing.linkText',
+          'linkBubble_outgoing',
+          'historyLinkOutFg',
+        ]) ??
+        outgoingText;
+    final incomingQuote =
+        _paletteColor(const ['chat_inQuote', 'chat_inReplyLine']) ??
+        incomingLink;
+    final outgoingQuote =
+        _paletteColor(const ['chat_outQuote', 'chat_outReplyLine']) ??
+        outgoingLink;
+    final incomingReplyLine =
+        _paletteColor(const ['chat_inReplyLine']) ?? incomingQuote;
+    final outgoingReplyLine =
+        _paletteColor(const ['chat_outReplyLine']) ?? outgoingQuote;
+    final incomingReplyName =
+        _paletteColor(const ['chat_inReplyNameText']) ?? incomingReplyLine;
+    final outgoingReplyName =
+        _paletteColor(const ['chat_outReplyNameText']) ?? outgoingReplyLine;
+    final incomingReplyText =
+        _paletteColor(const ['chat_inReplyMessageText']) ??
+        incomingText.withValues(alpha: 0.72);
+    final outgoingReplyText =
+        _paletteColor(const ['chat_outReplyMessageText']) ??
+        outgoingText.withValues(alpha: 0.72);
+    return TelegramMessageColors(
+      incomingLink: incomingLink,
+      outgoingLink: outgoingLink,
+      incomingQuote: incomingQuote,
+      outgoingQuote: outgoingQuote,
+      incomingReplyLine: incomingReplyLine,
+      outgoingReplyLine: outgoingReplyLine,
+      incomingReplyName: incomingReplyName,
+      outgoingReplyName: outgoingReplyName,
+      incomingReplyText: incomingReplyText,
+      outgoingReplyText: outgoingReplyText,
+      incomingReplyMediaText:
+          _paletteColor(const ['chat_inReplyMediaMessageText']) ??
+          incomingReplyText,
+      outgoingReplyMediaText:
+          _paletteColor(const ['chat_outReplyMediaMessageText']) ??
+          outgoingReplyText,
+      incomingForwardedName:
+          _paletteColor(const ['chat_inForwardedNameText']) ?? incomingLink,
+      outgoingForwardedName:
+          _paletteColor(const ['chat_outForwardedNameText']) ?? outgoingLink,
+      incomingPreviewLine:
+          _paletteColor(const ['chat_inPreviewLine']) ?? incomingLink,
+      outgoingPreviewLine:
+          _paletteColor(const ['chat_outPreviewLine']) ?? outgoingLink,
+      incomingSiteName:
+          _paletteColor(const ['chat_inSiteNameText']) ?? incomingLink,
+      outgoingSiteName:
+          _paletteColor(const ['chat_outSiteNameText']) ?? outgoingLink,
+      incomingTime:
+          _paletteColor(const ['chat_inTimeText']) ??
+          incomingText.withValues(alpha: 0.65),
+      outgoingTime:
+          _paletteColor(const ['chat_outTimeText']) ??
+          outgoingText.withValues(alpha: 0.65),
+    );
+  }
 
   /// Resolves one reusable semantic variable using Telegram's fidelity order:
   /// Android, iOS, macOS, then TDesktop.
@@ -1252,12 +1412,15 @@ List<int> _outgoingFromPalette(Map<String, int> palette) {
   ]);
   if (first == null) return const [];
   final second = _firstPaletteValue(palette, const [
+    'chat_outBubbleGradient',
     'chat_outBubbleGradient1',
     'chat.message.outgoing.bubble.withWp.gradientBg',
     'chat.message.outgoing.bubble.withoutWp.gradientBg',
     'bubbleBackgroundGradient_outgoing',
   ]);
-  return second == null || second == first ? [first] : [first, second];
+  return second == null || second == 0 || second == first
+      ? [first]
+      : [first, second];
 }
 
 int? _firstPaletteValue(Map<String, int> palette, List<String> keys) {

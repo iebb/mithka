@@ -3322,6 +3322,7 @@ class _ChatViewState extends State<ChatView> {
       outgoingBubbleTextColor: _effectiveOutgoingTextColor(),
       incomingBubbleColor: _effectiveIncomingColor(),
       incomingBubbleTextColor: _effectiveIncomingTextColor(),
+      messageColors: _effectiveMessageColors(),
       onToggleReaction: (r) => _vm.toggleReaction(message, r),
       onShowReactionUsers: _showReactionUsers,
       onRedial: _startCall,
@@ -5101,6 +5102,14 @@ class _ChatViewState extends State<ChatView> {
   Color? _effectiveIncomingTextColor() =>
       _resolvedChatThemeStyle?.incomingTextColor ??
       _resolvedCloudTheme?.incomingTextColor;
+
+  TelegramMessageColors? _effectiveMessageColors() {
+    if (!_themingEnabled) return null;
+    final style = _resolvedChatThemeStyle;
+    return style == null
+        ? _resolvedCloudTheme?.messageColors
+        : TelegramMessageColors.fromChatThemeStyle(style);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -7679,6 +7688,7 @@ class _ChatViewState extends State<ChatView> {
             : AppTheme.bubbleOutgoingText);
     final incomingTextColor =
         _effectiveIncomingTextColor() ?? c.bubbleIncomingText;
+    final messageColors = _effectiveMessageColors();
     final visible = group.take(9).toList();
     final showComments =
         _vm.isChannel &&
@@ -7707,7 +7717,9 @@ class _ChatViewState extends State<ChatView> {
       decoration: BoxDecoration(
         color: outgoing ? outgoingColor : themedIncoming ?? c.bubbleIncoming,
         borderRadius: BorderRadius.circular(12),
-        border: outgoing ? null : Border.all(color: c.divider, width: 0.5),
+        border: outgoing || messageColors != null
+            ? null
+            : Border.all(color: c.divider, width: 0.5),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -7758,7 +7770,9 @@ class _ChatViewState extends State<ChatView> {
                               ? outgoingTextColor
                               : incomingTextColor,
                         ),
-                        linkColor: outgoing ? outgoingTextColor : c.linkBlue,
+                        linkColor: outgoing
+                            ? messageColors?.outgoingLink ?? outgoingTextColor
+                            : messageColors?.incomingLink ?? c.linkBlue,
                         onBotCommandTap: _sendCommand,
                         onHashtagTap: _openHashtagSearch,
                         onMentionTap: _openUserProfile,

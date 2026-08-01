@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:archive/archive.dart';
 import 'package:flutter/widgets.dart';
@@ -8,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as image_lib;
 import 'package:mithka/chat/chat_wallpaper.dart';
 import 'package:mithka/chat/chat_wallpaper_view.dart';
+import 'package:mithka/theme/telegram_cloud_theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 Map<String, dynamic> _defaultBackgroundUpdate({
@@ -1033,7 +1035,12 @@ void main() {
 
   test('uses Telegram emoji theme background and outgoing palette', () async {
     SharedPreferences.setMockInitialValues({});
-    Map<String, dynamic> settings(int backgroundColor, int outgoingColor) => {
+    Map<String, dynamic> settings(
+      int backgroundColor,
+      int outgoingColor,
+      int accentColor,
+      int outgoingAccentColor,
+    ) => {
       '@type': 'themeSettings',
       'background': {
         '@type': 'background',
@@ -1047,7 +1054,8 @@ void main() {
         '@type': 'backgroundFillSolid',
         'color': outgoingColor,
       },
-      'outgoing_message_accent_color': outgoingColor,
+      'accent_color': accentColor,
+      'outgoing_message_accent_color': outgoingAccentColor,
     };
 
     final themesUpdate = {
@@ -1056,8 +1064,8 @@ void main() {
         {
           '@type': 'emojiChatTheme',
           'name': '🐣',
-          'light_settings': settings(0xFFF7C4, 0x44AA66),
-          'dark_settings': settings(0x102030, 0x337755),
+          'light_settings': settings(0xFFF7C4, 0x44AA66, 0x2255AA, 0xAA6633),
+          'dark_settings': settings(0x102030, 0x337755, 0x7799CC, 0xCC8844),
         },
       ],
     };
@@ -1085,8 +1093,52 @@ void main() {
     final darkStyle = controller.themeStyleFor(99, dark: true)!;
     expect(lightStyle.incomingColor, isNot(const Color(0xFFFFFFFF)));
     expect(darkStyle.incomingColor, isNot(const Color(0xFF202427)));
+    expect(lightStyle.nameColor.toARGB32(), 0xFF2255AA);
+    expect(lightStyle.outgoingAccentColor.toARGB32(), 0xFFAA6633);
+    expect(darkStyle.nameColor.toARGB32(), 0xFF7799CC);
+    expect(darkStyle.outgoingAccentColor.toARGB32(), 0xFFCC8844);
+    final lightMessageColors = TelegramMessageColors.fromChatThemeStyle(
+      lightStyle,
+    );
+    expect(lightMessageColors.incomingLink.toARGB32(), 0xFF2255AA);
+    expect(lightMessageColors.outgoingLink.toARGB32(), 0xFFAA6633);
     expect(lightStyle.outgoingColor?.toARGB32(), 0xFF44AA66);
     expect(controller.wallpaperFor(99, dark: true)?.colors, [0x102030]);
+  });
+
+  test('stock chat themes keep outgoing message accents readable', () {
+    const style = ChatThemeStyle(
+      outgoingColors: [0x4FA3E3],
+      accentColor: 0x168ACD,
+      isDark: false,
+    );
+
+    final colors = TelegramMessageColors.fromChatThemeStyle(style);
+
+    expect(colors.incomingLink, style.nameColor);
+    expect(colors.outgoingLink, style.outgoingTextColor);
+    expect(colors.outgoingQuote, style.outgoingTextColor);
+    final lighter = math.max(
+      colors.outgoingLink.computeLuminance(),
+      style.outgoingColor!.computeLuminance(),
+    );
+    final darker = math.min(
+      colors.outgoingLink.computeLuminance(),
+      style.outgoingColor!.computeLuminance(),
+    );
+    final fallbackContrast = (lighter + 0.05) / (darker + 0.05);
+    final accentLighter = math.max(
+      style.nameColor.computeLuminance(),
+      style.outgoingColor!.computeLuminance(),
+    );
+    final accentDarker = math.min(
+      style.nameColor.computeLuminance(),
+      style.outgoingColor!.computeLuminance(),
+    );
+    expect(
+      fallbackContrast,
+      greaterThan((accentLighter + 0.05) / (accentDarker + 0.05)),
+    );
   });
 
   test(
