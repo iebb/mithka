@@ -3,10 +3,11 @@
 # bump-version.sh — bump the app version in pubspec.yaml, commit, and tag.
 #
 # pubspec version is "X.Y.Z+B": X.Y.Z is the user-facing semver (also the release
-# tag the update-checker compares), B is the Android versionCode (must always
-# increase). This bumps the chosen semver part AND increments B, then creates the
-# git tag "vX.Y.Z". Push the commit to the release branch to trigger the stable
-# workflow; pushing master does not build an APK.
+# tag the update-checker compares), and B is Flutter's package build metadata.
+# Android releases use the separate monotonic value in android/version-code.txt.
+# This bumps all three values, then creates the git tag "vX.Y.Z". Push the commit
+# to the release branch to trigger the stable workflow; pushing master does not
+# build an APK.
 #
 # Usage:
 #   ./scripts/bump-version.sh [major|minor|patch]   # default: patch
@@ -40,13 +41,24 @@ build=$((build + 1))
 new_semver="$MA.$MI.$PA"
 new="$new_semver+$build"
 
+android_version_file="android/version-code.txt"
+android_version_code="$(bash scripts/android-version-code.sh "$android_version_file")"
+next_android_version_code=$((android_version_code + 1))
+current_epoch="$(date -u '+%s')"
+if [ "$current_epoch" -gt "$next_android_version_code" ]; then
+  next_android_version_code="$current_epoch"
+fi
+
 # Rewrite the version line (portable sed for macOS + Linux).
 sed -i.bak -E "s/^version:.*/version: $new/" pubspec.yaml && rm -f pubspec.yaml.bak
+printf '%s\n' "$next_android_version_code" > "$android_version_file"
+bash scripts/android-version-code.sh "$android_version_file" >/dev/null
 
 echo "Version: $cur → $new"
+echo "Android version code: $android_version_code → $next_android_version_code"
 
 if git rev-parse --git-dir >/dev/null 2>&1; then
-  git add pubspec.yaml
+  git add pubspec.yaml "$android_version_file"
   git commit -m "Bump version to $new"
   git tag "v$new_semver"
   echo "Committed + tagged v$new_semver."

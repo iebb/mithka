@@ -7,8 +7,8 @@ name: 🚀 Multi-platform Releases
 # desktop job compiles the same pinned, patched TDLib source for its host OS.
 # A final job creates the version tag from pubspec.yaml and publishes every
 # package: nightly creates a dated pre-release, release creates a stable release.
-# Each Android ABI publishes one standard APK using the UTC YYMMDDHH build
-# stamp as its version code.
+# Each Android ABI publishes one standard APK using the tracked Android release
+# code, matching the Google Play artifact built from the same release commit.
 #
 # master never builds release packages. The twice-daily sync workflow merges new master
 # commits into nightly, increments the patch version once, and dispatches this
@@ -18,9 +18,9 @@ name: 🚀 Multi-platform Releases
 #   TELEGRAM_API_ID, TELEGRAM_API_HASH   — baked into lib/config/secrets.dart
 #   ANDROID_KEYSTORE_BASE64              — base64 of the upload keystore (.jks)
 #   ANDROID_KEYSTORE_PASSWORD            — store password
-#   ANDROID_KEY_PASSWORD                 — key password
+#   ANDROID_KEY_PASSWORD                 — key password (optional; defaults to store password)
 #   ANDROID_KEY_ALIAS                    — key alias (e.g. nekoko)
-# Without the ANDROID_* secrets the build still runs but is debug-signed.
+# Android release publishing fails closed if the required signing secrets are absent.
 
 on:
   push:
@@ -53,6 +53,7 @@ jobs:
     outputs:
       app_version: ${{ steps.version.outputs.app_version }}
       version_code: ${{ steps.version.outputs.version_code }}
+      android_version_code: ${{ steps.version.outputs.android_version_code }}
       build_stamp: ${{ steps.version.outputs.build_stamp }}
       release_date: ${{ steps.version.outputs.release_date }}
       artifact_label: ${{ steps.version.outputs.artifact_label }}
@@ -78,6 +79,7 @@ jobs:
           case "$version_code" in
             ''|*[!0-9]*) echo "Invalid Android version code: $version_code" >&2; exit 1 ;;
           esac
+          android_version_code="$(bash scripts/android-version-code.sh)"
           read -r build_stamp release_date release_title_date <<< "$(
             date -u '+%y%m%d%H %Y%m%d %Y-%m-%d'
           )"
@@ -116,6 +118,7 @@ jobs:
           fi
           echo "app_version=$app_version" >> "$GITHUB_OUTPUT"
           echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
+          echo "android_version_code=$android_version_code" >> "$GITHUB_OUTPUT"
           echo "build_stamp=$build_stamp" >> "$GITHUB_OUTPUT"
           echo "release_date=$release_date" >> "$GITHUB_OUTPUT"
           echo "artifact_label=$artifact_label" >> "$GITHUB_OUTPUT"
@@ -127,7 +130,7 @@ jobs:
           echo "short_sha=$short_sha" >> "$GITHUB_OUTPUT"
           echo "Release tag: $release_tag"
           echo "Release channel: $release_channel"
-          echo "Android version code: $version_code"
+          echo "Android version code: $android_version_code"
           echo "GMT build stamp: $build_stamp"
           echo "Release date: $release_date"
 
@@ -284,9 +287,11 @@ jobs:
           STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-        if: ${{ env.KEYSTORE_B64 != '' }}
         run: |
-          echo "$KEYSTORE_B64" | base64 -d > android/app/upload-keystore.jks
+          : "${KEYSTORE_B64:?set ANDROID_KEYSTORE_BASE64 in repository secrets}"
+          : "${STORE_PASSWORD:?set ANDROID_KEYSTORE_PASSWORD in repository secrets}"
+          : "${KEY_ALIAS:?set ANDROID_KEY_ALIAS in repository secrets}"
+          printf '%s' "$KEYSTORE_B64" | base64 -d > android/app/upload-keystore.jks
           cat > android/key.properties <<EOF
           storePassword=$STORE_PASSWORD
           keyPassword=${KEY_PASSWORD:-$STORE_PASSWORD}
@@ -301,7 +306,7 @@ jobs:
           flutter build apk --release --split-per-abi \
             --target-platform ${{ matrix.target }} \
             --build-name="${{ needs.prepare.outputs.app_version }}" \
-            --build-number="${{ needs.prepare.outputs.build_stamp }}" \
+            --build-number="${{ needs.prepare.outputs.android_version_code }}" \
             --dart-define="GIT_COMMIT=${{ needs.prepare.outputs.short_sha }}" \
             --dart-define="CI_BUILD_STAMP=${{ needs.prepare.outputs.build_stamp }}" \
             --dart-define="SENTRY_DSN=$SENTRY_DSN"
@@ -314,12 +319,30 @@ jobs:
             analyzer="$(command -v apkanalyzer)"
           fi
           actual_version_code="$("$analyzer" manifest version-code "$apk")"
-          expected_version_code="${{ needs.prepare.outputs.build_stamp }}"
+          expected_version_code="${{ needs.prepare.outputs.android_version_code }}"
           if [ "$actual_version_code" != "$expected_version_code" ]; then
             echo "Expected APK version code $expected_version_code, got $actual_version_code" >&2
             exit 1
           fi
           echo "APK version code: $actual_version_code"
+
+      - name: Verify APK signing certificate
+        run: |
+          apk="build/app/outputs/flutter-apk/app-${{ matrix.abi }}-release.apk"
+          apksigner="$(
+            find "$ANDROID_HOME/build-tools" -type f -name apksigner -perm -u+x \
+              | sort -V \
+              | tail -n 1
+          )"
+          test -x "$apksigner"
+          signer_digests="$("$apksigner" verify --print-certs "$apk" \
+            | awk -F': ' '/Signer #[0-9]+ certificate SHA-256 digest:/ { print tolower($2) }')"
+          expected_signer="645a22f43d59b67969da5d3d3e3092d70927746198e2cb76ecd6f02a80b51305"
+          if [ "$signer_digests" != "$expected_signer" ]; then
+            echo "APK must have exactly the expected release signing certificate" >&2
+            exit 1
+          fi
+          echo "APK signing certificate verified"
 
       - name: Verify APK native ABI contents
         run: |

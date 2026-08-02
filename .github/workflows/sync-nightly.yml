@@ -38,6 +38,12 @@ jobs:
           git fetch origin master
           master_raw="$(git show origin/master:pubspec.yaml | awk '/^version:/ { print $2; exit }')"
           test -n "$master_raw"
+          master_android_version_code="$(
+            git show origin/master:android/version-code.txt | tr -d '\r\n'
+          )"
+          case "$master_android_version_code" in
+            ''|*[!0-9]*) echo "Invalid master Android version code" >&2; exit 1 ;;
+          esac
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -52,6 +58,15 @@ jobs:
 
             previous_raw="$(git show origin/nightly:pubspec.yaml | awk '/^version:/ { print $2; exit }')"
             test -n "$previous_raw"
+            if previous_android_version_code="$(
+              git show origin/nightly:android/version-code.txt 2>/dev/null
+            )"; then
+              previous_android_version_code="$(
+                printf '%s' "$previous_android_version_code" | tr -d '\r\n'
+              )"
+            else
+              previous_android_version_code="$master_android_version_code"
+            fi
             git checkout -B nightly origin/nightly
             # Record both histories without asking Git to reconcile two trees
             # that may contain generated or backported nightly changes. Then
@@ -62,8 +77,13 @@ jobs:
             git read-tree --reset -u origin/master
           else
             previous_raw="$master_raw"
+            previous_android_version_code="$master_android_version_code"
             git checkout -B nightly origin/master
           fi
+
+          case "$previous_android_version_code" in
+            ''|*[!0-9]*) echo "Invalid previous nightly Android version code" >&2; exit 1 ;;
+          esac
 
           master_semver="${master_raw%%+*}"
           previous_semver="${previous_raw%%+*}"
@@ -93,12 +113,27 @@ jobs:
             *) nightly_raw="$nightly_version" ;;
           esac
 
+          android_version_code=$((master_android_version_code + 1))
+          if [ "$previous_android_version_code" -ge "$android_version_code" ]; then
+            android_version_code=$((previous_android_version_code + 1))
+          fi
+          current_epoch="$(date -u '+%s')"
+          if [ "$current_epoch" -gt "$android_version_code" ]; then
+            android_version_code="$current_epoch"
+          fi
+
           sed -i -E "s/^version:.*/version: $nightly_raw/" pubspec.yaml
+          printf '%s\n' "$android_version_code" > android/version-code.txt
           test "$(awk '/^version:/ { print $2; exit }' pubspec.yaml)" = "$nightly_raw"
-          git add pubspec.yaml
-          unexpected="$(git diff --name-only origin/master -- | grep -v '^pubspec.yaml$' || true)"
+          test "$(bash scripts/android-version-code.sh)" = "$android_version_code"
+          git add pubspec.yaml android/version-code.txt
+          unexpected="$(
+            git diff --name-only origin/master -- \
+              | grep -Ev '^(pubspec.yaml|android/version-code.txt)$' \
+              || true
+          )"
           if [ -n "$unexpected" ]; then
-            echo "nightly differs from master outside pubspec.yaml:" >&2
+            echo "nightly differs from master outside generated release metadata:" >&2
             printf '%s\n' "$unexpected" >&2
             exit 1
           fi
@@ -107,7 +142,7 @@ jobs:
           git push origin HEAD:nightly
           echo "changed=true" >> "$GITHUB_OUTPUT"
           echo "nightly_version=$nightly_version" >> "$GITHUB_OUTPUT"
-          echo "nightly now contains master at app version $nightly_raw"
+          echo "nightly now contains master at app version $nightly_raw; Android version code $android_version_code"
 
       - name: Dispatch nightly releases
         if: steps.sync.outputs.changed == 'true'

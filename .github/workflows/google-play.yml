@@ -10,10 +10,13 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: google-play-${{ github.ref_name }}
+  # Serialize every Play publication so one version code cannot race across
+  # beta and production.
+  group: google-play-publication
   cancel-in-progress: false
 
 permissions:
+  actions: read
   contents: read
 
 env:
@@ -28,7 +31,7 @@ jobs:
     outputs:
       app_version: ${{ steps.version.outputs.app_version }}
       version_code: ${{ steps.version.outputs.version_code }}
-      play_version_code: ${{ steps.version.outputs.play_version_code }}
+      android_version_code: ${{ steps.version.outputs.android_version_code }}
       build_stamp: ${{ steps.version.outputs.build_stamp }}
       release_date: ${{ steps.version.outputs.release_date }}
       short_sha: ${{ steps.version.outputs.short_sha }}
@@ -48,11 +51,10 @@ jobs:
           case "$version_code" in
             ''|*[!0-9]*) echo "Invalid Android version code: $version_code" >&2; exit 1 ;;
           esac
-          play_version_code="$(date -u '+%s')"
-          if [ "$play_version_code" -gt 2100000000 ]; then
-            echo "Generated Google Play version code exceeds Android's limit" >&2
-            exit 1
-          fi
+          # Direct APKs and Play AABs from one release commit must use the
+          # exact same code. Promote an existing Play artifact when rerunning
+          # an already-uploaded commit instead of allocating a different code.
+          android_version_code="$(bash scripts/android-version-code.sh)"
           build_stamp="$(date -u '+%y%m%d%H')"
           release_date="$(date -u '+%Y-%m-%d')"
           short_sha="${GITHUB_SHA::7}"
@@ -73,13 +75,13 @@ jobs:
           esac
           echo "app_version=$app_version" >> "$GITHUB_OUTPUT"
           echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
-          echo "play_version_code=$play_version_code" >> "$GITHUB_OUTPUT"
+          echo "android_version_code=$android_version_code" >> "$GITHUB_OUTPUT"
           echo "build_stamp=$build_stamp" >> "$GITHUB_OUTPUT"
           echo "release_date=$release_date" >> "$GITHUB_OUTPUT"
           echo "short_sha=$short_sha" >> "$GITHUB_OUTPUT"
           echo "play_track=$play_track" >> "$GITHUB_OUTPUT"
           echo "release_name=$release_name" >> "$GITHUB_OUTPUT"
-          echo "Google Play $play_track version: $app_version+$play_version_code"
+          echo "Google Play $play_track version: $app_version+$android_version_code"
 
   google-play:
     name: Publish AAB to Google Play
@@ -91,6 +93,37 @@ jobs:
       FVP_DEPS_URL: https://github.com/wang-bin/mdk-sdk/releases/download/v0.36.0
     steps:
       - uses: actions/checkout@v5
+
+      - name: Guard immutable Google Play version code
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION_CODE: ${{ needs.prepare.outputs.android_version_code }}
+        run: |
+          if [ "$GITHUB_RUN_ATTEMPT" != "1" ]; then
+            echo "Do not rerun a Google Play publication; allocate a new release commit or promote the existing Play artifact" >&2
+            exit 1
+          fi
+
+          marker_tag="play-version-code-$VERSION_CODE"
+          if git ls-remote --exit-code --tags origin "refs/tags/$marker_tag" >/dev/null 2>&1; then
+            echo "Google Play version code $VERSION_CODE is already published" >&2
+            exit 1
+          fi
+
+          prior_run_ids="$(
+            gh api --paginate \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/google-play.yml/runs?head_sha=$GITHUB_SHA&per_page=100" \
+              --jq '.workflow_runs[].id'
+          )"
+          other_run_ids="$(
+            printf '%s\n' "$prior_run_ids" \
+              | grep -vx "$GITHUB_RUN_ID" \
+              || true
+          )"
+          if [ -n "$other_run_ids" ]; then
+            echo "This commit already had a Google Play publication attempt; allocate a new release commit before retrying" >&2
+            exit 1
+          fi
 
       - uses: actions/setup-java@v5
         with:
@@ -224,7 +257,7 @@ jobs:
           flutter build appbundle --release \
             --target-platform android-arm,android-arm64,android-x64 \
             --build-name="${{ needs.prepare.outputs.app_version }}" \
-            --build-number="${{ needs.prepare.outputs.play_version_code }}" \
+            --build-number="${{ needs.prepare.outputs.android_version_code }}" \
             --dart-define="GIT_COMMIT=${{ needs.prepare.outputs.short_sha }}" \
             --dart-define="CI_BUILD_STAMP=${{ needs.prepare.outputs.build_stamp }}" \
             --dart-define="GOOGLE_PLAY_BUILD=true" \
@@ -234,7 +267,7 @@ jobs:
       - name: Upload AAB artifact
         uses: actions/upload-artifact@v6
         with:
-          name: google-play-aab-${{ needs.prepare.outputs.app_version }}+${{ needs.prepare.outputs.play_version_code }}
+          name: google-play-aab-${{ needs.prepare.outputs.app_version }}+${{ needs.prepare.outputs.android_version_code }}
           path: build/app/outputs/bundle/release/app-release.aab
           if-no-files-found: error
           retention-days: 14
@@ -250,3 +283,22 @@ jobs:
           releaseName: ${{ needs.prepare.outputs.release_name }}
           whatsNewDirectory: distribution/google-play/whatsnew
           changesNotSentForReview: false
+
+  record-play-version:
+    name: Record published Play version code
+    needs: [prepare, google-play]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Create immutable version marker
+        env:
+          VERSION_CODE: ${{ needs.prepare.outputs.android_version_code }}
+        run: |
+          marker_tag="play-version-code-$VERSION_CODE"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$marker_tag" -m "Google Play version code $VERSION_CODE" "$GITHUB_SHA"
+          git push origin "refs/tags/$marker_tag"
