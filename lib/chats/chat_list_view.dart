@@ -47,6 +47,7 @@ import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import 'archived_chats_view.dart';
 import 'chat_delete_dialog.dart';
+import 'chat_delete_policy.dart';
 import 'chat_list_preview.dart';
 import 'chat_list_view_model.dart';
 import 'chat_row_view.dart';
@@ -1803,27 +1804,42 @@ class _ChatListViewState extends State<ChatListView>
   Future<void> _confirmDeleteChat(ChatSummary chat) async {
     final isGroupOrChannel =
         chat.kind == ChatKind.group || chat.kind == ChatKind.channel;
-    final capabilities = await _model.deleteCapabilities(chat);
+    final savedMessagesResolution = await _model.resolveIsSavedMessages(chat);
+    if (!mounted) return;
+    if (savedMessagesResolution == null) {
+      showToast(context, AppStringKeys.chatDeleteUnavailable);
+      return;
+    }
+    final isSavedMessages = savedMessagesResolution;
+    final capabilities = isSavedMessages
+        ? const ChatDeleteCapabilities.selfOnly()
+        : await _model.deleteCapabilities(chat);
     if (!mounted) return;
     if (!capabilities.canDelete) {
       showToast(context, AppStringKeys.chatDeleteUnavailable);
       return;
     }
-    final scope = await showChatDeleteScopeDialog(
+    final scope = await showTwoStepChatDeleteDialog(
       context,
       title: AppStringKeys.chatListDeleteChatQuestion,
       selfOnlyDescription: isGroupOrChannel
-          ? AppStrings.t(
-              AppStringKeys.chatListLeaveAndDeleteGroupConfirmation,
-              {'value1': chat.title},
-            )
+          ? AppStrings.t(AppStringKeys.chatLeaveAndDeleteDescription, {
+              'value1': chat.title,
+            })
           : AppStrings.t(AppStringKeys.chatInfoClearHistoryDescription),
       capabilities: capabilities,
       isGroupOrChannel: isGroupOrChannel,
+      isSavedMessages: isSavedMessages,
+      chatTitle: chat.title,
+      selfConfirmText: _deleteOrLeaveTitle(chat),
     );
     if (!mounted || scope == null) return;
     try {
-      await _model.deleteChat(chat, scope: scope);
+      if (isSavedMessages) {
+        await _model.clearSavedMessages(chat);
+      } else {
+        await _model.deleteChat(chat, scope: scope);
+      }
     } catch (error) {
       if (!mounted) return;
       final message = error is TdError ? error.message : error.toString();
@@ -1835,6 +1851,7 @@ class _ChatListViewState extends State<ChatListView>
   }
 
   String _deleteOrLeaveTitle(ChatSummary chat) {
+    if (chat.isSavedMessages) return AppStringKeys.savedMessagesClear;
     if (chat.kind == ChatKind.channel) {
       return AppStringKeys.topicChatLeaveChannel;
     }

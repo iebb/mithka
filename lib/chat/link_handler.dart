@@ -502,11 +502,11 @@ Future<bool> _openSettingsLink(
     'settingsSectionDataAndStorage' => const GeneralSettingsView(),
     'settingsSectionDevices' => const ActiveSessionsView(),
     'settingsSectionEditProfile' => const EditProfileView(),
-    'settingsSectionLanguage' => const LanguageSettingsView(),
+    'settingsSectionLanguage' => const TelegramLanguageSettingsView(),
     'settingsSectionNotifications' => const NotificationSettingsView(),
     'settingsSectionPrivacyAndSecurity' => const PrivacySecurityView(),
     'settingsSectionQrCode' => const QRCodeView(),
-    'settingsSectionSearch' => const SettingsView(),
+    'settingsSectionSearch' => const SettingsView(focusSearch: true),
     _ => null,
   };
   if (destination == null) return false;

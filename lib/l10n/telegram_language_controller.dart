@@ -974,7 +974,6 @@ const _telegramKeyForAppKey = <String, String>{
   AppStringKeys.profileDetailBirthday: 'ContactBirthday',
   AppStringKeys.profileDetailLocation: 'AttachLocation',
   AppStringKeys.profileDetailMediaFiles: 'SharedMedia',
-  AppStringKeys.profileDetailMusic: 'SharedMusicTab',
   AppStringKeys.profileDetailSendMessage: 'SendMessage',
   AppStringKeys.profileLogOutAccount: 'LogOut',
   AppStringKeys.profileNightMode: 'ThemeNight',

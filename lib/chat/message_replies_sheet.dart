@@ -46,6 +46,42 @@ Map<String, dynamic> buildReplySheetTextRequest({
   };
 }
 
+class MessageRepliesViewTarget {
+  const MessageRepliesViewTarget({
+    required this.chatId,
+    required this.messageId,
+    required this.title,
+  });
+
+  final int chatId;
+  final int messageId;
+  final String title;
+}
+
+@visibleForTesting
+MessageRepliesViewTarget resolveMessageRepliesViewTarget({
+  required int sourceChatId,
+  required int sourceMessageId,
+  required String sourceTitle,
+  int? threadChatId,
+  int? threadRootMessageId,
+  int? rootReplyToMessageId,
+  String? threadTitle,
+}) {
+  final hasThreadRoot = threadRootMessageId != null;
+  final resolvedChatId = hasThreadRoot
+      ? threadChatId ?? sourceChatId
+      : sourceChatId;
+  final resolvedTitle = (threadTitle ?? '').trim();
+  return MessageRepliesViewTarget(
+    chatId: resolvedChatId,
+    messageId: threadRootMessageId ?? rootReplyToMessageId ?? sourceMessageId,
+    title: resolvedChatId == sourceChatId || resolvedTitle.isEmpty
+        ? sourceTitle
+        : resolvedTitle,
+  );
+}
+
 Future<void> showMessageRepliesSheet({
   required BuildContext context,
   required int chatId,
@@ -62,7 +98,7 @@ Future<void> showMessageRepliesSheet({
   void Function(ChatMessage message, MessageButton button)? onButtonTap,
   ValueChanged<String>? onBotCommandTap,
   ValueChanged<String>? onHashtagTap,
-  ValueChanged<int>? onViewInChat,
+  ValueChanged<MessageRepliesViewTarget>? onViewInChat,
 }) {
   return showAppModalSheet<void>(
     context: context,
@@ -122,7 +158,7 @@ class _MessageRepliesSheet extends StatefulWidget {
   final void Function(ChatMessage message, MessageButton button)? onButtonTap;
   final ValueChanged<String>? onBotCommandTap;
   final ValueChanged<String>? onHashtagTap;
-  final ValueChanged<int>? onViewInChat;
+  final ValueChanged<MessageRepliesViewTarget>? onViewInChat;
 
   @override
   State<_MessageRepliesSheet> createState() => _MessageRepliesSheetState();
@@ -134,6 +170,7 @@ class _MessageRepliesSheetState extends State<_MessageRepliesSheet> {
   final _messages = <ChatMessage>[];
   final _senders = <int, _ReplySender>{};
   _ReplyThreadTarget? _replyTarget;
+  String? _replyTargetTitle;
   ChatMessage? _replyTo;
   bool _loading = true;
   bool _unavailable = false;
@@ -178,9 +215,10 @@ class _MessageRepliesSheetState extends State<_MessageRepliesSheet> {
       } catch (_) {}
 
       final replyTarget = await _resolveReplyTarget();
-      final chatCanSend = replyTarget == null
-          ? false
-          : await _targetChatCanSend(replyTarget.chatId);
+      final targetChatInfo = replyTarget == null
+          ? null
+          : await _targetChatInfo(replyTarget.chatId);
+      final chatCanSend = replyTarget == null ? false : targetChatInfo?.canSend;
       final linkedDiscussion =
           replyTarget != null && replyTarget.chatId != widget.chatId;
       final canReply =
@@ -235,6 +273,7 @@ class _MessageRepliesSheetState extends State<_MessageRepliesSheet> {
       if (!mounted) return;
       setState(() {
         _replyTarget = replyTarget;
+        _replyTargetTitle = targetChatInfo?.title;
         _canReply = canReply;
         _messages
           ..clear()
@@ -245,6 +284,7 @@ class _MessageRepliesSheetState extends State<_MessageRepliesSheet> {
       if (!mounted) return;
       setState(() {
         _replyTarget = null;
+        _replyTargetTitle = null;
         _replyTo = null;
         _canReply = false;
         _loading = false;
@@ -254,6 +294,7 @@ class _MessageRepliesSheetState extends State<_MessageRepliesSheet> {
       if (!mounted) return;
       setState(() {
         _replyTarget = null;
+        _replyTargetTitle = null;
         _replyTo = null;
         _canReply = false;
         _loading = false;
@@ -297,17 +338,33 @@ class _MessageRepliesSheetState extends State<_MessageRepliesSheet> {
     );
   }
 
-  Future<bool?> _targetChatCanSend(int chatId) async {
+  Future<_ReplyTargetChatInfo?> _targetChatInfo(int chatId) async {
     try {
       final chat = await TdClient.shared.query({
         '@type': 'getChat',
         'chat_id': chatId,
       });
-      return chat.obj('permissions')?.boolean('can_send_basic_messages') ??
-          true;
+      return _ReplyTargetChatInfo(
+        canSend:
+            chat.obj('permissions')?.boolean('can_send_basic_messages') ?? true,
+        title: chat.str('title'),
+      );
     } catch (_) {
       return null;
     }
+  }
+
+  MessageRepliesViewTarget _viewInChatTarget() {
+    final target = _replyTarget;
+    return resolveMessageRepliesViewTarget(
+      sourceChatId: widget.chatId,
+      sourceMessageId: widget.message.id,
+      sourceTitle: widget.peerTitle,
+      threadChatId: target?.chatId,
+      threadRootMessageId: target?.historyRootMessageId,
+      rootReplyToMessageId: target?.rootReplyToMessageId,
+      threadTitle: _replyTargetTitle,
+    );
   }
 
   Future<_ReplySender?> _resolveSender(int senderId) async {
@@ -543,13 +600,14 @@ class _MessageRepliesSheetState extends State<_MessageRepliesSheet> {
                         ),
                       ),
                     ),
-                    if (widget.onViewInChat != null)
+                    if (widget.onViewInChat != null && _replyTarget != null)
                       GestureDetector(
                         key: const ValueKey('messageRepliesViewInChat'),
                         behavior: HitTestBehavior.opaque,
                         onTap: () {
+                          final target = _viewInChatTarget();
                           Navigator.of(context).pop();
-                          widget.onViewInChat!(widget.message.id);
+                          widget.onViewInChat!(target);
                         },
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(12, 6, 0, 6),
@@ -1140,6 +1198,13 @@ class _ReplySender {
 
   final String name;
   final TdFileRef? photo;
+}
+
+class _ReplyTargetChatInfo {
+  const _ReplyTargetChatInfo({required this.canSend, this.title});
+
+  final bool canSend;
+  final String? title;
 }
 
 class _ReplyThreadTarget {

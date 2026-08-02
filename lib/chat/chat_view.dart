@@ -3769,7 +3769,27 @@ class _ChatViewState extends State<ChatView> {
       onButtonTap: _pressMessageButton,
       onBotCommandTap: _sendCommand,
       onHashtagTap: _openHashtagSearch,
-      onViewInChat: _scrollToMessage,
+      onViewInChat: _viewMessageRepliesInChat,
+    );
+  }
+
+  Future<void> _viewMessageRepliesInChat(
+    MessageRepliesViewTarget target,
+  ) async {
+    if (target.chatId == widget.chatId) {
+      await _scrollToMessage(target.messageId);
+      return;
+    }
+    if (!mounted) return;
+    await pushAppChatRoute(
+      context,
+      AppChatPageRoute<void>(
+        builder: (_) => ChatView(
+          chatId: target.chatId,
+          title: target.title,
+          initialMessageId: target.messageId,
+        ),
+      ),
     );
   }
 

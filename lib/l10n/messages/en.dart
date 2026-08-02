@@ -597,9 +597,13 @@ const enMessages = <String, String>{
       "This will permanently delete the chat and its history for all members.",
   'chatDeleteBothSidesDescription':
       "This will permanently delete the chat and its history for both sides.",
+  'chatDeleteFinalQuestion': "Permanently delete “{value1}”?",
+  'chatDeleteFinalWarning': "This action can’t be undone.",
   'chatDeleteForAllMembers': "Delete for all members",
   'chatDeleteForBothSides': "Delete for both sides",
   'chatDeleteForMe': "Delete for me",
+  'chatDeleteForMeDescription':
+      "This chat and its history will be removed from your Telegram account on all devices.",
   'chatDeleteMessagesQuestion': "Delete messages?",
   'chatDeleteOptionBlockSender': "Block sender",
   'chatDeleteOptionDeleteAllFromSender': "Delete all from {value1}",
@@ -631,9 +635,11 @@ const enMessages = <String, String>{
   'chatInfoClear': "Clear",
   'chatInfoClearHistory': "Clear chat history",
   'chatInfoClearHistoryDescription':
-      "This deletes the local chat history but does not leave the chat.",
+      "Messages will be deleted from your Telegram account on all devices, but you’ll remain in the chat.",
+  'chatInfoClearHistoryFinalQuestion':
+      "Permanently clear the history in “{value1}”?",
   'chatInfoClearHistoryIrreversibleWarning':
-      "After clearing, history on this device can’t be recovered.",
+      "Cleared messages can’t be recovered on any device.",
   'chatInfoClearHistoryQuestion': "Clear chat history?",
   'chatInfoConfirmAgain': "Confirm again",
   'chatInfoConfirmClearHistory': "Confirm clear",
@@ -673,6 +679,8 @@ const enMessages = <String, String>{
   'chatJoinGroup': "Join group",
   'chatJoinRequestPending': "Join request sent, pending approval",
   'chatJoinRequestSent': "Join request sent",
+  'chatLeaveAndDeleteDescription':
+      "Leave “{value1}” and remove its history from your Telegram account on all devices.",
   'chatListAddFriendOrGroup': "Add friend/group",
   'chatListBlockedPlaceholder': "[Blocked]",
   'chatListChannelName': "Channel name",
@@ -681,7 +689,7 @@ const enMessages = <String, String>{
   'chatListCreateGroup': "Create group",
   'chatListDeleteChatQuestion': "Delete chat?",
   'chatListLeaveAndDeleteGroupConfirmation':
-      "Leave \"{value1}\" and delete its chat history from this device?",
+      "Leave “{value1}” and delete its history from your Telegram account on all devices?",
   'chatListMarkUnread': "Mark as unread",
   'chatListNoChats': "No chats yet",
   'chatListScanQrCode': "Scan QR Code",
@@ -1519,6 +1527,7 @@ const enMessages = <String, String>{
   'notificationNewMessage': "New message",
   'notificationNoStories': "No Stories",
   'notificationNotifications': "Notifications",
+  'notificationOnDeviceTitle': "Notifications on This Device",
   'notificationOptions': "Options",
   'notificationPinnedMessages': "Notify About Pinned Messages",
   'notificationPreview': "Notification preview",
@@ -1846,6 +1855,11 @@ const enMessages = <String, String>{
   'richTextTableHeader': "Header cell",
   'richTextTableStriped': "Striped table",
   'savedMessages': "Saved Messages",
+  'savedMessagesClear': "Clear Saved Messages",
+  'savedMessagesClearDescription':
+      "All Saved Messages will be deleted from your Telegram account on all devices.",
+  'savedMessagesClearFinalQuestion': "Permanently clear all Saved Messages?",
+  'savedMessagesClearQuestion': "Clear all Saved Messages?",
   'secretChatClosed': "This secret chat is closed.",
   'secretChatStart': "Start",
   'secretChatStartFailed': "Could not create secret chat: {value1}",
@@ -1868,7 +1882,18 @@ const enMessages = <String, String>{
   'searchTabMusic': "Music",
   'searchTabVoiceMessages': "Voice Messages",
   'settingsAboutMithka': "About Mithka",
+  'settingsChatBehavior': "Chat Behavior",
+  'settingsContentFilters': "Content Filters",
+  'settingsDataAndStorage': "Data and Storage",
   'settingsLogOut': "Log Out",
+  'settingsNoResults': "No matching settings",
+  'settingsScopeMithka': "Mithka",
+  'settingsScopeMithkaDescription':
+      "Appearance, behavior, and tools used by Mithka on this device.",
+  'settingsScopeTelegram': "Telegram Account",
+  'settingsScopeTelegramDescription':
+      "Profile, privacy, notifications, and services tied to your Telegram account.",
+  'settingsSearchHint': "Search settings",
   'sharedMediaCacheDeleted': "Local cache deleted",
   'sharedMediaCacheDeleteFailed': "Couldn't delete cache",
   'sharedMediaChatFiles': "Chat Files",

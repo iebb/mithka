@@ -1,8 +1,8 @@
 //
 //  notification_settings_view.dart
 //
-//  Telegram-style notification settings backed by TDLib scope, story, and
-//  reaction settings plus Mithka's foreground presentation preferences.
+//  Telegram notification settings backed by TDLib scope, story, and reaction
+//  settings, plus a separate Mithka screen for on-device presentation.
 //
 
 import 'dart:async';
@@ -44,7 +44,6 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
   static const _channel = 'notificationSettingsScopeChannelChats';
 
   final TdClient _client = TdClient.shared;
-  final NotificationPreferences _preferences = NotificationPreferences.shared;
   final Map<String, Map<String, dynamic>> _settings = {};
   final Map<String, int> _exceptionCounts = {};
   Map<String, dynamic> _reactionSettings = reactionNotificationSettingsPayload(
@@ -57,20 +56,14 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
   @override
   void initState() {
     super.initState();
-    _preferences.addListener(_preferencesChanged);
     _updates = _client.subscribe().listen(_handleUpdate);
     unawaited(_load());
   }
 
   @override
   void dispose() {
-    _preferences.removeListener(_preferencesChanged);
     unawaited(_updates?.cancel());
     super.dispose();
-  }
-
-  void _preferencesChanged() {
-    if (mounted) setState(() {});
   }
 
   Future<void> _load() async {
@@ -259,30 +252,6 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
     );
   }
 
-  void _openAccountSelection() {
-    final accounts = context.read<AccountStore>();
-    Navigator.of(context).push(
-      AppPageRoute<void>(
-        pageBuilder: (_, _, _) => _AccountNotificationSelectionView(
-          accounts: List<AccountSummary>.from(accounts.summaries),
-          activeSlot: accounts.activeSlot,
-        ),
-      ),
-    );
-  }
-
-  String get _accountSelectionSummary {
-    return switch (_preferences.accountMode) {
-      NotificationAccountMode.all => AppStringKeys.notificationAllAccounts.l10n(
-        context,
-      ),
-      NotificationAccountMode.current =>
-        AppStringKeys.notificationCurrentAccount.l10n(context),
-      NotificationAccountMode.selected =>
-        AppStringKeys.notificationSelectedAccounts.l10n(context),
-    };
-  }
-
   String get _storySummary {
     return switch (storyNotificationMode(_settings[_private])) {
       StoryNotificationMode.topFive => AppStrings.t(
@@ -335,30 +304,6 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(16, 10, 16, 32),
                   children: [
-                    if (_client.configuredSlots.length > 1) ...[
-                      _sectionTitle(
-                        AppStrings.t(
-                          AppStringKeys.notificationShowNotificationsFrom,
-                        ),
-                      ),
-                      _card([
-                        _navigationRow(
-                          icon: HeroAppIcons.users,
-                          color: const Color(0xFF3295F6),
-                          title: AppStrings.t(
-                            AppStringKeys.notificationAccounts,
-                          ),
-                          subtitle: '',
-                          value: _accountSelectionSummary,
-                          onTap: _openAccountSelection,
-                        ),
-                      ]),
-                      _footnote(
-                        AppStrings.t(
-                          AppStringKeys.notificationAccountSelectionDescription,
-                        ),
-                      ),
-                    ],
                     _sectionTitle(
                       AppStrings.t(
                         AppStringKeys.notificationMessageNotifications,
@@ -436,43 +381,6 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
                         onTap: _openReactions,
                       ),
                     ]),
-                    _sectionTitle(
-                      AppStrings.t(AppStringKeys.notificationInAppSection),
-                    ),
-                    _card([
-                      _plainSwitchRow(
-                        AppStrings.t(AppStringKeys.notificationInAppSounds),
-                        _preferences.inAppSounds,
-                        _preferences.setInAppSounds,
-                      ),
-                      const InsetDivider(leadingInset: 16),
-                      _plainSwitchRow(
-                        AppStrings.t(AppStringKeys.notificationInAppVibrate),
-                        _preferences.inAppVibrate,
-                        _preferences.setInAppVibrate,
-                      ),
-                      const InsetDivider(leadingInset: 16),
-                      _plainSwitchRow(
-                        AppStrings.t(AppStringKeys.notificationInAppPreview),
-                        _preferences.inAppPreview,
-                        _preferences.setInAppPreview,
-                      ),
-                    ]),
-                    const SizedBox(height: 22),
-                    _card([
-                      _plainSwitchRow(
-                        AppStrings.t(
-                          AppStringKeys.notificationNamesOnLockScreen,
-                        ),
-                        _preferences.namesOnLockScreen,
-                        _preferences.setNamesOnLockScreen,
-                      ),
-                    ]),
-                    _footnote(
-                      AppStrings.t(
-                        AppStringKeys.notificationNamesOnLockScreenDescription,
-                      ),
-                    ),
                   ],
                 ),
               ),
@@ -495,18 +403,6 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
     ),
   );
 
-  Widget _footnote(String text) => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 8, 14, 2),
-    child: Text(
-      text,
-      style: TextStyle(
-        color: context.colors.textSecondary,
-        fontSize: 12.5,
-        height: 1.3,
-      ),
-    ),
-  );
-
   Widget _card(List<Widget> children) => Container(
     decoration: BoxDecoration(
       color: context.colors.card,
@@ -514,31 +410,6 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
     ),
     clipBehavior: Clip.antiAlias,
     child: Column(children: children),
-  );
-
-  Widget _plainSwitchRow(
-    String title,
-    bool value,
-    Future<void> Function(bool) onChanged,
-  ) => SizedBox(
-    height: 58,
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              title,
-              style: TextStyle(color: context.colors.textPrimary, fontSize: 16),
-            ),
-          ),
-          _NotificationToggle(
-            value: value,
-            onChanged: (v) => unawaited(onChanged(v)),
-          ),
-        ],
-      ),
-    ),
   );
 
   Widget _navigationRow({
@@ -604,6 +475,192 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Mithka-owned notification presentation preferences stored on this device.
+/// Telegram account notification rules remain in [NotificationSettingsView].
+class MithkaNotificationSettingsView extends StatefulWidget {
+  const MithkaNotificationSettingsView({super.key});
+
+  @override
+  State<MithkaNotificationSettingsView> createState() =>
+      _MithkaNotificationSettingsViewState();
+}
+
+class _MithkaNotificationSettingsViewState
+    extends State<MithkaNotificationSettingsView> {
+  final NotificationPreferences _preferences = NotificationPreferences.shared;
+
+  @override
+  void initState() {
+    super.initState();
+    _preferences.addListener(_preferencesChanged);
+  }
+
+  @override
+  void dispose() {
+    _preferences.removeListener(_preferencesChanged);
+    super.dispose();
+  }
+
+  void _preferencesChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _openAccountSelection() {
+    final accounts = context.read<AccountStore>();
+    Navigator.of(context).push(
+      AppPageRoute<void>(
+        pageBuilder: (_, _, _) => _AccountNotificationSelectionView(
+          accounts: List<AccountSummary>.from(accounts.summaries),
+          activeSlot: accounts.activeSlot,
+        ),
+      ),
+    );
+  }
+
+  String get _accountSelectionSummary {
+    return switch (_preferences.accountMode) {
+      NotificationAccountMode.all => AppStringKeys.notificationAllAccounts.l10n(
+        context,
+      ),
+      NotificationAccountMode.current =>
+        AppStringKeys.notificationCurrentAccount.l10n(context),
+      NotificationAccountMode.selected =>
+        AppStringKeys.notificationSelectedAccounts.l10n(context),
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final hasMultipleAccounts = TdClient.shared.configuredSlots.length > 1;
+    return Scaffold(
+      key: const ValueKey('mithka-notification-settings'),
+      backgroundColor: c.groupedBackground,
+      body: Column(
+        children: [
+          NavHeader(
+            title: AppStrings.t(AppStringKeys.notificationOnDeviceTitle),
+            onBack: () => Navigator.of(context).pop(),
+          ),
+          Expanded(
+            child: DesktopContentConstraint(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  AppSpacing.md,
+                  AppSpacing.lg,
+                  AppSpacing.section,
+                ),
+                children: [
+                  if (hasMultipleAccounts) ...[
+                    _NotificationSectionTitle(
+                      AppStrings.t(
+                        AppStringKeys.notificationShowNotificationsFrom,
+                      ),
+                    ),
+                    SettingsCard(
+                      children: [
+                        SettingsRow(
+                          key: const ValueKey(
+                            'mithka-notification-accounts-row',
+                          ),
+                          title: AppStringKeys.notificationAccounts,
+                          value: _accountSelectionSummary,
+                          leading: const SettingsIconTile(
+                            icon: HeroAppIcons.users,
+                            backgroundColor: Color(0xFF3295F6),
+                          ),
+                          onTap: _openAccountSelection,
+                        ),
+                      ],
+                    ),
+                    _NotificationFootnote(
+                      AppStrings.t(
+                        AppStringKeys.notificationAccountSelectionDescription,
+                      ),
+                    ),
+                  ],
+                  _NotificationSectionTitle(
+                    AppStrings.t(AppStringKeys.notificationInAppSection),
+                  ),
+                  SettingsCard(
+                    children: [
+                      SettingsSwitchRow(
+                        key: const ValueKey(
+                          'mithka-notification-in-app-sounds',
+                        ),
+                        title: AppStringKeys.notificationInAppSounds,
+                        value: _preferences.inAppSounds,
+                        leading: const SettingsIconTile(
+                          icon: HeroAppIcons.volumeHigh,
+                          backgroundColor: Color(0xFFF5A623),
+                        ),
+                        onChanged: (value) =>
+                            unawaited(_preferences.setInAppSounds(value)),
+                      ),
+                      const InsetDivider(leadingInset: 56),
+                      SettingsSwitchRow(
+                        key: const ValueKey(
+                          'mithka-notification-in-app-vibrate',
+                        ),
+                        title: AppStringKeys.notificationInAppVibrate,
+                        value: _preferences.inAppVibrate,
+                        leading: const SettingsIconTile(
+                          icon: HeroAppIcons.mobileScreenButton,
+                          backgroundColor: Color(0xFF7467F0),
+                        ),
+                        onChanged: (value) =>
+                            unawaited(_preferences.setInAppVibrate(value)),
+                      ),
+                      const InsetDivider(leadingInset: 56),
+                      SettingsSwitchRow(
+                        key: const ValueKey(
+                          'mithka-notification-in-app-preview',
+                        ),
+                        title: AppStringKeys.notificationInAppPreview,
+                        value: _preferences.inAppPreview,
+                        leading: const SettingsIconTile(
+                          icon: HeroAppIcons.eye,
+                          backgroundColor: Color(0xFF34A2DF),
+                        ),
+                        onChanged: (value) =>
+                            unawaited(_preferences.setInAppPreview(value)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.xl),
+                  SettingsCard(
+                    children: [
+                      SettingsSwitchRow(
+                        key: const ValueKey(
+                          'mithka-notification-lock-screen-names',
+                        ),
+                        title: AppStringKeys.notificationNamesOnLockScreen,
+                        value: _preferences.namesOnLockScreen,
+                        leading: const SettingsIconTile(
+                          icon: HeroAppIcons.lock,
+                          backgroundColor: Color(0xFF16B05A),
+                        ),
+                        onChanged: (value) =>
+                            unawaited(_preferences.setNamesOnLockScreen(value)),
+                      ),
+                    ],
+                  ),
+                  _NotificationFootnote(
+                    AppStrings.t(
+                      AppStringKeys.notificationNamesOnLockScreenDescription,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -6,6 +6,7 @@ import 'package:mithka/app/unread_badge_model.dart';
 import 'package:mithka/chat/chat_wallpaper_view.dart';
 import 'package:mithka/chat/link_handler.dart';
 import 'package:mithka/components/app_icons.dart';
+import 'package:mithka/components/ui_components.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/settings/app_icon_controller.dart';
 import 'package:mithka/settings/appearance_view.dart';
@@ -52,7 +53,7 @@ void main() {
     },
   );
 
-  testWidgets('Appearance is a hub and Theme owns conditional controls', (
+  testWidgets('Appearance is a flat hub and Theme owns conditional controls', (
     tester,
   ) async {
     final controller = await _pumpAppearance(tester, themingEnabled: false);
@@ -66,6 +67,14 @@ void main() {
       find.byKey(const ValueKey('appearance-message-bubbles-row')),
       findsOneWidget,
     );
+    for (final key in const [
+      'avatars-sidebar-settings-row',
+      'chat-view-settings-row',
+      'chat-list-settings-row',
+      'unread-badge-settings-row',
+    ]) {
+      expect(find.byKey(ValueKey(key)), findsOneWidget);
+    }
     expect(find.text('Enable Theming'), findsNothing);
     expect(find.text('Wallpaper'), findsNothing);
     expect(find.text('Use chat theme for UI'), findsNothing);
@@ -145,138 +154,188 @@ void main() {
     },
   );
 
-  testWidgets('Appearance hub uses a distinct icon for every navigation row', (
+  testWidgets('Appearance hub uses owned icons for its navigation rows', (
     tester,
   ) async {
     await _pumpAppearance(tester, themingEnabled: true);
 
-    for (final icon in const [
-      HeroAppIcons.palette,
-      HeroAppIcons.tableCells,
-      HeroAppIcons.expand,
-      HeroAppIcons.font,
-      HeroAppIcons.message,
-    ]) {
-      expect(find.byIcon(icon.data), findsOneWidget, reason: '$icon is reused');
+    for (final entry in const {
+      'appearance-theme-settings-row': HeroAppIcons.palette,
+      'appearance-scaling-settings-row': HeroAppIcons.expand,
+      'appearance-font-settings-row': HeroAppIcons.font,
+      'avatars-sidebar-settings-row': HeroAppIcons.users,
+      'chat-view-settings-row': HeroAppIcons.message,
+      'chat-list-settings-row': HeroAppIcons.listCheck,
+      'unread-badge-settings-row': HeroAppIcons.solidBell,
+      'appearance-message-bubbles-row': HeroAppIcons.message,
+    }.entries) {
+      expect(
+        find.descendant(
+          of: find.byKey(ValueKey(entry.key)),
+          matching: find.byIcon(entry.value.data),
+        ),
+        findsOneWidget,
+        reason: '${entry.key} does not use its owned icon',
+      );
     }
   });
 
-  testWidgets('Interface child routes expose live previews without fixtures', (
+  testWidgets('folder appearance keeps Telegram management out of Mithka', (
     tester,
   ) async {
-    final controller = await _pumpAppearance(tester, themingEnabled: true);
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final controller = ThemeController(prefs);
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: controller,
+        child: _testApp(const ChatFolderSettingsView()),
+      ),
+    );
+    await tester.pump();
 
-    await tester.tap(find.text('Interface'));
-    await tester.pumpAndSettle();
+    expect(find.text('Chat Folders'), findsOneWidget);
+    expect(find.text('Manage folders'), findsNothing);
+  });
 
-    expect(find.byType(DisplaySettingsView), findsOneWidget);
-    for (final key in const [
-      'avatars-sidebar-settings-row',
-      'chat-view-settings-row',
-      'chat-list-settings-row',
-      'unread-badge-settings-row',
-    ]) {
-      expect(find.byKey(ValueKey(key)), findsOneWidget);
-    }
+  testWidgets(
+    'Appearance opens interface previews without an intermediate route',
+    (tester) async {
+      final controller = await _pumpAppearance(tester, themingEnabled: true);
 
-    for (final icon in const [
-      HeroAppIcons.users,
-      HeroAppIcons.message,
-      HeroAppIcons.listCheck,
-      HeroAppIcons.solidBell,
-    ]) {
-      expect(find.byIcon(icon.data), findsOneWidget, reason: '$icon is reused');
-    }
+      expect(find.byType(DisplaySettingsView), findsNothing);
+      for (final key in const [
+        'avatars-sidebar-settings-row',
+        'chat-view-settings-row',
+        'chat-list-settings-row',
+        'unread-badge-settings-row',
+      ]) {
+        expect(find.byKey(ValueKey(key)), findsOneWidget);
+      }
 
-    Future<void> openChild(String rowKey, String previewKey) async {
-      final row = find.byKey(ValueKey(rowKey));
-      await tester.ensureVisible(row);
-      await tester.tap(row);
+      Future<void> openChild(String rowKey, String previewKey) async {
+        final row = find.byKey(ValueKey(rowKey));
+        await tester.ensureVisible(row);
+        await tester.tap(row);
+        await tester.pumpAndSettle();
+        expect(find.byKey(ValueKey(previewKey)), findsOneWidget);
+      }
+
+      Future<void> returnToAppearance() async {
+        tester.state<NavigatorState>(find.byType(Navigator).first).pop();
+        await tester.pumpAndSettle();
+        expect(find.byType(AppearanceView), findsOneWidget);
+        expect(find.byType(DisplaySettingsView), findsNothing);
+      }
+
+      await openChild(
+        'avatars-sidebar-settings-row',
+        'avatars-sidebar-preview',
+      );
+      expect(find.text('Hide Phone Number in Sidebar'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('appearance-live-preview-unavailable')),
+        findsOneWidget,
+      );
+      expect(find.text('Mithka Group'), findsNothing);
+      expect(find.text('+81 90 1234 5678'), findsNothing);
+      final hidePhoneSwitch = find.descendant(
+        of: find.byKey(const ValueKey('avatars-sidebar-hide-phone-row')),
+        matching: find.byType(AppSwitch),
+      );
+      expect(tester.widget<AppSwitch>(hidePhoneSwitch).value, isFalse);
+      await tester.ensureVisible(hidePhoneSwitch);
+      await tester.tap(hidePhoneSwitch);
+      await tester.pump();
+      expect(controller.hideSidebarPhone, isTrue);
+      expect(
+        find.byKey(const ValueKey('avatars-sidebar-preview-phone')),
+        findsNothing,
+      );
+      await returnToAppearance();
+
+      await openChild('chat-view-settings-row', 'chat-view-preview');
+      expect(
+        find.byKey(const ValueKey('appearance-live-preview-unavailable')),
+        findsOneWidget,
+      );
+      expect(find.text('Bob Harris'), findsNothing);
+      expect(find.text('Jessica'), findsNothing);
+      controller.alwaysShowMessageTime = true;
+      await tester.pump();
+      await returnToAppearance();
+
+      await openChild('chat-list-settings-row', 'chat-list-preview');
+      expect(
+        find.byKey(const ValueKey('chat-list-representative-row')),
+        findsOneWidget,
+      );
+      expect(find.text('Mithka Users'), findsOneWidget);
+      expect(find.text('Jennie: See you in the chat'), findsOneWidget);
+      final swipeSettings = find.byKey(
+        const ValueKey('chat-list-swipe-settings-row'),
+      );
+      expect(swipeSettings, findsOneWidget);
+      await tester.ensureVisible(swipeSettings);
+      await tester.tap(swipeSettings);
       await tester.pumpAndSettle();
-      expect(find.byKey(ValueKey(previewKey)), findsOneWidget);
-    }
-
-    Future<void> returnToInterface() async {
+      expect(find.byType(ChatListGestureSettingsView), findsOneWidget);
+      expect(
+        find.text(
+          '1 finger: chat actions · 2 fingers: folders · 3 fingers: accounts',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.text('1 finger: folders · 3 fingers: accounts'),
+        findsOneWidget,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('chat-list-swipe-mode-switchFolders')),
+      );
+      await tester.pump();
+      expect(controller.chatListSwipeMode, ChatListSwipeMode.switchFolders);
       tester.state<NavigatorState>(find.byType(Navigator).first).pop();
       await tester.pumpAndSettle();
-      expect(find.byType(DisplaySettingsView), findsOneWidget);
-    }
+      expect(find.byType(ChatListAppearanceSettingsView), findsOneWidget);
+      expect(find.text('Switch folders'), findsOneWidget);
+      controller.showChatListSearch = false;
+      await tester.pump();
+      await returnToAppearance();
 
-    await openChild('avatars-sidebar-settings-row', 'avatars-sidebar-preview');
-    expect(find.text('Hide Phone Number in Sidebar'), findsNothing);
-    expect(
-      find.byKey(const ValueKey('appearance-live-preview-unavailable')),
-      findsOneWidget,
-    );
-    expect(find.text('Mithka Group'), findsNothing);
-    expect(find.text('+81 90 1234 5678'), findsNothing);
-    controller.hideSidebarPhone = true;
-    await tester.pump();
-    expect(
-      find.byKey(const ValueKey('avatars-sidebar-preview-phone')),
-      findsNothing,
-    );
-    await returnToInterface();
+      await openChild('unread-badge-settings-row', 'unread-badge-preview');
+      expect(
+        find.byKey(const ValueKey('appearance-live-preview-unavailable')),
+        findsOneWidget,
+      );
+      expect(find.text('99+'), findsNothing);
+      controller.capUnreadBadgeAt99 = false;
+      await tester.pump();
+      expect(find.text('99+'), findsNothing);
+      expect(find.text('128'), findsNothing);
+    },
+  );
 
-    await openChild('chat-view-settings-row', 'chat-view-preview');
-    expect(
-      find.byKey(const ValueKey('appearance-live-preview-unavailable')),
-      findsOneWidget,
+  testWidgets('flattened interface section stays usable at phone size', (
+    tester,
+  ) async {
+    await _pumpAppearance(
+      tester,
+      themingEnabled: true,
+      surfaceSize: const Size(402, 874),
     );
-    expect(find.text('Bob Harris'), findsNothing);
-    expect(find.text('Jessica'), findsNothing);
-    controller.alwaysShowMessageTime = true;
-    await tester.pump();
-    await returnToInterface();
 
-    await openChild('chat-list-settings-row', 'chat-list-preview');
-    expect(
-      find.byKey(const ValueKey('chat-list-representative-row')),
-      findsOneWidget,
+    expect(find.text('Interface'), findsOneWidget);
+    final unreadBadgeRow = find.byKey(
+      const ValueKey('unread-badge-settings-row'),
     );
-    expect(find.text('Mithka Users'), findsOneWidget);
-    expect(find.text('Jennie: See you in the chat'), findsOneWidget);
-    final swipeSettings = find.byKey(
-      const ValueKey('chat-list-swipe-settings-row'),
-    );
-    expect(swipeSettings, findsOneWidget);
-    await tester.ensureVisible(swipeSettings);
-    await tester.tap(swipeSettings);
+    await tester.ensureVisible(unreadBadgeRow);
     await tester.pumpAndSettle();
-    expect(find.byType(ChatListGestureSettingsView), findsOneWidget);
-    expect(
-      find.text(
-        '1 finger: chat actions · 2 fingers: folders · 3 fingers: accounts',
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.text('1 finger: folders · 3 fingers: accounts'),
-      findsOneWidget,
-    );
-    await tester.tap(
-      find.byKey(const ValueKey('chat-list-swipe-mode-switchFolders')),
-    );
-    await tester.pump();
-    expect(controller.chatListSwipeMode, ChatListSwipeMode.switchFolders);
-    tester.state<NavigatorState>(find.byType(Navigator).first).pop();
-    await tester.pumpAndSettle();
-    expect(find.byType(ChatListAppearanceSettingsView), findsOneWidget);
-    expect(find.text('Switch folders'), findsOneWidget);
-    controller.showChatListSearch = false;
-    await tester.pump();
-    await returnToInterface();
+    expect(tester.takeException(), isNull);
 
-    await openChild('unread-badge-settings-row', 'unread-badge-preview');
-    expect(
-      find.byKey(const ValueKey('appearance-live-preview-unavailable')),
-      findsOneWidget,
-    );
-    expect(find.text('99+'), findsNothing);
-    controller.capUnreadBadgeAt99 = false;
-    await tester.pump();
-    expect(find.text('99+'), findsNothing);
-    expect(find.text('128'), findsNothing);
+    await tester.tap(unreadBadgeRow);
+    await tester.pumpAndSettle();
+    expect(find.byType(UnreadBadgeSettingsView), findsOneWidget);
   });
 
   testWidgets('chat and chat-list name color pages use separate defaults', (
@@ -458,8 +517,9 @@ void main() {
 Future<ThemeController> _pumpAppearance(
   WidgetTester tester, {
   required bool themingEnabled,
+  Size surfaceSize = const Size(900, 1800),
 }) async {
-  await tester.binding.setSurfaceSize(const Size(900, 1800));
+  await tester.binding.setSurfaceSize(surfaceSize);
   addTearDown(() => tester.binding.setSurfaceSize(null));
   SharedPreferences.setMockInitialValues({
     'appearanceThemingEnabled': themingEnabled,

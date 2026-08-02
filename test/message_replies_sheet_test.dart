@@ -33,6 +33,49 @@ void main() {
     expect(thread, isNot(contains('reply_to')));
   });
 
+  test('view in chat targets the linked discussion root message', () {
+    final target = resolveMessageRepliesViewTarget(
+      sourceChatId: -1001,
+      sourceMessageId: 42,
+      sourceTitle: 'Channel',
+      threadChatId: -2002,
+      threadRootMessageId: 99,
+      threadTitle: 'Discussion',
+    );
+
+    expect(target.chatId, -2002);
+    expect(target.messageId, 99);
+    expect(target.title, 'Discussion');
+  });
+
+  test('view in chat keeps same-chat replies on their source message', () {
+    final target = resolveMessageRepliesViewTarget(
+      sourceChatId: -1001,
+      sourceMessageId: 42,
+      sourceTitle: 'Group',
+      threadChatId: -1001,
+      rootReplyToMessageId: 42,
+    );
+
+    expect(target.chatId, -1001);
+    expect(target.messageId, 42);
+    expect(target.title, 'Group');
+  });
+
+  test('view in chat never crosses chats without a resolved thread root', () {
+    final target = resolveMessageRepliesViewTarget(
+      sourceChatId: -1001,
+      sourceMessageId: 42,
+      sourceTitle: 'Channel',
+      threadChatId: -2002,
+      threadTitle: 'Discussion',
+    );
+
+    expect(target.chatId, -1001);
+    expect(target.messageId, 42);
+    expect(target.title, 'Channel');
+  });
+
   testWidgets('reply sheet items render video and structured rich content', (
     tester,
   ) async {

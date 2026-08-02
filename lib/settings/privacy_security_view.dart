@@ -18,13 +18,9 @@ import '../components/app_icons.dart';
 import '../components/desktop_content_constraint.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
-import '../security/local_app_lock_controller.dart';
-import '../security/local_app_lock_views.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
-import '../theme/theme_controller.dart';
-import 'account_backup_view.dart';
 import 'account_security_views.dart';
 import 'auto_delete_view.dart';
 import 'passkeys_view.dart';
@@ -242,9 +238,7 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final appLock = context.watch<LocalAppLockController>();
     final sensitiveContent = context.watch<SensitiveContentController>();
-    final theme = context.watch<ThemeController>();
     return Scaffold(
       backgroundColor: c.groupedBackground,
       body: Column(
@@ -275,28 +269,11 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
                           );
                         },
                       ),
-                    _SwitchRow(
-                      HeroAppIcons.eyeSlash,
-                      AppStrings.t(AppStringKeys.appearanceHidePhoneInSidebar),
-                      theme.hideSidebarPhone,
-                      (value) => theme.hideSidebarPhone = value,
-                    ),
                   ]),
                   const SizedBox(height: 14),
                   _group(
                     AppStrings.t(AppStringKeys.privacySecuritySectionTitle),
                     [
-                      _Row(
-                        HeroAppIcons.lock,
-                        AppStrings.t(AppStringKeys.appLockTitle),
-                        appLock.enabled
-                            ? (appLock.credentialType ==
-                                      AppLockCredentialType.pin
-                                  ? AppStringKeys.appLockPin
-                                  : AppStringKeys.appLockGesture)
-                            : AppStringKeys.privacyDisabled,
-                        () => _open(const AppLockSettingsView()),
-                      ),
                       _Row(
                         HeroAppIcons.lock,
                         AppStrings.t(AppStringKeys.privacyTwoStepVerification),
@@ -328,12 +305,6 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
                             const PasskeysView(),
                           ).then((_) => _loadPasskeys()),
                         ),
-                      _Row(
-                        HeroAppIcons.key,
-                        AppStrings.t(AppStringKeys.accountBackupTitle),
-                        '',
-                        () => _open(const AccountBackupView()),
-                      ),
                       if (sensitiveContent.shouldShowToggle)
                         _SwitchRow(
                           HeroAppIcons.eye,

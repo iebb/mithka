@@ -270,8 +270,10 @@ class _TranslationSettingsViewState extends State<TranslationSettingsView> {
                       context,
                       ai.translationModelCandidate,
                     ),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const AiSettingsView()),
+                    onTap: () => showAiFeatureModelPicker(
+                      context,
+                      settings: ai,
+                      feature: AiFeature.translation,
                     ),
                   ),
                   const InsetDivider(leadingInset: 56),

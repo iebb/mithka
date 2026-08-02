@@ -51,6 +51,8 @@ import '../theme/theme_controller.dart';
 import 'profile_contact_management_view.dart';
 import 'profile_contact_service.dart';
 import 'profile_gifts.dart';
+import 'profile_identity_summary.dart';
+import 'profile_username_pill.dart';
 
 class ProfileDetailView extends StatefulWidget {
   const ProfileDetailView({
@@ -795,11 +797,12 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
 
   Widget _identityPanel(String status) {
     final c = context.colors;
-    final identityLines = [
-      if (_phone.isNotEmpty && !_hideIdentity) _phone,
-      if (_usernames.isEmpty && widget.userId > 0) 'ID: ${widget.userId}',
-      for (final username in _usernames) 'ID: $username',
-    ];
+    final identityLines = fullProfileIdentityLines(
+      formattedPhone: _phone,
+      usernames: _usernames,
+      userId: widget.userId,
+      hidePhone: _hideIdentity,
+    );
     return Container(
       transform: Matrix4.translationValues(0, -34, 0),
       decoration: BoxDecoration(
@@ -853,15 +856,30 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   for (final line in identityLines)
-                                    Text(
-                                      line,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        height: 1.28,
-                                        color: c.textSecondary,
+                                    Padding(
+                                      padding: EdgeInsets.only(
+                                        top:
+                                            line.kind ==
+                                                ProfileIdentityKind.username
+                                            ? 3
+                                            : 0,
                                       ),
+                                      child:
+                                          line.kind ==
+                                              ProfileIdentityKind.username
+                                          ? ProfileUsernamePill(
+                                              username: line.text,
+                                            )
+                                          : Text(
+                                              line.text,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                height: 1.28,
+                                                color: c.textSecondary,
+                                              ),
+                                            ),
                                     ),
                                 ],
                               ),

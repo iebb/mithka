@@ -2,7 +2,7 @@
 //  profile_view.dart
 //
 //  The "我" side menu (slides in from the left, ~88% width). Redesigned to match
-//  the reference app's drawer: an azure avatar banner → an edit-profile card → a vertical list
+//  the reference app's drawer: a themed avatar banner → a vertical list
 //  of rows (Calls / Saved Messages / Files / Videos) → account switcher →
 //  an icon-only bottom
 //  bar. Backed by real TDLib via ProfileViewModel + AccountStore.
@@ -20,6 +20,7 @@ import '../auth/account_store.dart';
 import '../auth/auth_manager.dart';
 import '../call/calls_view.dart';
 import '../chat/chat_view.dart';
+import '../chat/chat_wallpaper.dart';
 import '../chat/custom_emoji.dart';
 import '../chat/shared_media_view.dart';
 import '../components/app_icons.dart';
@@ -38,6 +39,8 @@ import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import 'emoji_status_picker.dart';
 import 'profile_detail_view.dart';
+import 'profile_theme_backdrop.dart';
+import 'profile_username_pill.dart';
 import 'profile_username_summary.dart';
 import 'qr_code_view.dart';
 
@@ -162,6 +165,7 @@ class ProfileView extends StatefulWidget {
 
 class _ProfileViewState extends State<ProfileView> {
   final _vm = ProfileViewModel();
+  final _wallpaperController = ChatWallpaperController.shared;
 
   @override
   void initState() {
@@ -170,6 +174,9 @@ class _ProfileViewState extends State<ProfileView> {
       if (mounted) setState(() {});
     });
     _vm.onAppear();
+    unawaited(_wallpaperController.loadGlobalChatThemes());
+    unawaited(_wallpaperController.loadDefaultWallpaper(dark: false));
+    unawaited(_wallpaperController.loadDefaultWallpaper(dark: true));
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) context.read<AccountStore>().refresh();
     });
@@ -234,11 +241,31 @@ class _ProfileViewState extends State<ProfileView> {
     );
   }
 
-  // MARK: - Azure avatar banner
+  // MARK: - Themed profile banner
 
-  Widget _banner() {
+  Widget _banner() => AnimatedBuilder(
+    animation: _wallpaperController,
+    builder: (context, _) => _themedBanner(),
+  );
+
+  Widget _themedBanner() {
     final user = _vm.user;
-    final foreground = context.colors.onAccent;
+    final colors = context.colors;
+    final foreground = colors.textPrimary;
+    final brightness = Theme.of(context).brightness;
+    final dark = brightness == Brightness.dark;
+    final themeController = context.watch<ThemeController>();
+    final selectedWallpaper = selectProfileThemeWallpaper(
+      themingEnabled: themeController.themingEnabled,
+      defaultWallpaper: _wallpaperController.defaultWallpaper(dark: dark),
+      cloudThemeWallpaper: themeController.cloudThemeFor(brightness)?.wallpaper,
+      globalThemeWallpaper: _wallpaperController.globalThemeWallpaperFor(
+        dark: dark,
+      ),
+    );
+    final wallpaper = selectedWallpaper == null
+        ? null
+        : _wallpaperController.resolvedWallpaper(selectedWallpaper);
     final hidePhone = context.watch<ThemeController>().hideSidebarPhone;
     final identities = _vm.usernames.isNotEmpty
         ? compactProfileUsernameLabels(_vm.usernames)
@@ -246,143 +273,154 @@ class _ProfileViewState extends State<ProfileView> {
             if (!hidePhone && (user?.phoneNumber ?? '').isNotEmpty)
               user!.phoneNumber,
           ];
-    return Container(
-      padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
-      decoration: BoxDecoration(gradient: AppTheme.brandGradient),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 8, 16, 20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Top controls: QR + close.
-            Row(
-              children: [
-                const Spacer(),
-                GestureDetector(
-                  onTap: _openMyProfile,
-                  child: AppIcon(
-                    HeroAppIcons.circleUser,
-                    size: 22,
-                    color: foreground,
+    return Stack(
+      children: [
+        Positioned.fill(child: ProfileThemeBackdrop(wallpaper: wallpaper)),
+        Padding(
+          padding: EdgeInsets.fromLTRB(
+            20,
+            MediaQuery.of(context).padding.top + 8,
+            16,
+            20,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Top controls: QR + close.
+              Row(
+                children: [
+                  const Spacer(),
+                  GestureDetector(
+                    onTap: _openMyProfile,
+                    child: AppIcon(
+                      HeroAppIcons.circleUser,
+                      size: 22,
+                      color: foreground,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 16),
-                GestureDetector(
-                  onTap: () => _root.push(
-                    MaterialPageRoute(
-                      builder: (_) => QRCodeView(
-                        name:
+                  const SizedBox(width: 16),
+                  GestureDetector(
+                    onTap: () => _root.push(
+                      MaterialPageRoute(
+                        builder: (_) => QRCodeView(
+                          name:
+                              user?.name ??
+                              AppStrings.t(AppStringKeys.chatMeLabel),
+                        ),
+                      ),
+                    ),
+                    child: AppIcon(
+                      HeroAppIcons.qrcode,
+                      size: 22,
+                      color: foreground,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  GestureDetector(
+                    onTap: () => context.read<dc.DrawerController>().close(),
+                    child: AppIcon(
+                      HeroAppIcons.xmark,
+                      size: 22,
+                      color: foreground,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _openMyProfile,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: colors.divider, width: 2),
+                      ),
+                      child: PhotoAvatar(
+                        title:
                             user?.name ??
                             AppStrings.t(AppStringKeys.chatMeLabel),
+                        photo: user?.photo,
+                        size: 64,
                       ),
                     ),
                   ),
-                  child: AppIcon(
-                    HeroAppIcons.qrcode,
-                    size: 22,
-                    color: foreground,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                GestureDetector(
-                  onTap: () => context.read<dc.DrawerController>().close(),
-                  child: AppIcon(
-                    HeroAppIcons.xmark,
-                    size: 22,
-                    color: foreground,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _openMyProfile,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: foreground, width: 2),
-                    ),
-                    child: PhotoAvatar(
-                      title:
-                          user?.name ?? AppStrings.t(AppStringKeys.chatMeLabel),
-                      photo: user?.photo,
-                      size: 64,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              user?.name ??
-                                  AppStrings.t(AppStringKeys.contactsLoading),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                                color: foreground,
-                              ),
-                            ),
-                          ),
-                          _nameStatusIcon(user),
-                          if (user?.isPremium ?? false) ...[
-                            const SizedBox(width: 6),
-                            const VipBadge(),
-                          ],
-                        ],
-                      ),
-                      if (identities.isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        Wrap(
-                          spacing: 10,
-                          runSpacing: 2,
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
                           children: [
-                            for (final identity in identities)
-                              Text(
-                                identity,
+                            Flexible(
+                              child: Text(
+                                user?.name ??
+                                    AppStrings.t(AppStringKeys.contactsLoading),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
-                                  fontSize: 13,
-                                  height: 1.25,
-                                  color: foreground.withValues(alpha: 0.78),
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                  color: foreground,
                                 ),
                               ),
+                            ),
+                            _nameStatusIcon(user),
+                            if (user?.isPremium ?? false) ...[
+                              const SizedBox(width: 6),
+                              const VipBadge(),
+                            ],
                           ],
                         ),
+                        if (identities.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Wrap(
+                            spacing: 10,
+                            runSpacing: 2,
+                            children: [
+                              for (final identity in identities)
+                                identity.startsWith('@')
+                                    ? ProfileUsernamePill(username: identity)
+                                    : Text(
+                                        identity,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          height: 1.25,
+                                          color: colors.textSecondary,
+                                        ),
+                                      ),
+                            ],
+                          ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                // Edit profile — replaces the old duplicate 编辑资料 card.
-                GestureDetector(
-                  onTap: () => _root.push(
-                    MaterialPageRoute(builder: (_) => const EditProfileView()),
+                  const SizedBox(width: 8),
+                  // Edit profile — replaces the old duplicate 编辑资料 card.
+                  GestureDetector(
+                    onTap: () => _root.push(
+                      MaterialPageRoute(
+                        builder: (_) => const EditProfileView(),
+                      ),
+                    ),
+                    child: AppIcon(
+                      HeroAppIcons.penToSquare,
+                      size: 22,
+                      color: foreground,
+                    ),
                   ),
-                  child: AppIcon(
-                    HeroAppIcons.penToSquare,
-                    size: 22,
-                    color: foreground,
-                  ),
-                ),
-              ],
-            ),
-          ],
+                ],
+              ),
+            ],
+          ),
         ),
-      ),
+      ],
     );
   }
 
   Widget _nameStatusIcon(CurrentUser? user) {
-    final foreground = context.colors.onAccent;
+    final foreground = context.colors.textPrimary;
     final hasStatus = (user?.emojiStatusId ?? 0) != 0;
     final premium = user?.isPremium ?? false;
     if (!hasStatus && !premium) return const SizedBox.shrink();

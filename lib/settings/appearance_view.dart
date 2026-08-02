@@ -39,7 +39,6 @@ import '../theme/system_font_catalog.dart';
 import '../theme/theme_controller.dart';
 import 'app_icon_controller.dart';
 import 'appearance_preview_repository.dart';
-import 'chat_folder_management_view.dart';
 import 'message_bubble_settings_view.dart';
 import 'quick_reaction_settings_view.dart';
 
@@ -85,21 +84,6 @@ class AppearanceView extends StatelessWidget {
                       ),
                     ),
                     KeyedSubtree(
-                      key: const ValueKey('appearance-interface-settings-row'),
-                      child: _navigationRow(
-                        context,
-                        AppStrings.t(AppStringKeys.appearanceSize),
-                        null,
-                        () => Navigator.of(context).push(
-                          AppPageRoute<void>(
-                            pageBuilder: (_, _, _) =>
-                                const DisplaySettingsView(),
-                          ),
-                        ),
-                        icon: HeroAppIcons.tableCells.data,
-                      ),
-                    ),
-                    KeyedSubtree(
                       key: const ValueKey('appearance-scaling-settings-row'),
                       child: _navigationRow(
                         context,
@@ -129,6 +113,9 @@ class AppearanceView extends StatelessWidget {
                       ),
                     ),
                   ]),
+                  const SizedBox(height: AppSpacing.xl),
+                  _label(context, AppStrings.t(AppStringKeys.appearanceSize)),
+                  _card(context, _interfaceNavigationRows(context)),
                   const SizedBox(height: AppSpacing.xl),
                   _card(context, [
                     KeyedSubtree(
@@ -576,68 +563,10 @@ class DisplaySettingsView extends StatelessWidget {
                 AppSpacing.section,
               ),
               children: [
-                appearance._card(context, [
-                  KeyedSubtree(
-                    key: const ValueKey('avatars-sidebar-settings-row'),
-                    child: appearance._navigationRow(
-                      context,
-                      AppStrings.t(AppStringKeys.appearanceAvatarsAndSidebar),
-                      null,
-                      () => Navigator.of(context).push(
-                        AppPageRoute<void>(
-                          pageBuilder: (_, _, _) =>
-                              const AvatarsAndSidebarSettingsView(),
-                        ),
-                      ),
-                      icon: HeroAppIcons.users.data,
-                    ),
-                  ),
-                  KeyedSubtree(
-                    key: const ValueKey('chat-view-settings-row'),
-                    child: appearance._navigationRow(
-                      context,
-                      AppStrings.t(AppStringKeys.appearanceChatView),
-                      null,
-                      () => Navigator.of(context).push(
-                        AppPageRoute<void>(
-                          pageBuilder: (_, _, _) =>
-                              const ChatViewAppearanceSettingsView(),
-                        ),
-                      ),
-                      icon: HeroAppIcons.message.data,
-                    ),
-                  ),
-                  KeyedSubtree(
-                    key: const ValueKey('chat-list-settings-row'),
-                    child: appearance._navigationRow(
-                      context,
-                      AppStrings.t(AppStringKeys.appearanceChatList),
-                      null,
-                      () => Navigator.of(context).push(
-                        AppPageRoute<void>(
-                          pageBuilder: (_, _, _) =>
-                              const ChatListAppearanceSettingsView(),
-                        ),
-                      ),
-                      icon: HeroAppIcons.listCheck.data,
-                    ),
-                  ),
-                  KeyedSubtree(
-                    key: const ValueKey('unread-badge-settings-row'),
-                    child: appearance._navigationRow(
-                      context,
-                      AppStrings.t(AppStringKeys.appearanceUnreadBadge),
-                      null,
-                      () => Navigator.of(context).push(
-                        AppPageRoute<void>(
-                          pageBuilder: (_, _, _) =>
-                              const UnreadBadgeSettingsView(),
-                        ),
-                      ),
-                      icon: HeroAppIcons.solidBell.data,
-                    ),
-                  ),
-                ]),
+                appearance._card(
+                  context,
+                  appearance._interfaceNavigationRows(context),
+                ),
               ],
             ),
           ),
@@ -673,6 +602,16 @@ class AvatarsAndSidebarSettingsView extends StatelessWidget {
           AppStrings.t(AppStringKeys.appearanceAnimateAvatars),
           theme.animateAvatars,
           (value) => theme.animateAvatars = value,
+        ),
+        KeyedSubtree(
+          key: const ValueKey('avatars-sidebar-hide-phone-row'),
+          child: const AppearanceView()._toggleRow(
+            context,
+            HeroAppIcons.eyeSlash.data,
+            AppStrings.t(AppStringKeys.appearanceHidePhoneInSidebar),
+            theme.hideSidebarPhone,
+            (value) => theme.hideSidebarPhone = value,
+          ),
         ),
       ]),
     );
@@ -1622,20 +1561,6 @@ class ChatFolderSettingsView extends StatelessWidget {
                       () => theme.chatFolderDisplayMode = mode,
                     ),
                 ]),
-                const SizedBox(height: AppSpacing.xl),
-                const AppearanceView()._card(context, [
-                  const AppearanceView()._navigationRow(
-                    context,
-                    'Manage folders',
-                    '',
-                    () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const ChatFolderManagementView(),
-                      ),
-                    ),
-                    icon: HeroAppIcons.folder.data,
-                  ),
-                ]),
               ],
             ),
           ),
@@ -1810,6 +1735,65 @@ class ArchivedChatsSettingsView extends StatelessWidget {
 }
 
 extension _DisplayAppearanceHelpers on AppearanceView {
+  List<Widget> _interfaceNavigationRows(BuildContext context) => [
+    KeyedSubtree(
+      key: const ValueKey('avatars-sidebar-settings-row'),
+      child: _navigationRow(
+        context,
+        AppStrings.t(AppStringKeys.appearanceAvatarsAndSidebar),
+        null,
+        () => Navigator.of(context).push(
+          AppPageRoute<void>(
+            pageBuilder: (_, _, _) => const AvatarsAndSidebarSettingsView(),
+          ),
+        ),
+        icon: HeroAppIcons.users.data,
+      ),
+    ),
+    KeyedSubtree(
+      key: const ValueKey('chat-view-settings-row'),
+      child: _navigationRow(
+        context,
+        AppStrings.t(AppStringKeys.appearanceChatView),
+        null,
+        () => Navigator.of(context).push(
+          AppPageRoute<void>(
+            pageBuilder: (_, _, _) => const ChatViewAppearanceSettingsView(),
+          ),
+        ),
+        icon: HeroAppIcons.message.data,
+      ),
+    ),
+    KeyedSubtree(
+      key: const ValueKey('chat-list-settings-row'),
+      child: _navigationRow(
+        context,
+        AppStrings.t(AppStringKeys.appearanceChatList),
+        null,
+        () => Navigator.of(context).push(
+          AppPageRoute<void>(
+            pageBuilder: (_, _, _) => const ChatListAppearanceSettingsView(),
+          ),
+        ),
+        icon: HeroAppIcons.listCheck.data,
+      ),
+    ),
+    KeyedSubtree(
+      key: const ValueKey('unread-badge-settings-row'),
+      child: _navigationRow(
+        context,
+        AppStrings.t(AppStringKeys.appearanceUnreadBadge),
+        null,
+        () => Navigator.of(context).push(
+          AppPageRoute<void>(
+            pageBuilder: (_, _, _) => const UnreadBadgeSettingsView(),
+          ),
+        ),
+        icon: HeroAppIcons.solidBell.data,
+      ),
+    ),
+  ];
+
   Widget _fontSizeCard(BuildContext context, ThemeController theme) {
     final c = context.colors;
     return Container(

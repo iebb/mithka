@@ -66,6 +66,20 @@ void main() {
       expect(find.text('Translation Prompt'), findsOneWidget);
       expect(find.text('Default'), findsOneWidget);
 
+      await tester.tap(find.text('Translate using'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('aiFeatureModelPicker-translation')),
+        findsOneWidget,
+      );
+      expect(find.text('Providers'), findsNothing);
+      Navigator.of(
+        tester.element(
+          find.byKey(const ValueKey('aiFeatureModelPicker-translation')),
+        ),
+      ).pop();
+      await tester.pumpAndSettle();
+
       final switches = find.byType(AppSwitch);
       expect(switches, findsNWidgets(3));
       await tester.tap(switches.at(2));

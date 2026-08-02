@@ -3,7 +3,6 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/intl.dart';
 import 'package:mithka/l10n/app_localizations.dart';
-import 'package:mithka/security/local_app_lock_controller.dart';
 import 'package:mithka/settings/privacy_security_view.dart';
 import 'package:mithka/settings/sensitive_content_controller.dart';
 import 'package:mithka/theme/app_theme.dart';
@@ -28,21 +27,10 @@ void main() {
       final theme = ThemeController(preferences);
       addTearDown(theme.dispose);
 
-      final appLock = LocalAppLockController(
-        secureRead: (_) async => null,
-        secureWrite: (_, _) async {},
-        hashRounds: 4,
-        platformSupportsBiometrics: false,
-      );
-      addTearDown(appLock.dispose);
-
       await tester.pumpWidget(
         MultiProvider(
           providers: [
             ChangeNotifierProvider<ThemeController>.value(value: theme),
-            ChangeNotifierProvider<LocalAppLockController>.value(
-              value: appLock,
-            ),
             ChangeNotifierProvider<SensitiveContentController>.value(
               value: SensitiveContentController.shared,
             ),
@@ -65,11 +53,9 @@ void main() {
       expect(find.text('Delete Account If Away For'), findsNothing);
       expect(find.text('更换手机号码'), findsOneWidget);
       expect(find.text('危险区域'), findsOneWidget);
-      expect(find.text('侧边栏隐藏手机号'), findsOneWidget);
-      expect(theme.hideSidebarPhone, isFalse);
-      await tester.tap(find.text('侧边栏隐藏手机号'));
-      await tester.pump();
-      expect(theme.hideSidebarPhone, isTrue);
+      expect(find.text('侧边栏隐藏手机号'), findsNothing);
+      expect(find.text('解锁设置'), findsNothing);
+      expect(find.text('账号备份'), findsNothing);
 
       final dangerZone = find.byKey(const ValueKey('privacy-danger-zone'));
       expect(dangerZone, findsOneWidget);

@@ -16,9 +16,9 @@ import 'package:mithka/notifications/scope_notification_settings.dart';
 import 'package:provider/provider.dart';
 
 import '../app/app_navigator.dart';
+import '../chats/chat_delete_dialog.dart';
 import '../chats/chat_delete_policy.dart';
 import '../components/app_icons.dart';
-import '../components/confirm_dialog.dart';
 import '../components/icon_grid.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
@@ -834,24 +834,11 @@ class _ChatInfoViewState extends State<ChatInfoView> {
   }
 
   Future<void> _clearHistory() async {
-    final first = await confirmDialog(
+    final confirmed = await showTwoStepClearHistoryDialog(
       context,
-      title: AppStrings.t(AppStringKeys.chatInfoClearHistoryQuestion),
-      message: AppStrings.t(AppStringKeys.chatInfoClearHistoryDescription),
-      confirmText: AppStrings.t(AppStringKeys.chatInfoClear),
-      destructive: true,
+      chatTitle: widget.title,
     );
-    if (!mounted || !first) return;
-    final second = await confirmDialog(
-      context,
-      title: AppStrings.t(AppStringKeys.chatInfoConfirmAgain),
-      message: AppStrings.t(
-        AppStringKeys.chatInfoClearHistoryIrreversibleWarning,
-      ),
-      confirmText: AppStrings.t(AppStringKeys.chatInfoConfirmClearHistory),
-      destructive: true,
-    );
-    if (!mounted || !second) return;
+    if (!mounted || !confirmed) return;
     try {
       await _vm.clearHistory();
       if (mounted) Navigator.of(context).pop();
@@ -861,6 +848,25 @@ class _ChatInfoViewState extends State<ChatInfoView> {
   }
 
   Future<void> _leaveChat() async {
+    final action = _vm.isChannel
+        ? AppStringKeys.topicChatLeaveChannel
+        : AppStringKeys.chatInfoLeaveGroup;
+    final impact = AppStrings.t(AppStringKeys.chatLeaveAndDeleteDescription, {
+      'value1': widget.title,
+    });
+    final confirmed = await showTwoStepDestructiveConfirmation(
+      context,
+      firstTitle: action,
+      firstMessage: impact,
+      firstConfirmText: AppStringKeys.confirmContinue,
+      finalTitle: AppStrings.t(AppStringKeys.chatDeleteFinalQuestion, {
+        'value1': widget.title,
+      }),
+      finalMessage:
+          '$impact\n\n${AppStringKeys.chatDeleteFinalWarning.l10n(context)}',
+      finalConfirmText: action,
+    );
+    if (!mounted || !confirmed) return;
     try {
       await _vm.leaveChat();
       if (mounted) Navigator.of(context).pop();

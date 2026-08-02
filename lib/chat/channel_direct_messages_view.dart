@@ -3,9 +3,9 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../chats/chat_delete_dialog.dart';
 import '../components/app_dialog.dart';
 import '../components/app_icons.dart';
-import '../components/confirm_dialog.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
@@ -1795,14 +1795,20 @@ class _DirectMessagesTopicSettingsSheetState
       helpText: AppStrings.t(AppStringKeys.channelDirectMessagesRangeEnd),
     );
     if (end == null || !mounted) return;
-    final confirmed = await confirmDialog(
+    String dateLabel(DateTime value) =>
+        '${value.year.toString().padLeft(4, '0')}-'
+        '${value.month.toString().padLeft(2, '0')}-'
+        '${value.day.toString().padLeft(2, '0')}';
+    final rangeLabel = '${dateLabel(start)} – ${dateLabel(end)}';
+    final confirmed = await showTwoStepDestructiveConfirmation(
       context,
-      title: AppStringKeys.channelDirectMessagesClearRange,
-      message: AppStrings.t(
-        AppStringKeys.channelDirectMessagesClearRangeConfirm,
-      ),
-      confirmText: AppStringKeys.chatDelete,
-      destructive: true,
+      firstTitle: AppStringKeys.channelDirectMessagesClearRange,
+      firstMessage: AppStringKeys.channelDirectMessagesClearRangeConfirm,
+      firstConfirmText: AppStringKeys.chatDelete,
+      finalTitle: AppStringKeys.channelDirectMessagesClearRange,
+      finalMessage:
+          '$rangeLabel\n\n${AppStrings.t(AppStringKeys.chatDeleteFinalWarning)}',
+      finalConfirmText: AppStringKeys.chatDelete,
     );
     if (!confirmed || !mounted) return;
     final minDate =
@@ -1828,12 +1834,17 @@ class _DirectMessagesTopicSettingsSheetState
   }
 
   Future<void> _clear() async {
-    final confirmed = await confirmDialog(
+    final confirmed = await showTwoStepDestructiveConfirmation(
       context,
-      title: AppStringKeys.channelDirectMessagesClear,
-      message: AppStrings.t(AppStringKeys.channelDirectMessagesClearConfirm),
-      confirmText: AppStringKeys.chatDelete,
-      destructive: true,
+      firstTitle: AppStringKeys.channelDirectMessagesClear,
+      firstMessage: AppStringKeys.channelDirectMessagesClearConfirm,
+      firstConfirmText: AppStringKeys.chatDelete,
+      finalTitle: AppStrings.t(
+        AppStringKeys.chatInfoClearHistoryFinalQuestion,
+        {'value1': widget.topic.senderTitle},
+      ),
+      finalMessage: AppStringKeys.chatDeleteFinalWarning,
+      finalConfirmText: AppStringKeys.chatDelete,
     );
     if (!confirmed || !mounted) return;
     await _run(() => widget.service.clearHistory(widget.topic.id));

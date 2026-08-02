@@ -604,9 +604,13 @@ const esMessages = <String, String>{
       "Esto eliminará permanentemente el chat y su historial para todos los miembros.",
   'chatDeleteBothSidesDescription':
       "Esto eliminará permanentemente el chat y su historial para ambas partes.",
+  'chatDeleteFinalQuestion': "¿Eliminar «{value1}» definitivamente?",
+  'chatDeleteFinalWarning': "Esta acción no se puede deshacer.",
   'chatDeleteForAllMembers': "Eliminar para todos los miembros",
   'chatDeleteForBothSides': "Eliminar para ambas partes",
   'chatDeleteForMe': "Eliminar para mí",
+  'chatDeleteForMeDescription':
+      "Este chat y su historial se eliminarán de tu cuenta de Telegram en todos tus dispositivos.",
   'chatDeleteMessagesQuestion': "¿Eliminar mensajes?",
   'chatDeleteOptionBlockSender': "Bloquear remitente",
   'chatDeleteOptionDeleteAllFromSender': "Eliminar todo de {value1}",
@@ -639,9 +643,11 @@ const esMessages = <String, String>{
   'chatInfoClear': "Vaciar",
   'chatInfoClearHistory': "Vaciar historial",
   'chatInfoClearHistoryDescription':
-      "Esto eliminará el historial local, pero no saldrás del chat.",
+      "Los mensajes se eliminarán de tu cuenta de Telegram en todos tus dispositivos, pero seguirás en el chat.",
+  'chatInfoClearHistoryFinalQuestion':
+      "¿Vaciar definitivamente el historial de «{value1}»?",
   'chatInfoClearHistoryIrreversibleWarning':
-      "El historial de este dispositivo no se podrá recuperar tras vaciarlo.",
+      "Los mensajes eliminados no se podrán recuperar en ningún dispositivo.",
   'chatInfoClearHistoryQuestion': "¿Vaciar historial?",
   'chatInfoConfirmAgain': "Confirmar de nuevo",
   'chatInfoConfirmClearHistory': "Confirmar vaciado",
@@ -681,6 +687,8 @@ const esMessages = <String, String>{
   'chatJoinGroup': "Unirse al grupo",
   'chatJoinRequestPending': "Solicitud enviada, pendiente de aprobación",
   'chatJoinRequestSent': "Solicitud enviada",
+  'chatLeaveAndDeleteDescription':
+      "Salir de «{value1}» y eliminar su historial de tu cuenta de Telegram en todos tus dispositivos.",
   'chatListAddFriendOrGroup': "Añadir amigo/grupo",
   'chatListBlockedPlaceholder': "[Bloqueado]",
   'chatListChannelName': "Nombre del canal",
@@ -689,7 +697,7 @@ const esMessages = <String, String>{
   'chatListCreateGroup': "Crear grupo",
   'chatListDeleteChatQuestion': "¿Eliminar chat?",
   'chatListLeaveAndDeleteGroupConfirmation':
-      "¿Salir de «{value1}» y eliminar su historial de chat de este dispositivo?",
+      "¿Salir de «{value1}» y eliminar su historial de tu cuenta de Telegram en todos tus dispositivos?",
   'chatListMarkUnread': "Marcar como no leído",
   'chatListNoChats': "Aún no hay chats",
   'chatListScanQrCode': "Escanear código QR",
@@ -1476,6 +1484,7 @@ const esMessages = <String, String>{
   'notificationNewMessage': "Mensaje nuevo",
   'notificationNoStories': "Sin historias",
   'notificationNotifications': "Notificaciones",
+  'notificationOnDeviceTitle': "Notificaciones en este dispositivo",
   'notificationOptions': "Opciones",
   'notificationPinnedMessages': "Notificar mensajes fijados",
   'notificationPreview': "Vista previa de notificaciones",
@@ -1813,6 +1822,12 @@ const esMessages = <String, String>{
   'richTextTableHeader': "Celda de encabezado",
   'richTextTableStriped': "Tabla con franjas",
   'savedMessages': "Mensajes guardados",
+  'savedMessagesClear': "Vaciar mensajes guardados",
+  'savedMessagesClearDescription':
+      "Todos los mensajes guardados se eliminarán de tu cuenta de Telegram en todos tus dispositivos.",
+  'savedMessagesClearFinalQuestion':
+      "¿Eliminar definitivamente todos los mensajes guardados?",
+  'savedMessagesClearQuestion': "¿Vaciar todos los mensajes guardados?",
   'secretChatClosed': "Este chat secreto está cerrado.",
   'secretChatStart': "Iniciar",
   'secretChatStartFailed': "No se pudo crear el chat secreto: {value1}",
@@ -1836,7 +1851,18 @@ const esMessages = <String, String>{
   'searchTabMusic': "Música",
   'searchTabVoiceMessages': "Mensajes de voz",
   'settingsAboutMithka': "Acerca de Mithka",
+  'settingsChatBehavior': "Comportamiento del chat",
+  'settingsContentFilters': "Filtros de contenido",
+  'settingsDataAndStorage': "Datos y almacenamiento",
   'settingsLogOut': "Cerrar sesión",
+  'settingsNoResults': "No hay ajustes coincidentes",
+  'settingsScopeMithka': "Mithka",
+  'settingsScopeMithkaDescription':
+      "Apariencia, comportamiento y herramientas de Mithka en este dispositivo.",
+  'settingsScopeTelegram': "Cuenta de Telegram",
+  'settingsScopeTelegramDescription':
+      "Perfil, privacidad, notificaciones y servicios vinculados a tu cuenta de Telegram.",
+  'settingsSearchHint': "Buscar ajustes",
   'sharedMediaCacheDeleted': "Caché local eliminada",
   'sharedMediaCacheDeleteFailed': "No se pudo eliminar la caché",
   'sharedMediaChatFiles': "Archivos del chat",

@@ -35,10 +35,11 @@ ChatDeleteCapabilities chatDeleteCapabilities(Map<String, dynamic> chat) {
 Map<String, dynamic> deleteChatHistoryRequest({
   required int chatId,
   required ChatDeleteScope scope,
+  bool removeFromChatList = true,
 }) => {
   '@type': 'deleteChatHistory',
   'chat_id': chatId,
-  'remove_from_chat_list': true,
+  'remove_from_chat_list': removeFromChatList,
   'revoke': scope == ChatDeleteScope.allUsers,
 };
 

@@ -725,9 +725,12 @@ abstract final class AppStringKeys {
       'chatDeleteAllMembersDescription';
   static const chatDeleteBothSidesDescription =
       'chatDeleteBothSidesDescription';
+  static const chatDeleteFinalQuestion = 'chatDeleteFinalQuestion';
+  static const chatDeleteFinalWarning = 'chatDeleteFinalWarning';
   static const chatDeleteForAllMembers = 'chatDeleteForAllMembers';
   static const chatDeleteForBothSides = 'chatDeleteForBothSides';
   static const chatDeleteForMe = 'chatDeleteForMe';
+  static const chatDeleteForMeDescription = 'chatDeleteForMeDescription';
   static const chatDeleteMessagesQuestion = 'chatDeleteMessagesQuestion';
   static const chatDeleteOptionBlockSender = 'chatDeleteOptionBlockSender';
   static const chatDeleteOptionDeleteAllFromSender =
@@ -762,6 +765,8 @@ abstract final class AppStringKeys {
   static const chatInfoClearHistory = 'chatInfoClearHistory';
   static const chatInfoClearHistoryDescription =
       'chatInfoClearHistoryDescription';
+  static const chatInfoClearHistoryFinalQuestion =
+      'chatInfoClearHistoryFinalQuestion';
   static const chatInfoClearHistoryIrreversibleWarning =
       'chatInfoClearHistoryIrreversibleWarning';
   static const chatInfoClearHistoryQuestion = 'chatInfoClearHistoryQuestion';
@@ -803,6 +808,7 @@ abstract final class AppStringKeys {
   static const chatJoinGroup = 'chatJoinGroup';
   static const chatJoinRequestPending = 'chatJoinRequestPending';
   static const chatJoinRequestSent = 'chatJoinRequestSent';
+  static const chatLeaveAndDeleteDescription = 'chatLeaveAndDeleteDescription';
   static const chatListAddFriendOrGroup = 'chatListAddFriendOrGroup';
   static const chatListBlockedPlaceholder = 'chatListBlockedPlaceholder';
   static const chatListChannelName = 'chatListChannelName';
@@ -1889,6 +1895,7 @@ abstract final class AppStringKeys {
   static const notificationNewMessage = 'notificationNewMessage';
   static const notificationNoStories = 'notificationNoStories';
   static const notificationNotifications = 'notificationNotifications';
+  static const notificationOnDeviceTitle = 'notificationOnDeviceTitle';
   static const notificationOptions = 'notificationOptions';
   static const notificationPinnedMessages = 'notificationPinnedMessages';
   static const notificationPreview = 'notificationPreview';
@@ -2233,6 +2240,11 @@ abstract final class AppStringKeys {
   static const richTextTableHeader = 'richTextTableHeader';
   static const richTextTableStriped = 'richTextTableStriped';
   static const savedMessages = 'savedMessages';
+  static const savedMessagesClear = 'savedMessagesClear';
+  static const savedMessagesClearDescription = 'savedMessagesClearDescription';
+  static const savedMessagesClearFinalQuestion =
+      'savedMessagesClearFinalQuestion';
+  static const savedMessagesClearQuestion = 'savedMessagesClearQuestion';
   static const secretChatClosed = 'secretChatClosed';
   static const secretChatStart = 'secretChatStart';
   static const secretChatStartFailed = 'secretChatStartFailed';
@@ -2255,7 +2267,18 @@ abstract final class AppStringKeys {
   static const searchTabMusic = 'searchTabMusic';
   static const searchTabVoiceMessages = 'searchTabVoiceMessages';
   static const settingsAboutMithka = 'settingsAboutMithka';
+  static const settingsChatBehavior = 'settingsChatBehavior';
+  static const settingsContentFilters = 'settingsContentFilters';
+  static const settingsDataAndStorage = 'settingsDataAndStorage';
   static const settingsLogOut = 'settingsLogOut';
+  static const settingsNoResults = 'settingsNoResults';
+  static const settingsScopeMithka = 'settingsScopeMithka';
+  static const settingsScopeMithkaDescription =
+      'settingsScopeMithkaDescription';
+  static const settingsScopeTelegram = 'settingsScopeTelegram';
+  static const settingsScopeTelegramDescription =
+      'settingsScopeTelegramDescription';
+  static const settingsSearchHint = 'settingsSearchHint';
   static const sharedMediaCacheDeleted = 'sharedMediaCacheDeleted';
   static const sharedMediaCacheDeleteFailed = 'sharedMediaCacheDeleteFailed';
   static const sharedMediaChatFiles = 'sharedMediaChatFiles';

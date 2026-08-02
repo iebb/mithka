@@ -556,6 +556,20 @@ class ChatListViewModel extends ChangeNotifier {
     }
   }
 
+  Future<bool?> resolveIsSavedMessages(ChatSummary chat) async {
+    if (chat.isSavedMessages) return true;
+    if (_meId != null) return chat.peerUserId == _meId;
+    try {
+      final me = await _client.query({'@type': 'getMe'});
+      final userId = me.int64('id');
+      if (userId == null) return null;
+      meId = userId;
+      return chat.peerUserId == userId;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> deleteChat(
     ChatSummary chat, {
     ChatDeleteScope scope = ChatDeleteScope.self,
@@ -566,6 +580,20 @@ class ChatListViewModel extends ChangeNotifier {
     await _client.query(
       deleteChatHistoryRequest(chatId: chat.id, scope: scope),
     );
+  }
+
+  Future<void> clearSavedMessages(ChatSummary chat) async {
+    await _client.query(
+      deleteChatHistoryRequest(
+        chatId: chat.id,
+        scope: ChatDeleteScope.self,
+        removeFromChatList: false,
+      ),
+    );
+    _client.emitLocalUpdate({
+      '@type': 'mithkaChatHistoryCleared',
+      'chat_id': chat.id,
+    });
   }
 
   void clearNotice() {

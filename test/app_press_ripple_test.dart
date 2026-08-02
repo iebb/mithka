@@ -61,4 +61,42 @@ void main() {
 
     await gesture.up();
   });
+
+  testWidgets('late pointer up after disposal is ignored', (tester) async {
+    var showRipple = true;
+    late StateSetter rebuild;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StatefulBuilder(
+          builder: (context, setState) {
+            rebuild = setState;
+            return Center(
+              child: showRipple
+                  ? const AppPressRipple(
+                      child: SizedBox(
+                        key: ValueKey('disposed-press-target'),
+                        width: 240,
+                        height: 64,
+                      ),
+                    )
+                  : const SizedBox.shrink(),
+            );
+          },
+        ),
+      ),
+    );
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(const ValueKey('disposed-press-target'))),
+    );
+    await tester.pump();
+
+    rebuild(() => showRipple = false);
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+  });
 }

@@ -1,8 +1,8 @@
 //
 //  general_settings_view.dart
 //
-//  通用 (General): storage controls and general chat preference toggles. Port
-//  of the Swift `GeneralSettingsView` / `GeneralSettingsViewModel`.
+//  Data and storage controls plus Mithka's separate chat-behavior settings.
+//  Port of the Swift `GeneralSettingsView` / `GeneralSettingsViewModel`.
 //
 
 import 'package:flutter/material.dart';
@@ -36,22 +36,11 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
   String _cacheSize = '—';
   bool _loadingCache = true;
   bool _clearing = false;
-  bool _enterToSend = false;
-  SharedPreferences? _prefs;
 
   @override
   void initState() {
     super.initState();
-    _loadPrefs();
     _loadCache();
-  }
-
-  Future<void> _loadPrefs() async {
-    _prefs = await SharedPreferences.getInstance();
-    if (!mounted) return;
-    setState(() {
-      _enterToSend = _prefs!.getBool('enterToSend') ?? false;
-    });
   }
 
   Future<void> _loadCache() async {
@@ -104,7 +93,7 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
       body: Column(
         children: [
           NavHeader(
-            title: AppStrings.t(AppStringKeys.generalTitle),
+            title: AppStringKeys.settingsDataAndStorage,
             onBack: () => Navigator.of(context).pop(),
           ),
           Expanded(
@@ -115,8 +104,6 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
                   _storageCard(),
                   const SizedBox(height: 14),
                   _autoDownloadCard(),
-                  const SizedBox(height: 14),
-                  _chatCard(),
                 ],
               ),
             ),
@@ -314,63 +301,6 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
     );
   }
 
-  Widget _chatCard() {
-    final theme = context.watch<ThemeController>();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _sectionHeader(AppStrings.t(AppStringKeys.audioSearchChatTab)),
-        _card([
-          _toggleRow(
-            HeroAppIcons.reply,
-            const Color(0xFF3C8CF0),
-            AppStrings.t(AppStringKeys.generalSendMessageWithEnter),
-            _enterToSend,
-            (v) {
-              setState(() => _enterToSend = v);
-              _prefs?.setBool('enterToSend', v);
-            },
-          ),
-          const InsetDivider(leadingInset: 56),
-          _toggleRow(
-            HeroAppIcons.download,
-            const Color(0xFF3C8CF0),
-            AppStrings.t(AppStringKeys.generalOpenChatAtLatestMessage),
-            theme.openChatsAtLatest,
-            (v) => theme.openChatsAtLatest = v,
-          ),
-          const InsetDivider(leadingInset: 56),
-          _toggleRow(
-            HeroAppIcons.arrowsRotate,
-            const Color(0xFF16B0A0),
-            AppStrings.t(AppStringKeys.generalRepeatPreserveSender),
-            theme.preserveSenderWhenRepeating,
-            (v) => theme.preserveSenderWhenRepeating = v,
-          ),
-          const InsetDivider(leadingInset: 56),
-          _toggleRow(
-            HeroAppIcons.solidMessage,
-            const Color(0xFF34C759),
-            AppStrings.t(AppStringKeys.businessToolsQuickReplies),
-            theme.quickRepliesEnabled,
-            (v) => theme.quickRepliesEnabled = v,
-          ),
-          const InsetDivider(leadingInset: 56),
-          _navigationRow(
-            HeroAppIcons.video,
-            const Color(0xFFAF52DE),
-            AppStringKeys.videoPlaybackSettingsTitle,
-            () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => const VideoPlaybackSettingsView(),
-              ),
-            ),
-          ),
-        ]),
-      ],
-    );
-  }
-
   Widget _navigationRow(
     AppIconData icon,
     Color color,
@@ -405,42 +335,6 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _toggleRow(
-    AppIconData icon,
-    Color color,
-    String title,
-    bool value,
-    ValueChanged<bool> onChanged,
-  ) {
-    final c = context.colors;
-    return SizedBox(
-      height: 52,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Row(
-          children: [
-            _iconBadge(icon, color),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                title.l10n(context),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 16, color: c.textPrimary),
-              ),
-            ),
-            const SizedBox(width: 12),
-            AppSwitch(
-              value: value,
-              semanticLabel: title.l10n(context),
-              onChanged: onChanged,
-            ),
-          ],
         ),
       ),
     );
@@ -494,6 +388,131 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Mithka-only chat behavior that was previously mixed into data and storage.
+class ChatBehaviorSettingsView extends StatefulWidget {
+  const ChatBehaviorSettingsView({super.key});
+
+  @override
+  State<ChatBehaviorSettingsView> createState() =>
+      _ChatBehaviorSettingsViewState();
+}
+
+class _ChatBehaviorSettingsViewState extends State<ChatBehaviorSettingsView> {
+  bool _enterToSend = false;
+  SharedPreferences? _prefs;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPrefs();
+  }
+
+  Future<void> _loadPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _prefs = prefs;
+      _enterToSend = prefs.getBool('enterToSend') ?? false;
+    });
+  }
+
+  void _setEnterToSend(bool value) {
+    setState(() => _enterToSend = value);
+    _prefs?.setBool('enterToSend', value);
+  }
+
+  SettingsIconTile _icon(AppIconData icon, Color color) =>
+      SettingsIconTile(icon: icon, backgroundColor: color);
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final theme = context.watch<ThemeController>();
+    return Scaffold(
+      backgroundColor: c.groupedBackground,
+      body: Column(
+        children: [
+          NavHeader(
+            title: AppStringKeys.settingsChatBehavior,
+            onBack: () => Navigator.of(context).pop(),
+          ),
+          Expanded(
+            child: DesktopContentConstraint(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
+                children: [
+                  SettingsCard(
+                    children: [
+                      SettingsSwitchRow(
+                        key: const ValueKey('chat-behavior-enter-to-send'),
+                        title: AppStringKeys.generalSendMessageWithEnter,
+                        value: _enterToSend,
+                        leading: _icon(
+                          HeroAppIcons.reply,
+                          const Color(0xFF3C8CF0),
+                        ),
+                        onChanged: _setEnterToSend,
+                      ),
+                      const InsetDivider(leadingInset: 56),
+                      SettingsSwitchRow(
+                        key: const ValueKey('chat-behavior-open-at-latest'),
+                        title: AppStringKeys.generalOpenChatAtLatestMessage,
+                        value: theme.openChatsAtLatest,
+                        leading: _icon(
+                          HeroAppIcons.download,
+                          const Color(0xFF3C8CF0),
+                        ),
+                        onChanged: (value) => theme.openChatsAtLatest = value,
+                      ),
+                      const InsetDivider(leadingInset: 56),
+                      SettingsSwitchRow(
+                        key: const ValueKey('chat-behavior-preserve-sender'),
+                        title: AppStringKeys.generalRepeatPreserveSender,
+                        value: theme.preserveSenderWhenRepeating,
+                        leading: _icon(
+                          HeroAppIcons.arrowsRotate,
+                          const Color(0xFF16B0A0),
+                        ),
+                        onChanged: (value) =>
+                            theme.preserveSenderWhenRepeating = value,
+                      ),
+                      const InsetDivider(leadingInset: 56),
+                      SettingsSwitchRow(
+                        key: const ValueKey('chat-behavior-quick-replies'),
+                        title: AppStringKeys.businessToolsQuickReplies,
+                        value: theme.quickRepliesEnabled,
+                        leading: _icon(
+                          HeroAppIcons.solidMessage,
+                          const Color(0xFF34C759),
+                        ),
+                        onChanged: (value) => theme.quickRepliesEnabled = value,
+                      ),
+                      const InsetDivider(leadingInset: 56),
+                      SettingsRow(
+                        key: const ValueKey('chat-behavior-video-playback'),
+                        title: AppStringKeys.videoPlaybackSettingsTitle,
+                        leading: _icon(
+                          HeroAppIcons.video,
+                          const Color(0xFFAF52DE),
+                        ),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const VideoPlaybackSettingsView(),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

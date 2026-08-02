@@ -108,6 +108,7 @@ class _AppPressRippleState extends State<AppPressRipple>
   }
 
   void _hideRipple() {
+    if (!mounted) return;
     final generation = _generation;
     if (AppMotion.isReduced(context)) {
       _opacityController.value = 0;

@@ -12,7 +12,6 @@ import 'blocked_user_service.dart';
 import 'country_message_filter.dart';
 import 'country_message_filter_view.dart';
 import 'keyword_blocker_view.dart';
-import 'privacy_detail_views.dart';
 
 class BlockingSettingsView extends StatelessWidget {
   const BlockingSettingsView({super.key});
@@ -27,7 +26,7 @@ class BlockingSettingsView extends StatelessWidget {
       child: Column(
         children: [
           NavHeader(
-            title: AppStringKeys.blockingTitle.l10n(context),
+            title: AppStringKeys.settingsContentFilters.l10n(context),
             onBack: () => Navigator.of(context).pop(),
           ),
           Expanded(
@@ -53,20 +52,6 @@ class BlockingSettingsView extends StatelessWidget {
                             BlockedUserService.shared.loadBlockedUsers();
                           }
                         },
-                      ),
-                      const InsetDivider(leadingInset: 52),
-                      SettingsRow(
-                        title: AppStringKeys.blockingBlocklist,
-                        leading: AppIcon(
-                          HeroAppIcons.users,
-                          size: 20,
-                          color: AppTheme.brand,
-                        ),
-                        onTap: () => Navigator.of(context).push(
-                          AppPageRoute<void>(
-                            pageBuilder: (_, _, _) => const BlockedUsersView(),
-                          ),
-                        ),
                       ),
                       const InsetDivider(leadingInset: 52),
                       SettingsRow(
