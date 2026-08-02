@@ -10,7 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   testWidgets(
-    'Mithka notification settings contains only on-device preferences',
+    'notification settings merges Telegram and usable on-device controls',
     (tester) async {
       SharedPreferences.setMockInitialValues({});
       final preferences = await SharedPreferences.getInstance();
@@ -36,27 +36,40 @@ void main() {
               GlobalCupertinoLocalizations.delegate,
             ],
             supportedLocales: AppLocalizations.supportedLocales,
-            home: MithkaNotificationSettingsView(),
+            home: NotificationSettingsView(),
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await tester.pump();
 
       expect(
-        find.byKey(const ValueKey('mithka-notification-settings')),
+        find.byKey(const ValueKey('notification-settings')),
         findsOneWidget,
       );
-      expect(find.text('IN-APP NOTIFICATIONS'), findsOneWidget);
+      expect(find.byType(ListView), findsOneWidget);
+      final telegramSection = find.byKey(
+        const ValueKey('notification-section-telegram'),
+      );
+      final deviceSection = find.byKey(
+        const ValueKey('notification-section-device'),
+      );
+      expect(telegramSection, findsOneWidget);
+      expect(deviceSection, findsOneWidget);
+      expect(
+        tester.getTopLeft(telegramSection).dy,
+        lessThan(tester.getTopLeft(deviceSection).dy),
+      );
+      expect(find.text('MESSAGE NOTIFICATIONS'), findsOneWidget);
+      expect(find.text('NOTIFICATIONS ON THIS DEVICE'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('notification-telegram-loading')),
+        findsOneWidget,
+      );
+      expect(find.text('IN-APP NOTIFICATIONS'), findsNothing);
       expect(find.text('In-App Sounds'), findsOneWidget);
       expect(find.text('In-App Vibrate'), findsOneWidget);
       expect(find.text('In-App Preview'), findsOneWidget);
       expect(find.text('Names on Lock Screen'), findsOneWidget);
-
-      expect(find.text('Private Chats'), findsNothing);
-      expect(find.text('Group Chats'), findsNothing);
-      expect(find.text('Channels'), findsNothing);
-      expect(find.text('Stories'), findsNothing);
-      expect(find.text('Reactions'), findsNothing);
 
       await tester.tap(
         find.byKey(const ValueKey('mithka-notification-in-app-sounds')),

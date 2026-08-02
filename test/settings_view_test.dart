@@ -14,70 +14,97 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets(
-    'separates Telegram and Mithka destinations without another hub layer',
-    (tester) async {
-      tester.view.physicalSize = const Size(402, 2400);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
+  testWidgets('uses one task-oriented list with direct settings destinations', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(402, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
 
-      await _pumpSettings(tester);
+    await _pumpSettings(tester);
 
+    expect(
+      find.byKey(const PageStorageKey<String>('settings-list')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('settings-section-telegram')),
+      findsNothing,
+    );
+    expect(find.byKey(const ValueKey('settings-section-mithka')), findsNothing);
+
+    const expectedOrder = [
+      'edit-profile',
+      'telegram-business',
+      'mithka-pro',
+      'notifications',
+      'telegram-privacy',
+      'telegram-blocked-users',
+      'mithka-content-filters',
+      'mithka-app-lock',
+      'mithka-account-backup',
+      'mithka-appearance',
+      'telegram-chat-folders',
+      'mithka-chat-behavior',
+      'mithka-data-storage',
+      'mithka-language',
+      'telegram-language',
+      'mithka-translation',
+      'mithka-features',
+      'mithka-ai',
+      'mithka-proxy',
+      'mithka-advanced',
+      'mithka-about',
+    ];
+    var previousTop = double.negativeInfinity;
+    for (final id in expectedOrder) {
+      final destination = find.byKey(ValueKey('settings-destination-$id'));
       expect(
-        find.byKey(const ValueKey('settings-section-telegram')),
+        destination,
         findsOneWidget,
+        reason: '$id should have one direct route',
       );
+      final top = tester.getTopLeft(destination).dy;
       expect(
-        find.byKey(const ValueKey('settings-section-mithka')),
-        findsOneWidget,
+        top,
+        greaterThan(previousTop),
+        reason: '$id should follow the task-oriented settings order',
       );
-      for (final id in const [
-        'edit-profile',
-        'telegram-business',
-        'telegram-notifications',
-        'telegram-privacy',
-        'telegram-blocked-users',
-        'telegram-chat-folders',
-        'telegram-language',
-        'mithka-pro',
-        'mithka-appearance',
-        'mithka-language',
-        'mithka-translation',
-        'mithka-notifications',
-        'mithka-data-storage',
-        'mithka-chat-behavior',
-        'mithka-content-filters',
-        'mithka-app-lock',
-        'mithka-account-backup',
-        'mithka-features',
-        'mithka-ai',
-        'mithka-proxy',
-        'mithka-advanced',
-        'mithka-about',
-      ]) {
-        expect(
-          find.byKey(ValueKey('settings-destination-$id')),
-          findsOneWidget,
-          reason: '$id should have exactly one owner and direct route',
-        );
-      }
+      previousTop = top;
+    }
 
-      expect(find.text('General'), findsNothing);
-      expect(find.text('Blocking'), findsNothing);
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('settings-log-out'))).dy,
+      greaterThan(previousTop),
+      reason: 'Log Out should be the final action, not a false page ending',
+    );
+    expect(find.text('Telegram Account'), findsNothing);
+    expect(find.text('Mithka'), findsNothing);
+    expect(find.text('General'), findsNothing);
+    expect(find.text('Blocking'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('settings-destination-notifications')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('settings-destination-telegram-notifications')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('settings-destination-mithka-notifications')),
+      findsNothing,
+    );
 
-      await tester.tap(
-        find.byKey(
-          const ValueKey('settings-destination-telegram-chat-folders'),
-        ),
-      );
-      await tester.pumpAndSettle();
-      expect(find.byType(ChatFolderManagementView), findsOneWidget);
-      await tester.pump(const Duration(seconds: 2));
-      await tester.pumpWidget(const SizedBox.shrink());
-      await tester.pump();
-    },
-  );
+    await tester.tap(
+      find.byKey(const ValueKey('settings-destination-telegram-chat-folders')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(ChatFolderManagementView), findsOneWidget);
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
 
   testWidgets('search reaches leaf settings and identifies their owner', (
     tester,
@@ -102,9 +129,13 @@ void main() {
       find.byKey(const ValueKey('settings-destination-mithka-data-storage')),
       findsOneWidget,
     );
+    expect(
+      find.byKey(const PageStorageKey<String>('settings-search-results')),
+      findsOneWidget,
+    );
     expect(find.text('Mithka'), findsOneWidget);
     expect(
-      find.byKey(const ValueKey('settings-section-telegram')),
+      find.byKey(const PageStorageKey<String>('settings-list')),
       findsNothing,
     );
 
@@ -118,6 +149,29 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Telegram Account'), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('settings-search-field')),
+      'lock screen',
+    );
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey('settings-destination-notifications')),
+      findsOneWidget,
+    );
+    expect(find.text('Telegram Account'), findsNothing);
+    expect(find.text('Mithka'), findsNothing);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('settings-search-field')),
+      'disable message bubbles',
+    );
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey('settings-destination-mithka-appearance')),
+      findsOneWidget,
+    );
+    expect(find.text('Mithka'), findsOneWidget);
 
     await tester.enterText(
       find.byKey(const ValueKey('settings-search-field')),
@@ -147,7 +201,7 @@ void main() {
     );
   });
 
-  testWidgets('owner sections remain usable with narrow large text', (
+  testWidgets('single settings list remains usable with narrow large text', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(320, 640);

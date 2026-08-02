@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../chat/custom_emoji.dart';
+import '../chat/group_remark_controller.dart';
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
 import '../components/ui_components.dart';
@@ -45,6 +46,13 @@ class ChatRowView extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.colors;
     final theme = context.watch<ThemeController>();
+    final title = chat.kind == ChatKind.group
+        ? context.watch<GroupRemarkController?>()?.displayTitleFor(
+                chat.id,
+                chat.title,
+              ) ??
+              chat.title
+        : chat.title;
     final rowHeight = theme.rowHeight;
     final nameColor =
         theme.chatListNameColorAudience.shows(isPremium: chat.peerIsPremium) &&
@@ -61,7 +69,7 @@ class ChatRowView extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
       child: Row(
         children: [
-          _avatar(context),
+          _avatar(context, title),
           const SizedBox(width: AppSpacing.lg),
           Expanded(
             child: Column(
@@ -80,7 +88,7 @@ class ChatRowView extends StatelessWidget {
                     ],
                     Flexible(
                       child: Text(
-                        chat.title,
+                        title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -127,7 +135,7 @@ class ChatRowView extends StatelessWidget {
     return AppTheme.brand;
   }
 
-  Widget _avatar(BuildContext context) {
+  Widget _avatar(BuildContext context, String title) {
     final theme = context.watch<ThemeController>();
     final circleGroups = theme.circularGroupAvatars;
     final avatarSize = theme.avatarSize;
@@ -138,7 +146,7 @@ class ChatRowView extends StatelessWidget {
         clipBehavior: Clip.none,
         children: [
           PhotoAvatar(
-            title: chat.title,
+            title: title,
             photo: chat.photo,
             size: avatarSize,
             square: chat.usesSquareAvatar && !circleGroups,

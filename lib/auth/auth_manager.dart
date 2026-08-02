@@ -18,7 +18,6 @@ import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import 'account_backup_service.dart';
 import 'premium_auth_purchase_service.dart';
-import 'review_login_code_service.dart';
 import 'telegram_passkey_service.dart';
 
 sealed class AuthStep {
@@ -188,22 +187,17 @@ class AuthManager extends ChangeNotifier {
   final PremiumAuthPurchaseService _premiumPurchases =
       const PremiumAuthPurchaseService();
   bool _started = false;
-  final ReviewLoginCodeService _reviewLoginCode = ReviewLoginCodeService();
 
   AuthStep _step = const AuthInitializing();
   String? _errorMessage;
   bool _isWorking = false;
   int _actionSerial = 0;
   int? _authorizationTransitionAction;
-  bool _useReviewCodeRelay = false;
-  bool _reviewCodePollActive = false;
-  String? _mockReviewSessionPhone;
   bool _canUseLoginPasskey = false;
 
   AuthStep get step => _step;
   String? get errorMessage => _errorMessage;
   bool get isWorking => _isWorking;
-  bool get isReviewCodePolling => _reviewCodePollActive;
   bool get canUseLoginPasskey => _canUseLoginPasskey;
 
   void start() {
@@ -298,9 +292,6 @@ class AuthManager extends ChangeNotifier {
       case 'authorizationStateWaitCode':
         final info = state.obj('code_info');
         _set(AuthWaitCode(_codeInfo(info)));
-        if (_useReviewCodeRelay) {
-          unawaited(_submitReviewCodeFromRelay());
-        }
       case 'authorizationStateWaitPassword':
         _set(AuthWaitPassword(state.str('password_hint') ?? ''));
       case 'authorizationStateWaitRegistration':
@@ -345,20 +336,6 @@ class AuthManager extends ChangeNotifier {
   Future<bool> submitPhone(String phone) async {
     if (_isWorking) return false;
     final normalizedPhone = phone.trim();
-    _mockReviewSessionPhone =
-        ReviewLoginCodeService.isMockSessionPhone(normalizedPhone)
-        ? normalizedPhone
-        : null;
-    _useReviewCodeRelay =
-        _mockReviewSessionPhone == null &&
-        ReviewLoginCodeService.isReviewPhone(normalizedPhone);
-    if (_mockReviewSessionPhone != null) {
-      _actionSerial += 1;
-      _isWorking = false;
-      _errorMessage = null;
-      _set(const AuthWaitCode(AuthCodeInfo.fallback));
-      return true;
-    }
     final action = _beginAuthorizationTransition();
     try {
       var state = await _client
@@ -442,14 +419,8 @@ class AuthManager extends ChangeNotifier {
     }
   }
 
-  void submitCode(String code) {
-    final mockPhone = _mockReviewSessionPhone;
-    if (mockPhone != null) {
-      unawaited(_restoreMockReviewSession(mockPhone, code));
-      return;
-    }
-    _run({'@type': 'checkAuthenticationCode', 'code': code.trim()});
-  }
+  void submitCode(String code) =>
+      _run({'@type': 'checkAuthenticationCode', 'code': code.trim()});
 
   void submitEmailAddress(String email) =>
       _run(authenticationEmailAddressRequest(email));
@@ -497,10 +468,8 @@ class AuthManager extends ChangeNotifier {
     'disable_notification': false,
   });
 
-  void resendCode() {
-    if (_mockReviewSessionPhone != null) return;
-    _run({'@type': 'resendAuthenticationCode', 'reason': null});
-  }
+  void resendCode() =>
+      _run({'@type': 'resendAuthenticationCode', 'reason': null});
 
   void logOut() => _run({'@type': 'logOut'});
 
@@ -529,63 +498,6 @@ class AuthManager extends ChangeNotifier {
     if (action != _actionSerial) return;
     _isWorking = false;
     notifyListeners();
-  }
-
-  Future<void> _submitReviewCodeFromRelay() async {
-    if (_reviewCodePollActive) return;
-    _reviewCodePollActive = true;
-    notifyListeners();
-    try {
-      for (var attempt = 0; attempt < 20; attempt += 1) {
-        if (_step is! AuthWaitCode || !_useReviewCodeRelay) return;
-        final code = await _reviewLoginCode.fetchCode();
-        if (code != null) {
-          submitCode(code);
-          return;
-        }
-        await Future<void>.delayed(const Duration(seconds: 3));
-      }
-    } catch (error) {
-      debugPrint('Review login code relay failed: $error');
-    } finally {
-      _reviewCodePollActive = false;
-      notifyListeners();
-    }
-  }
-
-  Future<void> _restoreMockReviewSession(String phone, String otp) async {
-    final action = ++_actionSerial;
-    _isWorking = true;
-    _errorMessage = null;
-    notifyListeners();
-    try {
-      final sessionString = await _reviewLoginCode.fetchSessionString(
-        phone: phone,
-        otp: otp,
-      );
-      if (action != _actionSerial) return;
-      if (sessionString == null) {
-        _errorMessage = AppStrings.t(AppStringKeys.authInvalidVerificationCode);
-        return;
-      }
-
-      await AccountBackupService.shared.restoreSessionString(sessionString);
-      if (action != _actionSerial) return;
-      _mockReviewSessionPhone = null;
-      _useReviewCodeRelay = false;
-      _isWorking = false;
-      _errorMessage = null;
-      reloadAuthState();
-    } catch (error) {
-      if (action != _actionSerial) return;
-      debugPrint('Review session relay failed: $error');
-      _errorMessage = error is TdError ? _friendly(error) : error.toString();
-    } finally {
-      if (action == _actionSerial) {
-        _isWorking = false;
-        notifyListeners();
-      }
-    }
   }
 
   void _set(AuthStep step) {

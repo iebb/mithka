@@ -19,6 +19,7 @@ import '../app/app_navigator.dart';
 import '../chats/chat_delete_dialog.dart';
 import '../chats/chat_delete_policy.dart';
 import '../components/app_icons.dart';
+import '../components/app_interactive_surface.dart';
 import '../components/icon_grid.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
@@ -27,6 +28,7 @@ import '../l10n/telegram_language_controller.dart';
 import '../moments/story_management_view.dart';
 import '../notifications/notification_settings_payload.dart';
 import '../profile/qr_code_view.dart';
+import '../settings/edit_field_view.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -41,6 +43,7 @@ import 'chat_theme_view.dart';
 import 'chat_view.dart';
 import 'chat_wallpaper_view.dart';
 import 'group_management_view.dart';
+import 'group_remark_controller.dart';
 import 'pinned_messages_view.dart';
 import 'shared_media_view.dart';
 import 'telegram_rich_text.dart';
@@ -50,6 +53,263 @@ class ChatMember {
   final int id;
   final String name;
   final TdFileRef? photo;
+}
+
+@visibleForTesting
+class ChatInfoGroupDetailsCard extends StatelessWidget {
+  const ChatInfoGroupDetailsCard({
+    super.key,
+    required this.groupName,
+    required this.remark,
+    required this.announcement,
+    required this.canEditRemark,
+    required this.onEditRemark,
+    required this.onOpenAnnouncement,
+  });
+
+  final String groupName;
+  final String remark;
+  final String announcement;
+  final bool canEditRemark;
+  final VoidCallback onEditRemark;
+  final VoidCallback onOpenAnnouncement;
+
+  @override
+  Widget build(BuildContext context) => SettingsCard(
+    children: [
+      _GroupDetailRow(
+        key: const ValueKey('chatInfoGroupNameRow'),
+        title: AppStringKeys.groupManagementGroupName,
+        value: groupName,
+      ),
+      const InsetDivider(leadingInset: AppSpacing.xxl),
+      _GroupDetailRow(
+        key: const ValueKey('chatInfoGroupRemarkRow'),
+        title: AppStringKeys.chatInfoGroupRemark,
+        subtitle: AppStringKeys.chatInfoGroupRemarkLocalOnly,
+        value: remark.isEmpty
+            ? AppStringKeys.chatInfoGroupRemarkEmpty.l10n(context)
+            : remark,
+        onTap: canEditRemark ? onEditRemark : null,
+      ),
+      const InsetDivider(leadingInset: AppSpacing.xxl),
+      _GroupAnnouncementRow(
+        announcement: announcement,
+        onTap: onOpenAnnouncement,
+      ),
+    ],
+  );
+}
+
+class _GroupDetailRow extends StatelessWidget {
+  const _GroupDetailRow({
+    super.key,
+    required this.title,
+    required this.value,
+    this.subtitle,
+    this.onTap,
+  });
+
+  final String title;
+  final String value;
+  final String? subtitle;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return AppInteractiveSurface(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadius.sm),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          minHeight: subtitle == null
+              ? AppMetric.settingsRowHeight
+              : AppMetric.listRowHeight,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.xxl,
+            AppSpacing.md,
+            AppSpacing.xl,
+            AppSpacing.md,
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title.l10n(context),
+                      style: AppTextStyle.body(c.textPrimary),
+                    ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: AppSpacing.xs),
+                      Text(
+                        subtitle!.l10n(context),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyle.caption(c.textTertiary),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: AppSpacing.lg),
+              Flexible(
+                child: Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: AppTextStyle.footnote(c.textTertiary),
+                ),
+              ),
+              if (onTap != null) ...[
+                const SizedBox(width: AppSpacing.md),
+                AppIcon(
+                  HeroAppIcons.chevronRight,
+                  size: AppIconSize.chevron,
+                  color: c.textTertiary,
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GroupAnnouncementRow extends StatelessWidget {
+  const _GroupAnnouncementRow({
+    required this.announcement,
+    required this.onTap,
+  });
+
+  final String announcement;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final empty = announcement.trim().isEmpty;
+    return AppInteractiveSurface(
+      key: const ValueKey('chatInfoGroupAnnouncementRow'),
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadius.sm),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 72),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.xxl,
+            AppSpacing.lg,
+            AppSpacing.xl,
+            AppSpacing.lg,
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      AppStringKeys.chatInfoGroupAnnouncement.l10n(context),
+                      style: AppTextStyle.body(c.textPrimary),
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    Text(
+                      empty
+                          ? AppStringKeys.chatInfoGroupAnnouncementEmpty.l10n(
+                              context,
+                            )
+                          : announcement,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.35,
+                        color: empty ? c.textTertiary : c.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              AppIcon(
+                HeroAppIcons.chevronRight,
+                size: AppIconSize.chevron,
+                color: c.textTertiary,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+@visibleForTesting
+class GroupAnnouncementView extends StatelessWidget {
+  const GroupAnnouncementView({
+    super.key,
+    required this.announcement,
+    required this.entities,
+  });
+
+  final String announcement;
+  final List<MessageTextEntity> entities;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final empty = announcement.trim().isEmpty;
+    return Scaffold(
+      backgroundColor: c.groupedBackground,
+      body: Column(
+        children: [
+          NavHeader(
+            title: AppStringKeys.chatInfoGroupAnnouncement,
+            onBack: () => Navigator.of(context).pop(),
+          ),
+          Expanded(
+            child: ListView(
+              padding: AppInsets.screen,
+              children: [
+                Container(
+                  width: double.infinity,
+                  padding: AppInsets.card,
+                  decoration: BoxDecoration(
+                    color: c.card,
+                    borderRadius: BorderRadius.circular(AppRadius.card),
+                  ),
+                  child: empty
+                      ? Text(
+                          AppStringKeys.chatInfoGroupAnnouncementEmpty.l10n(
+                            context,
+                          ),
+                          style: AppTextStyle.body(c.textTertiary),
+                        )
+                      : TelegramRichText(
+                          text: announcement,
+                          entities: entities,
+                          style: TextStyle(
+                            fontSize: 15,
+                            height: 1.45,
+                            color: c.textPrimary,
+                          ),
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class ChatInfoView extends StatefulWidget {
@@ -150,9 +410,39 @@ class _ChatInfoViewState extends State<ChatInfoView> {
     Navigator.of(context).pop(messageId);
   }
 
+  Future<void> _editGroupRemark() async {
+    final controller = context.read<GroupRemarkController?>();
+    if (controller == null || !controller.canPersist) return;
+    final current = controller.remarkFor(widget.chatId) ?? '';
+    final value = await Navigator.of(context).push<String>(
+      AppPageRoute<String>(
+        pageBuilder: (_, _, _) => EditFieldView(
+          title: AppStringKeys.chatInfoGroupRemark,
+          initial: current,
+          hint: AppStringKeys.chatInfoGroupRemarkHint,
+          maxLength: 128,
+        ),
+      ),
+    );
+    if (!mounted || value == null || value.trim() == current) return;
+    await controller.setRemark(widget.chatId, value);
+  }
+
+  void _openGroupAnnouncement() {
+    Navigator.of(context).push(
+      AppPageRoute<void>(
+        pageBuilder: (_, _, _) => GroupAnnouncementView(
+          announcement: _vm.description,
+          entities: _vm.descriptionEntities,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final remarkController = context.watch<GroupRemarkController?>();
     return Scaffold(
       backgroundColor: c.groupedBackground,
       body: Column(
@@ -166,7 +456,18 @@ class _ChatInfoViewState extends State<ChatInfoView> {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
               children: [
                 _topCard(),
-                if (_vm.description.isNotEmpty) ...[
+                if (_vm.isGroup && !_vm.isChannel) ...[
+                  const SizedBox(height: 14),
+                  ChatInfoGroupDetailsCard(
+                    groupName: _vm.title,
+                    remark: remarkController?.remarkFor(widget.chatId) ?? '',
+                    announcement: _vm.description,
+                    canEditRemark: remarkController?.canPersist ?? false,
+                    onEditRemark: () => unawaited(_editGroupRemark()),
+                    onOpenAnnouncement: _openGroupAnnouncement,
+                  ),
+                ],
+                if (_vm.isChannel && _vm.description.isNotEmpty) ...[
                   const SizedBox(height: 14),
                   _descriptionCard(),
                 ],

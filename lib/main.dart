@@ -38,6 +38,7 @@ import 'call/call_manager.dart';
 import 'call/call_overlay_host.dart';
 import 'chat/animated_sticker_view.dart';
 import 'chat/chat_view.dart';
+import 'chat/group_remark_controller.dart';
 import 'chat/music_player_controller.dart';
 import 'components/drawer_controller.dart' as dc;
 import 'components/keyboard_dismiss_on_tap.dart';
@@ -275,6 +276,10 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
   late final dc.DrawerController _drawer = dc.DrawerController();
   late final ChatDeepLinkController _chatDeepLinks =
       ChatDeepLinkController.shared;
+  late final GroupRemarkController _groupRemarks = GroupRemarkController(
+    widget.prefs,
+    initialAccountUserId: _accounts.activeUserId,
+  );
   late final AppIconController _appIcons = AppIconController(widget.prefs);
   late final AutoDownloadMediaController _autoDownload =
       AutoDownloadMediaController.shared;
@@ -321,11 +326,13 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
     _performance.dispose();
     _accounts.removeListener(_handleActiveAccountChange);
     _theme.removeListener(_handleThemePreferencesChange);
+    _groupRemarks.dispose();
     _calls.dispose();
     super.dispose();
   }
 
   void _handleActiveAccountChange() {
+    _groupRemarks.setActiveAccountUserId(_accounts.activeUserId);
     _theme.setActiveAccountSlot(
       _accounts.activeSlot,
       userId: _accounts.activeUserId,
@@ -410,6 +417,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
           },
         ),
         ChangeNotifierProvider.value(value: _accounts),
+        ChangeNotifierProvider.value(value: _groupRemarks),
         ChangeNotifierProvider.value(value: _mithkaPro),
         ChangeNotifierProvider.value(value: _chatDeepLinks),
         ChangeNotifierProvider.value(value: _appIcons),

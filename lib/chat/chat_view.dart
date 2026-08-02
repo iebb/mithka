@@ -86,6 +86,7 @@ import 'emoji_store.dart';
 import 'emoji_text_controller.dart';
 import 'forward_options.dart';
 import 'full_image_viewer.dart';
+import 'group_remark_controller.dart';
 import 'image_edit_view.dart';
 import 'link_handler.dart';
 import 'media_album_layout.dart';
@@ -915,6 +916,7 @@ class _ChatViewState extends State<ChatView> {
   ChatThemeStyle? _resolvedChatThemeStyle;
   TelegramCloudTheme? _resolvedCloudTheme;
   bool _themingEnabled = true;
+  bool _hasCustomChatTheme = false;
   bool _sessionAnchorMaintenanceScheduled = false;
   bool _maintainRestoredBottom = false;
   final _restoredBottomCorrection = ChatBottomCorrectionCoordinator();
@@ -3323,6 +3325,7 @@ class _ChatViewState extends State<ChatView> {
       incomingBubbleColor: _effectiveIncomingColor(),
       incomingBubbleTextColor: _effectiveIncomingTextColor(),
       messageColors: _effectiveMessageColors(),
+      hasCustomChatTheme: _hasCustomChatTheme,
       onToggleReaction: (r) => _vm.toggleReaction(message, r),
       onShowReactionUsers: _showReactionUsers,
       onRedial: _startCall,
@@ -5143,6 +5146,13 @@ class _ChatViewState extends State<ChatView> {
     final chatThemeStyle = _themingEnabled
         ? _wallpaperController.themeStyleFor(widget.chatId, dark: dark)
         : null;
+    _hasCustomChatTheme =
+        _themingEnabled &&
+        (chatThemeStyle != null ||
+            (_resolvedCloudTheme == null &&
+                _wallpaperController.hasExplicitGlobalThemeSelection(
+                  dark: dark,
+                )));
     _resolvedChatThemeStyle = !_themingEnabled
         ? null
         : chatThemeStyle ??
@@ -5989,6 +5999,7 @@ class _ChatViewState extends State<ChatView> {
           ChatInputBar(
             vm: _vm,
             requestInitialFocus: widget.requestComposerFocusOnReady,
+            enterToSend: context.watch<ThemeController>().enterToSend,
             quickRepliesEnabled: context
                 .watch<ThemeController>()
                 .quickRepliesEnabled,
@@ -6365,8 +6376,19 @@ class _ChatViewState extends State<ChatView> {
 
   Widget _headerTitleBlock(String subtitle, bool actionActive) {
     final c = context.colors;
+    final serverTitle = _vm.peerTitle;
+    final displayTitle = _vm.isGroup && !_vm.isChannel
+        ? context.watch<GroupRemarkController?>()?.displayTitleFor(
+                widget.chatId,
+                serverTitle,
+              ) ??
+              serverTitle
+        : serverTitle;
+    final headerTitle = _vm.isGroup && _vm.memberCount > 0
+        ? '$displayTitle(${_vm.memberCount})'
+        : displayTitle;
     final titleText = Text(
-      _vm.headerTitle,
+      headerTitle,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       style: TextStyle(
@@ -7698,17 +7720,39 @@ class _ChatViewState extends State<ChatView> {
     required double maxWidth,
   }) {
     final c = context.colors;
+    final themeController = context.watch<ThemeController>();
+    final bubbleBackground = themeController
+        .effectiveMessageBubbleBackgroundSpecFor(outgoing: outgoing);
+    final showsMessageBubbleSurface = themeController
+        .shouldRenderMessageBubbleSurface(
+          outgoing: outgoing,
+          brightness: Theme.of(context).brightness,
+          hasCustomChatTheme: _hasCustomChatTheme,
+        );
     final themedOutgoing = _effectiveOutgoingColor();
     final themedIncoming = _effectiveIncomingColor();
-    final outgoingColor = themedOutgoing ?? AppTheme.bubbleOutgoing;
-    final outgoingTextColor =
-        _effectiveOutgoingTextColor() ??
-        (outgoingColor.computeLuminance() > 0.64
-            ? const Color(0xFF171717)
-            : AppTheme.bubbleOutgoingText);
-    final incomingTextColor =
-        _effectiveIncomingTextColor() ?? c.bubbleIncomingText;
-    final messageColors = _effectiveMessageColors();
+    final outgoingColor =
+        bubbleBackground.backgroundColor ??
+        themedOutgoing ??
+        AppTheme.bubbleOutgoing;
+    final incomingColor =
+        bubbleBackground.backgroundColor ?? themedIncoming ?? c.bubbleIncoming;
+    final outgoingTextColor = !showsMessageBubbleSurface
+        ? c.textPrimary
+        : bubbleBackground.foregroundColor ??
+              _effectiveOutgoingTextColor() ??
+              (outgoingColor.computeLuminance() > 0.64
+                  ? const Color(0xFF171717)
+                  : AppTheme.bubbleOutgoingText);
+    final incomingTextColor = !showsMessageBubbleSurface
+        ? c.textPrimary
+        : bubbleBackground.foregroundColor ??
+              _effectiveIncomingTextColor() ??
+              c.bubbleIncomingText;
+    final messageColors =
+        showsMessageBubbleSurface && !bubbleBackground.isDecorative
+        ? _effectiveMessageColors()
+        : null;
     final visible = group.take(9).toList();
     final showComments =
         _vm.isChannel &&
@@ -7734,14 +7778,16 @@ class _ChatViewState extends State<ChatView> {
     final width = layout.width + padding * 2;
     return Container(
       constraints: BoxConstraints(maxWidth: width),
-      decoration: BoxDecoration(
-        color: outgoing ? outgoingColor : themedIncoming ?? c.bubbleIncoming,
-        borderRadius: BorderRadius.circular(12),
-        border: outgoing || messageColors != null
-            ? null
-            : Border.all(color: c.divider, width: 0.5),
-      ),
-      clipBehavior: Clip.antiAlias,
+      decoration: showsMessageBubbleSurface
+          ? BoxDecoration(
+              color: outgoing ? outgoingColor : incomingColor,
+              borderRadius: BorderRadius.circular(12),
+              border: outgoing || messageColors != null
+                  ? null
+                  : Border.all(color: c.divider, width: 0.5),
+            )
+          : null,
+      clipBehavior: showsMessageBubbleSurface ? Clip.antiAlias : Clip.none,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -7791,7 +7837,10 @@ class _ChatViewState extends State<ChatView> {
                               : incomingTextColor,
                         ),
                         linkColor: outgoing
-                            ? messageColors?.outgoingLink ?? outgoingTextColor
+                            ? messageColors?.outgoingLink ??
+                                  (showsMessageBubbleSurface
+                                      ? outgoingTextColor
+                                      : c.linkBlue)
                             : messageColors?.incomingLink ?? c.linkBlue,
                         onBotCommandTap: _sendCommand,
                         onHashtagTap: _openHashtagSearch,

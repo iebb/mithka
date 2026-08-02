@@ -1,8 +1,8 @@
 //
 //  notification_settings_view.dart
 //
-//  Telegram notification settings backed by TDLib scope, story, and reaction
-//  settings, plus a separate Mithka screen for on-device presentation.
+//  Telegram notification rules and on-device presentation preferences in one
+//  task-oriented screen.
 //
 
 import 'dart:async';
@@ -44,6 +44,7 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
   static const _channel = 'notificationSettingsScopeChannelChats';
 
   final TdClient _client = TdClient.shared;
+  final NotificationPreferences _preferences = NotificationPreferences.shared;
   final Map<String, Map<String, dynamic>> _settings = {};
   final Map<String, int> _exceptionCounts = {};
   Map<String, dynamic> _reactionSettings = reactionNotificationSettingsPayload(
@@ -52,21 +53,54 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
   int _defaultSoundId = 0;
   StreamSubscription<Map<String, dynamic>>? _updates;
   bool _loading = true;
+  bool _loadInProgress = false;
 
   @override
   void initState() {
     super.initState();
+    _preferences.addListener(_preferencesChanged);
     _updates = _client.subscribe().listen(_handleUpdate);
     unawaited(_load());
   }
 
   @override
   void dispose() {
+    _preferences.removeListener(_preferencesChanged);
     unawaited(_updates?.cancel());
     super.dispose();
   }
 
+  void _preferencesChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _openAccountSelection() {
+    final accounts = context.read<AccountStore>();
+    Navigator.of(context).push(
+      AppPageRoute<void>(
+        pageBuilder: (_, _, _) => _AccountNotificationSelectionView(
+          accounts: List<AccountSummary>.from(accounts.summaries),
+          activeSlot: accounts.activeSlot,
+        ),
+      ),
+    );
+  }
+
+  String get _accountSelectionSummary {
+    return switch (_preferences.accountMode) {
+      NotificationAccountMode.all => AppStringKeys.notificationAllAccounts.l10n(
+        context,
+      ),
+      NotificationAccountMode.current =>
+        AppStringKeys.notificationCurrentAccount.l10n(context),
+      NotificationAccountMode.selected =>
+        AppStringKeys.notificationSelectedAccounts.l10n(context),
+    };
+  }
+
   Future<void> _load() async {
+    if (_loadInProgress || !_client.hasActiveClient) return;
+    _loadInProgress = true;
     final loadedSettings = <String, Map<String, dynamic>>{};
     final loadedExceptions = <String, int>{};
     for (final scope in const [_private, _group, _channel]) {
@@ -133,6 +167,7 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
       loadedExceptions['stories'] = 0;
     }
 
+    _loadInProgress = false;
     if (!mounted) return;
     setState(() {
       _settings.addAll(loadedSettings);
@@ -147,6 +182,11 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
 
   void _handleUpdate(Map<String, dynamic> update) {
     if (!mounted) return;
+    if (update.type == 'updateAuthorizationState' &&
+        update.obj('authorization_state')?.type == 'authorizationStateReady') {
+      if (_loading) unawaited(_load());
+      return;
+    }
     if (update.type == 'updateScopeNotificationSettings') {
       final scope = update.obj('scope')?.type;
       final settings = update.obj('notification_settings');
@@ -280,7 +320,9 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final hasMultipleAccounts = TdClient.shared.configuredSlots.length > 1;
     return Scaffold(
+      key: const ValueKey('notification-settings'),
       backgroundColor: c.groupedBackground,
       body: Column(
         children: [
@@ -288,103 +330,220 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
             title: AppStrings.t(AppStringKeys.notificationNotifications),
             onBack: () => Navigator.of(context).pop(),
           ),
-          if (_loading)
-            const Expanded(
-              child: Center(
-                child: SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator.adaptive(strokeWidth: 2),
+          Expanded(
+            child: DesktopContentConstraint(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  AppSpacing.sm,
+                  AppSpacing.lg,
+                  AppSpacing.section,
                 ),
-              ),
-            )
-          else
-            Expanded(
-              child: DesktopContentConstraint(
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 32),
-                  children: [
-                    _sectionTitle(
-                      AppStrings.t(
-                        AppStringKeys.notificationMessageNotifications,
-                      ),
-                    ),
-                    _card([
-                      _navigationRow(
-                        icon: HeroAppIcons.circleUser,
-                        color: const Color(0xFF3295F6),
-                        title: AppStrings.t(
-                          AppStringKeys.notificationPrivateMessages,
+                children: [
+                  Column(
+                    key: const ValueKey('notification-section-telegram'),
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _sectionTitle(
+                        AppStrings.t(
+                          AppStringKeys.notificationMessageNotifications,
                         ),
-                        subtitle: _exceptionsLabel(_private),
-                        value: _enabledLabel(_enabled(_private)),
-                        onTap: () => _openScope(
-                          _private,
-                          AppStrings.t(
-                            AppStringKeys.notificationPrivateMessages,
+                      ),
+                      if (_loading)
+                        Container(
+                          key: const ValueKey('notification-telegram-loading'),
+                          height: 88,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: c.card,
+                            borderRadius: BorderRadius.circular(18),
                           ),
-                        ),
-                      ),
-                      const InsetDivider(leadingInset: 62),
-                      _navigationRow(
-                        icon: HeroAppIcons.users,
-                        color: const Color(0xFF37C961),
-                        title: AppStrings.t(
-                          AppStringKeys.notificationGroupMessages,
-                        ),
-                        subtitle: _exceptionsLabel(_group),
-                        value: _enabledLabel(_enabled(_group)),
-                        onTap: () => _openScope(
-                          _group,
-                          AppStrings.t(AppStringKeys.notificationGroupMessages),
-                        ),
-                      ),
-                      const InsetDivider(leadingInset: 62),
-                      _navigationRow(
-                        icon: HeroAppIcons.towerBroadcast,
-                        color: const Color(0xFFFFA928),
-                        title: AppStrings.t(AppStringKeys.notificationChannels),
-                        subtitle: _exceptionsLabel(_channel),
-                        value: _enabledLabel(_enabled(_channel)),
-                        onTap: () => _openScope(
-                          _channel,
-                          AppStrings.t(AppStringKeys.notificationChannels),
-                        ),
-                      ),
-                      const InsetDivider(leadingInset: 62),
-                      _navigationRow(
-                        icon: HeroAppIcons.circleNotch,
-                        color: const Color(0xFF6B63F6),
-                        title: AppStrings.t(AppStringKeys.notificationStories),
-                        subtitle: _exceptionsLabel('stories'),
-                        value: _storySummary,
-                        onTap: _openStories,
-                      ),
-                      const InsetDivider(leadingInset: 62),
-                      _navigationRow(
-                        icon: HeroAppIcons.heart,
-                        color: const Color(0xFFFF3C69),
-                        title: AppStrings.t(
-                          AppStringKeys.notificationReactions,
-                        ),
-                        subtitle: _reactionSummary,
-                        value: _enabledLabel(
-                          reactionSourceEnabled(
-                                _reactionSettings.obj(
-                                  'message_reaction_source',
-                                ),
-                              ) ||
-                              reactionSourceEnabled(
-                                _reactionSettings.obj('story_reaction_source'),
+                          child: const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator.adaptive(
+                              strokeWidth: 2,
+                            ),
+                          ),
+                        )
+                      else
+                        _card([
+                          _navigationRow(
+                            icon: HeroAppIcons.circleUser,
+                            color: const Color(0xFF3295F6),
+                            title: AppStrings.t(
+                              AppStringKeys.notificationPrivateMessages,
+                            ),
+                            subtitle: _exceptionsLabel(_private),
+                            value: _enabledLabel(_enabled(_private)),
+                            onTap: () => _openScope(
+                              _private,
+                              AppStrings.t(
+                                AppStringKeys.notificationPrivateMessages,
                               ),
-                        ),
-                        onTap: _openReactions,
+                            ),
+                          ),
+                          const InsetDivider(leadingInset: 62),
+                          _navigationRow(
+                            icon: HeroAppIcons.users,
+                            color: const Color(0xFF37C961),
+                            title: AppStrings.t(
+                              AppStringKeys.notificationGroupMessages,
+                            ),
+                            subtitle: _exceptionsLabel(_group),
+                            value: _enabledLabel(_enabled(_group)),
+                            onTap: () => _openScope(
+                              _group,
+                              AppStrings.t(
+                                AppStringKeys.notificationGroupMessages,
+                              ),
+                            ),
+                          ),
+                          const InsetDivider(leadingInset: 62),
+                          _navigationRow(
+                            icon: HeroAppIcons.towerBroadcast,
+                            color: const Color(0xFFFFA928),
+                            title: AppStrings.t(
+                              AppStringKeys.notificationChannels,
+                            ),
+                            subtitle: _exceptionsLabel(_channel),
+                            value: _enabledLabel(_enabled(_channel)),
+                            onTap: () => _openScope(
+                              _channel,
+                              AppStrings.t(AppStringKeys.notificationChannels),
+                            ),
+                          ),
+                          const InsetDivider(leadingInset: 62),
+                          _navigationRow(
+                            icon: HeroAppIcons.circleNotch,
+                            color: const Color(0xFF6B63F6),
+                            title: AppStrings.t(
+                              AppStringKeys.notificationStories,
+                            ),
+                            subtitle: _exceptionsLabel('stories'),
+                            value: _storySummary,
+                            onTap: _openStories,
+                          ),
+                          const InsetDivider(leadingInset: 62),
+                          _navigationRow(
+                            icon: HeroAppIcons.heart,
+                            color: const Color(0xFFFF3C69),
+                            title: AppStrings.t(
+                              AppStringKeys.notificationReactions,
+                            ),
+                            subtitle: _reactionSummary,
+                            value: _enabledLabel(
+                              reactionSourceEnabled(
+                                    _reactionSettings.obj(
+                                      'message_reaction_source',
+                                    ),
+                                  ) ||
+                                  reactionSourceEnabled(
+                                    _reactionSettings.obj(
+                                      'story_reaction_source',
+                                    ),
+                                  ),
+                            ),
+                            onTap: _openReactions,
+                          ),
+                        ]),
+                    ],
+                  ),
+                  Column(
+                    key: const ValueKey('notification-section-device'),
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _NotificationSectionTitle(
+                        AppStrings.t(AppStringKeys.notificationOnDeviceTitle),
                       ),
-                    ]),
-                  ],
-                ),
+                      SettingsCard(
+                        children: [
+                          if (hasMultipleAccounts) ...[
+                            SettingsRow(
+                              key: const ValueKey(
+                                'mithka-notification-accounts-row',
+                              ),
+                              title: AppStringKeys
+                                  .notificationShowNotificationsFrom,
+                              value: _accountSelectionSummary,
+                              leading: const SettingsIconTile(
+                                icon: HeroAppIcons.users,
+                                backgroundColor: Color(0xFF3295F6),
+                              ),
+                              onTap: _openAccountSelection,
+                            ),
+                            const InsetDivider(leadingInset: 56),
+                          ],
+                          SettingsSwitchRow(
+                            key: const ValueKey(
+                              'mithka-notification-in-app-sounds',
+                            ),
+                            title: AppStringKeys.notificationInAppSounds,
+                            value: _preferences.inAppSounds,
+                            leading: const SettingsIconTile(
+                              icon: HeroAppIcons.volumeHigh,
+                              backgroundColor: Color(0xFFF5A623),
+                            ),
+                            onChanged: (value) =>
+                                unawaited(_preferences.setInAppSounds(value)),
+                          ),
+                          const InsetDivider(leadingInset: 56),
+                          SettingsSwitchRow(
+                            key: const ValueKey(
+                              'mithka-notification-in-app-vibrate',
+                            ),
+                            title: AppStringKeys.notificationInAppVibrate,
+                            value: _preferences.inAppVibrate,
+                            leading: const SettingsIconTile(
+                              icon: HeroAppIcons.mobileScreenButton,
+                              backgroundColor: Color(0xFF7467F0),
+                            ),
+                            onChanged: (value) =>
+                                unawaited(_preferences.setInAppVibrate(value)),
+                          ),
+                          const InsetDivider(leadingInset: 56),
+                          SettingsSwitchRow(
+                            key: const ValueKey(
+                              'mithka-notification-in-app-preview',
+                            ),
+                            title: AppStringKeys.notificationInAppPreview,
+                            value: _preferences.inAppPreview,
+                            leading: const SettingsIconTile(
+                              icon: HeroAppIcons.eye,
+                              backgroundColor: Color(0xFF34A2DF),
+                            ),
+                            onChanged: (value) =>
+                                unawaited(_preferences.setInAppPreview(value)),
+                          ),
+                          const InsetDivider(leadingInset: 56),
+                          SettingsSwitchRow(
+                            key: const ValueKey(
+                              'mithka-notification-lock-screen-names',
+                            ),
+                            title: AppStringKeys.notificationNamesOnLockScreen,
+                            value: _preferences.namesOnLockScreen,
+                            leading: const SettingsIconTile(
+                              icon: HeroAppIcons.lock,
+                              backgroundColor: Color(0xFF16B05A),
+                            ),
+                            onChanged: (value) => unawaited(
+                              _preferences.setNamesOnLockScreen(value),
+                            ),
+                          ),
+                        ],
+                      ),
+                      _NotificationFootnote(
+                        AppStrings.t(
+                          AppStringKeys
+                              .notificationNamesOnLockScreenDescription,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
+          ),
         ],
       ),
     );
@@ -475,192 +634,6 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// Mithka-owned notification presentation preferences stored on this device.
-/// Telegram account notification rules remain in [NotificationSettingsView].
-class MithkaNotificationSettingsView extends StatefulWidget {
-  const MithkaNotificationSettingsView({super.key});
-
-  @override
-  State<MithkaNotificationSettingsView> createState() =>
-      _MithkaNotificationSettingsViewState();
-}
-
-class _MithkaNotificationSettingsViewState
-    extends State<MithkaNotificationSettingsView> {
-  final NotificationPreferences _preferences = NotificationPreferences.shared;
-
-  @override
-  void initState() {
-    super.initState();
-    _preferences.addListener(_preferencesChanged);
-  }
-
-  @override
-  void dispose() {
-    _preferences.removeListener(_preferencesChanged);
-    super.dispose();
-  }
-
-  void _preferencesChanged() {
-    if (mounted) setState(() {});
-  }
-
-  void _openAccountSelection() {
-    final accounts = context.read<AccountStore>();
-    Navigator.of(context).push(
-      AppPageRoute<void>(
-        pageBuilder: (_, _, _) => _AccountNotificationSelectionView(
-          accounts: List<AccountSummary>.from(accounts.summaries),
-          activeSlot: accounts.activeSlot,
-        ),
-      ),
-    );
-  }
-
-  String get _accountSelectionSummary {
-    return switch (_preferences.accountMode) {
-      NotificationAccountMode.all => AppStringKeys.notificationAllAccounts.l10n(
-        context,
-      ),
-      NotificationAccountMode.current =>
-        AppStringKeys.notificationCurrentAccount.l10n(context),
-      NotificationAccountMode.selected =>
-        AppStringKeys.notificationSelectedAccounts.l10n(context),
-    };
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    final hasMultipleAccounts = TdClient.shared.configuredSlots.length > 1;
-    return Scaffold(
-      key: const ValueKey('mithka-notification-settings'),
-      backgroundColor: c.groupedBackground,
-      body: Column(
-        children: [
-          NavHeader(
-            title: AppStrings.t(AppStringKeys.notificationOnDeviceTitle),
-            onBack: () => Navigator.of(context).pop(),
-          ),
-          Expanded(
-            child: DesktopContentConstraint(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.lg,
-                  AppSpacing.md,
-                  AppSpacing.lg,
-                  AppSpacing.section,
-                ),
-                children: [
-                  if (hasMultipleAccounts) ...[
-                    _NotificationSectionTitle(
-                      AppStrings.t(
-                        AppStringKeys.notificationShowNotificationsFrom,
-                      ),
-                    ),
-                    SettingsCard(
-                      children: [
-                        SettingsRow(
-                          key: const ValueKey(
-                            'mithka-notification-accounts-row',
-                          ),
-                          title: AppStringKeys.notificationAccounts,
-                          value: _accountSelectionSummary,
-                          leading: const SettingsIconTile(
-                            icon: HeroAppIcons.users,
-                            backgroundColor: Color(0xFF3295F6),
-                          ),
-                          onTap: _openAccountSelection,
-                        ),
-                      ],
-                    ),
-                    _NotificationFootnote(
-                      AppStrings.t(
-                        AppStringKeys.notificationAccountSelectionDescription,
-                      ),
-                    ),
-                  ],
-                  _NotificationSectionTitle(
-                    AppStrings.t(AppStringKeys.notificationInAppSection),
-                  ),
-                  SettingsCard(
-                    children: [
-                      SettingsSwitchRow(
-                        key: const ValueKey(
-                          'mithka-notification-in-app-sounds',
-                        ),
-                        title: AppStringKeys.notificationInAppSounds,
-                        value: _preferences.inAppSounds,
-                        leading: const SettingsIconTile(
-                          icon: HeroAppIcons.volumeHigh,
-                          backgroundColor: Color(0xFFF5A623),
-                        ),
-                        onChanged: (value) =>
-                            unawaited(_preferences.setInAppSounds(value)),
-                      ),
-                      const InsetDivider(leadingInset: 56),
-                      SettingsSwitchRow(
-                        key: const ValueKey(
-                          'mithka-notification-in-app-vibrate',
-                        ),
-                        title: AppStringKeys.notificationInAppVibrate,
-                        value: _preferences.inAppVibrate,
-                        leading: const SettingsIconTile(
-                          icon: HeroAppIcons.mobileScreenButton,
-                          backgroundColor: Color(0xFF7467F0),
-                        ),
-                        onChanged: (value) =>
-                            unawaited(_preferences.setInAppVibrate(value)),
-                      ),
-                      const InsetDivider(leadingInset: 56),
-                      SettingsSwitchRow(
-                        key: const ValueKey(
-                          'mithka-notification-in-app-preview',
-                        ),
-                        title: AppStringKeys.notificationInAppPreview,
-                        value: _preferences.inAppPreview,
-                        leading: const SettingsIconTile(
-                          icon: HeroAppIcons.eye,
-                          backgroundColor: Color(0xFF34A2DF),
-                        ),
-                        onChanged: (value) =>
-                            unawaited(_preferences.setInAppPreview(value)),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: AppSpacing.xl),
-                  SettingsCard(
-                    children: [
-                      SettingsSwitchRow(
-                        key: const ValueKey(
-                          'mithka-notification-lock-screen-names',
-                        ),
-                        title: AppStringKeys.notificationNamesOnLockScreen,
-                        value: _preferences.namesOnLockScreen,
-                        leading: const SettingsIconTile(
-                          icon: HeroAppIcons.lock,
-                          backgroundColor: Color(0xFF16B05A),
-                        ),
-                        onChanged: (value) =>
-                            unawaited(_preferences.setNamesOnLockScreen(value)),
-                      ),
-                    ],
-                  ),
-                  _NotificationFootnote(
-                    AppStrings.t(
-                      AppStringKeys.notificationNamesOnLockScreenDescription,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

@@ -23,9 +23,6 @@
 #                      override the pinned official Telegram iOS group-call XCFramework
 #   TGVOIP_WEBRTC_XCFRAMEWORK_SHA256
 #                      SHA-256 for the TgVoip override
-#   REVIEW_RELAY             legacy real-phone OTP relay URL and phone hash:
-#                            https://relay.example|sha256(normalized-phone-digits)
-#                            Pseudo-account sessions use the built-in scoped dispenser.
 #   SENTRY_AUTH_TOKEN        upload iOS dSYMs to Sentry when set
 #   SENTRY_ORG               Sentry org slug for dSYM upload; defaults to nekoko
 #   SENTRY_PROJECT           Sentry project slug for dSYM upload; defaults to mithka
@@ -113,8 +110,7 @@ flutter_build_ios_config_with_retry() {
       --build-number="$APP_BUILD_NUMBER" \
       --dart-define="GIT_COMMIT=$GIT_COMMIT" \
       --dart-define="SENTRY_DSN=${SENTRY_DSN:-}" \
-      --dart-define="SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT:-production}" \
-      --dart-define="REVIEW_RELAY=${REVIEW_RELAY:-}"; then
+      --dart-define="SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT:-production}"; then
       return 0
     fi
     status=$?

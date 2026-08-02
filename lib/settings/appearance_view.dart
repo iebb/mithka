@@ -867,31 +867,36 @@ String _nameColorSummary(
   StatusEmojiDisplayMode status,
 ) => '${AppStrings.t(audience.label)} · ${AppStrings.t(status.label)}';
 
-String _messageBubbleBackgroundLabel(
-  ThemeController theme,
-) => AppStrings.t(switch (theme.messageBubbleBackground) {
-  MessageBubbleBackground.standard => AppStringKeys.messageBubbleDefault,
-  MessageBubbleBackground.midnightAurora =>
-    AppStringKeys.messageBubbleMidnightAurora,
-  MessageBubbleBackground.solarPorcelain =>
-    AppStringKeys.messageBubbleSolarPorcelain,
-  MessageBubbleBackground.berryOrbit => AppStringKeys.messageBubbleBerryOrbit,
-  MessageBubbleBackground.arcticBlueprint =>
-    AppStringKeys.messageBubbleArcticBlueprint,
-  MessageBubbleBackground.emberArcade => AppStringKeys.messageBubbleEmberArcade,
-  MessageBubbleBackground.lilacConstellation =>
-    AppStringKeys.messageBubbleLilacConstellation,
-  MessageBubbleBackground.forestFamiliar =>
-    AppStringKeys.messageBubbleForestFamiliar,
-  MessageBubbleBackground.inkWanderer => AppStringKeys.messageBubbleInkWanderer,
-  MessageBubbleBackground.pixelCadet => AppStringKeys.messageBubblePixelCadet,
-  MessageBubbleBackground.cosmicMechanic =>
-    AppStringKeys.messageBubbleCosmicMechanic,
-  MessageBubbleBackground.pastryPal => AppStringKeys.messageBubblePastryPal,
-  MessageBubbleBackground.noirDetective =>
-    AppStringKeys.messageBubbleNoirDetective,
-  MessageBubbleBackground.custom => AppStringKeys.messageBubbleCustom,
-});
+String _messageBubbleBackgroundLabel(ThemeController theme) {
+  if (!theme.messageBubblesEnabled) {
+    return AppStrings.t(AppStringKeys.privacyDisabled);
+  }
+  return AppStrings.t(switch (theme.messageBubbleBackground) {
+    MessageBubbleBackground.standard => AppStringKeys.messageBubbleDefault,
+    MessageBubbleBackground.midnightAurora =>
+      AppStringKeys.messageBubbleMidnightAurora,
+    MessageBubbleBackground.solarPorcelain =>
+      AppStringKeys.messageBubbleSolarPorcelain,
+    MessageBubbleBackground.berryOrbit => AppStringKeys.messageBubbleBerryOrbit,
+    MessageBubbleBackground.arcticBlueprint =>
+      AppStringKeys.messageBubbleArcticBlueprint,
+    MessageBubbleBackground.emberArcade =>
+      AppStringKeys.messageBubbleEmberArcade,
+    MessageBubbleBackground.lilacConstellation =>
+      AppStringKeys.messageBubbleLilacConstellation,
+    MessageBubbleBackground.forestFamiliar =>
+      AppStringKeys.messageBubbleForestFamiliar,
+    MessageBubbleBackground.inkWanderer =>
+      AppStringKeys.messageBubbleInkWanderer,
+    MessageBubbleBackground.pixelCadet => AppStringKeys.messageBubblePixelCadet,
+    MessageBubbleBackground.cosmicMechanic =>
+      AppStringKeys.messageBubbleCosmicMechanic,
+    MessageBubbleBackground.pastryPal => AppStringKeys.messageBubblePastryPal,
+    MessageBubbleBackground.noirDetective =>
+      AppStringKeys.messageBubbleNoirDetective,
+    MessageBubbleBackground.custom => AppStringKeys.messageBubbleCustom,
+  });
+}
 
 class _SurfacePreviewCard extends StatelessWidget {
   const _SurfacePreviewCard({required this.title, required this.child});

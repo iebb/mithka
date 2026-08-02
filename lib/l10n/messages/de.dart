@@ -346,6 +346,9 @@ const deMessages = <String, String>{
   'appearanceMergeConsecutiveImages': "Medienalben gruppieren",
   'appearanceMode': "Modus",
   'appearanceMessageBubbles': "Nachrichtenblasen",
+  'appearanceShowMessageBubbles': "Nachrichtenblasen anzeigen",
+  'appearanceShowMessageBubblesDescription':
+      "Wenn deaktiviert, werden Standard-Nachrichtenhintergründe ausgeblendet. Blasen aus benutzerdefinierten Themes bleiben sichtbar und der ausgewählte Stil bleibt erhalten.",
   'appearanceMonospaceFont': "Monospace-Schrift",
   'appearanceNoCleanableFonts': "Nichts zu bereinigen",
   'appearanceNoDownloadedFontCache':
@@ -669,6 +672,12 @@ const deMessages = <String, String>{
   'chatInfoGroupChat': "Gruppenchat",
   'chatInfoGroupFiles': "Gruppendateien",
   'chatInfoGroupId': "Gruppen-ID: {value1}",
+  'chatInfoGroupAnnouncement': "Gruppenankündigung",
+  'chatInfoGroupAnnouncementEmpty': "Keine Gruppenankündigung",
+  'chatInfoGroupRemark': "Gruppennotiz",
+  'chatInfoGroupRemarkEmpty': "Nicht festgelegt",
+  'chatInfoGroupRemarkHint': "Einen nur für dich sichtbaren Namen hinzufügen",
+  'chatInfoGroupRemarkLocalOnly': "Wird nur auf diesem Gerät gespeichert.",
   'chatInfoGroupMembers': "Gruppenmitglieder",
   'chatInfoGroupVideos': "Gruppenvideos",
   'chatInfoLeaveGroup': "Gruppe verlassen",
@@ -1356,6 +1365,7 @@ const deMessages = <String, String>{
   'messageViewInChat': "Im Chat anzeigen",
   'miniAppCannotStart': "Die Mini-App kann gerade nicht gestartet werden",
   'miniAppClose': "Mini-App schließen",
+  'miniAppName': "Mini-App",
   'miniAppNoMatches': "Keine passenden Mini-Apps",
   'miniAppOpenInBrowser': "Im Browser öffnen",
   'miniAppRecentEmpty': "Keine kürzlich verwendeten Mini-Apps",
@@ -1871,11 +1881,7 @@ const deMessages = <String, String>{
   'settingsLogOut': "Abmelden",
   'settingsNoResults': "Keine passenden Einstellungen",
   'settingsScopeMithka': "Mithka",
-  'settingsScopeMithkaDescription':
-      "Darstellung, Verhalten und Werkzeuge von Mithka auf diesem Gerät.",
   'settingsScopeTelegram': "Telegram-Konto",
-  'settingsScopeTelegramDescription':
-      "Profil, Datenschutz, Benachrichtigungen und Dienste deines Telegram-Kontos.",
   'settingsSearchHint': "Einstellungen durchsuchen",
   'sharedMediaCacheDeleted': "Lokaler Cache gelöscht",
   'sharedMediaCacheDeleteFailed': "Cache konnte nicht gelöscht werden",

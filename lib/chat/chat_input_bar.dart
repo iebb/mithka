@@ -276,6 +276,54 @@ class _SendComposerIntent extends Intent {
   const _SendComposerIntent();
 }
 
+@visibleForTesting
+bool isComposerImeEnterFallback(
+  TextEditingValue oldValue,
+  TextEditingValue newValue, {
+  required bool shiftPressed,
+  required bool controlPressed,
+}) {
+  if (shiftPressed || controlPressed) return false;
+  if (!oldValue.selection.isValid || !oldValue.selection.isCollapsed) {
+    return false;
+  }
+  if (oldValue.selection.extentOffset != oldValue.text.length) return false;
+  if (oldValue.composing.isValid && !oldValue.composing.isCollapsed) {
+    return false;
+  }
+  if (newValue.composing.isValid && !newValue.composing.isCollapsed) {
+    return false;
+  }
+  if (newValue.text != '${oldValue.text}\n') return false;
+  return newValue.selection.isValid &&
+      newValue.selection.isCollapsed &&
+      newValue.selection.extentOffset == newValue.text.length;
+}
+
+class _ComposerEnterToSendFormatter extends TextInputFormatter {
+  const _ComposerEnterToSendFormatter({required this.onSend});
+
+  final VoidCallback onSend;
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final keyboard = HardwareKeyboard.instance;
+    if (!isComposerImeEnterFallback(
+      oldValue,
+      newValue,
+      shiftPressed: keyboard.isShiftPressed,
+      controlPressed: keyboard.isControlPressed,
+    )) {
+      return newValue;
+    }
+    onSend();
+    return oldValue;
+  }
+}
+
 class ChatInputBar extends StatefulWidget {
   const ChatInputBar({
     super.key,
@@ -286,6 +334,7 @@ class ChatInputBar extends StatefulWidget {
     this.onMediaSendTapped,
     this.gifPreviewBuilder,
     this.requestInitialFocus = false,
+    this.enterToSend = false,
     this.quickRepliesEnabled = true,
     this.quickReplyLoader,
     this.quickReplySender,
@@ -302,6 +351,7 @@ class ChatInputBar extends StatefulWidget {
   @visibleForTesting
   final Widget Function(GifItem item)? gifPreviewBuilder;
   final bool requestInitialFocus;
+  final bool enterToSend;
   final bool quickRepliesEnabled;
   @visibleForTesting
   final Future<List<BusinessQuickReplyShortcut>> Function()? quickReplyLoader;
@@ -394,6 +444,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
   _AiReplyContextSnapshot? _aiReplyWorkingContextSnapshot;
   bool _applyingAiReplyDraft = false;
   bool _initialFocusRequestConsumed = false;
+  bool _keyboardSendScheduled = false;
   AiReplyProvider? _activeAiReplyProvider;
   List<AiReplyProgressPhase> _aiReplyProgressPhases = const [];
   bool _aiReplyProgressExpanded = false;
@@ -1217,6 +1268,20 @@ class _ChatInputBarState extends State<ChatInputBar> {
         'value1': what,
       }),
     );
+  }
+
+  void _scheduleKeyboardSend() {
+    if (_keyboardSendScheduled) return;
+    _keyboardSendScheduled = true;
+    scheduleMicrotask(() => unawaited(_sendScheduledKeyboardText()));
+  }
+
+  Future<void> _sendScheduledKeyboardText() async {
+    try {
+      if (mounted) await _sendCurrentText();
+    } finally {
+      _keyboardSendScheduled = false;
+    }
   }
 
   Future<void> _sendCurrentText() async {
@@ -3401,12 +3466,24 @@ class _ChatInputBarState extends State<ChatInputBar> {
                       ],
                       Expanded(
                         child: Shortcuts(
-                          shortcuts: const {
-                            SingleActivator(LogicalKeyboardKey.enter):
-                                _SendComposerIntent(),
-                            SingleActivator(LogicalKeyboardKey.numpadEnter):
-                                _SendComposerIntent(),
-                          },
+                          shortcuts: widget.enterToSend
+                              ? const {
+                                  SingleActivator(LogicalKeyboardKey.enter):
+                                      _SendComposerIntent(),
+                                  SingleActivator(
+                                    LogicalKeyboardKey.numpadEnter,
+                                  ): _SendComposerIntent(),
+                                }
+                              : const {
+                                  SingleActivator(
+                                    LogicalKeyboardKey.enter,
+                                    control: true,
+                                  ): _SendComposerIntent(),
+                                  SingleActivator(
+                                    LogicalKeyboardKey.numpadEnter,
+                                    control: true,
+                                  ): _SendComposerIntent(),
+                                },
                           child: Actions(
                             actions: {
                               PasteTextIntent: CallbackAction<PasteTextIntent>(
@@ -3430,12 +3507,22 @@ class _ChatInputBarState extends State<ChatInputBar> {
                               minLines: 1,
                               maxLines: 4,
                               keyboardType: TextInputType.multiline,
-                              textInputAction: Platform.isIOS
-                                  ? TextInputAction.newline
-                                  : TextInputAction.send,
-                              onSubmitted: Platform.isIOS
-                                  ? null
-                                  : (_) => unawaited(_sendCurrentText()),
+                              textInputAction: widget.enterToSend
+                                  ? TextInputAction.send
+                                  : TextInputAction.newline,
+                              onSubmitted: widget.enterToSend
+                                  ? (_) => unawaited(_sendCurrentText())
+                                  : null,
+                              inputFormatters:
+                                  widget.enterToSend &&
+                                      Theme.of(context).platform ==
+                                          TargetPlatform.android
+                                  ? [
+                                      _ComposerEnterToSendFormatter(
+                                        onSend: _scheduleKeyboardSend,
+                                      ),
+                                    ]
+                                  : null,
                               style: TextStyle(
                                 fontSize: 15,
                                 color: c.textPrimary,

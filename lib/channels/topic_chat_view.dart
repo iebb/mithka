@@ -17,6 +17,7 @@ import '../chat/chat_picker_view.dart';
 import '../chat/chat_view.dart';
 import '../chat/custom_emoji.dart';
 import '../chat/forward_options.dart';
+import '../chat/group_remark_controller.dart';
 import '../chat/message_replies_sheet.dart';
 import '../chat/outgoing_attachment.dart';
 import '../chat/rich_text_composer_view.dart';
@@ -884,6 +885,12 @@ class _TopicChatViewState extends State<TopicChatView> {
   Widget _header() {
     final c = context.colors;
     final top = MediaQuery.of(context).padding.top;
+    final title =
+        context.watch<GroupRemarkController?>()?.displayTitleFor(
+          widget.chat.id,
+          widget.chat.title,
+        ) ??
+        widget.chat.title;
     return Container(
       height: top + widget.headerHeight + 44,
       padding: EdgeInsets.only(top: top),
@@ -919,7 +926,7 @@ class _TopicChatViewState extends State<TopicChatView> {
                 else
                   const SizedBox(width: AppSpacing.sm),
                 PhotoAvatar(
-                  title: widget.chat.title,
+                  title: title,
                   photo: widget.chat.photo,
                   size: 32,
                   square: true,
@@ -931,7 +938,7 @@ class _TopicChatViewState extends State<TopicChatView> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        widget.chat.title,
+                        title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(

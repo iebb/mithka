@@ -180,6 +180,21 @@ void main() {
     }
   });
 
+  testWidgets('Appearance summarizes hidden message bubbles as off', (
+    tester,
+  ) async {
+    final controller = await _pumpAppearance(tester, themingEnabled: true);
+
+    controller.messageBubblesEnabled = false;
+    await tester.pump();
+
+    final row = find.byKey(const ValueKey('appearance-message-bubbles-row'));
+    expect(
+      find.descendant(of: row, matching: find.text('Off')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('folder appearance keeps Telegram management out of Mithka', (
     tester,
   ) async {

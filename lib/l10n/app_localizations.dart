@@ -405,6 +405,9 @@ abstract final class AppStringKeys {
       'appearanceChatListFolderSwipeSwitching';
   static const appearanceChatView = 'appearanceChatView';
   static const appearanceMessageBubbles = 'appearanceMessageBubbles';
+  static const appearanceShowMessageBubbles = 'appearanceShowMessageBubbles';
+  static const appearanceShowMessageBubblesDescription =
+      'appearanceShowMessageBubblesDescription';
   static const appearanceChatNameColorsTitle = 'appearanceChatNameColorsTitle';
   static const appearanceCleanableSize = 'appearanceCleanableSize';
   static const appearanceCleanUnusedFonts = 'appearanceCleanUnusedFonts';
@@ -784,6 +787,13 @@ abstract final class AppStringKeys {
   static const chatInfoGroupChat = 'chatInfoGroupChat';
   static const chatInfoGroupFiles = 'chatInfoGroupFiles';
   static const chatInfoGroupId = 'chatInfoGroupId';
+  static const chatInfoGroupAnnouncement = 'chatInfoGroupAnnouncement';
+  static const chatInfoGroupAnnouncementEmpty =
+      'chatInfoGroupAnnouncementEmpty';
+  static const chatInfoGroupRemark = 'chatInfoGroupRemark';
+  static const chatInfoGroupRemarkEmpty = 'chatInfoGroupRemarkEmpty';
+  static const chatInfoGroupRemarkHint = 'chatInfoGroupRemarkHint';
+  static const chatInfoGroupRemarkLocalOnly = 'chatInfoGroupRemarkLocalOnly';
   static const chatInfoGroupMembers = 'chatInfoGroupMembers';
   static const chatInfoGroupVideos = 'chatInfoGroupVideos';
   static const chatInfoLeaveGroup = 'chatInfoLeaveGroup';
@@ -1750,6 +1760,7 @@ abstract final class AppStringKeys {
   static const messageViewInChat = 'messageViewInChat';
   static const miniAppCannotStart = 'miniAppCannotStart';
   static const miniAppClose = 'miniAppClose';
+  static const miniAppName = 'miniAppName';
   static const miniAppNoMatches = 'miniAppNoMatches';
   static const miniAppOpenInBrowser = 'miniAppOpenInBrowser';
   static const miniAppRecentEmpty = 'miniAppRecentEmpty';
@@ -2273,11 +2284,7 @@ abstract final class AppStringKeys {
   static const settingsLogOut = 'settingsLogOut';
   static const settingsNoResults = 'settingsNoResults';
   static const settingsScopeMithka = 'settingsScopeMithka';
-  static const settingsScopeMithkaDescription =
-      'settingsScopeMithkaDescription';
   static const settingsScopeTelegram = 'settingsScopeTelegram';
-  static const settingsScopeTelegramDescription =
-      'settingsScopeTelegramDescription';
   static const settingsSearchHint = 'settingsSearchHint';
   static const sharedMediaCacheDeleted = 'sharedMediaCacheDeleted';
   static const sharedMediaCacheDeleteFailed = 'sharedMediaCacheDeleteFailed';

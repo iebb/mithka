@@ -61,7 +61,12 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('chat-behavior-enter-to-send')));
     await tester.pump();
+    expect(theme.enterToSend, isFalse);
     expect(prefs.getBool('enterToSend'), isFalse);
+
+    final restoredTheme = ThemeController(prefs);
+    addTearDown(restoredTheme.dispose);
+    expect(restoredTheme.enterToSend, isFalse);
 
     await tester.tap(
       find.byKey(const ValueKey('chat-behavior-open-at-latest')),

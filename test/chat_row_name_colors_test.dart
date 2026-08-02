@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mithka/chat/group_remark_controller.dart';
 import 'package:mithka/chats/chat_row_view.dart';
 import 'package:mithka/components/photo_avatar.dart';
 import 'package:mithka/tdlib/td_models.dart';
@@ -9,6 +10,65 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  testWidgets('chat rows show the active account local group remark', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final theme = ThemeController(preferences);
+    final remarks = GroupRemarkController(
+      preferences,
+      initialAccountUserId: 101,
+    );
+    addTearDown(theme.dispose);
+    addTearDown(remarks.dispose);
+    await remarks.setRemark(-1001, 'Local group name');
+    final chat = ChatSummary(
+      id: -1001,
+      title: 'Telegram group name',
+      lastMessage: 'Hello',
+      lastMessageId: 1,
+      date: 0,
+      unreadCount: 0,
+      order: 1,
+      isMuted: false,
+      kind: ChatKind.group,
+    );
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeController>.value(value: theme),
+          ChangeNotifierProvider<GroupRemarkController>.value(value: remarks),
+        ],
+        child: MaterialApp(
+          theme: ThemeData(
+            brightness: Brightness.light,
+            extensions: [AppColors.light],
+          ),
+          home: Scaffold(body: ChatRowView(chat: chat)),
+        ),
+      ),
+    );
+
+    expect(find.text('Local group name'), findsOneWidget);
+    expect(find.text('Telegram group name'), findsNothing);
+    expect(
+      tester.widget<PhotoAvatar>(find.byType(PhotoAvatar)).title,
+      'Local group name',
+    );
+    expect(chat.title, 'Telegram group name');
+
+    remarks.setActiveAccountUserId(202);
+    await tester.pump();
+
+    expect(find.text('Telegram group name'), findsOneWidget);
+    expect(
+      tester.widget<PhotoAvatar>(find.byType(PhotoAvatar)).title,
+      'Telegram group name',
+    );
+  });
+
   testWidgets('chat-list name colors follow the selected audience', (
     tester,
   ) async {

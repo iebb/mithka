@@ -12,20 +12,40 @@ class MessageBubbleChatPreview extends StatelessWidget {
     super.key,
     required this.incomingBackground,
     required this.outgoingBackground,
+    this.showIncomingSurface = true,
+    this.showOutgoingSurface = true,
+    this.incomingSurfaceColor,
+    this.outgoingSurfaceColor,
+    this.incomingTextColor,
+    this.outgoingTextColor,
   });
 
   final MessageBubbleBackgroundSpec incomingBackground;
   final MessageBubbleBackgroundSpec outgoingBackground;
+  final bool showIncomingSurface;
+  final bool showOutgoingSurface;
+  final Color? incomingSurfaceColor;
+  final Color? outgoingSurfaceColor;
+  final Color? incomingTextColor;
+  final Color? outgoingTextColor;
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final rowGap = math.max(
-      8.0,
-      incomingBackground.visualOverflow.bottom +
-          outgoingBackground.visualOverflow.top +
-          2,
-    );
+    final double rowGap = showIncomingSurface || showOutgoingSurface
+        ? math
+              .max(
+                8.0,
+                (showIncomingSurface
+                        ? incomingBackground.visualOverflow.bottom
+                        : 0.0) +
+                    (showOutgoingSurface
+                        ? outgoingBackground.visualOverflow.top
+                        : 0.0) +
+                    2,
+              )
+              .toDouble()
+        : 8.0;
     return Container(
       key: const ValueKey('message-bubble-chat-preview'),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -47,6 +67,9 @@ class MessageBubbleChatPreview extends StatelessWidget {
                   key: const ValueKey('message-bubble-preview-incoming'),
                   background: incomingBackground,
                   outgoing: false,
+                  showSurface: showIncomingSurface,
+                  surfaceColor: incomingSurfaceColor,
+                  textColor: incomingTextColor,
                   text: 'Repository bubble preview with a longer message.',
                 ),
               ),
@@ -59,6 +82,9 @@ class MessageBubbleChatPreview extends StatelessWidget {
               key: const ValueKey('message-bubble-preview-outgoing'),
               background: outgoingBackground,
               outgoing: true,
+              showSurface: showOutgoingSurface,
+              surfaceColor: outgoingSurfaceColor,
+              textColor: outgoingTextColor,
               text: 'The center stretches with longer messages.',
             ),
           ),
@@ -73,20 +99,38 @@ class _PreviewBubble extends StatelessWidget {
     super.key,
     required this.background,
     required this.outgoing,
+    required this.showSurface,
+    this.surfaceColor,
+    this.textColor,
     required this.text,
   });
 
   final MessageBubbleBackgroundSpec background;
   final bool outgoing;
+  final bool showSurface;
+  final Color? surfaceColor;
+  final Color? textColor;
   final String text;
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    if (!showSurface) {
+      return Container(
+        constraints: const BoxConstraints(maxWidth: 250),
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+        child: Text(
+          text,
+          style: TextStyle(color: c.textPrimary, fontSize: 15, height: 1.25),
+        ),
+      );
+    }
     return StretchableMessageBubbleBackground(
       background: background,
       constraints: const BoxConstraints(maxWidth: 250),
-      fallbackColor: outgoing ? AppTheme.bubbleOutgoing : c.bubbleIncoming,
+      fallbackColor:
+          surfaceColor ??
+          (outgoing ? AppTheme.bubbleOutgoing : c.bubbleIncoming),
       fallbackBorderRadius: BorderRadius.circular(12),
       fallbackBorder: outgoing
           ? null
@@ -97,6 +141,7 @@ class _PreviewBubble extends StatelessWidget {
         style: TextStyle(
           color:
               background.foregroundColor ??
+              textColor ??
               (outgoing ? AppTheme.bubbleOutgoingText : c.bubbleIncomingText),
           fontSize: 15,
           height: 1.25,

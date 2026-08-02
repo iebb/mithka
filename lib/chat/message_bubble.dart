@@ -104,6 +104,7 @@ class MessageBubble extends StatefulWidget {
     this.incomingBubbleColor,
     this.incomingBubbleTextColor,
     this.messageColors,
+    this.hasCustomChatTheme = false,
   });
 
   final ChatMessage message;
@@ -161,6 +162,7 @@ class MessageBubble extends StatefulWidget {
   final Color? incomingBubbleColor;
   final Color? incomingBubbleTextColor;
   final TelegramMessageColors? messageColors;
+  final bool hasCustomChatTheme;
 
   @override
   State<MessageBubble> createState() => _MessageBubbleState();
@@ -281,19 +283,34 @@ class _MessageBubbleState extends State<MessageBubble>
         .effectiveMessageBubbleBackgroundSpecFor(outgoing: message.isOutgoing);
   }
 
+  bool get _showsMessageBubbleSurface {
+    final theme = context.watch<ThemeController>();
+    return theme.shouldRenderMessageBubbleSurface(
+      outgoing: message.isOutgoing,
+      brightness: Theme.of(context).brightness,
+      hasCustomChatTheme: widget.hasCustomChatTheme,
+    );
+  }
+
+  bool get _usesDecorativeBubbleBackground =>
+      _showsMessageBubbleSurface && _bubbleBackgroundStyle.isDecorative;
+
   TelegramCloudTheme? get _activeCloudTheme {
     final theme = context.watch<ThemeController>();
     if (!theme.themingEnabled) return null;
     return theme.cloudThemeFor(Theme.of(context).brightness);
   }
 
-  Color get _outgoingBubbleColor =>
-      _bubbleBackgroundStyle.backgroundColor ??
-      widget.outgoingBubbleColor ??
-      _activeCloudTheme?.outgoingColor ??
-      AppTheme.bubbleOutgoing;
+  Color get _outgoingBubbleColor {
+    if (!_showsMessageBubbleSurface) return context.colors.card;
+    return _bubbleBackgroundStyle.backgroundColor ??
+        widget.outgoingBubbleColor ??
+        _activeCloudTheme?.outgoingColor ??
+        AppTheme.bubbleOutgoing;
+  }
 
   Color get _outgoingTextColor {
+    if (!_showsMessageBubbleSurface) return context.colors.textPrimary;
     if (!context.watch<ThemeController>().themingEnabled) {
       return AppTheme.bubbleOutgoingText;
     }
@@ -305,23 +322,31 @@ class _MessageBubbleState extends State<MessageBubble>
             : AppTheme.bubbleOutgoingText);
   }
 
-  Color get _incomingThemeBubbleColor =>
-      widget.incomingBubbleColor ??
-      _activeCloudTheme?.incomingColor ??
-      context.colors.bubbleIncoming;
+  Color get _incomingThemeBubbleColor {
+    if (!_showsMessageBubbleSurface) return context.colors.card;
+    return widget.incomingBubbleColor ??
+        _activeCloudTheme?.incomingColor ??
+        context.colors.bubbleIncoming;
+  }
 
-  Color get _incomingBubbleColor =>
-      _bubbleBackgroundStyle.backgroundColor ?? _incomingThemeBubbleColor;
+  Color get _incomingBubbleColor {
+    if (!_showsMessageBubbleSurface) return context.colors.card;
+    return _bubbleBackgroundStyle.backgroundColor ?? _incomingThemeBubbleColor;
+  }
 
-  Color get _incomingTextColor =>
-      _bubbleBackgroundStyle.foregroundColor ??
-      widget.incomingBubbleTextColor ??
-      _activeCloudTheme?.incomingTextColor ??
-      context.colors.bubbleIncomingText;
+  Color get _incomingTextColor {
+    if (!_showsMessageBubbleSurface) return context.colors.textPrimary;
+    return _bubbleBackgroundStyle.foregroundColor ??
+        widget.incomingBubbleTextColor ??
+        _activeCloudTheme?.incomingTextColor ??
+        context.colors.bubbleIncomingText;
+  }
 
   TelegramMessageColors? get _messageColors {
     final theme = context.watch<ThemeController>();
-    if (!theme.themingEnabled || _bubbleBackgroundStyle.isDecorative) {
+    if (!_showsMessageBubbleSurface ||
+        !theme.themingEnabled ||
+        _usesDecorativeBubbleBackground) {
       return null;
     }
     return widget.messageColors ??
@@ -335,8 +360,9 @@ class _MessageBubbleState extends State<MessageBubble>
       color.withValues(alpha: color.a * _messageAccentFillOpacity);
 
   Color _messageLinkColor(bool outgoing) {
+    if (!_showsMessageBubbleSurface) return context.colors.linkBlue;
     final base = outgoing ? _outgoingTextColor : _incomingTextColor;
-    if (_bubbleBackgroundStyle.isDecorative) return base;
+    if (_usesDecorativeBubbleBackground) return base;
     final colors = _messageColors;
     if (colors == null) {
       return outgoing ? _outgoingTextColor : context.colors.linkBlue;
@@ -345,7 +371,7 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   Color _messageQuoteColor(bool outgoing) {
-    if (_bubbleBackgroundStyle.isDecorative) {
+    if (_usesDecorativeBubbleBackground) {
       return outgoing ? _outgoingTextColor : _incomingTextColor;
     }
     final colors = _messageColors;
@@ -354,7 +380,7 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   Color _messageReplyLineColor(bool outgoing) {
-    if (_bubbleBackgroundStyle.isDecorative) {
+    if (_usesDecorativeBubbleBackground) {
       return outgoing ? _outgoingTextColor : _incomingTextColor;
     }
     final colors = _messageColors;
@@ -365,7 +391,7 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   Color _messageReplyNameColor(bool outgoing) {
-    if (_bubbleBackgroundStyle.isDecorative) {
+    if (_usesDecorativeBubbleBackground) {
       return outgoing ? _outgoingTextColor : _incomingTextColor;
     }
     final colors = _messageColors;
@@ -376,7 +402,7 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   Color _messageReplyTextColor(bool outgoing) {
-    if (_bubbleBackgroundStyle.isDecorative) {
+    if (_usesDecorativeBubbleBackground) {
       final foreground = outgoing ? _outgoingTextColor : _incomingTextColor;
       return foreground.withValues(alpha: 0.72);
     }
@@ -396,7 +422,7 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   Color _messageForwardedNameColor(bool outgoing) {
-    if (_bubbleBackgroundStyle.isDecorative) {
+    if (_usesDecorativeBubbleBackground) {
       return outgoing ? _outgoingTextColor : _incomingTextColor;
     }
     final colors = _messageColors;
@@ -409,7 +435,7 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   Color _messagePreviewLineColor(bool outgoing) {
-    if (_bubbleBackgroundStyle.isDecorative) {
+    if (_usesDecorativeBubbleBackground) {
       return outgoing ? _outgoingTextColor : _incomingTextColor;
     }
     final colors = _messageColors;
@@ -418,7 +444,7 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   Color _messageSiteNameColor(bool outgoing) {
-    if (_bubbleBackgroundStyle.isDecorative) {
+    if (_usesDecorativeBubbleBackground) {
       return outgoing ? _outgoingTextColor : _incomingTextColor;
     }
     final colors = _messageColors;
@@ -427,7 +453,7 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   Color _messageTimeColor(bool outgoing) {
-    if (_bubbleBackgroundStyle.isDecorative) {
+    if (_usesDecorativeBubbleBackground) {
       final foreground = outgoing ? _outgoingTextColor : _incomingTextColor;
       return foreground.withValues(alpha: 0.65);
     }
@@ -459,6 +485,14 @@ class _MessageBubbleState extends State<MessageBubble>
     BoxConstraints constraints = const BoxConstraints(),
     bool containsAttachedComments = false,
   }) {
+    if (!_showsMessageBubbleSurface) {
+      return Container(
+        key: key,
+        constraints: constraints,
+        padding: padding,
+        child: child,
+      );
+    }
     // When a comment action is present, the outer wrapper owns the only
     // rounded/background surface. Inner message content keeps its normal
     // padding but does not paint a second sliced image or rounded rectangle.
@@ -466,7 +500,7 @@ class _MessageBubbleState extends State<MessageBubble>
       return Container(
         key: key,
         constraints: constraints,
-        padding: _bubbleBackgroundStyle.isDecorative
+        padding: _usesDecorativeBubbleBackground
             ? _bubbleBackgroundStyle.contentPadding
             : padding,
         child: child,
@@ -1240,6 +1274,9 @@ class _MessageBubbleState extends State<MessageBubble>
               isSending: message.isSending && !message.isSendAcknowledged,
               isRead: widget.isRead,
               pendingColor: _outgoingTextColor,
+              sentColor: _showsMessageBubbleSurface
+                  ? Colors.white
+                  : _outgoingTextColor,
               size: 10,
             ),
         ],
@@ -1402,11 +1439,21 @@ class _MessageBubbleState extends State<MessageBubble>
       button.style,
       primary: AppTheme.brand,
       standard: (
-        background: outgoing
+        background: !_showsMessageBubbleSurface
+            ? c.card
+            : outgoing
             ? Colors.white.withValues(alpha: 0.92)
             : _incomingBubbleColor,
-        foreground: outgoing ? AppTheme.brand : c.linkBlue,
-        border: outgoing ? Colors.white.withValues(alpha: 0.65) : c.divider,
+        foreground: !_showsMessageBubbleSurface
+            ? c.linkBlue
+            : outgoing
+            ? AppTheme.brand
+            : c.linkBlue,
+        border: !_showsMessageBubbleSurface
+            ? c.divider
+            : outgoing
+            ? Colors.white.withValues(alpha: 0.65)
+            : c.divider,
       ),
     );
     return Material(
@@ -1501,7 +1548,7 @@ class _MessageBubbleState extends State<MessageBubble>
     final bubblePadding = emojiOnly
         ? const EdgeInsets.symmetric(horizontal: 10, vertical: 7)
         : const EdgeInsets.symmetric(horizontal: 12, vertical: 9);
-    final effectivePadding = _bubbleBackgroundStyle.isDecorative
+    final effectivePadding = _usesDecorativeBubbleBackground
         ? _bubbleBackgroundStyle.contentPadding
         : bubblePadding;
     // Preview geometry must use the bubble's content box, not its outer
@@ -2753,7 +2800,7 @@ class _MessageBubbleState extends State<MessageBubble>
     // Decorative bubbles may contain ornaments across their stretchable
     // center. Precomposing the preview fill keeps those pixels from showing
     // through the card while retaining the same tint.
-    final cardBackground = _bubbleBackgroundStyle.isDecorative
+    final cardBackground = _usesDecorativeBubbleBackground
         ? Color.alphaBlend(
             translucentBackground,
             outgoing ? _outgoingBubbleColor : _incomingBubbleColor,
@@ -3201,7 +3248,7 @@ class _MessageBubbleState extends State<MessageBubble>
   /// 转发 attribution shown above forwarded content: `转发自 …`.
   Widget _forwardHeader(bool outgoing) {
     final textColor = _messageForwardedNameColor(outgoing);
-    final accent = _bubbleBackgroundStyle.isDecorative
+    final accent = _usesDecorativeBubbleBackground
         ? textColor
         : _messageColors == null && !outgoing
         ? AppTheme.brand
@@ -3359,6 +3406,9 @@ class _MessageBubbleState extends State<MessageBubble>
                 isSending: message.isSending && !message.isSendAcknowledged,
                 isRead: widget.isRead,
                 pendingColor: _outgoingTextColor,
+                sentColor: _showsMessageBubbleSurface
+                    ? Colors.white
+                    : _outgoingTextColor,
                 size: 10,
               ),
           ],
@@ -4049,7 +4099,7 @@ class _MessageBubbleState extends State<MessageBubble>
         : geometry.frameSize;
     final usesBlurredFrame = geometry.needsBlurredFill || widensForCaption;
     final grouped = _groupsMediaCaption(caption);
-    final mediaRadius = grouped ? 0.0 : 10.0;
+    final mediaRadius = grouped && _showsMessageBubbleSurface ? 0.0 : 10.0;
     final mediaBorderRadius = _messageBorderRadius(mediaRadius);
     final media = GestureDetector(
       onTap: () => widget.onOpenImage?.call(message),
@@ -4059,6 +4109,7 @@ class _MessageBubbleState extends State<MessageBubble>
         child: usesBlurredFrame
             ? _blurredImageFrame(image, imageSize, frameSize, mediaBorderRadius)
             : ClipRRect(
+                key: ValueKey('messageMediaClip-${message.id}'),
                 borderRadius: mediaBorderRadius,
                 child: TDImage(
                   photo: image,
@@ -4248,14 +4299,16 @@ class _MessageBubbleState extends State<MessageBubble>
     final baseColor = outgoing ? _outgoingTextColor : _incomingTextColor;
     final linkColor = _messageLinkColor(outgoing);
     return Container(
-      decoration: BoxDecoration(
-        color: outgoing ? _outgoingBubbleColor : _incomingBubbleColor,
-        borderRadius: _messageBorderRadius(8),
-        border: outgoing || _messageColors != null
-            ? null
-            : Border.all(color: c.divider, width: 0.5),
-      ),
-      clipBehavior: Clip.antiAlias,
+      decoration: _showsMessageBubbleSurface
+          ? BoxDecoration(
+              color: outgoing ? _outgoingBubbleColor : _incomingBubbleColor,
+              borderRadius: _messageBorderRadius(8),
+              border: outgoing || _messageColors != null
+                  ? null
+                  : Border.all(color: c.divider, width: 0.5),
+            )
+          : null,
+      clipBehavior: _showsMessageBubbleSurface ? Clip.antiAlias : Clip.none,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -4319,7 +4372,7 @@ class _MessageBubbleState extends State<MessageBubble>
     final caption = _caption();
     final dur = message.videoDuration ?? 0;
     final grouped = _groupsMediaCaption(caption);
-    final mediaRadius = grouped ? 0.0 : 10.0;
+    final mediaRadius = grouped && _showsMessageBubbleSurface ? 0.0 : 10.0;
     final media = GestureDetector(
       onTap: () => widget.onPlayVideo?.call(message),
       onLongPress: () => _handleLongPress(MessageActionSource.video),
@@ -4396,7 +4449,7 @@ class _MessageBubbleState extends State<MessageBubble>
     final size = _imageDisplaySize();
     final caption = _caption();
     final grouped = _groupsMediaCaption(caption);
-    final mediaRadius = grouped ? 0.0 : 10.0;
+    final mediaRadius = grouped && _showsMessageBubbleSurface ? 0.0 : 10.0;
     final media = GestureDetector(
       onTap: () => widget.onPlayVideo?.call(message),
       onLongPress: () => _handleLongPress(MessageActionSource.video),
@@ -4485,7 +4538,7 @@ class _MessageBubbleState extends State<MessageBubble>
 
   Widget _voiceBubble(MessageVoice voice, bool outgoing) {
     final c = context.colors;
-    final decorative = _bubbleBackgroundStyle.isDecorative;
+    final decorative = _usesDecorativeBubbleBackground;
     final fg = outgoing
         ? _outgoingTextColor
         : decorative
@@ -5177,12 +5230,14 @@ class _MessageDeliveryIndicator extends StatefulWidget {
     required this.isSending,
     required this.isRead,
     required this.pendingColor,
+    required this.sentColor,
     required this.size,
   });
 
   final bool isSending;
   final bool isRead;
   final Color pendingColor;
+  final Color sentColor;
   final double size;
 
   @override
@@ -5240,7 +5295,7 @@ class _MessageDeliveryIndicatorState extends State<_MessageDeliveryIndicator>
             ? widget.pendingColor.withValues(alpha: 0.72)
             : widget.isRead
             ? const Color(0xFF34C759)
-            : const Color(0xFFFFFFFF),
+            : widget.sentColor,
       ),
     ),
   );

@@ -90,7 +90,7 @@ class _MiniAppsSearchTabState extends State<MiniAppsSearchTab> {
                 child: Text(
                   widget.query.trim().isEmpty
                       ? AppStrings.t(AppStringKeys.miniAppRecentSection)
-                      : 'Mini App',
+                      : AppStrings.t(AppStringKeys.miniAppName),
                   style: TextStyle(fontSize: 16, color: c.textSecondary),
                 ),
               ),

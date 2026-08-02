@@ -4,7 +4,9 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mithka/l10n/app_localizations.dart';
+import 'package:provider/provider.dart';
 
+import '../chat/group_remark_controller.dart';
 import '../chat/message_bubble.dart';
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
@@ -361,6 +363,13 @@ class _ChatListPreviewSurfaceState extends State<ChatListPreviewSurface> {
 
   Widget _previewHeader(BuildContext context) {
     final c = context.colors;
+    final title = widget.chat.kind == ChatKind.group
+        ? context.watch<GroupRemarkController?>()?.displayTitleFor(
+                widget.chat.id,
+                widget.chat.title,
+              ) ??
+              widget.chat.title
+        : widget.chat.title;
     return Container(
       height: 62,
       padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -368,7 +377,7 @@ class _ChatListPreviewSurfaceState extends State<ChatListPreviewSurface> {
       child: Row(
         children: [
           PhotoAvatar(
-            title: widget.chat.title,
+            title: title,
             photo: widget.chat.photo,
             size: 40,
             square: widget.chat.usesSquareAvatar,
@@ -377,7 +386,7 @@ class _ChatListPreviewSurfaceState extends State<ChatListPreviewSurface> {
           const SizedBox(width: 11),
           Expanded(
             child: Text(
-              widget.chat.title,
+              title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(

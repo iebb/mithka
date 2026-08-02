@@ -1,9 +1,9 @@
 //
 //  settings_view.dart
 //
-//  Settings are grouped by ownership so Telegram account controls are not
-//  confused with Mithka preferences stored on this device. Frequently used
-//  destinations are linked directly and can be searched from this screen.
+//  Settings are ordered by the task the user wants to complete. Telegram
+//  account controls and Mithka preferences keep direct, distinct destinations
+//  without making their implementation owner the top-level navigation.
 //
 
 import 'dart:async';
@@ -85,7 +85,11 @@ class _SettingsViewState extends State<SettingsView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final destinations = _destinations(context);
+    final destinations = _destinations(context)
+      ..sort((a, b) {
+        final groupOrder = a.group.compareTo(b.group);
+        return groupOrder != 0 ? groupOrder : a.order.compareTo(b.order);
+      });
     final query = _searchController.text.trim().toLowerCase();
     final matches = query.isEmpty
         ? const <_SettingsDestination>[]
@@ -134,6 +138,7 @@ class _SettingsViewState extends State<SettingsView> {
         id: 'edit-profile',
         owner: _SettingsOwner.telegram,
         group: 0,
+        order: 0,
         titleKey: AppStringKeys.editProfileTitle,
         icon: HeroAppIcons.solidCircleUser,
         color: const Color(0xFF3C8CF0),
@@ -144,6 +149,7 @@ class _SettingsViewState extends State<SettingsView> {
         id: 'telegram-business',
         owner: _SettingsOwner.telegram,
         group: 0,
+        order: 10,
         titleKey: AppStringKeys.businessSettingsTitle,
         icon: HeroAppIcons.venue,
         color: const Color(0xFF7467F0),
@@ -158,9 +164,9 @@ class _SettingsViewState extends State<SettingsView> {
         ],
       ),
       _SettingsDestination(
-        id: 'telegram-notifications',
-        owner: _SettingsOwner.telegram,
-        group: 1,
+        id: 'notifications',
+        group: 2,
+        order: 0,
         titleKey: AppStringKeys.notificationNotifications,
         icon: HeroAppIcons.solidBell,
         color: const Color(0xFFF5A623),
@@ -172,12 +178,21 @@ class _SettingsViewState extends State<SettingsView> {
           'channels',
           'stories',
           'reactions',
+          'in-app notifications',
+          'this device',
+          'on-device',
+          'vibrate',
+          'preview',
+          'lock screen',
+          'accounts',
+          'telegram account',
         ],
       ),
       _SettingsDestination(
         id: 'telegram-privacy',
         owner: _SettingsOwner.telegram,
-        group: 1,
+        group: 2,
+        order: 20,
         titleKey: AppStringKeys.privacySecurityTitle,
         icon: HeroAppIcons.shieldHalved,
         color: const Color(0xFF16B05A),
@@ -196,7 +211,8 @@ class _SettingsViewState extends State<SettingsView> {
       _SettingsDestination(
         id: 'telegram-blocked-users',
         owner: _SettingsOwner.telegram,
-        group: 1,
+        group: 2,
+        order: 30,
         titleKey: AppStringKeys.blockingBlocklist,
         icon: HeroAppIcons.ban,
         color: const Color(0xFFDA405B),
@@ -206,7 +222,8 @@ class _SettingsViewState extends State<SettingsView> {
       _SettingsDestination(
         id: 'telegram-chat-folders',
         owner: _SettingsOwner.telegram,
-        group: 1,
+        group: 3,
+        order: 10,
         titleKey: AppStringKeys.appearanceChatFolders,
         icon: HeroAppIcons.solidFolder,
         color: const Color(0xFF34A2DF),
@@ -216,7 +233,8 @@ class _SettingsViewState extends State<SettingsView> {
       _SettingsDestination(
         id: 'telegram-language',
         owner: _SettingsOwner.telegram,
-        group: 1,
+        group: 4,
+        order: 10,
         titleKey: AppStringKeys.languageTelegramLanguage,
         icon: HeroAppIcons.globe,
         color: const Color(0xFF34A2DF),
@@ -226,7 +244,8 @@ class _SettingsViewState extends State<SettingsView> {
       _SettingsDestination(
         id: 'mithka-pro',
         owner: _SettingsOwner.mithka,
-        group: 0,
+        group: 1,
+        order: 0,
         titleKey: AppStringKeys.mithkaProTitle,
         icon: HeroAppIcons.solidStar,
         color: const Color(0xFF7C5CFC),
@@ -238,7 +257,8 @@ class _SettingsViewState extends State<SettingsView> {
       _SettingsDestination(
         id: 'mithka-appearance',
         owner: _SettingsOwner.mithka,
-        group: 1,
+        group: 3,
+        order: 0,
         titleKey: AppStringKeys.appearanceTitle,
         icon: HeroAppIcons.wandMagicSparkles,
         color: const Color(0xFF8E7BFF),
@@ -249,13 +269,17 @@ class _SettingsViewState extends State<SettingsView> {
           'icon',
           'wallpaper',
           'bubbles',
+          'message bubbles',
+          'show message bubbles',
+          'disable message bubbles',
           'interface',
         ],
       ),
       _SettingsDestination(
         id: 'mithka-language',
         owner: _SettingsOwner.mithka,
-        group: 1,
+        group: 4,
+        order: 0,
         titleKey: AppStringKeys.languageMithkaLanguage,
         icon: HeroAppIcons.language,
         color: const Color(0xFF34A2DF),
@@ -265,7 +289,8 @@ class _SettingsViewState extends State<SettingsView> {
       _SettingsDestination(
         id: 'mithka-translation',
         owner: _SettingsOwner.mithka,
-        group: 1,
+        group: 4,
+        order: 20,
         titleKey: AppStringKeys.translationSettingsTitle,
         icon: HeroAppIcons.comment,
         color: const Color(0xFF16B0A0),
@@ -273,25 +298,10 @@ class _SettingsViewState extends State<SettingsView> {
         searchTerms: const ['translate', 'languages', 'automatic translation'],
       ),
       _SettingsDestination(
-        id: 'mithka-notifications',
-        owner: _SettingsOwner.mithka,
-        group: 2,
-        titleKey: AppStringKeys.notificationOnDeviceTitle,
-        icon: HeroAppIcons.bell,
-        color: const Color(0xFFF5A623),
-        destination: () => const MithkaNotificationSettingsView(),
-        searchTerms: const [
-          'in-app notifications',
-          'vibrate',
-          'preview',
-          'lock screen',
-          'accounts',
-        ],
-      ),
-      _SettingsDestination(
         id: 'mithka-data-storage',
         owner: _SettingsOwner.mithka,
-        group: 2,
+        group: 3,
+        order: 30,
         titleKey: AppStringKeys.settingsDataAndStorage,
         icon: HeroAppIcons.compactDisc,
         color: const Color(0xFF16B0A0),
@@ -308,7 +318,8 @@ class _SettingsViewState extends State<SettingsView> {
       _SettingsDestination(
         id: 'mithka-chat-behavior',
         owner: _SettingsOwner.mithka,
-        group: 2,
+        group: 3,
+        order: 20,
         titleKey: AppStringKeys.settingsChatBehavior,
         icon: HeroAppIcons.solidMessage,
         color: const Color(0xFF3C8CF0),
@@ -326,6 +337,7 @@ class _SettingsViewState extends State<SettingsView> {
         id: 'mithka-content-filters',
         owner: _SettingsOwner.mithka,
         group: 2,
+        order: 40,
         titleKey: AppStringKeys.settingsContentFilters,
         icon: HeroAppIcons.filter,
         color: const Color(0xFFDA405B),
@@ -341,6 +353,7 @@ class _SettingsViewState extends State<SettingsView> {
         id: 'mithka-app-lock',
         owner: _SettingsOwner.mithka,
         group: 2,
+        order: 50,
         titleKey: AppStringKeys.appLockTitle,
         icon: HeroAppIcons.lock,
         color: const Color(0xFF16B05A),
@@ -351,6 +364,7 @@ class _SettingsViewState extends State<SettingsView> {
         id: 'mithka-account-backup',
         owner: _SettingsOwner.mithka,
         group: 2,
+        order: 60,
         titleKey: AppStringKeys.accountBackupTitle,
         icon: HeroAppIcons.cloudArrowDown,
         color: const Color(0xFF7467F0),
@@ -360,7 +374,8 @@ class _SettingsViewState extends State<SettingsView> {
       _SettingsDestination(
         id: 'mithka-features',
         owner: _SettingsOwner.mithka,
-        group: 3,
+        group: 5,
+        order: 0,
         titleKey: AppStringKeys.featureTitle,
         icon: HeroAppIcons.grip,
         color: const Color(0xFF3C8CF0),
@@ -376,7 +391,8 @@ class _SettingsViewState extends State<SettingsView> {
       _SettingsDestination(
         id: 'mithka-ai',
         owner: _SettingsOwner.mithka,
-        group: 3,
+        group: 5,
+        order: 10,
         titleKey: AppStringKeys.aiSettingsTitle,
         icon: HeroAppIcons.cpuChip,
         color: const Color(0xFF7467F0),
@@ -393,7 +409,8 @@ class _SettingsViewState extends State<SettingsView> {
       _SettingsDestination(
         id: 'mithka-proxy',
         owner: _SettingsOwner.mithka,
-        group: 3,
+        group: 5,
+        order: 20,
         titleKey: AppStringKeys.proxyTitle,
         icon: HeroAppIcons.globe,
         color: const Color(0xFF34A2DF),
@@ -403,7 +420,8 @@ class _SettingsViewState extends State<SettingsView> {
       _SettingsDestination(
         id: 'mithka-advanced',
         owner: _SettingsOwner.mithka,
-        group: 3,
+        group: 5,
+        order: 30,
         titleKey: AppStringKeys.advancedTitle,
         icon: HeroAppIcons.objectGroup,
         color: const Color(0xFF16B0A0),
@@ -414,7 +432,8 @@ class _SettingsViewState extends State<SettingsView> {
         _SettingsDestination(
           id: 'mithka-developer',
           owner: _SettingsOwner.mithka,
-          group: 3,
+          group: 5,
+          order: 40,
           titleKey: AppStringKeys.developerModeTitle,
           icon: HeroAppIcons.code,
           color: const Color(0xFFFF5A5F),
@@ -429,7 +448,8 @@ class _SettingsViewState extends State<SettingsView> {
       _SettingsDestination(
         id: 'mithka-about',
         owner: _SettingsOwner.mithka,
-        group: 3,
+        group: 5,
+        order: 50,
         titleKey: AppStringKeys.settingsAboutMithka,
         icon: HeroAppIcons.circleInfo,
         color: const Color(0xFF8E8E93),
@@ -513,14 +533,8 @@ class _SettingsViewState extends State<SettingsView> {
     BuildContext context,
     List<_SettingsDestination> destinations,
   ) {
-    final telegram = destinations
-        .where((item) => item.owner == _SettingsOwner.telegram)
-        .toList();
-    final mithka = destinations
-        .where((item) => item.owner == _SettingsOwner.mithka)
-        .toList();
     return ListView(
-      key: const PageStorageKey<String>('settings-owner-list'),
+      key: const PageStorageKey<String>('settings-list'),
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.lg,
         AppSpacing.sm,
@@ -528,29 +542,9 @@ class _SettingsViewState extends State<SettingsView> {
         AppSpacing.section,
       ),
       children: [
-        _scopeHeader(
-          key: const ValueKey('settings-section-telegram'),
-          title: AppStringKeys.settingsScopeTelegram.l10n(context),
-          description: AppStringKeys.settingsScopeTelegramDescription.l10n(
-            context,
-          ),
-          icon: HeroAppIcons.solidPaperPlane,
-          color: const Color(0xFF3295F6),
-        ),
-        ..._groupCards(context, telegram),
+        ..._groupCards(context, destinations),
         const SizedBox(height: AppSpacing.xl),
         _logoutCard(context),
-        const SizedBox(height: 30),
-        _scopeHeader(
-          key: const ValueKey('settings-section-mithka'),
-          title: AppStringKeys.settingsScopeMithka.l10n(context),
-          description: AppStringKeys.settingsScopeMithkaDescription.l10n(
-            context,
-          ),
-          icon: HeroAppIcons.wandMagicSparkles,
-          color: const Color(0xFF7C5CFC),
-        ),
-        ..._groupCards(context, mithka),
       ],
     );
   }
@@ -564,11 +558,12 @@ class _SettingsViewState extends State<SettingsView> {
       groups.putIfAbsent(destination.group, () => []).add(destination);
     }
     final widgets = <Widget>[];
-    for (final group in groups.values) {
+    final groupIds = groups.keys.toList()..sort();
+    for (final groupId in groupIds) {
       if (widgets.isNotEmpty) {
         widgets.add(const SizedBox(height: AppSpacing.xl));
       }
-      widgets.add(_destinationCard(context, group));
+      widgets.add(_destinationCard(context, groups[groupId]!));
     }
     return widgets;
   }
@@ -613,66 +608,6 @@ class _SettingsViewState extends State<SettingsView> {
     );
   }
 
-  Widget _scopeHeader({
-    required Key key,
-    required String title,
-    required String description,
-    required AppIconData icon,
-    required Color color,
-  }) {
-    final c = context.colors;
-    return Semantics(
-      key: key,
-      header: true,
-      container: true,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.xs,
-          AppSpacing.md,
-          AppSpacing.xs,
-          AppSpacing.md,
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SettingsIconTile(
-              icon: icon,
-              backgroundColor: color,
-              size: 34,
-              iconSize: 18,
-              radius: AppRadius.control,
-            ),
-            const SizedBox(width: AppSpacing.lg),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: AppTextWeight.semibold,
-                      color: c.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.xxs),
-                  Text(
-                    description,
-                    style: TextStyle(
-                      fontSize: AppTextSize.footnote,
-                      height: 1.3,
-                      color: c.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _destinationCard(
     BuildContext context,
     List<_SettingsDestination> destinations, {
@@ -701,7 +636,7 @@ class _SettingsViewState extends State<SettingsView> {
       key: ValueKey('settings-destination-${destination.id}'),
       title: destination.titleKey,
       value: showOwner
-          ? destination.owner.titleKey
+          ? destination.owner?.titleKey ?? ''
           : destination.trailingKey ?? version ?? '',
       leading: SettingsIconTile(
         icon: destination.icon,
@@ -777,12 +712,13 @@ enum _SettingsOwner {
 class _SettingsDestination {
   const _SettingsDestination({
     required this.id,
-    required this.owner,
     required this.group,
+    required this.order,
     required this.titleKey,
     required this.icon,
     required this.color,
     required this.destination,
+    this.owner,
     this.trailingKey,
     this.platformNeutralRoute = false,
     this.showsVersion = false,
@@ -790,8 +726,9 @@ class _SettingsDestination {
   });
 
   final String id;
-  final _SettingsOwner owner;
+  final _SettingsOwner? owner;
   final int group;
+  final int order;
   final String titleKey;
   final AppIconData icon;
   final Color color;
@@ -804,7 +741,7 @@ class _SettingsDestination {
   bool matches(BuildContext context, String query) {
     final haystack = <String>[
       titleKey.l10n(context),
-      owner.titleKey.l10n(context),
+      if (owner != null) owner!.titleKey.l10n(context),
       id.replaceAll('-', ' '),
       ...searchTerms,
     ].join(' ').toLowerCase();

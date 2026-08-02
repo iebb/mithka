@@ -7,7 +7,6 @@
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../components/app_icons.dart';
 import '../components/desktop_content_constraint.dart';
@@ -403,29 +402,6 @@ class ChatBehaviorSettingsView extends StatefulWidget {
 }
 
 class _ChatBehaviorSettingsViewState extends State<ChatBehaviorSettingsView> {
-  bool _enterToSend = false;
-  SharedPreferences? _prefs;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadPrefs();
-  }
-
-  Future<void> _loadPrefs() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (!mounted) return;
-    setState(() {
-      _prefs = prefs;
-      _enterToSend = prefs.getBool('enterToSend') ?? false;
-    });
-  }
-
-  void _setEnterToSend(bool value) {
-    setState(() => _enterToSend = value);
-    _prefs?.setBool('enterToSend', value);
-  }
-
   SettingsIconTile _icon(AppIconData icon, Color color) =>
       SettingsIconTile(icon: icon, backgroundColor: color);
 
@@ -451,12 +427,12 @@ class _ChatBehaviorSettingsViewState extends State<ChatBehaviorSettingsView> {
                       SettingsSwitchRow(
                         key: const ValueKey('chat-behavior-enter-to-send'),
                         title: AppStringKeys.generalSendMessageWithEnter,
-                        value: _enterToSend,
+                        value: theme.enterToSend,
                         leading: _icon(
                           HeroAppIcons.reply,
                           const Color(0xFF3C8CF0),
                         ),
-                        onChanged: _setEnterToSend,
+                        onChanged: (value) => theme.enterToSend = value,
                       ),
                       const InsetDivider(leadingInset: 56),
                       SettingsSwitchRow(

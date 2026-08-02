@@ -94,8 +94,8 @@ android/app/src/main/jniLibs/
 /docs/privacy-policy.md
 /docs/privacy-policy.zh-Hans.md
 
-# Local App Review login relay helpers. Keep the relay server/session tooling
-# off GitHub; Xcode Cloud only needs the REVIEW_RELAY dart-define.
+# Local App Review credentials, OTP viewer, and relay helpers. Keep the
+# server/session tooling off GitHub.
 /scripts/review_code_relay/
 /workers/review-login-code/
 
