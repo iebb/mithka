@@ -510,7 +510,7 @@ class _CommunityViewState extends State<CommunityView> {
       onChatSelected(chat);
       return;
     }
-    if (chat.isForum) {
+    if (chat.supportsTopics) {
       final mode = await TopicGroupDisplayPreference.load();
       if (!mounted) return;
       if (!mode.isChat) {

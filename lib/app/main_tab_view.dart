@@ -660,7 +660,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
       ),
       0 when _selectedMessageChat != null => ValueKey(
         'tablet-message-chat-${_selectedMessageChat!.chatId}-'
-        '${_selectedMessageChat!.isForum}-'
+        '${_selectedMessageChat!.supportsTopics}-'
         '${_selectedMessageChat!.initialMessageId ?? 0}-'
         '${_selectedMessageChat!.composerFocusRequestId}',
       ),
@@ -713,11 +713,13 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
     final headerColor = context.colors.chatBackground;
     return KeyedSubtree(
       key: ValueKey(
-        'message-detail-${selected.chatId}-${selected.isForum}-'
+        'message-detail-${selected.chatId}-${selected.supportsTopics}-'
         '${selected.initialMessageId ?? 0}-${selected.composerFocusRequestId}',
       ),
       child:
-          selected.isForum && chat != null && selected.initialMessageId == null
+          selected.supportsTopics &&
+              chat != null &&
+              selected.initialMessageId == null
           ? _ForumSplitDetailPane(
               chat: chat,
               headerHeight: headerHeight,

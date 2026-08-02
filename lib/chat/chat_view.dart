@@ -6007,6 +6007,7 @@ class _ChatViewState extends State<ChatView> {
             onMessageSent: _onComposerMessageSent,
             onPanelGeometryChanged: _onComposerPanelGeometryChanged,
             onMediaSendTapped: _onComposerMediaSendTapped,
+            onBotTopicCreated: _openTopicMode,
           ),
         ],
       );
@@ -6347,7 +6348,7 @@ class _ChatViewState extends State<ChatView> {
                       color: c.textPrimary,
                     ),
                   ),
-                  if (_vm.isForum) ...[
+                  if (_vm.supportsTopics) ...[
                     const SizedBox(width: 18),
                     GestureDetector(
                       behavior: HitTestBehavior.opaque,
@@ -6410,7 +6411,7 @@ class _ChatViewState extends State<ChatView> {
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (_vm.isForum)
+        if (_vm.supportsTopics)
           Row(
             children: [
               Expanded(child: title),
@@ -6436,7 +6437,7 @@ class _ChatViewState extends State<ChatView> {
           ),
       ],
     );
-    if (_vm.isForum) {
+    if (_vm.supportsTopics) {
       return GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: _showTopicSelector,
@@ -6462,9 +6463,14 @@ class _ChatViewState extends State<ChatView> {
     unreadCount: _vm.unreadCount,
     order: 0,
     isMuted: _vm.isMuted,
-    kind: _vm.isChannel ? ChatKind.channel : ChatKind.group,
+    kind: _vm.peerIsBot
+        ? ChatKind.bot
+        : _vm.isChannel
+        ? ChatKind.channel
+        : ChatKind.group,
     photo: _vm.peerPhoto,
-    isForum: true,
+    isForum: _vm.isForum,
+    supportsBotTopics: _vm.supportsBotTopics,
   );
 
   Future<void> _openTopicMode([int? threadId]) async {
@@ -6488,7 +6494,7 @@ class _ChatViewState extends State<ChatView> {
   }
 
   Future<void> _showTopicSelector() async {
-    if (!_vm.isForum) return;
+    if (!_vm.supportsTopics) return;
     if (_vm.forumTopics.isEmpty && !_vm.forumTopicsLoading) {
       await _vm.loadForumTopics();
     }

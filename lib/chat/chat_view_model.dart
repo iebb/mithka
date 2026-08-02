@@ -378,6 +378,8 @@ class ChatViewModel extends ChangeNotifier {
   BotMenuInfo? botMenu;
   List<BotCommandOption> botCommands = const [];
   bool isForum = false;
+  bool supportsBotTopics = false;
+  bool get supportsTopics => isForum || supportsBotTopics;
   bool forumTopicsLoading = false;
   List<ForumTopicOption> forumTopics = const [];
   int messageAutoDeleteTime = 0;
@@ -3055,7 +3057,7 @@ class ChatViewModel extends ChangeNotifier {
                 isPornographic: TDParse.isPornographicRestriction(user),
               );
             }
-            peerIsBot = _isBotUser(user);
+            _applyPeerBotCapabilities(user, notify: false);
             peerOnline = TDParse.isUserOnline(user);
             peerStatusText = TDParse.userStatus(user);
             firstContactInfo = firstContactInfo?.withUser(user);
@@ -3137,7 +3139,7 @@ class ChatViewModel extends ChangeNotifier {
           unawaited(_loadSupergroupFullInfo(sgid));
         }
     }
-    if (isForum) {
+    if (supportsTopics) {
       unawaited(loadForumTopics());
     } else if (forumTopics.isNotEmpty || forumTopicsLoading) {
       forumTopicsLoading = false;
@@ -3373,7 +3375,7 @@ class ChatViewModel extends ChangeNotifier {
   }
 
   Future<void> loadForumTopics() async {
-    if (!isForum || forumTopicsLoading) return;
+    if (!supportsTopics || forumTopicsLoading) return;
     forumTopicsLoading = true;
     notifyListeners();
     try {
@@ -3454,10 +3456,26 @@ class ChatViewModel extends ChangeNotifier {
         0;
   }
 
-  bool _isBotUser(Map<String, dynamic> user) =>
-      user.obj('type')?.type == 'userTypeBot' ||
-      user.obj('type')?.type == 'userTypeRegularBot' ||
-      user.boolean('is_bot') == true;
+  bool _isBotUser(Map<String, dynamic> user) => TDParse.isBotUser(user);
+
+  void _applyPeerBotCapabilities(
+    Map<String, dynamic> user, {
+    bool notify = true,
+  }) {
+    if (user.int64('id') != peerUserId) return;
+    final nextIsBot = TDParse.isBotUser(user);
+    final nextSupportsTopics = TDParse.botUserHasTopics(user);
+    if (peerIsBot == nextIsBot && supportsBotTopics == nextSupportsTopics) {
+      return;
+    }
+    peerIsBot = nextIsBot;
+    supportsBotTopics = nextSupportsTopics;
+    if (!supportsTopics) {
+      forumTopicsLoading = false;
+      forumTopics = const [];
+    }
+    if (notify) notifyListeners();
+  }
 
   Future<int?> webAppBotUserId(ChatMessage? message) async {
     if (peerIsBot && peerUserId != null) return peerUserId;
@@ -4598,6 +4616,9 @@ class ChatViewModel extends ChangeNotifier {
       case 'updateUser':
         final user = update.obj('user');
         if (user == null) return;
+        if (!isGroup && user.int64('id') == peerUserId) {
+          _applyPeerBotCapabilities(user);
+        }
         _applySenderUserUpdate(user);
 
       case 'updateUserFullInfo':

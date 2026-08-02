@@ -2,8 +2,8 @@
 //  topic_chat_view.dart
 //
 //  Forum/topic chat surface. This is not the normal Telegram chat screen:
-//  it presents a topic tab strip and post feed for chats that TDLib exposes as
-//  view_as_topics.
+//  it presents a topic tab strip and post feed for forum supergroups and
+//  private bot chats whose userTypeBot advertises has_topics.
 //
 
 import 'dart:async';
@@ -171,6 +171,16 @@ bool isReportableForumTopicMessage(
       !message.isService;
 }
 
+bool showsGroupTopicControls(ChatSummary chat) => chat.isForum;
+
+bool canComposeInTopicSurface({
+  required ChatSummary chat,
+  required int? forumTopicId,
+}) {
+  if (chat.isForum) return true;
+  return chat.supportsBotTopics && forumTopicId != null;
+}
+
 List<int> takeNewlyVisibleForumTopicMessageIds({
   required Rect viewport,
   required Map<int, Rect> messageBounds,
@@ -198,6 +208,36 @@ Map<String, dynamic> forumTopicViewMessagesRequest({
   'source': {'@type': 'messageSourceForumTopicHistory'},
   'force_read': true,
 };
+
+typedef ForumTopicMessageQuery =
+    Future<Map<String, dynamic>> Function(Map<String, dynamic> request);
+
+Map<String, dynamic> forumTopicScopedSendRequest({
+  required Map<String, dynamic> request,
+  required int forumTopicId,
+}) {
+  if (forumTopicId == 0) {
+    throw ArgumentError.value(forumTopicId, 'forumTopicId');
+  }
+  return Map<String, dynamic>.from(request)
+    ..remove('message_thread_id')
+    ..['topic_id'] = {
+      '@type': 'messageTopicForum',
+      'forum_topic_id': forumTopicId,
+    };
+}
+
+Future<Map<String, dynamic>> sendScopedForumTopicMessage({
+  required ForumTopicMessageQuery query,
+  required Map<String, dynamic> request,
+}) {
+  final topic = request.obj('topic_id');
+  final topicId = topic?.integer('forum_topic_id');
+  if (topic?.type != 'messageTopicForum' || topicId == null || topicId == 0) {
+    throw StateError('FORUM_TOPIC_REQUIRED');
+  }
+  return query(request);
+}
 
 class _SenderInfo {
   const _SenderInfo({required this.name, this.photo});
@@ -534,6 +574,9 @@ class _TopicChatViewState extends State<TopicChatView> {
   Future<void> _sendPostText(FormattedTextPayload formatted) async {
     if (formatted.text.trim().isEmpty) return;
     final threadId = _selectedThreadId;
+    if (!canComposeInTopicSurface(chat: widget.chat, forumTopicId: threadId)) {
+      return;
+    }
     try {
       final request = <String, dynamic>{
         '@type': 'sendMessage',
@@ -568,6 +611,9 @@ class _TopicChatViewState extends State<TopicChatView> {
 
   Future<void> _sendPostMedia(RichTextComposerResult result) async {
     final threadId = _selectedThreadId;
+    if (!canComposeInTopicSurface(chat: widget.chat, forumTopicId: threadId)) {
+      return;
+    }
     final requests = buildAttachmentSendRequests(
       chatId: widget.chat.id,
       attachments: result.attachments,
@@ -584,31 +630,23 @@ class _TopicChatViewState extends State<TopicChatView> {
   }
 
   void _attachForumTopic(Map<String, dynamic> request, int forumTopicId) {
-    request['topic_id'] = {
-      '@type': 'messageTopicForum',
-      'forum_topic_id': forumTopicId,
-    };
-    request['message_thread_id'] = forumTopicId;
+    final scoped = forumTopicScopedSendRequest(
+      request: request,
+      forumTopicId: forumTopicId,
+    );
+    request
+      ..clear()
+      ..addAll(scoped);
   }
 
   Future<void> _sendForumMessage(Map<String, dynamic> request) async {
-    try {
+    if (!request.containsKey('topic_id')) {
       await TdClient.shared.query(request);
       return;
-    } catch (_) {
-      if (!request.containsKey('topic_id') ||
-          !request.containsKey('message_thread_id')) {
-        rethrow;
-      }
     }
-    try {
-      await TdClient.shared.query(
-        Map<String, dynamic>.from(request)..remove('message_thread_id'),
-      );
-      return;
-    } catch (_) {}
-    await TdClient.shared.query(
-      Map<String, dynamic>.from(request)..remove('topic_id'),
+    await sendScopedForumTopicMessage(
+      query: TdClient.shared.query,
+      request: request,
     );
   }
 
@@ -876,7 +914,11 @@ class _TopicChatViewState extends State<TopicChatView> {
           if (_selectedThreadId == null && widget.chat.lastMessage.isNotEmpty)
             _pinnedLine(),
           Expanded(child: _content()),
-          _bottomComposer(),
+          if (canComposeInTopicSurface(
+            chat: widget.chat,
+            forumTopicId: _selectedThreadId,
+          ))
+            _bottomComposer(),
         ],
       ),
     );
@@ -885,12 +927,13 @@ class _TopicChatViewState extends State<TopicChatView> {
   Widget _header() {
     final c = context.colors;
     final top = MediaQuery.of(context).padding.top;
-    final title =
-        context.watch<GroupRemarkController?>()?.displayTitleFor(
-          widget.chat.id,
-          widget.chat.title,
-        ) ??
-        widget.chat.title;
+    final title = widget.chat.isBotTopicChat
+        ? widget.chat.title
+        : context.watch<GroupRemarkController?>()?.displayTitleFor(
+                widget.chat.id,
+                widget.chat.title,
+              ) ??
+              widget.chat.title;
     return Container(
       height: top + widget.headerHeight + 44,
       padding: EdgeInsets.only(top: top),
@@ -929,7 +972,7 @@ class _TopicChatViewState extends State<TopicChatView> {
                   title: title,
                   photo: widget.chat.photo,
                   size: 32,
-                  square: true,
+                  square: widget.chat.usesSquareAvatar,
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -950,7 +993,9 @@ class _TopicChatViewState extends State<TopicChatView> {
                       Text(
                         _topics.isEmpty
                             ? AppStrings.t(
-                                AppStringKeys.topicChatGroupChatTitle,
+                                widget.chat.isBotTopicChat
+                                    ? AppStringKeys.topicChatAllTopics
+                                    : AppStringKeys.topicChatGroupChatTitle,
                               )
                             : AppStrings.t(AppStringKeys.topicChatTopicCount, {
                                 'value1': _topics.length,
@@ -985,19 +1030,21 @@ class _TopicChatViewState extends State<TopicChatView> {
                     ),
                   ),
                 ),
-                const SizedBox(width: AppSpacing.xl),
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _openSettings,
-                  child: Padding(
-                    padding: const EdgeInsets.all(4),
-                    child: AppIcon(
-                      HeroAppIcons.bars,
-                      size: 25,
-                      color: c.textPrimary,
+                if (showsGroupTopicControls(widget.chat)) ...[
+                  const SizedBox(width: AppSpacing.xl),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _openSettings,
+                    child: Padding(
+                      padding: const EdgeInsets.all(4),
+                      child: AppIcon(
+                        HeroAppIcons.bars,
+                        size: 25,
+                        color: c.textPrimary,
+                      ),
                     ),
                   ),
-                ),
+                ],
                 const SizedBox(width: AppSpacing.xl),
               ],
             ),

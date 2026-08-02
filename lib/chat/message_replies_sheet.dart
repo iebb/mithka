@@ -46,6 +46,31 @@ Map<String, dynamic> buildReplySheetTextRequest({
   };
 }
 
+List<Map<String, dynamic>> replySheetSendCandidates(
+  Map<String, dynamic> request,
+) {
+  final candidates = <Map<String, dynamic>>[Map<String, dynamic>.from(request)];
+  if (request.containsKey('message_thread_id')) {
+    candidates.add(
+      Map<String, dynamic>.from(request)..remove('message_thread_id'),
+    );
+  }
+  // A forum topic is an explicit destination, not optional metadata. If a
+  // scoped request is rejected, fail closed instead of replying in the chat's
+  // root conversation.
+  if (request.obj('topic_id')?.type == 'messageTopicForum') {
+    return candidates;
+  }
+  if (request.containsKey('topic_id') && request.containsKey('reply_to')) {
+    candidates.add(
+      Map<String, dynamic>.from(request)
+        ..remove('topic_id')
+        ..remove('message_thread_id'),
+    );
+  }
+  return candidates;
+}
+
 class MessageRepliesViewTarget {
   const MessageRepliesViewTarget({
     required this.chatId,
@@ -533,27 +558,18 @@ class _MessageRepliesSheetState extends State<_MessageRepliesSheet> {
   Future<void> _sendRequestWithCompatibility(
     Map<String, dynamic> request,
   ) async {
-    try {
-      await TdClient.shared.query(request);
-      return;
-    } catch (_) {
-      if (request.containsKey('message_thread_id')) {
-        final withoutLegacyThread = Map<String, dynamic>.from(request)
-          ..remove('message_thread_id');
-        try {
-          await TdClient.shared.query(withoutLegacyThread);
-          return;
-        } catch (_) {}
-      }
-      if (request.containsKey('topic_id') && request.containsKey('reply_to')) {
-        final replyOnly = Map<String, dynamic>.from(request)
-          ..remove('topic_id')
-          ..remove('message_thread_id');
-        await TdClient.shared.query(replyOnly);
+    Object? lastError;
+    StackTrace? lastStackTrace;
+    for (final candidate in replySheetSendCandidates(request)) {
+      try {
+        await TdClient.shared.query(candidate);
         return;
+      } catch (error, stackTrace) {
+        lastError = error;
+        lastStackTrace = stackTrace;
       }
-      rethrow;
     }
+    Error.throwWithStackTrace(lastError!, lastStackTrace!);
   }
 
   @override

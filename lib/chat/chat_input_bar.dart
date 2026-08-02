@@ -336,6 +336,7 @@ class ChatInputBar extends StatefulWidget {
     this.requestInitialFocus = false,
     this.enterToSend = false,
     this.quickRepliesEnabled = true,
+    this.onBotTopicCreated,
     this.quickReplyLoader,
     this.quickReplySender,
     this.onVoicePanelOpenedForTesting,
@@ -353,6 +354,7 @@ class ChatInputBar extends StatefulWidget {
   final bool requestInitialFocus;
   final bool enterToSend;
   final bool quickRepliesEnabled;
+  final ValueChanged<int>? onBotTopicCreated;
   @visibleForTesting
   final Future<List<BusinessQuickReplyShortcut>> Function()? quickReplyLoader;
   @visibleForTesting
@@ -2805,13 +2807,22 @@ class _ChatInputBarState extends State<ChatInputBar> {
     );
     if (name == null) return;
     try {
-      await _botPlatform.createBotTopic(chatId: vm.chatId, name: name);
-      if (mounted) {
-        showToast(
-          context,
-          AppStrings.t(AppStringKeys.chatInputBarBotTopicCreated),
-        );
+      final result = await _botPlatform.createBotTopic(
+        chatId: vm.chatId,
+        name: name,
+      );
+      final topicId = forumTopicIdFromResult(result);
+      await vm.loadForumTopics();
+      if (!mounted) return;
+      final onBotTopicCreated = widget.onBotTopicCreated;
+      if (topicId != null && topicId != 0 && onBotTopicCreated != null) {
+        onBotTopicCreated(topicId);
+        return;
       }
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.chatInputBarBotTopicCreated),
+      );
     } catch (error) {
       _showBotPlatformFailure(error);
     }

@@ -6,6 +6,14 @@ import '../tdlib/td_client.dart';
 typedef BotPlatformQuery =
     Future<Map<String, dynamic>> Function(Map<String, dynamic> request);
 
+int? forumTopicIdFromResult(Map<String, dynamic> result) {
+  final info = result.obj('info') ?? result;
+  return info.integer('forum_topic_id') ??
+      info.int64('message_thread_id') ??
+      result.integer('forum_topic_id') ??
+      result.int64('message_thread_id');
+}
+
 enum BotButtonStyle { standard, primary, danger, success }
 
 class BotButtonPresentation {

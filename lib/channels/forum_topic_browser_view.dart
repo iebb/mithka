@@ -79,7 +79,7 @@ class _ForumTopicBrowserViewState extends State<ForumTopicBrowserView> {
 
   void _selectChat(ChatSummary chat) {
     if (_selectedChat.id == chat.id) return;
-    if (!chat.isForum) {
+    if (!chat.supportsTopics) {
       replaceWithAppChatRoute(
         context,
         AppChatPageRoute(

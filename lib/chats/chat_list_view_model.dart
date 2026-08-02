@@ -1244,6 +1244,8 @@ class ChatListViewModel extends ChangeNotifier {
     final userId = user.int64('id');
     if (userId == null) return;
     var changed = false;
+    final isBot = TDParse.isBotUser(user);
+    final supportsBotTopics = TDParse.botUserHasTopics(user);
     final isPremium = user.boolean('is_premium') ?? false;
     final isContact = user.boolean('is_contact') ?? false;
     final phoneNumber = user.str('phone_number');
@@ -1254,11 +1256,18 @@ class ChatListViewModel extends ChangeNotifier {
       ..._communityDirectoryChats.values,
     ]) {
       if (chat.peerUserId != userId) continue;
+      final nextKind = isBot
+          ? ChatKind.bot
+          : chat.kind == ChatKind.bot
+          ? ChatKind.privateChat
+          : chat.kind;
       if (chat.peerIsPremium == isPremium &&
           chat.peerIsContact == isContact &&
           chat.peerPhoneNumber == phoneNumber &&
           chat.peerAccentColorId == accent &&
-          chat.peerEmojiStatusId == status) {
+          chat.peerEmojiStatusId == status &&
+          chat.kind == nextKind &&
+          chat.supportsBotTopics == supportsBotTopics) {
         continue;
       }
       chat.peerIsPremium = isPremium;
@@ -1266,6 +1275,8 @@ class ChatListViewModel extends ChangeNotifier {
       chat.peerPhoneNumber = phoneNumber;
       chat.peerAccentColorId = accent;
       chat.peerEmojiStatusId = status;
+      chat.kind = nextKind;
+      chat.supportsBotTopics = supportsBotTopics;
       changed = true;
     }
     _resolveBotCommunityIfNeeded(userId, user);

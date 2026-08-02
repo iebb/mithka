@@ -293,6 +293,53 @@ void main() {
     expect(find.byType(UnreadBadge), findsNothing);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('topic-enabled bot chat uses the reusable topic browser', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final theme = ThemeController(preferences);
+    addTearDown(theme.dispose);
+    final chat = ChatSummary(
+      id: 420,
+      title: 'Topic Bot',
+      lastMessage: 'Latest',
+      lastMessageId: 100,
+      date: 1,
+      unreadCount: 0,
+      order: 1,
+      isMuted: false,
+      kind: ChatKind.bot,
+      supportsBotTopics: true,
+    );
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<ThemeController>.value(
+        value: theme,
+        child: MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: const [AppLocalizations.delegate],
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ForumTopicBrowserView(
+            chats: [chat],
+            initialChat: chat,
+            query: (request) async {
+              expect(request['@type'], 'getForumTopics');
+              expect(request['chat_id'], 420);
+              return _forumTopicsResponse(unreadCount: 0);
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(chat.isForum, isFalse);
+    expect(chat.supportsTopics, isTrue);
+    expect(find.text('Topic A'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 Map<String, dynamic> _forumTopicsResponse({required int unreadCount}) => {

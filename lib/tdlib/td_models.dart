@@ -506,6 +506,7 @@ class ChatSummary {
     this.peerAccentColorId = -1,
     this.peerEmojiStatusId = 0,
     this.isForum = false,
+    this.supportsBotTopics = false,
     this.lastChatMessage,
     this.isSavedMessages = false,
   });
@@ -534,6 +535,7 @@ class ChatSummary {
   int peerAccentColorId;
   int peerEmojiStatusId;
   bool isForum;
+  bool supportsBotTopics;
   ChatMessage? lastChatMessage;
   bool
   isSavedMessages; // true when this is the Saved Messages chat (private chat with yourself)
@@ -542,6 +544,15 @@ class ChatSummary {
   /// override them; people use a circle.
   bool get usesSquareAvatar =>
       kind == ChatKind.group || kind == ChatKind.channel;
+
+  /// Whether this chat can be browsed and addressed through forum topics.
+  ///
+  /// TDLib's `chat.view_as_topics` only classifies forum supergroups (and
+  /// Saved Messages presentation). Private bot topics are instead advertised
+  /// by `userTypeBot.has_topics`, so keep the two sources explicit.
+  bool get supportsTopics => isForum || supportsBotTopics;
+
+  bool get isBotTopicChat => supportsBotTopics && !isForum;
 
   bool get showsRedUnreadIndicator =>
       (unreadCount > 0 && !isMuted) || isMarkedUnread;
@@ -1246,6 +1257,16 @@ class CurrentUser {
 // MARK: - Parsing
 
 abstract final class TDParse {
+  static bool isBotUser(Map<String, dynamic> user) {
+    final type = user.obj('type');
+    return type?.type == 'userTypeBot' ||
+        type?.type == 'userTypeRegularBot' ||
+        user.boolean('is_bot') == true;
+  }
+
+  static bool botUserHasTopics(Map<String, dynamic> user) =>
+      isBotUser(user) && (user.obj('type')?.boolean('has_topics') ?? false);
+
   static ChatKind chatKind(Map<String, dynamic> chat) {
     final t = chat.obj('type');
     switch (t?.type) {

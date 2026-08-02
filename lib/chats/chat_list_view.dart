@@ -106,10 +106,11 @@ class ChatListSelection {
   final int composerFocusRequestId;
 
   bool get isForum => chat?.isForum ?? false;
+  bool get supportsTopics => chat?.supportsTopics ?? false;
 }
 
 bool chatListPreviewSupportsQuickReply(ChatSummary chat) =>
-    !chat.isForum &&
+    !chat.supportsTopics &&
     switch (chat.kind) {
       ChatKind.privateChat ||
       ChatKind.group ||
@@ -666,7 +667,7 @@ class _ChatListViewState extends State<ChatListView>
       );
       return;
     }
-    if (chat.isForum) {
+    if (chat.supportsTopics) {
       final mode = await TopicGroupDisplayPreference.load();
       if (!mounted) return;
       if (mode.isChat) {
