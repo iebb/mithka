@@ -335,8 +335,16 @@ jobs:
               | tail -n 1
           )"
           test -x "$apksigner"
-          signer_digests="$("$apksigner" verify --print-certs "$apk" \
-            | awk -F': ' '/Signer #[0-9]+ certificate SHA-256 digest:/ { print tolower($2) }')"
+          # Build Tools 36 reports "Signer #1" while Build Tools 37 reports
+          # per-scheme labels such as "V2 Signer:" for the same certificate.
+          signer_output="$("$apksigner" verify --print-certs "$apk")"
+          signer_digests="$(printf '%s\n' "$signer_output" \
+            | awk -F': ' '
+                /^(Signer #[0-9]+|V[0-9.]+ Signer( #[0-9]+)?:) certificate SHA-256 digest:/ {
+                  print tolower($NF)
+                }
+              ' \
+            | sort -u)"
           expected_signer="645a22f43d59b67969da5d3d3e3092d70927746198e2cb76ecd6f02a80b51305"
           if [ "$signer_digests" != "$expected_signer" ]; then
             echo "APK must have exactly the expected release signing certificate" >&2
