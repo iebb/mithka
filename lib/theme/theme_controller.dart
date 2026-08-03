@@ -891,18 +891,20 @@ class ThemeController extends ChangeNotifier {
       }
     }
     _installedCloudThemes = [];
-    try {
-      final encodedThemes = _prefs.getString(_installedCloudThemesKey);
-      final decodedThemes = encodedThemes == null
-          ? const <Object?>[]
-          : jsonDecode(encodedThemes) as List;
-      for (final value in decodedThemes) {
-        final theme = TelegramCloudTheme.fromJson(value);
+    _loadInstalledCloudThemeCache(migrateLegacy: true);
+    // Shared appearance selections may have been chosen by another Telegram
+    // account. They remain valid shared selections, but must never be injected
+    // into this account's installed-theme membership cache. Per-account
+    // selections are already bound to the same stable identity and can repair
+    // a cache from an older build that stored only the active selection.
+    if (_usePerAccountTheming) {
+      for (final theme in [
+        legacyCloudTheme,
+        _lightCloudTheme,
+        _darkCloudTheme,
+      ]) {
         if (theme != null) _addInstalledCloudTheme(theme);
       }
-    } catch (_) {}
-    for (final theme in [legacyCloudTheme, _lightCloudTheme, _darkCloudTheme]) {
-      if (theme != null) _addInstalledCloudTheme(theme);
     }
     if (legacyCloudTheme != null) {
       _prefs.remove(_scopedThemeKey(_cloudThemeKey));
@@ -1193,6 +1195,7 @@ class ThemeController extends ChangeNotifier {
   TelegramCloudTheme? _lightCloudTheme;
   TelegramCloudTheme? _darkCloudTheme;
   late List<TelegramCloudTheme> _installedCloudThemes;
+  int _installedCloudThemeRevision = 0;
   late bool _messageBubblesEnabled;
   late MessageBubbleBackground _messageBubbleBackground;
   late MessageBubbleApplicationScope _messageBubbleApplicationScope;
@@ -1249,6 +1252,8 @@ class ThemeController extends ChangeNotifier {
   bool get hasCloudTheme => _lightCloudTheme != null || _darkCloudTheme != null;
   List<TelegramCloudTheme> get installedCloudThemes =>
       List.unmodifiable(_installedCloudThemes);
+  String get installedCloudThemeCacheScope => _installedCloudThemeCacheKey();
+  int get installedCloudThemeRevision => _installedCloudThemeRevision;
   TelegramCloudTheme? cloudThemeFor(Brightness brightness) => !_themingEnabled
       ? null
       : brightness == Brightness.dark
@@ -1322,6 +1327,78 @@ class ThemeController extends ChangeNotifier {
     return userId == null
         ? '$key.account.$_activeAccountSlot'
         : '$key.account.user.$userId';
+  }
+
+  /// Installed Telegram themes belong to the signed-in Telegram account even
+  /// when appearance selections themselves are shared between accounts. Keep
+  /// their cache isolated by stable user identity (falling back to the local
+  /// slot until TDLib has resolved the user).
+  String _installedCloudThemeCacheKey() {
+    final userId = _activeAccountUserId;
+    return userId == null
+        ? _installedCloudThemeSlotCacheKey(_activeAccountSlot)
+        : _installedCloudThemeIdentityCacheKey(userId);
+  }
+
+  String _installedCloudThemeSlotCacheKey(int slot) =>
+      '$_installedCloudThemesKey.account.$slot';
+
+  String _installedCloudThemeIdentityCacheKey(int userId) =>
+      '$_installedCloudThemesKey.account.user.$userId';
+
+  void _loadInstalledCloudThemeCache({bool migrateLegacy = false}) {
+    final cacheKey = _installedCloudThemeCacheKey();
+    if (migrateLegacy) {
+      final candidates = <String>[
+        if (_activeAccountUserId != null)
+          _installedCloudThemeSlotCacheKey(_activeAccountSlot),
+        _installedCloudThemesKey,
+      ];
+      if (!_prefs.containsKey(cacheKey)) {
+        for (final candidate in candidates) {
+          if (candidate == cacheKey) continue;
+          final encoded = _prefs.getString(candidate);
+          if (encoded == null) continue;
+          _prefs.setString(cacheKey, encoded);
+          break;
+        }
+      }
+      // Migration sources are provisional, not shared stores. Clear them
+      // even when the identity cache already exists so a later account cannot
+      // inherit stale membership while its own identity is resolving.
+      for (final candidate in candidates) {
+        if (candidate != cacheKey) _prefs.remove(candidate);
+      }
+    }
+
+    _installedCloudThemes = [];
+    try {
+      final encodedThemes = _prefs.getString(cacheKey);
+      final decodedThemes = encodedThemes == null
+          ? const <Object?>[]
+          : jsonDecode(encodedThemes) as List;
+      for (final value in decodedThemes) {
+        final theme = TelegramCloudTheme.fromJson(value);
+        if (theme != null) _addInstalledCloudTheme(theme);
+      }
+    } catch (_) {
+      // A malformed or partially-written cache must not prevent Appearance
+      // from opening. The next successful refresh replaces it.
+    }
+  }
+
+  void _migrateInstalledCloudThemeCache(int slot, int userId) {
+    final slotKey = _installedCloudThemeSlotCacheKey(slot);
+    final identityKey = _installedCloudThemeIdentityCacheKey(userId);
+    if (!_prefs.containsKey(identityKey)) {
+      final encoded = _prefs.getString(slotKey);
+      if (encoded != null) _prefs.setString(identityKey, encoded);
+    }
+    // Once TDLib resolves a stable user identity, the slot fallback has
+    // completed its job. Remove it even when an identity cache already exists
+    // so a later account reusing this slot cannot briefly see another user's
+    // themes while its own identity is still resolving.
+    _prefs.remove(slotKey);
   }
 
   void _migrateLegacyAccountTheme(int slot, int userId) {
@@ -1463,7 +1540,14 @@ class ThemeController extends ChangeNotifier {
     if (_activeAccountSlot == value && _activeAccountUserId == userId) return;
     _activeAccountSlot = value;
     _activeAccountUserId = userId;
-    if (!_usePerAccountTheming) return;
+    if (userId != null) {
+      _migrateInstalledCloudThemeCache(value, userId);
+    }
+    _loadInstalledCloudThemeCache(migrateLegacy: true);
+    if (!_usePerAccountTheming) {
+      notifyListeners();
+      return;
+    }
     if (userId != null) _migrateLegacyAccountTheme(value, userId);
     _loadScopedThemeSettings();
     notifyListeners();
@@ -1872,6 +1956,7 @@ class ThemeController extends ChangeNotifier {
       refreshed[theme.slug] = theme;
     }
     _installedCloudThemes = refreshed.values.toList(growable: true);
+    _installedCloudThemeRevision += 1;
     final light = _lightCloudTheme;
     if (light != null && refreshed.containsKey(light.slug)) {
       _lightCloudTheme = refreshed[light.slug];
@@ -1896,7 +1981,7 @@ class ThemeController extends ChangeNotifier {
     persist(_scopedThemeKey(_lightCloudThemeKey), _lightCloudTheme);
     persist(_scopedThemeKey(_darkCloudThemeKey), _darkCloudTheme);
     _prefs.setString(
-      _installedCloudThemesKey,
+      _installedCloudThemeCacheKey(),
       jsonEncode(_installedCloudThemes.map((theme) => theme.toJson()).toList()),
     );
   }

@@ -1,7 +1,7 @@
 # macOS Xcode Cloud and TestFlight
 
 Xcode Cloud is Mithka's only macOS TestFlight delivery path. A validated
-`master` commit is fast-forwarded to `release-ios`; the macOS Xcode Cloud
+revision is pushed to `release-macos`; the macOS Xcode Cloud
 workflow archives that exact revision and distributes it to the external
 TestFlight group. There is no GitHub Actions TestFlight uploader, avoiding
 duplicate build numbers and permanently internal-only builds.
@@ -12,7 +12,10 @@ artifact.
 
 ## Repository-side setup
 
-Xcode Cloud automatically runs `ci_scripts/ci_post_clone.sh`. The dispatcher preserves the existing iOS setup and selects `ci_scripts/macos_post_clone.sh` when the macOS workflow sets `MITHKA_CI_PLATFORM` to `macos`.
+Xcode Cloud resolves custom scripts relative to each workspace root. The macOS
+workflow runs `macos/ci_scripts/ci_post_clone.sh`, which delegates to the shared
+`ci_scripts/macos_post_clone.sh` implementation. The existing iOS workflow
+continues to use `ios/ci_scripts/ci_post_clone.sh`.
 
 The macOS helper:
 
@@ -23,6 +26,10 @@ The macOS helper:
    and portable dependencies.
 4. Generates the release Flutter/Xcode configuration.
 5. Restores the CocoaPods sandbox used by desktop-only plugins.
+6. Repairs missing resource directories declared by generated plugin packages
+   and resolves the committed workspace `Package.resolved` into Xcode Cloud's
+   shared Derived Data path, as required by the archive's locked dependency
+   mode.
 
 The published artifact is:
 
@@ -35,7 +42,7 @@ The published artifact is:
 
 Use these settings:
 
-- Repository branch: `release-ios`.
+- Repository branch: `release-macos`.
 - Project or workspace: `macos/Runner.xcworkspace`.
 - Scheme: `Runner`.
 - Platform and destination: macOS, Any Mac.
@@ -59,10 +66,11 @@ Add these workflow environment variables and mark both as secret:
 - `TELEGRAM_API_ID`
 - `TELEGRAM_API_HASH`
 
-Also add `MITHKA_CI_PLATFORM` with the non-secret value `macos`. `SENTRY_DSN`
-is optional and should be secret when configured. Xcode Cloud manages the
-signing certificate and provisioning profile; no App Store Connect private key
-is stored in GitHub for this workflow.
+`MITHKA_CI_PLATFORM=macos` may be set as a fail-closed workflow guard but is not
+required for dispatch, because the macOS workspace owns its post-clone hook.
+`SENTRY_DSN` is optional and should be secret when configured. Xcode Cloud
+manages the signing certificate and provisioning profile; no App Store Connect
+private key is stored in GitHub for this workflow.
 
 The prebuilt TDLib download makes a cold Xcode Cloud archive independent of the
 GitHub Actions cache and avoids the long universal source compilation step.

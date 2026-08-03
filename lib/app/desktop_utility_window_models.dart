@@ -4,12 +4,20 @@ import 'package:flutter/foundation.dart';
 
 const desktopUtilityWindowType = 'mithka.utility';
 const _desktopUtilityWindowProtocolVersion = 1;
+int _desktopUtilityWindowInstanceSequence = 0;
+
+String createDesktopUtilityWindowInstanceId() {
+  _desktopUtilityWindowInstanceSequence += 1;
+  return '${DateTime.now().microsecondsSinceEpoch}_'
+      '$_desktopUtilityWindowInstanceSequence';
+}
 
 enum DesktopUtilityWindowKind {
   calls('calls'),
   savedMessages('saved-messages'),
   files('files'),
   videos('videos'),
+  search('search'),
   settings('settings'),
   chatInfo('chat-info'),
   userProfile('user-profile'),
@@ -66,12 +74,16 @@ class DesktopUtilityWindowKey {
     required this.kind,
     this.chatId,
     this.userId,
+    this.query,
+    this.instanceId,
   });
 
   final int accountSlot;
   final DesktopUtilityWindowKind kind;
   final int? chatId;
   final int? userId;
+  final String? query;
+  final String? instanceId;
 
   @override
   bool operator ==(Object other) =>
@@ -79,10 +91,13 @@ class DesktopUtilityWindowKey {
       other.accountSlot == accountSlot &&
       other.kind == kind &&
       other.chatId == chatId &&
-      other.userId == userId;
+      other.userId == userId &&
+      other.query == query &&
+      other.instanceId == instanceId;
 
   @override
-  int get hashCode => Object.hash(accountSlot, kind, chatId, userId);
+  int get hashCode =>
+      Object.hash(accountSlot, kind, chatId, userId, query, instanceId);
 }
 
 /// Pure registry that keeps at most one root utility window for each account
@@ -135,6 +150,20 @@ bool desktopUtilityWindowRequestIsRegistered({
   required DesktopUtilityWindowKey requestedKey,
 }) => registry.keyForWindow(windowId) == requestedKey;
 
+/// Utility windows are bound to the exact authenticated account that opened
+/// them. An unresolved identity is never accepted because an account slot can
+/// later be reused by another account.
+bool desktopUtilityAccountIdentityIsCurrent({
+  required DesktopUtilityWindowKind kind,
+  required int? registeredAccountUserId,
+  required int? currentAccountUserId,
+}) {
+  if (registeredAccountUserId == null || currentAccountUserId == null) {
+    return false;
+  }
+  return registeredAccountUserId == currentAccountUserId;
+}
+
 /// Serializable presentation-only arguments for a desktop utility child.
 ///
 /// TDLib credentials, database paths, and session material are deliberately
@@ -152,6 +181,8 @@ class DesktopUtilityWindowArguments {
     this.chatId,
     this.userId,
     this.initialSettingsCategoryId,
+    this.initialQuery,
+    this.instanceId,
   });
 
   final DesktopUtilityWindowKind kind;
@@ -163,12 +194,20 @@ class DesktopUtilityWindowArguments {
   final String localeTag;
   final bool dark;
   final String? initialSettingsCategoryId;
+  final String? initialQuery;
+  final String? instanceId;
 
   DesktopUtilityWindowKey get key => DesktopUtilityWindowKey(
     accountSlot: accountSlot,
     kind: kind,
     chatId: kind.requiresChatId ? chatId : null,
     userId: kind.requiresUserId ? userId : null,
+    query: kind == DesktopUtilityWindowKind.search
+        ? normalizeSearchQuery(initialQuery)
+        : null,
+    instanceId: kind == DesktopUtilityWindowKind.search
+        ? normalizeInstanceId(instanceId)
+        : null,
   );
 
   String encode() => jsonEncode({
@@ -185,6 +224,10 @@ class DesktopUtilityWindowArguments {
     'initialSettingsCategoryId': ?normalizeSettingsCategoryId(
       initialSettingsCategoryId,
     ),
+    if (kind == DesktopUtilityWindowKind.search)
+      'initialQuery': normalizeSearchQuery(initialQuery),
+    if (kind == DesktopUtilityWindowKind.search)
+      'instanceId': normalizeInstanceId(instanceId),
   });
 
   Map<String, Object?> toIpcJson() => {
@@ -192,6 +235,10 @@ class DesktopUtilityWindowArguments {
     'accountSlot': accountSlot,
     if (kind.requiresChatId) 'chatId': chatId,
     if (kind.requiresUserId) 'userId': userId,
+    if (kind == DesktopUtilityWindowKind.search)
+      'query': normalizeSearchQuery(initialQuery),
+    if (kind == DesktopUtilityWindowKind.search)
+      'instanceId': normalizeInstanceId(instanceId),
   };
 
   static DesktopUtilityWindowArguments? tryParseLaunchArguments(
@@ -229,6 +276,12 @@ class DesktopUtilityWindowArguments {
         initialSettingsCategoryId: normalizeSettingsCategoryId(
           decoded['initialSettingsCategoryId'] as String?,
         ),
+        initialQuery: kind == DesktopUtilityWindowKind.search
+            ? normalizeSearchQuery(decoded['initialQuery'] as String?)
+            : null,
+        instanceId: kind == DesktopUtilityWindowKind.search
+            ? normalizeInstanceId(decoded['instanceId'] as String?)
+            : null,
       );
     } on Object {
       return null;
@@ -253,5 +306,21 @@ class DesktopUtilityWindowArguments {
     final value = source?.trim().toLowerCase();
     if (value == null || value.isEmpty || value.length > 64) return null;
     return RegExp(r'^[a-z][a-z0-9-]*$').hasMatch(value) ? value : null;
+  }
+
+  static String normalizeSearchQuery(String? source) {
+    final value = source?.replaceAll(RegExp(r'[\r\n]+'), ' ').trim() ?? '';
+    return value.length <= 256 ? value : value.substring(0, 256);
+  }
+
+  static String? normalizeInstanceId(String? source) {
+    final value = source?.trim();
+    if (value == null ||
+        value.isEmpty ||
+        value.length > 96 ||
+        !RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(value)) {
+      return null;
+    }
+    return value;
   }
 }

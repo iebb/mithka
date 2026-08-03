@@ -18,8 +18,8 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
 import '../app/adaptive_split_layout.dart';
-import '../app/app_navigator.dart';
 import '../app/desktop_video_window.dart';
+import '../app/primary_chat_launcher.dart';
 import '../app/video_split_controller.dart';
 import '../auth/telegram_country_names.dart';
 import '../call/call_manager.dart';
@@ -62,6 +62,7 @@ import 'auto_translate_policy.dart';
 import 'blocked_message_runs.dart';
 import 'channel_direct_messages_service.dart';
 import 'channel_direct_messages_view.dart';
+import 'chat_appearance_message_preview.dart';
 import 'chat_auto_scroll_policy.dart';
 import 'chat_first_contact_card.dart';
 import 'chat_first_contact_info.dart';
@@ -3587,11 +3588,10 @@ class _ChatViewState extends State<ChatView> {
           });
           final chatId = chat.int64('id');
           if (!mounted || chatId == null) return;
-          await Navigator.of(context).push(
-            AppChatPageRoute<void>(
-              builder: (_) =>
-                  ChatView(chatId: chatId, title: contact.displayName),
-            ),
+          await openChatFromCurrentWindow(
+            context,
+            chatId: chatId,
+            title: contact.displayName,
           );
         } catch (_) {
           if (mounted) {
@@ -3818,15 +3818,11 @@ class _ChatViewState extends State<ChatView> {
       return;
     }
     if (!mounted) return;
-    await pushAppChatRoute(
+    await openChatFromCurrentWindow(
       context,
-      AppChatPageRoute<void>(
-        builder: (_) => ChatView(
-          chatId: target.chatId,
-          title: target.title,
-          initialMessageId: target.messageId,
-        ),
-      ),
+      chatId: target.chatId,
+      title: target.title,
+      initialMessageId: target.messageId,
     );
   }
 
@@ -4813,10 +4809,8 @@ class _ChatViewState extends State<ChatView> {
         unawaited(_openChatInfo(title: title, useAppPageRoute: true));
         return;
       }
-      Navigator.of(context).push(
-        AppChatPageRoute<void>(
-          builder: (_) => ChatView(chatId: senderChatId, title: title),
-        ),
+      unawaited(
+        openChatFromCurrentWindow(context, chatId: senderChatId, title: title),
       );
       return;
     }
@@ -7224,7 +7218,14 @@ class _ChatViewState extends State<ChatView> {
         if (_needsSeparator(messageIndex, messages: messages))
           TimeSeparator(unix: message.date),
         if (message.isService)
-          SystemBanner(text: message.text)
+          message.appearancePreview == null
+              ? SystemBanner(text: message.text)
+              : ChatAppearanceMessagePreview(
+                  preview: message.appearancePreview!,
+                  label: message.text,
+                  controller: _wallpaperController,
+                  fallback: SystemBanner(text: message.text),
+                )
         else if (entry.isBlockedRun)
           _blockedMessagePlaceholder(context, entry)
         else if (entry.isImageGroup)

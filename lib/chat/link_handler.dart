@@ -13,7 +13,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../app/app_navigator.dart';
+import '../app/primary_chat_launcher.dart';
 import '../call/call_manager.dart';
 import '../call/calls_view.dart';
 import '../chats/search_view.dart';
@@ -52,9 +52,9 @@ import '../theme/app_theme.dart';
 import '../theme/telegram_cloud_theme.dart';
 import '../theme/telegram_cloud_theme_view.dart';
 import '../theme/theme_controller.dart';
-import 'channel_direct_messages_view.dart';
+import 'chat_appearance_message_preview.dart';
 import 'chat_picker_view.dart';
-import 'chat_view.dart';
+import 'chat_wallpaper.dart';
 import 'internal_chat_link_router.dart';
 import 'sticker_set_detail_view.dart';
 import 'telegram_ai_service.dart';
@@ -751,22 +751,29 @@ Future<void> _applyBackgroundLink(
   });
   final backgroundId = background.int64('id');
   if (backgroundId == null || !context.mounted) return;
+  final wallpaperController = ChatWallpaperController.shared;
+  final wallpaper = wallpaperController.previewWallpaperFromBackground(
+    background,
+  );
+  if (wallpaper == null) return;
+  final dark = Theme.of(context).brightness == Brightness.dark;
   final accepted = await showAppConfirmDialog(
     context,
     title: AppStrings.t(AppStringKeys.appearanceTitle),
     message: name,
+    content: AnimatedBuilder(
+      animation: wallpaperController,
+      builder: (context, _) => ChatAppearancePreviewCard(
+        key: const ValueKey('background-link-appearance-preview'),
+        wallpaper: wallpaperController.resolvedWallpaper(wallpaper),
+        label: AppStrings.t(AppStringKeys.chatWallpaperTitle),
+        brightness: dark ? Brightness.dark : Brightness.light,
+      ),
+    ),
     confirmText: AppStrings.t(AppStringKeys.chatWallpaperApply),
   );
   if (!accepted || !context.mounted) return;
-  await TdClient.shared.query({
-    '@type': 'setDefaultBackground',
-    'background': {
-      '@type': 'inputBackgroundRemote',
-      'background_id': backgroundId,
-    },
-    'type': background.obj('type'),
-    'for_dark_theme': Theme.of(context).brightness == Brightness.dark,
-  });
+  await wallpaperController.applyDefaultWallpaper(wallpaper, dark: dark);
 }
 
 Future<void> _applyLanguagePackLink(
@@ -928,13 +935,7 @@ Future<void> _openSavedMessages(
   final chatId = chat.int64('id');
   if (chatId == null) return;
   if (!nav.mounted) return;
-  final route = AppChatPageRoute<void>(
-    builder: (_) => ChatView(
-      chatId: chatId,
-      title: AppStrings.t(AppStringKeys.savedMessages),
-    ),
-  );
-  unawaited(nav.push(route));
+  await _openChat(nav, chatId);
 }
 
 Future<void> _openStickerSet(NavigatorState nav, String name) async {
@@ -978,7 +979,6 @@ Future<void> _openDirectMessagesChat(
     'username': username.trim(),
   });
   var chatId = chat.int64('id');
-  final channelTitle = chat.str('title') ?? '';
   final supergroupId = chat.obj('type')?.int64('supergroup_id');
   if (supergroupId != null) {
     final fullInfo = await TdClient.shared.query({
@@ -988,39 +988,6 @@ Future<void> _openDirectMessagesChat(
     final directMessagesChatId = fullInfo.int64('direct_messages_chat_id');
     if (directMessagesChatId != null && directMessagesChatId != 0) {
       chatId = directMessagesChatId;
-    }
-  }
-  if (chatId != null && chatId != chat.int64('id')) {
-    try {
-      final directChat = await TdClient.shared.query({
-        '@type': 'getChat',
-        'chat_id': chatId,
-      });
-      final directSupergroupId = directChat.obj('type')?.int64('supergroup_id');
-      if (directSupergroupId != null) {
-        final directSupergroup = await TdClient.shared.query({
-          '@type': 'getSupergroup',
-          'supergroup_id': directSupergroupId,
-        });
-        if (directSupergroup.boolean('is_administered_direct_messages_group') ==
-            true) {
-          if (!nav.mounted) return;
-          final chatNavigator = appNavigatorKey.currentState ?? nav;
-          unawaited(
-            chatNavigator.push(
-              MaterialPageRoute(
-                builder: (_) => ChannelDirectMessagesView(
-                  chatId: chatId!,
-                  title: channelTitle,
-                ),
-              ),
-            ),
-          );
-          return;
-        }
-      }
-    } catch (_) {
-      // Fall through to the regular subscriber-side direct-message chat.
     }
   }
   await _openChat(nav, chatId);
@@ -2162,6 +2129,13 @@ Future<void> _openChat(
     title = chat.str('title') ?? '';
   } catch (_) {}
   if (!nav.mounted) return;
+  if (await handoffChatToPrimaryWindow(
+    chatId: chatId,
+    title: title,
+    initialMessageId: initialMessageId,
+  )) {
+    return;
+  }
   await routeResolvedInternalChatLink(
     chatId: chatId,
     title: title,

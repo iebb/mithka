@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,6 +9,37 @@ import 'package:mithka/chat/message_send_options.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
 void main() {
+  test('send options presentation adapts to desktop and landscape iPad', () {
+    expect(
+      messageSendOptionsUsesCenteredModal(
+        const Size(1440, 900),
+        TargetPlatform.macOS,
+      ),
+      isTrue,
+    );
+    expect(
+      messageSendOptionsUsesCenteredModal(
+        const Size(820, 1180),
+        TargetPlatform.iOS,
+      ),
+      isFalse,
+    );
+    expect(
+      messageSendOptionsUsesCenteredModal(
+        const Size(1180, 820),
+        TargetPlatform.iOS,
+      ),
+      isTrue,
+    );
+    expect(
+      messageSendOptionsUsesCenteredModal(
+        const Size(852, 393),
+        TargetPlatform.iOS,
+      ),
+      isFalse,
+    );
+  });
+
   test(
     'send options implementation does not use Material sheet or pickers',
     () {
@@ -90,5 +122,74 @@ void main() {
     expect(find.text('选择日期和时间'), findsOneWidget);
     expect(find.byType(DatePickerDialog), findsNothing);
     expect(find.byType(TimePickerDialog), findsNothing);
+  });
+
+  testWidgets('landscape iPad uses a bounded centered send-options modal', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1180, 820);
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    addTearDown(() {
+      tester.view.resetDevicePixelRatio();
+      tester.view.resetPhysicalSize();
+      debugDefaultTargetPlatformOverride = null;
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Builder(
+          builder: (context) => GestureDetector(
+            key: const ValueKey('openSendOptions'),
+            behavior: HitTestBehavior.opaque,
+            onTap: () => showMessageSendOptionsSheet(context),
+            child: const SizedBox.expand(),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('openSendOptions')));
+    await tester.pumpAndSettle();
+
+    final frame = find.byKey(const ValueKey('messageSendOptionsModalFrame'));
+    expect(frame, findsOneWidget);
+    expect(tester.getSize(frame).width, 560);
+    expect(
+      find.byKey(const ValueKey('messageSendOptionsDragHandle')),
+      findsNothing,
+    );
+    final surface = tester.widget<Container>(
+      find.byKey(const ValueKey('messageSendOptionsSurface')),
+    );
+    expect(surface.padding, EdgeInsets.zero);
+    expect(
+      (surface.decoration! as BoxDecoration).borderRadius,
+      BorderRadius.circular(18),
+    );
+
+    await tester.tap(find.text('Choose date'));
+    await tester.pumpAndSettle();
+    final pickerFrame = find.byKey(
+      const ValueKey('ownedSchedulePickerModalFrame'),
+    );
+    expect(pickerFrame, findsOneWidget);
+    expect(tester.getSize(pickerFrame).width, 480);
+    expect(
+      find.byKey(const ValueKey('ownedSchedulePickerDragHandle')),
+      findsNothing,
+    );
+    final pickerSurface = tester.widget<Container>(
+      find.byKey(const ValueKey('ownedSchedulePicker')),
+    );
+    expect(pickerSurface.padding, EdgeInsets.zero);
+    debugDefaultTargetPlatformOverride = null;
   });
 }

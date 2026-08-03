@@ -558,6 +558,47 @@ class ChatSummary {
       (unreadCount > 0 && !isMuted) || isMarkedUnread;
 }
 
+@immutable
+class MessageAppearancePreview {
+  const MessageAppearancePreview._({
+    required this.contentType,
+    this.chatBackground,
+    this.chatTheme,
+  });
+
+  factory MessageAppearancePreview.background(
+    Map<String, dynamic> chatBackground,
+  ) => MessageAppearancePreview._(
+    contentType: 'messageChatSetBackground',
+    chatBackground: Map<String, dynamic>.unmodifiable(chatBackground),
+  );
+
+  factory MessageAppearancePreview.theme(Map<String, dynamic>? chatTheme) =>
+      MessageAppearancePreview._(
+        contentType: 'messageChatSetTheme',
+        chatTheme: chatTheme == null
+            ? null
+            : Map<String, dynamic>.unmodifiable(chatTheme),
+      );
+
+  static MessageAppearancePreview? fromContent(Map<String, dynamic>? content) {
+    if (content?.type == 'messageChatSetBackground') {
+      final background = content?.obj('background');
+      return background == null
+          ? null
+          : MessageAppearancePreview.background(background);
+    }
+    if (content?.type == 'messageChatSetTheme') {
+      return MessageAppearancePreview.theme(content?.obj('theme'));
+    }
+    return null;
+  }
+
+  final String contentType;
+  final Map<String, dynamic>? chatBackground;
+  final Map<String, dynamic>? chatTheme;
+}
+
 class ChatMessage {
   ChatMessage({
     required this.id,
@@ -619,6 +660,7 @@ class ChatMessage {
     this.replyToImageWidth,
     this.replyToImageHeight,
     this.serviceUserIds = const [],
+    this.appearancePreview,
     this.customEmoji = const [],
     this.textEntities = const [],
     this.linkPreview,
@@ -719,6 +761,10 @@ class ChatMessage {
   // Service messages such as member joins may carry affected user ids, resolved
   // by the chat view model once TDLib can provide display names.
   List<int> serviceUserIds;
+
+  /// The visual payload retained only for Telegram's wallpaper/theme service
+  /// messages. Other service content remains text-only.
+  final MessageAppearancePreview? appearancePreview;
 
   // Inline custom (premium) emoji spans within `text`.
   List<CustomEmojiEntity> customEmoji;
@@ -1506,6 +1552,9 @@ abstract final class TDParse {
         serviceUserIds: isContentRestricted
             ? const []
             : serviceUserIds(content, senderId),
+        appearancePreview: isContentRestricted
+            ? null
+            : MessageAppearancePreview.fromContent(content),
         customEmoji: isContentRestricted
             ? const []
             : customEmojiEntitiesFrom(parsedEntities),

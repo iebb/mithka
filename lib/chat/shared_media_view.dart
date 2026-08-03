@@ -7,11 +7,14 @@
 //
 
 import 'dart:async';
+import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
-import '../app/app_navigator.dart';
+import '../app/adaptive_split_layout.dart';
+import '../app/primary_chat_launcher.dart';
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
@@ -21,7 +24,6 @@ import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
-import 'chat_view.dart';
 import 'file_detail_view.dart';
 import 'image_preview.dart';
 import 'link_handler.dart';
@@ -50,6 +52,28 @@ enum _SharedMediaFileFilter { all, downloaded, notDownloaded }
 enum _SharedMediaMenuAction { openOriginal, deleteCache }
 
 enum _MusicHubTab { playlists, music }
+
+const double _videoGridMinCardWidth = 248;
+const double _videoGridMaxCardWidth = 320;
+const double _videoGridHorizontalPadding = 20;
+const double _videoGridVerticalPadding = 16;
+const double _videoGridColumnGap = 16;
+const double _videoGridRowGap = 18;
+const double _videoGridMetadataHeight = 116;
+
+/// Music and Video are hosted by the surrounding tablet/desktop shell, so a
+/// second back/title bar is both redundant and unsafe there. The richer grid
+/// remains a separate wide-layout decision: portrait iPad keeps the list but
+/// still omits this inner header.
+bool sharedMediaUsesHeaderlessHub(
+  Size size, {
+  TargetPlatform? platform,
+  bool isWeb = kIsWeb,
+}) {
+  final target = platform ?? defaultTargetPlatform;
+  return usesDesktopShellLayout(size, platform: target, isWeb: isWeb) ||
+      (!isWeb && target == TargetPlatform.iOS && size.shortestSide >= 600);
+}
 
 class _SharedFileState {
   const _SharedFileState({
@@ -427,14 +451,25 @@ class _SharedMediaViewState extends State<SharedMediaView> {
     );
   }
 
+  bool _usesWideMediaPresentation(BuildContext context) {
+    if (!_tabs[_tab].videoOnly && !_tabs[_tab].musicOnly) return false;
+    return usesSplitSelectionLayout(MediaQuery.sizeOf(context));
+  }
+
+  bool _hidesInnerHeader(BuildContext context) {
+    if (!_tabs[_tab].videoOnly && !_tabs[_tab].musicOnly) return false;
+    return sharedMediaUsesHeaderlessHub(MediaQuery.sizeOf(context));
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final hideInnerHeader = _hidesInnerHeader(context);
     return Scaffold(
       backgroundColor: c.background,
       body: Column(
         children: [
-          _header(),
+          if (!hideInnerHeader) _header(),
           if (!_isMusicHub || _musicHubTab == _MusicHubTab.music) _toolbar(),
           if (!widget.lockedTab) _tabStrip(),
           if ((!_isMusicHub || _musicHubTab == _MusicHubTab.music) &&
@@ -746,6 +781,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
   Widget _header() {
     final c = context.colors;
     return Container(
+      key: const ValueKey('shared-media-inner-header'),
       padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
       decoration: BoxDecoration(
         color: c.navBar,
@@ -759,15 +795,20 @@ class _SharedMediaViewState extends State<SharedMediaView> {
             if (widget.showBackButton)
               Align(
                 alignment: Alignment.centerLeft,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => Navigator.of(context).pop(),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    child: AppIcon(
-                      HeroAppIcons.chevronLeft,
-                      size: 22,
-                      color: c.textPrimary,
+                child: Semantics(
+                  key: const ValueKey('shared-media-back-button'),
+                  button: true,
+                  label: MaterialLocalizations.of(context).backButtonTooltip,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => Navigator.of(context).pop(),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      child: AppIcon(
+                        HeroAppIcons.chevronLeft,
+                        size: 22,
+                        color: c.textPrimary,
+                      ),
                     ),
                   ),
                 ),
@@ -889,23 +930,27 @@ class _SharedMediaViewState extends State<SharedMediaView> {
     return Container(
       color: c.navBar,
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-      child: Row(
-        children: [
-          _filterChip(
-            telegramText(AppStringKeys.sharedMediaFilterAll),
-            _SharedMediaFileFilter.all,
-          ),
-          const SizedBox(width: 8),
-          _filterChip(
-            telegramText(AppStringKeys.sharedMediaFilterDownloaded),
-            _SharedMediaFileFilter.downloaded,
-          ),
-          const SizedBox(width: 8),
-          _filterChip(
-            telegramText(AppStringKeys.sharedMediaFilterNotDownloaded),
-            _SharedMediaFileFilter.notDownloaded,
-          ),
-        ],
+      child: SingleChildScrollView(
+        key: const ValueKey('shared-media-filter-strip'),
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            _filterChip(
+              telegramText(AppStringKeys.sharedMediaFilterAll),
+              _SharedMediaFileFilter.all,
+            ),
+            const SizedBox(width: 8),
+            _filterChip(
+              telegramText(AppStringKeys.sharedMediaFilterDownloaded),
+              _SharedMediaFileFilter.downloaded,
+            ),
+            const SizedBox(width: 8),
+            _filterChip(
+              telegramText(AppStringKeys.sharedMediaFilterNotDownloaded),
+              _SharedMediaFileFilter.notDownloaded,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -913,23 +958,29 @@ class _SharedMediaViewState extends State<SharedMediaView> {
   Widget _filterChip(String label, _SharedMediaFileFilter filter) {
     final c = context.colors;
     final selected = _fileFilter == filter;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => _setFileFilter(filter),
-      child: Container(
-        height: 28,
-        alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(
-          color: selected ? AppTheme.brand : c.searchFill,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-            color: selected ? AppTheme.onBrand : c.textSecondary,
+    return Semantics(
+      key: ValueKey('shared-media-filter-${filter.name}'),
+      button: true,
+      selected: selected,
+      label: label,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _setFileFilter(filter),
+        child: Container(
+          height: 28,
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: selected ? AppTheme.brand : c.searchFill,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+              color: selected ? AppTheme.onBrand : c.textSecondary,
+            ),
           ),
         ),
       ),
@@ -964,6 +1015,9 @@ class _SharedMediaViewState extends State<SharedMediaView> {
           style: TextStyle(fontSize: 14, color: c.textSecondary),
         ),
       );
+    }
+    if (_tabs[_tab].videoOnly && _usesWideMediaPresentation(context)) {
+      return _videoGrid(filtered);
     }
     return _tabs[_tab].grid && !_tabs[_tab].videoOnly
         ? _grid(filtered)
@@ -1142,8 +1196,192 @@ class _SharedMediaViewState extends State<SharedMediaView> {
     );
   }
 
+  Widget _videoGrid(List<ChatMessage> items) {
+    final videos = items
+        .where((message) => message.video != null)
+        .toList(growable: false);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableWidth = math.max(
+          1.0,
+          constraints.maxWidth - _videoGridHorizontalPadding * 2,
+        );
+        final columnCount =
+            ((availableWidth + _videoGridColumnGap) /
+                    (_videoGridMinCardWidth + _videoGridColumnGap))
+                .floor()
+                .clamp(1, 6)
+                .toInt();
+        final unconstrainedCardWidth =
+            (availableWidth - _videoGridColumnGap * (columnCount - 1)) /
+            columnCount;
+        final minimumCardWidth = math.min(
+          _videoGridMinCardWidth,
+          availableWidth,
+        );
+        final cardWidth = unconstrainedCardWidth
+            .clamp(minimumCardWidth, _videoGridMaxCardWidth)
+            .toDouble();
+        final gridWidth =
+            cardWidth * columnCount + _videoGridColumnGap * (columnCount - 1);
+        final cardHeight = cardWidth * 9 / 16 + _videoGridMetadataHeight;
+        return Align(
+          alignment: Alignment.topCenter,
+          child: SizedBox(
+            width: gridWidth,
+            child: GridView.builder(
+              key: const ValueKey('shared-video-grid'),
+              padding: const EdgeInsets.symmetric(
+                vertical: _videoGridVerticalPadding,
+              ),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: columnCount,
+                crossAxisSpacing: _videoGridColumnGap,
+                mainAxisSpacing: _videoGridRowGap,
+                mainAxisExtent: cardHeight,
+              ),
+              itemCount: videos.length,
+              itemBuilder: (context, index) =>
+                  _videoCard(videos[index], videos),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _videoCard(ChatMessage message, List<ChatMessage> items) {
+    final c = context.colors;
+    final state = _stateFor(message);
+    final title = _videoTitle(message);
+    final duration = message.videoDuration ?? 0;
+    final source = _videoSourceLabel(message);
+    final status = [
+      DateText.listLabel(message.date),
+      _downloadLabel(message, state),
+    ].where((value) => value.isNotEmpty).join(' · ');
+    final semanticsLabel = [
+      title,
+      if (duration > 0) _duration(duration),
+      status,
+      source,
+    ].where((value) => value.isNotEmpty).join(', ');
+    return Semantics(
+      key: ValueKey(
+        'shared-video-card-${_sourceChatIdFor(message)}-${message.id}',
+      ),
+      container: true,
+      button: true,
+      label: semanticsLabel,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _openVideoPlayer(message, items),
+        child: Container(
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: c.card,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: c.divider, width: 0.5),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.06),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              AspectRatio(
+                aspectRatio: 16 / 9,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    TDImage(photo: message.image, cornerRadius: 0),
+                    Container(color: Colors.black.withValues(alpha: 0.12)),
+                    Center(
+                      child: Container(
+                        width: 42,
+                        height: 42,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.58),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.5),
+                          ),
+                        ),
+                        child: const AppIcon(
+                          HeroAppIcons.play,
+                          size: 19,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    if (duration > 0)
+                      Positioned(
+                        left: 9,
+                        bottom: 9,
+                        child: _overlayPill(_duration(duration)),
+                      ),
+                    if (state?.completed == true)
+                      Positioned(
+                        right: 48,
+                        top: 10,
+                        child: _downloadBadge(state),
+                      ),
+                    Positioned(right: 9, top: 9, child: _overlayMenu(message)),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 14,
+                          height: 1.2,
+                          fontWeight: FontWeight.w600,
+                          color: c.textPrimary,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        status,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 12, color: c.textTertiary),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        source,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 12, color: c.textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _list(List<ChatMessage> items) {
     return ListView.builder(
+      key: ValueKey(
+        _tabs[_tab].videoOnly ? 'shared-video-list' : 'shared-media-list',
+      ),
       padding: EdgeInsets.zero,
       itemCount: items.length,
       itemBuilder: (context, i) => _listRow(items[i], items),
@@ -1456,120 +1694,139 @@ class _SharedMediaViewState extends State<SharedMediaView> {
       _downloadLabel(message, state),
     ].join(' · ');
     final caption = message.text.trim();
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () {
-        final video = message.video;
-        if (video == null) return;
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            fullscreenDialog: true,
-            builder: (_) =>
-                VideoPlaylistPlayerView(queue: _videoQueue(items, message)),
+    final source = _videoSourceLabel(message);
+    return Semantics(
+      container: true,
+      button: true,
+      label: [title, subtitle, source].join(', '),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _openVideoPlayer(message, items),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: c.background,
+            border: Border(bottom: BorderSide(color: c.divider, width: 0.5)),
           ),
-        );
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: c.background,
-          border: Border(bottom: BorderSide(color: c.divider, width: 0.5)),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: 86,
-              height: 56,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(7),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    TDImage(photo: message.image),
-                    Container(color: Colors.black.withValues(alpha: 0.12)),
-                    Center(
-                      child: Container(
-                        width: 28,
-                        height: 28,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.52),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const AppIcon(
-                          HeroAppIcons.play,
-                          size: 14,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                    if ((message.videoDuration ?? 0) > 0)
-                      Positioned(
-                        right: 5,
-                        bottom: 5,
-                        child: _overlayPill(_duration(message.videoDuration!)),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 86,
+                height: 56,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(7),
+                  child: Stack(
+                    fit: StackFit.expand,
                     children: [
-                      Expanded(
-                        child: Text(
-                          title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: c.textPrimary,
+                      TDImage(photo: message.image),
+                      Container(color: Colors.black.withValues(alpha: 0.12)),
+                      Center(
+                        child: Container(
+                          width: 28,
+                          height: 28,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.52),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const AppIcon(
+                            HeroAppIcons.play,
+                            size: 14,
+                            color: Colors.white,
                           ),
                         ),
                       ),
-                      _downloadBadge(state),
+                      if ((message.videoDuration ?? 0) > 0)
+                        Positioned(
+                          right: 5,
+                          bottom: 5,
+                          child: _overlayPill(
+                            _duration(message.videoDuration!),
+                          ),
+                        ),
                     ],
                   ),
-                  const SizedBox(height: 3),
-                  Text(
-                    subtitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 12, color: c.textTertiary),
-                  ),
-                  if (caption.isNotEmpty) ...[
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: c.textPrimary,
+                            ),
+                          ),
+                        ),
+                        _downloadBadge(state),
+                      ],
+                    ),
                     const SizedBox(height: 3),
                     Text(
-                      caption,
-                      maxLines: 2,
+                      subtitle,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 13, color: c.textSecondary),
+                      style: TextStyle(fontSize: 12, color: c.textTertiary),
+                    ),
+                    if (caption.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        caption,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 13, color: c.textSecondary),
+                      ),
+                    ],
+                    const SizedBox(height: 3),
+                    Text(
+                      source,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12, color: c.textTertiary),
                     ),
                   ],
-                  const SizedBox(height: 3),
-                  Text(
-                    AppStrings.t(AppStringKeys.sharedMediaFromSource, {
-                      'value1':
-                          '${_sourceTitleFor(message)}${(message.senderName ?? '').isEmpty ? '' : ' | ${message.senderName}'}',
-                    }),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 12, color: c.textTertiary),
-                  ),
-                ],
+                ),
               ),
-            ),
-            _rowMenu(message),
-          ],
+              _rowMenu(message),
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  void _openVideoPlayer(ChatMessage message, List<ChatMessage> items) {
+    if (message.video == null) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) =>
+            VideoPlaylistPlayerView(queue: _videoQueue(items, message)),
+      ),
+    );
+  }
+
+  String _videoSourceLabel(ChatMessage message) {
+    final source = _sourceTitleFor(message).trim();
+    final sender = (message.senderName ?? '').trim();
+    final details = [
+      source,
+      if (sender.isNotEmpty && sender != source) sender,
+    ].where((value) => value.isNotEmpty).join(' | ');
+    if (details.isEmpty) return '';
+    return AppStrings.t(AppStringKeys.sharedMediaFromSource, {
+      'value1': details,
+    });
   }
 
   Widget _fileThumb(
@@ -1705,6 +1962,8 @@ class _SharedMediaViewState extends State<SharedMediaView> {
   }
 
   Widget _overlayMenu(ChatMessage message) {
+    final c = context.colors;
+    final state = _stateFor(message);
     return Container(
       width: 30,
       height: 30,
@@ -1719,10 +1978,13 @@ class _SharedMediaViewState extends State<SharedMediaView> {
           size: 18,
           color: Colors.white,
         ),
-        color: context.colors.background,
+        color: c.background,
         onSelected: (action) {
-          if (action == _SharedMediaMenuAction.openOriginal) {
-            _openSourceMessage(message);
+          switch (action) {
+            case _SharedMediaMenuAction.openOriginal:
+              _openSourceMessage(message);
+            case _SharedMediaMenuAction.deleteCache:
+              _deleteLocalCache(message);
           }
         },
         itemBuilder: (context) => [
@@ -1731,6 +1993,21 @@ class _SharedMediaViewState extends State<SharedMediaView> {
             value: _SharedMediaMenuAction.openOriginal,
             child: Text(AppStrings.t(AppStringKeys.momentsOpenOriginalMessage)),
           ),
+          if (_fileId(message) != null) ...[
+            const PopupMenuDivider(),
+            PopupMenuItem(
+              enabled: state?.hasLocalBytes == true,
+              value: _SharedMediaMenuAction.deleteCache,
+              child: Text(
+                AppStrings.t(AppStringKeys.sharedMediaDeleteLocalCache),
+                style: TextStyle(
+                  color: state?.hasLocalBytes == true
+                      ? Colors.redAccent
+                      : c.textTertiary,
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1838,74 +2115,14 @@ class _SharedMediaViewState extends State<SharedMediaView> {
   void _openSourceMessage(ChatMessage message) {
     if (!_canOpenSourceMessage(message)) return;
     final sourceChatId = _sourceChatIdFor(message);
-    Navigator.of(context).push(
-      AppChatPageRoute<void>(
-        builder: (_) => ChatView(
-          chatId: sourceChatId,
-          title: _sourceTitleFor(message),
-          initialMessageId: message.id,
-          seedMessage: _seedMessageForSource(message),
-        ),
+    unawaited(
+      openChatFromCurrentWindow(
+        context,
+        chatId: sourceChatId,
+        title: _sourceTitleFor(message),
+        initialMessageId: message.id,
       ),
     );
-  }
-
-  ChatMessage _seedMessageForSource(ChatMessage message) {
-    return ChatMessage(
-        id: message.id,
-        isOutgoing: message.isOutgoing,
-        text: message.text,
-        date: message.date,
-        chatId: _sourceChatIdFor(message),
-        senderName: message.senderName,
-        senderIsChat: message.senderIsChat,
-        senderId: message.senderId,
-        senderPhoto: message.senderPhoto,
-        image: message.image,
-        imageWidth: message.imageWidth,
-        imageHeight: message.imageHeight,
-        document: message.document,
-        music: message.music,
-        senderRole: message.senderRole,
-        senderTitle: message.senderTitle,
-        senderIsPremium: message.senderIsPremium,
-        senderAccentColorId: message.senderAccentColorId,
-        senderEmojiStatusId: message.senderEmojiStatusId,
-        mediaAlbumId: message.mediaAlbumId,
-        animatedSticker: message.animatedSticker,
-        videoSticker: message.videoSticker,
-        video: message.video,
-        videoDuration: message.videoDuration,
-        diceEmoji: message.diceEmoji,
-        diceValue: message.diceValue,
-        stickerFileId: message.stickerFileId,
-        stickerSetId: message.stickerSetId,
-        isAnimatedEmoji: message.isAnimatedEmoji,
-        location: message.location,
-        voice: message.voice,
-        replyToMessageId: message.replyToMessageId,
-        replyToDate: message.replyToDate,
-        replyToImage: message.replyToImage,
-        replyToImageWidth: message.replyToImageWidth,
-        replyToImageHeight: message.replyToImageHeight,
-        serviceUserIds: message.serviceUserIds,
-        customEmoji: message.customEmoji,
-        textEntities: message.textEntities,
-        linkPreview: message.linkPreview,
-        translationText: message.translationText,
-        translationEntities: message.translationEntities,
-        translationLanguageCode: message.translationLanguageCode,
-        isTranslating: message.isTranslating,
-        buttonRows: message.buttonRows,
-        isEdited: message.isEdited,
-        hasCommentThread: message.hasCommentThread,
-        commentCount: message.commentCount,
-        lastCommentMessageId: message.lastCommentMessageId,
-      )
-      ..reactions = message.reactions
-      ..forwardOrigin = message.forwardOrigin
-      ..forwardFromUserId = message.forwardFromUserId
-      ..forwardFromChatId = message.forwardFromChatId;
   }
 
   int _sourceChatIdFor(ChatMessage message) => message.chatId ?? widget.chatId;

@@ -67,4 +67,64 @@ void main() {
     expect(selectedMessageId, 8675309);
     expect(find.byType(ChatInfoView), findsNothing);
   });
+
+  testWidgets(
+    'root child chat info opens a search result in the primary chat',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final theme = ThemeController(preferences);
+      addTearDown(theme.dispose);
+
+      int? openedChatId;
+      String? openedTitle;
+      int? openedMessageId;
+      await tester.pumpWidget(
+        ChangeNotifierProvider<ThemeController>.value(
+          value: theme,
+          child: MaterialApp(
+            locale: const Locale('en'),
+            localizationsDelegates: const [
+              AppLocalizations.delegate,
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: ChatInfoView(
+              chatId: 42,
+              title: 'Test chat',
+              showBackButton: false,
+              searchChatLauncher:
+                  ({
+                    required chatId,
+                    required title,
+                    required initialMessageId,
+                  }) async {
+                    openedChatId = chatId;
+                    openedTitle = title;
+                    openedMessageId = initialMessageId;
+                  },
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(
+        find.text(AppStrings.t(AppStringKeys.chatInfoSearchHistory)),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(ChatSearchView), findsOneWidget);
+
+      Navigator.of(
+        tester.element(find.byType(ChatSearchView)),
+      ).pop<int>(8675309);
+      await tester.pumpAndSettle();
+
+      expect(openedChatId, 42);
+      expect(openedTitle, 'Test chat');
+      expect(openedMessageId, 8675309);
+      expect(find.byType(ChatInfoView), findsOneWidget);
+    },
+  );
 }

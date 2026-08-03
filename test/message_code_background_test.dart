@@ -51,7 +51,7 @@ void main() {
       );
 
       final surface = find.descendant(
-        of: find.byKey(const ValueKey('message-code-block')),
+        of: find.byKey(const ValueKey('message-code-block-1-0-16')),
         matching: find.byWidgetPredicate(
           (widget) => widget is Container && widget.decoration is BoxDecoration,
         ),
@@ -61,4 +61,55 @@ void main() {
       expect(decoration.color!.a, closeTo(0.05, 0.001));
     });
   }
+
+  testWidgets('forwarded messages render each code block with a unique key', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final theme = ThemeController(preferences);
+    addTearDown(theme.dispose);
+    final message = ChatMessage(
+      id: 9,
+      isOutgoing: false,
+      text: 'one\ntwo',
+      date: 1,
+      contentType: 'messageText',
+      textEntities: const [
+        MessageTextEntity(offset: 0, length: 3, type: 'textEntityTypePreCode'),
+        MessageTextEntity(offset: 4, length: 3, type: 'textEntityTypePreCode'),
+      ],
+    )..forwardOrigin = 'Original Channel';
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<ThemeController>.value(
+        value: theme,
+        child: MaterialApp(
+          home: Scaffold(
+            body: MessageBubble(
+              message: message,
+              peerTitle: 'Code',
+              isGroup: false,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(
+      find.byKey(const ValueKey('messageForwardHeader-9')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('message-code-block-9-0-3')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('message-code-block-9-4-7')),
+      findsOneWidget,
+    );
+    expect(find.text('one', findRichText: true), findsOneWidget);
+    expect(find.text('two', findRichText: true), findsOneWidget);
+  });
 }

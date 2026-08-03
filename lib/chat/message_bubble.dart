@@ -2642,11 +2642,7 @@ class _MessageBubbleState extends State<MessageBubble>
       _ => -1.0,
     };
     return TableCell(
-      verticalAlignment: switch (cell?.verticalAlignment) {
-        'middle' => TableCellVerticalAlignment.middle,
-        'bottom' => TableCellVerticalAlignment.bottom,
-        _ => TableCellVerticalAlignment.top,
-      },
+      verticalAlignment: TableCellVerticalAlignment.intrinsicHeight,
       child: Container(
         constraints: const BoxConstraints(
           minWidth: 72,
@@ -3740,7 +3736,7 @@ class _MessageBubbleState extends State<MessageBubble>
     final language = (pre.language ?? '').trim();
     final codeBackground = _codeBackgroundColor;
     return GestureDetector(
-      key: const ValueKey('message-code-block'),
+      key: ValueKey('message-code-block-${message.id}-$start-$end'),
       behavior: HitTestBehavior.opaque,
       onTap: () => _copyMonospaceText(text.substring(start, end)),
       child: Container(

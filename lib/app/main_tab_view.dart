@@ -42,6 +42,7 @@ import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
+import '../theme/global_theme_view.dart';
 import '../theme/telegram_cloud_theme.dart';
 import '../theme/theme_controller.dart';
 import '../update/update_checker.dart';
@@ -104,7 +105,6 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
   bool _splitResizeHandleHovered = false;
   bool? _wasUsingSplitSelection;
   DesktopHotkeyRegistration? _newChatHotkeyRegistration;
-  DesktopHotkeyRegistration? _focusSearchHotkeyRegistration;
 
   @override
   void initState() {
@@ -114,10 +114,6 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
       _newChatHotkeyRegistration = DesktopHotkeyRegistry.instance.register(
         DesktopHotkeyAction.newChat,
         () => _runChatListHotkey(_chatListController.openNewChat),
-      );
-      _focusSearchHotkeyRegistration = DesktopHotkeyRegistry.instance.register(
-        DesktopHotkeyAction.focusSearch,
-        () => _runChatListHotkey(_chatListController.focusSearch),
       );
     }
     // Android-only: check GitHub Releases for a newer same-ABI build (once).
@@ -148,10 +144,24 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
 
   Future<void> _synchronizeInstalledCloudThemes() async {
     final controller = context.read<ThemeController>();
+    final cacheScope = controller.installedCloudThemeCacheScope;
+    final cacheRevision = controller.installedCloudThemeRevision;
     final themes = await TelegramCloudThemeService().loadInstalled(
       fallback: controller.installedCloudThemes,
     );
     if (!mounted) return;
+    final currentController = context.read<ThemeController>();
+    if (!identical(currentController, controller)) {
+      // Desktop Settings can replace its controller without changing the
+      // account scope. Never update the disposed instance; refresh the live
+      // replacement instead.
+      unawaited(_synchronizeInstalledCloudThemes());
+      return;
+    }
+    if (controller.installedCloudThemeCacheScope != cacheScope ||
+        controller.installedCloudThemeRevision != cacheRevision) {
+      return;
+    }
     controller.synchronizeInstalledCloudThemes(themes);
   }
 
@@ -183,7 +193,6 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
   @override
   void dispose() {
     _newChatHotkeyRegistration?.dispose();
-    _focusSearchHotkeyRegistration?.dispose();
     _observedAccounts?.removeListener(_handleAccountStoreChanged);
     _chatDeepLinks?.removeListener(_handlePendingChatDeepLink);
     _chatListController.dispose();
@@ -390,6 +399,14 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
           localeTag: Localizations.localeOf(context).toLanguageTag(),
           dark: Theme.of(context).brightness == Brightness.dark,
         ),
+      ),
+    );
+  }
+
+  void _openGlobalThemeSelector() {
+    unawaited(
+      Navigator.of(context, rootNavigator: true).push<void>(
+        AppPageRoute<void>(pageBuilder: (_, _, _) => const GlobalThemeView()),
       ),
     );
   }
@@ -690,11 +707,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
         id: 'appearance',
         label: AppStrings.t(AppStringKeys.appearanceTitle),
         icon: HeroAppIcons.palette,
-        onTap: () => _openDesktopUtility(
-          DesktopUtilityWindowKind.settings,
-          AppStrings.t(AppStringKeys.profileSettings),
-          initialSettingsCategoryId: 'appearance',
-        ),
+        onTap: _openGlobalThemeSelector,
       ),
     ];
     final applicationMenuActions = [

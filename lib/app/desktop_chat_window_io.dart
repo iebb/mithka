@@ -7,6 +7,7 @@ import 'package:multi_window_manager/multi_window_manager.dart';
 
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
+import 'chat_deep_link_controller.dart';
 import 'desktop_chat_window_models.dart';
 import 'desktop_utility_window.dart';
 
@@ -15,6 +16,7 @@ const _queryMethod = 'mithka.chat.td.query';
 const _sendMethod = 'mithka.chat.td.send';
 const _updateMethod = 'mithka.chat.td.update';
 const _openUtilityMethod = 'mithka.chat.utility.open';
+const _openPrimaryChatMethod = 'mithka.chat.primary-chat.open';
 const _presentationChangedMethod = 'mithka.chat.presentation.changed';
 
 const _chatWindowSize = Size(1120, 760);
@@ -32,10 +34,16 @@ bool get supportsDesktopChatWindows =>
 
 final _mainBridge = _DesktopChatMainBridge();
 Future<void> Function()? _childPresentationReload;
+DesktopChatWindowArguments? _childArguments;
 
-void attachDesktopChatMainProxy() => _mainBridge.attach();
+void attachDesktopChatMainProxy({
+  int? Function(int accountSlot)? accountUserIdForSlot,
+}) => _mainBridge.attach(accountUserIdForSlot: accountUserIdForSlot);
 
 void detachDesktopChatMainProxy() => _mainBridge.detach();
+
+void notifyDesktopChatAccountIdentityChanged() =>
+    _mainBridge.closeStaleAccountWindows();
 
 void attachDesktopChatChildPresentationReload(
   Future<void> Function() callback,
@@ -43,6 +51,16 @@ void attachDesktopChatChildPresentationReload(
 
 void detachDesktopChatChildPresentationReload() =>
     _childPresentationReload = null;
+
+Map<String, Object?>? desktopChatChildWindowIdentity() =>
+    _childArguments?.toIpcJson();
+
+int? registeredDesktopChatWindowAccountSlot(int windowId, Object? source) =>
+    _mainBridge.registeredAccountSlot(windowId, source);
+
+({int accountSlot, int? accountUserId})?
+registeredDesktopChatWindowAccountIdentity(int windowId, Object? source) =>
+    _mainBridge.registeredAccountIdentity(windowId, source);
 
 Future<void> notifyDesktopChatPresentationChanged() async {
   if (!supportsDesktopChatWindows || MultiWindowManager.current.id > 0) {
@@ -54,6 +72,27 @@ Future<void> notifyDesktopChatPresentationChanged() async {
 
 Future<bool> openDesktopChatWindow(DesktopChatWindowArguments arguments) =>
     _mainBridge.open(arguments);
+
+Future<bool> openChatInPrimaryWindowFromDesktopChat(
+  ChatDeepLinkRequest request,
+) async {
+  if (!supportsDesktopChatWindows || MultiWindowManager.current.id <= 0) {
+    return false;
+  }
+  final source = _childArguments;
+  if (source == null) return false;
+  try {
+    final response = await MultiWindowManager.current
+        .invokeMethodToWindow(0, _openPrimaryChatMethod, {
+          ...source.toIpcJson(),
+          'chat': request.toDesktopIpcJson(),
+        })
+        .timeout(const Duration(seconds: 10));
+    return response is Map && response['ok'] == true;
+  } on Object {
+    return false;
+  }
+}
 
 Future<bool> requestDesktopUtilityWindowFromChat({
   required DesktopChatWindowArguments requestingChat,
@@ -85,10 +124,12 @@ Future<bool> requestDesktopUtilityWindowFromChat({
 Future<void> configureDesktopChatChildProxy(
   DesktopChatWindowArguments arguments,
 ) async {
+  _childArguments = arguments;
   final proxy = _DesktopChatChildProxy(arguments);
   TdClient.shared.configureProxy(
     TdClientProxyTransport(
       accountSlot: arguments.accountSlot,
+      accountUserId: arguments.accountUserId,
       query: proxy.query,
       send: proxy.send,
       updates: proxy.updates,
@@ -209,9 +250,13 @@ class _DesktopChatMainBridge with WindowListener {
   final Set<int> _subscribedWindows = {};
   StreamSubscription<Map<String, dynamic>>? _tdUpdates;
   Timer? _presentationChangedDebounce;
+  int? Function(int accountSlot)? _accountUserIdForSlot;
   bool _attached = false;
 
-  void attach() {
+  void attach({int? Function(int accountSlot)? accountUserIdForSlot}) {
+    if (!_attached || accountUserIdForSlot != null) {
+      _accountUserIdForSlot = accountUserIdForSlot;
+    }
     if (_attached || !supportsDesktopChatWindows) return;
     try {
       MultiWindowManager.current.addListener(this);
@@ -242,6 +287,7 @@ class _DesktopChatMainBridge with WindowListener {
     _argumentsByWindow.clear();
     _subscribedWindows.clear();
     _registry.clear();
+    _accountUserIdForSlot = null;
   }
 
   void schedulePresentationChanged() {
@@ -271,6 +317,7 @@ class _DesktopChatMainBridge with WindowListener {
   Future<bool> open(DesktopChatWindowArguments arguments) async {
     if (!supportsDesktopChatWindows) return false;
     attach();
+    if (!_identityIsCurrent(arguments)) return false;
     MultiWindowManager? createdWindow;
     try {
       final active = await MultiWindowManager.current.getActiveWindowIds();
@@ -369,6 +416,26 @@ class _DesktopChatMainBridge with WindowListener {
           return const {'ok': false};
         }
         return {'ok': await DesktopUtilityWindowService.instance.open(utility)};
+      case _openPrimaryChatMethod:
+        final request = arguments is Map
+            ? ChatDeepLinkRequest.tryParseDesktopIpc(arguments['chat'])
+            : null;
+        if (request == null) return const {'ok': false};
+        ChatDeepLinkController.shared.openChat(
+          chatId: request.chatId,
+          title: request.title,
+          messageId: request.messageId,
+          accountSlot: registered.accountSlot,
+          accountUserId: registered.accountUserId,
+        );
+        try {
+          await MultiWindowManager.current.show();
+          await MultiWindowManager.current.focus();
+        } on Object {
+          // The queued primary-window deep link remains valid if native focus
+          // is unavailable on this desktop build.
+        }
+        return const {'ok': true};
       default:
         return null;
     }
@@ -387,7 +454,53 @@ class _DesktopChatMainBridge with WindowListener {
         )) {
       return null;
     }
+    if (!_identityIsCurrent(registered)) {
+      _rejectStaleWindow(windowId);
+      return null;
+    }
     return registered;
+  }
+
+  bool _identityIsCurrent(DesktopChatWindowArguments arguments) {
+    final resolver = _accountUserIdForSlot;
+    return resolver == null ||
+        resolver(arguments.accountSlot) == arguments.accountUserId;
+  }
+
+  void closeStaleAccountWindows() {
+    if (_accountUserIdForSlot == null) return;
+    for (final entry in _argumentsByWindow.entries.toList(growable: false)) {
+      if (!_identityIsCurrent(entry.value)) _rejectStaleWindow(entry.key);
+    }
+  }
+
+  void _rejectStaleWindow(int windowId) {
+    _removeWindow(windowId);
+    unawaited(_closeWindow(windowId));
+  }
+
+  Future<void> _closeWindow(int windowId) async {
+    try {
+      await MultiWindowManager.fromWindowId(windowId).close();
+    } on Object {
+      // A stale or already-closed child is fully rejected locally.
+    }
+  }
+
+  int? registeredAccountSlot(int windowId, Object? source) =>
+      _registeredRequest(windowId, source)?.accountSlot;
+
+  ({int accountSlot, int? accountUserId})? registeredAccountIdentity(
+    int windowId,
+    Object? source,
+  ) {
+    final registered = _registeredRequest(windowId, source);
+    return registered == null
+        ? null
+        : (
+            accountSlot: registered.accountSlot,
+            accountUserId: registered.accountUserId,
+          );
   }
 
   DesktopChatWindowKey? _keyFromIpc(Object? source) {
@@ -456,6 +569,10 @@ class _DesktopChatMainBridge with WindowListener {
     for (final entry in _argumentsByWindow.entries.toList(growable: false)) {
       if (entry.value.accountSlot != accountSlot ||
           !_subscribedWindows.contains(entry.key)) {
+        continue;
+      }
+      if (!_identityIsCurrent(entry.value)) {
+        _rejectStaleWindow(entry.key);
         continue;
       }
       unawaited(_pushUpdate(entry.key, update));

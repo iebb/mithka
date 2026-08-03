@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/intl.dart';
+import 'package:mithka/chat/add_members_view.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/l10n/telegram_language_controller.dart';
 import 'package:provider/provider.dart';
@@ -241,6 +242,181 @@ void main() {
     );
 
     expect(controller.text(AppStringKeys.archivedChatsGroupAssistant), '归档的聊天');
+  });
+
+  test('contact tools resolve entirely through Telegram Android keys', () {
+    final controller = TelegramLanguageController.test(
+      strings: const {
+        'Done': 'tg done',
+        'VoipGroupInviteMember': 'tg invite members',
+        'SearchChats': 'tg search chats',
+        'SearchPeopleByUsername': 'tg search people',
+        'NoResult': 'tg no result',
+        'NoSuchUsers': 'tg no users',
+        'AccDescrGroup': 'tg group',
+        'EnterChannelName': 'tg channel name',
+        'ChannelAlertCreate2': 'tg create channel',
+        'ErrorOccurred': 'tg error',
+        'NewGroup': 'tg new group',
+        'ChatYourSelfName': 'tg you',
+        'ChannelBots': 'tg bots',
+        'Contacts': 'tg contacts',
+        'Loading': 'tg loading',
+        'NoChannelsTitle': 'tg no channels',
+        'NoContacts': 'tg no contacts',
+        'NoSuchGroups': 'tg no groups',
+        'Cancel': 'tg cancel',
+        'DescriptionOptionalPlaceholder': 'tg optional description',
+        'GroupName': 'tg group name',
+        'Channel': 'tg channel',
+        'Search': 'tg search',
+      },
+    );
+
+    const expected = <String, String>{
+      AppStringKeys.addMembersDone: 'tg done',
+      AppStringKeys.addMembersDoneWithCount: 'tg done',
+      AppStringKeys.addMembersInviteMembersTitle: 'tg invite members',
+      AppStringKeys.addMembersInvitePermissionError: 'tg error',
+      AppStringKeys.addPeopleFindGroups: 'tg search chats',
+      AppStringKeys.addPeopleFindPeople: 'tg search people',
+      AppStringKeys.addPeopleGroupNameOrLinkPlaceholder: 'tg search chats',
+      AppStringKeys.addPeopleNoGroupsOrChannelsFound: 'tg no result',
+      AppStringKeys.addPeopleNoUsersFound: 'tg no users',
+      AppStringKeys.addPeopleUsernameOrPhonePlaceholder: 'tg search people',
+      AppStringKeys.chatInfoGroupChat: 'tg group',
+      AppStringKeys.chatListChannelName: 'tg channel name',
+      AppStringKeys.chatListCreateChannel: 'tg create channel',
+      AppStringKeys.chatListCreateChannelFailed: 'tg error',
+      AppStringKeys.chatListCreateGroup: 'tg new group',
+      AppStringKeys.chatMeLabel: 'tg you',
+      AppStringKeys.chatsSearchBots: 'tg bots',
+      AppStringKeys.contactsFriends: 'tg contacts',
+      AppStringKeys.contactsLoading: 'tg loading',
+      AppStringKeys.contactsNoBots: 'tg no result',
+      AppStringKeys.contactsNoChannels: 'tg no channels',
+      AppStringKeys.contactsNoContacts: 'tg no contacts',
+      AppStringKeys.contactsNoGroupChats: 'tg no groups',
+      AppStringKeys.countryPickerCancel: 'tg cancel',
+      AppStringKeys.createGroupFailed: 'tg error',
+      AppStringKeys.createGroupOptionalLabel: 'tg optional description',
+      AppStringKeys.createGroupStartGroupChat: 'tg new group',
+      AppStringKeys.groupManagementGroupName: 'tg group name',
+      AppStringKeys.linkHandlerGroupLabel: 'tg group',
+      AppStringKeys.tabChannels: 'tg channel',
+      AppStringKeys.tabContacts: 'tg contacts',
+      AppStringKeys.topicChatSearch: 'tg search',
+    };
+
+    for (final entry in expected.entries) {
+      expect(controller.text(entry.key), entry.value, reason: entry.key);
+    }
+    expect(
+      addMembersDoneLabel(controller.text(AppStringKeys.addMembersDone), 0),
+      'tg done',
+    );
+    expect(
+      addMembersDoneLabel(controller.text(AppStringKeys.addMembersDone), 3),
+      'tg done (3)',
+    );
+  });
+
+  test('contact management uses matching Telegram Android labels', () {
+    final controller = TelegramLanguageController.test(
+      strings: const {
+        'AddContactTitle': 'tg add contact',
+        'ActionYouSuggestBirthday': 'tg birthday sent',
+        'NowInContacts': '%1\$s tg added',
+        'AccDescrIVDetails': 'tg details',
+        'Contacts': 'tg contacts',
+        'ProfileNotes': 'tg notes',
+        'DeletedFromYourContacts': '%s tg deleted',
+        'FilterContact': 'tg contact',
+        'DateDay': 'tg day',
+        'EditContact': 'tg edit contact',
+        'DateMonth': 'tg month',
+        'AddNotesInfo': 'tg private notes',
+        'ProfileNotesInfo': 'tg only you',
+        'FolderLinkPreviewRight': 'tg personal',
+        'TypePublic': 'tg public',
+        'SharePhoneNumberWith': 'tg visible to %1\$s',
+        'DeleteContactTitle': 'tg delete contact title',
+        'DeleteContactSubtitle': 'tg delete contact message',
+        'DeleteContact': 'tg delete contact',
+        'ResetToOriginalPhoto': 'tg reset photo',
+        'ResetToOriginalPhotoMessage': 'tg reset %s photo',
+        'UserSetPhoto': 'tg set photo for %s',
+        'ShareMyPhoneNoCaps': 'tg share phone',
+        'AreYouSureShareMyContactInfo': 'tg share phone question',
+        'ShareYouPhoneNumberTitle': 'tg share phone title',
+        'UserSuggestBirthday': 'tg suggest birthday',
+        'UserSuggestBirthdayTitle': 'tg birthday for %s',
+        'SuggestPhotoFor': 'tg photo for %s',
+        'DateYear': 'tg year',
+      },
+    );
+
+    const directExpected = <String, String>{
+      AppStringKeys.profileContactManagementAddContact: 'tg add contact',
+      AppStringKeys.profileContactManagementBirthdateSuggestionSent:
+          'tg birthday sent',
+      AppStringKeys.profileContactManagementContactDetails: 'tg details',
+      AppStringKeys.profileContactManagementContactListSection: 'tg contacts',
+      AppStringKeys.profileContactManagementContactNote: 'tg notes',
+      AppStringKeys.profileContactManagementContactSection: 'tg contact',
+      AppStringKeys.profileContactManagementDay: 'tg day',
+      AppStringKeys.profileContactManagementEditContact: 'tg edit contact',
+      AppStringKeys.profileContactManagementMonth: 'tg month',
+      AppStringKeys.profileContactManagementNoteVisibleOnly: 'tg private notes',
+      AppStringKeys.profileContactManagementOnlyYouCanSeeIt: 'tg only you',
+      AppStringKeys.profileContactManagementPhotoPersonal: 'tg personal',
+      AppStringKeys.profileContactManagementPhotoPublic: 'tg public',
+      AppStringKeys.profileContactManagementPrivateNote: 'tg notes',
+      AppStringKeys.profileContactManagementRemoveContact:
+          'tg delete contact title',
+      AppStringKeys.profileContactManagementRemoveContactMessage:
+          'tg delete contact message',
+      AppStringKeys.profileContactManagementRemoveContactRow:
+          'tg delete contact',
+      AppStringKeys.profileContactManagementRemovePersonalPhoto:
+          'tg reset photo',
+      AppStringKeys.profileContactManagementSharePhone: 'tg share phone',
+      AppStringKeys.profileContactManagementSharePhoneMessage:
+          'tg share phone question',
+      AppStringKeys.profileContactManagementShareYourPhoneNumber:
+          'tg share phone title',
+      AppStringKeys.profileContactManagementSuggestBirthdate:
+          'tg suggest birthday',
+      AppStringKeys.profileContactManagementYear: 'tg year',
+    };
+    for (final entry in directExpected.entries) {
+      expect(controller.text(entry.key), entry.value, reason: entry.key);
+    }
+
+    const namedExpected = <String, String>{
+      AppStringKeys.profileContactManagementContactAddedValue1: 'Natu tg added',
+      AppStringKeys.profileContactManagementContactRemovedValue1:
+          'Natu tg deleted',
+      AppStringKeys.profileContactManagementPrivacyExceptionSubtitleValue1:
+          'tg visible to Natu',
+      AppStringKeys.profileContactManagementReturnOriginalPhotoValue1:
+          'tg reset Natu photo',
+      AppStringKeys.profileContactManagementSetPersonalPhotoValue1:
+          'tg set photo for Natu',
+      AppStringKeys.profileContactManagementSharePhonePrivacyExceptionValue1:
+          'tg visible to Natu',
+      AppStringKeys.profileContactManagementSuggestBirthdateDescriptionValue1:
+          'tg birthday for Natu',
+      AppStringKeys.profileContactManagementSuggestProfilePhotoValue1:
+          'tg photo for Natu',
+    };
+    for (final entry in namedExpected.entries) {
+      expect(
+        controller.text(entry.key, placeholders: const {'value1': 'Natu'}),
+        entry.value,
+        reason: entry.key,
+      );
+    }
   });
 
   test('keeps channel feeds and Stories as distinct app labels', () {

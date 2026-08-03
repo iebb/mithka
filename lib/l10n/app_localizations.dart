@@ -922,6 +922,8 @@ abstract final class AppStringKeys {
   static const chatsSearchPlaceholder = 'chatsSearchPlaceholder';
   static const chatsSearchPublicGroupsAndChannels =
       'chatsSearchPublicGroupsAndChannels';
+  static const desktopSearchAll = 'desktopSearchAll';
+  static const desktopSearchClear = 'desktopSearchClear';
   static const chatStickerAddSuccess = 'chatStickerAddSuccess';
   static const chatThemeApply = 'chatThemeApply';
   static const chatThemeChanged = 'chatThemeChanged';
@@ -3321,16 +3323,92 @@ abstract final class AppStringKeys {
       'pollComposerClosePollAutomatically';
   static const pollResultsFilterVoters = 'pollResultsFilterVoters';
   static const pollResultsPollResults = 'pollResultsPollResults';
+  static const profileContactManagementAddContact =
+      'profileContactManagementAddContact';
+  static const profileContactManagementBirthdateSuggestionSent =
+      'profileContactManagementBirthdateSuggestionSent';
+  static const profileContactManagementContactAddedValue1 =
+      'profileContactManagementContactAddedValue1';
   static const profileContactManagementContactDetails =
       'profileContactManagementContactDetails';
+  static const profileContactManagementContactDetailsSubtitle =
+      'profileContactManagementContactDetailsSubtitle';
+  static const profileContactManagementContactListSection =
+      'profileContactManagementContactListSection';
   static const profileContactManagementContactNote =
       'profileContactManagementContactNote';
+  static const profileContactManagementContactRemovedValue1 =
+      'profileContactManagementContactRemovedValue1';
+  static const profileContactManagementContactSection =
+      'profileContactManagementContactSection';
+  static const profileContactManagementContactUpdated =
+      'profileContactManagementContactUpdated';
+  static const profileContactManagementDay = 'profileContactManagementDay';
+  static const profileContactManagementDeleteFromContacts =
+      'profileContactManagementDeleteFromContacts';
+  static const profileContactManagementEditContact =
+      'profileContactManagementEditContact';
+  static const profileContactManagementMonth = 'profileContactManagementMonth';
+  static const profileContactManagementNoteRemoved =
+      'profileContactManagementNoteRemoved';
+  static const profileContactManagementNoteSaved =
+      'profileContactManagementNoteSaved';
+  static const profileContactManagementNoteVisibleOnly =
+      'profileContactManagementNoteVisibleOnly';
+  static const profileContactManagementOnlyYouCanSeeIt =
+      'profileContactManagementOnlyYouCanSeeIt';
+  static const profileContactManagementPersonalPhotoDescription =
+      'profileContactManagementPersonalPhotoDescription';
+  static const profileContactManagementPersonalPhotoRemoved =
+      'profileContactManagementPersonalPhotoRemoved';
+  static const profileContactManagementPersonalPhotoUpdated =
+      'profileContactManagementPersonalPhotoUpdated';
+  static const profileContactManagementPhoneShared =
+      'profileContactManagementPhoneShared';
+  static const profileContactManagementPhotoCurrent =
+      'profileContactManagementPhotoCurrent';
+  static const profileContactManagementPhotoPersonal =
+      'profileContactManagementPhotoPersonal';
+  static const profileContactManagementPhotoPublic =
+      'profileContactManagementPhotoPublic';
+  static const profileContactManagementPhotoSuggestionSent =
+      'profileContactManagementPhotoSuggestionSent';
+  static const profileContactManagementPrivacyExceptionSubtitleValue1 =
+      'profileContactManagementPrivacyExceptionSubtitleValue1';
+  static const profileContactManagementPrivateNote =
+      'profileContactManagementPrivateNote';
+  static const profileContactManagementProfileSuggestionsSection =
+      'profileContactManagementProfileSuggestionsSection';
   static const profileContactManagementRemoveContact =
       'profileContactManagementRemoveContact';
+  static const profileContactManagementRemoveContactMessage =
+      'profileContactManagementRemoveContactMessage';
+  static const profileContactManagementRemoveContactRow =
+      'profileContactManagementRemoveContactRow';
+  static const profileContactManagementRemovePersonalPhoto =
+      'profileContactManagementRemovePersonalPhoto';
+  static const profileContactManagementReturnOriginalPhotoValue1 =
+      'profileContactManagementReturnOriginalPhotoValue1';
+  static const profileContactManagementSetPersonalPhotoValue1 =
+      'profileContactManagementSetPersonalPhotoValue1';
+  static const profileContactManagementSharePhone =
+      'profileContactManagementSharePhone';
+  static const profileContactManagementSharePhoneMessage =
+      'profileContactManagementSharePhoneMessage';
+  static const profileContactManagementSharePhonePrivacyExceptionValue1 =
+      'profileContactManagementSharePhonePrivacyExceptionValue1';
   static const profileContactManagementShareYourPhoneNumber =
       'profileContactManagementShareYourPhoneNumber';
   static const profileContactManagementSuggestBirthdate =
       'profileContactManagementSuggestBirthdate';
+  static const profileContactManagementSuggestBirthdateDescriptionValue1 =
+      'profileContactManagementSuggestBirthdateDescriptionValue1';
+  static const profileContactManagementSuggestProfilePhotoDescriptionValue1 =
+      'profileContactManagementSuggestProfilePhotoDescriptionValue1';
+  static const profileContactManagementSuggestProfilePhotoValue1 =
+      'profileContactManagementSuggestProfilePhotoValue1';
+  static const profileContactManagementTitle = 'profileContactManagementTitle';
+  static const profileContactManagementYear = 'profileContactManagementYear';
   static const profilePhotoManagementNoProfilePhotosYet =
       'profilePhotoManagementNoProfilePhotosYet';
   static const profilePhotoManagementPhotoHistory =

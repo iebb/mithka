@@ -16,6 +16,11 @@ import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 
+@visibleForTesting
+String addMembersDoneLabel(String doneText, int selectionCount) {
+  return selectionCount <= 0 ? doneText : '$doneText ($selectionCount)';
+}
+
 class AddMembersView extends StatefulWidget {
   const AddMembersView({super.key, required this.chatId});
   final int chatId;
@@ -150,11 +155,10 @@ class _AddMembersViewState extends State<AddMembersView> {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 14),
                   child: Text(
-                    _selected.isEmpty
-                        ? AppStrings.t(AppStringKeys.addMembersDone)
-                        : AppStrings.t(AppStringKeys.addMembersDoneWithCount, {
-                            'value1': _selected.length,
-                          }),
+                    addMembersDoneLabel(
+                      AppStrings.t(AppStringKeys.addMembersDone),
+                      _selected.length,
+                    ),
                     style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w600,

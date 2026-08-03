@@ -1,13 +1,18 @@
 import 'package:flutter/widgets.dart';
 
+import 'chat_deep_link_controller.dart';
 import 'desktop_chat_window_models.dart';
 import 'desktop_utility_window_models.dart';
 
 bool get supportsDesktopChatWindows => false;
 
-void attachDesktopChatMainProxy() {}
+void attachDesktopChatMainProxy({
+  int? Function(int accountSlot)? accountUserIdForSlot,
+}) {}
 
 void detachDesktopChatMainProxy() {}
+
+void notifyDesktopChatAccountIdentityChanged() {}
 
 Future<void> notifyDesktopChatPresentationChanged() async {}
 
@@ -19,6 +24,10 @@ void detachDesktopChatChildPresentationReload() {}
 
 Future<bool> openDesktopChatWindow(
   DesktopChatWindowArguments arguments,
+) async => false;
+
+Future<bool> openChatInPrimaryWindowFromDesktopChat(
+  ChatDeepLinkRequest request,
 ) async => false;
 
 Future<bool> requestDesktopUtilityWindowFromChat({

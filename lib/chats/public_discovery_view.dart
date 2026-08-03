@@ -3,8 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
-import '../app/app_navigator.dart';
-import '../chat/chat_view.dart';
+import '../app/primary_chat_launcher.dart';
 import '../components/app_icons.dart';
 import '../components/confirm_dialog.dart';
 import '../components/photo_avatar.dart';
@@ -363,23 +362,14 @@ class _PublicDiscoveryViewState extends State<PublicDiscoveryView> {
       }
     } catch (_) {}
     if (!mounted) return;
-    await pushAppChatRoute(
-      context,
-      AppChatPageRoute(
-        builder: (_) => ChatView(chatId: chatId, title: peer.title),
-      ),
-    );
+    await openChatFromCurrentWindow(context, chatId: chatId, title: peer.title);
   }
 
-  Future<void> _openHit(_DiscoveryHit hit) => pushAppChatRoute(
+  Future<void> _openHit(_DiscoveryHit hit) => openChatFromCurrentWindow(
     context,
-    AppChatPageRoute(
-      builder: (_) => ChatView(
-        chatId: hit.chatId,
-        title: hit.source.title,
-        initialMessageId: hit.message.id,
-      ),
-    ),
+    chatId: hit.chatId,
+    title: hit.source.title,
+    initialMessageId: hit.message.id,
   );
 
   @override

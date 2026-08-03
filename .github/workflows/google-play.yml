@@ -22,6 +22,9 @@ permissions:
 env:
   # Keep each Mithka release reproducible by pinning an immutable TDLib build.
   TDJSON_RELEASE_TAG: tdlib-1.8.66-1b08c83bc078-rebuild-29623073124-1
+  TDJSON_ANDROID_ARM64_V8A_SHA256: cc7f46072ed11631dbd3c09d8c0fb7c9b352ad07a64a80e3c088153aa65111b1
+  TDJSON_ANDROID_ARMEABI_V7A_SHA256: 472371dfe8aea93ccb6b20bc32d35f3d0b1f1c97b1f9d98a4279703dbba2a042
+  TDJSON_ANDROID_X86_64_SHA256: d5615f73aad657ba9a40beca47fbc80504f87bddcf17d3d3471389b8de977b21
 
 jobs:
   prepare:
@@ -178,10 +181,9 @@ jobs:
         uses: actions/cache@v5
         with:
           path: android/app/src/main/jniLibs
-          key: jnilibs-${{ runner.os }}-${{ steps.tdjson_release.outputs.tag }}-play-aab
-          restore-keys: |
-            jnilibs-${{ runner.os }}-${{ steps.tdjson_release.outputs.tag }}-
-            jnilibs-${{ runner.os }}-
+          # Never restore a native database engine from another release tag.
+          # v2 also bypasses caches poisoned by the former broad restore key.
+          key: jnilibs-v2-${{ runner.os }}-${{ steps.tdjson_release.outputs.tag }}-play-aab
 
       - name: Download prebuilt tdjson libraries
         env:
@@ -203,6 +205,18 @@ jobs:
             unzip -q -o "$archive" -d "$unpacked"
             install -m 0644 "$unpacked/$abi/libtdjson.so" "$output"
             ls -lh "$output"
+          done
+
+      - name: Verify pinned tdjson binaries
+        run: |
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            library="android/app/src/main/jniLibs/$abi/libtdjson.so"
+            case "$abi" in
+              arm64-v8a) expected="$TDJSON_ANDROID_ARM64_V8A_SHA256" ;;
+              armeabi-v7a) expected="$TDJSON_ANDROID_ARMEABI_V7A_SHA256" ;;
+              x86_64) expected="$TDJSON_ANDROID_X86_64_SHA256" ;;
+            esac
+            printf '%s  %s\n' "$expected" "$library" | sha256sum --check --strict
           done
 
       - name: Flutter dependencies

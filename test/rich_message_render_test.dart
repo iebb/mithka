@@ -7,6 +7,69 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  testWidgets('rich tables paint full backgrounds behind uneven cells', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final theme = ThemeController(prefs);
+    addTearDown(theme.dispose);
+    final message = ChatMessage(
+      id: 899,
+      chatId: 42,
+      isOutgoing: false,
+      text: '',
+      date: 1,
+      contentType: 'messageRichMessage',
+      richBlocks: const [
+        RichMessageBlock.captionedTable(
+          tableRows: [
+            [
+              RichMessageTableCell(text: 'UTC', isHeader: true),
+              RichMessageTableCell(text: 'Balance', isHeader: true),
+            ],
+            [
+              RichMessageTableCell(text: '00:45'),
+              RichMessageTableCell(text: '135.7000 USD\n→ 93.1000 USD'),
+            ],
+          ],
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<ThemeController>.value(
+        value: theme,
+        child: MaterialApp(
+          home: Scaffold(
+            body: MessageBubble(
+              message: message,
+              peerTitle: 'Test',
+              isGroup: false,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final table = tester.widget<Table>(find.byType(Table));
+    expect(table.children, hasLength(2));
+    final bodyCells = table.children[1].children.cast<TableCell>();
+    final firstCell = find.byWidget(bodyCells[0].child);
+    final secondCell = find.byWidget(bodyCells[1].child);
+    expect(tester.getTopLeft(firstCell).dy, tester.getTopLeft(secondCell).dy);
+    expect(
+      tester.getBottomLeft(firstCell).dy,
+      tester.getBottomLeft(secondCell).dy,
+    );
+    expect(tester.getSize(firstCell).height, tester.getSize(secondCell).height);
+    for (final cell in bodyCells) {
+      expect((cell.child as Container).color, isNotNull);
+    }
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('MessageBubble renders every rich message block kind', (
     tester,
   ) async {

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart' show Theme;
 import 'package:flutter/widgets.dart';
 import 'package:provider/provider.dart';
@@ -36,9 +37,11 @@ class _GlobalThemeViewState extends State<GlobalThemeView> {
     Color(0xFFFF2D55),
     Color(0xFF8E8E93),
   ];
-  bool _requestedCommunityThemes = false;
   bool _initializedTargetBrightness = false;
   List<TelegramCloudTheme>? _communityThemes;
+  ThemeController? _communityThemeController;
+  String? _communityThemeCacheScope;
+  int _communityThemeRequestId = 0;
   Brightness _targetBrightness = Brightness.light;
   Brightness _appBrightness = Brightness.light;
   AppColors _pageColors = AppColors.light;
@@ -53,18 +56,63 @@ class _GlobalThemeViewState extends State<GlobalThemeView> {
       _initializedTargetBrightness = true;
       _targetBrightness = Theme.of(context).brightness;
     }
-    if (_requestedCommunityThemes) return;
-    _requestedCommunityThemes = true;
-    _synchronizeCommunityThemes(context.read<ThemeController>());
+    _bindCommunityThemeCache(context.watch<ThemeController>());
   }
 
-  Future<void> _synchronizeCommunityThemes(ThemeController controller) async {
+  void _bindCommunityThemeCache(ThemeController controller) {
+    final cacheScope = controller.installedCloudThemeCacheScope;
+    if (identical(_communityThemeController, controller) &&
+        _communityThemeCacheScope == cacheScope) {
+      return;
+    }
+
+    _communityThemeController?.removeListener(
+      _handleCommunityThemeControllerChanged,
+    );
+    _communityThemeController = controller;
+    controller.addListener(_handleCommunityThemeControllerChanged);
+    _communityThemeCacheScope = cacheScope;
+    _communityThemes = List.unmodifiable(controller.installedCloudThemes);
+    final requestId = ++_communityThemeRequestId;
+    _synchronizeCommunityThemes(controller, cacheScope, requestId);
+  }
+
+  Future<void> _synchronizeCommunityThemes(
+    ThemeController controller,
+    String cacheScope,
+    int requestId,
+  ) async {
+    final cacheRevision = controller.installedCloudThemeRevision;
     final themes = await _themeService.loadInstalled(
       fallback: controller.installedCloudThemes,
     );
-    if (!mounted) return;
+    if (!mounted ||
+        requestId != _communityThemeRequestId ||
+        !identical(_communityThemeController, controller) ||
+        _communityThemeCacheScope != cacheScope ||
+        controller.installedCloudThemeCacheScope != cacheScope ||
+        controller.installedCloudThemeRevision != cacheRevision) {
+      return;
+    }
     controller.synchronizeInstalledCloudThemes(themes);
-    setState(() => _communityThemes = themes);
+  }
+
+  void _handleCommunityThemeControllerChanged() {
+    final controller = _communityThemeController;
+    if (!mounted || controller == null) return;
+    final next = List<TelegramCloudTheme>.unmodifiable(
+      controller.installedCloudThemes,
+    );
+    if (listEquals(_communityThemes, next)) return;
+    setState(() => _communityThemes = next);
+  }
+
+  @override
+  void dispose() {
+    _communityThemeController?.removeListener(
+      _handleCommunityThemeControllerChanged,
+    );
+    super.dispose();
   }
 
   Future<void> _applyImportedTheme(

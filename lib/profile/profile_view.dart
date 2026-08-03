@@ -15,11 +15,10 @@ import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
-import '../app/app_navigator.dart';
+import '../app/primary_chat_launcher.dart';
 import '../auth/account_store.dart';
 import '../auth/auth_manager.dart';
 import '../call/calls_view.dart';
-import '../chat/chat_view.dart';
 import '../chat/chat_wallpaper.dart';
 import '../chat/custom_emoji.dart';
 import '../chat/shared_media_view.dart';
@@ -192,12 +191,7 @@ class _ProfileViewState extends State<ProfileView> {
 
   void _openSaved(String title) {
     final cid = _vm.savedChatId ?? _vm.user?.id ?? 0;
-    pushAppChatRoute(
-      context,
-      AppChatPageRoute<void>(
-        builder: (_) => ChatView(chatId: cid, title: title),
-      ),
-    );
+    unawaited(openChatFromCurrentWindow(context, chatId: cid, title: title));
   }
 
   void _openStatusPicker() {

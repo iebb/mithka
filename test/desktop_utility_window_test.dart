@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart' show Size;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mithka/app/chat_deep_link_controller.dart';
 import 'package:mithka/app/desktop_utility_window.dart';
 import 'package:mithka/app/desktop_utility_window_io.dart';
 
@@ -13,6 +14,8 @@ void main() {
     int? userId,
     String title = 'Files',
     String? initialSettingsCategoryId,
+    String? initialQuery,
+    String? instanceId,
   }) => DesktopUtilityWindowArguments(
     kind: kind,
     accountSlot: 2,
@@ -23,6 +26,8 @@ void main() {
     localeTag: 'zh-Hans',
     dark: true,
     initialSettingsCategoryId: initialSettingsCategoryId,
+    initialQuery: initialQuery,
+    instanceId: instanceId,
   );
 
   test('utility arguments round-trip without TDLib session material', () {
@@ -54,6 +59,39 @@ void main() {
     expect(desktopUtilityWindowHasUsableMetrics(const Size(500, 700)), isTrue);
   });
 
+  test('primary-chat IPC carries presentation only and validates input', () {
+    final encoded = const ChatDeepLinkRequest(
+      chatId: -10042,
+      title: '  Group\nName  ',
+      messageId: 77,
+      accountSlot: 9,
+      accountUserId: 88,
+    ).toDesktopIpcJson();
+
+    expect(encoded, {'chatId': -10042, 'title': 'Group Name', 'messageId': 77});
+    expect(encoded, isNot(contains('accountSlot')));
+    expect(encoded, isNot(contains('accountUserId')));
+
+    final parsed = ChatDeepLinkRequest.tryParseDesktopIpc(encoded);
+    expect(parsed?.chatId, -10042);
+    expect(parsed?.title, 'Group Name');
+    expect(parsed?.messageId, 77);
+    expect(parsed?.accountSlot, isNull);
+    expect(parsed?.accountUserId, isNull);
+
+    expect(
+      ChatDeepLinkRequest.tryParseDesktopIpc({
+        'chatId': -10042,
+        'title': <String>['not', 'text'],
+      }),
+      isNull,
+    );
+    expect(
+      ChatDeepLinkRequest.tryParseDesktopIpc({'chatId': 0, 'title': 'Invalid'}),
+      isNull,
+    );
+  });
+
   test('settings shortcut category round-trips as presentation metadata', () {
     final encoded = arguments(
       kind: DesktopUtilityWindowKind.settings,
@@ -67,6 +105,43 @@ void main() {
     expect(
       DesktopUtilityWindowArguments.normalizeSettingsCategoryId('../secret'),
       isNull,
+    );
+  });
+
+  test('search query round-trips and isolates full-search child windows', () {
+    final first = arguments(
+      kind: DesktopUtilityWindowKind.search,
+      title: 'Search',
+      initialQuery: '  mao\ncat  ',
+      instanceId: 'search_1',
+    );
+    final second = arguments(
+      kind: DesktopUtilityWindowKind.search,
+      title: 'Search',
+      initialQuery: 'another query',
+      instanceId: 'search_2',
+    );
+    final repeatedQuery = arguments(
+      kind: DesktopUtilityWindowKind.search,
+      title: 'Search',
+      initialQuery: 'mao cat',
+      instanceId: 'search_3',
+    );
+    final parsed = DesktopUtilityWindowArguments.tryParse(first.encode());
+
+    expect(parsed?.initialQuery, 'mao cat');
+    expect(parsed?.key.query, 'mao cat');
+    expect(parsed?.key.instanceId, 'search_1');
+    expect(parsed?.toIpcJson()['query'], 'mao cat');
+    expect(parsed?.toIpcJson()['instanceId'], 'search_1');
+    expect(first.key, isNot(second.key));
+    expect(first.key, isNot(repeatedQuery.key));
+    expect(first.encode(), isNot(contains('session')));
+    expect(
+      DesktopUtilityWindowArguments.normalizeSearchQuery(
+        List.filled(300, 'x').join(),
+      ),
+      hasLength(256),
     );
   });
 
@@ -255,6 +330,90 @@ void main() {
     expect(registry.activeWindowFor(secondUser, const [20, 21, 22, 23]), 23);
   });
 
+  test('utility transport requires the original non-null account identity', () {
+    expect(
+      desktopUtilityAccountIdentityIsCurrent(
+        kind: DesktopUtilityWindowKind.search,
+        registeredAccountUserId: 88,
+        currentAccountUserId: 88,
+      ),
+      isTrue,
+    );
+    expect(
+      desktopUtilityAccountIdentityIsCurrent(
+        kind: DesktopUtilityWindowKind.search,
+        registeredAccountUserId: 88,
+        currentAccountUserId: 99,
+      ),
+      isFalse,
+    );
+    expect(
+      desktopUtilityAccountIdentityIsCurrent(
+        kind: DesktopUtilityWindowKind.search,
+        registeredAccountUserId: null,
+        currentAccountUserId: 99,
+      ),
+      isFalse,
+    );
+    expect(
+      desktopUtilityAccountIdentityIsCurrent(
+        kind: DesktopUtilityWindowKind.files,
+        registeredAccountUserId: null,
+        currentAccountUserId: 99,
+      ),
+      isFalse,
+    );
+    expect(
+      desktopUtilityAccountIdentityIsCurrent(
+        kind: DesktopUtilityWindowKind.files,
+        registeredAccountUserId: 99,
+        currentAccountUserId: null,
+      ),
+      isFalse,
+    );
+    expect(
+      desktopUtilityAccountIdentityIsCurrent(
+        kind: DesktopUtilityWindowKind.files,
+        registeredAccountUserId: 99,
+        currentAccountUserId: 99,
+      ),
+      isTrue,
+    );
+  });
+
+  test('child-facing chat entry points use the primary-window launcher', () {
+    final calls = File('lib/call/calls_view.dart').readAsStringSync();
+    final chat = File('lib/chat/chat_view.dart').readAsStringSync();
+    final chatInfo = File('lib/chat/chat_info_view.dart').readAsStringSync();
+    final links = File('lib/chat/link_handler.dart').readAsStringSync();
+    final pinned = File(
+      'lib/chat/pinned_messages_view.dart',
+    ).readAsStringSync();
+    final additionalEntryPoints = [
+      'lib/contacts/contacts_view.dart',
+      'lib/contacts/add_people_view.dart',
+      'lib/contacts/create_group_view.dart',
+      'lib/chats/public_discovery_view.dart',
+      'lib/profile/profile_view.dart',
+      'lib/profile/profile_detail_view.dart',
+      'lib/moments/story_viewer_view.dart',
+    ].map((path) => File(path).readAsStringSync());
+
+    expect(calls, contains('openChatFromCurrentWindow('));
+    expect(
+      RegExp(r'openChatFromCurrentWindow\(').allMatches(chat).length,
+      greaterThanOrEqualTo(3),
+    );
+    expect(links, contains('handoffChatToPrimaryWindow('));
+    expect(links, contains("fullInfo.int64('direct_messages_chat_id')"));
+    expect(links, isNot(contains('ChannelDirectMessagesView(')));
+    expect(pinned, contains('openChatFromCurrentWindow('));
+    expect(chatInfo, isNot(contains('ChannelDirectMessagesView(')));
+    for (final source in additionalEntryPoints) {
+      expect(source, contains('openChatFromCurrentWindow('));
+    }
+  });
+
   test('IPC normalizes nested codec maps and blocks lifecycle requests', () {
     final bytes = Uint8List.fromList(const [1, 2, 3]);
     final request = desktopUtilitySanitizeRequest(<Object?, Object?>{
@@ -315,6 +474,8 @@ void main() {
     expect(child, contains('ScheduledMessagesView('));
     expect(child, contains('RichTextComposerView('));
     expect(child, contains('TelegramAiEditorView('));
+    expect(child, contains('SearchView('));
+    expect(child, contains('initialQuery: widget.arguments.initialQuery'));
     expect(child, contains('showBackButton: false'));
     expect(child, contains('allowSessionLifecycleActions: false'));
     expect(
@@ -324,6 +485,9 @@ void main() {
     expect(child, isNot(contains('DesktopPrimaryWindowFrame(')));
     expect(io, contains('invokeMethodToWindow(0, _queryMethod'));
     expect(io, contains('TdClient.shared.queryTo'));
+    expect(io, contains('_clientIdByWindow'));
+    expect(io, contains('_identityIsCurrent'));
+    expect(io, contains('_rejectStaleWindow'));
     expect(io, contains('TdClient.shared.subscribeAll()'));
     expect(io, isNot(contains('TdClient.shared.start')));
     expect(io, contains('mithka.utility.settings.changed'));
@@ -339,8 +503,10 @@ void main() {
     );
     expect(main, contains('configureChildProxy'));
     expect(main, contains('onSettingsChanged: _reloadDesktopSettings'));
+    expect(main, contains('accountUserIdForSlot: _accountUserIdForSlot'));
     expect(main, contains('await widget.prefs.reload()'));
-    expect(mainTabs, contains("initialSettingsCategoryId: 'appearance'"));
+    expect(mainTabs, contains("id: 'appearance'"));
+    expect(mainTabs, contains('_openGlobalThemeSelector'));
   });
 
   test(

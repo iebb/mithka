@@ -2,8 +2,10 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:ui' show PointerDeviceKind;
 
+import 'package:flutter/cupertino.dart' show CupertinoTextField;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/app/content_view.dart';
 import 'package:mithka/app/macos_desktop_title_bar.dart';
@@ -109,22 +111,17 @@ void main() {
   );
 
   testWidgets(
-    'ready desktop title bar dispatches compact search and add actions',
+    'desktop title bar searches in place and hands Search All its query',
     (tester) async {
       debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
-      var searchRequests = 0;
       var addRequests = 0;
-      final searchRegistration = DesktopHotkeyRegistry.instance.register(
-        DesktopHotkeyAction.focusSearch,
-        () => searchRequests++,
-      );
+      String? searchAllQuery;
       final addRegistration = DesktopHotkeyRegistry.instance.register(
         DesktopHotkeyAction.newChat,
         () => addRequests++,
       );
       addTearDown(() {
         debugDefaultTargetPlatformOverride = null;
-        searchRegistration.dispose();
         addRegistration.dispose();
       });
 
@@ -135,6 +132,7 @@ void main() {
             accountReady: true,
             accountName: 'Alpha',
             showAccountPhone: false,
+            onOpenSearchAll: (query) => searchAllQuery = query,
             child: child ?? const SizedBox.shrink(),
           ),
           home: const SizedBox.expand(),
@@ -142,20 +140,133 @@ void main() {
       );
 
       final search = find.byKey(const ValueKey('desktop-title-bar-search'));
+      final searchInput = find.byKey(
+        const ValueKey('desktop-title-bar-search-input'),
+      );
       final add = find.byKey(const ValueKey('desktop-title-bar-add'));
       expect(search, findsOneWidget);
+      expect(searchInput, findsOneWidget);
       expect(add, findsOneWidget);
-      expect(tester.getSize(search), const Size.square(28));
+      expect(tester.getSize(search), const Size(220, 28));
       expect(tester.getSize(add), const Size.square(28));
       expect(tester.getTopLeft(search).dx, lessThan(tester.getTopLeft(add).dx));
 
-      await tester.tap(search);
+      expect(
+        DesktopHotkeyRegistry.instance.invoke(DesktopHotkeyAction.focusSearch),
+        isTrue,
+      );
+      await tester.pump();
+      final editable = tester.widget<EditableText>(find.byType(EditableText));
+      expect(editable.focusNode.hasFocus, isTrue);
+
+      await tester.enterText(searchInput, 'mao');
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('desktop-inline-search-panel')),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const ValueKey('desktop-inline-search-all')));
+      await tester.pump();
+      expect(searchAllQuery, 'mao');
+      expect(
+        find.byKey(const ValueKey('desktop-inline-search-panel')),
+        findsNothing,
+      );
+
+      await tester.tap(searchInput);
+      await tester.enterText(searchInput, 'clear me');
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const ValueKey('desktop-title-bar-search-clear')),
+      );
+      await tester.pump();
+      expect(
+        tester.widget<CupertinoTextField>(searchInput).controller?.text,
+        isEmpty,
+      );
+
+      await tester.enterText(searchInput, 'enter query');
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pump();
+      expect(searchAllQuery, 'enter query');
+      expect(
+        find.byKey(const ValueKey('desktop-inline-search-panel')),
+        findsNothing,
+      );
+
+      await tester.enterText(searchInput, 'escape me');
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('desktop-inline-search-panel')),
+        findsNothing,
+      );
+
       await tester.tap(add);
-      expect(searchRequests, 1);
       expect(addRequests, 1);
       debugDefaultTargetPlatformOverride = null;
     },
   );
+
+  testWidgets('switching slots or same-slot identity clears desktop search', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
+    Future<void> pumpFrame(int accountSlot, int accountUserId) =>
+        tester.pumpWidget(
+          MaterialApp(
+            theme: ThemeData(extensions: [AppColors.light]),
+            builder: (context, child) => DesktopPrimaryWindowFrame(
+              key: desktopPrimaryWindowIdentityKey(accountSlot, accountUserId),
+              accountReady: true,
+              accountName: 'Account $accountUserId',
+              showAccountPhone: false,
+              onOpenSearchAll: (_) {},
+              child: child ?? const SizedBox.shrink(),
+            ),
+            home: const SizedBox.expand(),
+          ),
+        );
+
+    await pumpFrame(0, 100);
+    final searchInput = find.byKey(
+      const ValueKey('desktop-title-bar-search-input'),
+    );
+    await tester.enterText(searchInput, 'account zero');
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey('desktop-inline-search-panel')),
+      findsOneWidget,
+    );
+
+    await pumpFrame(0, 200);
+    await tester.pump();
+    expect(
+      tester.widget<CupertinoTextField>(searchInput).controller?.text,
+      isEmpty,
+    );
+    expect(
+      find.byKey(const ValueKey('desktop-inline-search-panel')),
+      findsNothing,
+    );
+
+    await tester.enterText(searchInput, 'account two hundred');
+    await tester.pump();
+    await pumpFrame(1, 300);
+    await tester.pump();
+    expect(
+      tester.widget<CupertinoTextField>(searchInput).controller?.text,
+      isEmpty,
+    );
+    expect(
+      find.byKey(const ValueKey('desktop-inline-search-panel')),
+      findsNothing,
+    );
+    debugDefaultTargetPlatformOverride = null;
+  });
 
   testWidgets('touch targets keep the primary title bar actions hidden', (
     tester,

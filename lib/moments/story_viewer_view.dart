@@ -17,9 +17,8 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
-import '../app/app_navigator.dart';
+import '../app/primary_chat_launcher.dart';
 import '../chat/chat_picker_view.dart';
-import '../chat/chat_view.dart';
 import '../chat/custom_emoji.dart';
 import '../components/app_dialog.dart';
 import '../components/app_icons.dart';
@@ -667,10 +666,10 @@ class _StoryViewerViewState extends State<StoryViewerView>
           title = chat.str('title') ?? title;
         } catch (_) {}
         if (mounted) {
-          await Navigator.of(context).push(
-            AppChatPageRoute<void>(
-              builder: (_) => ChatView(chatId: chatId, title: title),
-            ),
+          await openChatFromCurrentWindow(
+            context,
+            chatId: chatId,
+            title: title,
           );
         }
       case 'storyAreaTypeLink':

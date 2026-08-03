@@ -5,14 +5,42 @@
 //  launch URL is persisted; TDLib-authenticated Web App URLs are never stored.
 //
 
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../l10n/app_localizations.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
+
+/// Stable Telegram account identity captured before a Mini App launch begins.
+///
+/// Slots can be reused and the active account can change while TDLib resolves a
+/// signed Web App URL, so launch metadata must remain tied to all three values.
+@immutable
+class TelegramMiniAppAccountScope {
+  const TelegramMiniAppAccountScope({
+    required this.slot,
+    required this.clientId,
+    required this.userId,
+  });
+
+  final int slot;
+  final int clientId;
+  final int userId;
+
+  bool matches({
+    required int currentSlot,
+    required int currentClientId,
+    required int? currentUserId,
+  }) =>
+      currentSlot == slot &&
+      currentClientId == clientId &&
+      currentUserId == userId;
+}
 
 class TelegramMiniAppRecent {
   const TelegramMiniAppRecent({
@@ -136,8 +164,11 @@ class TelegramMiniAppRecent {
 }
 
 abstract final class TelegramMiniAppRecents {
-  static const _key = 'telegramMiniAppRecents.v1';
+  static const _legacyKey = 'telegramMiniAppRecents.v1';
+  static const _userKeyPrefix = 'telegramMiniAppRecents.v2.user.';
+  static const _slotKeyPrefix = 'telegramMiniAppRecents.v2.slot.';
   static const _limit = 12;
+  static final Map<String, Future<void>> _storageGates = {};
 
   static Future<List<TelegramMiniAppRecent>> load() async {
     final stored = await _loadStored();
@@ -169,8 +200,107 @@ abstract final class TelegramMiniAppRecents {
   }
 
   static Future<List<TelegramMiniAppRecent>> _loadStored() async {
+    final scope = await _activeStorageScope();
+    return _loadStoredForScope(scope);
+  }
+
+  static Future<_TelegramMiniAppStorageScope> _activeStorageScope() async {
+    final slot = TdClient.shared.activeSlot;
+    final clientId = TdClient.shared.activeClientId;
+    final proxyUserId = TdClient.shared.proxyAccountUserId;
+    if (proxyUserId != null && proxyUserId > 0) {
+      return _TelegramMiniAppStorageScope.user(
+        userId: proxyUserId,
+        slot: slot,
+        clientId: clientId,
+      );
+    }
+    if (!TdClient.shared.hasActiveClient) {
+      return _TelegramMiniAppStorageScope.slot(slot: slot, clientId: clientId);
+    }
+    try {
+      final me = await TdClient.shared.query({'@type': 'getMe'});
+      final userId = me.int64('id');
+      if (userId != null && userId > 0) {
+        return _TelegramMiniAppStorageScope.user(
+          userId: userId,
+          slot: slot,
+          clientId: clientId,
+        );
+      }
+    } catch (_) {}
+    return _TelegramMiniAppStorageScope.slot(slot: slot, clientId: clientId);
+  }
+
+  static Future<List<TelegramMiniAppRecent>> _loadStoredForScope(
+    _TelegramMiniAppStorageScope scope,
+  ) => _withStorageScopeLock(
+    scope.key,
+    () => _loadStoredForScopeUnlocked(scope),
+  );
+
+  static Future<List<TelegramMiniAppRecent>> _loadStoredForScopeUnlocked(
+    _TelegramMiniAppStorageScope scope,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_key);
+    var recents = _decodeStoredRecents(prefs.getString(scope.key));
+    if (scope.userId != null) {
+      var migrated = false;
+      for (final migrationKey in scope.migrationKeys) {
+        final candidate = prefs.getString(migrationKey);
+        if (candidate != null && candidate.isNotEmpty) {
+          recents = _mergeStoredRecents(
+            recents,
+            _decodeStoredRecents(candidate),
+          );
+          migrated = true;
+        }
+        await prefs.remove(migrationKey);
+      }
+      // A temporary slot record belongs to this exact TD client lifetime and
+      // can be merged once its user identity is known.
+      if (migrated) {
+        await prefs.setString(
+          scope.key,
+          jsonEncode(recents.map((item) => item.toJson()).toList()),
+        );
+      }
+    }
+
+    // v1 was global across every Telegram account and therefore has no
+    // trustworthy owner. Never assign it to whichever user happens to load
+    // first; discard it once an authenticated user scope is available.
+    if (scope.userId != null && prefs.containsKey(_legacyKey)) {
+      await prefs.remove(_legacyKey);
+    }
+
+    return recents;
+  }
+
+  static Future<T> _withStorageScopeLock<T>(
+    String scopeKey,
+    Future<T> Function() action,
+  ) async {
+    final previous = _storageGates[scopeKey] ?? Future<void>.value();
+    final gate = Completer<void>();
+    final next = gate.future;
+    _storageGates[scopeKey] = next;
+    try {
+      try {
+        await previous;
+      } on Object {
+        // A failed earlier operation must not permanently block this scope.
+      }
+      return await action();
+    } finally {
+      gate.complete();
+      if (identical(_storageGates[scopeKey], next)) {
+        unawaited(_storageGates.remove(scopeKey));
+      }
+    }
+  }
+
+  static List<TelegramMiniAppRecent> _decodeStoredRecents(String? raw) {
     if (raw == null || raw.isEmpty) return const [];
     try {
       final decoded = jsonDecode(raw);
@@ -185,6 +315,22 @@ abstract final class TelegramMiniAppRecents {
     } catch (_) {
       return const [];
     }
+  }
+
+  static List<TelegramMiniAppRecent> _mergeStoredRecents(
+    List<TelegramMiniAppRecent> primary,
+    List<TelegramMiniAppRecent> migrated,
+  ) {
+    final latestByBot = <int, TelegramMiniAppRecent>{};
+    for (final recent in [...primary, ...migrated]) {
+      final current = latestByBot[recent.botUserId];
+      if (current == null || recent.updatedAt > current.updatedAt) {
+        latestByBot[recent.botUserId] = recent;
+      }
+    }
+    final merged = latestByBot.values.toList()
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    return merged.take(_limit).toList();
   }
 
   static Future<List<TelegramMiniAppRecent>> _discoverBotMenuApps() async {
@@ -293,6 +439,7 @@ abstract final class TelegramMiniAppRecents {
     String webAppShortName = '',
     bool allowWriteAccess = false,
     TdFileRef? photo,
+    TelegramMiniAppAccountScope? account,
   }) async {
     final cleanTitle = title.trim();
     final cleanUrl = url.trim();
@@ -300,17 +447,25 @@ abstract final class TelegramMiniAppRecents {
 
     var botTitle = '';
     var botPhoto = photo;
+    final scope = account == null
+        ? await _activeStorageScope()
+        : _TelegramMiniAppStorageScope.user(
+            userId: account.userId,
+            slot: account.slot,
+            clientId: account.clientId,
+          );
+    if (account != null && !await _accountStillOwnsClient(account)) return;
     try {
-      final chat = await TdClient.shared.query({
-        '@type': 'getChat',
-        'chat_id': chatId,
-      });
+      final request = {'@type': 'getChat', 'chat_id': chatId};
+      final chat = account == null
+          ? await TdClient.shared.query(request)
+          : await TdClient.shared.queryTo(request, account.clientId);
       botTitle = chat.str('title')?.trim() ?? '';
       botPhoto = TDParse.smallPhoto(chat.obj('photo')) ?? botPhoto;
     } catch (_) {}
 
-    final current = await _loadStored();
-    final next = <TelegramMiniAppRecent>[
+    await _storeRecentForScope(
+      scope,
       TelegramMiniAppRecent(
         title: cleanTitle,
         botTitle: botTitle,
@@ -325,16 +480,96 @@ abstract final class TelegramMiniAppRecents {
         photo: botPhoto,
         updatedAt: DateTime.now().millisecondsSinceEpoch,
       ),
+      stillOwned: account == null
+          ? null
+          : () => _accountStillOwnsClient(account),
+    );
+  }
+
+  static Future<void> _storeRecentForScope(
+    _TelegramMiniAppStorageScope scope,
+    TelegramMiniAppRecent recent, {
+    Future<bool> Function()? stillOwned,
+    Future<void> Function()? onLockAcquiredForTesting,
+  }) => _withStorageScopeLock(scope.key, () async {
+    if (stillOwned != null && !await stillOwned()) return;
+    await onLockAcquiredForTesting?.call();
+    if (stillOwned != null && !await stillOwned()) return;
+
+    final current = await _loadStoredForScopeUnlocked(scope);
+    final next = <TelegramMiniAppRecent>[
+      recent,
       for (final item in current)
-        if (item.botUserId != botUserId) item,
+        if (item.botUserId != recent.botUserId) item,
     ].take(_limit).toList();
 
     final prefs = await SharedPreferences.getInstance();
+    // Keep this check inside the serialized section and immediately before
+    // SharedPreferences updates its in-memory cache.
+    if (stillOwned != null && !await stillOwned()) return;
     await prefs.setString(
-      _key,
+      scope.key,
       jsonEncode(next.map((item) => item.toJson()).toList()),
     );
+  });
+
+  static Future<bool> _accountStillOwnsClient(
+    TelegramMiniAppAccountScope account,
+  ) async {
+    if (TdClient.shared.clientId(account.slot) != account.clientId) {
+      return false;
+    }
+    try {
+      final me = await TdClient.shared.queryTo({
+        '@type': 'getMe',
+      }, account.clientId);
+      return TdClient.shared.clientId(account.slot) == account.clientId &&
+          me.int64('id') == account.userId;
+    } catch (_) {
+      return false;
+    }
   }
+
+  @visibleForTesting
+  static String storageKeyForTesting({
+    required int slot,
+    required int clientId,
+    int? userId,
+  }) => _TelegramMiniAppStorageScope(
+    slot: slot,
+    clientId: clientId,
+    userId: userId,
+  ).key;
+
+  @visibleForTesting
+  static Future<List<TelegramMiniAppRecent>> loadStoredForTesting({
+    required int slot,
+    required int clientId,
+    int? userId,
+  }) => _loadStoredForScope(
+    _TelegramMiniAppStorageScope(
+      slot: slot,
+      clientId: clientId,
+      userId: userId,
+    ),
+  );
+
+  @visibleForTesting
+  static Future<void> recordStoredForTesting({
+    required int slot,
+    required int clientId,
+    required int userId,
+    required TelegramMiniAppRecent recent,
+    Future<void> Function()? onLockAcquired,
+  }) => _storeRecentForScope(
+    _TelegramMiniAppStorageScope.user(
+      userId: userId,
+      slot: slot,
+      clientId: clientId,
+    ),
+    recent,
+    onLockAcquiredForTesting: onLockAcquired,
+  );
 
   static Future<List<TelegramMiniAppRecent>> _searchTelegramWebApp(
     _WebAppTarget target,
@@ -456,6 +691,45 @@ abstract final class TelegramMiniAppRecents {
     }
     return null;
   }
+}
+
+class _TelegramMiniAppStorageScope {
+  const _TelegramMiniAppStorageScope({
+    required this.slot,
+    required this.clientId,
+    required this.userId,
+  });
+
+  factory _TelegramMiniAppStorageScope.user({
+    required int userId,
+    required int slot,
+    required int clientId,
+  }) => _TelegramMiniAppStorageScope(
+    slot: slot,
+    clientId: clientId,
+    userId: userId,
+  );
+
+  factory _TelegramMiniAppStorageScope.slot({
+    required int slot,
+    required int clientId,
+  }) => _TelegramMiniAppStorageScope(
+    slot: slot,
+    clientId: clientId,
+    userId: null,
+  );
+
+  final int slot;
+  final int clientId;
+  final int? userId;
+
+  String get slotKey =>
+      '${TelegramMiniAppRecents._slotKeyPrefix}$slot.client.$clientId';
+  String get key => userId == null
+      ? slotKey
+      : '${TelegramMiniAppRecents._userKeyPrefix}$userId';
+  List<String> get migrationKeys =>
+      userId == null ? const [] : <String>[slotKey];
 }
 
 List<TelegramMiniAppRecent> mergeTelegramMiniAppRecents(

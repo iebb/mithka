@@ -15,7 +15,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/notifications/scope_notification_settings.dart';
 import 'package:provider/provider.dart';
 
-import '../app/app_navigator.dart';
+import '../app/primary_chat_launcher.dart';
 import '../chats/chat_delete_dialog.dart';
 import '../chats/chat_delete_policy.dart';
 import '../components/app_icons.dart';
@@ -36,11 +36,9 @@ import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import 'add_members_view.dart';
-import 'channel_direct_messages_view.dart';
 import 'chat_members_view.dart';
 import 'chat_search_view.dart';
 import 'chat_theme_view.dart';
-import 'chat_view.dart';
 import 'chat_wallpaper_view.dart';
 import 'group_management_view.dart';
 import 'group_remark_controller.dart';
@@ -315,16 +313,26 @@ class GroupAnnouncementView extends StatelessWidget {
   }
 }
 
+typedef ChatInfoSearchChatLauncher =
+    Future<void> Function({
+      required int chatId,
+      required String title,
+      required int initialMessageId,
+    });
+
 class ChatInfoView extends StatefulWidget {
   const ChatInfoView({
     super.key,
     required this.chatId,
     required this.title,
     this.showBackButton = true,
+    @visibleForTesting this.searchChatLauncher,
   });
   final int chatId;
   final String title;
   final bool showBackButton;
+  @visibleForTesting
+  final ChatInfoSearchChatLauncher? searchChatLauncher;
 
   @override
   State<ChatInfoView> createState() => _ChatInfoViewState();
@@ -394,18 +402,10 @@ class _ChatInfoViewState extends State<ChatInfoView> {
     );
   }
 
-  void _openDirectMessages() {
+  Future<void> _openDirectMessages() async {
     final chatId = _vm.directMessagesChatId;
     if (chatId == 0) return;
-    final route = _vm.opensDirectMessagesAsTopics
-        ? MaterialPageRoute<void>(
-            builder: (_) =>
-                ChannelDirectMessagesView(chatId: chatId, title: _vm.title),
-          )
-        : AppChatPageRoute<void>(
-            builder: (_) => ChatView(chatId: chatId, title: _vm.title),
-          );
-    Navigator.of(context).push(route);
+    await openChatFromCurrentWindow(context, chatId: chatId, title: _vm.title);
   }
 
   Future<void> _openSearchHistory() async {
@@ -416,6 +416,24 @@ class _ChatInfoViewState extends State<ChatInfoView> {
       ),
     );
     if (!mounted || messageId == null) return;
+    if (!widget.showBackButton) {
+      final launcher = widget.searchChatLauncher;
+      if (launcher != null) {
+        await launcher(
+          chatId: widget.chatId,
+          title: widget.title,
+          initialMessageId: messageId,
+        );
+      } else {
+        await openChatFromCurrentWindow(
+          context,
+          chatId: widget.chatId,
+          title: widget.title,
+          initialMessageId: messageId,
+        );
+      }
+      return;
+    }
     Navigator.of(context).pop(messageId);
   }
 

@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:intl/intl.dart';
 import 'package:mithka/l10n/app_localizations.dart';
@@ -92,6 +95,24 @@ class MessageSendConfiguration {
   };
 }
 
+bool messageSendOptionsUsesCenteredModal(
+  Size size, [
+  TargetPlatform? platform,
+]) {
+  final targetPlatform = platform ?? defaultTargetPlatform;
+  final isDesktop = switch (targetPlatform) {
+    TargetPlatform.macOS ||
+    TargetPlatform.windows ||
+    TargetPlatform.linux => true,
+    _ => false,
+  };
+  if (isDesktop) return true;
+
+  return targetPlatform == TargetPlatform.iOS &&
+      size.width > size.height &&
+      size.shortestSide >= 600;
+}
+
 Future<MessageSendConfiguration?> showMessageSendOptionsSheet(
   BuildContext context, {
   MessageSendConfiguration initial = const MessageSendConfiguration(),
@@ -99,46 +120,72 @@ Future<MessageSendConfiguration?> showMessageSendOptionsSheet(
   bool mediaOptions = false,
   List<AvailableMessageEffect> effects = const [],
   VoidCallback? onOpenScheduledMessages,
-}) => showGeneralDialog<MessageSendConfiguration>(
-  context: context,
-  barrierDismissible: true,
-  barrierLabel: AppStringKeys.countryPickerCancel.l10n(context),
-  barrierColor: const Color(0x99000000),
-  transitionDuration: const Duration(milliseconds: 220),
-  pageBuilder: (sheetContext, _, _) => Align(
-    alignment: Alignment.bottomCenter,
-    child: SizedBox(
-      width: MediaQuery.sizeOf(sheetContext).width,
-      child: _MessageSendOptionsSheet(
+}) {
+  final useCenteredModal = messageSendOptionsUsesCenteredModal(
+    MediaQuery.sizeOf(context),
+  );
+  return showGeneralDialog<MessageSendConfiguration>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: AppStringKeys.countryPickerCancel.l10n(context),
+    barrierColor: const Color(0x99000000),
+    transitionDuration: const Duration(milliseconds: 220),
+    pageBuilder: (sheetContext, _, _) {
+      final size = MediaQuery.sizeOf(sheetContext);
+      final sheet = _MessageSendOptionsSheet(
+        centeredModal: useCenteredModal,
         initial: initial,
         allowWhenOnline: allowWhenOnline,
         mediaOptions: mediaOptions,
         effects: effects,
         onOpenScheduledMessages: onOpenScheduledMessages,
-      ),
-    ),
-  ),
-  transitionBuilder: (_, animation, _, child) {
-    final curved = CurvedAnimation(
-      parent: animation,
-      curve: Curves.easeOutCubic,
-      reverseCurve: Curves.easeInCubic,
-    );
-    return FadeTransition(
-      opacity: curved,
-      child: SlideTransition(
-        position: Tween<Offset>(
-          begin: const Offset(0, 0.08),
-          end: Offset.zero,
-        ).animate(curved),
-        child: child,
-      ),
-    );
-  },
-);
+      );
+      if (!useCenteredModal) {
+        return Align(
+          alignment: Alignment.bottomCenter,
+          child: SizedBox(width: size.width, child: sheet),
+        );
+      }
+
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: SizedBox(
+            key: const ValueKey('messageSendOptionsModalFrame'),
+            width: math.min(560, math.max(0, size.width - 48)),
+            child: sheet,
+          ),
+        ),
+      );
+    },
+    transitionBuilder: (_, animation, _, child) {
+      final curved = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInCubic,
+      );
+      return FadeTransition(
+        opacity: curved,
+        child: useCenteredModal
+            ? ScaleTransition(
+                scale: Tween<double>(begin: 0.96, end: 1).animate(curved),
+                child: child,
+              )
+            : SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0, 0.08),
+                  end: Offset.zero,
+                ).animate(curved),
+                child: child,
+              ),
+      );
+    },
+  );
+}
 
 class _MessageSendOptionsSheet extends StatefulWidget {
   const _MessageSendOptionsSheet({
+    required this.centeredModal,
     required this.initial,
     required this.allowWhenOnline,
     required this.mediaOptions,
@@ -146,6 +193,7 @@ class _MessageSendOptionsSheet extends StatefulWidget {
     this.onOpenScheduledMessages,
   });
 
+  final bool centeredModal;
   final MessageSendConfiguration initial;
   final bool allowWhenOnline;
   final bool mediaOptions;
@@ -189,7 +237,9 @@ class _MessageSendOptionsSheetState extends State<_MessageSendOptionsSheet> {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final bottomInset = MediaQuery.paddingOf(context).bottom;
+    final bottomInset = widget.centeredModal
+        ? 0.0
+        : MediaQuery.paddingOf(context).bottom;
     return Container(
       key: const ValueKey('messageSendOptionsSurface'),
       constraints: BoxConstraints(
@@ -198,7 +248,12 @@ class _MessageSendOptionsSheetState extends State<_MessageSendOptionsSheet> {
       padding: EdgeInsets.only(bottom: bottomInset),
       decoration: BoxDecoration(
         color: colors.background,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+        borderRadius: widget.centeredModal
+            ? BorderRadius.circular(18)
+            : const BorderRadius.vertical(top: Radius.circular(18)),
+        border: widget.centeredModal
+            ? Border.all(color: colors.divider.withValues(alpha: 0.78))
+            : null,
       ),
       clipBehavior: Clip.antiAlias,
       child: SingleChildScrollView(
@@ -207,17 +262,19 @@ class _MessageSendOptionsSheetState extends State<_MessageSendOptionsSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 8),
-                decoration: BoxDecoration(
-                  color: colors.textTertiary.withValues(alpha: 0.34),
-                  borderRadius: BorderRadius.circular(999),
+            if (!widget.centeredModal)
+              Center(
+                child: Container(
+                  key: const ValueKey('messageSendOptionsDragHandle'),
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    color: colors.textTertiary.withValues(alpha: 0.34),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
                 ),
               ),
-            ),
             _title(AppStringKeys.messageSendOptionsTitle.l10n(context)),
             _toggle(
               icon: HeroAppIcons.bellSlash,
@@ -558,23 +615,40 @@ Future<DateTime?> showOwnedSchedulePicker({
   required DateTime firstDate,
   required DateTime lastDate,
 }) {
+  final useCenteredModal = messageSendOptionsUsesCenteredModal(
+    MediaQuery.sizeOf(context),
+  );
   return showGeneralDialog<DateTime>(
     context: context,
     barrierDismissible: true,
     barrierLabel: AppStringKeys.countryPickerCancel.l10n(context),
     barrierColor: const Color(0x99000000),
     transitionDuration: const Duration(milliseconds: 180),
-    pageBuilder: (pickerContext, _, _) => Align(
-      alignment: Alignment.bottomCenter,
-      child: SizedBox(
-        width: MediaQuery.sizeOf(pickerContext).width,
-        child: _OwnedSchedulePicker(
-          initial: initial,
-          firstDate: firstDate,
-          lastDate: lastDate,
+    pageBuilder: (pickerContext, _, _) {
+      final size = MediaQuery.sizeOf(pickerContext);
+      final picker = _OwnedSchedulePicker(
+        centeredModal: useCenteredModal,
+        initial: initial,
+        firstDate: firstDate,
+        lastDate: lastDate,
+      );
+      if (!useCenteredModal) {
+        return Align(
+          alignment: Alignment.bottomCenter,
+          child: SizedBox(width: size.width, child: picker),
+        );
+      }
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: SizedBox(
+            key: const ValueKey('ownedSchedulePickerModalFrame'),
+            width: math.min(480, math.max(0, size.width - 48)),
+            child: picker,
+          ),
         ),
-      ),
-    ),
+      );
+    },
     transitionBuilder: (_, animation, _, child) {
       final curved = CurvedAnimation(
         parent: animation,
@@ -583,13 +657,18 @@ Future<DateTime?> showOwnedSchedulePicker({
       );
       return FadeTransition(
         opacity: curved,
-        child: SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(0, 0.12),
-            end: Offset.zero,
-          ).animate(curved),
-          child: child,
-        ),
+        child: useCenteredModal
+            ? ScaleTransition(
+                scale: Tween<double>(begin: 0.96, end: 1).animate(curved),
+                child: child,
+              )
+            : SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0, 0.12),
+                  end: Offset.zero,
+                ).animate(curved),
+                child: child,
+              ),
       );
     },
   );
@@ -597,11 +676,13 @@ Future<DateTime?> showOwnedSchedulePicker({
 
 class _OwnedSchedulePicker extends StatefulWidget {
   const _OwnedSchedulePicker({
+    required this.centeredModal,
     required this.initial,
     required this.firstDate,
     required this.lastDate,
   });
 
+  final bool centeredModal;
   final DateTime initial;
   final DateTime firstDate;
   final DateTime lastDate;
@@ -703,7 +784,9 @@ class _OwnedSchedulePickerState extends State<_OwnedSchedulePicker> {
   Widget build(BuildContext context) {
     final c = context.colors;
     final locale = Localizations.localeOf(context).toLanguageTag();
-    final bottomInset = MediaQuery.paddingOf(context).bottom;
+    final bottomInset = widget.centeredModal
+        ? 0.0
+        : MediaQuery.paddingOf(context).bottom;
     final monthLabel = DateFormat.yMMMM(locale).format(_visibleMonth);
     return Container(
       key: const ValueKey('ownedSchedulePicker'),
@@ -713,12 +796,19 @@ class _OwnedSchedulePickerState extends State<_OwnedSchedulePicker> {
       padding: EdgeInsets.only(bottom: bottomInset),
       decoration: BoxDecoration(
         color: c.background,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        boxShadow: const [
+        borderRadius: widget.centeredModal
+            ? BorderRadius.circular(20)
+            : const BorderRadius.vertical(top: Radius.circular(20)),
+        border: widget.centeredModal
+            ? Border.all(color: c.divider.withValues(alpha: 0.78))
+            : null,
+        boxShadow: [
           BoxShadow(
-            color: Color(0x55000000),
+            color: const Color(0x55000000),
             blurRadius: 24,
-            offset: Offset(0, -4),
+            offset: widget.centeredModal
+                ? const Offset(0, 8)
+                : const Offset(0, -4),
           ),
         ],
       ),
@@ -729,17 +819,19 @@ class _OwnedSchedulePickerState extends State<_OwnedSchedulePicker> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 14),
-                decoration: BoxDecoration(
-                  color: c.textTertiary.withValues(alpha: 0.34),
-                  borderRadius: BorderRadius.circular(999),
+            if (!widget.centeredModal)
+              Center(
+                child: Container(
+                  key: const ValueKey('ownedSchedulePickerDragHandle'),
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 14),
+                  decoration: BoxDecoration(
+                    color: c.textTertiary.withValues(alpha: 0.34),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
                 ),
               ),
-            ),
             Text(
               AppStringKeys.messageSendOptionsSelectDateAndTime.l10n(context),
               style: AppTextStyle.title(c.textPrimary),

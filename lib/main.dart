@@ -32,6 +32,8 @@ import 'app/content_view.dart';
 import 'app/desktop_chat_window.dart';
 import 'app/desktop_hotkey_host.dart';
 import 'app/desktop_image_preview_window.dart';
+import 'app/desktop_mini_app_window.dart';
+import 'app/desktop_mini_app_window_app.dart';
 import 'app/desktop_utility_window.dart';
 import 'app/desktop_video_window.dart';
 import 'app/desktop_window_controls.dart';
@@ -83,6 +85,16 @@ Future<void> main(List<String> arguments) async {
     if (videoArguments != null) {
       _initializeVideoBackend(installGlobalLogHandler: false);
       runApp(DesktopVideoWindowApp(arguments: videoArguments));
+      return;
+    }
+    final miniAppArguments =
+        DesktopMiniAppWindowArguments.tryParseLaunchArguments(arguments);
+    if (miniAppArguments != null) {
+      configureAppImageCache();
+      final launch = await DesktopMiniAppWindowService.instance
+          .configureChildProxy(miniAppArguments);
+      final prefs = await SharedPreferences.getInstance();
+      runApp(DesktopMiniAppWindowApp(launch: launch, prefs: prefs));
       return;
     }
     final imageArguments =
@@ -309,6 +321,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
   late ThemeController _theme = ThemeController(
     widget.prefs,
     initialAccountSlot: _accounts.activeSlot,
+    initialAccountUserId: _accounts.activeUserId,
   );
   late TranslationController _translation = TranslationController(widget.prefs);
   late AiSettingsController _ai = AiSettingsController(widget.prefs);
@@ -355,9 +368,13 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
     _theme.loadSelectedEmojiFontIfAvailable();
     _autoDownload.initialize(widget.prefs);
     _auth.start();
-    DesktopChatWindowService.instance.attachMainProxy();
+    DesktopMiniAppWindowService.instance.attachMainProxy();
+    DesktopChatWindowService.instance.attachMainProxy(
+      accountUserIdForSlot: _accountUserIdForSlot,
+    );
     DesktopUtilityWindowService.instance.attachMainProxy(
       onSettingsChanged: _reloadDesktopSettings,
+      accountUserIdForSlot: _accountUserIdForSlot,
     );
     unawaited(_ai.initialize());
     unawaited(_mithkaPro.initialize());
@@ -375,6 +392,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
     _accounts.removeListener(_handleActiveAccountChange);
     _theme.removeListener(_handleThemePreferencesChange);
     _groupRemarks.dispose();
+    DesktopMiniAppWindowService.instance.detachMainProxy();
     DesktopChatWindowService.instance.detachMainProxy();
     DesktopUtilityWindowService.instance.detachMainProxy();
     _calls.dispose();
@@ -387,6 +405,16 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
       _accounts.activeSlot,
       userId: _accounts.activeUserId,
     );
+    DesktopMiniAppWindowService.instance.notifyAccountIdentityChanged();
+    DesktopChatWindowService.instance.notifyAccountIdentityChanged();
+    DesktopUtilityWindowService.instance.notifyAccountIdentityChanged();
+  }
+
+  int? _accountUserIdForSlot(int slot) {
+    for (final account in _accounts.summaries) {
+      if (account.slot == slot) return account.userId;
+    }
+    return null;
   }
 
   void _handleThemePreferencesChange() {
@@ -434,6 +462,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
         final nextTheme = ThemeController(
           widget.prefs,
           initialAccountSlot: _accounts.activeSlot,
+          initialAccountUserId: _accounts.activeUserId,
         );
         final nextTranslation = TranslationController(widget.prefs);
         final nextAi = AiSettingsController(widget.prefs);
@@ -448,11 +477,6 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
           ],
         )..start();
         final nextSafetyNotice = SafetyNoticeController(widget.prefs);
-
-        nextTheme.setActiveAccountSlot(
-          _accounts.activeSlot,
-          userId: _accounts.activeUserId,
-        );
 
         previousTheme.removeListener(_handleThemePreferencesChange);
         nextTheme.addListener(_handleThemePreferencesChange);
@@ -667,6 +691,10 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
                 ],
               );
               final framedUnlockedApp = DesktopPrimaryWindowFrame(
+                key: desktopPrimaryWindowIdentityKey(
+                  accounts.activeSlot,
+                  accounts.activeUserId,
+                ),
                 accountReady: context.watch<AuthManager>().step is AuthReady,
                 child: unlockedApp,
               );
@@ -707,7 +735,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
             },
             // Rebuild the whole tree when the active account changes.
             home: KeyedSubtree(
-              key: ValueKey(accounts.activeSlot),
+              key: ValueKey((accounts.activeSlot, accounts.activeUserId)),
               child: const ContentView(),
             ),
           );

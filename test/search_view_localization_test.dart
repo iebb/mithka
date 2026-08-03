@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/cupertino.dart' show CupertinoTextField;
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,6 +12,23 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  testWidgets('desktop child search starts with its query and no root back', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: SearchView(initialQuery: 'mao', showBackButton: false),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final field = tester.widget<CupertinoTextField>(
+      find.byType(CupertinoTextField),
+    );
+    expect(field.controller?.text, 'mao');
+    expect(find.byKey(const ValueKey('search-view-back')), findsNothing);
+  });
+
   test('untitled and legacy Mini App recents follow the active locale', () {
     Intl.withLocale('zh-Hans', () {
       for (final title in ['', 'Mini App']) {
@@ -132,8 +150,12 @@ void main() {
   testWidgets('Mini App result heading follows the selected locale', (
     tester,
   ) async {
+    final storageKey = TelegramMiniAppRecents.storageKeyForTesting(
+      slot: 0,
+      clientId: 0,
+    );
     SharedPreferences.setMockInitialValues({
-      'telegramMiniAppRecents.v1': jsonEncode([
+      storageKey: jsonEncode([
         {
           'title': '演示小程序',
           'url': 'https://example.com/app',

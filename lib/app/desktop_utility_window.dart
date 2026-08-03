@@ -30,6 +30,7 @@ import '../chat/scheduled_messages_view.dart';
 import '../chat/shared_media_view.dart';
 import '../chat/telegram_ai_editor_view.dart';
 import '../chat/telegram_ai_service.dart';
+import '../chats/search_view.dart';
 import '../components/confirm_dialog.dart';
 import '../components/keyboard_dismiss_on_tap.dart';
 import '../components/toast.dart';
@@ -60,6 +61,7 @@ import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import 'app_navigator.dart';
 import 'app_performance_controller.dart';
+import 'chat_deep_link_controller.dart';
 import 'desktop_utility_window_models.dart';
 import 'desktop_utility_window_stub.dart'
     if (dart.library.io) 'desktop_utility_window_io.dart'
@@ -76,15 +78,27 @@ class DesktopUtilityWindowService {
 
   bool get isSupported => implementation.supportsDesktopUtilityWindows;
 
-  void attachMainProxy({Future<void> Function()? onSettingsChanged}) =>
-      implementation.attachDesktopUtilityMainProxy(
-        onSettingsChanged: onSettingsChanged,
-      );
+  void attachMainProxy({
+    Future<void> Function()? onSettingsChanged,
+    int? Function(int accountSlot)? accountUserIdForSlot,
+  }) => implementation.attachDesktopUtilityMainProxy(
+    onSettingsChanged: onSettingsChanged,
+    accountUserIdForSlot: accountUserIdForSlot,
+  );
 
   void detachMainProxy() => implementation.detachDesktopUtilityMainProxy();
 
+  void notifyAccountIdentityChanged() =>
+      implementation.notifyDesktopUtilityAccountIdentityChanged();
+
   Future<bool> open(DesktopUtilityWindowArguments arguments) =>
       implementation.openDesktopUtilityWindow(arguments);
+
+  /// Hands a conversation selected in a registered utility child back to the
+  /// primary window. Returns false in the primary engine and on mobile so the
+  /// caller can use normal in-window navigation.
+  Future<bool> openChatInPrimaryWindow(ChatDeepLinkRequest request) =>
+      implementation.openChatInPrimaryWindowFromDesktopUtility(request);
 
   Future<void> configureChildProxy(DesktopUtilityWindowArguments arguments) =>
       implementation.configureDesktopUtilityChildProxy(arguments);
@@ -644,6 +658,10 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
       initialTab: 4,
       displayTitle: AppStringKeys.sharedMediaVideos,
       lockedTab: true,
+      showBackButton: false,
+    ),
+    DesktopUtilityWindowKind.search => SearchView(
+      initialQuery: widget.arguments.initialQuery ?? '',
       showBackButton: false,
     ),
     DesktopUtilityWindowKind.settings => SettingsView(

@@ -17,11 +17,10 @@ import 'package:intl/intl.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
-import '../app/app_navigator.dart';
+import '../app/primary_chat_launcher.dart';
 import '../call/call_manager.dart';
 import '../chat/audio_search_view.dart';
 import '../chat/chat_search_view.dart';
-import '../chat/chat_view.dart';
 import '../chat/chat_wallpaper.dart';
 import '../chat/custom_emoji.dart';
 import '../chat/full_image_viewer.dart';
@@ -320,12 +319,7 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
   void _openChat() {
     final cid = _chatId;
     if (cid == null) return;
-    pushAppChatRoute(
-      context,
-      AppChatPageRoute(
-        builder: (_) => ChatView(chatId: cid, title: _name),
-      ),
-    );
+    unawaited(openChatFromCurrentWindow(context, chatId: cid, title: _name));
   }
 
   Future<void> _startSecretChat() async {
@@ -343,11 +337,10 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
       final secretChat = await SecretChatService.create(widget.userId);
       if (!mounted) return;
       final title = secretChat.title.isNotEmpty ? secretChat.title : _name;
-      await pushAppChatRoute(
+      await openChatFromCurrentWindow(
         context,
-        AppChatPageRoute(
-          builder: (_) => ChatView(chatId: secretChat.id, title: title),
-        ),
+        chatId: secretChat.id,
+        title: title,
       );
     } catch (error) {
       if (mounted) {
@@ -377,13 +370,20 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
     if (mounted) await _load();
   }
 
-  void _openSearch() {
+  Future<void> _openSearch() async {
     final cid = _chatId;
     if (cid == null) return;
-    Navigator.of(context).push(
+    final messageId = await Navigator.of(context).push<int>(
       MaterialPageRoute(
         builder: (_) => ChatSearchView(chatId: cid, title: _name),
       ),
+    );
+    if (!mounted || messageId == null) return;
+    await openChatFromCurrentWindow(
+      context,
+      chatId: cid,
+      title: _name,
+      initialMessageId: messageId,
     );
   }
 
@@ -403,7 +403,7 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
         showBlock: !_isMe && !_isBlocked,
         manageLabel: _isMe
             ? context.l10n.t(AppStringKeys.profileToolsTitle)
-            : 'Contact tools',
+            : context.l10n.t(AppStringKeys.profileContactManagementTitle),
       ),
     );
     if (!mounted || action == null) return;

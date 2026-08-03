@@ -3162,7 +3162,7 @@ void main() {
         ),
       );
 
-      await tester.tap(find.byKey(const ValueKey('message-code-block')));
+      await tester.tap(find.byKey(const ValueKey('message-code-block-5-0-12')));
       await tester.pump(const Duration(milliseconds: 50));
       expect(find.text('Copied'), findsOneWidget);
     });

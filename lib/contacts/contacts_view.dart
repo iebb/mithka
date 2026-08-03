@@ -13,6 +13,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
 import '../app/app_navigator.dart';
+import '../app/primary_chat_launcher.dart';
 import '../chat/chat_view.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
@@ -37,6 +38,93 @@ bool contactMatchesQuery(Contact contact, String rawQuery) {
         (username) => username.toLowerCase().contains(query),
       ) ||
       (contact.username?.toLowerCase().contains(query) ?? false);
+}
+
+/// Contact-list row that follows the chat-list density in native desktop
+/// sidebars while retaining the established touch layout elsewhere.
+class ContactRowView extends StatelessWidget {
+  const ContactRowView({
+    super.key,
+    required this.contact,
+    required this.onTap,
+    this.desktopCompact = false,
+  });
+
+  final Contact contact;
+  final VoidCallback onTap;
+  final bool desktopCompact;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final rowHeight = desktopCompact
+        ? AppMetric.chatListRowHeight()
+        : AppMetric.listRowHeight;
+    final avatarSize = desktopCompact ? AppMetric.chatListAvatarSize() : 44.0;
+    final titleFontSize = desktopCompact
+        ? AppTextSize.chatListTitle()
+        : AppTextSize.bodyLarge;
+    final statusFontSize = desktopCompact
+        ? AppTextSize.chatListPreview()
+        : AppTextSize.footnote;
+
+    return AppInteractiveSurface(
+      semanticLabel: contact.name,
+      semanticValue: contact.statusText.isEmpty
+          ? null
+          : contact.statusText.l10n(context),
+      onTap: onTap,
+      child: SizedBox(
+        height: rowHeight,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+          child: Row(
+            children: [
+              PhotoAvatar(
+                title: contact.name,
+                photo: contact.photo,
+                size: avatarSize,
+                showOnlineDot: contact.isOnline,
+              ),
+              const SizedBox(width: AppSpacing.lg),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      contact.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: titleFontSize,
+                        fontWeight: desktopCompact
+                            ? AppTextWeight.medium
+                            : null,
+                        color: c.textPrimary,
+                      ),
+                    ),
+                    if (contact.statusText.isNotEmpty) ...[
+                      SizedBox(height: desktopCompact ? AppSpacing.xs : 3),
+                      Text(
+                        contact.statusText.l10n(context),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: statusFontSize,
+                          color: c.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class ContactsView extends StatefulWidget {
@@ -419,7 +507,6 @@ class _ContactsViewState extends State<ContactsView> {
   }
 
   Widget _contactList(List<Contact> contacts, {required bool loading}) {
-    final c = context.colors;
     if (contacts.isEmpty) {
       return _stateCard(
         loading: loading,
@@ -430,11 +517,9 @@ class _ContactsViewState extends State<ContactsView> {
     }
     return _card([
       for (final contact in contacts) ...[
-        AppInteractiveSurface(
-          semanticLabel: contact.name,
-          semanticValue: contact.statusText.isEmpty
-              ? null
-              : contact.statusText.l10n(context),
+        ContactRowView(
+          contact: contact,
+          desktopCompact: widget.desktopSidebar,
           onTap: () => unawaited(
             openAdaptiveUserProfile(
               context,
@@ -449,49 +534,6 @@ class _ContactsViewState extends State<ContactsView> {
               ),
             ),
           ),
-          child: SizedBox(
-            height: 64,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              child: Row(
-                children: [
-                  PhotoAvatar(
-                    title: contact.name,
-                    photo: contact.photo,
-                    size: 44,
-                    showOnlineDot: contact.isOnline,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          contact.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 16, color: c.textPrimary),
-                        ),
-                        if (contact.statusText.isNotEmpty) ...[
-                          const SizedBox(height: 3),
-                          Text(
-                            contact.statusText.l10n(context),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: c.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
         ),
         if (contact != contacts.last) const InsetDivider(leadingInset: 70),
       ],
@@ -501,6 +543,15 @@ class _ContactsViewState extends State<ContactsView> {
   Widget _chatList(List<ChatSummary> chats, {required bool loading}) {
     final c = context.colors;
     final circleGroups = context.watch<ThemeController>().circularGroupAvatars;
+    final rowHeight = widget.desktopSidebar
+        ? AppMetric.chatListRowHeight()
+        : AppMetric.listRowHeight;
+    final avatarSize = widget.desktopSidebar
+        ? AppMetric.chatListAvatarSize()
+        : 44.0;
+    final titleFontSize = widget.desktopSidebar
+        ? AppTextSize.chatListTitle()
+        : AppTextSize.bodyLarge;
     if (chats.isEmpty) {
       return _stateCard(
         loading: loading,
@@ -513,34 +564,47 @@ class _ContactsViewState extends State<ContactsView> {
       for (final group in chats) ...[
         AppInteractiveSurface(
           semanticLabel: group.title,
-          onTap: () => _openDetail(
-            ChatView(
+          onTap: () => unawaited(
+            openChatFromCurrentWindow(
+              context,
               chatId: group.id,
               title: group.title,
-              showBackButton: widget.onOpenDetail == null,
-              showHeaderDivider: widget.onOpenDetail == null,
+              openFallback: () async => _openDetail(
+                ChatView(
+                  chatId: group.id,
+                  title: group.title,
+                  showBackButton: widget.onOpenDetail == null,
+                  showHeaderDivider: widget.onOpenDetail == null,
+                ),
+                outsideTabs: true,
+              ),
             ),
-            outsideTabs: true,
           ),
           child: SizedBox(
-            height: 64,
+            height: rowHeight,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
               child: Row(
                 children: [
                   PhotoAvatar(
                     title: group.title,
                     photo: group.photo,
-                    size: 44,
+                    size: avatarSize,
                     square: !circleGroups,
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: AppSpacing.lg),
                   Expanded(
                     child: Text(
                       group.title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 16, color: c.textPrimary),
+                      style: TextStyle(
+                        fontSize: titleFontSize,
+                        fontWeight: widget.desktopSidebar
+                            ? AppTextWeight.medium
+                            : null,
+                        color: c.textPrimary,
+                      ),
                     ),
                   ),
                 ],

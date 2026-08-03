@@ -3,8 +3,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:provider/provider.dart';
 
-import '../app/app_navigator.dart';
-import '../chat/chat_view.dart';
+import '../app/primary_chat_launcher.dart';
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
@@ -131,9 +130,11 @@ class _CallsViewState extends State<CallsView> {
 
   void _openChat(CallHistoryEntry entry) {
     if (entry.chatId == 0) return;
-    Navigator.of(context).push(
-      AppChatPageRoute<void>(
-        builder: (_) => ChatView(chatId: entry.chatId, title: entry.title),
+    unawaited(
+      openChatFromCurrentWindow(
+        context,
+        chatId: entry.chatId,
+        title: entry.title,
       ),
     );
   }

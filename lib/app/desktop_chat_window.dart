@@ -30,6 +30,7 @@ import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import 'adaptive_split_layout.dart';
 import 'app_navigator.dart';
+import 'chat_deep_link_controller.dart';
 import 'desktop_chat_window_models.dart';
 import 'desktop_chat_window_stub.dart'
     if (dart.library.io) 'desktop_chat_window_io.dart'
@@ -58,15 +59,27 @@ class DesktopChatWindowService {
 
   bool get isSupported => implementation.supportsDesktopChatWindows;
 
-  void attachMainProxy() => implementation.attachDesktopChatMainProxy();
+  void attachMainProxy({
+    int? Function(int accountSlot)? accountUserIdForSlot,
+  }) => implementation.attachDesktopChatMainProxy(
+    accountUserIdForSlot: accountUserIdForSlot,
+  );
 
   void detachMainProxy() => implementation.detachDesktopChatMainProxy();
+
+  void notifyAccountIdentityChanged() =>
+      implementation.notifyDesktopChatAccountIdentityChanged();
 
   Future<void> notifyPresentationChanged() =>
       implementation.notifyDesktopChatPresentationChanged();
 
   Future<bool> open(DesktopChatWindowArguments arguments) =>
       implementation.openDesktopChatWindow(arguments);
+
+  /// Hands a conversation selected in a standalone chat child back to the
+  /// primary window. Returns false outside a registered chat child.
+  Future<bool> openChatInPrimaryWindow(ChatDeepLinkRequest request) =>
+      implementation.openChatInPrimaryWindowFromDesktopChat(request);
 
   Future<bool> requestUtilityWindow({
     required DesktopChatWindowArguments requestingChat,

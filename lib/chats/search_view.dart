@@ -9,12 +9,16 @@
 import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/services.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
-import '../app/app_navigator.dart';
-import '../chat/chat_view.dart';
+import '../app/primary_chat_launcher.dart';
+import '../chat/telegram_mini_app_recents.dart';
+import '../chat/telegram_mini_app_view.dart';
 import '../components/app_icons.dart';
+import '../components/app_interactive_surface.dart';
 import '../components/photo_avatar.dart';
+import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/telegram_language_controller.dart';
 import '../tdlib/json_helpers.dart';
@@ -26,25 +30,770 @@ import 'chat_row_view.dart';
 import 'mini_apps_page.dart';
 import 'public_discovery_view.dart';
 
+/// Shared state for the compact desktop title-bar search field and its
+/// anchored result panel.
+typedef DesktopMiniAppSearch =
+    Future<List<TelegramMiniAppRecent>> Function(String query);
+
+class DesktopInlineSearchController extends ChangeNotifier {
+  DesktopInlineSearchController({DesktopMiniAppSearch? miniAppSearch})
+    : textController = TextEditingController(),
+      focusNode = FocusNode(),
+      _miniAppSearch = miniAppSearch ?? TelegramMiniAppRecents.search {
+    _model.addListener(_handleModelChanged);
+    focusNode.addListener(_handleFocusChanged);
+  }
+
+  static const List<_SearchTab> _searchTabs = [
+    _SearchTab.chats,
+    _SearchTab.posts,
+    _SearchTab.media,
+    _SearchTab.links,
+    _SearchTab.files,
+    _SearchTab.music,
+    _SearchTab.voice,
+  ];
+  static const int _chatResultLimit = 4;
+  static const int _messageResultLimit = 3;
+  static const int _miniAppResultLimit = 3;
+
+  final TextEditingController textController;
+  final FocusNode focusNode;
+  final DesktopMiniAppSearch _miniAppSearch;
+  final _SearchViewModel _model = _SearchViewModel();
+  Timer? _debounce;
+  String _query = '';
+  bool _panelVisible = false;
+  bool _debouncing = false;
+  bool _miniAppsLoading = false;
+  bool _disposed = false;
+  int _miniAppRunId = 0;
+  List<TelegramMiniAppRecent> _miniApps = const [];
+
+  String get query => _query;
+  bool get panelVisible => _panelVisible && _query.trim().isNotEmpty;
+  bool get isLoading =>
+      _debouncing || _miniAppsLoading || _searchTabs.any(_model.isLoading);
+  List<TelegramMiniAppRecent> get _visibleMiniApps => _miniApps;
+  List<_DesktopInlineSearchSection> get _visibleSections => [
+    for (final tab in _searchTabs)
+      if (_model.resultsFor(tab).isNotEmpty)
+        _DesktopInlineSearchSection(
+          tab: tab,
+          hits: _model
+              .resultsFor(tab)
+              .take(
+                tab == _SearchTab.chats
+                    ? _chatResultLimit
+                    : _messageResultLimit,
+              )
+              .toList(growable: false),
+        ),
+  ];
+
+  void focus() {
+    if (_disposed) return;
+    focusNode.requestFocus();
+    final shouldShow = _query.trim().isNotEmpty;
+    if (_panelVisible == shouldShow) return;
+    _panelVisible = shouldShow;
+    notifyListeners();
+  }
+
+  void updateQuery(String value) {
+    if (_disposed) return;
+    _query = value;
+    _panelVisible = value.trim().isNotEmpty;
+    _debounce?.cancel();
+    // Invalidate every in-flight category as soon as the text changes. The
+    // next network fan-out remains debounced, but an older query can never
+    // repopulate the panel during that debounce window.
+    _model.clearTabs(_searchTabs);
+    _invalidateMiniApps();
+    _debouncing = value.trim().isNotEmpty;
+    if (value.trim().isNotEmpty) {
+      _debounce = Timer(const Duration(milliseconds: 240), () {
+        if (_disposed) return;
+        final query = _query.trim();
+        _debouncing = false;
+        _model.searchMany(query, _searchTabs, resultLimitPerTab: 6);
+        _startMiniAppSearch(query);
+      });
+    }
+    notifyListeners();
+  }
+
+  void clear() {
+    if (_disposed) return;
+    _debounce?.cancel();
+    textController.clear();
+    _query = '';
+    _panelVisible = false;
+    _debouncing = false;
+    _model.clearTabs(_searchTabs);
+    _invalidateMiniApps();
+    focusNode.requestFocus();
+    notifyListeners();
+  }
+
+  void dismiss() {
+    if (_disposed) return;
+    if (!_panelVisible && !focusNode.hasFocus) return;
+    _panelVisible = false;
+    focusNode.unfocus();
+    notifyListeners();
+  }
+
+  void _invalidateMiniApps() {
+    _miniAppRunId += 1;
+    _miniApps = const [];
+    _miniAppsLoading = false;
+  }
+
+  void _startMiniAppSearch(String query) {
+    final runId = ++_miniAppRunId;
+    _miniAppsLoading = true;
+    unawaited(_runMiniAppSearch(query, runId));
+  }
+
+  Future<void> _runMiniAppSearch(String query, int runId) async {
+    try {
+      final apps = await _miniAppSearch(query);
+      if (!_isCurrentMiniAppRun(query, runId)) return;
+      _miniApps = apps.take(_miniAppResultLimit).toList(growable: false);
+    } catch (_) {
+      if (!_isCurrentMiniAppRun(query, runId)) return;
+      _miniApps = const [];
+    }
+    if (!_isCurrentMiniAppRun(query, runId)) return;
+    _miniAppsLoading = false;
+    notifyListeners();
+  }
+
+  bool _isCurrentMiniAppRun(String query, int runId) =>
+      !_disposed && _miniAppRunId == runId && _query.trim() == query;
+
+  void _handleModelChanged() {
+    if (!_disposed) notifyListeners();
+  }
+
+  void _handleFocusChanged() {
+    if (!_disposed) notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    _debounce?.cancel();
+    _miniAppRunId += 1;
+    _miniAppsLoading = false;
+    _model.removeListener(_handleModelChanged);
+    focusNode.removeListener(_handleFocusChanged);
+    _model.dispose();
+    textController.dispose();
+    focusNode.dispose();
+    super.dispose();
+  }
+}
+
+class _DesktopInlineSearchSection {
+  const _DesktopInlineSearchSection({required this.tab, required this.hits});
+
+  final _SearchTab tab;
+  final List<_SearchHit> hits;
+}
+
+/// The always-visible desktop search input that replaces the former icon-only
+/// title-bar action.
+class DesktopInlineSearchField extends StatelessWidget {
+  const DesktopInlineSearchField({
+    super.key,
+    required this.controller,
+    required this.onSearchAll,
+  });
+
+  static const double width = 220;
+  static const double height = 28;
+
+  final DesktopInlineSearchController controller;
+  final FutureOr<void> Function(String query) onSearchAll;
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: controller,
+    builder: (context, _) {
+      final c = context.colors;
+      return Focus(
+        onKeyEvent: (_, event) {
+          if (event is KeyDownEvent &&
+              event.logicalKey == LogicalKeyboardKey.escape) {
+            controller.dismiss();
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
+        },
+        child: Container(
+          key: const ValueKey('desktop-title-bar-search'),
+          width: width,
+          height: height,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+            color: c.searchFill,
+            borderRadius: BorderRadius.circular(7),
+            border: Border.all(
+              color: controller.focusNode.hasFocus
+                  ? AppTheme.brand.withValues(alpha: 0.72)
+                  : c.divider.withValues(alpha: 0.55),
+              width: controller.focusNode.hasFocus ? 1.25 : 0.5,
+            ),
+          ),
+          child: Row(
+            children: [
+              AppIcon(
+                HeroAppIcons.magnifyingGlass,
+                size: 14,
+                color: c.textTertiary,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: CupertinoTextField(
+                  key: const ValueKey('desktop-title-bar-search-input'),
+                  controller: controller.textController,
+                  focusNode: controller.focusNode,
+                  autocorrect: false,
+                  textInputAction: TextInputAction.search,
+                  style: TextStyle(fontSize: 13, color: c.textPrimary),
+                  placeholder: AppStrings.t(
+                    AppStringKeys.chatsSearchPlaceholder,
+                  ),
+                  placeholderStyle: TextStyle(
+                    fontSize: 13,
+                    color: c.textTertiary,
+                  ),
+                  padding: EdgeInsets.zero,
+                  decoration: null,
+                  onTap: controller.focus,
+                  onChanged: controller.updateQuery,
+                  onSubmitted: (value) {
+                    final query = value.trim();
+                    if (query.isEmpty) return;
+                    controller.dismiss();
+                    unawaited(Future<void>.sync(() => onSearchAll(query)));
+                  },
+                ),
+              ),
+              if (controller.query.isNotEmpty)
+                AppInteractiveSurface(
+                  key: const ValueKey('desktop-title-bar-search-clear'),
+                  semanticLabel: AppStringKeys.desktopSearchClear.l10n(context),
+                  onTap: controller.clear,
+                  borderRadius: BorderRadius.circular(9),
+                  child: SizedBox.square(
+                    dimension: 18,
+                    child: Center(
+                      child: AppIcon(
+                        HeroAppIcons.xmark,
+                        size: 12,
+                        color: c.textTertiary,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
+
+/// Compact in-place desktop results. Full category search remains available
+/// through the fixed bottom action without replacing the current workspace.
+class DesktopInlineSearchPanel extends StatelessWidget {
+  const DesktopInlineSearchPanel({
+    super.key,
+    required this.controller,
+    required this.onSearchAll,
+    this.onOpenMiniApp,
+  });
+
+  static const double width = 440;
+  static const double maxResultsHeight = 464;
+
+  final DesktopInlineSearchController controller;
+  final FutureOr<void> Function(String query) onSearchAll;
+  final FutureOr<void> Function(TelegramMiniAppRecent app)? onOpenMiniApp;
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: controller,
+    builder: (context, _) {
+      if (!controller.panelVisible) return const SizedBox.shrink();
+      final c = context.colors;
+      final sections = controller._visibleSections;
+      final miniApps = controller._visibleMiniApps;
+      return Container(
+        key: const ValueKey('desktop-inline-search-panel'),
+        width: width,
+        constraints: const BoxConstraints(maxHeight: 540),
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: c.background,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: c.divider, width: 0.75),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF000000).withValues(alpha: 0.22),
+              blurRadius: 24,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxHeight: maxResultsHeight,
+                  minHeight: 76,
+                ),
+                child: _resultList(context, sections, miniApps),
+              ),
+            ),
+            Container(height: 0.5, color: c.divider),
+            AppInteractiveSurface(
+              key: const ValueKey('desktop-inline-search-all'),
+              semanticLabel: AppStringKeys.desktopSearchAll.l10n(context),
+              onTap: () {
+                final query = controller.query.trim();
+                if (query.isEmpty) return;
+                controller.dismiss();
+                unawaited(Future<void>.sync(() => onSearchAll(query)));
+              },
+              borderRadius: const BorderRadius.vertical(
+                bottom: Radius.circular(12),
+              ),
+              child: SizedBox(
+                height: 58,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 34,
+                        height: 34,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: AppTheme.brand,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const AppIcon(
+                          HeroAppIcons.magnifyingGlass,
+                          size: 17,
+                          color: Color(0xFFFFFFFF),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          '${AppStringKeys.desktopSearchAll.l10n(context)}  ${controller.query.trim()}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: c.textPrimary,
+                          ),
+                        ),
+                      ),
+                      AppIcon(
+                        HeroAppIcons.chevronRight,
+                        size: 16,
+                        color: c.textTertiary,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    },
+  );
+
+  Widget _resultList(
+    BuildContext context,
+    List<_DesktopInlineSearchSection> sections,
+    List<TelegramMiniAppRecent> miniApps,
+  ) {
+    final c = context.colors;
+    if (controller.isLoading && sections.isEmpty && miniApps.isEmpty) {
+      return const Center(child: CupertinoActivityIndicator());
+    }
+    if (sections.isEmpty && miniApps.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
+          child: Text(
+            AppStringKeys.chatsSearchNoResults.l10n(context),
+            style: TextStyle(fontSize: 13, color: c.textTertiary),
+          ),
+        ),
+      );
+    }
+    return ListView(
+      key: const ValueKey('desktop-inline-search-results'),
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      shrinkWrap: true,
+      children: _sectionWidgets(context, sections, miniApps, c),
+    );
+  }
+
+  List<Widget> _sectionWidgets(
+    BuildContext context,
+    List<_DesktopInlineSearchSection> sections,
+    List<TelegramMiniAppRecent> miniApps,
+    AppColors c,
+  ) {
+    final widgets = <Widget>[];
+
+    void addDivider() {
+      if (widgets.isNotEmpty) {
+        widgets.add(
+          Container(
+            height: 0.5,
+            margin: const EdgeInsets.symmetric(horizontal: 12),
+            color: c.divider,
+          ),
+        );
+      }
+    }
+
+    void addSearchSection(_DesktopInlineSearchSection section) {
+      addDivider();
+      widgets.add(_DesktopInlineSearchSectionHeader(tab: section.tab));
+      for (var index = 0; index < section.hits.length; index++) {
+        final hit = section.hits[index];
+        if (index > 0) {
+          widgets.add(
+            Container(
+              height: 0.5,
+              margin: const EdgeInsets.only(left: 62),
+              color: c.divider,
+            ),
+          );
+        }
+        widgets.add(
+          _DesktopInlineSearchHitAction(
+            hit: hit,
+            onOpen: () {
+              controller.dismiss();
+              unawaited(_openSearchHit(context, hit));
+            },
+          ),
+        );
+      }
+    }
+
+    for (final section in sections.where(
+      (section) => section.tab == _SearchTab.chats,
+    )) {
+      addSearchSection(section);
+    }
+    if (miniApps.isNotEmpty) {
+      addDivider();
+      widgets.add(
+        const _DesktopInlineSearchSectionHeader(tab: _SearchTab.miniApps),
+      );
+      for (var index = 0; index < miniApps.length; index++) {
+        if (index > 0) {
+          widgets.add(
+            Container(
+              height: 0.5,
+              margin: const EdgeInsets.only(left: 62),
+              color: c.divider,
+            ),
+          );
+        }
+        final app = miniApps[index];
+        widgets.add(
+          _DesktopInlineMiniAppAction(
+            app: app,
+            onOpen: () {
+              controller.dismiss();
+              final override = onOpenMiniApp;
+              if (override != null) {
+                unawaited(Future<void>.sync(() => override(app)));
+              } else {
+                unawaited(_openDesktopInlineMiniApp(context, app));
+              }
+            },
+          ),
+        );
+      }
+    }
+    for (final section in sections.where(
+      (section) => section.tab != _SearchTab.chats,
+    )) {
+      addSearchSection(section);
+    }
+    return widgets;
+  }
+}
+
+Future<void> _openDesktopInlineMiniApp(
+  BuildContext context,
+  TelegramMiniAppRecent app,
+) async {
+  final opened = await openTelegramMiniApp(
+    context,
+    chatId: app.chatId,
+    botUserId: app.botUserId,
+    url: app.url,
+    title: app.launchTitle,
+    keyboardButtonText: app.keyboardButtonText,
+    mainWebApp: app.mainWebApp,
+    startParameter: app.startParameter,
+    webAppShortName: app.webAppShortName,
+    allowWriteAccess: app.allowWriteAccess,
+    photo: app.photo,
+  );
+  if (!opened && context.mounted) {
+    showToast(context, AppStrings.t(AppStringKeys.miniAppCannotStart));
+  }
+}
+
+class _DesktopInlineSearchSectionHeader extends StatelessWidget {
+  const _DesktopInlineSearchSectionHeader({required this.tab});
+
+  final _SearchTab tab;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: ValueKey('desktop-inline-search-section-${tab.name}'),
+    height: 28,
+    alignment: Alignment.centerLeft,
+    padding: const EdgeInsets.symmetric(horizontal: 12),
+    child: Text(
+      tab.label,
+      style: TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        color: context.colors.textSecondary,
+      ),
+    ),
+  );
+}
+
+class _DesktopInlineSearchHitAction extends StatelessWidget {
+  const _DesktopInlineSearchHitAction({
+    required this.hit,
+    required this.onOpen,
+  });
+
+  final _SearchHit hit;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) => AppInteractiveSurface(
+    semanticLabel: hit.title,
+    onTap: onOpen,
+    child: _DesktopCompactSearchHitRow(hit: hit),
+  );
+}
+
+class _DesktopInlineMiniAppAction extends StatelessWidget {
+  const _DesktopInlineMiniAppAction({required this.app, required this.onOpen});
+
+  final TelegramMiniAppRecent app;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) => AppInteractiveSurface(
+    key: ValueKey(
+      'desktop-inline-search-mini-app-${app.botUserId}-${app.chatId}',
+    ),
+    semanticLabel: app.displayTitle,
+    onTap: onOpen,
+    child: SizedBox(
+      height: 56,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Row(
+          children: [
+            PhotoAvatar(title: app.displayTitle, photo: app.photo, size: 40),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    app.displayTitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: context.colors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    AppStringKeys.miniAppName.l10n(context),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: context.colors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class _DesktopCompactSearchHitRow extends StatelessWidget {
+  const _DesktopCompactSearchHitRow({required this.hit});
+
+  final _SearchHit hit;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return SizedBox(
+      height: 56,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Row(
+          children: [
+            _DesktopCompactSearchThumb(hit: hit),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    hit.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: c.textPrimary,
+                    ),
+                  ),
+                  if (hit.subtitle.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      hit.subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12, color: c.textSecondary),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DesktopCompactSearchThumb extends StatelessWidget {
+  const _DesktopCompactSearchThumb({required this.hit});
+
+  final _SearchHit hit;
+
+  @override
+  Widget build(BuildContext context) {
+    final image = hit.thumbnail ?? hit.photo;
+    if (hit.chat != null || hit.userId != null && hit.message == null) {
+      return PhotoAvatar(title: hit.title, photo: hit.photo, size: 40);
+    }
+    if (image != null) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: SizedBox.square(
+          dimension: 40,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              TDImage(photo: image),
+              if (hit.message?.video != null)
+                Center(
+                  child: Container(
+                    width: 22,
+                    height: 22,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF000000).withValues(alpha: 0.50),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const AppIcon(
+                      HeroAppIcons.play,
+                      size: 11,
+                      color: Color(0xFFFFFFFF),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    }
+    return Container(
+      width: 40,
+      height: 40,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: hit.tint.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: AppIcon(hit.icon, size: 20, color: hit.tint),
+    );
+  }
+}
+
 class SearchView extends StatefulWidget {
-  const SearchView({super.key});
+  const SearchView({
+    super.key,
+    this.initialQuery = '',
+    this.showBackButton = true,
+  });
+
+  final String initialQuery;
+  final bool showBackButton;
 
   @override
   State<SearchView> createState() => _SearchViewState();
 }
 
 class _SearchViewState extends State<SearchView> {
-  final _controller = TextEditingController();
+  late final TextEditingController _controller;
   final _focus = FocusNode();
   final _vm = _SearchViewModel();
   _SearchTab _tab = _SearchTab.chats;
-  String _query = '';
+  late String _query;
 
   @override
   void initState() {
     super.initState();
+    _query = widget.initialQuery.trim();
+    _controller = TextEditingController(text: _query);
     _vm.addListener(() => setState(() {}));
-    _vm.search('', _tab);
+    _vm.search(_query, _tab);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future.delayed(const Duration(milliseconds: 250), () {
         if (mounted) _focus.requestFocus();
@@ -91,18 +840,20 @@ class _SearchViewState extends State<SearchView> {
               padding: const EdgeInsets.symmetric(horizontal: 14),
               child: Row(
                 children: [
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => Navigator.of(context).pop(),
-                    child: Padding(
-                      padding: const EdgeInsets.only(right: 10),
-                      child: AppIcon(
-                        HeroAppIcons.chevronLeft,
-                        size: 22,
-                        color: c.textPrimary,
+                  if (widget.showBackButton)
+                    GestureDetector(
+                      key: const ValueKey('search-view-back'),
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => Navigator.of(context).pop(),
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 10),
+                        child: AppIcon(
+                          HeroAppIcons.chevronLeft,
+                          size: 22,
+                          color: c.textPrimary,
+                        ),
                       ),
                     ),
-                  ),
                   Expanded(
                     child: Container(
                       height: 34,
@@ -246,47 +997,7 @@ class _SearchViewState extends State<SearchView> {
   }
 
   Future<void> _open(_SearchHit hit) async {
-    if (hit.message != null && hit.chatId != null) {
-      final title = hit.sourceTitle;
-      await pushAppChatRoute(
-        context,
-        AppChatPageRoute(
-          builder: (_) => ChatView(
-            chatId: hit.chatId!,
-            title: title.isEmpty ? hit.title : title,
-            initialMessageId: hit.message!.id,
-          ),
-        ),
-      );
-      return;
-    }
-    final chat = hit.chat;
-    if (chat != null) {
-      await pushAppChatRoute(
-        context,
-        AppChatPageRoute(
-          builder: (_) => ChatView(chatId: chat.id, title: chat.title),
-        ),
-      );
-      return;
-    }
-    final userId = hit.userId;
-    if (userId == null) return;
-    try {
-      final chat = await TdClient.shared.query({
-        '@type': 'createPrivateChat',
-        'user_id': userId,
-        'force': false,
-      });
-      final summary = TDParse.chat(chat);
-      if (!mounted || summary == null) return;
-      await pushAppChatRoute(
-        context,
-        AppChatPageRoute(
-          builder: (_) => ChatView(chatId: summary.id, title: summary.title),
-        ),
-      );
-    } catch (_) {}
+    await _openSearchHit(context, hit);
   }
 
   Widget _hitRow(_SearchHit hit) {
@@ -382,7 +1093,7 @@ class _SearchViewState extends State<SearchView> {
         color: hit.tint.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(10),
       ),
-      child: Icon(hit.icon, size: 24, color: hit.tint),
+      child: AppIcon(hit.icon, size: 24, color: hit.tint),
     );
   }
 
@@ -458,6 +1169,44 @@ class _SearchViewState extends State<SearchView> {
   }
 }
 
+Future<void> _openSearchHit(BuildContext context, _SearchHit hit) async {
+  if (hit.message != null && hit.chatId != null) {
+    final title = hit.sourceTitle;
+    await openChatFromCurrentWindow(
+      context,
+      chatId: hit.chatId!,
+      title: title.isEmpty ? hit.title : title,
+      initialMessageId: hit.message!.id,
+    );
+    return;
+  }
+  final chat = hit.chat;
+  if (chat != null) {
+    await openChatFromCurrentWindow(
+      context,
+      chatId: chat.id,
+      title: chat.title,
+    );
+    return;
+  }
+  final userId = hit.userId;
+  if (userId == null) return;
+  try {
+    final chat = await TdClient.shared.query({
+      '@type': 'createPrivateChat',
+      'user_id': userId,
+      'force': false,
+    });
+    final summary = TDParse.chat(chat);
+    if (!context.mounted || summary == null) return;
+    await openChatFromCurrentWindow(
+      context,
+      chatId: summary.id,
+      title: summary.title,
+    );
+  } catch (_) {}
+}
+
 enum _SearchTab {
   chats,
   miniApps,
@@ -496,44 +1245,91 @@ class _SearchViewModel extends ChangeNotifier {
     for (final tab in _SearchTab.values) tab: <_SearchHit>[],
   };
   final Set<_SearchTab> _loading = {};
-  String _currentQuery = '';
-  int _runId = 0;
+  final Map<_SearchTab, String> _queries = {
+    for (final tab in _SearchTab.values) tab: '',
+  };
+  final Map<_SearchTab, int> _runIds = {
+    for (final tab in _SearchTab.values) tab: 0,
+  };
+  bool _disposed = false;
 
   List<_SearchHit> resultsFor(_SearchTab tab) => _results[tab] ?? const [];
   bool isLoading(_SearchTab tab) => _loading.contains(tab);
 
   void search(String q, _SearchTab tab) {
+    if (_disposed) return;
+    _startSearch(q.trim(), tab, resultLimit: 60);
+    notifyListeners();
+  }
+
+  void searchMany(
+    String q,
+    Iterable<_SearchTab> tabs, {
+    required int resultLimitPerTab,
+  }) {
+    if (_disposed) return;
     final trimmed = q.trim();
-    _currentQuery = trimmed;
+    for (final tab in tabs) {
+      _startSearch(trimmed, tab, resultLimit: resultLimitPerTab);
+    }
+    notifyListeners();
+  }
+
+  void clearTabs(Iterable<_SearchTab> tabs) {
+    if (_disposed) return;
+    for (final tab in tabs) {
+      _queries[tab] = '';
+      _runIds[tab] = (_runIds[tab] ?? 0) + 1;
+      _results[tab] = const [];
+      _loading.remove(tab);
+    }
+    notifyListeners();
+  }
+
+  void _startSearch(
+    String trimmed,
+    _SearchTab tab, {
+    required int resultLimit,
+  }) {
+    if (_disposed) return;
+    final runId = (_runIds[tab] ?? 0) + 1;
+    _runIds[tab] = runId;
+    _queries[tab] = trimmed;
     if (tab == _SearchTab.miniApps) {
       _results[tab] = const [];
       _loading.remove(tab);
-      notifyListeners();
       return;
     }
     if (trimmed.isEmpty && tab == _SearchTab.chats) {
-      _results[tab] = [];
-      notifyListeners();
+      _results[tab] = const [];
+      _loading.remove(tab);
       return;
     }
-    final runId = ++_runId;
     _loading.add(tab);
-    notifyListeners();
     if (tab == _SearchTab.chats) {
-      _runChats(trimmed, tab, runId);
+      unawaited(_runChats(trimmed, tab, runId, resultLimit));
     } else {
-      _runMessages(trimmed, tab, runId);
+      unawaited(_runMessages(trimmed, tab, runId, resultLimit));
     }
   }
 
-  Future<void> _runChats(String trimmed, _SearchTab tab, int runId) async {
+  Future<void> _runChats(
+    String trimmed,
+    _SearchTab tab,
+    int runId,
+    int resultLimit,
+  ) async {
     try {
       final out = <_SearchHit>[];
       final seenChats = <int>{};
       final seenUsers = <int>{};
 
       Future<void> addChat(int id, {String? subtitle}) async {
-        if (!seenChats.add(id)) return;
+        if (!_isCurrent(tab, runId, trimmed) ||
+            out.length >= resultLimit ||
+            !seenChats.add(id)) {
+          return;
+        }
         try {
           final chat = await TdClient.shared.query({
             '@type': 'getChat',
@@ -551,21 +1347,28 @@ class _SearchViewModel extends ChangeNotifier {
         '@type': 'searchChats',
         'query': trimmed,
         'type_filter': null,
-        'limit': 50,
+        'limit': resultLimit,
       });
       for (final id in (local.int64Array('chat_ids') ?? const <int>[]).take(
-        50,
+        resultLimit,
       )) {
         await addChat(id);
       }
+      if (!_isCurrent(tab, runId, trimmed)) return;
 
       try {
         final contacts = await TdClient.shared.query({
           '@type': 'searchContacts',
           'query': trimmed,
-          'limit': 50,
+          'limit': resultLimit,
         });
-        for (final id in contacts.int64Array('user_ids') ?? const <int>[]) {
+        for (final id
+            in (contacts.int64Array('user_ids') ?? const <int>[]).take(
+              resultLimit,
+            )) {
+          if (!_isCurrent(tab, runId, trimmed) || out.length >= resultLimit) {
+            break;
+          }
           if (!seenUsers.add(id)) continue;
           try {
             final user = await TdClient.shared.query({
@@ -576,6 +1379,7 @@ class _SearchViewModel extends ChangeNotifier {
           } catch (_) {}
         }
       } catch (_) {}
+      if (!_isCurrent(tab, runId, trimmed)) return;
 
       try {
         final public = await TdClient.shared.query({
@@ -584,7 +1388,7 @@ class _SearchViewModel extends ChangeNotifier {
           'type_filter': null,
         });
         for (final id in (public.int64Array('chat_ids') ?? const <int>[]).take(
-          30,
+          resultLimit,
         )) {
           await addChat(
             id,
@@ -594,6 +1398,7 @@ class _SearchViewModel extends ChangeNotifier {
           );
         }
       } catch (_) {}
+      if (!_isCurrent(tab, runId, trimmed)) return;
 
       final handle = _usernameOf(trimmed);
       if (handle != null) {
@@ -607,31 +1412,46 @@ class _SearchViewModel extends ChangeNotifier {
         } catch (_) {}
       }
 
-      _finish(tab, runId, trimmed, out);
+      _finish(tab, runId, trimmed, out.take(resultLimit).toList());
     } catch (_) {
       _finish(tab, runId, trimmed, const []);
     }
   }
 
-  Future<void> _runMessages(String trimmed, _SearchTab tab, int runId) async {
+  Future<void> _runMessages(
+    String trimmed,
+    _SearchTab tab,
+    int runId,
+    int resultLimit,
+  ) async {
     final filter = tab.filter;
     if (filter == null) return;
     try {
-      final raw = <Map<String, dynamic>>[
-        ...await _searchMessagesInList(
+      final pages = await Future.wait([
+        _searchMessagesInList(
           query: trimmed,
           filter: filter,
           chatList: {'@type': 'chatListMain'},
+          limit: resultLimit,
         ),
-        ...await _searchMessagesInList(
+        _searchMessagesInList(
           query: trimmed,
           filter: filter,
           chatList: {'@type': 'chatListArchive'},
+          limit: resultLimit,
         ),
-      ];
+      ]);
+      if (!_isCurrent(tab, runId, trimmed)) return;
+      final raw = <Map<String, dynamic>>[...pages[0], ...pages[1]]
+        ..sort(
+          (a, b) => (b.integer('date') ?? 0).compareTo(a.integer('date') ?? 0),
+        );
       final seen = <String>{};
       final out = <_SearchHit>[];
       for (final object in raw) {
+        if (!_isCurrent(tab, runId, trimmed) || out.length >= resultLimit) {
+          break;
+        }
         final chatId = object.int64('chat_id');
         final message = TDParse.message(object);
         if (chatId == null || message == null) continue;
@@ -640,7 +1460,6 @@ class _SearchViewModel extends ChangeNotifier {
         final source = await _sourceFor(chatId);
         out.add(_SearchHit.message(message, chatId: chatId, source: source));
       }
-      out.sort((a, b) => b.date.compareTo(a.date));
       _finish(tab, runId, trimmed, out);
     } catch (_) {
       _finish(tab, runId, trimmed, const []);
@@ -651,6 +1470,7 @@ class _SearchViewModel extends ChangeNotifier {
     required String query,
     required String filter,
     required Map<String, dynamic> chatList,
+    required int limit,
   }) async {
     try {
       final res = await TdClient.shared.query({
@@ -658,7 +1478,7 @@ class _SearchViewModel extends ChangeNotifier {
         'chat_list': chatList,
         'query': query,
         'offset': '',
-        'limit': 60,
+        'limit': limit,
         'filter': {'@type': filter},
         'chat_type_filter': null,
         'min_date': 0,
@@ -686,10 +1506,24 @@ class _SearchViewModel extends ChangeNotifier {
   }
 
   void _finish(_SearchTab tab, int runId, String query, List<_SearchHit> out) {
-    if (runId != _runId || query != _currentQuery) return;
+    if (!_isCurrent(tab, runId, query)) return;
     _results[tab] = out;
     _loading.remove(tab);
     notifyListeners();
+  }
+
+  bool _isCurrent(_SearchTab tab, int runId, String query) =>
+      !_disposed && _runIds[tab] == runId && _queries[tab] == query;
+
+  @override
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    for (final tab in _SearchTab.values) {
+      _runIds[tab] = (_runIds[tab] ?? 0) + 1;
+    }
+    _loading.clear();
+    super.dispose();
   }
 
   String? _usernameOf(String q) {
@@ -712,14 +1546,14 @@ class _SearchHit {
     this.date = 0,
     this.sourceTitle = '',
     this.thumbnail,
-    IconData? icon,
+    AppIconData? icon,
     this.tint = const Color(0xFF12B7F5),
     this.photo,
     this.chat,
     this.userId,
     this.chatId,
     this.message,
-  }) : icon = icon ?? HeroAppIcons.message.data;
+  }) : icon = icon ?? HeroAppIcons.message;
 
   factory _SearchHit.chat(ChatSummary chat, {String? subtitle}) => _SearchHit(
     title: chat.title,
@@ -776,7 +1610,7 @@ class _SearchHit {
   final int? userId;
   final int? chatId;
   final ChatMessage? message;
-  final IconData icon;
+  final AppIconData icon;
   final Color tint;
 
   static String _chatSubtitle(ChatSummary chat) {
@@ -842,14 +1676,14 @@ class _SearchHit {
     return pieces.join(' · ');
   }
 
-  static IconData _messageIcon(ChatMessage message) {
-    if (message.document != null) return HeroAppIcons.solidFile.data;
-    if (message.music != null) return HeroAppIcons.music.data;
-    if (message.voice != null) return HeroAppIcons.microphone.data;
-    if (message.linkPreview != null) return HeroAppIcons.link.data;
-    if (message.video != null) return HeroAppIcons.video.data;
-    if (message.image != null) return HeroAppIcons.solidImage.data;
-    return HeroAppIcons.message.data;
+  static AppIconData _messageIcon(ChatMessage message) {
+    if (message.document != null) return HeroAppIcons.solidFile;
+    if (message.music != null) return HeroAppIcons.music;
+    if (message.voice != null) return HeroAppIcons.microphone;
+    if (message.linkPreview != null) return HeroAppIcons.link;
+    if (message.video != null) return HeroAppIcons.video;
+    if (message.image != null) return HeroAppIcons.solidImage;
+    return HeroAppIcons.message;
   }
 
   static Color _messageTint(ChatMessage message) {

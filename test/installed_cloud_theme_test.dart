@@ -188,6 +188,73 @@ void main() {
     expect(restored.darkCloudTheme?.wallpaper?.imagePath, isNull);
     expect(restored.darkCloudTheme?.wallpaper?.colors, [0x101820]);
   });
+
+  test(
+    'installed theme caches stay isolated by Telegram account identity',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final controller = ThemeController(prefs, initialAccountUserId: 11)
+        ..synchronizeInstalledCloudThemes([_theme('AccountA')]);
+
+      controller.setActiveAccountSlot(1, userId: 22);
+      expect(controller.installedCloudThemes, isEmpty);
+      controller.synchronizeInstalledCloudThemes([_theme('AccountB')]);
+
+      controller.setActiveAccountSlot(0, userId: 11);
+      expect(controller.installedCloudThemes.single.slug, 'AccountA');
+      controller.setActiveAccountSlot(1, userId: 22);
+      expect(controller.installedCloudThemes.single.slug, 'AccountB');
+
+      final restoredA = ThemeController(
+        prefs,
+        initialAccountSlot: 9,
+        initialAccountUserId: 11,
+      );
+      final restoredB = ThemeController(prefs, initialAccountUserId: 22);
+      expect(restoredA.installedCloudThemes.single.slug, 'AccountA');
+      expect(restoredB.installedCloudThemes.single.slug, 'AccountB');
+    },
+  );
+
+  test('shared selection is not installed for another account', () async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final accountA = ThemeController(prefs, initialAccountUserId: 11)
+      ..installCloudTheme(_theme('SharedSelection'));
+
+    expect(accountA.installedCloudThemes.single.slug, 'SharedSelection');
+    final accountB = ThemeController(prefs, initialAccountUserId: 22);
+
+    expect(accountB.lightCloudTheme?.slug, 'SharedSelection');
+    expect(accountB.installedCloudThemes, isEmpty);
+  });
+
+  test('identity resolution clears a reused slot theme cache', () async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+
+    final accountB = ThemeController(prefs, initialAccountUserId: 22);
+    accountB.synchronizeInstalledCloudThemes([_theme('AccountB')]);
+    final previousSlotOwner = ThemeController(prefs);
+    previousSlotOwner.synchronizeInstalledCloudThemes([
+      _theme('PreviousSlotOwner'),
+    ]);
+
+    final resolving = ThemeController(prefs);
+    expect(resolving.installedCloudThemes.single.slug, 'PreviousSlotOwner');
+
+    resolving.setActiveAccountSlot(0, userId: 22);
+    expect(resolving.installedCloudThemes.single.slug, 'AccountB');
+
+    final unresolvedLaterAccount = ThemeController(prefs);
+    expect(unresolvedLaterAccount.installedCloudThemes, isEmpty);
+    expect(
+      prefs.containsKey('installedTelegramCloudThemes.account.0'),
+      isFalse,
+    );
+    expect(prefs.containsKey('installedTelegramCloudThemes'), isFalse);
+  });
 }
 
 String _slugFromPreviewRequest(Map<String, dynamic> request) {

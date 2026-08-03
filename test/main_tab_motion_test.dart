@@ -249,11 +249,15 @@ void main() {
       await _setSurfaceSize(tester, const Size(1100, 720));
       await _pumpMainShell(tester, reducedMotion: true, withDesktopFrame: true);
 
-      final searchAction = find.byKey(
+      final searchField = find.byKey(
         const ValueKey('desktop-title-bar-search'),
       );
+      final searchInput = find.byKey(
+        const ValueKey('desktop-title-bar-search-input'),
+      );
       final addAction = find.byKey(const ValueKey('desktop-title-bar-add'));
-      expect(searchAction, findsOneWidget);
+      expect(searchField, findsOneWidget);
+      expect(searchInput, findsOneWidget);
       expect(addAction, findsOneWidget);
       expect(
         DesktopHotkeyRegistry.instance.hasEnabledHandler(
@@ -265,19 +269,15 @@ void main() {
         find.byKey(const ValueKey('chat-list-inline-search')),
         findsNothing,
       );
-      final chatListController = tester
-          .widget<ChatListView>(find.byType(ChatListView))
-          .controller!;
-      final focusRequestsBefore = chatListController.focusSearchRequests;
-
-      await tester.tap(searchAction);
-      expect(chatListController.focusSearchRequests, focusRequestsBefore + 1);
+      await tester.tap(searchInput);
       await tester.pump();
-      await tester.pumpAndSettle();
-      final searchView = find.byType(SearchView);
-      expect(searchView, findsOneWidget);
-      Navigator.of(tester.element(searchView)).pop();
+      expect(find.byType(SearchView), findsNothing);
+      await tester.enterText(searchInput, 'inline');
       await tester.pump();
+      expect(
+        find.byKey(const ValueKey('desktop-inline-search-panel')),
+        findsOneWidget,
+      );
 
       await tester.tap(addAction);
       await tester.pump();

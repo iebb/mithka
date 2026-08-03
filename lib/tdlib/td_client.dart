@@ -69,9 +69,11 @@ class TdClientProxyTransport {
     required this.query,
     required this.send,
     required this.updates,
+    this.accountUserId,
   });
 
   final int accountSlot;
+  final int? accountUserId;
   final Future<Map<String, dynamic>> Function(Map<String, dynamic>) query;
   final Future<void> Function(Map<String, dynamic>) send;
   final Stream<Map<String, dynamic>> updates;
@@ -171,6 +173,7 @@ class TdClient {
   int get activeSlot => _activeSlot;
   int get activeClientId => _activeClientId;
   bool get hasActiveClient => _activeClientId != 0;
+  int? get proxyAccountUserId => _proxyTransport?.accountUserId;
   List<int> get configuredSlots => List.unmodifiable(_slots);
   int? clientId(int slot) => _clientForSlot[slot];
   int? slotForClient(int clientId) => _slotForClient[clientId];

@@ -15,6 +15,7 @@ import 'package:provider/provider.dart';
 import '../auth/account_store.dart';
 import '../auth/auth_manager.dart';
 import '../auth/login_view.dart';
+import '../chats/search_view.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
 import '../l10n/app_localizations.dart';
@@ -22,10 +23,15 @@ import '../platform/adaptive_platform.dart';
 import '../settings/desktop_hotkey_controller.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
+import 'app_navigator.dart';
 import 'desktop_chat_list_title_bar_anchors.dart';
+import 'desktop_utility_window.dart';
 import 'desktop_window_controls.dart';
 import 'macos_desktop_title_bar.dart';
 import 'main_tab_view.dart';
+
+Key desktopPrimaryWindowIdentityKey(int accountSlot, int? accountUserId) =>
+    ValueKey(('desktop-primary-window', accountSlot, accountUserId));
 
 class ContentView extends StatelessWidget {
   const ContentView({super.key});
@@ -60,6 +66,7 @@ class DesktopPrimaryWindowFrame extends StatefulWidget {
     this.accountAvatarPath,
     this.accountPhone,
     this.showAccountPhone,
+    this.onOpenSearchAll,
   });
 
   final bool accountReady;
@@ -68,6 +75,7 @@ class DesktopPrimaryWindowFrame extends StatefulWidget {
   final String? accountAvatarPath;
   final String? accountPhone;
   final bool? showAccountPhone;
+  final FutureOr<void> Function(String query)? onOpenSearchAll;
 
   @override
   State<DesktopPrimaryWindowFrame> createState() =>
@@ -78,9 +86,26 @@ class _DesktopPrimaryWindowFrameState extends State<DesktopPrimaryWindowFrame> {
   static const _profileDismissDelay = Duration(milliseconds: 220);
 
   final LayerLink _profileLink = LayerLink();
+  final LayerLink _searchLink = LayerLink();
   final Object _profileTapGroup = Object();
+  final Object _searchTapGroup = Object();
+  late final DesktopInlineSearchController _searchController =
+      DesktopInlineSearchController();
   Timer? _profileDismissTimer;
+  DesktopHotkeyRegistration? _focusSearchRegistration;
   bool _profileVisible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!kIsWeb && isDesktopTargetPlatform(defaultTargetPlatform)) {
+      _focusSearchRegistration = DesktopHotkeyRegistry.instance.register(
+        DesktopHotkeyAction.focusSearch,
+        _searchController.focus,
+        isEnabled: () => widget.accountReady,
+      );
+    }
+  }
 
   @override
   void didUpdateWidget(DesktopPrimaryWindowFrame oldWidget) {
@@ -89,12 +114,53 @@ class _DesktopPrimaryWindowFrameState extends State<DesktopPrimaryWindowFrame> {
       _profileDismissTimer?.cancel();
       _profileVisible = false;
     }
+    if (!widget.accountReady) _searchController.dismiss();
   }
 
   @override
   void dispose() {
     _profileDismissTimer?.cancel();
+    _focusSearchRegistration?.dispose();
+    _searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _openSearchAll(String query) async {
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) return;
+    final override = widget.onOpenSearchAll;
+    if (override != null) {
+      await override(trimmed);
+      return;
+    }
+
+    if (DesktopUtilityWindowService.instance.isSupported) {
+      final accounts = context.read<AccountStore>();
+      final accountUserId = accounts.activeUserId;
+      if (accountUserId != null) {
+        final opened = await DesktopUtilityWindowService.instance.open(
+          DesktopUtilityWindowArguments(
+            kind: DesktopUtilityWindowKind.search,
+            accountSlot: accounts.activeSlot,
+            accountUserId: accountUserId,
+            title: AppStringKeys.topicChatSearch.l10n(context),
+            localeTag: Localizations.localeOf(context).toLanguageTag(),
+            dark: Theme.of(context).brightness == Brightness.dark,
+            initialQuery: trimmed,
+            instanceId: createDesktopUtilityWindowInstanceId(),
+          ),
+        );
+        if (opened || !mounted) return;
+      }
+    }
+
+    final navigator =
+        appNavigatorKey.currentState ?? Navigator.maybeOf(context);
+    await navigator?.push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => SearchView(initialQuery: trimmed),
+      ),
+    );
   }
 
   void _showProfile() {
@@ -149,7 +215,12 @@ class _DesktopPrimaryWindowFrameState extends State<DesktopPrimaryWindowFrame> {
                     ? const DesktopWindowControls()
                     : null,
                 trailingActions: widget.accountReady
-                    ? const _DesktopChatTitleBarActions()
+                    ? _DesktopChatTitleBarActions(
+                        searchController: _searchController,
+                        searchLink: _searchLink,
+                        searchTapGroup: _searchTapGroup,
+                        onSearchAll: _openSearchAll,
+                      )
                     : null,
                 onDragAreaDoubleTap: flutterWindowControls
                     ? () => unawaited(togglePrimaryDesktopWindowMaximized())
@@ -240,6 +311,22 @@ class _DesktopPrimaryWindowFrameState extends State<DesktopPrimaryWindowFrame> {
                 ),
               ),
             ),
+          if (widget.accountReady)
+            CompositedTransformFollower(
+              link: _searchLink,
+              showWhenUnlinked: false,
+              targetAnchor: Alignment.bottomRight,
+              followerAnchor: Alignment.topRight,
+              offset: const Offset(0, 6),
+              child: TapRegion(
+                groupId: _searchTapGroup,
+                onTapOutside: (_) => _searchController.dismiss(),
+                child: DesktopInlineSearchPanel(
+                  controller: _searchController,
+                  onSearchAll: _openSearchAll,
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -247,35 +334,64 @@ class _DesktopPrimaryWindowFrameState extends State<DesktopPrimaryWindowFrame> {
 }
 
 class _DesktopChatTitleBarActions extends StatelessWidget {
-  const _DesktopChatTitleBarActions();
+  const _DesktopChatTitleBarActions({
+    required this.searchController,
+    required this.searchLink,
+    required this.searchTapGroup,
+    required this.onSearchAll,
+  });
 
   static const double actionSize = 28;
   static const double iconSize = 16;
   static const double gap = 4;
 
+  final DesktopInlineSearchController searchController;
+  final LayerLink searchLink;
+  final Object searchTapGroup;
+  final FutureOr<void> Function(String query) onSearchAll;
+
   @override
-  Widget build(BuildContext context) => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      _action(
-        context,
-        key: const ValueKey('desktop-title-bar-search'),
-        icon: HeroAppIcons.magnifyingGlass,
-        label: AppStringKeys.topicChatSearch.l10n(context),
-        action: DesktopHotkeyAction.focusSearch,
-      ),
-      const SizedBox(width: gap),
-      CompositedTransformTarget(
-        link: DesktopChatListTitleBarAnchors.add,
-        child: _action(
-          context,
-          key: const ValueKey('desktop-title-bar-add'),
-          icon: HeroAppIcons.plus,
-          label: AppStringKeys.chatInfoCreate.l10n(context),
-          action: DesktopHotkeyAction.newChat,
+  Widget build(BuildContext context) => SizedBox(
+    width: DesktopInlineSearchField.width + gap + actionSize,
+    height: actionSize,
+    // DesktopPrimaryWindowFrame wraps the app Navigator from MaterialApp's
+    // builder, so title-bar controls are siblings of (not descendants of) the
+    // Navigator's Overlay. EditableText needs its own local Overlay ancestor
+    // for selection handles and editing gestures.
+    child: Overlay(
+      clipBehavior: Clip.none,
+      initialEntries: [
+        OverlayEntry(
+          builder: (overlayContext) => Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TapRegion(
+                groupId: searchTapGroup,
+                onTapOutside: (_) => searchController.dismiss(),
+                child: CompositedTransformTarget(
+                  link: searchLink,
+                  child: DesktopInlineSearchField(
+                    controller: searchController,
+                    onSearchAll: onSearchAll,
+                  ),
+                ),
+              ),
+              const SizedBox(width: gap),
+              CompositedTransformTarget(
+                link: DesktopChatListTitleBarAnchors.add,
+                child: _action(
+                  overlayContext,
+                  key: const ValueKey('desktop-title-bar-add'),
+                  icon: HeroAppIcons.plus,
+                  label: AppStringKeys.chatInfoCreate.l10n(overlayContext),
+                  action: DesktopHotkeyAction.newChat,
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
-    ],
+      ],
+    ),
   );
 
   Widget _action(

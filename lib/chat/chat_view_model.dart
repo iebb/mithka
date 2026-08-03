@@ -4482,6 +4482,11 @@ class ChatViewModel extends ChangeNotifier {
         if (content.type == 'messageVideo') {
           _replaceVideoMedia(messageId, content);
         }
+        if (content.type == 'messageChatSetBackground' ||
+            content.type == 'messageChatSetTheme') {
+          unawaited(_refreshMessage(messageId));
+          return;
+        }
         _replaceText(
           messageId,
           // Chat-list previews deliberately synthesize labels such as

@@ -10,6 +10,7 @@ Future<bool> showAppConfirmDialog(
   BuildContext context, {
   required String title,
   String? message,
+  Widget? content,
   required String confirmText,
   String cancelText = AppStringKeys.countryPickerCancel,
   AppColors? colors,
@@ -63,6 +64,10 @@ Future<bool> showAppConfirmDialog(
                               ),
                             ),
                           ),
+                          if (content != null) ...[
+                            const SizedBox(height: 14),
+                            content,
+                          ],
                           if (message != null && message.trim().isNotEmpty) ...[
                             const SizedBox(height: 10),
                             Text(

@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/components/photo_avatar.dart';
 import 'package:mithka/contacts/contacts_view.dart';
 import 'package:mithka/l10n/app_localizations.dart';
+import 'package:mithka/tdlib/td_models.dart';
 import 'package:mithka/theme/app_theme.dart';
 
 void main() {
@@ -116,6 +117,92 @@ void main() {
     await _disposeContacts(tester);
     debugDefaultTargetPlatformOverride = null;
   });
+
+  testWidgets('desktop contact row matches compact chat-list metrics', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    await _setSurfaceSize(tester, const Size(320, 700));
+    await _pumpContactRow(tester, desktopCompact: true);
+
+    final row = find.byType(ContactRowView);
+    final avatar = tester.widget<PhotoAvatar>(find.byType(PhotoAvatar));
+    final name = tester.widget<Text>(find.text('Desktop contact'));
+    final status = tester.widget<Text>(find.text('Recently active'));
+
+    expect(tester.getSize(row).height, AppMetric.chatListRowHeight());
+    expect(avatar.size, AppMetric.chatListAvatarSize());
+    expect(name.style?.fontSize, AppTextSize.chatListTitle());
+    expect(name.style?.fontWeight, AppTextWeight.medium);
+    expect(status.style?.fontSize, AppTextSize.chatListPreview());
+    expect(tester.takeException(), isNull);
+
+    await _disposeContacts(tester);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('touch contact row preserves its existing scale', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    await _setSurfaceSize(tester, const Size(390, 844));
+    await _pumpContactRow(tester);
+
+    final row = find.byType(ContactRowView);
+    final avatar = tester.widget<PhotoAvatar>(find.byType(PhotoAvatar));
+    final name = tester.widget<Text>(find.text('Desktop contact'));
+    final status = tester.widget<Text>(find.text('Recently active'));
+
+    expect(tester.getSize(row).height, AppMetric.listRowHeight);
+    expect(avatar.size, 44);
+    expect(name.style?.fontSize, AppTextSize.bodyLarge);
+    expect(name.style?.fontWeight, isNull);
+    expect(status.style?.fontSize, AppTextSize.footnote);
+    expect(tester.takeException(), isNull);
+
+    await _disposeContacts(tester);
+    debugDefaultTargetPlatformOverride = null;
+  });
+}
+
+Future<void> _pumpContactRow(
+  WidgetTester tester, {
+  bool desktopCompact = false,
+}) async {
+  final contact = Contact(
+    id: 1,
+    name: 'Desktop contact',
+    username: 'desktop_contact',
+    statusText: 'Recently active',
+  );
+  await tester.pumpWidget(
+    MaterialApp(
+      locale: const Locale('en'),
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ],
+      supportedLocales: AppLocalizations.supportedLocales,
+      theme: ThemeData(
+        brightness: Brightness.light,
+        extensions: [AppColors.light],
+      ),
+      home: Material(
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+            width: 320,
+            child: ContactRowView(
+              contact: contact,
+              desktopCompact: desktopCompact,
+              onTap: () {},
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pump();
 }
 
 Future<void> _pumpContacts(

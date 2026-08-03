@@ -14,6 +14,39 @@ class ChatDeepLinkRequest {
   final int? messageId;
   final int? accountUserId;
   final int? accountSlot;
+
+  /// Presentation-only payload used when a registered desktop child asks the
+  /// primary window to select a conversation. Account identity is never read
+  /// from this map; the primary bridge supplies it from the authenticated
+  /// child-window registration.
+  Map<String, Object?> toDesktopIpcJson() => {
+    'chatId': chatId,
+    'title': _normalizeDesktopChatTitle(title),
+    if (messageId != null) 'messageId': messageId,
+  };
+
+  static ChatDeepLinkRequest? tryParseDesktopIpc(Object? source) {
+    if (source is! Map) return null;
+    final chatId = source['chatId'];
+    final messageId = source['messageId'];
+    if (chatId is! int || chatId == 0) return null;
+    if (messageId != null && (messageId is! int || messageId == 0)) {
+      return null;
+    }
+    final title = source['title'];
+    if (title != null && title is! String) return null;
+    return ChatDeepLinkRequest(
+      chatId: chatId,
+      title: _normalizeDesktopChatTitle(title as String?),
+      messageId: messageId as int?,
+    );
+  }
+}
+
+String _normalizeDesktopChatTitle(String? source) {
+  final value = source?.replaceAll(RegExp(r'[\r\n]+'), ' ').trim() ?? '';
+  if (value.isEmpty) return 'Mithka';
+  return value.length <= 256 ? value : value.substring(0, 256);
 }
 
 class ChatDeepLinkController extends ChangeNotifier {

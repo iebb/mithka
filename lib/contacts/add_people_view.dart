@@ -13,8 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
-import '../app/app_navigator.dart';
-import '../chat/chat_view.dart';
+import '../app/primary_chat_launcher.dart';
 import '../components/app_icons.dart';
 import '../components/icon_grid.dart';
 import '../components/photo_avatar.dart';
@@ -223,11 +222,8 @@ class _AddPeopleViewState extends State<AddPeopleView> {
     ),
   );
 
-  void _openChat(_ChatHit h) => pushAppChatRoute(
-    context,
-    AppChatPageRoute(
-      builder: (_) => ChatView(chatId: h.id, title: h.title),
-    ),
+  void _openChat(_ChatHit h) => unawaited(
+    openChatFromCurrentWindow(context, chatId: h.id, title: h.title),
   );
 
   void _createGroup() => Navigator.of(
@@ -254,14 +250,7 @@ class _AddPeopleViewState extends State<AddPeopleView> {
       });
       final id = chat.int64('id') ?? chat.int64('chat_id');
       if (!mounted || id == null) return;
-      unawaited(
-        pushAppChatRoute(
-          context,
-          AppChatPageRoute(
-            builder: (_) => ChatView(chatId: id, title: title),
-          ),
-        ),
-      );
+      unawaited(openChatFromCurrentWindow(context, chatId: id, title: title));
     } catch (_) {
       if (mounted) {
         showToast(

@@ -698,6 +698,43 @@ class ChatWallpaperController extends ChangeNotifier {
   ChatWallpaper resolvedWallpaper(ChatWallpaper wallpaper) =>
       _withResolvedFile(wallpaper);
 
+  /// Decodes a TDLib `background` for a transient preview without changing
+  /// the selected wallpaper.
+  ChatWallpaper? previewWallpaperFromBackground(
+    Map<String, dynamic>? background, {
+    int darkThemeDimming = 0,
+  }) => _parseBackground(background, dimming: darkThemeDimming);
+
+  /// Decodes the `chatBackground` wrapper carried by
+  /// `messageChatSetBackground`.
+  ChatWallpaper? previewWallpaperFromChatBackground(
+    Map<String, dynamic>? chatBackground,
+  ) => _parseChatBackground(chatBackground);
+
+  /// Resolves the compact theme descriptor carried by
+  /// `messageChatSetTheme` against the current Telegram theme catalog.
+  ChatThemeOption? previewThemeFromChatTheme(
+    Map<String, dynamic>? chatTheme, {
+    required bool dark,
+  }) {
+    if (chatTheme == null) return null;
+    if (chatTheme.type == 'chatThemeGift') {
+      final giftTheme = chatTheme.obj('gift_theme');
+      return giftTheme == null
+          ? null
+          : _themeOption(giftTheme, kind: ChatThemeKind.gift, dark: dark);
+    }
+    if (chatTheme.type != 'chatThemeEmoji') return null;
+    final name = chatTheme.str('name');
+    if (name == null || name.isEmpty) return null;
+    for (final theme in _themeSource(ChatThemeKind.emoji)) {
+      if (_themeName(theme, ChatThemeKind.emoji) == name) {
+        return _themeOption(theme, kind: ChatThemeKind.emoji, dark: dark);
+      }
+    }
+    return null;
+  }
+
   bool canApplyOnlyForSelf(int chatId) {
     final type = _chatTypes[_id(chatId)];
     return type == 'chatTypePrivate' || type == 'chatTypeSecret';
@@ -1924,7 +1961,7 @@ class ChatWallpaperController extends ChangeNotifier {
     }
     final bytes = await source.readAsBytes();
     final isGzip = bytes.length >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b;
-    final decoded = isGzip ? GZipDecoder().decodeBytes(bytes) : bytes;
+    final decoded = isGzip ? const GZipDecoder().decodeBytes(bytes) : bytes;
     final isPng =
         decoded.length >= 8 &&
         decoded[0] == 0x89 &&

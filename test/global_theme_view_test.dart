@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/l10n/app_localizations.dart';
@@ -10,6 +12,170 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  testWidgets('shows cached community themes before refresh completes', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final controller = ThemeController(prefs)
+      ..synchronizeInstalledCloudThemes([_theme('Cached', 'Cached Theme')]);
+    final refresh = Completer<List<TelegramCloudTheme>>();
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: controller,
+        child: _themeTestApp(
+          GlobalThemeView(themeService: _ControlledThemeService(refresh)),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Cached Theme'), findsOneWidget);
+    expect(find.text('Loading themes…'), findsNothing);
+
+    refresh.complete(controller.installedCloudThemes);
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('successful refresh replaces and persists the cached set', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final controller = ThemeController(prefs)
+      ..synchronizeInstalledCloudThemes([_theme('Cached', 'Cached Theme')]);
+    final refresh = Completer<List<TelegramCloudTheme>>();
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: controller,
+        child: _themeTestApp(
+          GlobalThemeView(themeService: _ControlledThemeService(refresh)),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.text('Cached Theme'), findsOneWidget);
+
+    refresh.complete([_theme('Fresh', 'Fresh Theme')]);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cached Theme'), findsNothing);
+    expect(find.text('Fresh Theme'), findsOneWidget);
+    final restored = ThemeController(prefs);
+    expect(restored.installedCloudThemes.map((theme) => theme.slug), ['Fresh']);
+  });
+
+  testWidgets(
+    'an external newer cache update wins over an older page refresh',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final controller = ThemeController(prefs)
+        ..synchronizeInstalledCloudThemes([_theme('Cached', 'Cached Theme')]);
+      final refresh = Completer<List<TelegramCloudTheme>>();
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider.value(
+          value: controller,
+          child: _themeTestApp(
+            GlobalThemeView(themeService: _ControlledThemeService(refresh)),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      controller.synchronizeInstalledCloudThemes([
+        _theme('External', 'Newer External Theme'),
+      ]);
+      await tester.pump();
+      expect(find.text('Newer External Theme'), findsOneWidget);
+
+      refresh.complete([_theme('Stale', 'Older Page Result')]);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Older Page Result'), findsNothing);
+      expect(controller.installedCloudThemes.single.slug, 'External');
+    },
+  );
+
+  testWidgets('failed refresh retains the displayed and persisted cache', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final controller = ThemeController(prefs)
+      ..synchronizeInstalledCloudThemes([_theme('Cached', 'Cached Theme')]);
+    final service = TelegramCloudThemeService(
+      query: (_) => Future.error(StateError('offline')),
+    );
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: controller,
+        child: _themeTestApp(GlobalThemeView(themeService: service)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cached Theme'), findsOneWidget);
+    expect(controller.installedCloudThemes.single.slug, 'Cached');
+    final restored = ThemeController(prefs);
+    expect(restored.installedCloudThemes.single.slug, 'Cached');
+  });
+
+  testWidgets(
+    'mounted account switch swaps cache and rejects the prior refresh',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final controller = ThemeController(prefs, initialAccountUserId: 11)
+        ..synchronizeInstalledCloudThemes([
+          _theme('CachedA', 'Cached Account A'),
+        ]);
+      final accountARefresh = Completer<List<TelegramCloudTheme>>();
+      final accountBRefresh = Completer<List<TelegramCloudTheme>>();
+      final service = _QueuedThemeService([accountARefresh, accountBRefresh]);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider.value(
+          value: controller,
+          child: _themeTestApp(GlobalThemeView(themeService: service)),
+        ),
+      );
+      await tester.pump();
+      expect(find.text('Cached Account A'), findsOneWidget);
+      expect(service.requestCount, 1);
+
+      controller.setActiveAccountSlot(1, userId: 22);
+      await tester.pump();
+
+      expect(find.text('Cached Account A'), findsNothing);
+      expect(find.text('No community themes installed'), findsOneWidget);
+      expect(controller.installedCloudThemes, isEmpty);
+      expect(service.requestCount, 2);
+
+      accountARefresh.complete([_theme('StaleA', 'Stale Account A')]);
+      await tester.pump();
+      expect(find.text('Stale Account A'), findsNothing);
+      expect(controller.installedCloudThemes, isEmpty);
+
+      accountBRefresh.complete([_theme('FreshB', 'Fresh Account B')]);
+      await tester.pumpAndSettle();
+      expect(find.text('Fresh Account B'), findsOneWidget);
+
+      final restoredA = ThemeController(prefs, initialAccountUserId: 11);
+      final restoredB = ThemeController(
+        prefs,
+        initialAccountSlot: 1,
+        initialAccountUserId: 22,
+      );
+      expect(restoredA.installedCloudThemes.single.slug, 'CachedA');
+      expect(restoredB.installedCloudThemes.single.slug, 'FreshB');
+    },
+  );
 
   testWidgets('separates official and community themes', (tester) async {
     await tester.binding.setSurfaceSize(const Size(900, 1800));
@@ -277,6 +443,49 @@ void main() {
     expect(controller.mode, AppearanceMode.light);
   });
 }
+
+Widget _themeTestApp(Widget child) => MaterialApp(
+  locale: const Locale('en'),
+  supportedLocales: AppLocalizations.supportedLocales,
+  localizationsDelegates: const [AppLocalizations.delegate],
+  theme: ThemeData(extensions: [AppColors.light]),
+  home: child,
+);
+
+class _ControlledThemeService extends TelegramCloudThemeService {
+  _ControlledThemeService(this.result) : super(query: (_) async => const {});
+
+  final Completer<List<TelegramCloudTheme>> result;
+
+  @override
+  Future<List<TelegramCloudTheme>> loadInstalled({
+    Iterable<TelegramCloudTheme> fallback = const [],
+  }) => result.future;
+}
+
+class _QueuedThemeService extends TelegramCloudThemeService {
+  _QueuedThemeService(this.results) : super(query: (_) async => const {});
+
+  final List<Completer<List<TelegramCloudTheme>>> results;
+  int requestCount = 0;
+
+  @override
+  Future<List<TelegramCloudTheme>> loadInstalled({
+    Iterable<TelegramCloudTheme> fallback = const [],
+  }) {
+    final index = requestCount++;
+    return results[index].future;
+  }
+}
+
+TelegramCloudTheme _theme(String slug, String title) => TelegramCloudTheme(
+  slug: slug,
+  rawTitle: title,
+  baseTheme: 'builtInThemeDay',
+  accentColorValue: 0x2481CC,
+  outgoingColors: const [0xD8F3FF],
+  palette: const {},
+);
 
 Map<String, dynamic> _previewFor(String slug) => {
   '@type': 'linkPreview',

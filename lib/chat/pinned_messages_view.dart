@@ -10,7 +10,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
-import '../app/app_navigator.dart';
+import '../app/primary_chat_launcher.dart';
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
 import '../l10n/telegram_language_controller.dart';
@@ -19,7 +19,6 @@ import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
-import 'chat_view.dart';
 import 'image_preview.dart';
 import 'video_playback_queue.dart';
 import 'video_player_view.dart';
@@ -196,13 +195,12 @@ class _PinnedMessagesViewState extends State<PinnedMessagesView> {
     final photo = senderId == null ? null : _photos[senderId];
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => Navigator.of(context).push(
-        AppChatPageRoute<void>(
-          builder: (_) => ChatView(
-            chatId: widget.chatId,
-            title: widget.title,
-            initialMessageId: message.id,
-          ),
+      onTap: () => unawaited(
+        openChatFromCurrentWindow(
+          context,
+          chatId: widget.chatId,
+          title: widget.title,
+          initialMessageId: message.id,
         ),
       ),
       child: Container(

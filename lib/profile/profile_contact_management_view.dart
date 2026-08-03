@@ -68,6 +68,11 @@ class _ProfileContactManagementViewState
     premiumSubscription: true,
   );
 
+  String get _displayName {
+    final fullName = '$_firstName $_lastName'.trim();
+    return fullName.isNotEmpty ? fullName : widget.initialName;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -126,7 +131,7 @@ class _ProfileContactManagementViewState
     final result = await showGeneralDialog<_ContactEditResult>(
       context: context,
       barrierDismissible: true,
-      barrierLabel: 'Cancel',
+      barrierLabel: context.l10n.t(AppStringKeys.confirmCancel),
       barrierColor: Colors.black.withValues(alpha: 0.52),
       transitionDuration: const Duration(milliseconds: 160),
       transitionBuilder: (_, animation, _, child) => FadeTransition(
@@ -137,6 +142,7 @@ class _ProfileContactManagementViewState
         ),
       ),
       pageBuilder: (context, _, _) => _ContactEditDialog(
+        contactName: _displayName,
         firstName: _firstName,
         lastName: _lastName,
         phoneNumber: _phoneNumber,
@@ -145,7 +151,13 @@ class _ProfileContactManagementViewState
         privacyExceptionNeeded: _snapshot.needPhoneNumberPrivacyException,
       ),
     );
-    if (result == null || result.firstName.trim().isEmpty) return;
+    if (!mounted || result == null || result.firstName.trim().isEmpty) return;
+    final success = _isContact
+        ? context.l10n.t(AppStringKeys.profileContactManagementContactUpdated)
+        : context.l10n.t(
+            AppStringKeys.profileContactManagementContactAddedValue1,
+            {'value1': _displayName},
+          );
     await _run(() async {
       await _service.addOrEdit(
         userId: widget.userId,
@@ -158,22 +170,30 @@ class _ProfileContactManagementViewState
       _lastName = result.lastName.trim();
       _phoneNumber = result.phoneNumber.trim();
       _isContact = true;
-    }, success: _isContact ? 'Contact updated' : 'Contact added');
+    }, success: success);
   }
 
   Future<void> _removeContact() async {
     final confirmed = await confirmDialog(
       context,
       title: AppStrings.t(AppStringKeys.profileContactManagementRemoveContact),
-      message: 'This person will be removed from your contact list.',
+      message: context.l10n.t(
+        AppStringKeys.profileContactManagementRemoveContactMessage,
+      ),
       confirmText: AppStrings.t(AppStringKeys.chatInfoRemove),
       destructive: true,
     );
     if (!confirmed || !mounted) return;
-    await _run(() async {
-      await _service.remove(widget.userId);
-      _isContact = false;
-    }, success: 'Contact removed');
+    await _run(
+      () async {
+        await _service.remove(widget.userId);
+        _isContact = false;
+      },
+      success: context.l10n.t(
+        AppStringKeys.profileContactManagementContactRemovedValue1,
+        {'value1': _displayName},
+      ),
+    );
   }
 
   Future<void> _sharePhone() async {
@@ -182,14 +202,17 @@ class _ProfileContactManagementViewState
       title: AppStrings.t(
         AppStringKeys.profileContactManagementShareYourPhoneNumber,
       ),
-      message:
-          'This shares your current number with this mutual contact and updates the matching privacy exception.',
+      message: context.l10n.t(
+        AppStringKeys.profileContactManagementSharePhoneMessage,
+      ),
       confirmText: AppStrings.t(AppStringKeys.topicChatShare),
     );
     if (!confirmed || !mounted) return;
     await _run(
       () => _service.sharePhone(widget.userId),
-      success: 'Phone number shared',
+      success: context.l10n.t(
+        AppStringKeys.profileContactManagementPhoneShared,
+      ),
     );
   }
 
@@ -201,25 +224,34 @@ class _ProfileContactManagementViewState
             AppStringKeys.profileContactManagementContactNote,
           ),
           initial: _snapshot.note,
-          hint: 'Only you can see this note',
+          hint: context.l10n.t(
+            AppStringKeys.profileContactManagementNoteVisibleOnly,
+          ),
           multiline: true,
           maxLength: 256,
         ),
       ),
     );
-    if (value == null) return;
-    await _run(() async {
-      await _service.setNote(widget.userId, value);
-      _snapshot = ProfileContactSnapshot(
-        needPhoneNumberPrivacyException:
-            _snapshot.needPhoneNumberPrivacyException,
-        note: value.trim(),
-        personalChatId: _snapshot.personalChatId,
-        personalPhotoId: _snapshot.personalPhotoId,
-        currentPhotoId: _snapshot.currentPhotoId,
-        publicPhotoId: _snapshot.publicPhotoId,
-      );
-    }, success: value.trim().isEmpty ? 'Note removed' : 'Note saved');
+    if (!mounted || value == null) return;
+    await _run(
+      () async {
+        await _service.setNote(widget.userId, value);
+        _snapshot = ProfileContactSnapshot(
+          needPhoneNumberPrivacyException:
+              _snapshot.needPhoneNumberPrivacyException,
+          note: value.trim(),
+          personalChatId: _snapshot.personalChatId,
+          personalPhotoId: _snapshot.personalPhotoId,
+          currentPhotoId: _snapshot.currentPhotoId,
+          publicPhotoId: _snapshot.publicPhotoId,
+        );
+      },
+      success: context.l10n.t(
+        value.trim().isEmpty
+            ? AppStringKeys.profileContactManagementNoteRemoved
+            : AppStringKeys.profileContactManagementNoteSaved,
+      ),
+    );
   }
 
   Future<String?> _pickImage() async {
@@ -245,10 +277,12 @@ class _ProfileContactManagementViewState
 
   Future<void> _setPersonalPhoto() async {
     final path = await _pickImage();
-    if (path == null) return;
+    if (!mounted || path == null) return;
     await _run(
       () => _service.setPersonalPhoto(widget.userId, path),
-      success: 'Personal photo updated',
+      success: context.l10n.t(
+        AppStringKeys.profileContactManagementPersonalPhotoUpdated,
+      ),
       reload: true,
     );
   }
@@ -256,17 +290,21 @@ class _ProfileContactManagementViewState
   Future<void> _deletePersonalPhoto() async {
     await _run(
       () => _service.deletePersonalPhoto(widget.userId),
-      success: 'Personal photo removed',
+      success: context.l10n.t(
+        AppStringKeys.profileContactManagementPersonalPhotoRemoved,
+      ),
       reload: true,
     );
   }
 
   Future<void> _suggestPhoto() async {
     final path = await _pickImage();
-    if (path == null) return;
+    if (!mounted || path == null) return;
     await _run(
       () => _service.suggestPhoto(widget.userId, path),
-      success: 'Photo suggestion sent',
+      success: context.l10n.t(
+        AppStringKeys.profileContactManagementPhotoSuggestionSent,
+      ),
     );
   }
 
@@ -274,7 +312,7 @@ class _ProfileContactManagementViewState
     final value = await showGeneralDialog<_SuggestedBirthdate>(
       context: context,
       barrierDismissible: true,
-      barrierLabel: 'Cancel',
+      barrierLabel: context.l10n.t(AppStringKeys.confirmCancel),
       barrierColor: Colors.black.withValues(alpha: 0.52),
       transitionDuration: const Duration(milliseconds: 160),
       transitionBuilder: (_, animation, _, child) => FadeTransition(
@@ -286,7 +324,7 @@ class _ProfileContactManagementViewState
       ),
       pageBuilder: (_, _, _) => const _BirthdateDialog(),
     );
-    if (value == null) return;
+    if (!mounted || value == null) return;
     await _run(
       () => _service.suggestBirthdate(
         widget.userId,
@@ -294,7 +332,9 @@ class _ProfileContactManagementViewState
         month: value.month,
         year: value.year,
       ),
-      success: 'Birthdate suggestion sent',
+      success: context.l10n.t(
+        AppStringKeys.profileContactManagementBirthdateSuggestionSent,
+      ),
     );
   }
 
@@ -402,7 +442,7 @@ class _ProfileContactManagementViewState
           NavHeader(
             title: _isMe
                 ? context.l10n.t(AppStringKeys.profileToolsTitle)
-                : 'Contact tools',
+                : context.l10n.t(AppStringKeys.profileContactManagementTitle),
             onBack: () => Navigator.of(context).pop(),
             trailing: _refreshAction(),
           ),
@@ -558,78 +598,115 @@ class _ProfileContactManagementViewState
     ];
   }
 
-  List<Widget> _contactRows() => [
-    _photoComparison(),
-    const SizedBox(height: 18),
-    _section('CONTACT', [
-      _row(
-        _isContact ? HeroAppIcons.penToSquare : HeroAppIcons.userPlus,
-        _isContact ? 'Edit contact' : 'Add contact',
-        'Name, phone number, and privacy exception',
-        _editContact,
-      ),
-      if (_isContact && _snapshot.needPhoneNumberPrivacyException)
-        _row(
-          HeroAppIcons.phone,
-          'Share my phone number',
-          'Add the required phone-number privacy exception',
-          _sharePhone,
-        ),
-      _row(
-        HeroAppIcons.font,
-        'Private note',
-        _snapshot.note.isEmpty ? 'Only you can see it' : _snapshot.note,
-        _editNote,
-      ),
-    ]),
-    const SizedBox(height: 18),
-    _section('PROFILE SUGGESTIONS', [
-      _row(
-        HeroAppIcons.camera,
-        'Set personal photo',
-        'A private photo visible only to you',
-        _setPersonalPhoto,
-      ),
-      if (_snapshot.personalPhotoId != 0)
-        _row(
-          HeroAppIcons.trash,
-          'Remove personal photo',
-          'Return to the user\'s own profile photo',
-          _deletePersonalPhoto,
-          destructive: true,
-        ),
-      _row(
-        HeroAppIcons.image,
-        'Suggest profile photo',
-        'The user can accept it from the service message',
-        _suggestPhoto,
-      ),
-      _row(
-        HeroAppIcons.clock,
-        'Suggest birthdate',
-        'The user decides whether to apply it',
-        _suggestBirthdate,
-      ),
-    ]),
-    if (_isContact) ...[
+  List<Widget> _contactRows() {
+    final l10n = context.l10n;
+    final name = _displayName;
+    return [
+      _photoComparison(),
       const SizedBox(height: 18),
-      _section('CONTACT LIST', [
+      _section(l10n.t(AppStringKeys.profileContactManagementContactSection), [
         _row(
-          HeroAppIcons.trash,
-          'Remove contact',
-          'Delete from your Telegram contacts',
-          _removeContact,
-          destructive: true,
+          _isContact ? HeroAppIcons.penToSquare : HeroAppIcons.userPlus,
+          l10n.t(
+            _isContact
+                ? AppStringKeys.profileContactManagementEditContact
+                : AppStringKeys.profileContactManagementAddContact,
+          ),
+          l10n.t(AppStringKeys.profileContactManagementContactDetailsSubtitle),
+          _editContact,
+        ),
+        if (_isContact && _snapshot.needPhoneNumberPrivacyException)
+          _row(
+            HeroAppIcons.phone,
+            l10n.t(AppStringKeys.profileContactManagementSharePhone),
+            l10n.t(
+              AppStringKeys
+                  .profileContactManagementPrivacyExceptionSubtitleValue1,
+              {'value1': name},
+            ),
+            _sharePhone,
+          ),
+        _row(
+          HeroAppIcons.font,
+          l10n.t(AppStringKeys.profileContactManagementPrivateNote),
+          _snapshot.note.isEmpty
+              ? l10n.t(AppStringKeys.profileContactManagementOnlyYouCanSeeIt)
+              : _snapshot.note,
+          _editNote,
         ),
       ]),
-    ],
-  ];
+      const SizedBox(height: 18),
+      _section(
+        l10n.t(AppStringKeys.profileContactManagementProfileSuggestionsSection),
+        [
+          _row(
+            HeroAppIcons.camera,
+            l10n.t(
+              AppStringKeys.profileContactManagementSetPersonalPhotoValue1,
+              {'value1': name},
+            ),
+            l10n.t(
+              AppStringKeys.profileContactManagementPersonalPhotoDescription,
+            ),
+            _setPersonalPhoto,
+          ),
+          if (_snapshot.personalPhotoId != 0)
+            _row(
+              HeroAppIcons.trash,
+              l10n.t(AppStringKeys.profileContactManagementRemovePersonalPhoto),
+              l10n.t(
+                AppStringKeys.profileContactManagementReturnOriginalPhotoValue1,
+                {'value1': name},
+              ),
+              _deletePersonalPhoto,
+              destructive: true,
+            ),
+          _row(
+            HeroAppIcons.image,
+            l10n.t(
+              AppStringKeys.profileContactManagementSuggestProfilePhotoValue1,
+              {'value1': name},
+            ),
+            l10n.t(
+              AppStringKeys
+                  .profileContactManagementSuggestProfilePhotoDescriptionValue1,
+              {'value1': name},
+            ),
+            _suggestPhoto,
+          ),
+          _row(
+            HeroAppIcons.clock,
+            l10n.t(AppStringKeys.profileContactManagementSuggestBirthdate),
+            l10n.t(
+              AppStringKeys
+                  .profileContactManagementSuggestBirthdateDescriptionValue1,
+              {'value1': name},
+            ),
+            _suggestBirthdate,
+          ),
+        ],
+      ),
+      if (_isContact) ...[
+        const SizedBox(height: 18),
+        _section(
+          l10n.t(AppStringKeys.profileContactManagementContactListSection),
+          [
+            _row(
+              HeroAppIcons.trash,
+              l10n.t(AppStringKeys.profileContactManagementRemoveContactRow),
+              l10n.t(AppStringKeys.profileContactManagementDeleteFromContacts),
+              _removeContact,
+              destructive: true,
+            ),
+          ],
+        ),
+      ],
+    ];
+  }
 
   Widget _photoComparison() {
     final colors = context.colors;
-    final name = '$_firstName $_lastName'.trim().isNotEmpty
-        ? '$_firstName $_lastName'.trim()
-        : widget.initialName;
+    final name = _displayName;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -639,9 +716,21 @@ class _ProfileContactManagementViewState
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _photoColumn('Personal', name, _personalPhoto),
-          _photoColumn('Current', name, _currentPhoto),
-          _photoColumn('Public', name, _publicPhoto),
+          _photoColumn(
+            context.l10n.t(AppStringKeys.profileContactManagementPhotoPersonal),
+            name,
+            _personalPhoto,
+          ),
+          _photoColumn(
+            context.l10n.t(AppStringKeys.profileContactManagementPhotoCurrent),
+            name,
+            _currentPhoto,
+          ),
+          _photoColumn(
+            context.l10n.t(AppStringKeys.profileContactManagementPhotoPublic),
+            name,
+            _publicPhoto,
+          ),
         ],
       ),
     );
@@ -784,6 +873,7 @@ class _ContactEditResult {
 
 class _ContactEditDialog extends StatefulWidget {
   const _ContactEditDialog({
+    required this.contactName,
     required this.firstName,
     required this.lastName,
     required this.phoneNumber,
@@ -791,6 +881,7 @@ class _ContactEditDialog extends StatefulWidget {
     required this.privacyExceptionNeeded,
   });
 
+  final String contactName;
   final String firstName;
   final String lastName;
   final String phoneNumber;
@@ -829,11 +920,15 @@ class _ContactEditDialogState extends State<_ContactEditDialog> {
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _field(_first, 'First name'),
+          _field(_first, context.l10n.t(AppStringKeys.loginFirstName)),
           const SizedBox(height: 10),
-          _field(_last, 'Last name'),
+          _field(_last, context.l10n.t(AppStringKeys.editProfileLastName)),
           const SizedBox(height: 10),
-          _field(_phone, 'Phone number', phone: true),
+          _field(
+            _phone,
+            context.l10n.t(AppStringKeys.privacyPhoneNumber),
+            phone: true,
+          ),
           if (widget.showSharePhone) ...[
             const SizedBox(height: 12),
             GestureDetector(
@@ -846,8 +941,14 @@ class _ContactEditDialogState extends State<_ContactEditDialog> {
                   Expanded(
                     child: Text(
                       widget.privacyExceptionNeeded
-                          ? 'Share my number and add the required privacy exception'
-                          : 'Share my phone number',
+                          ? context.l10n.t(
+                              AppStringKeys
+                                  .profileContactManagementSharePhonePrivacyExceptionValue1,
+                              {'value1': widget.contactName},
+                            )
+                          : context.l10n.t(
+                              AppStringKeys.profileContactManagementSharePhone,
+                            ),
                       style: AppTextStyle.caption(colors.textSecondary),
                     ),
                   ),
@@ -971,11 +1072,29 @@ class _BirthdateDialogState extends State<_BirthdateDialog> {
     content: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(child: _number(context, _month, 'Month')),
+        Expanded(
+          child: _number(
+            context,
+            _month,
+            context.l10n.t(AppStringKeys.profileContactManagementMonth),
+          ),
+        ),
         const SizedBox(width: 8),
-        Expanded(child: _number(context, _day, 'Day')),
+        Expanded(
+          child: _number(
+            context,
+            _day,
+            context.l10n.t(AppStringKeys.profileContactManagementDay),
+          ),
+        ),
         const SizedBox(width: 8),
-        Expanded(child: _number(context, _year, 'Year')),
+        Expanded(
+          child: _number(
+            context,
+            _year,
+            context.l10n.t(AppStringKeys.profileContactManagementYear),
+          ),
+        ),
       ],
     ),
     actions: [

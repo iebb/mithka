@@ -417,6 +417,33 @@ void main() {
     await tester.pumpAndSettle();
     expect(confirmed, isFalse);
   });
+
+  testWidgets('owned confirmation can host a visual preview', (tester) async {
+    await tester.pumpWidget(
+      _dialogApp(
+        onPressed: () => showAppConfirmDialog(
+          tester.element(find.byType(FilledButton)),
+          title: 'Appearance',
+          message: 'Background name',
+          content: const SizedBox(
+            key: ValueKey('confirmation-visual-preview'),
+            width: 240,
+            height: 120,
+          ),
+          confirmText: 'Apply',
+        ),
+      ),
+    );
+
+    await tester.tap(find.byType(FilledButton));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('confirmation-visual-preview')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
 }
 
 Widget _dialogApp({

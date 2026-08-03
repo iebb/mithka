@@ -779,6 +779,8 @@ const enMessages = <String, String>{
   'chatsSearchNoResults': "No chats found",
   'chatsSearchPlaceholder': "Search chats and contacts",
   'chatsSearchPublicGroupsAndChannels': "Public groups/channels",
+  'desktopSearchAll': "Search all",
+  'desktopSearchClear': "Clear search",
   'chatStickerAddSuccess': "Added to emoji",
   'chatThemeApply': "Apply theme",
   'chatThemeChanged': "Chat theme changed",
@@ -2771,11 +2773,65 @@ const enMessages = <String, String>{
   'pollComposerClosePollAutomatically': "Close poll automatically",
   'pollResultsFilterVoters': "Filter voters",
   'pollResultsPollResults': "Poll Results",
+  'profileContactManagementAddContact': "Add contact",
+  'profileContactManagementBirthdateSuggestionSent':
+      "Birthdate suggestion sent",
+  'profileContactManagementContactAddedValue1':
+      "{value1} is now in your contact list.",
   'profileContactManagementContactDetails': "Contact details",
+  'profileContactManagementContactDetailsSubtitle':
+      "Name, phone number, and privacy exception",
+  'profileContactManagementContactListSection': "CONTACT LIST",
   'profileContactManagementContactNote': "Contact note",
+  'profileContactManagementContactRemovedValue1':
+      "{value1} deleted from your contacts",
+  'profileContactManagementContactSection': "CONTACT",
+  'profileContactManagementContactUpdated': "Contact updated",
+  'profileContactManagementDay': "Day",
+  'profileContactManagementDeleteFromContacts':
+      "Delete from your Telegram contacts",
+  'profileContactManagementEditContact': "Edit contact",
+  'profileContactManagementMonth': "Month",
+  'profileContactManagementNoteRemoved': "Note removed",
+  'profileContactManagementNoteSaved': "Note saved",
+  'profileContactManagementNoteVisibleOnly': "Notes are only visible to you.",
+  'profileContactManagementOnlyYouCanSeeIt': "Only you can see it",
+  'profileContactManagementPersonalPhotoDescription':
+      "A private photo visible only to you",
+  'profileContactManagementPersonalPhotoRemoved': "Personal photo removed",
+  'profileContactManagementPersonalPhotoUpdated': "Personal photo updated",
+  'profileContactManagementPhoneShared': "Phone number shared",
+  'profileContactManagementPhotoCurrent': "Current",
+  'profileContactManagementPhotoPersonal': "Personal",
+  'profileContactManagementPhotoPublic': "Public",
+  'profileContactManagementPhotoSuggestionSent': "Photo suggestion sent",
+  'profileContactManagementPrivacyExceptionSubtitleValue1':
+      "Your phone number will become visible to {value1}.",
+  'profileContactManagementPrivateNote': "Private note",
+  'profileContactManagementProfileSuggestionsSection': "PROFILE SUGGESTIONS",
   'profileContactManagementRemoveContact': "Remove contact?",
+  'profileContactManagementRemoveContactMessage':
+      "Are you sure you want to delete this contact?",
+  'profileContactManagementRemoveContactRow': "Remove contact",
+  'profileContactManagementRemovePersonalPhoto': "Remove personal photo",
+  'profileContactManagementReturnOriginalPhotoValue1':
+      "Return to {value1}'s original profile photo",
+  'profileContactManagementSetPersonalPhotoValue1': "Set photo for {value1}",
+  'profileContactManagementSharePhone': "Share my phone number",
+  'profileContactManagementSharePhoneMessage':
+      "Are you sure you want to share your phone number?",
+  'profileContactManagementSharePhonePrivacyExceptionValue1':
+      "Share my number so it becomes visible to {value1}",
   'profileContactManagementShareYourPhoneNumber': "Share your phone number?",
   'profileContactManagementSuggestBirthdate': "Suggest birthdate",
+  'profileContactManagementSuggestBirthdateDescriptionValue1':
+      "{value1}'s date of birth",
+  'profileContactManagementSuggestProfilePhotoDescriptionValue1':
+      "Suggest {value1} set this photo for their account",
+  'profileContactManagementSuggestProfilePhotoValue1':
+      "Suggest photo for {value1}",
+  'profileContactManagementTitle': "Contact tools",
+  'profileContactManagementYear': "Year",
   'profilePhotoManagementNoProfilePhotosYet': "No profile photos yet",
   'profilePhotoManagementPhotoHistory': "Photo History",
   'profilePhotoManagementProfilePhotos': "Profile Photos",

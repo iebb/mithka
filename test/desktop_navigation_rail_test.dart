@@ -71,6 +71,7 @@ void main() {
       int? selectedAccount;
       var callsOpened = false;
       var settingsOpened = false;
+      var themeSelectorOpened = false;
       var themeToggled = false;
       String? selectedLanguage;
 
@@ -134,6 +135,12 @@ void main() {
                       label: 'Files',
                       icon: HeroAppIcons.folder,
                       onTap: () {},
+                    ),
+                    DesktopNavigationAction(
+                      id: 'appearance',
+                      label: 'Theme',
+                      icon: HeroAppIcons.palette,
+                      onTap: () => themeSelectorOpened = true,
                     ),
                   ],
                   languageOptions: [
@@ -259,6 +266,23 @@ void main() {
       );
       await tester.pump();
       expect(selectedLanguage, 'ja');
+      expect(
+        find.byKey(const ValueKey('desktop-application-menu-panel')),
+        findsNothing,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('desktop-application-menu-button')),
+      );
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('desktop-application-quick-appearance')),
+        findsOneWidget,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('desktop-application-quick-appearance')),
+      );
+      await tester.pump();
+      expect(themeSelectorOpened, isTrue);
       expect(
         find.byKey(const ValueKey('desktop-application-menu-panel')),
         findsNothing,

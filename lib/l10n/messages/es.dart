@@ -789,6 +789,8 @@ const esMessages = <String, String>{
   'chatsSearchNoResults': "No se encontraron chats",
   'chatsSearchPlaceholder': "Buscar chats y contactos",
   'chatsSearchPublicGroupsAndChannels': "Grupos/canales públicos",
+  'desktopSearchAll': "Buscar en todo",
+  'desktopSearchClear': "Borrar búsqueda",
   'chatStickerAddSuccess': "Añadido a emoji",
   'chatThemeApply': "Aplicar tema",
   'chatThemeChanged': "El tema del chat cambió",
@@ -2792,11 +2794,67 @@ const esMessages = <String, String>{
   'pollComposerClosePollAutomatically': "Cerrar encuesta automáticamente",
   'pollResultsFilterVoters': "Filtrar votantes",
   'pollResultsPollResults': "Resultados de la encuesta",
+  'profileContactManagementAddContact': "Añadir contacto",
+  'profileContactManagementBirthdateSuggestionSent':
+      "Sugerencia de fecha de nacimiento enviada",
+  'profileContactManagementContactAddedValue1':
+      "{value1} ahora está en tu lista de contactos.",
   'profileContactManagementContactDetails': "Detalles de contacto",
+  'profileContactManagementContactDetailsSubtitle':
+      "Nombre, número de teléfono y excepción de privacidad",
+  'profileContactManagementContactListSection': "LISTA DE CONTACTOS",
   'profileContactManagementContactNote': "Nota de contacto",
+  'profileContactManagementContactRemovedValue1':
+      "{value1} se eliminó de tus contactos",
+  'profileContactManagementContactSection': "CONTACTO",
+  'profileContactManagementContactUpdated': "Contacto actualizado",
+  'profileContactManagementDay': "Día",
+  'profileContactManagementDeleteFromContacts':
+      "Eliminar de tus contactos de Telegram",
+  'profileContactManagementEditContact': "Editar contacto",
+  'profileContactManagementMonth': "Mes",
+  'profileContactManagementNoteRemoved': "Nota eliminada",
+  'profileContactManagementNoteSaved': "Nota guardada",
+  'profileContactManagementNoteVisibleOnly':
+      "Las notas solo son visibles para ti.",
+  'profileContactManagementOnlyYouCanSeeIt': "Solo tú puedes verlo",
+  'profileContactManagementPersonalPhotoDescription':
+      "Una foto privada visible solo para ti",
+  'profileContactManagementPersonalPhotoRemoved': "Foto personal eliminada",
+  'profileContactManagementPersonalPhotoUpdated': "Foto personal actualizada",
+  'profileContactManagementPhoneShared': "Número de teléfono compartido",
+  'profileContactManagementPhotoCurrent': "Actual",
+  'profileContactManagementPhotoPersonal': "Personal",
+  'profileContactManagementPhotoPublic': "Pública",
+  'profileContactManagementPhotoSuggestionSent': "Sugerencia de foto enviada",
+  'profileContactManagementPrivacyExceptionSubtitleValue1':
+      "Tu número de teléfono será visible para {value1}.",
+  'profileContactManagementPrivateNote': "Nota privada",
+  'profileContactManagementProfileSuggestionsSection': "SUGERENCIAS DE PERFIL",
   'profileContactManagementRemoveContact': "¿Quitar contacto?",
+  'profileContactManagementRemoveContactMessage':
+      "¿Seguro que quieres eliminar este contacto?",
+  'profileContactManagementRemoveContactRow': "Quitar contacto",
+  'profileContactManagementRemovePersonalPhoto': "Quitar foto personal",
+  'profileContactManagementReturnOriginalPhotoValue1':
+      "Volver a la foto de perfil original de {value1}",
+  'profileContactManagementSetPersonalPhotoValue1':
+      "Establecer foto para {value1}",
+  'profileContactManagementSharePhone': "Compartir mi número de teléfono",
+  'profileContactManagementSharePhoneMessage':
+      "¿Seguro que quieres compartir tu número de teléfono?",
+  'profileContactManagementSharePhonePrivacyExceptionValue1':
+      "Compartir mi número para que {value1} pueda verlo",
   'profileContactManagementShareYourPhoneNumber': "¿Compartir tu número?",
   'profileContactManagementSuggestBirthdate': "Sugerir fecha de nacimiento",
+  'profileContactManagementSuggestBirthdateDescriptionValue1':
+      "Fecha de nacimiento de {value1}",
+  'profileContactManagementSuggestProfilePhotoDescriptionValue1':
+      "Sugerir a {value1} que use esta foto en su cuenta",
+  'profileContactManagementSuggestProfilePhotoValue1':
+      "Sugerir foto para {value1}",
+  'profileContactManagementTitle': "Herramientas de contacto",
+  'profileContactManagementYear': "Año",
   'profilePhotoManagementNoProfilePhotosYet': "Aún no hay fotos de perfil",
   'profilePhotoManagementProfilePhotos': "Fotos del perfil",
   'profilePhotoManagementRefreshProfilePhotos': "Actualizar fotos de perfil",

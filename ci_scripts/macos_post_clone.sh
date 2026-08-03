@@ -149,6 +149,39 @@ flutter build macos --release --config-only \
   --dart-define="CI_BUILD_STAMP=$APP_BUILD_NUMBER" \
   --dart-define="SENTRY_DSN=${SENTRY_DSN:-}"
 
+# Some Flutter plugins declare Resources in Package.swift without creating the
+# directory. Xcode treats that as an invalid package manifest, which prevents
+# locked dependency resolution in Xcode Cloud. Repair only generated packages
+# that explicitly declare the directory.
+ensure_declared_plugin_resources() {
+  packages_root="macos/Flutter/ephemeral/Packages/.packages"
+  declared_count=0
+
+  for package_root in "$packages_root"/*; do
+    package_manifest="$package_root/Package.swift"
+    [ -f "$package_manifest" ] || continue
+    grep -Fq '.process("Resources")' "$package_manifest" || continue
+    target_count=0
+    for target_root in "$package_root"/Sources/*; do
+      [ -d "$target_root" ] || continue
+      target_count=$((target_count + 1))
+      mkdir -p "$target_root/Resources"
+    done
+    if [ "$target_count" -eq 0 ]; then
+      echo "error: no generated targets found for $package_root" >&2
+      exit 1
+    fi
+    declared_count=$((declared_count + 1))
+  done
+
+  if [ "$declared_count" -eq 0 ]; then
+    echo "error: no generated plugin package declared Resources" >&2
+    exit 1
+  fi
+}
+
+ensure_declared_plugin_resources
+
 # A small set of desktop plugins still uses CocoaPods while the remaining
 # plugins use Flutter's generated Swift package. Recreate the checked-in lock's
 # exact sandbox before Xcode Cloud invokes xcodebuild.
@@ -158,6 +191,19 @@ flutter build macos --release --config-only \
   diff -q Podfile.lock Pods/Manifest.lock
 )
 
+# The Xcode Cloud workflow deliberately disables automatic package resolution.
+# Resolve the committed workspace lock after Flutter has generated its local
+# plugin packages so the archive step receives a populated package cache.
+echo "Resolving macOS Swift package dependencies"
+XCODE_DERIVED_DATA_PATH="${CI_DERIVED_DATA_PATH:-$REPO/build/xcode-cloud-derived-data}"
+mkdir -p "$XCODE_DERIVED_DATA_PATH"
+retry 3 10 xcodebuild -resolvePackageDependencies \
+  -workspace macos/Runner.xcworkspace \
+  -scheme Runner \
+  -onlyUsePackageVersionsFromResolvedFile \
+  -derivedDataPath "$XCODE_DERIVED_DATA_PATH"
+
 test -s macos/Flutter/ephemeral/Flutter-Generated.xcconfig
 test -d macos/Runner.xcworkspace
+test -s macos/Runner.xcworkspace/xcshareddata/swiftpm/Package.resolved
 echo "macOS Xcode Cloud post-clone setup complete"
