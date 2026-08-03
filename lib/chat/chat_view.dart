@@ -828,7 +828,8 @@ class _ChatViewState extends State<ChatView> {
   bool _modelDirtyWhileInactive = false;
   bool _reactivationSyncScheduled = false;
   ChatMessage? _actionTarget;
-  Rect? _actionRect; // global bounds of the long-pressed bubble
+  Rect? _actionRect; // bounds in the action-overlay Stack's coordinate space
+  final GlobalKey _actionOverlayKey = GlobalKey();
   MessageActionSource _actionSource = MessageActionSource.normal;
   bool _reactionExpanded = false; // full reaction picker vs. quick bar
   String _reactionTab = 'standard'; // 'standard' or a custom-emoji pack id
@@ -5090,6 +5091,7 @@ class _ChatViewState extends State<ChatView> {
                     !showPeerRestrictionBlock,
                 onImagesDropped: _previewAndSendDroppedImages,
                 child: Stack(
+                  key: _actionOverlayKey,
                   children: [
                     Positioned.fill(
                       child: ChatHeaderTrailingPaneLayout(
@@ -7432,9 +7434,17 @@ class _ChatViewState extends State<ChatView> {
     MessageActionSource source = MessageActionSource.normal,
   ]) {
     EmojiStore.shared.loadIfNeeded();
+    final overlayBox =
+        _actionOverlayKey.currentContext?.findRenderObject() as RenderBox?;
+    final overlayRect = rect != null && overlayBox?.hasSize == true
+        ? MessageActionMenu.rectInOverlay(
+            rect,
+            globalToLocal: overlayBox!.globalToLocal,
+          )
+        : rect;
     setState(() {
       _actionTarget = message;
-      _actionRect = rect;
+      _actionRect = overlayRect;
       _actionSource = source;
       _reactionExpanded = false;
       _reactionTab = 'standard';

@@ -22,32 +22,39 @@ void main() {
     );
   });
 
-  test('macOS TestFlight uploads master pushes as internal builds', () {
-    final workflow = File(
-      '.github/workflows/macos-testflight.yml',
-    ).readAsStringSync();
+  test('macOS TestFlight is owned by Xcode Cloud', () {
+    expect(
+      File('.github/workflows/macos-testflight.yml').existsSync(),
+      isFalse,
+    );
 
+    final dispatcher = File('ci_scripts/ci_post_clone.sh').readAsStringSync();
+    expect(dispatcher, contains(r'exec "$SCRIPT_DIR/macos_post_clone.sh"'));
+    expect(dispatcher, contains('MITHKA_CI_PLATFORM'));
+  });
+
+  test('Xcode Cloud downloads and verifies pinned universal macOS TDLib', () {
+    final script = File('ci_scripts/macos_post_clone.sh').readAsStringSync();
+
+    expect(script, contains('tdlib-1.8.66-1b08c83bc078-rebuild-29623073124-1'));
+    expect(script, contains('tdjson-macos-universal.zip'));
     expect(
-      workflow,
-      contains('on:\n  push:\n    branches: [master]\n  workflow_dispatch:'),
+      script,
+      contains(
+        '9520190747fe1f855d8445996cf92f1a57fca303a15cd3ec7c0849d9a49aaabc',
+      ),
     );
     expect(
-      workflow,
-      contains(r'if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then'),
+      script,
+      contains(
+        'd543b42be66306dded64b55b980ec8cf88ae1d43bebf019cc3fa0ca4bb7e5482',
+      ),
     );
-    expect(workflow, contains('internal_only=true'));
-    expect(
-      RegExp(
-        r'INTERNAL_ONLY: \$\{\{ steps\.release\.outputs\.internal_only \}\}',
-      ).allMatches(workflow),
-      hasLength(2),
-    );
-    expect(
-      RegExp(
-        r'\$\{\{ inputs\.internal_testflight_only \}\}',
-      ).allMatches(workflow),
-      hasLength(1),
-      reason: 'the dispatch-only input must only seed the normalized output',
-    );
+    expect(script, contains('shasum -a 256 -c -'));
+    expect(script, contains('unzip -Z1'));
+    expect(script, contains('arm64 x86_64'));
+    expect(script, contains('_td_mithka_export_session_string'));
+    expect(script, isNot(contains('scripts/build-tdjson-desktop.sh')));
+    expect(script, isNot(contains('brew install cmake ninja')));
   });
 }

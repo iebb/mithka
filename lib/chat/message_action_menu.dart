@@ -212,6 +212,14 @@ class MessageActionMenu extends StatelessWidget {
   }) =>
       math.min(math.max(0, count) * _desktopActionHeight + 12, availableHeight);
 
+  static Rect rectInOverlay(
+    Rect globalRect, {
+    required Offset Function(Offset) globalToLocal,
+  }) => Rect.fromPoints(
+    globalToLocal(globalRect.topLeft),
+    globalToLocal(globalRect.bottomRight),
+  );
+
   static Offset desktopOriginForPointer({
     required Offset pointer,
     required Size viewport,

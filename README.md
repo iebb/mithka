@@ -72,11 +72,12 @@ class Secrets {
 ```
 
 The TDLib native library is prepared with helper scripts (output is git-ignored).
-CI downloads pinned prebuilt Android and iOS artifacts from
+CI downloads pinned prebuilt Android, iOS, and universal macOS artifacts from
 [`iebb/mithka-tdjson`](https://github.com/iebb/mithka-tdjson). The Android
 source-build script is kept for local fallback/debug builds. Desktop release
-jobs compile the matching pinned and patched TDLib source, cache it per OS, and
-bundle the native library with each app archive.
+jobs compile and cache the matching pinned source when no published artifact is
+available; Xcode Cloud verifies and bundles the published macOS dylib instead
+of compiling TDLib during every archive.
 
 ```bash
 # Android local fallback (per ABI) — produces android/app/src/main/jniLibs/<abi>/libtdjson.so
@@ -110,15 +111,16 @@ debug signature is used. Neither the keystore nor `key.properties` is committed.
 
 ## CI
 
-`master` does not publish GitHub or Google Play release packages. Every push to
-`master` does archive the macOS app and upload an internal-only TestFlight
-build. At 00:00 UTC each day, GitHub Actions merges new `master`
-commits into `nightly` and increments the app's patch version once; `nightly`
-publishes dated Android, Windows, macOS, and Linux GitHub prereleases and
-submits the signed AAB to Google Play Open testing. Xcode Cloud keeps the same
-major/minor version but forces the iOS patch to `0`. Pushes to `release` publish
-dated stable multi-platform GitHub releases and submit the production AAB to
-Google Play through the same channel-aware workflow.
+`master` does not publish GitHub, Google Play, or TestFlight packages. Push the
+validated `master` commit to `release-ios` to start Xcode Cloud's iOS and macOS
+archives and external TestFlight delivery. At 00:00 UTC each day, GitHub Actions
+merges new `master` commits into `nightly` and increments the app's patch
+version once; `nightly` publishes dated Android, Windows, macOS, and Linux
+GitHub prereleases and submits the signed AAB to Google Play Open testing.
+Xcode Cloud keeps the same major/minor version but forces the iOS patch to `0`.
+Pushes to `release` publish dated stable multi-platform GitHub releases and
+submit the production AAB to Google Play through the same channel-aware
+workflow.
 `secrets.dart` is generated on the runner from the `TELEGRAM_API_ID` /
 `TELEGRAM_API_HASH` repository secrets.
 

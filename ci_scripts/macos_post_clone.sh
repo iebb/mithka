@@ -18,8 +18,9 @@ set -eu
 
 FLUTTER_VERSION="3.44.2"
 TDJSON_RELEASE_TAG="tdlib-1.8.66-1b08c83bc078-rebuild-29623073124-1"
-TDJSON_UPSTREAM_SHA="1b08c83bc07888e4b0a6150d36c1364ff03cf930"
-FVP_DEPS_URL="${FVP_DEPS_URL:-https://github.com/wang-bin/mdk-sdk/releases/download/v0.36.0}"
+TDJSON_ARCHIVE_SHA256="9520190747fe1f855d8445996cf92f1a57fca303a15cd3ec7c0849d9a49aaabc"
+TDJSON_BINARY_SHA256="d543b42be66306dded64b55b980ec8cf88ae1d43bebf019cc3fa0ca4bb7e5482"
+TDJSON_ASSET_URL="https://github.com/iebb/mithka-tdjson/releases/download/${TDJSON_RELEASE_TAG}/tdjson-macos-universal.zip"
 
 retry() {
   attempts="$1"
@@ -74,9 +75,6 @@ if ! command -v flutter >/dev/null 2>&1; then
 fi
 flutter --version
 
-if ! command -v cmake >/dev/null 2>&1 || ! command -v ninja >/dev/null 2>&1; then
-  retry 3 10 brew install cmake ninja
-fi
 if ! command -v pod >/dev/null 2>&1; then
   retry 3 10 brew install cocoapods
 fi
@@ -104,13 +102,42 @@ Path("lib/config/secrets.dart").write_text(
 )
 PY
 
-export TDJSON_RELEASE_TAG
-export TD_COMMIT="$TDJSON_UPSTREAM_SHA"
-export TD_BUILD_JOBS="${TD_BUILD_JOBS:-2}"
-export FVP_DEPS_URL
-echo "Building pinned universal macOS TDLib"
-scripts/build-tdjson-desktop.sh macos native-libs/libtdjson.dylib
+tdjson_download_dir="$(mktemp -d "${TMPDIR:-/tmp}/mithka-tdjson.XXXXXX")"
+tdjson_archive="$tdjson_download_dir/tdjson-macos-universal.zip"
+tdjson_unpacked="$tdjson_download_dir/unpacked"
+echo "Downloading pinned universal macOS TDLib $TDJSON_RELEASE_TAG"
+retry 4 8 curl --proto '=https' --tlsv1.2 -fsSL \
+  "$TDJSON_ASSET_URL" -o "$tdjson_archive"
+printf '%s  %s\n' "$TDJSON_ARCHIVE_SHA256" "$tdjson_archive" | \
+  shasum -a 256 -c -
+test "$(unzip -Z1 "$tdjson_archive")" = "libtdjson.dylib"
+mkdir -p "$tdjson_unpacked" native-libs
+unzip -q "$tdjson_archive" -d "$tdjson_unpacked"
+test -s "$tdjson_unpacked/libtdjson.dylib"
+printf '%s  %s\n' "$TDJSON_BINARY_SHA256" \
+  "$tdjson_unpacked/libtdjson.dylib" | shasum -a 256 -c -
+install -m 0755 "$tdjson_unpacked/libtdjson.dylib" \
+  native-libs/libtdjson.dylib
 test "$(lipo -archs native-libs/libtdjson.dylib | tr ' ' '\n' | sort | tr '\n' ' ')" = "arm64 x86_64 "
+for symbol in \
+  _td_create_client_id \
+  _td_mithka_export_session_string \
+  _td_mithka_import_session_string \
+  _td_mithka_last_error \
+  _td_mithka_set_transfer_boost; do
+  nm -gU native-libs/libtdjson.dylib | awk '{print $3}' | \
+    grep -Fx "$symbol" >/dev/null
+done
+for architecture in arm64 x86_64; do
+  otool -D -arch "$architecture" native-libs/libtdjson.dylib | \
+    grep -Fx '@rpath/libtdjson.dylib' >/dev/null
+done
+if otool -L native-libs/libtdjson.dylib | \
+    grep -Eq '/opt/homebrew|/usr/local'; then
+  echo "error: prebuilt TDLib has a non-portable dependency" >&2
+  otool -L native-libs/libtdjson.dylib >&2
+  exit 1
+fi
 
 flutter config --enable-swift-package-manager
 flutter precache --macos

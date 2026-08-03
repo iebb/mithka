@@ -53,6 +53,25 @@ void main() {
     );
   });
 
+  test('desktop context menu converts a global pointer to its overlay', () {
+    final localRect = MessageActionMenu.rectInOverlay(
+      const Rect.fromLTWH(460, 180, 0, 0),
+      globalToLocal: (point) => point - const Offset(320, 40),
+    );
+
+    expect(localRect, const Rect.fromLTWH(140, 140, 0, 0));
+    expect(
+      MessageActionMenu.desktopOriginForPointer(
+        pointer: localRect.topLeft,
+        viewport: const Size(720, 520),
+        menuSize: const Size(220, 240),
+        topSafe: 8,
+        bottomSafe: 512,
+      ),
+      const Offset(140, 140),
+    );
+  });
+
   testWidgets('ten or fewer reaction controls fit without overflow', (
     tester,
   ) async {
