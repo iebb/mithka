@@ -5,10 +5,12 @@
 //  mapped from the reference app's personal album. Tap a photo to view it full-screen.
 //
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
-import '../chat/full_image_viewer.dart';
+import '../chat/image_preview.dart';
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
 import '../tdlib/json_helpers.dart';
@@ -140,12 +142,8 @@ class _MyAlbumViewState extends State<MyAlbumView> {
       ),
       itemCount: _photos.length,
       itemBuilder: (context, i) => GestureDetector(
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(
-            fullscreenDialog: true,
-            builder: (_) => FullImageViewer(items: _photos, startIndex: i),
-          ),
-        ),
+        onTap: () =>
+            unawaited(openImagePreview(context, items: _photos, startIndex: i)),
         child: TDImage(photo: _photos[i]),
       ),
     );

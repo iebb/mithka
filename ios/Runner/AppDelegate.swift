@@ -28,6 +28,7 @@ import UserNotifications
   private var premiumAuthPurchaseBridge: PremiumAuthPurchaseBridge?
   private var mithkaProBridge: MithkaProBridge?
   private var applePCCBridge: ApplePCCBridge?
+  private var privacyShieldView: UIView?
 
   override func application(
     _ application: UIApplication,
@@ -45,6 +46,34 @@ import UserNotifications
       pendingNotificationTap = Self.stringKeyed(userInfo)
     }
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  private func setPrivacyShieldVisible(_ visible: Bool) {
+    guard let window = Self.keyWindow() else { return }
+    if visible {
+      let shield = privacyShieldView ?? {
+        let view = UIView(frame: window.bounds)
+        view.backgroundColor = window.backgroundColor ?? .systemBackground
+        view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        return view
+      }()
+      if shield.superview !== window {
+        shield.removeFromSuperview()
+        window.addSubview(shield)
+      }
+      privacyShieldView = shield
+      window.bringSubviewToFront(shield)
+    } else {
+      privacyShieldView?.removeFromSuperview()
+      privacyShieldView = nil
+    }
+  }
+
+  private static func keyWindow() -> UIWindow? {
+    UIApplication.shared.connectedScenes
+      .compactMap { $0 as? UIWindowScene }
+      .flatMap { $0.windows }
+      .first { $0.isKeyWindow }
   }
 
   private func configureNativeSentryIfNeeded() {
@@ -375,6 +404,21 @@ import UserNotifications
       default:
         result(FlutterMethodNotImplemented)
       }
+    }
+
+    let appLockPrivacyChannel = FlutterMethodChannel(
+      name: "mithka/app_lock_privacy",
+      binaryMessenger: engineBridge.applicationRegistrar.messenger()
+    )
+    appLockPrivacyChannel.setMethodCallHandler { [weak self] call, result in
+      guard call.method == "setPrivacyShieldVisible" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      let arguments = call.arguments as? [String: Any]
+      let visible = arguments?["visible"] as? Bool ?? false
+      self?.setPrivacyShieldVisible(visible)
+      result(nil)
     }
 
     let firebaseConfigurationChannel = FlutterMethodChannel(

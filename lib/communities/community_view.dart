@@ -21,7 +21,6 @@ import '../l10n/app_localizations.dart';
 import '../settings/topic_group_display_mode.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
-import '../theme/date_text.dart';
 import '../theme/theme_controller.dart';
 import 'community_models.dart';
 
@@ -44,128 +43,42 @@ class CommunityChatListRow extends StatelessWidget {
     final c = context.colors;
     final theme = context.watch<ThemeController>();
     final latest = entry.latestChat;
-    return Container(
-      height: theme.rowHeight,
-      color: selected
-          ? c.listHeaderTint
-          : (entry.isPinned ? c.pinnedRow : c.background),
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
-      child: Row(
-        children: [
-          _CommunityStackedAvatar(
-            title: entry.community.name,
-            photo: entry.community.photo,
-            size: theme.avatarSize,
-            square: !theme.circularGroupAvatars,
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                if (entry.unreadCount > 0)
-                  Positioned(
-                    right: 0,
-                    top: 0,
-                    child: UnreadBadge(
-                      count: entry.unreadCount,
-                      muted: entry.isMuted,
-                      onClear: onClearUnread,
-                    ),
-                  )
-                else if (entry.isMarkedUnread)
-                  Positioned(
-                    right: 0,
-                    top: 0,
-                    child: Container(
-                      padding: const EdgeInsets.all(
-                        AppMetric.badgeOutlinePadding,
-                      ),
-                      decoration: const BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                      ),
-                      child: RedDot(
-                        size: AppMetric.unreadDot,
-                        muted: entry.isMuted,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(width: AppSpacing.lg),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        entry.community.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: AppTextSize.body,
-                          fontWeight: FontWeight.w600,
-                          color: c.textPrimary,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: AppSpacing.sm),
-                    AppIcon(
-                      HeroAppIcons.objectGroup,
-                      size: 14,
-                      color: c.textTertiary,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.xs),
-                ChatPreviewText(
-                  sender: latest.lastSender,
-                  message: latest.lastMessage.trim().isEmpty
-                      ? AppStrings.t(AppStringKeys.communityChatCount, {
-                          'value1': entry.chats.length,
-                        })
-                      : latest.lastMessage,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: AppSpacing.md),
-          SizedBox(
-            height: theme.rowHeight,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                vertical: AppSpacing.lg + AppSpacing.xxs,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    DateText.listLabel(latest.date),
-                    style: TextStyle(
-                      fontSize: AppTextSize.caption,
-                      color: c.textTertiary,
-                    ),
-                  ),
-                  const Spacer(),
-                  if (entry.isMuted)
-                    AppIcon(
-                      HeroAppIcons.bellSlash,
-                      size: AppIconSize.sm,
-                      color: c.textTertiary,
-                    )
-                  else
-                    AppIcon(
-                      HeroAppIcons.chevronRight,
-                      size: AppIconSize.sm,
-                      color: c.textTertiary,
-                    ),
-                ],
-              ),
-            ),
-          ),
-        ],
+    final summary = ChatSummary(
+      id: -entry.community.id.abs(),
+      title: entry.community.name,
+      lastMessage: latest.lastMessage.trim().isEmpty
+          ? AppStrings.t(AppStringKeys.communityChatCount, {
+              'value1': entry.chats.length,
+            })
+          : latest.lastMessage,
+      lastMessageId: latest.lastMessageId,
+      date: latest.date,
+      unreadCount: entry.unreadCount,
+      order: latest.order,
+      isMuted: entry.isMuted,
+      lastSender: latest.lastSender,
+      isPinned: entry.isPinned,
+      isMarkedUnread: entry.isMarkedUnread,
+    );
+    return ChatRowView(
+      chat: summary,
+      selected: selected,
+      onClearUnread: onClearUnread,
+      avatarBuilder: (size) => _CommunityStackedAvatar(
+        title: entry.community.name,
+        photo: entry.community.photo,
+        size: size,
+        square: !theme.circularGroupAvatars,
+      ),
+      titleTrailing: AppIcon(
+        HeroAppIcons.objectGroup,
+        size: 14,
+        color: c.textTertiary,
+      ),
+      trailingIndicator: AppIcon(
+        HeroAppIcons.chevronRight,
+        size: AppIconSize.sm,
+        color: c.textTertiary,
       ),
     );
   }
@@ -177,14 +90,12 @@ class _CommunityStackedAvatar extends StatelessWidget {
     required this.photo,
     required this.size,
     required this.square,
-    required this.child,
   });
 
   final String title;
   final TdFileRef? photo;
   final double size;
   final bool square;
-  final Widget child;
 
   @override
   Widget build(BuildContext context) {
@@ -227,7 +138,6 @@ class _CommunityStackedAvatar extends StatelessWidget {
             square: square,
             allowAnimation: false,
           ),
-          child,
         ],
       ),
     );

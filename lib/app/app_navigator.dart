@@ -193,6 +193,9 @@ class AppChatPageRoute<T> extends PageRoute<T>
     Animation<double> secondaryAnimation,
     Widget child,
   ) {
+    if (AppMotion.usesInPlaceDesktopNavigation(context)) {
+      return AppMotion.desktopRouteSurface(context, child);
+    }
     if (AppMotion.isReduced(context) && !_fullPageBackSwipeActive) {
       return child;
     }

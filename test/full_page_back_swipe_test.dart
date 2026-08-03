@@ -62,6 +62,7 @@ Future<_RouteHarness> _pumpRouteHarness(
     RepaintBoundary(
       key: harness.boundaryKey,
       child: MaterialApp(
+        theme: ThemeData(platform: TargetPlatform.iOS),
         navigatorKey: harness.navigatorKey,
         navigatorObservers: [harness.observer],
         home: const ColoredBox(key: _previousKey, color: _previousColor),

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mithka/l10n/app_localizations.dart';
@@ -9,7 +11,7 @@ import '../components/document_file_icon.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../l10n/telegram_language_controller.dart';
-import '../profile/profile_detail_view.dart';
+import '../profile/adaptive_profile_launcher.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -48,10 +50,8 @@ class TopicPostContent extends StatelessWidget {
           overflow: textOverflow,
           style: textStyle,
           onMentionTap: (userId, name) {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => ProfileDetailView(userId: userId, name: name),
-              ),
+            unawaited(
+              openAdaptiveUserProfile(context, userId: userId, name: name),
             );
           },
         ),
@@ -193,10 +193,11 @@ class _TopicFileCard extends StatelessWidget {
                 entities: captionEntities,
                 style: captionStyle,
                 onMentionTap: (userId, name) {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          ProfileDetailView(userId: userId, name: name),
+                  unawaited(
+                    openAdaptiveUserProfile(
+                      context,
+                      userId: userId,
+                      name: name,
                     ),
                   );
                 },

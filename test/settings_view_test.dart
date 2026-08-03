@@ -1,11 +1,20 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mithka/components/app_icons.dart';
+import 'package:mithka/components/app_interactive_surface.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/pro/mithka_pro_service.dart';
+import 'package:mithka/settings/about_view.dart';
+import 'package:mithka/settings/auto_download_media_controller.dart';
 import 'package:mithka/settings/chat_folder_management_view.dart';
+import 'package:mithka/settings/desktop_hotkey_settings_view.dart';
 import 'package:mithka/settings/developer_mode_controller.dart';
+import 'package:mithka/settings/general_settings_view.dart';
+import 'package:mithka/settings/notification_settings_view.dart';
 import 'package:mithka/settings/settings_view.dart';
+import 'package:mithka/settings/storage_usage_view.dart';
 import 'package:mithka/theme/app_theme.dart';
 import 'package:mithka/theme/theme_controller.dart';
 import 'package:provider/provider.dart';
@@ -48,7 +57,6 @@ void main() {
       'telegram-chat-folders',
       'mithka-chat-behavior',
       'mithka-data-storage',
-      'mithka-language',
       'telegram-language',
       'mithka-translation',
       'mithka-features',
@@ -83,6 +91,10 @@ void main() {
     expect(find.text('Mithka'), findsNothing);
     expect(find.text('General'), findsNothing);
     expect(find.text('Blocking'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('settings-destination-mithka-language')),
+      findsNothing,
+    );
     expect(
       find.byKey(const ValueKey('settings-destination-notifications')),
       findsOneWidget,
@@ -201,6 +213,220 @@ void main() {
     );
   });
 
+  testWidgets('desktop settings use a persistent category sidebar', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await _pumpSettings(
+      tester,
+      showBackButton: false,
+      allowSessionLifecycleActions: false,
+    );
+
+    expect(find.byKey(const ValueKey('settings-split-layout')), findsOneWidget);
+    expect(find.byKey(const ValueKey('settings-compact-layout')), findsNothing);
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey('settings-category-sidebar')))
+          .width,
+      312,
+    );
+    expect(find.byKey(const ValueKey('settings-root-back')), findsNothing);
+    expect(find.byKey(const ValueKey('settings-log-out')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('settings-category-general')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('settings-destination-edit-profile')),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey('settings-category-notifications')),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+
+    expect(
+      find.byKey(const ValueKey('settings-category-sidebar')),
+      findsOneWidget,
+    );
+    expect(find.byType(NotificationSettingsView), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('settings-destination-notifications')),
+      findsNothing,
+    );
+
+    final rootBackIcons = find.byWidgetPredicate(
+      (widget) => widget is AppIcon && widget.icon == HeroAppIcons.chevronLeft,
+    );
+    expect(rootBackIcons, findsNothing);
+
+    await tester.tap(
+      find.byKey(const ValueKey('settings-category-appearance')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('settings-destination-mithka-chat-behavior')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ChatBehaviorSettingsView), findsOneWidget);
+    final detailBackIcon = find.byWidgetPredicate(
+      (widget) => widget is AppIcon && widget.icon == HeroAppIcons.chevronLeft,
+    );
+    expect(detailBackIcon, findsOneWidget);
+    await tester.tap(
+      find.ancestor(
+        of: detailBackIcon,
+        matching: find.byType(AppInteractiveSurface),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(ChatBehaviorSettingsView), findsNothing);
+    expect(
+      find.byKey(const ValueKey('settings-destination-mithka-chat-behavior')),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey('settings-category-data-storage')),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(find.byType(StorageUsageView), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('settings-destination-mithka-data-storage')),
+      findsNothing,
+    );
+    expect(rootBackIcons, findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('settings-category-about')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(find.byType(AboutView), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('settings-destination-mithka-about')),
+      findsNothing,
+    );
+    expect(rootBackIcons, findsNothing);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('settings-search-field')),
+      'backup',
+    );
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey('settings-destination-mithka-account-backup')),
+      findsNothing,
+    );
+    expect(find.byKey(const ValueKey('settings-search-empty')), findsOneWidget);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('landscape iPad uses split settings and portrait stays compact', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    tester.view.physicalSize = const Size(1024, 768);
+    await _pumpSettings(tester);
+    expect(find.byKey(const ValueKey('settings-split-layout')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('settings-root-back')),
+      findsNothing,
+      reason: 'a root Settings route has nowhere to go back to',
+    );
+    expect(find.byKey(const ValueKey('settings-log-out')), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const ValueKey('settings-search-field')),
+      'backup',
+    );
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey('settings-destination-mithka-account-backup')),
+      findsOneWidget,
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('settings-search-field')),
+      '',
+    );
+    await tester.pump();
+
+    tester.view.physicalSize = const Size(768, 1024);
+    await _pumpSettings(tester);
+    expect(find.byKey(const ValueKey('settings-split-layout')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('settings-compact-layout')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const PageStorageKey<String>('settings-list')),
+      findsOneWidget,
+    );
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('desktop shortcut can select Appearance initially', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await _pumpSettings(tester, initialCategoryId: 'appearance');
+
+    expect(find.byKey(const ValueKey('settings-split-layout')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('settings-destination-mithka-appearance')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('settings-destination-edit-profile')),
+      findsNothing,
+    );
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('desktop split exposes a direct keyboard shortcuts category', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await _pumpSettings(tester, initialCategoryId: 'hotkeys');
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey('settings-category-hotkeys')),
+      findsOneWidget,
+    );
+    expect(find.byType(DesktopHotkeySettingsView), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('desktop-hotkey-screenshot')),
+      findsOneWidget,
+    );
+    debugDefaultTargetPlatformOverride = null;
+  });
+
   testWidgets('single settings list remains usable with narrow large text', (
     tester,
   ) async {
@@ -227,6 +453,9 @@ void main() {
 Future<void> _pumpSettings(
   WidgetTester tester, {
   bool focusSearch = false,
+  bool showBackButton = true,
+  bool allowSessionLifecycleActions = true,
+  String? initialCategoryId,
   bool developerUnlocked = false,
   TextScaler? textScaler,
 }) async {
@@ -237,6 +466,8 @@ Future<void> _pumpSettings(
   final theme = ThemeController(preferences);
   final developer = DeveloperModeController(preferences);
   final pro = MithkaProService();
+  final autoDownload = AutoDownloadMediaController.shared
+    ..initialize(preferences);
   addTearDown(theme.dispose);
   addTearDown(developer.dispose);
   addTearDown(pro.dispose);
@@ -247,6 +478,9 @@ Future<void> _pumpSettings(
         ChangeNotifierProvider<ThemeController>.value(value: theme),
         ChangeNotifierProvider<DeveloperModeController>.value(value: developer),
         ChangeNotifierProvider<MithkaProService>.value(value: pro),
+        ChangeNotifierProvider<AutoDownloadMediaController>.value(
+          value: autoDownload,
+        ),
       ],
       child: MaterialApp(
         locale: const Locale('en'),
@@ -259,13 +493,23 @@ Future<void> _pumpSettings(
         supportedLocales: AppLocalizations.supportedLocales,
         theme: ThemeData(extensions: [AppColors.light]),
         home: textScaler == null
-            ? SettingsView(focusSearch: focusSearch)
+            ? SettingsView(
+                focusSearch: focusSearch,
+                showBackButton: showBackButton,
+                allowSessionLifecycleActions: allowSessionLifecycleActions,
+                initialCategoryId: initialCategoryId,
+              )
             : MediaQuery(
                 data: MediaQueryData(
                   size: tester.view.physicalSize,
                   textScaler: textScaler,
                 ),
-                child: SettingsView(focusSearch: focusSearch),
+                child: SettingsView(
+                  focusSearch: focusSearch,
+                  showBackButton: showBackButton,
+                  allowSessionLifecycleActions: allowSessionLifecycleActions,
+                  initialCategoryId: initialCategoryId,
+                ),
               ),
       ),
     ),

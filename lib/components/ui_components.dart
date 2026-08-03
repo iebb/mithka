@@ -13,6 +13,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/app_localizations.dart';
+import '../platform/adaptive_platform.dart';
 import '../platform/system_ui.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
@@ -43,6 +44,7 @@ class NavHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.colors;
     final metrics = context.watch<ThemeController>();
+    final pointerDense = isDesktopTargetPlatform();
     final headerHeight = metrics.navHeaderHeight;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: systemUiOverlayStyleForSurface(c.navBar),
@@ -67,10 +69,14 @@ class NavHeader extends StatelessWidget {
                   onTap: onBack,
                   borderRadius: BorderRadius.circular(AppRadius.sm),
                   child: Padding(
-                    padding: const EdgeInsets.only(right: AppSpacing.lg),
+                    padding: EdgeInsets.only(
+                      right: pointerDense ? AppSpacing.md : AppSpacing.lg,
+                    ),
                     child: AppIcon(
                       HeroAppIcons.chevronLeft,
-                      size: metrics.scaled(AppIconSize.nav),
+                      size: metrics.scaled(
+                        pointerDense ? AppIconSize.lg : AppIconSize.nav,
+                      ),
                       color: c.textPrimary,
                     ),
                   ),
@@ -80,7 +86,12 @@ class NavHeader extends StatelessWidget {
                   title.l10n(context),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: AppTextStyle.title(c.textPrimary),
+                  style: pointerDense
+                      ? AppTextStyle.bodyLarge(
+                          c.textPrimary,
+                          weight: AppTextWeight.medium,
+                        )
+                      : AppTextStyle.title(c.textPrimary),
                 ),
               ),
               ?trailing,
@@ -93,7 +104,9 @@ class NavHeader extends StatelessWidget {
                     padding: const EdgeInsets.all(AppSpacing.xs),
                     child: AppIcon(
                       trailingIcon!,
-                      size: metrics.scaled(AppIconSize.nav - 1),
+                      size: metrics.scaled(
+                        pointerDense ? AppIconSize.lg : AppIconSize.nav - 1,
+                      ),
                       color: c.textPrimary,
                     ),
                   ),
@@ -456,16 +469,26 @@ class SettingsIconTile extends StatelessWidget {
   final double radius;
 
   @override
-  Widget build(BuildContext context) => Container(
-    width: size,
-    height: size,
-    alignment: Alignment.center,
-    decoration: BoxDecoration(
-      color: backgroundColor,
-      borderRadius: BorderRadius.circular(radius),
-    ),
-    child: AppIcon(icon, size: iconSize, color: const Color(0xFFFFFFFF)),
-  );
+  Widget build(BuildContext context) {
+    final pointerDense = isDesktopTargetPlatform();
+    final effectiveSize = pointerDense && size == 28 ? 24.0 : size;
+    final effectiveIconSize = pointerDense && iconSize == 15 ? 13.0 : iconSize;
+    final effectiveRadius = pointerDense && radius == 7 ? 6.0 : radius;
+    return Container(
+      width: effectiveSize,
+      height: effectiveSize,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(effectiveRadius),
+      ),
+      child: AppIcon(
+        icon,
+        size: effectiveIconSize,
+        color: const Color(0xFFFFFFFF),
+      ),
+    );
+  }
 }
 
 class SettingsRow extends StatelessWidget {
@@ -493,6 +516,17 @@ class SettingsRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final pointerDense = isDesktopTargetPlatform();
+    final effectiveHeight =
+        pointerDense && height >= AppMetric.compactSettingsRowHeight
+        ? 42.0
+        : height;
+    final effectiveLeadingInset =
+        pointerDense && leadingInset == AppMetric.settingsLeadingInset
+        ? AppSpacing.lg
+        : leadingInset;
+    final horizontalGap = pointerDense ? AppSpacing.md : AppSpacing.lg;
+    final verticalPadding = pointerDense ? AppSpacing.sm : AppSpacing.md;
     final trailingSwitch = trailing is AppSwitch
         ? trailing! as AppSwitch
         : null;
@@ -501,26 +535,33 @@ class SettingsRow extends StatelessWidget {
       toggled: onTap == null ? null : trailingSwitch?.value,
       borderRadius: BorderRadius.circular(AppRadius.sm),
       child: ConstrainedBox(
-        constraints: BoxConstraints(minHeight: height),
+        constraints: BoxConstraints(minHeight: effectiveHeight),
         child: Padding(
           padding: EdgeInsets.only(
-            left: leadingInset,
-            top: AppSpacing.md,
-            right: AppMetric.settingsTrailingInset,
-            bottom: AppSpacing.md,
+            left: effectiveLeadingInset,
+            top: verticalPadding,
+            right: pointerDense
+                ? AppSpacing.lg
+                : AppMetric.settingsTrailingInset,
+            bottom: verticalPadding,
           ),
           child: Row(
             children: [
-              if (leading != null) ...[leading!, const SizedBox(width: 12)],
+              if (leading != null) ...[
+                leading!,
+                SizedBox(width: horizontalGap),
+              ],
               Expanded(
                 flex: trailing == null && value.isNotEmpty ? 3 : 1,
                 child: Text(
                   title.l10n(context),
-                  style: AppTextStyle.body(c.textPrimary),
+                  style: pointerDense
+                      ? AppTextStyle.callout(c.textPrimary)
+                      : AppTextStyle.body(c.textPrimary),
                 ),
               ),
               if (trailing != null || value.isNotEmpty) ...[
-                const SizedBox(width: 12),
+                SizedBox(width: horizontalGap),
                 if (trailing != null)
                   onTap == null
                       ? trailing!
@@ -539,17 +580,19 @@ class SettingsRow extends StatelessWidget {
                         child: Text(
                           value.l10n(context),
                           textAlign: TextAlign.right,
-                          style: AppTextStyle.footnote(c.textTertiary),
+                          style: pointerDense
+                              ? AppTextStyle.caption(c.textTertiary)
+                              : AppTextStyle.footnote(c.textTertiary),
                         ),
                       ),
                     ),
                   ),
               ],
               if (showChevron) ...[
-                const SizedBox(width: 8),
+                SizedBox(width: pointerDense ? AppSpacing.sm : AppSpacing.md),
                 AppIcon(
                   HeroAppIcons.chevronRight,
-                  size: AppIconSize.chevron,
+                  size: pointerDense ? AppIconSize.sm : AppIconSize.chevron,
                   color: c.textTertiary,
                 ),
               ],
@@ -579,6 +622,11 @@ class AppSwitch extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final pointerDense = isDesktopTargetPlatform();
+    final width = pointerDense ? 38.0 : 50.0;
+    final height = pointerDense ? 22.0 : 30.0;
+    final padding = pointerDense ? 2.0 : 2.0;
+    final handleSize = pointerDense ? 18.0 : 26.0;
     final trackColor = value ? c.linkBlue : c.textTertiary;
     final handleColor = value ? c.onAccent : const Color(0xFFFFFFFF);
     return AppInteractiveSurface(
@@ -592,27 +640,27 @@ class AppSwitch extends StatelessWidget {
       toggled: value,
       onTap: enabled ? () => onChanged(!value) : null,
       enabled: enabled,
-      borderRadius: BorderRadius.circular(15),
+      borderRadius: BorderRadius.circular(height / 2),
       child: AnimatedOpacity(
         duration: const Duration(milliseconds: 160),
         opacity: enabled ? 1 : 0.45,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 160),
           curve: Curves.easeOut,
-          width: 50,
-          height: 30,
-          padding: const EdgeInsets.all(2),
+          width: width,
+          height: height,
+          padding: EdgeInsets.all(padding),
           decoration: BoxDecoration(
             color: trackColor,
-            borderRadius: BorderRadius.circular(15),
+            borderRadius: BorderRadius.circular(height / 2),
           ),
           child: AnimatedAlign(
             duration: const Duration(milliseconds: 160),
             curve: Curves.easeOut,
             alignment: value ? Alignment.centerRight : Alignment.centerLeft,
             child: Container(
-              width: 26,
-              height: 26,
+              width: handleSize,
+              height: handleSize,
               decoration: BoxDecoration(
                 color: handleColor,
                 shape: BoxShape.circle,
@@ -707,29 +755,47 @@ class SettingsSwitchRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final pointerDense = isDesktopTargetPlatform();
+    final effectiveHeight =
+        pointerDense && height >= AppMetric.compactSettingsRowHeight
+        ? 42.0
+        : height;
+    final effectiveLeadingInset =
+        pointerDense && leadingInset == AppMetric.settingsLeadingInset
+        ? AppSpacing.lg
+        : leadingInset;
+    final horizontalGap = pointerDense ? AppSpacing.md : AppSpacing.lg;
+    final verticalPadding = pointerDense ? AppSpacing.sm : AppSpacing.md;
     return AppInteractiveSurface(
       toggled: value,
       onTap: () => onChanged(!value),
       borderRadius: BorderRadius.circular(AppRadius.sm),
       child: ConstrainedBox(
-        constraints: BoxConstraints(minHeight: height),
+        constraints: BoxConstraints(minHeight: effectiveHeight),
         child: Padding(
           padding: EdgeInsets.only(
-            left: leadingInset,
-            top: AppSpacing.md,
-            right: AppMetric.settingsTrailingInset,
-            bottom: AppSpacing.md,
+            left: effectiveLeadingInset,
+            top: verticalPadding,
+            right: pointerDense
+                ? AppSpacing.lg
+                : AppMetric.settingsTrailingInset,
+            bottom: verticalPadding,
           ),
           child: Row(
             children: [
-              if (leading != null) ...[leading!, const SizedBox(width: 12)],
+              if (leading != null) ...[
+                leading!,
+                SizedBox(width: horizontalGap),
+              ],
               Expanded(
                 child: Text(
                   title.l10n(context),
-                  style: AppTextStyle.body(c.textPrimary),
+                  style: pointerDense
+                      ? AppTextStyle.callout(c.textPrimary)
+                      : AppTextStyle.body(c.textPrimary),
                 ),
               ),
-              const SizedBox(width: 12),
+              SizedBox(width: horizontalGap),
               ExcludeSemantics(
                 child: ExcludeFocus(
                   child: IgnorePointer(
@@ -1100,11 +1166,13 @@ class ChatPreviewText extends StatelessWidget {
     required this.message,
     this.draft = false,
     this.alertPrefix,
+    this.fontSize = AppTextSize.footnote,
   });
   final String? sender;
   final String message;
   final bool draft; // render a red "[草稿]" prefix and ignore sender
   final String? alertPrefix;
+  final double fontSize;
 
   static const _redTags = [
     AppStringKeys.commonUiNewFileBadge,
@@ -1119,7 +1187,7 @@ class ChatPreviewText extends StatelessWidget {
     final isRed = _redTags.any(message.startsWith);
     final baseStyle = DefaultTextStyle.of(
       context,
-    ).style.merge(const TextStyle(fontSize: AppTextSize.footnote));
+    ).style.merge(TextStyle(fontSize: fontSize));
     return RichText(
       maxLines: 1,
       overflow: TextOverflow.ellipsis,

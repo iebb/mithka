@@ -16,7 +16,6 @@ class LanguageSettingsView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final locale = context.watch<AppLocaleController>();
     final telegramLanguage = context.watch<TelegramLanguageController>();
     return Scaffold(
       backgroundColor: c.groupedBackground,
@@ -34,28 +33,11 @@ class LanguageSettingsView extends StatelessWidget {
                   SettingsCard(
                     children: [
                       _NavLanguageRow(
-                        icon: HeroAppIcons.language,
-                        title: AppStringKeys.languageMithkaLanguage.l10n(
-                          context,
-                        ),
-                        subtitle: locale.selectedLabel(context),
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const MithkaLanguageSettingsView(),
-                          ),
-                        ),
-                      ),
-                      const InsetDivider(leadingInset: 56),
-                      _NavLanguageRow(
                         icon: HeroAppIcons.globe,
                         title: AppStringKeys.languageTelegramLanguage.l10n(
                           context,
                         ),
-                        subtitle: _telegramSummary(
-                          context,
-                          telegramLanguage,
-                          fallbackName: locale.selectedLabel(context),
-                        ),
+                        subtitle: _telegramSummary(telegramLanguage),
                         onTap: () => Navigator.of(context).push(
                           MaterialPageRoute(
                             builder: (_) =>
@@ -90,62 +72,12 @@ class LanguageSettingsView extends StatelessWidget {
   }
 }
 
-class MithkaLanguageSettingsView extends StatelessWidget {
-  const MithkaLanguageSettingsView({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    final locale = context.watch<AppLocaleController>();
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
-        children: [
-          NavHeader(
-            title: AppStringKeys.languageMithkaLanguage.l10n(context),
-            onBack: () => Navigator.of(context).pop(),
-          ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
-              children: [
-                SettingsCard(
-                  children: [
-                    _LanguageRow(
-                      title: AppStringKeys.appLocaleFollowSystem.l10n(context),
-                      selected: locale.followsSystem,
-                      onTap: () => locale.locale = null,
-                    ),
-                    const InsetDivider(leadingInset: 16),
-                    for (final option in AppLocaleController.options) ...[
-                      _LanguageRow(
-                        title: option.label.l10n(context),
-                        selected:
-                            !locale.followsSystem &&
-                            option.tag == locale.locale!.toLanguageTag(),
-                        onTap: () => locale.locale = option.locale,
-                      ),
-                      if (option != AppLocaleController.options.last)
-                        const InsetDivider(leadingInset: 16),
-                    ],
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class TelegramLanguageSettingsView extends StatelessWidget {
   const TelegramLanguageSettingsView({super.key});
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final locale = context.watch<AppLocaleController>();
     final telegramLanguage = context.watch<TelegramLanguageController>();
     return Scaffold(
       backgroundColor: c.groupedBackground,
@@ -161,26 +93,12 @@ class TelegramLanguageSettingsView extends StatelessWidget {
               children: [
                 SettingsCard(
                   children: [
-                    _LanguageRow(
-                      title: AppStringKeys.languageTelegramFollowMithka.l10n(
-                        context,
-                      ),
-                      subtitle: _telegramUsing(
-                        context,
-                        telegramLanguage,
-                        fallbackName: locale.selectedLabel(context),
-                      ),
-                      selected: telegramLanguage.followsAppLanguage,
-                      onTap: () => telegramLanguage.setSelectedPack(null),
-                    ),
-                    if (telegramLanguage.packs.isNotEmpty)
-                      const InsetDivider(leadingInset: 16),
                     for (final pack in telegramLanguage.packs) ...[
                       _LanguageRow(
                         title: pack.displayName,
                         subtitle: _packSubtitle(context, pack),
                         selected:
-                            !telegramLanguage.followsAppLanguage &&
+                            telegramLanguage.selectedPackId == pack.id ||
                             telegramLanguage.activePackId == pack.id,
                         onTap: () => telegramLanguage.setSelectedPack(pack.id),
                       ),
@@ -212,39 +130,17 @@ class TelegramLanguageSettingsView extends StatelessWidget {
   }
 }
 
-String _telegramSummary(
-  BuildContext context,
-  TelegramLanguageController controller, {
-  required String fallbackName,
-}) {
-  if (controller.followsAppLanguage) {
-    final using = _telegramUsing(
-      context,
-      controller,
-      fallbackName: fallbackName,
-    );
-    return using == null
-        ? AppStringKeys.languageTelegramFollowMithka.l10n(context)
-        : '${AppStringKeys.languageTelegramFollowMithka.l10n(context)} · $using';
-  }
-  return _activeTelegramPackName(controller) ?? fallbackName;
-}
-
-String? _telegramUsing(
-  BuildContext context,
-  TelegramLanguageController controller, {
-  required String fallbackName,
-}) {
-  if (controller.activePackId == null) return null;
-  final name = _activeTelegramPackName(controller) ?? fallbackName;
-  return AppStringKeys.languageTelegramUsing
-      .l10n(context)
-      .replaceAll('{value1}', name);
-}
+String _telegramSummary(TelegramLanguageController controller) =>
+    _activeTelegramPackName(controller) ??
+    AppLocaleController.labelFor(controller.mithkaLocale);
 
 String? _activeTelegramPackName(TelegramLanguageController controller) {
   return controller.packs
-      .where((pack) => pack.id == controller.activePackId)
+      .where(
+        (pack) =>
+            pack.id == controller.selectedPackId ||
+            pack.id == controller.activePackId,
+      )
       .firstOrNull
       ?.displayName;
 }

@@ -182,6 +182,7 @@ class AutoDownloadMediaController extends ChangeNotifier {
         unawaited(apply().catchError((_) {}));
       }
     });
+    notifyListeners();
   }
 
   void _loadProfiles(String? encoded) {

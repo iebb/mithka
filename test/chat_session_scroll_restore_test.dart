@@ -176,7 +176,7 @@ void main() {
         resolveChatReopenDisposition(
           hasExplicitTarget: true,
           hasSavedPosition: true,
-          hasConfirmedNewUnread: true,
+          prioritizeUnread: true,
         ),
         ChatReopenDisposition.explicitTarget,
       );
@@ -184,7 +184,7 @@ void main() {
         resolveChatReopenDisposition(
           hasExplicitTarget: false,
           hasSavedPosition: true,
-          hasConfirmedNewUnread: true,
+          prioritizeUnread: true,
         ),
         ChatReopenDisposition.firstUnread,
       );
@@ -192,7 +192,7 @@ void main() {
         resolveChatReopenDisposition(
           hasExplicitTarget: false,
           hasSavedPosition: true,
-          hasConfirmedNewUnread: false,
+          prioritizeUnread: false,
         ),
         ChatReopenDisposition.savedPosition,
       );
@@ -200,9 +200,61 @@ void main() {
         resolveChatReopenDisposition(
           hasExplicitTarget: false,
           hasSavedPosition: false,
-          hasConfirmedNewUnread: false,
+          prioritizeUnread: false,
         ),
         ChatReopenDisposition.defaultPosition,
+      );
+    });
+
+    test('existing unread replaces only a saved anchor in read history', () {
+      expect(
+        shouldPrioritizeUnreadOnChatReopen(
+          currentUnreadCount: 3,
+          currentLastReadInboxId: 120,
+          savedAnchorMessageId: 80,
+          hasConfirmedNewUnread: false,
+        ),
+        isTrue,
+        reason: 'old browsed history must not hide the unread destination',
+      );
+      expect(
+        shouldPrioritizeUnreadOnChatReopen(
+          currentUnreadCount: 3,
+          currentLastReadInboxId: 120,
+          savedAnchorMessageId: 145,
+          hasConfirmedNewUnread: false,
+        ),
+        isFalse,
+        reason: 'an anchor within unread messages is reading progress',
+      );
+      expect(
+        shouldPrioritizeUnreadOnChatReopen(
+          currentUnreadCount: 3,
+          currentLastReadInboxId: 120,
+          savedAnchorMessageId: null,
+          hasConfirmedNewUnread: false,
+        ),
+        isTrue,
+        reason: 'raw pixels cannot prove the saved viewport is in unread',
+      );
+      expect(
+        shouldPrioritizeUnreadOnChatReopen(
+          currentUnreadCount: 0,
+          currentLastReadInboxId: 120,
+          savedAnchorMessageId: 80,
+          hasConfirmedNewUnread: false,
+        ),
+        isFalse,
+      );
+      expect(
+        shouldPrioritizeUnreadOnChatReopen(
+          currentUnreadCount: 0,
+          currentLastReadInboxId: 120,
+          savedAnchorMessageId: 145,
+          hasConfirmedNewUnread: true,
+        ),
+        isTrue,
+        reason: 'a concrete newer unread remains authoritative',
       );
     });
 
@@ -320,7 +372,7 @@ void main() {
         resolveChatReopenDisposition(
           hasExplicitTarget: false,
           hasSavedPosition: true,
-          hasConfirmedNewUnread: false,
+          prioritizeUnread: false,
         ),
         ChatReopenDisposition.savedPosition,
       );

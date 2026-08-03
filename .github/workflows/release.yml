@@ -10,7 +10,7 @@ name: 🚀 Multi-platform Releases
 # Each Android ABI publishes one standard APK using the tracked Android release
 # code, matching the Google Play artifact built from the same release commit.
 #
-# master never builds release packages. The twice-daily sync workflow merges new master
+# master never builds release packages. The daily sync workflow merges new master
 # commits into nightly, increments the patch version once, and dispatches this
 # workflow.
 #

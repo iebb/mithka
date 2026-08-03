@@ -49,10 +49,13 @@ import 'shared_media_view.dart';
 import 'telegram_rich_text.dart';
 
 class ChatMember {
-  ChatMember(this.id, this.name, this.photo);
+  ChatMember(this.id, this.name, this.photo, {this.role, this.roleTitle});
+
   final int id;
   final String name;
   final TdFileRef? photo;
+  final MemberRole? role;
+  final String? roleTitle;
 }
 
 @visibleForTesting
@@ -134,45 +137,46 @@ class _GroupDetailRow extends StatelessWidget {
             AppSpacing.xl,
             AppSpacing.md,
           ),
-          child: Row(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
                       title.l10n(context),
                       style: AppTextStyle.body(c.textPrimary),
                     ),
-                    if (subtitle != null) ...[
-                      const SizedBox(height: AppSpacing.xs),
-                      Text(
-                        subtitle!.l10n(context),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTextStyle.caption(c.textTertiary),
-                      ),
-                    ],
+                  ),
+                  const SizedBox(width: AppSpacing.lg),
+                  Expanded(
+                    child: Text(
+                      value,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.right,
+                      style: AppTextStyle.footnote(c.textTertiary),
+                    ),
+                  ),
+                  if (onTap != null) ...[
+                    const SizedBox(width: AppSpacing.md),
+                    AppIcon(
+                      HeroAppIcons.chevronRight,
+                      size: AppIconSize.chevron,
+                      color: c.textTertiary,
+                    ),
                   ],
-                ),
+                ],
               ),
-              const SizedBox(width: AppSpacing.lg),
-              Flexible(
-                child: Text(
-                  value,
+              if (subtitle != null) ...[
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  subtitle!.l10n(context),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.right,
-                  style: AppTextStyle.footnote(c.textTertiary),
-                ),
-              ),
-              if (onTap != null) ...[
-                const SizedBox(width: AppSpacing.md),
-                AppIcon(
-                  HeroAppIcons.chevronRight,
-                  size: AppIconSize.chevron,
-                  color: c.textTertiary,
+                  style: AppTextStyle.caption(c.textTertiary),
                 ),
               ],
             ],
@@ -209,40 +213,39 @@ class _GroupAnnouncementRow extends StatelessWidget {
             AppSpacing.xl,
             AppSpacing.lg,
           ),
-          child: Row(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
                       AppStringKeys.chatInfoGroupAnnouncement.l10n(context),
                       style: AppTextStyle.body(c.textPrimary),
                     ),
-                    const SizedBox(height: AppSpacing.sm),
-                    Text(
-                      empty
-                          ? AppStringKeys.chatInfoGroupAnnouncementEmpty.l10n(
-                              context,
-                            )
-                          : announcement,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 13,
-                        height: 1.35,
-                        color: empty ? c.textTertiary : c.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                  AppIcon(
+                    HeroAppIcons.chevronRight,
+                    size: AppIconSize.chevron,
+                    color: c.textTertiary,
+                  ),
+                ],
               ),
-              const SizedBox(width: AppSpacing.md),
-              AppIcon(
-                HeroAppIcons.chevronRight,
-                size: AppIconSize.chevron,
-                color: c.textTertiary,
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                empty
+                    ? AppStringKeys.chatInfoGroupAnnouncementEmpty.l10n(context)
+                    : announcement,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.35,
+                  color: empty ? c.textTertiary : c.textSecondary,
+                ),
               ),
             ],
           ),
@@ -313,9 +316,15 @@ class GroupAnnouncementView extends StatelessWidget {
 }
 
 class ChatInfoView extends StatefulWidget {
-  const ChatInfoView({super.key, required this.chatId, required this.title});
+  const ChatInfoView({
+    super.key,
+    required this.chatId,
+    required this.title,
+    this.showBackButton = true,
+  });
   final int chatId;
   final String title;
+  final bool showBackButton;
 
   @override
   State<ChatInfoView> createState() => _ChatInfoViewState();
@@ -449,7 +458,9 @@ class _ChatInfoViewState extends State<ChatInfoView> {
         children: [
           NavHeader(
             title: AppStrings.t(AppStringKeys.chatInfoTitle),
-            onBack: () => Navigator.of(context).pop(),
+            onBack: widget.showBackButton
+                ? () => Navigator.of(context).pop()
+                : null,
           ),
           Expanded(
             child: ListView(
@@ -2270,11 +2281,21 @@ class ChatInfoViewModel extends ChangeNotifier {
           '@type': 'getUser',
           'user_id': uid,
         });
+        final status = entry.obj('status');
+        final roleTitle = _memberTitle(entry, status);
+        var role = switch (status?.type) {
+          'chatMemberStatusCreator' => MemberRole.owner,
+          'chatMemberStatusAdministrator' => MemberRole.admin,
+          _ => null,
+        };
+        if (role == null && roleTitle != null) role = MemberRole.member;
         result.add(
           ChatMember(
             uid,
             TDParse.userName(user),
             TDParse.smallPhoto(user.obj('profile_photo')),
+            role: role,
+            roleTitle: roleTitle,
           ),
         );
         // Stream after each resolve so the grid fills progressively and a slow
@@ -2283,6 +2304,20 @@ class ChatInfoViewModel extends ChangeNotifier {
         notifyListeners();
       } catch (_) {}
     }
+  }
+
+  String? _memberTitle(
+    Map<String, dynamic> member,
+    Map<String, dynamic>? status,
+  ) {
+    final raw =
+        status?.str('custom_title') ??
+        member.str('custom_title') ??
+        member.str('tag') ??
+        status?.str('title') ??
+        member.str('title');
+    final title = raw?.trim();
+    return title == null || title.isEmpty ? null : title;
   }
 
   void setPinned(bool value) {

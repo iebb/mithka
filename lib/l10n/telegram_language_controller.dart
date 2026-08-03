@@ -101,10 +101,13 @@ class TelegramLanguageController extends ChangeNotifier {
   factory TelegramLanguageController.test({
     Map<String, String> strings = const {},
     String? activePackId,
+    String? selectedPackId,
+    List<TelegramLanguagePackOption>? packs,
   }) {
     final controller = TelegramLanguageController._();
     controller._activePackId = activePackId;
-    controller._packs = _knownRemotePacks;
+    controller._selectedPackId = selectedPackId;
+    controller._packs = packs ?? _knownRemotePacks;
     controller._strings.addAll(strings);
     return controller;
   }
@@ -112,6 +115,7 @@ class TelegramLanguageController extends ChangeNotifier {
   static final shared = TelegramLanguageController._();
   static const _selectedPackKey = 'telegram.language_pack_id.v2';
   static const _previousSelectedPackKey = 'telegram.language_pack_id';
+  static const _legacyAppLocaleKey = 'app.locale';
   static const _targetOption = 'localization_target';
   static const _localizationTarget = 'android';
   static const _packOption = 'language_pack_id';
@@ -136,11 +140,28 @@ class TelegramLanguageController extends ChangeNotifier {
   List<TelegramLanguagePackOption> _packs = const [];
   final Map<String, String> _strings = {};
 
+  /// Kept for source compatibility with older callers. The language pack is
+  /// now the sole locale preference, so an initialized controller never
+  /// follows a separate Mithka language setting.
   bool get followsAppLanguage => _selectedPackId == null;
   bool get isLoading => _loading;
   String? get errorText => _errorText;
+  String? get selectedPackId => _selectedPackId;
   String? get activePackId => _activePackId;
   List<TelegramLanguagePackOption> get packs => List.unmodifiable(_packs);
+
+  /// Mithka owns eight complete locale tables. Its interface follows the base
+  /// language of the selected Telegram pack; unsupported packs deliberately
+  /// fall back to English instead of exposing a second locale preference.
+  Locale get mithkaLocale {
+    final packId = _selectedPackId ?? _activePackId;
+    if (packId != null && packId.trim().isNotEmpty) {
+      return _mithkaLocaleForPackId(packId);
+    }
+    return _supportedLocaleOrEnglish(
+      _appLocale ?? PlatformDispatcher.instance.locale,
+    );
+  }
 
   @visibleForTesting
   String preferredPackIdForLocale(Locale locale) => _packIdForLocale(locale);
@@ -152,8 +173,39 @@ class TelegramLanguageController extends ChangeNotifier {
     AppStrings.telegramStringResolver = resolveMappedText;
     await prefs.remove(_previousSelectedPackKey);
     final stored = prefs.getString(_selectedPackKey)?.trim();
-    _selectedPackId = stored == null || stored.isEmpty ? null : stored;
+    if (stored == null || stored.isEmpty) {
+      final legacyLocale = AppLocalizations.localeFromTag(
+        prefs.getString(_legacyAppLocaleKey),
+      );
+      _selectedPackId = _canonicalPackIdForLocale(
+        legacyLocale ?? PlatformDispatcher.instance.locale,
+      );
+      await prefs.setString(_selectedPackKey, _selectedPackId!);
+    } else {
+      _selectedPackId = stored;
+    }
+    await prefs.remove(_legacyAppLocaleKey);
     _languageUpdates ??= TdClient.shared.subscribe().listen(_handleTdUpdate);
+    notifyListeners();
+    await refresh();
+  }
+
+  /// Reloads the selection persisted by another desktop Flutter engine.
+  /// Native TDLib remains owned by the primary engine; only the selected pack
+  /// preference is refreshed from the shared platform store.
+  Future<void> reloadPreferences(SharedPreferences prefs) async {
+    if (!_initialized) {
+      await initialize(prefs);
+      return;
+    }
+    _prefs = prefs;
+    final stored = prefs.getString(_selectedPackKey)?.trim();
+    final next = stored == null || stored.isEmpty
+        ? _canonicalPackIdForLocale(PlatformDispatcher.instance.locale)
+        : stored;
+    if (_selectedPackId == next) return;
+    _selectedPackId = next;
+    notifyListeners();
     await refresh();
   }
 
@@ -168,19 +220,27 @@ class TelegramLanguageController extends ChangeNotifier {
 
   Future<void> setSelectedPack(String? packId) async {
     final normalized = packId?.trim();
-    final next = normalized == null || normalized.isEmpty ? null : normalized;
+    final next = normalized == null || normalized.isEmpty
+        ? _canonicalPackIdForLocale(
+            _appLocale ?? PlatformDispatcher.instance.locale,
+          )
+        : normalized;
     if (_selectedPackId == next) return;
     _selectedPackId = next;
     final prefs = _prefs;
     if (prefs != null) {
-      if (next == null) {
-        await prefs.remove(_selectedPackKey);
-      } else {
-        await prefs.setString(_selectedPackKey, next);
-      }
+      await prefs.setString(_selectedPackKey, next);
+      await prefs.remove(_legacyAppLocaleKey);
     }
+    notifyListeners();
     await refresh();
   }
+
+  /// Selects the Telegram language pack backing one of Mithka's supported
+  /// interface locales. This deliberately delegates to [setSelectedPack] so
+  /// the desktop shortcut and full Telegram language page share one pathway.
+  Future<void> selectSupportedLocale(Locale locale) =>
+      setSelectedPack(_selectablePackIdForLocale(locale));
 
   Future<void> refresh() async {
     if (!_initialized) return;
@@ -405,6 +465,65 @@ class TelegramLanguageController extends ChangeNotifier {
       if (match != null) return match.id;
     }
     return 'en';
+  }
+
+  String _selectablePackIdForLocale(Locale locale) {
+    final resolved = _supportedLocaleOrEnglish(locale);
+    for (final pack in _packs.where((pack) => pack.isOfficial)) {
+      if (_sameLocale(_mithkaLocaleForPack(pack), resolved)) return pack.id;
+    }
+    for (final pack in _packs) {
+      if (_sameLocale(_mithkaLocaleForPack(pack), resolved)) return pack.id;
+    }
+    return _canonicalPackIdForLocale(resolved);
+  }
+
+  Locale _mithkaLocaleForPackId(String packId) {
+    final normalized = packId.trim().toLowerCase();
+    final pack = _packs.where((candidate) {
+      return candidate.id.trim().toLowerCase() == normalized;
+    }).firstOrNull;
+    return pack == null
+        ? _supportedLocaleForLanguageIdentifier(normalized)
+        : _mithkaLocaleForPack(pack);
+  }
+
+  Locale _mithkaLocaleForPack(TelegramLanguagePackOption pack) {
+    final base = pack.baseLanguagePackId.trim();
+    if (base.isNotEmpty) {
+      return _supportedLocaleForLanguageIdentifier(base);
+    }
+    final pluralCode = pack.pluralCode.trim();
+    if (pluralCode.isNotEmpty) {
+      return _supportedLocaleForLanguageIdentifier(pluralCode);
+    }
+    return _supportedLocaleForLanguageIdentifier(pack.id);
+  }
+
+  static Locale _supportedLocaleForLanguageIdentifier(String identifier) {
+    final normalized = identifier.trim().replaceAll('_', '-').toLowerCase();
+    if (normalized == _familiarChinesePackId) {
+      return const Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hans');
+    }
+    final parsed = AppLocalizations.localeFromTag(normalized);
+    return parsed == null
+        ? AppLocalizations.fallbackLocale
+        : _supportedLocaleOrEnglish(parsed);
+  }
+
+  static Locale _supportedLocaleOrEnglish(Locale locale) {
+    if (!AppLocalizations.isSupportedLocale(locale)) {
+      return AppLocalizations.fallbackLocale;
+    }
+    return AppLocalizations.resolve(locale);
+  }
+
+  static String _canonicalPackIdForLocale(Locale locale) {
+    final resolved = _supportedLocaleOrEnglish(locale);
+    if (resolved.languageCode == 'zh') {
+      return resolved.scriptCode == 'Hant' ? 'zh-hant' : 'zh-hans';
+    }
+    return resolved.languageCode;
   }
 
   List<String> _candidatePackIds(Locale locale) {

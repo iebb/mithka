@@ -8,10 +8,12 @@
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../app/adaptive_split_layout.dart';
 import '../app/app_version.dart';
 import '../auth/account_store.dart';
 import '../auth/auth_manager.dart';
@@ -33,6 +35,7 @@ import 'appearance_view.dart';
 import 'blocking_settings_view.dart';
 import 'business_settings_view.dart';
 import 'chat_folder_management_view.dart';
+import 'desktop_hotkey_settings_view.dart';
 import 'developer_mode_controller.dart';
 import 'developer_settings_view.dart';
 import 'edit_profile_view.dart';
@@ -43,13 +46,33 @@ import 'notification_settings_view.dart';
 import 'privacy_detail_views.dart';
 import 'privacy_security_view.dart';
 import 'proxy_view.dart';
+import 'storage_usage_view.dart';
 import 'translation_settings_view.dart';
 
 class SettingsView extends StatefulWidget {
-  const SettingsView({super.key, this.focusSearch = false});
+  const SettingsView({
+    super.key,
+    this.focusSearch = false,
+    this.showBackButton = true,
+    this.allowSessionLifecycleActions = true,
+    this.initialCategoryId,
+  });
 
   /// Used by Telegram's `settingsSectionSearch` internal link.
   final bool focusSearch;
+
+  /// Hides only the root Settings back affordance when Settings owns a native
+  /// desktop window. Detail pages keep their local back navigation.
+  final bool showBackButton;
+
+  /// Account-slot backup/restore and logout own TDLib database lifecycle.
+  /// Independent desktop engine windows must disable them and use the primary
+  /// engine's query/update proxy for all remaining live settings.
+  final bool allowSessionLifecycleActions;
+
+  /// Optional initial category for native desktop shortcuts such as the
+  /// system app menu's Appearance action. Unknown IDs fall back to General.
+  final String? initialCategoryId;
 
   @override
   State<SettingsView> createState() => _SettingsViewState();
@@ -59,10 +82,18 @@ class _SettingsViewState extends State<SettingsView> {
   late final Future<AppVersion> _versionFuture = AppVersion.load();
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
+  late String _selectedCategoryId;
 
   @override
   void initState() {
     super.initState();
+    final initialCategoryId = widget.initialCategoryId;
+    _selectedCategoryId =
+        _settingsCategoryDefinitions.any(
+          (category) => category.id == initialCategoryId,
+        )
+        ? initialCategoryId!
+        : 'general';
     _searchController.addListener(_searchChanged);
     if (widget.focusSearch) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -84,12 +115,18 @@ class _SettingsViewState extends State<SettingsView> {
 
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
-    final destinations = _destinations(context)
-      ..sort((a, b) {
-        final groupOrder = a.group.compareTo(b.group);
-        return groupOrder != 0 ? groupOrder : a.order.compareTo(b.order);
-      });
+    final destinations =
+        _destinations(context)
+            .where(
+              (destination) =>
+                  widget.allowSessionLifecycleActions ||
+                  destination.id != 'mithka-account-backup',
+            )
+            .toList()
+          ..sort((a, b) {
+            final groupOrder = a.group.compareTo(b.group);
+            return groupOrder != 0 ? groupOrder : a.order.compareTo(b.order);
+          });
     final query = _searchController.text.trim().toLowerCase();
     final matches = query.isEmpty
         ? const <_SettingsDestination>[]
@@ -102,30 +139,344 @@ class _SettingsViewState extends State<SettingsView> {
         const SingleActivator(LogicalKeyboardKey.keyF, control: true):
             _searchFocusNode.requestFocus,
       },
-      child: Scaffold(
-        backgroundColor: c.groupedBackground,
-        body: Column(
-          children: [
-            NavHeader(
-              title: AppStrings.t(AppStringKeys.profileSettings),
-              onBack: () => Navigator.of(context).pop(),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final size = constraints.biggest;
+          final useSplit = size.isFinite && usesAdaptiveSplitLayout(size);
+          if (useSplit) {
+            return _splitSettings(
+              context,
+              destinations: destinations,
+              query: query,
+              matches: matches,
+            );
+          }
+          return _compactSettings(
+            context,
+            destinations: destinations,
+            query: query,
+            matches: matches,
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _compactSettings(
+    BuildContext context, {
+    required List<_SettingsDestination> destinations,
+    required String query,
+    required List<_SettingsDestination> matches,
+  }) {
+    final c = context.colors;
+    return Scaffold(
+      key: const ValueKey('settings-compact-layout'),
+      backgroundColor: c.groupedBackground,
+      body: Column(
+        children: [
+          NavHeader(
+            title: AppStrings.t(AppStringKeys.profileSettings),
+            onBack: widget.showBackButton && Navigator.of(context).canPop()
+                ? () => Navigator.of(context).pop()
+                : null,
+          ),
+          Expanded(
+            child: DesktopContentConstraint(
+              child: Column(
+                children: [
+                  _searchField(context),
+                  Expanded(
+                    child: query.isEmpty
+                        ? _settingsList(context, destinations)
+                        : _searchResults(context, matches),
+                  ),
+                ],
+              ),
             ),
-            Expanded(
-              child: DesktopContentConstraint(
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _splitSettings(
+    BuildContext context, {
+    required List<_SettingsDestination> destinations,
+    required String query,
+    required List<_SettingsDestination> matches,
+  }) {
+    final c = context.colors;
+    final categories = _settingsCategories(destinations);
+    final selected = categories.firstWhere(
+      (category) => category.id == _selectedCategoryId,
+      orElse: () => categories.first,
+    );
+    final sidebarWidth = MediaQuery.sizeOf(context).width >= 1180
+        ? 312.0
+        : 280.0;
+    final sidebarColor = Color.alphaBlend(
+      c.linkBlue.withValues(
+        alpha: Theme.of(context).brightness == Brightness.dark ? 0.055 : 0.035,
+      ),
+      c.panelBackground,
+    );
+
+    return Scaffold(
+      key: const ValueKey('settings-split-layout'),
+      backgroundColor: c.groupedBackground,
+      body: SafeArea(
+        bottom: false,
+        child: Row(
+          children: [
+            SizedBox(
+              key: const ValueKey('settings-category-sidebar'),
+              width: sidebarWidth,
+              child: ColoredBox(
+                color: sidebarColor,
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _searchField(context),
+                    _splitSidebarHeader(context),
+                    _searchField(context, compact: true),
                     Expanded(
-                      child: query.isEmpty
-                          ? _settingsList(context, destinations)
-                          : _searchResults(context, matches),
+                      child: ListView.separated(
+                        key: const PageStorageKey<String>(
+                          'settings-category-list',
+                        ),
+                        padding: const EdgeInsets.fromLTRB(
+                          AppSpacing.md,
+                          AppSpacing.sm,
+                          AppSpacing.md,
+                          AppSpacing.xl,
+                        ),
+                        itemCount: categories.length,
+                        separatorBuilder: (_, _) =>
+                            const SizedBox(height: AppSpacing.xs),
+                        itemBuilder: (context, index) {
+                          final category = categories[index];
+                          return _categoryRow(
+                            context,
+                            category,
+                            selected: category.id == selected.id,
+                          );
+                        },
+                      ),
                     ),
                   ],
                 ),
               ),
             ),
+            Container(width: AppMetric.divider, color: c.divider),
+            Expanded(
+              child: ColoredBox(
+                color: c.groupedBackground,
+                child: _splitDetailNavigator(
+                  context,
+                  selected: selected,
+                  query: query,
+                  matches: matches,
+                ),
+              ),
+            ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _splitSidebarHeader(BuildContext context) {
+    final c = context.colors;
+    final desktopDense = !kIsWeb && isDesktopTargetPlatform();
+    return Container(
+      constraints: BoxConstraints(minHeight: desktopDense ? 48 : 58),
+      padding: EdgeInsets.fromLTRB(
+        desktopDense ? 14 : AppSpacing.lg,
+        desktopDense ? 8 : AppSpacing.md,
+        desktopDense ? 14 : AppSpacing.lg,
+        desktopDense ? 4 : AppSpacing.xs,
+      ),
+      alignment: Alignment.centerLeft,
+      child: Row(
+        children: [
+          if (widget.showBackButton && Navigator.of(context).canPop()) ...[
+            AppInteractiveSurface(
+              key: const ValueKey('settings-root-back'),
+              semanticLabel: AppStringKeys.navigationBack.l10n(context),
+              onTap: () => Navigator.of(context).pop(),
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.sm),
+                child: AppIcon(
+                  HeroAppIcons.chevronLeft,
+                  size: AppIconSize.nav,
+                  color: c.textPrimary,
+                ),
+              ),
+            ),
+            SizedBox(width: desktopDense ? 4 : AppSpacing.xs),
+          ],
+          Expanded(
+            child: Text(
+              AppStringKeys.profileSettings.l10n(context),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: desktopDense
+                  ? TextStyle(
+                      color: c.textPrimary,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    )
+                  : AppTextStyle.title(c.textPrimary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _categoryRow(
+    BuildContext context,
+    _SettingsCategory category, {
+    required bool selected,
+  }) {
+    final c = context.colors;
+    final desktopDense = !kIsWeb && isDesktopTargetPlatform();
+    final foreground = selected ? c.linkBlue : c.textSecondary;
+    return AppInteractiveSurface(
+      key: ValueKey('settings-category-${category.id}'),
+      semanticLabel: category.titleKey.l10n(context),
+      selected: selected,
+      onTap: () {
+        if (_selectedCategoryId == category.id) return;
+        setState(() => _selectedCategoryId = category.id);
+      },
+      borderRadius: BorderRadius.circular(desktopDense ? 9 : 12),
+      child: AnimatedContainer(
+        duration: AppMotion.duration(context, AppMotion.responsive),
+        curve: AppMotion.standard,
+        constraints: BoxConstraints(minHeight: desktopDense ? 40 : 48),
+        padding: EdgeInsets.symmetric(
+          horizontal: desktopDense ? 12 : AppSpacing.lg,
+          vertical: desktopDense ? 7 : AppSpacing.md,
+        ),
+        decoration: BoxDecoration(
+          color: selected
+              ? c.linkBlue.withValues(alpha: 0.13)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(desktopDense ? 9 : 12),
+        ),
+        child: Row(
+          children: [
+            AppIcon(
+              category.icon,
+              size: desktopDense ? 17 : 20,
+              color: foreground,
+            ),
+            SizedBox(width: desktopDense ? 10 : AppSpacing.lg),
+            Expanded(
+              child: Text(
+                category.titleKey.l10n(context),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: selected ? c.textPrimary : foreground,
+                  fontSize: desktopDense ? 14 : AppTextSize.body,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _splitDetailNavigator(
+    BuildContext context, {
+    required _SettingsCategory selected,
+    required String query,
+    required List<_SettingsDestination> matches,
+  }) {
+    final identity = query.isEmpty ? selected.id : 'search-$query';
+    final directDestination = query.isEmpty && selected.destinations.length == 1
+        ? selected.destinations.single.splitDestination
+        : null;
+    return KeyedSubtree(
+      key: ValueKey('settings-detail-$identity'),
+      child: Navigator(
+        onGenerateRoute: (_) => MaterialPageRoute<void>(
+          builder: (detailContext) =>
+              directDestination?.call() ??
+              _splitOverview(
+                detailContext,
+                titleKey: query.isEmpty
+                    ? selected.titleKey
+                    : AppStringKeys.settingsSearchHint,
+                destinations: query.isEmpty ? selected.destinations : matches,
+                emptySearch: query.isNotEmpty && matches.isEmpty,
+              ),
+        ),
+      ),
+    );
+  }
+
+  Widget _splitOverview(
+    BuildContext context, {
+    required String titleKey,
+    required List<_SettingsDestination> destinations,
+    required bool emptySearch,
+  }) {
+    final c = context.colors;
+    return Scaffold(
+      key: const ValueKey('settings-split-detail'),
+      backgroundColor: c.groupedBackground,
+      body: Column(
+        children: [
+          NavHeader(title: titleKey),
+          Expanded(
+            child: DesktopContentConstraint(
+              maxWidth: 860,
+              child: emptySearch
+                  ? Center(
+                      key: const ValueKey('settings-search-empty'),
+                      child: Padding(
+                        padding: const EdgeInsets.all(AppSpacing.section),
+                        child: Text(
+                          AppStringKeys.settingsNoResults.l10n(context),
+                          textAlign: TextAlign.center,
+                          style: AppTextStyle.body(c.textSecondary),
+                        ),
+                      ),
+                    )
+                  : ListView(
+                      key: const PageStorageKey<String>(
+                        'settings-split-destinations',
+                      ),
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.xl,
+                        AppSpacing.xl,
+                        AppSpacing.xl,
+                        AppSpacing.section,
+                      ),
+                      children: [
+                        _destinationCard(
+                          context,
+                          destinations,
+                          showOwner: _searchController.text.isNotEmpty,
+                          onOpen: (destination) =>
+                              _openDestination(destination, context: context),
+                        ),
+                        if (widget.allowSessionLifecycleActions &&
+                            _selectedCategoryId == 'general' &&
+                            _searchController.text.isEmpty) ...[
+                          const SizedBox(height: AppSpacing.xl),
+                          _logoutCard(context),
+                        ],
+                      ],
+                    ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -171,6 +522,8 @@ class _SettingsViewState extends State<SettingsView> {
         icon: HeroAppIcons.solidBell,
         color: const Color(0xFFF5A623),
         destination: () => const NotificationSettingsView(),
+        splitDestination: () =>
+            const NotificationSettingsView(showBackButton: false),
         searchTerms: const [
           'alerts',
           'private messages',
@@ -239,7 +592,13 @@ class _SettingsViewState extends State<SettingsView> {
         icon: HeroAppIcons.globe,
         color: const Color(0xFF34A2DF),
         destination: () => const TelegramLanguageSettingsView(),
-        searchTerms: const ['language pack', 'telegram text'],
+        searchTerms: const [
+          'language pack',
+          'telegram text',
+          'app language',
+          'interface language',
+          'locale',
+        ],
       ),
       _SettingsDestination(
         id: 'mithka-pro',
@@ -276,17 +635,6 @@ class _SettingsViewState extends State<SettingsView> {
         ],
       ),
       _SettingsDestination(
-        id: 'mithka-language',
-        owner: _SettingsOwner.mithka,
-        group: 4,
-        order: 0,
-        titleKey: AppStringKeys.languageMithkaLanguage,
-        icon: HeroAppIcons.language,
-        color: const Color(0xFF34A2DF),
-        destination: () => const MithkaLanguageSettingsView(),
-        searchTerms: const ['app language', 'interface language', 'locale'],
-      ),
-      _SettingsDestination(
         id: 'mithka-translation',
         owner: _SettingsOwner.mithka,
         group: 4,
@@ -305,7 +653,8 @@ class _SettingsViewState extends State<SettingsView> {
         titleKey: AppStringKeys.settingsDataAndStorage,
         icon: HeroAppIcons.compactDisc,
         color: const Color(0xFF16B0A0),
-        destination: () => const GeneralSettingsView(),
+        destination: () => const StorageUsageView(),
+        splitDestination: () => const StorageUsageView(showBackButton: false),
         searchTerms: const [
           'data',
           'storage',
@@ -315,6 +664,28 @@ class _SettingsViewState extends State<SettingsView> {
           'auto download',
         ],
       ),
+      if (!kIsWeb && isDesktopTargetPlatform())
+        _SettingsDestination(
+          id: 'mithka-hotkeys',
+          owner: _SettingsOwner.mithka,
+          group: 3,
+          order: 40,
+          titleKey: AppStringKeys.desktopHotkeysTitle,
+          icon: HeroAppIcons.key,
+          color: const Color(0xFF7467F0),
+          destination: () => const DesktopHotkeySettingsView(),
+          splitDestination: () =>
+              const DesktopHotkeySettingsView(showBackButton: false),
+          searchTerms: const [
+            'keyboard',
+            'shortcut',
+            'hotkey',
+            'screenshot',
+            'new chat',
+            'search',
+            'send with enter',
+          ],
+        ),
       _SettingsDestination(
         id: 'mithka-chat-behavior',
         owner: _SettingsOwner.mithka,
@@ -454,27 +825,36 @@ class _SettingsViewState extends State<SettingsView> {
         icon: HeroAppIcons.circleInfo,
         color: const Color(0xFF8E8E93),
         destination: () => const AboutView(),
+        splitDestination: () => const AboutView(showBackButton: false),
         showsVersion: true,
         searchTerms: const ['about', 'version', 'feedback', 'github'],
       ),
     ];
   }
 
-  Widget _searchField(BuildContext context) {
+  Widget _searchField(BuildContext context, {bool compact = false}) {
     final c = context.colors;
+    final desktopDense = compact && !kIsWeb && isDesktopTargetPlatform();
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.lg,
-        AppSpacing.lg,
-        AppSpacing.lg,
-        AppSpacing.sm,
-      ),
+      padding: compact
+          ? EdgeInsets.fromLTRB(
+              desktopDense ? 12 : AppSpacing.lg,
+              desktopDense ? 6 : AppSpacing.sm,
+              desktopDense ? 12 : AppSpacing.lg,
+              desktopDense ? 8 : AppSpacing.md,
+            )
+          : const EdgeInsets.fromLTRB(
+              AppSpacing.lg,
+              AppSpacing.lg,
+              AppSpacing.lg,
+              AppSpacing.sm,
+            ),
       child: Container(
         key: const ValueKey('settings-search-container'),
-        constraints: const BoxConstraints(minHeight: 40),
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.lg,
-          vertical: AppSpacing.md,
+        constraints: BoxConstraints(minHeight: desktopDense ? 34 : 40),
+        padding: EdgeInsets.symmetric(
+          horizontal: desktopDense ? 10 : AppSpacing.lg,
+          vertical: desktopDense ? 7 : AppSpacing.md,
         ),
         decoration: BoxDecoration(
           color: c.searchFill,
@@ -484,10 +864,10 @@ class _SettingsViewState extends State<SettingsView> {
           children: [
             AppIcon(
               HeroAppIcons.magnifyingGlass,
-              size: AppMetric.searchIcon,
+              size: desktopDense ? 16 : AppMetric.searchIcon,
               color: c.textTertiary,
             ),
-            const SizedBox(width: AppSpacing.sm),
+            SizedBox(width: desktopDense ? 7 : AppSpacing.sm),
             Expanded(
               child: TextField(
                 key: const ValueKey('settings-search-field'),
@@ -495,7 +875,7 @@ class _SettingsViewState extends State<SettingsView> {
                 focusNode: _searchFocusNode,
                 textInputAction: TextInputAction.search,
                 style: TextStyle(
-                  fontSize: AppTextSize.callout,
+                  fontSize: desktopDense ? 13 : AppTextSize.callout,
                   color: c.textPrimary,
                 ),
                 decoration: InputDecoration(
@@ -503,7 +883,7 @@ class _SettingsViewState extends State<SettingsView> {
                   border: InputBorder.none,
                   hintText: AppStringKeys.settingsSearchHint.l10n(context),
                   hintStyle: TextStyle(
-                    fontSize: AppTextSize.callout,
+                    fontSize: desktopDense ? 13 : AppTextSize.callout,
                     color: c.textTertiary,
                   ),
                 ),
@@ -543,8 +923,10 @@ class _SettingsViewState extends State<SettingsView> {
       ),
       children: [
         ..._groupCards(context, destinations),
-        const SizedBox(height: AppSpacing.xl),
-        _logoutCard(context),
+        if (widget.allowSessionLifecycleActions) ...[
+          const SizedBox(height: AppSpacing.xl),
+          _logoutCard(context),
+        ],
       ],
     );
   }
@@ -612,6 +994,7 @@ class _SettingsViewState extends State<SettingsView> {
     BuildContext context,
     List<_SettingsDestination> destinations, {
     bool showOwner = false,
+    ValueChanged<_SettingsDestination>? onOpen,
   }) {
     final children = <Widget>[];
     for (var i = 0; i < destinations.length; i++) {
@@ -621,7 +1004,12 @@ class _SettingsViewState extends State<SettingsView> {
         );
       }
       children.add(
-        _destinationRow(context, destinations[i], showOwner: showOwner),
+        _destinationRow(
+          context,
+          destinations[i],
+          showOwner: showOwner,
+          onOpen: onOpen,
+        ),
       );
     }
     return SettingsCard(children: children);
@@ -631,6 +1019,7 @@ class _SettingsViewState extends State<SettingsView> {
     BuildContext context,
     _SettingsDestination destination, {
     required bool showOwner,
+    ValueChanged<_SettingsDestination>? onOpen,
   }) {
     Widget row(String? version) => SettingsRow(
       key: ValueKey('settings-destination-${destination.id}'),
@@ -642,7 +1031,13 @@ class _SettingsViewState extends State<SettingsView> {
         icon: destination.icon,
         backgroundColor: destination.color,
       ),
-      onTap: () => _openDestination(destination),
+      onTap: () {
+        if (onOpen != null) {
+          onOpen(destination);
+        } else {
+          _openDestination(destination);
+        }
+      },
     );
 
     if (!destination.showsVersion) return row(null);
@@ -653,8 +1048,11 @@ class _SettingsViewState extends State<SettingsView> {
     );
   }
 
-  void _openDestination(_SettingsDestination destination) {
-    Navigator.of(context).push(
+  void _openDestination(
+    _SettingsDestination destination, {
+    BuildContext? context,
+  }) {
+    Navigator.of(context ?? this.context).push(
       destination.platformNeutralRoute
           ? AppPageRoute<void>(
               pageBuilder: (_, _, _) => destination.destination(),
@@ -669,7 +1067,8 @@ class _SettingsViewState extends State<SettingsView> {
       key: const ValueKey('settings-log-out'),
       semanticLabel: AppStrings.t(AppStringKeys.settingsLogOut),
       onTap: () {
-        Navigator.of(context).pop();
+        final navigator = Navigator.of(context);
+        if (navigator.canPop()) navigator.pop();
         unawaited(
           context.read<AccountStore>().logOutActive(
             context.read<AuthManager>(),
@@ -709,6 +1108,126 @@ enum _SettingsOwner {
   final String titleKey;
 }
 
+List<_SettingsCategory> _settingsCategories(
+  List<_SettingsDestination> destinations,
+) {
+  final byId = {
+    for (final destination in destinations) destination.id: destination,
+  };
+  return _settingsCategoryDefinitions
+      .map(
+        (definition) => _SettingsCategory(
+          id: definition.id,
+          titleKey: definition.titleKey,
+          icon: definition.icon,
+          destinations: [for (final id in definition.destinationIds) ?byId[id]],
+        ),
+      )
+      .where((category) => category.destinations.isNotEmpty)
+      .toList(growable: false);
+}
+
+const _settingsCategoryDefinitions = <_SettingsCategoryDefinition>[
+  _SettingsCategoryDefinition(
+    id: 'general',
+    titleKey: AppStringKeys.generalTitle,
+    icon: HeroAppIcons.gear,
+    destinationIds: ['edit-profile', 'telegram-business', 'mithka-pro'],
+  ),
+  _SettingsCategoryDefinition(
+    id: 'notifications',
+    titleKey: AppStringKeys.notificationNotifications,
+    icon: HeroAppIcons.solidBell,
+    destinationIds: ['notifications'],
+  ),
+  _SettingsCategoryDefinition(
+    id: 'privacy',
+    titleKey: AppStringKeys.privacySecurityTitle,
+    icon: HeroAppIcons.shieldHalved,
+    destinationIds: [
+      'telegram-privacy',
+      'telegram-blocked-users',
+      'mithka-content-filters',
+      'mithka-app-lock',
+      'mithka-account-backup',
+    ],
+  ),
+  _SettingsCategoryDefinition(
+    id: 'appearance',
+    titleKey: AppStringKeys.appearanceTitle,
+    icon: HeroAppIcons.wandMagicSparkles,
+    destinationIds: [
+      'mithka-appearance',
+      'telegram-chat-folders',
+      'mithka-chat-behavior',
+    ],
+  ),
+  _SettingsCategoryDefinition(
+    id: 'data-storage',
+    titleKey: AppStringKeys.settingsDataAndStorage,
+    icon: HeroAppIcons.compactDisc,
+    destinationIds: ['mithka-data-storage'],
+  ),
+  _SettingsCategoryDefinition(
+    id: 'hotkeys',
+    titleKey: AppStringKeys.desktopHotkeysTitle,
+    icon: HeroAppIcons.key,
+    destinationIds: ['mithka-hotkeys'],
+  ),
+  _SettingsCategoryDefinition(
+    id: 'language',
+    titleKey: AppStringKeys.languageTitle,
+    icon: HeroAppIcons.language,
+    destinationIds: ['telegram-language', 'mithka-translation'],
+  ),
+  _SettingsCategoryDefinition(
+    id: 'advanced',
+    titleKey: AppStringKeys.advancedTitle,
+    icon: HeroAppIcons.grip,
+    destinationIds: [
+      'mithka-features',
+      'mithka-ai',
+      'mithka-proxy',
+      'mithka-advanced',
+      'mithka-developer',
+    ],
+  ),
+  _SettingsCategoryDefinition(
+    id: 'about',
+    titleKey: AppStringKeys.settingsAboutMithka,
+    icon: HeroAppIcons.circleInfo,
+    destinationIds: ['mithka-about'],
+  ),
+];
+
+class _SettingsCategoryDefinition {
+  const _SettingsCategoryDefinition({
+    required this.id,
+    required this.titleKey,
+    required this.icon,
+    required this.destinationIds,
+  });
+
+  final String id;
+  final String titleKey;
+  final AppIconData icon;
+  final List<String> destinationIds;
+}
+
+class _SettingsCategory {
+  const _SettingsCategory({
+    required this.id,
+    required this.titleKey,
+    required this.icon,
+    required this.destinations,
+  });
+
+  final String id;
+  final String titleKey;
+  final AppIconData icon;
+  final List<_SettingsDestination> destinations;
+}
+
 class _SettingsDestination {
   const _SettingsDestination({
     required this.id,
@@ -718,6 +1237,7 @@ class _SettingsDestination {
     required this.icon,
     required this.color,
     required this.destination,
+    this.splitDestination,
     this.owner,
     this.trailingKey,
     this.platformNeutralRoute = false,
@@ -733,6 +1253,7 @@ class _SettingsDestination {
   final AppIconData icon;
   final Color color;
   final Widget Function() destination;
+  final Widget Function()? splitDestination;
   final String? trailingKey;
   final bool platformNeutralRoute;
   final bool showsVersion;

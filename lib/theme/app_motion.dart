@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../platform/adaptive_platform.dart';
+import 'app_theme.dart';
 
 /// Shared timing, easing, navigation, and scrolling behavior for Mithka.
 ///
@@ -33,6 +34,24 @@ abstract final class AppMotion {
 
   static Duration duration(BuildContext context, Duration normal) =>
       isReduced(context) ? instant : normal;
+
+  /// Desktop panes and routes replace content in place. Keeping their child at
+  /// the full destination bounds avoids briefly uncovering the native window
+  /// canvas at a list/detail boundary while a route is changing.
+  static bool usesInPlaceDesktopNavigation(BuildContext context) =>
+      isDesktopTargetPlatform(Theme.of(context).platform);
+
+  @visibleForTesting
+  static const desktopRouteSurfaceKey = ValueKey(
+    'desktop-route-transition-surface',
+  );
+
+  static Widget desktopRouteSurface(BuildContext context, Widget child) =>
+      ColoredBox(
+        key: desktopRouteSurfaceKey,
+        color: context.colors.background,
+        child: child,
+      );
 
   static Widget dialogTransition(
     BuildContext context,
@@ -298,6 +317,9 @@ Widget _buildAppPageTransition({
   required Widget child,
   required bool fullscreenDialog,
 }) {
+  if (AppMotion.usesInPlaceDesktopNavigation(context)) {
+    return AppMotion.desktopRouteSurface(context, child);
+  }
   if (AppMotion.isReduced(context)) return child;
 
   final entering = CurvedAnimation(

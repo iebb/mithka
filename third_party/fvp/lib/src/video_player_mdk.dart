@@ -147,6 +147,7 @@ class MdkVideoPlayerPlatform extends VideoPlayerPlatform {
   static int _lowLatency = 0;
   static int _seekFlags = mdk.SeekFlag.fromStart | mdk.SeekFlag.inCache;
   static List<String>? _decoders;
+  static bool _installGlobalLogHandler = true;
   static final _mdkLog = Logger('mdk');
   // _prevImpl: required if registerWith() can be invoked multiple times by user
   static VideoPlayerPlatform? _prevImpl;
@@ -188,6 +189,8 @@ class MdkVideoPlayerPlatform extends VideoPlayerPlatform {
       // TODO: _env => putenv
       _decoders = options['video.decoders'];
       _subtitleFontFile = options['subtitleFontFile'];
+      _installGlobalLogHandler =
+          (options['installGlobalLogHandler'] ?? true) as bool;
     }
 
     if (_decoders == null && !PlatformEx.isAndroidEmulator()) {
@@ -229,25 +232,27 @@ class MdkVideoPlayerPlatform extends VideoPlayerPlatform {
   }
 
   static void _setupMdk() {
-    mdk.setLogHandler((level, msg) {
-      if (msg.endsWith('\n')) {
-        msg = msg.substring(0, msg.length - 1);
-      }
-      switch (level) {
-        case mdk.LogLevel.error:
-          _mdkLog.severe(msg);
-        case mdk.LogLevel.warning:
-          _mdkLog.warning(msg);
-        case mdk.LogLevel.info:
-          _mdkLog.info(msg);
-        case mdk.LogLevel.debug:
-          _mdkLog.fine(msg);
-        case mdk.LogLevel.all:
-          _mdkLog.finest(msg);
-        default:
-          return;
-      }
-    });
+    if (_installGlobalLogHandler) {
+      mdk.setLogHandler((level, msg) {
+        if (msg.endsWith('\n')) {
+          msg = msg.substring(0, msg.length - 1);
+        }
+        switch (level) {
+          case mdk.LogLevel.error:
+            _mdkLog.severe(msg);
+          case mdk.LogLevel.warning:
+            _mdkLog.warning(msg);
+          case mdk.LogLevel.info:
+            _mdkLog.info(msg);
+          case mdk.LogLevel.debug:
+            _mdkLog.fine(msg);
+          case mdk.LogLevel.all:
+            _mdkLog.finest(msg);
+          default:
+            return;
+        }
+      });
+    }
     // mdk.setGlobalOptions('plugins', 'mdk-braw');
     mdk.setGlobalOption("log", "all");
     mdk.setGlobalOption('d3d11.sync.cpu', 1);

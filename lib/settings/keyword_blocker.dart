@@ -35,6 +35,7 @@ class KeywordBlocker extends ChangeNotifier {
     _blockedSenderIds = _parseSenderIds(
       prefs.getStringList(_senderKey) ?? const [],
     );
+    notifyListeners();
   }
 
   bool matches(String text) {

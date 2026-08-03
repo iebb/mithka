@@ -6,6 +6,7 @@
 //  state in the chat view model.
 //
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -59,9 +60,18 @@ class PollComposerResult {
 }
 
 class PollComposerView extends StatefulWidget {
-  const PollComposerView({super.key, this.maxOptions = 30});
+  const PollComposerView({
+    super.key,
+    this.maxOptions = 30,
+    this.showBackButton = true,
+    this.onClose,
+    this.onSubmit,
+  });
 
   final int maxOptions;
+  final bool showBackButton;
+  final FutureOr<void> Function()? onClose;
+  final FutureOr<void> Function(PollComposerResult result)? onSubmit;
 
   @override
   State<PollComposerView> createState() => _PollComposerViewState();
@@ -208,24 +218,37 @@ class _PollComposerViewState extends State<PollComposerView> {
         PollOptionDraft(text: text, mediaPath: _options[index].mediaPath),
       );
     }
-    Navigator.of(context).pop(
-      PollComposerResult(
-        question: _question.text.trim(),
-        description: _description.text.trim(),
-        options: options,
-        pollMediaPath: _pollMediaPath,
-        isAnonymous: _anonymous,
-        allowsMultipleAnswers: !_quiz && _multiple,
-        allowsRevoting: _revoting,
-        allowAddingOptions: !_quiz && _allowAdding,
-        shuffleOptions: _shuffle,
-        hideResultsUntilCloses: _hideResults,
-        isQuiz: _quiz,
-        correctOptionIndexes: {for (final index in _correct) ?oldToNew[index]},
-        explanation: _quiz ? _explanation.text.trim() : '',
-        openPeriod: _openPeriod,
-      ),
+    final result = PollComposerResult(
+      question: _question.text.trim(),
+      description: _description.text.trim(),
+      options: options,
+      pollMediaPath: _pollMediaPath,
+      isAnonymous: _anonymous,
+      allowsMultipleAnswers: !_quiz && _multiple,
+      allowsRevoting: _revoting,
+      allowAddingOptions: !_quiz && _allowAdding,
+      shuffleOptions: _shuffle,
+      hideResultsUntilCloses: _hideResults,
+      isQuiz: _quiz,
+      correctOptionIndexes: {for (final index in _correct) ?oldToNew[index]},
+      explanation: _quiz ? _explanation.text.trim() : '',
+      openPeriod: _openPeriod,
     );
+    final callback = widget.onSubmit;
+    if (callback != null) {
+      unawaited(Future<void>.sync(() => callback(result)));
+      return;
+    }
+    Navigator.of(context).pop(result);
+  }
+
+  void _close() {
+    final callback = widget.onClose;
+    if (callback != null) {
+      unawaited(Future<void>.sync(callback));
+      return;
+    }
+    Navigator.of(context).pop();
   }
 
   @override
@@ -237,7 +260,7 @@ class _PollComposerViewState extends State<PollComposerView> {
         children: [
           NavHeader(
             title: AppStrings.t(AppStringKeys.pollComposerCreatePollTitle),
-            onBack: () => Navigator.of(context).pop(),
+            onBack: widget.showBackButton ? _close : null,
             trailing: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: _canSend ? _send : null,

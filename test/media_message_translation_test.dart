@@ -5,6 +5,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/custom_emoji.dart';
+import 'package:mithka/chat/message_action_menu.dart';
 import 'package:mithka/chat/message_bubble.dart';
 import 'package:mithka/chat/stretchable_message_bubble_background.dart';
 import 'package:mithka/components/app_icons.dart';
@@ -46,6 +47,7 @@ void main() {
     TelegramCloudTheme? cloudTheme,
     MessageBubbleBackground? bubbleBackground,
     ValueChanged<ChatMessage>? onLongPress,
+    void Function(ChatMessage, Rect?, MessageActionSource)? onActionMenu,
   }) async {
     SharedPreferences.setMockInitialValues({
       'groupImageMessages': true,
@@ -80,9 +82,11 @@ void main() {
               incomingBubbleColor: incomingBubbleColor,
               incomingBubbleTextColor: incomingBubbleTextColor,
               messageColors: messageColors,
-              onLongPress: onLongPress == null
-                  ? null
-                  : (message, _, _) => onLongPress(message),
+              onLongPress:
+                  onActionMenu ??
+                  (onLongPress == null
+                      ? null
+                      : (message, _, _) => onLongPress(message)),
             ),
           ),
         ),
@@ -124,29 +128,40 @@ void main() {
       date: 1,
     );
     ChatMessage? actionTarget;
+    Rect? actionAnchor;
 
     await pumpBubble(
       tester,
       message,
-      onLongPress: (message) => actionTarget = message,
+      onActionMenu: (message, bounds, _) {
+        actionTarget = message;
+        actionAnchor = bounds;
+      },
     );
 
     final contextGesture = find.descendant(
       of: find.byType(MessageBubble),
       matching: find.byWidgetPredicate(
-        (widget) => widget is GestureDetector && widget.onSecondaryTap != null,
+        (widget) =>
+            widget is GestureDetector && widget.onSecondaryTapUp != null,
       ),
     );
     expect(contextGesture, findsOneWidget);
 
-    await tester.tap(
-      contextGesture,
+    final clickPosition =
+        tester.getTopLeft(contextGesture) + const Offset(41, 17);
+    await tester.tapAt(
+      clickPosition,
       buttons: kSecondaryMouseButton,
       kind: PointerDeviceKind.mouse,
     );
     await tester.pump();
 
     expect(actionTarget, same(message));
+    expect(
+      actionAnchor,
+      Rect.fromLTWH(clickPosition.dx, clickPosition.dy, 0, 0),
+    );
   });
 
   testWidgets('grouped photo captions render their translation', (

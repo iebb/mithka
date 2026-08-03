@@ -5,6 +5,8 @@
 //  TDLib's searchMessagesFilterPinned and can jump back to the original message.
 //
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
@@ -18,7 +20,7 @@ import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
 import 'chat_view.dart';
-import 'full_image_viewer.dart';
+import 'image_preview.dart';
 import 'video_playback_queue.dart';
 import 'video_player_view.dart';
 
@@ -352,12 +354,7 @@ class _PinnedMessagesViewState extends State<PinnedMessagesView> {
       return;
     }
     if (message.image == null) return;
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        fullscreenDialog: true,
-        builder: (_) => FullImageViewer(items: [message.image!]),
-      ),
-    );
+    unawaited(openImagePreview(context, items: [message.image!]));
   }
 
   VideoPlaybackQueue _videoQueue(ChatMessage current) {

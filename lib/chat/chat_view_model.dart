@@ -312,6 +312,7 @@ class ChatViewModel extends ChangeNotifier {
   String peerTitle;
   TdFileRef? peerPhoto;
   ChatFirstContactInfo? firstContactInfo;
+  ChatKind? chatKind;
   bool isGroup = false;
   int memberCount = 0;
   int? peerUserId; // private chat → call target
@@ -326,6 +327,12 @@ class ChatViewModel extends ChangeNotifier {
   List<Map<String, dynamic>> _draftFormattedEntities = const [];
   final List<_DraftMention> _draftMentions = [];
   ChatMessage? replyTo;
+  ChatMessage? editingMessage;
+  String? _draftBeforeEditing;
+  String _formattedDraftBeforeEditing = '';
+  List<Map<String, dynamic>> _entitiesBeforeEditing = const [];
+  List<_DraftMention> _mentionsBeforeEditing = const [];
+  ChatMessage? _replyBeforeEditing;
   List<MessageSenderOption> availableMessageSenders = const [];
   MessageSenderOption? selectedMessageSender;
 
@@ -864,6 +871,9 @@ class ChatViewModel extends ChangeNotifier {
   }
 
   void onDisappear() {
+    if (editingMessage != null) {
+      _restoreComposerAfterMessageEdit(notify: false);
+    }
     _flushPendingDraftSave();
     _sub?.cancel();
     _sub = null;
@@ -909,7 +919,96 @@ class ChatViewModel extends ChangeNotifier {
     _draftFormattedText = formattedText ?? value;
     _draftFormattedEntities = entities;
     _draftMentions.removeWhere((m) => !draft.contains(m.text));
-    _scheduleDraftSave();
+    if (editingMessage == null) _scheduleDraftSave();
+  }
+
+  String get composerFormattedDraft => _draftFormattedText;
+
+  List<Map<String, dynamic>> get composerDraftEntities =>
+      List.unmodifiable(_draftFormattedEntities);
+
+  bool get editingMessageUsesCaption => switch (editingMessage?.contentType) {
+    'messagePhoto' ||
+    'messageVideo' ||
+    'messageAnimation' ||
+    'messageAudio' ||
+    'messageDocument' => true,
+    _ => false,
+  };
+
+  void beginMessageEdit(ChatMessage message) {
+    if (editingMessage != null) {
+      _restoreComposerAfterMessageEdit(notify: false, scheduleDraftSave: false);
+    }
+    _draftSaveTimer?.cancel();
+    _draftSaveTimer = null;
+    _draftBeforeEditing = draft;
+    _formattedDraftBeforeEditing = _draftFormattedText;
+    _entitiesBeforeEditing = [
+      for (final entity in _draftFormattedEntities)
+        Map<String, dynamic>.from(entity),
+    ];
+    _mentionsBeforeEditing = List<_DraftMention>.from(_draftMentions);
+    _replyBeforeEditing = replyTo;
+    editingMessage = message;
+    replyTo = null;
+    draft = message.text;
+    _draftFormattedText = message.text;
+    _draftFormattedEntities = [
+      for (final entity in message.textEntities) entity.toTdJson(),
+    ];
+    _draftMentions.clear();
+    notifyListeners();
+  }
+
+  void cancelMessageEdit() {
+    if (editingMessage == null) return;
+    _restoreComposerAfterMessageEdit();
+  }
+
+  Future<bool> submitMessageEdit(
+    String text, {
+    List<Map<String, dynamic>> entities = const [],
+  }) async {
+    final message = editingMessage;
+    if (message == null) return false;
+    if (!editingMessageUsesCaption && text.trim().isEmpty) return false;
+    if (editingMessageUsesCaption) {
+      await editMessageCaption(message.id, text, entities: entities);
+    } else {
+      await editMessageText(message.id, text, entities: entities);
+    }
+    if (editingMessage?.id == message.id) {
+      _restoreComposerAfterMessageEdit();
+    }
+    return true;
+  }
+
+  void _restoreComposerAfterMessageEdit({
+    bool notify = true,
+    bool scheduleDraftSave = true,
+  }) {
+    final savedDraft = _draftBeforeEditing;
+    editingMessage = null;
+    if (savedDraft != null) {
+      draft = savedDraft;
+      _draftFormattedText = _formattedDraftBeforeEditing;
+      _draftFormattedEntities = [
+        for (final entity in _entitiesBeforeEditing)
+          Map<String, dynamic>.from(entity),
+      ];
+      _draftMentions
+        ..clear()
+        ..addAll(_mentionsBeforeEditing);
+      replyTo = _replyBeforeEditing;
+    }
+    _draftBeforeEditing = null;
+    _formattedDraftBeforeEditing = '';
+    _entitiesBeforeEditing = const [];
+    _mentionsBeforeEditing = const [];
+    _replyBeforeEditing = null;
+    if (scheduleDraftSave) _scheduleDraftSave();
+    if (notify) notifyListeners();
   }
 
   void _scheduleDraftSave() {
@@ -973,11 +1072,38 @@ class ChatViewModel extends ChangeNotifier {
     );
   }
 
+  /// Flushes the current composer draft before a separate desktop editor
+  /// reads it through the account-scoped TDLib proxy.
+  Future<void> persistComposerDraft() async {
+    _draftSaveTimer?.cancel();
+    _draftSaveTimer = null;
+    final text = _draftFormattedText;
+    final allEntities = [
+      ..._draftFormattedEntities,
+      ..._mentionEntitiesFor(text, _draftFormattedEntities),
+    ];
+    await _client.query(
+      setTextChatDraftRequest(
+        chatId: chatId,
+        date: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        formattedText: text.trim().isEmpty
+            ? null
+            : {
+                '@type': 'formattedText',
+                'text': text,
+                if (allEntities.isNotEmpty) 'entities': allEntities,
+              },
+      ),
+    );
+    _lastSavedDraftText = text.trim().isEmpty ? '' : text;
+  }
+
   void _applyRemoteDraft(
     Map<String, dynamic>? remoteDraft, {
     bool force = false,
     bool notify = true,
   }) {
+    if (editingMessage != null) return;
     if (!force && (_draftSaveTimer?.isActive ?? false)) return;
     final text = TDParse.draftText(remoteDraft);
     if (!force && text == _lastSavedDraftText) return;
@@ -1083,7 +1209,7 @@ class ChatViewModel extends ChangeNotifier {
     _draftFormattedText = draft;
     _draftFormattedEntities = const [];
     _draftMentions.add(_DraftMention(text: mention, userId: userId));
-    _scheduleDraftSave();
+    if (editingMessage == null) _scheduleDraftSave();
     notifyListeners();
   }
 
@@ -1400,6 +1526,9 @@ class ChatViewModel extends ChangeNotifier {
   /// The reply metadata already addresses the sender. Mentions remain an
   /// explicit action so replying cannot accidentally invoke inline-bot search.
   void setReply(ChatMessage? message) {
+    if (editingMessage != null) {
+      _restoreComposerAfterMessageEdit(notify: false);
+    }
     replyTo = message;
     notifyListeners();
   }
@@ -2983,6 +3112,7 @@ class ChatViewModel extends ChangeNotifier {
     _setPaidMessageStarCount(_paidMessageStars(chat), notify: false);
     _applyRemoteDraft(chat.obj('draft_message'), force: true, notify: false);
     final kind = TDParse.chatKind(chat);
+    chatKind = kind;
     isGroup = kind == ChatKind.group || kind == ChatKind.channel;
     isSecretChat = kind == ChatKind.secret;
     final entryUpperMessageId = chat.obj('last_message')?.int64('id') ?? 0;

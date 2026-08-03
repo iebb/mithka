@@ -37,6 +37,33 @@ void main() {
     expect(DesktopVideoWindowArguments.tryParse('not json'), isNull);
   });
 
+  test('desktop playback preparation retries a transient range miss', () async {
+    var attempts = 0;
+
+    final prepared = await prepareDesktopVideoPlayback(() async {
+      attempts++;
+      return attempts == 2;
+    });
+
+    expect(prepared, isTrue);
+    expect(attempts, 2);
+  });
+
+  test(
+    'desktop playback preparation stops after its bounded retries',
+    () async {
+      var attempts = 0;
+
+      final prepared = await prepareDesktopVideoPlayback(() async {
+        attempts++;
+        return false;
+      });
+
+      expect(prepared, isFalse);
+      expect(attempts, 2);
+    },
+  );
+
   test(
     'desktop player uses package windowing and native keyboard controls',
     () {
@@ -57,6 +84,17 @@ void main() {
       ).readAsStringSync();
 
       expect(window, contains('package:mithka_video_player/'));
+      expect(window, contains('stream.prepareForPlayback'));
+      expect(
+        window.indexOf('stream.prepareForPlayback'),
+        lessThan(window.indexOf('MithkaDesktopVideoWindows.instance.open')),
+      );
+      expect(
+        window,
+        isNot(
+          contains('onClose: MithkaDesktopVideoWindows.closeCurrentWindow'),
+        ),
+      );
       expect(window, isNot(contains('package:multi_window_manager/')));
       expect(packageWindow, isNot(contains('package:multi_window_manager/')));
       expect(packageWindow, isNot(contains("import 'dart:io'")));
@@ -93,10 +131,11 @@ void main() {
     expect(
       runner,
       contains(
-        'MultiWindowManagerPlugin.RegisterGeneratedPlugins = '
-        'RegisterGeneratedPlugins',
+        'MultiWindowManagerPlugin.RegisterGeneratedPlugins = { registry in',
       ),
     );
+    expect(runner, contains('RegisterGeneratedPlugins(registry: registry)'));
+    expect(runner, contains('DesktopClipboardImagesPlugin.register('));
   });
 
   test('scrub preview converts through the root overlay coordinates', () {

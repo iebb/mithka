@@ -31,7 +31,9 @@ String _notificationExceptionCount(int count) => AppStrings.t(
 );
 
 class NotificationSettingsView extends StatefulWidget {
-  const NotificationSettingsView({super.key});
+  const NotificationSettingsView({super.key, this.showBackButton = true});
+
+  final bool showBackButton;
 
   @override
   State<NotificationSettingsView> createState() =>
@@ -328,7 +330,9 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
         children: [
           NavHeader(
             title: AppStrings.t(AppStringKeys.notificationNotifications),
-            onBack: () => Navigator.of(context).pop(),
+            onBack: widget.showBackButton && Navigator.of(context).canPop()
+                ? () => Navigator.of(context).pop()
+                : null,
           ),
           Expanded(
             child: DesktopContentConstraint(

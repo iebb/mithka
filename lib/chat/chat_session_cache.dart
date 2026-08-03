@@ -17,6 +17,39 @@ class ChatSessionRenderState {
   final ChatFirstContactInfo? firstContactInfo;
 }
 
+/// Prevents repeated O(n) transcript snapshots for view-model notifications
+/// that only change typing, read state, or file progress. ChatViewModel
+/// publishes a new list whenever transcript membership changes, while message
+/// objects remain shared so in-place metadata hydration is still reflected by
+/// an existing snapshot.
+class ChatSessionCacheWriteGate {
+  List<ChatMessage>? _messages;
+  bool? _anchoredHistory;
+  bool? _olderHistoryExhausted;
+  ChatFirstContactInfo? _firstContactInfo;
+
+  bool shouldStore({
+    required List<ChatMessage> messages,
+    required bool anchoredHistory,
+    required bool olderHistoryExhausted,
+    required ChatFirstContactInfo? firstContactInfo,
+    bool force = false,
+  }) {
+    final changed =
+        force ||
+        !identical(_messages, messages) ||
+        _anchoredHistory != anchoredHistory ||
+        _olderHistoryExhausted != olderHistoryExhausted ||
+        !identical(_firstContactInfo, firstContactInfo);
+    if (!changed) return false;
+    _messages = messages;
+    _anchoredHistory = anchoredHistory;
+    _olderHistoryExhausted = olderHistoryExhausted;
+    _firstContactInfo = firstContactInfo;
+    return true;
+  }
+}
+
 /// Small in-memory LRU used to paint previously opened chats immediately.
 class ChatSessionCache {
   ChatSessionCache({this.capacity = 24}) : assert(capacity > 0);

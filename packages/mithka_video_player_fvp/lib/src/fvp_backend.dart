@@ -30,6 +30,7 @@ class MithkaFvpConfiguration {
     this.globalOptions = const {},
     this.androidSurfaceTunnel = false,
     this.subtitleFontFile,
+    this.installGlobalLogHandler = true,
   });
 
   /// Platforms routed through FVP.
@@ -68,6 +69,13 @@ class MithkaFvpConfiguration {
   /// Local asset path or URL used as a subtitle-font fallback by FVP.
   final String? subtitleFontFile;
 
+  /// Whether this Flutter engine owns FVP's process-global MDK log callback.
+  ///
+  /// Desktop child windows run in secondary Flutter engines inside the same
+  /// process. They must leave this disabled so closing a child cannot leave
+  /// MDK posting log records to that engine's destroyed Dart port.
+  final bool installGlobalLogHandler;
+
   /// Converts this typed configuration to FVP's stable option-map contract.
   Map<String, Object> toFvpOptions() {
     _validatePositiveDimension(maxWidth, 'maxWidth');
@@ -91,6 +99,7 @@ class MithkaFvpConfiguration {
         'global': Map<String, Object>.unmodifiable(globalOptions),
       if (androidSurfaceTunnel) 'tunnel': true,
       'subtitleFontFile': ?subtitleFontFile,
+      if (!installGlobalLogHandler) 'installGlobalLogHandler': false,
     };
   }
 

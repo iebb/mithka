@@ -103,6 +103,8 @@ Future<void> showChatListPreview(
   BuildContext context, {
   required ChatSummary chat,
   required List<ChatListPreviewAction> actions,
+  String? meName,
+  TdFileRef? mePhoto,
   ChatListPreviewLoader? loadMessages,
 }) async {
   unawaited(HapticFeedback.mediumImpact());
@@ -114,6 +116,8 @@ Future<void> showChatListPreview(
     pageBuilder: (dialogContext, _, _) => ChatListPreviewSurface(
       chat: chat,
       actions: actions,
+      meName: meName,
+      mePhoto: mePhoto,
       loadMessages:
           loadMessages ?? () => loadChatListPreviewMessages(chat: chat),
     ),
@@ -240,11 +244,15 @@ class ChatListPreviewSurface extends StatefulWidget {
     required this.chat,
     required this.actions,
     required this.loadMessages,
+    this.meName,
+    this.mePhoto,
   });
 
   final ChatSummary chat;
   final List<ChatListPreviewAction> actions;
   final ChatListPreviewLoader loadMessages;
+  final String? meName;
+  final TdFileRef? mePhoto;
 
   @override
   State<ChatListPreviewSurface> createState() => _ChatListPreviewSurfaceState();
@@ -403,14 +411,7 @@ class _ChatListPreviewSurfaceState extends State<ChatListPreviewSurface> {
           ],
           if (widget.chat.isPinned) ...[
             const SizedBox(width: 8),
-            Transform.rotate(
-              angle: 0.785,
-              child: AppIcon(
-                HeroAppIcons.thumbtack,
-                size: 15,
-                color: c.textTertiary,
-              ),
-            ),
+            AppPinIcon(size: 15, color: c.textTertiary),
           ],
         ],
       ),
@@ -458,6 +459,9 @@ class _ChatListPreviewSurfaceState extends State<ChatListPreviewSurface> {
                   peerTitle: widget.chat.title,
                   peerPhoto: widget.chat.photo,
                   isGroup: isGroup,
+                  meName:
+                      widget.meName ?? AppStringKeys.chatMeLabel.l10n(context),
+                  mePhoto: widget.mePhoto,
                 ),
               ),
             ),

@@ -1,10 +1,14 @@
-import 'dart:ui' show Locale;
-
+import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/intl.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/l10n/telegram_language_controller.dart';
+import 'package:provider/provider.dart';
 
 void main() {
+  tearDown(() => Intl.defaultLocale = null);
+
   test('prefers the familiar pack for Simplified Chinese', () {
     final controller = TelegramLanguageController.test();
 
@@ -16,6 +20,169 @@ void main() {
     );
     expect(controller.packs.single.displayName, '简体中文（熟悉术语）');
     expect(controller.packs.single.isOfficial, isFalse);
+  });
+
+  test('Mithka locale follows a Telegram pack base language', () {
+    final controller = TelegramLanguageController.test(
+      selectedPackId: 'custom-de',
+      packs: const [
+        TelegramLanguagePackOption(
+          id: 'custom-de',
+          baseLanguagePackId: 'de',
+          name: 'Custom German',
+          nativeName: 'Deutsch',
+          pluralCode: 'de',
+          isOfficial: false,
+          isRtl: false,
+          isBeta: false,
+          isInstalled: true,
+        ),
+      ],
+    );
+
+    expect(controller.mithkaLocale, const Locale('de'));
+  });
+
+  test('all eight supported Telegram language bases map to Mithka locales', () {
+    const expected = <String, Locale>{
+      'zh-hans': Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hans'),
+      'zh-hant': Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hant'),
+      'ja': Locale('ja'),
+      'ko': Locale('ko'),
+      'en': Locale('en'),
+      'fr': Locale('fr'),
+      'es': Locale('es'),
+      'de': Locale('de'),
+    };
+
+    for (final entry in expected.entries) {
+      final controller = TelegramLanguageController.test(
+        selectedPackId: entry.key,
+        packs: const [],
+      );
+      expect(controller.mithkaLocale, entry.value, reason: entry.key);
+    }
+  });
+
+  test('unsupported Telegram pack bases make Mithka use English', () {
+    final controller = TelegramLanguageController.test(
+      selectedPackId: 'custom-ru',
+      packs: const [
+        TelegramLanguagePackOption(
+          id: 'custom-ru',
+          baseLanguagePackId: 'ru',
+          name: 'Custom Russian',
+          nativeName: 'Russian',
+          pluralCode: 'ru',
+          isOfficial: false,
+          isRtl: false,
+          isBeta: false,
+          isInstalled: true,
+        ),
+      ],
+    );
+
+    expect(controller.mithkaLocale, AppLocalizations.fallbackLocale);
+  });
+
+  test(
+    'compact supported-language selection uses an official Telegram pack',
+    () async {
+      final controller = TelegramLanguageController.test(
+        selectedPackId: 'en',
+        packs: const [
+          TelegramLanguagePackOption(
+            id: 'custom-ja',
+            baseLanguagePackId: 'ja',
+            name: 'Custom Japanese',
+            nativeName: 'Custom Japanese',
+            pluralCode: 'ja',
+            isOfficial: false,
+            isRtl: false,
+            isBeta: false,
+            isInstalled: true,
+          ),
+          TelegramLanguagePackOption(
+            id: 'ja',
+            baseLanguagePackId: '',
+            name: 'Japanese',
+            nativeName: '日本語',
+            pluralCode: 'ja',
+            isOfficial: true,
+            isRtl: false,
+            isBeta: false,
+            isInstalled: true,
+          ),
+        ],
+      );
+
+      await controller.selectSupportedLocale(const Locale('ja'));
+
+      expect(controller.selectedPackId, 'ja');
+      expect(controller.mithkaLocale, const Locale('ja'));
+    },
+  );
+
+  testWidgets('Telegram pack selection rebuilds localized Mithka UI', (
+    tester,
+  ) async {
+    final controller = TelegramLanguageController.test(
+      selectedPackId: 'en',
+      packs: const [
+        TelegramLanguagePackOption(
+          id: 'en',
+          baseLanguagePackId: '',
+          name: 'English',
+          nativeName: 'English',
+          pluralCode: 'en',
+          isOfficial: true,
+          isRtl: false,
+          isBeta: false,
+          isInstalled: true,
+        ),
+        TelegramLanguagePackOption(
+          id: 'ja',
+          baseLanguagePackId: '',
+          name: 'Japanese',
+          nativeName: '日本語',
+          pluralCode: 'ja',
+          isOfficial: true,
+          isRtl: false,
+          isBeta: false,
+          isInstalled: true,
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: controller,
+        child: AnimatedBuilder(
+          animation: controller,
+          builder: (context, _) => MaterialApp(
+            locale: controller.mithkaLocale,
+            supportedLocales: AppLocalizations.supportedLocales,
+            localizationsDelegates: const [
+              AppLocalizations.delegate,
+              GlobalMaterialLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+            ],
+            home: Builder(
+              builder: (context) =>
+                  Text(AppStringKeys.tabMessages.l10n(context)),
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(find.text('Messages'), findsOneWidget);
+
+    await controller.setSelectedPack('ja');
+    await tester.pumpAndSettle();
+
+    expect(find.text('メッセージ'), findsOneWidget);
+    expect(find.text('Messages'), findsNothing);
   });
 
   test('falls back when a Telegram plural placeholder has no value', () {

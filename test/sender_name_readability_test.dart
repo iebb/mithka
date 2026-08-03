@@ -177,4 +177,36 @@ void main() {
       ),
     );
   });
+
+  testWidgets('desktop sender member tag follows the name', (tester) async {
+    await tester.pumpWidget(
+      const Directionality(
+        textDirection: TextDirection.ltr,
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: SenderIdentityPills(
+            readabilityMode: SenderNameReadabilityMode.background,
+            bubbleColor: Color(0xFF223344),
+            name: 'Bob Harris',
+            nameStyle: TextStyle(fontSize: 12),
+            role: MemberRole.member,
+            roleTitle: 'Helper',
+            roleAfterName: true,
+          ),
+        ),
+      ),
+    );
+
+    final name = find.text('Bob Harris');
+    final role = find.byType(RoleTag);
+    expect(
+      tester.getTopLeft(role).dx,
+      greaterThan(tester.getTopRight(name).dx),
+    );
+    expect(tester.widget<RoleTag>(role).connectedToTrailing, isFalse);
+    expect(
+      find.byKey(const ValueKey('connectedSenderIdentityPills')),
+      findsNothing,
+    );
+  });
 }

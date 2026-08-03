@@ -15,6 +15,7 @@ import 'package:provider/provider.dart';
 
 import '../components/app_icons.dart';
 import '../l10n/telegram_language_controller.dart';
+import '../platform/adaptive_platform.dart';
 import '../settings/translation_controller.dart';
 import '../tdlib/td_models.dart';
 import 'custom_emoji.dart';
@@ -183,6 +184,8 @@ class MessageActionMenu extends StatelessWidget {
   static const _actionWidth = 58.0;
   static const preferredWidth = 332.0;
   static const preferredHeight = 152.0;
+  static const desktopPreferredWidth = 220.0;
+  static const _desktopActionHeight = 36.0;
 
   @visibleForTesting
   static ({int first, int second}) rowCountsForActionCount(int count) {
@@ -193,6 +196,40 @@ class MessageActionMenu extends StatelessWidget {
 
   static double widthForAvailable(double availableWidth) =>
       math.min(preferredWidth, availableWidth);
+
+  @visibleForTesting
+  static double mobileWidthForActionCount(int count, double availableWidth) {
+    if (count >= 5) return widthForAvailable(availableWidth);
+    final fitted =
+        (_horizontalPadding * 2) + (math.max(count, 1) * _actionWidth);
+    return math.min(fitted, availableWidth);
+  }
+
+  @visibleForTesting
+  static double desktopHeightForActionCount(
+    int count, {
+    required double availableHeight,
+  }) =>
+      math.min(math.max(0, count) * _desktopActionHeight + 12, availableHeight);
+
+  static Offset desktopOriginForPointer({
+    required Offset pointer,
+    required Size viewport,
+    required Size menuSize,
+    required double topSafe,
+    required double bottomSafe,
+    double horizontalMargin = 10,
+  }) {
+    final maxLeft = math.max(
+      horizontalMargin,
+      viewport.width - menuSize.width - horizontalMargin,
+    );
+    final maxTop = math.max(topSafe, bottomSafe - menuSize.height);
+    return Offset(
+      pointer.dx.clamp(horizontalMargin, maxLeft),
+      pointer.dy.clamp(topSafe, maxTop),
+    );
+  }
 
   bool get _isEditableMessage =>
       message.contentType == 'messageText' ||
@@ -256,9 +293,22 @@ class MessageActionMenu extends StatelessWidget {
     return result;
   }
 
+  double preferredHeightFor(BuildContext context) {
+    if (!isDesktopTargetPlatform(Theme.of(context).platform)) {
+      return preferredHeight;
+    }
+    return desktopHeightForActionCount(
+      _actions(context.read<TranslationController>().enabled).length,
+      availableHeight: MediaQuery.sizeOf(context).height - 24,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final actions = _actions(context.watch<TranslationController>().enabled);
+    if (isDesktopTargetPlatform(Theme.of(context).platform)) {
+      return _DesktopActionList(actions: actions, onSelect: onSelect);
+    }
     final rowCounts = rowCountsForActionCount(actions.length);
     final firstRowCount = rowCounts.first;
     final firstRow = actions.take(firstRowCount).toList();
@@ -274,7 +324,10 @@ class MessageActionMenu extends StatelessWidget {
         final availableWidth = constraints.hasBoundedWidth
             ? constraints.maxWidth.clamp(0.0, maxWidth)
             : maxWidth;
-        final menuWidth = widthForAvailable(availableWidth);
+        final menuWidth = mobileWidthForActionCount(
+          actions.length,
+          availableWidth,
+        );
         final actionContentWidth =
             (math.max(columnCount, 1) * _actionWidth) +
             (_horizontalPadding * 2);
@@ -325,6 +378,108 @@ class MessageActionMenu extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _DesktopActionList extends StatelessWidget {
+  const _DesktopActionList({required this.actions, required this.onSelect});
+
+  final List<MessageAction> actions;
+  final ValueChanged<MessageAction> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final availableWidth = MediaQuery.sizeOf(context).width - 20;
+    final availableHeight = MediaQuery.sizeOf(context).height - 24;
+    final width = math.min(
+      MessageActionMenu.desktopPreferredWidth,
+      availableWidth,
+    );
+    final height = MessageActionMenu.desktopHeightForActionCount(
+      actions.length,
+      availableHeight: availableHeight,
+    );
+    return Container(
+      key: const ValueKey('message-action-menu-surface'),
+      width: width,
+      height: height,
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: MessageActionMenu._surface,
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.22),
+          width: 0.75,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.24),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: ListView.builder(
+        padding: EdgeInsets.zero,
+        itemCount: actions.length,
+        itemBuilder: (context, index) {
+          final action = actions[index];
+          final startsDestructiveGroup =
+              index > 0 &&
+              action.isDestructive &&
+              !actions[index - 1].isDestructive;
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (startsDestructiveGroup)
+                Container(
+                  key: const ValueKey('message-action-destructive-divider'),
+                  height: 1,
+                  margin: const EdgeInsets.symmetric(horizontal: 10),
+                  color: Colors.white.withValues(alpha: 0.10),
+                ),
+              GestureDetector(
+                key: ValueKey('message-action-${action.name}'),
+                behavior: HitTestBehavior.opaque,
+                onTap: () => onSelect(action),
+                child: SizedBox(
+                  height: MessageActionMenu._desktopActionHeight,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Row(
+                      children: [
+                        AppIcon(
+                          action.glyph,
+                          size: 17,
+                          color: action.isDestructive
+                              ? MessageActionMenu._destructive
+                              : Colors.white,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            telegramText(action.label),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: action.isDestructive
+                                  ? MessageActionMenu._destructive
+                                  : Colors.white,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 }

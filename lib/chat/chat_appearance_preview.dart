@@ -125,6 +125,7 @@ class SenderIdentityPills extends StatelessWidget {
     this.shadowColor,
     this.role,
     this.roleTitle,
+    this.roleAfterName = false,
   });
 
   final SenderNameReadabilityMode readabilityMode;
@@ -134,17 +135,20 @@ class SenderIdentityPills extends StatelessWidget {
   final Color? shadowColor;
   final MemberRole? role;
   final String? roleTitle;
+  final bool roleAfterName;
 
   @override
   Widget build(BuildContext context) {
     final effectiveNameStyle = nameStyle.copyWith(fontWeight: FontWeight.w500);
     final connected =
-        readabilityMode == SenderNameReadabilityMode.background && role != null;
+        !roleAfterName &&
+        readabilityMode == SenderNameReadabilityMode.background &&
+        role != null;
     return Row(
       key: connected ? const ValueKey('connectedSenderIdentityPills') : null,
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (role != null) ...[
+        if (role != null && !roleAfterName) ...[
           RoleTag(
             role: role!,
             title: roleTitle,
@@ -167,6 +171,10 @@ class SenderIdentityPills extends StatelessWidget {
             ),
           ),
         ),
+        if (role != null && roleAfterName) ...[
+          const SizedBox(width: 4),
+          RoleTag(role: role!, title: roleTitle),
+        ],
       ],
     );
   }

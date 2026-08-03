@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/group_remark_controller.dart';
@@ -5,6 +6,7 @@ import 'package:mithka/chats/chat_row_view.dart';
 import 'package:mithka/components/photo_avatar.dart';
 import 'package:mithka/tdlib/td_models.dart';
 import 'package:mithka/theme/app_theme.dart';
+import 'package:mithka/theme/date_text.dart';
 import 'package:mithka/theme/theme_controller.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -22,7 +24,6 @@ void main() {
     );
     addTearDown(theme.dispose);
     addTearDown(remarks.dispose);
-    await remarks.setRemark(-1001, 'Local group name');
     final chat = ChatSummary(
       id: -1001,
       title: 'Telegram group name',
@@ -50,6 +51,15 @@ void main() {
         ),
       ),
     );
+
+    expect(find.text('Telegram group name'), findsOneWidget);
+    expect(
+      tester.widget<PhotoAvatar>(find.byType(PhotoAvatar)).title,
+      'Telegram group name',
+    );
+
+    await remarks.setRemark(-1001, 'Local group name');
+    await tester.pump();
 
     expect(find.text('Local group name'), findsOneWidget);
     expect(find.text('Telegram group name'), findsNothing);
@@ -121,6 +131,56 @@ void main() {
     await tester.pump();
 
     expect(title().style?.color, AppColors.light.textPrimary);
+  });
+
+  testWidgets('desktop rows keep time separated and show pin plus mute', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final theme = ThemeController(preferences);
+    addTearDown(theme.dispose);
+    final chat = ChatSummary(
+      id: 8,
+      title: 'Pinned muted chat',
+      lastMessage: 'Latest message',
+      lastMessageId: 1,
+      date: 1700000000,
+      unreadCount: 0,
+      order: 1,
+      isMuted: true,
+      isPinned: true,
+    );
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<ThemeController>.value(
+        value: theme,
+        child: MaterialApp(
+          theme: ThemeData(
+            brightness: Brightness.light,
+            extensions: [AppColors.light],
+          ),
+          home: Scaffold(
+            body: SizedBox(width: 390, child: ChatRowView(chat: chat)),
+          ),
+        ),
+      ),
+    );
+    debugDefaultTargetPlatformOverride = null;
+
+    final timestamp = find.text(DateText.listLabel(chat.date));
+    final pin = find.byKey(const ValueKey('chat-row-pinned'));
+    final muted = find.byKey(const ValueKey('chat-row-muted'));
+    expect(timestamp, findsOneWidget);
+    expect(pin, findsOneWidget);
+    expect(muted, findsOneWidget);
+    expect(
+      tester.getTopLeft(muted).dy - tester.getBottomLeft(timestamp).dy,
+      greaterThanOrEqualTo(AppSpacing.sm),
+    );
+    expect(tester.getTopLeft(pin).dx, lessThan(tester.getTopLeft(muted).dx));
   });
 
   test('legacy preference names remain readable', () async {

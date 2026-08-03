@@ -20,6 +20,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
+import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../theme/app_theme.dart';
 
@@ -63,12 +64,18 @@ class LocationPickerView extends StatefulWidget {
     this.initialZoom = 16,
     this.returnCamera = false,
     this.returnShareResult = false,
+    this.onSend,
+    this.onClose,
+    this.showBackButton = true,
   });
 
   final LatLng initial;
   final double initialZoom;
   final bool returnCamera;
   final bool returnShareResult;
+  final Future<void> Function(LocationShareResult result)? onSend;
+  final Future<void> Function()? onClose;
+  final bool showBackButton;
 
   @override
   State<LocationPickerView> createState() => _LocationPickerViewState();
@@ -84,6 +91,7 @@ class _LocationPickerViewState extends State<LocationPickerView> {
   late double _zoom = widget.initialZoom;
   String _address = '';
   bool _geocoding = false;
+  bool _sending = false;
   Timer? _debounce;
 
   @override
@@ -178,13 +186,38 @@ class _LocationPickerViewState extends State<LocationPickerView> {
     }
   }
 
-  void _send() => Navigator.of(context).pop(
-    widget.returnCamera
-        ? LocationPickerResult(center: _center, zoom: _zoom)
-        : widget.returnShareResult
-        ? LocationShareResult(center: _center, address: _address)
-        : _center,
-  );
+  Future<void> _send() async {
+    final send = widget.onSend;
+    if (send == null) {
+      Navigator.of(context).pop(
+        widget.returnCamera
+            ? LocationPickerResult(center: _center, zoom: _zoom)
+            : widget.returnShareResult
+            ? LocationShareResult(center: _center, address: _address)
+            : _center,
+      );
+      return;
+    }
+    if (_sending) return;
+    setState(() => _sending = true);
+    try {
+      await send(LocationShareResult(center: _center, address: _address));
+      if (mounted) await _close();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _sending = false);
+      showToast(context, AppStringKeys.topicPostContentActionFailed);
+    }
+  }
+
+  Future<void> _close() async {
+    final close = widget.onClose;
+    if (close != null) {
+      await close();
+      return;
+    }
+    if (mounted) await Navigator.of(context).maybePop();
+  }
 
   /// Native Apple Maps (MapKit) on iOS; flutter_map + OSM tiles elsewhere.
   Widget _mapWidget() {
@@ -237,10 +270,10 @@ class _LocationPickerViewState extends State<LocationPickerView> {
         children: [
           NavHeader(
             title: AppStrings.t(AppStringKeys.composerLocation),
-            onBack: () => Navigator.of(context).pop(),
+            onBack: widget.showBackButton ? () => unawaited(_close()) : null,
             trailing: GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: _send,
+              onTap: _sending ? null : _send,
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
                 child: Container(
@@ -249,7 +282,9 @@ class _LocationPickerViewState extends State<LocationPickerView> {
                     vertical: 5,
                   ),
                   decoration: BoxDecoration(
-                    color: AppTheme.brand,
+                    color: _sending
+                        ? AppTheme.brand.withValues(alpha: 0.55)
+                        : AppTheme.brand,
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(

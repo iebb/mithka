@@ -55,6 +55,22 @@ void main() {
       find.descendant(of: remarkRow, matching: find.byType(AppIcon)),
       findsOneWidget,
     );
+    final remarkChevron = find.descendant(
+      of: remarkRow,
+      matching: find.byType(AppIcon),
+    );
+    final announcementChevron = find.descendant(
+      of: find.byKey(const ValueKey('chatInfoGroupAnnouncementRow')),
+      matching: find.byType(AppIcon),
+    );
+    expect(
+      tester.getTopRight(remarkChevron).dx,
+      closeTo(tester.getTopRight(announcementChevron).dx, 0.5),
+    );
+    expect(
+      tester.getCenter(remarkChevron).dy,
+      closeTo(tester.getCenter(remark).dy, 1),
+    );
 
     final preview = tester.widget<Text>(find.text(announcement));
     expect(preview.maxLines, 2);

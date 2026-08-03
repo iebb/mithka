@@ -4,10 +4,32 @@ import 'dart:math';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
 
+import 'app_lock_privacy.dart';
+
 enum AppLockCredentialType { pin, gesture }
+
+enum AppLockAutoLockOption {
+  disabled(0),
+  oneMinute(60),
+  fiveMinutes(300),
+  oneHour(3600),
+  fiveHours(18000);
+
+  const AppLockAutoLockOption(this.seconds);
+
+  final int seconds;
+
+  static AppLockAutoLockOption? fromSeconds(int seconds) {
+    for (final option in values) {
+      if (option.seconds == seconds) return option;
+    }
+    return null;
+  }
+}
 
 enum AppLockBiometricKind { face, fingerprint, generic }
 
@@ -24,6 +46,7 @@ typedef AppLockSecureWrite = Future<void> Function(String key, String? value);
 typedef AppLockBiometricProbe = Future<List<BiometricType>> Function();
 typedef AppLockBiometricAuthenticate =
     Future<bool> Function(String localizedReason);
+typedef AppLockPrivacyShieldApply = Future<void> Function(bool visible);
 
 /// Owns the app-local lock credential and the current foreground lock state.
 ///
@@ -35,6 +58,7 @@ class LocalAppLockController extends ChangeNotifier {
     AppLockSecureWrite? secureWrite,
     AppLockBiometricProbe? biometricProbe,
     AppLockBiometricAuthenticate? biometricAuthenticate,
+    AppLockPrivacyShieldApply? privacyShieldApply,
     this.hashRounds = _defaultHashRounds,
     bool? platformSupportsBiometrics,
   }) : _secureRead = secureRead ?? _defaultSecureRead,
@@ -42,6 +66,8 @@ class LocalAppLockController extends ChangeNotifier {
        _biometricProbe = biometricProbe ?? _defaultBiometricProbe,
        _biometricAuthenticate =
            biometricAuthenticate ?? _defaultBiometricAuthenticate,
+       _privacyShieldApply =
+           privacyShieldApply ?? AppLockPrivacyPlatform.setPrivacyShieldVisible,
        _platformSupportsBiometrics =
            platformSupportsBiometrics ?? _defaultPlatformSupportsBiometrics;
 
@@ -57,6 +83,7 @@ class LocalAppLockController extends ChangeNotifier {
   final AppLockSecureWrite _secureWrite;
   final AppLockBiometricProbe _biometricProbe;
   final AppLockBiometricAuthenticate _biometricAuthenticate;
+  final AppLockPrivacyShieldApply _privacyShieldApply;
   final int hashRounds;
   final bool _platformSupportsBiometrics;
 
@@ -67,6 +94,8 @@ class LocalAppLockController extends ChangeNotifier {
   bool _biometricAvailable = false;
   AppLockBiometricKind _biometricKind = AppLockBiometricKind.generic;
   int _lockEpoch = 0;
+  Timer? _autoLockTimer;
+  DateTime? _awaySince;
 
   bool get initialized => _initialized;
   bool get enabled => _stored != null;
@@ -74,6 +103,9 @@ class LocalAppLockController extends ChangeNotifier {
   bool get authenticatingBiometrics => _authenticatingBiometrics;
   bool get biometricAvailable => _biometricAvailable;
   bool get biometricEnabled => _stored?.biometricEnabled ?? false;
+  AppLockAutoLockOption get autoLockOption =>
+      AppLockAutoLockOption.fromSeconds(_stored?.autoLockSeconds ?? 0) ??
+      AppLockAutoLockOption.disabled;
   AppLockBiometricKind get biometricKind => _biometricKind;
   AppLockCredentialType? get credentialType => _stored?.type;
   int get lockEpoch => _lockEpoch;
@@ -89,12 +121,42 @@ class LocalAppLockController extends ChangeNotifier {
       if (_stored != null) {
         _locked = true;
         _lockEpoch = 1;
+        if (_stored!.storageVersion < 2) {
+          await _persist(_stored!);
+        }
       }
     } catch (error) {
       debugPrint('Local app lock could not read secure storage: $error');
     }
     _initialized = true;
     await refreshBiometricAvailability();
+    unawaited(_applyPrivacyShield(false));
+    notifyListeners();
+  }
+
+  /// Refreshes secure lock configuration changed by another desktop engine.
+  /// Enabling a lock does not immediately cover the already-unlocked primary
+  /// window; its normal lifecycle transition will lock it.
+  Future<void> reloadFromStorage() async {
+    if (!_initialized) {
+      await initialize();
+      return;
+    }
+    try {
+      final value = await _secureRead(_storageKey);
+      _stored = _StoredAppLock.tryParse(value);
+      if (_stored == null) {
+        _locked = false;
+        _authenticatingBiometrics = false;
+      } else if (_stored!.storageVersion < 2) {
+        await _persist(_stored!);
+      }
+    } catch (error) {
+      debugPrint('Local app lock could not reload secure storage: $error');
+      return;
+    }
+    await refreshBiometricAvailability();
+    unawaited(_applyPrivacyShield(false));
     notifyListeners();
   }
 
@@ -143,10 +205,12 @@ class LocalAppLockController extends ChangeNotifier {
       digest: digest,
       rounds: hashRounds,
       biometricEnabled: _stored?.biometricEnabled ?? false,
+      autoLockSeconds: _stored?.autoLockSeconds ?? 0,
     );
     await _persist(next);
     _stored = next;
     _locked = false;
+    unawaited(_applyPrivacyShield(false));
     notifyListeners();
   }
 
@@ -187,10 +251,99 @@ class LocalAppLockController extends ChangeNotifier {
 
   Future<void> disable() async {
     await _secureWrite(_storageKey, null);
+    _autoLockTimer?.cancel();
+    _autoLockTimer = null;
+    _awaySince = null;
     _stored = null;
     _locked = false;
     _authenticatingBiometrics = false;
+    unawaited(_applyPrivacyShield(false));
     notifyListeners();
+  }
+
+  Future<void> setAutoLockOption(AppLockAutoLockOption option) async {
+    final stored = _stored;
+    if (stored == null || stored.autoLockSeconds == option.seconds) return;
+    final next = stored.copyWith(autoLockSeconds: option.seconds);
+    await _persist(next);
+    _stored = next;
+    _rescheduleAutoLock();
+    notifyListeners();
+  }
+
+  /// Applies auto-lock timing and iOS app-switcher shielding to lifecycle
+  /// transitions. A disabled timeout preserves the current unlocked session
+  /// across brief background transitions, matching the official clients.
+  void handleLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.resumed:
+        _handleResumed();
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.paused:
+      case AppLifecycleState.detached:
+        _handleAway();
+    }
+  }
+
+  void _handleAway() {
+    if (!enabled) return;
+    _awaySince ??= DateTime.now();
+    unawaited(_applyPrivacyShield(true));
+    _rescheduleAutoLock();
+  }
+
+  void _handleResumed() {
+    _autoLockTimer?.cancel();
+    _autoLockTimer = null;
+    final awaySince = _awaySince;
+    final option = autoLockOption;
+    if (enabled &&
+        awaySince != null &&
+        option != AppLockAutoLockOption.disabled &&
+        DateTime.now().difference(awaySince) >=
+            Duration(seconds: option.seconds)) {
+      lock();
+    }
+    _awaySince = null;
+    if (enabled) unawaited(_applyPrivacyShield(false));
+  }
+
+  void _rescheduleAutoLock() {
+    _autoLockTimer?.cancel();
+    _autoLockTimer = null;
+    final awaySince = _awaySince;
+    final option = autoLockOption;
+    if (!enabled ||
+        awaySince == null ||
+        option == AppLockAutoLockOption.disabled) {
+      return;
+    }
+    final elapsed = DateTime.now().difference(awaySince);
+    final remaining = Duration(seconds: option.seconds) - elapsed;
+    if (remaining <= Duration.zero) {
+      lock();
+      return;
+    }
+    _autoLockTimer = Timer(remaining, () {
+      _autoLockTimer = null;
+      final currentAwaySince = _awaySince;
+      if (!enabled || currentAwaySince == null) return;
+      if (DateTime.now().difference(currentAwaySince) >=
+          Duration(seconds: autoLockOption.seconds)) {
+        lock();
+      } else {
+        _rescheduleAutoLock();
+      }
+    });
+  }
+
+  Future<void> _applyPrivacyShield(bool visible) async {
+    try {
+      await _privacyShieldApply(visible);
+    } catch (error) {
+      debugPrint('Local app lock privacy shield could not be applied: $error');
+    }
   }
 
   Future<AppLockBiometricResult> setBiometricEnabled(
@@ -309,6 +462,12 @@ class LocalAppLockController extends ChangeNotifier {
       !kIsWeb &&
       (defaultTargetPlatform == TargetPlatform.android ||
           defaultTargetPlatform == TargetPlatform.iOS);
+
+  @override
+  void dispose() {
+    _autoLockTimer?.cancel();
+    super.dispose();
+  }
 }
 
 @immutable
@@ -354,6 +513,8 @@ class _StoredAppLock {
     required this.digest,
     required this.rounds,
     required this.biometricEnabled,
+    required this.autoLockSeconds,
+    this.storageVersion = 2,
   });
 
   final AppLockCredentialType type;
@@ -361,42 +522,59 @@ class _StoredAppLock {
   final List<int> digest;
   final int rounds;
   final bool biometricEnabled;
+  final int autoLockSeconds;
+  final int storageVersion;
 
-  _StoredAppLock copyWith({bool? biometricEnabled}) => _StoredAppLock(
-    type: type,
-    salt: salt,
-    digest: digest,
-    rounds: rounds,
-    biometricEnabled: biometricEnabled ?? this.biometricEnabled,
-  );
+  _StoredAppLock copyWith({bool? biometricEnabled, int? autoLockSeconds}) =>
+      _StoredAppLock(
+        type: type,
+        salt: salt,
+        digest: digest,
+        rounds: rounds,
+        biometricEnabled: biometricEnabled ?? this.biometricEnabled,
+        autoLockSeconds: autoLockSeconds ?? this.autoLockSeconds,
+      );
 
   String encode() => jsonEncode({
-    'version': 1,
+    'version': 2,
     'type': type.name,
     'salt': base64Encode(salt),
     'digest': base64Encode(digest),
     'rounds': rounds,
     'biometric': biometricEnabled,
+    'autoLockSeconds': autoLockSeconds,
   });
 
   static _StoredAppLock? tryParse(String? value) {
     if (value == null || value.isEmpty) return null;
     try {
       final json = jsonDecode(value);
-      if (json is! Map<String, dynamic> || json['version'] != 1) return null;
+      if (json is! Map<String, dynamic>) return null;
+      final version = json['version'];
+      if (version != 1 && version != 2) return null;
       final type = AppLockCredentialType.values.firstWhere(
         (candidate) => candidate.name == json['type'],
       );
       final salt = base64Decode(json['salt'] as String);
       final digest = base64Decode(json['digest'] as String);
       final rounds = json['rounds'] as int;
-      if (salt.length != 32 || digest.length != 32 || rounds < 1) return null;
+      final autoLockSeconds = version == 1
+          ? 0
+          : json['autoLockSeconds'] as int? ?? 0;
+      if (salt.length != 32 ||
+          digest.length != 32 ||
+          rounds < 1 ||
+          AppLockAutoLockOption.fromSeconds(autoLockSeconds) == null) {
+        return null;
+      }
       return _StoredAppLock(
         type: type,
         salt: salt,
         digest: digest,
         rounds: rounds,
         biometricEnabled: json['biometric'] == true,
+        autoLockSeconds: autoLockSeconds,
+        storageVersion: version,
       );
     } catch (_) {
       return null;

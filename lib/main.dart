@@ -29,7 +29,12 @@ import 'app/app_performance_controller.dart';
 import 'app/app_version.dart';
 import 'app/chat_deep_link_controller.dart';
 import 'app/content_view.dart';
+import 'app/desktop_chat_window.dart';
+import 'app/desktop_hotkey_host.dart';
+import 'app/desktop_image_preview_window.dart';
+import 'app/desktop_utility_window.dart';
 import 'app/desktop_video_window.dart';
+import 'app/desktop_window_controls.dart';
 import 'app/global_video_split_host.dart';
 import 'app/telemetry_config.dart';
 import 'auth/account_store.dart';
@@ -59,6 +64,7 @@ import 'settings/auto_download_media_controller.dart';
 import 'settings/blocked_user_service.dart';
 import 'settings/business_service.dart';
 import 'settings/country_message_filter.dart';
+import 'settings/desktop_hotkey_controller.dart';
 import 'settings/developer_mode_controller.dart';
 import 'settings/keyword_blocker.dart';
 import 'settings/safety_notice_controller.dart';
@@ -75,10 +81,46 @@ Future<void> main(List<String> arguments) async {
       arguments,
     );
     if (videoArguments != null) {
-      _initializeVideoBackend();
+      _initializeVideoBackend(installGlobalLogHandler: false);
       runApp(DesktopVideoWindowApp(arguments: videoArguments));
       return;
     }
+    final imageArguments =
+        DesktopImagePreviewWindowArguments.tryParseLaunchArguments(arguments);
+    if (imageArguments != null) {
+      configureAppImageCache();
+      runApp(DesktopImagePreviewWindowApp(arguments: imageArguments));
+      return;
+    }
+    final utilityArguments =
+        DesktopUtilityWindowArguments.tryParseLaunchArguments(arguments);
+    if (utilityArguments != null) {
+      configureAppImageCache();
+      _initializeVideoBackend(installGlobalLogHandler: false);
+      await DesktopUtilityWindowService.instance.configureChildProxy(
+        utilityArguments,
+      );
+      final prefs = await SharedPreferences.getInstance();
+      DesktopHotkeyController.initializeShared(prefs, replace: true);
+      runApp(
+        DesktopUtilityWindowApp(arguments: utilityArguments, prefs: prefs),
+      );
+      return;
+    }
+    final chatArguments = DesktopChatWindowArguments.tryParseLaunchArguments(
+      arguments,
+    );
+    if (chatArguments != null) {
+      configureAppImageCache();
+      _initializeVideoBackend(installGlobalLogHandler: false);
+      await DesktopChatWindowService.instance.configureChildProxy(
+        chatArguments,
+      );
+      final prefs = await SharedPreferences.getInstance();
+      runApp(DesktopChatWindowApp(arguments: chatArguments, prefs: prefs));
+      return;
+    }
+    await configurePrimaryDesktopWindowChrome();
   }
   if (!sentryEnabled) {
     WidgetsFlutterBinding.ensureInitialized();
@@ -111,6 +153,7 @@ Future<void> _bootstrapAndRunApp() async {
   // Draw under transparent status / navigation bars (edge-to-edge).
   configureImmersiveSystemUI();
   final prefs = await SharedPreferences.getInstance();
+  DesktopHotkeyController.initializeShared(prefs, replace: true);
   await LocalAppLockController.shared.initialize();
   KeywordBlocker.shared.initialize(prefs);
   CountryMessageFilter.shared.initialize(prefs);
@@ -143,16 +186,17 @@ bool _shouldUseFvp() {
   return true;
 }
 
-void _initializeVideoBackend() {
+void _initializeVideoBackend({bool installGlobalLogHandler = true}) {
   if (!_shouldUseFvp()) return;
   MithkaFvpBackend.ensureInitialized(
-    configuration: const MithkaFvpConfiguration(
+    configuration: MithkaFvpConfiguration(
       platforms: {
         MithkaFvpPlatform.ios,
         MithkaFvpPlatform.linux,
         MithkaFvpPlatform.macos,
         MithkaFvpPlatform.windows,
       },
+      installGlobalLogHandler: installGlobalLogHandler,
     ),
   );
 }
@@ -262,15 +306,13 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
   late final AuthManager _auth = AuthManager();
   late final AccountStore _accounts = AccountStore(widget.prefs);
   late final MithkaProService _mithkaPro = MithkaProService.shared;
-  late final ThemeController _theme = ThemeController(
+  late ThemeController _theme = ThemeController(
     widget.prefs,
     initialAccountSlot: _accounts.activeSlot,
   );
-  late final TranslationController _translation = TranslationController(
-    widget.prefs,
-  );
-  late final AiSettingsController _ai = AiSettingsController(widget.prefs);
-  late final AppLocaleController _locale = AppLocaleController(widget.prefs);
+  late TranslationController _translation = TranslationController(widget.prefs);
+  late AiSettingsController _ai = AiSettingsController(widget.prefs);
+  late AppLocaleController _locale = AppLocaleController(widget.prefs);
   late final TelegramLanguageController _telegramLanguage =
       TelegramLanguageController.shared;
   late final dc.DrawerController _drawer = dc.DrawerController();
@@ -280,23 +322,25 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
     widget.prefs,
     initialAccountUserId: _accounts.activeUserId,
   );
-  late final AppIconController _appIcons = AppIconController(widget.prefs);
+  late AppIconController _appIcons = AppIconController(widget.prefs);
   late final AutoDownloadMediaController _autoDownload =
       AutoDownloadMediaController.shared;
-  late final DeveloperModeController _developer = DeveloperModeController(
+  late DeveloperModeController _developer = DeveloperModeController(
     widget.prefs,
   );
-  late final AppPerformanceController _performance = AppPerformanceController(
+  late AppPerformanceController _performance = AppPerformanceController(
     widget.prefs,
     memoryTrimmers: [clearChatMemoryCaches, clearAnimatedStickerMemoryCache],
   );
-  late final SafetyNoticeController _safetyNotice = SafetyNoticeController(
+  late SafetyNoticeController _safetyNotice = SafetyNoticeController(
     widget.prefs,
   );
   late final SensitiveContentController _sensitiveContent =
       SensitiveContentController.shared;
   late final LocalAppLockController _appLock = LocalAppLockController.shared;
   late final CallManager _calls = CallManager()..start();
+  bool _desktopSettingsReloading = false;
+  bool _desktopSettingsReloadQueued = false;
 
   @override
   void initState() {
@@ -311,6 +355,10 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
     _theme.loadSelectedEmojiFontIfAvailable();
     _autoDownload.initialize(widget.prefs);
     _auth.start();
+    DesktopChatWindowService.instance.attachMainProxy();
+    DesktopUtilityWindowService.instance.attachMainProxy(
+      onSettingsChanged: _reloadDesktopSettings,
+    );
     unawaited(_ai.initialize());
     unawaited(_mithkaPro.initialize());
     unawaited(_telegramLanguage.initialize(widget.prefs));
@@ -327,6 +375,8 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
     _accounts.removeListener(_handleActiveAccountChange);
     _theme.removeListener(_handleThemePreferencesChange);
     _groupRemarks.dispose();
+    DesktopChatWindowService.instance.detachMainProxy();
+    DesktopUtilityWindowService.instance.detachMainProxy();
     _calls.dispose();
     super.dispose();
   }
@@ -343,16 +393,138 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
     BusinessQuickReplyService.shared.setPreloadingEnabled(
       _theme.quickRepliesEnabled,
     );
+    unawaited(
+      DesktopImagePreviewWindowService.instance.broadcastBrightness(
+        _resolvedDesktopDark,
+      ),
+    );
+    unawaited(DesktopChatWindowService.instance.notifyPresentationChanged());
+  }
+
+  bool get _resolvedDesktopDark => switch (_theme.mode) {
+    AppearanceMode.light => false,
+    AppearanceMode.dark => true,
+    AppearanceMode.system =>
+      WidgetsBinding.instance.platformDispatcher.platformBrightness ==
+          Brightness.dark,
+  };
+
+  Future<void> _reloadDesktopSettings() async {
+    if (_desktopSettingsReloading) {
+      _desktopSettingsReloadQueued = true;
+      return;
+    }
+    _desktopSettingsReloading = true;
+    try {
+      do {
+        _desktopSettingsReloadQueued = false;
+        await widget.prefs.reload();
+        await DesktopHotkeyController.shared.reload();
+        if (!mounted) return;
+
+        final previousTheme = _theme;
+        final previousTranslation = _translation;
+        final previousAi = _ai;
+        final previousLocale = _locale;
+        final previousAppIcons = _appIcons;
+        final previousDeveloper = _developer;
+        final previousPerformance = _performance;
+        final previousSafetyNotice = _safetyNotice;
+
+        final nextTheme = ThemeController(
+          widget.prefs,
+          initialAccountSlot: _accounts.activeSlot,
+        );
+        final nextTranslation = TranslationController(widget.prefs);
+        final nextAi = AiSettingsController(widget.prefs);
+        final nextLocale = AppLocaleController(widget.prefs);
+        final nextAppIcons = AppIconController(widget.prefs);
+        final nextDeveloper = DeveloperModeController(widget.prefs);
+        final nextPerformance = AppPerformanceController(
+          widget.prefs,
+          memoryTrimmers: [
+            clearChatMemoryCaches,
+            clearAnimatedStickerMemoryCache,
+          ],
+        )..start();
+        final nextSafetyNotice = SafetyNoticeController(widget.prefs);
+
+        nextTheme.setActiveAccountSlot(
+          _accounts.activeSlot,
+          userId: _accounts.activeUserId,
+        );
+
+        previousTheme.removeListener(_handleThemePreferencesChange);
+        nextTheme.addListener(_handleThemePreferencesChange);
+        BusinessQuickReplyService.shared.setPreloadingEnabled(
+          nextTheme.quickRepliesEnabled,
+        );
+        unawaited(nextTheme.loadSelectedEmojiFontIfAvailable());
+
+        _autoDownload.initialize(widget.prefs);
+        KeywordBlocker.shared.initialize(widget.prefs);
+        CountryMessageFilter.shared.initialize(widget.prefs);
+        MusicPlayerController.shared.initialize(widget.prefs);
+        BlockedUserService.shared.enabled = nextTheme.hideBlockedUserMessages;
+        if (nextTheme.hideBlockedUserMessages) {
+          unawaited(BlockedUserService.shared.loadBlockedUsers());
+        }
+        unawaited(_telegramLanguage.reloadPreferences(widget.prefs));
+        unawaited(_appLock.reloadFromStorage());
+        unawaited(_mithkaPro.refresh());
+        unawaited(nextAi.initialize());
+        unawaited(nextAppIcons.initialize());
+
+        setState(() {
+          _theme = nextTheme;
+          _translation = nextTranslation;
+          _ai = nextAi;
+          _locale = nextLocale;
+          _appIcons = nextAppIcons;
+          _developer = nextDeveloper;
+          _performance = nextPerformance;
+          _safetyNotice = nextSafetyNotice;
+        });
+        unawaited(
+          DesktopImagePreviewWindowService.instance.broadcastBrightness(
+            _resolvedDesktopDark,
+          ),
+        );
+        unawaited(
+          DesktopChatWindowService.instance.notifyPresentationChanged(),
+        );
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          previousPerformance.dispose();
+          previousAppIcons.dispose();
+          previousDeveloper.dispose();
+          previousSafetyNotice.dispose();
+          previousLocale.dispose();
+          previousAi.dispose();
+          previousTranslation.dispose();
+          previousTheme.dispose();
+        });
+      } while (_desktopSettingsReloadQueued && mounted);
+    } finally {
+      _desktopSettingsReloading = false;
+    }
+  }
+
+  @override
+  void didChangePlatformBrightness() {
+    super.didChangePlatformBrightness();
+    if (_theme.mode != AppearanceMode.system) return;
+    unawaited(
+      DesktopImagePreviewWindowService.instance.broadcastBrightness(
+        _resolvedDesktopDark,
+      ),
+    );
+    unawaited(DesktopChatWindowService.instance.notifyPresentationChanged());
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.hidden ||
-        state == AppLifecycleState.paused ||
-        state == AppLifecycleState.detached) {
-      _appLock.lock();
-    }
+    _appLock.handleLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
       TdClient.shared.restartReceiveIsolate();
       unawaited(_mithkaPro.refresh());
@@ -382,7 +554,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
           TargetPlatform.fuchsia: AppPageTransitionsBuilder(),
           TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
           TargetPlatform.linux: AppPageTransitionsBuilder(),
-          TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.macOS: AppPageTransitionsBuilder(),
           TargetPlatform.windows: AppPageTransitionsBuilder(),
         },
       ),
@@ -431,12 +603,12 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
         ChangeNotifierProvider<dc.DrawerController>.value(value: _drawer),
       ],
       child: _MithkaAppConsumer(
-        builder: (context, theme, accounts, locale, _, _) {
+        builder: (context, theme, accounts, locale, telegramLanguage, _) {
           return MaterialApp(
             navigatorKey: appNavigatorKey,
             title: 'Mithka',
             debugShowCheckedModeBanner: false,
-            locale: locale.locale,
+            locale: telegramLanguage.mithkaLocale,
             localeResolutionCallback: (locale, _) => locale == null
                 ? AppLocalizations.fallbackLocale
                 : AppLocalizations.resolve(locale),
@@ -494,17 +666,29 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
                   const Positioned.fill(child: GlobalCallOverlayHost()),
                 ],
               );
+              final framedUnlockedApp = DesktopPrimaryWindowFrame(
+                accountReady: context.watch<AuthManager>().step is AuthReady,
+                child: unlockedApp,
+              );
               final appLock = context.watch<LocalAppLockController>();
               final appChild = Stack(
                 children: [
                   Positioned.fill(
                     child: ExcludeSemantics(
                       excluding: appLock.locked,
-                      child: unlockedApp,
+                      child: framedUnlockedApp,
                     ),
                   ),
                   const Positioned.fill(child: LocalAppLockGate()),
                 ],
+              );
+              final hotkeyController = DesktopHotkeyController.shared;
+              final hotkeyChild = DesktopHotkeyHost(
+                controller: hotkeyController,
+                child: DesktopPrimaryHotkeyBindings(
+                  controller: hotkeyController,
+                  child: appChild,
+                ),
               );
               return AnnotatedRegion<SystemUiOverlayStyle>(
                 value: systemUiOverlayStyleForSurface(context.colors.navBar),
@@ -516,7 +700,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
                       AppTextStyle.body(context.colors.textPrimary),
                       boldText: media.boldText,
                     ),
-                    child: appChild,
+                    child: hotkeyChild,
                   ),
                 ),
               );

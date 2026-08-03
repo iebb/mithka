@@ -55,6 +55,7 @@ import '../theme/theme_controller.dart';
 import 'channel_direct_messages_view.dart';
 import 'chat_picker_view.dart';
 import 'chat_view.dart';
+import 'internal_chat_link_router.dart';
 import 'sticker_set_detail_view.dart';
 import 'telegram_ai_service.dart';
 import 'telegram_invoice_checkout_view.dart';
@@ -65,6 +66,7 @@ import 'telegram_store_purchase_view.dart';
 
 Future<void> openLink(BuildContext context, String url) async {
   final nav = Navigator.of(context);
+  final sourceChat = InternalChatLinkScope.targetOf(context);
   final link = _normalizeTelegramLink(url);
   final isTelegram = link != null;
   if (!isTelegram) {
@@ -102,7 +104,12 @@ Future<void> openLink(BuildContext context, String url) async {
             info.int64('message_id') ??
             message?.int64('id') ??
             type.int64('message_id');
-        await _openChat(nav, chatId, initialMessageId: messageId);
+        await _openChat(
+          nav,
+          chatId,
+          initialMessageId: messageId,
+          sourceChat: sourceChat,
+        );
       case 'internalLinkTypeUserPhoneNumber':
         final user = await TdClient.shared.query({
           '@type': 'searchUserByPhoneNumber',
@@ -294,12 +301,14 @@ Future<void> openLink(BuildContext context, String url) async {
       case 'internalLinkTypeUnknownDeepLink':
         await _showDeepLinkInfoOrExternal(link);
       default:
-        if (!await _openTelegramFallback(nav, link) && context.mounted) {
+        if (!await _openTelegramFallback(nav, link, sourceChat: sourceChat) &&
+            context.mounted) {
           await _external(link);
         }
     }
   } catch (_) {
-    if (!await _openTelegramFallback(nav, link) && context.mounted) {
+    if (!await _openTelegramFallback(nav, link, sourceChat: sourceChat) &&
+        context.mounted) {
       await _external(link);
     }
   }
@@ -556,7 +565,11 @@ String? _normalizeTelegramLink(String raw) {
   return null;
 }
 
-Future<bool> _openTelegramFallback(NavigatorState nav, String link) async {
+Future<bool> _openTelegramFallback(
+  NavigatorState nav,
+  String link, {
+  InternalChatLinkTarget? sourceChat,
+}) async {
   final uri = Uri.tryParse(link);
   if (uri == null) return false;
 
@@ -575,6 +588,7 @@ Future<bool> _openTelegramFallback(NavigatorState nav, String link) async {
           nav,
           username.trim(),
           initialMessageId: messageId,
+          sourceChat: sourceChat,
         );
       }
     }
@@ -598,12 +612,17 @@ Future<bool> _openTelegramFallback(NavigatorState nav, String link) async {
   final lowerFirst = first.toLowerCase();
   if (first.startsWith('+') || lowerFirst == 'joinchat') return false;
   if (lowerFirst == 'c') {
-    return _openPrivateMessageLink(nav, segments);
+    return _openPrivateMessageLink(nav, segments, sourceChat: sourceChat);
   }
   if (!_isPublicUsername(first)) return false;
 
   final messageId = segments.length > 1 ? int.tryParse(segments[1]) : null;
-  return _openPublicChat(nav, first, initialMessageId: messageId);
+  return _openPublicChat(
+    nav,
+    first,
+    initialMessageId: messageId,
+    sourceChat: sourceChat,
+  );
 }
 
 Future<bool> _openUser(NavigatorState nav, int userId) async {
@@ -625,6 +644,7 @@ Future<bool> _openPublicChat(
   String username, {
   int? initialMessageId,
   String draftText = '',
+  InternalChatLinkTarget? sourceChat,
 }) async {
   try {
     final chat = await TdClient.shared.query({
@@ -638,7 +658,12 @@ Future<bool> _openPublicChat(
         'text': draftText.trim(),
       });
     }
-    await _openChat(nav, chatId, initialMessageId: initialMessageId);
+    await _openChat(
+      nav,
+      chatId,
+      initialMessageId: initialMessageId,
+      sourceChat: sourceChat,
+    );
     return true;
   } catch (_) {
     return false;
@@ -2089,15 +2114,21 @@ Future<void> _showDeepLinkInfoOrExternal(String link) async {
 
 Future<bool> _openPrivateMessageLink(
   NavigatorState nav,
-  List<String> segments,
-) async {
+  List<String> segments, {
+  InternalChatLinkTarget? sourceChat,
+}) async {
   if (segments.length < 3) return false;
   final internalId = int.tryParse(segments[1]);
   final messageId = int.tryParse(segments[2]);
   if (internalId == null) return false;
   final chatId = int.tryParse('-100$internalId');
   if (chatId == null) return false;
-  await _openChat(nav, chatId, initialMessageId: messageId);
+  await _openChat(
+    nav,
+    chatId,
+    initialMessageId: messageId,
+    sourceChat: sourceChat,
+  );
   return true;
 }
 
@@ -2108,8 +2139,20 @@ Future<void> _openChat(
   NavigatorState nav,
   int? chatId, {
   int? initialMessageId,
+  InternalChatLinkTarget? sourceChat,
 }) async {
   if (chatId == null) return;
+  if (sourceChat?.chatId == chatId &&
+      initialMessageId != null &&
+      initialMessageId > 0) {
+    await routeResolvedInternalChatLink(
+      chatId: chatId,
+      title: '',
+      messageId: initialMessageId,
+      source: sourceChat,
+    );
+    return;
+  }
   var title = '';
   try {
     final chat = await TdClient.shared.query({
@@ -2119,17 +2162,11 @@ Future<void> _openChat(
     title = chat.str('title') ?? '';
   } catch (_) {}
   if (!nav.mounted) return;
-  final chatNavigator = appNavigatorKey.currentState ?? nav;
-  unawaited(
-    chatNavigator.push(
-      AppChatPageRoute<void>(
-        builder: (_) => ChatView(
-          chatId: chatId,
-          title: title,
-          initialMessageId: initialMessageId,
-        ),
-      ),
-    ),
+  await routeResolvedInternalChatLink(
+    chatId: chatId,
+    title: title,
+    messageId: initialMessageId,
+    source: sourceChat,
   );
 }
 

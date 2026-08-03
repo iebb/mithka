@@ -21,13 +21,11 @@ has_rpath() {
   [[ "$load_commands" == *"path $1 (offset"* ]]
 }
 
-modified=0
 for development_rpath in /opt/homebrew/lib /usr/local/lib; do
   if has_rpath "$development_rpath"; then
     /usr/bin/xcrun install_name_tool \
       -delete_rpath "$development_rpath" \
       "$mdk_binary"
-    modified=1
   fi
 done
 
@@ -38,11 +36,28 @@ for development_rpath in /opt/homebrew/lib /usr/local/lib; do
   fi
 done
 
-if [[ "$modified" == "1" && "${CODE_SIGNING_ALLOWED:-NO}" == "YES" ]]; then
+if [[ "${CODE_SIGNING_ALLOWED:-NO}" == "YES" ]]; then
   signing_identity="${EXPANDED_CODE_SIGN_IDENTITY:-}"
   if [[ -z "$signing_identity" ]]; then
     signing_identity="-"
   fi
+
+  # mdk.framework ships executable codec dylibs inside the framework bundle.
+  # A framework-level signature does not replace those nested signatures, so
+  # sign them inner-first with the same identity as the archive. Otherwise a
+  # distribution archive can retain the SDK's ad-hoc nested signatures and be
+  # rejected during App Store validation.
+  while IFS= read -r -d '' nested_dylib; do
+    /usr/bin/codesign \
+      --force \
+      --sign "$signing_identity" \
+      --preserve-metadata=identifier,entitlements,requirements,flags,runtime \
+      "$nested_dylib"
+  done < <(
+    /usr/bin/find "$mdk_framework/Versions/A" \
+      -maxdepth 1 -type f -name '*.dylib' -print0
+  )
+
   /usr/bin/codesign \
     --force \
     --sign "$signing_identity" \
@@ -51,7 +66,13 @@ if [[ "$modified" == "1" && "${CODE_SIGNING_ALLOWED:-NO}" == "YES" ]]; then
 fi
 
 if [[ "${CODE_SIGNING_ALLOWED:-NO}" == "YES" ]]; then
-  /usr/bin/codesign --verify --strict "$mdk_framework"
+  while IFS= read -r -d '' nested_dylib; do
+    /usr/bin/codesign --verify --strict "$nested_dylib"
+  done < <(
+    /usr/bin/find "$mdk_framework/Versions/A" \
+      -maxdepth 1 -type f -name '*.dylib' -print0
+  )
+  /usr/bin/codesign --verify --deep --strict "$mdk_framework"
 fi
 
 echo "Sanitized embedded MDK development rpaths"

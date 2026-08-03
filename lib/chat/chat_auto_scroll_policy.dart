@@ -64,12 +64,28 @@ enum ChatReopenDisposition {
 ChatReopenDisposition resolveChatReopenDisposition({
   required bool hasExplicitTarget,
   required bool hasSavedPosition,
-  required bool hasConfirmedNewUnread,
+  required bool prioritizeUnread,
 }) {
   if (hasExplicitTarget) return ChatReopenDisposition.explicitTarget;
-  if (hasConfirmedNewUnread) return ChatReopenDisposition.firstUnread;
+  if (prioritizeUnread) return ChatReopenDisposition.firstUnread;
   if (hasSavedPosition) return ChatReopenDisposition.savedPosition;
   return ChatReopenDisposition.defaultPosition;
+}
+
+/// Existing unread messages displace a saved viewport only when that viewport
+/// still points into already-read history. A saved anchor inside the unread
+/// range is reading progress and must be preserved.
+bool shouldPrioritizeUnreadOnChatReopen({
+  required int currentUnreadCount,
+  required int currentLastReadInboxId,
+  required int? savedAnchorMessageId,
+  required bool hasConfirmedNewUnread,
+}) {
+  if (hasConfirmedNewUnread) return true;
+  if (currentUnreadCount <= 0) return false;
+  if (savedAnchorMessageId == null) return true;
+  if (currentLastReadInboxId <= 0) return false;
+  return savedAnchorMessageId <= currentLastReadInboxId;
 }
 
 bool shouldLoadLatestChatHistory({

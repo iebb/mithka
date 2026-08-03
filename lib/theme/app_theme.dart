@@ -12,6 +12,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../platform/adaptive_platform.dart';
+
 Color _hex(int rgb, [double opacity = 1]) =>
     Color((rgb & 0xFFFFFF) | 0xFF000000).withValues(alpha: opacity);
 
@@ -25,6 +27,16 @@ abstract final class AppTextSize {
   static const double title = 17;
   static const double display = 22;
   static const double largeDisplay = 24;
+
+  /// Compact chat typography for native desktop windows while preserving the
+  /// existing touch layouts and every user-selected font family.
+  static double chatListTitle([TargetPlatform? platform]) =>
+      isDesktopTargetPlatform(platform) ? callout : body;
+  static double chatListPreview([TargetPlatform? platform]) =>
+      isDesktopTargetPlatform(platform) ? caption : footnote;
+  static double chatListTimestamp([TargetPlatform? platform]) => caption;
+  static double messageBody([TargetPlatform? platform]) =>
+      isDesktopTargetPlatform(platform) ? callout : body;
 }
 
 abstract final class AppTextWeight {
@@ -184,6 +196,11 @@ abstract final class AppMetric {
   static const double settingsRowHeight = 56;
   static const double compactSettingsRowHeight = 52;
   static const double avatarSize = 48;
+
+  static double chatListRowHeight([TargetPlatform? platform]) =>
+      isDesktopTargetPlatform(platform) ? 58 : listRowHeight;
+  static double chatListAvatarSize([TargetPlatform? platform]) =>
+      isDesktopTargetPlatform(platform) ? 44 : avatarSize;
   static const double headerAvatarSize = 36;
   static const double hitTarget = 36;
   static const double searchHeight = 36;

@@ -23,7 +23,7 @@ import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
 import 'chat_view.dart';
 import 'file_detail_view.dart';
-import 'full_image_viewer.dart';
+import 'image_preview.dart';
 import 'link_handler.dart';
 import 'music_player_controller.dart';
 import 'video_playback_queue.dart';
@@ -79,12 +79,14 @@ class SharedMediaView extends StatefulWidget {
     this.initialTab = 0,
     this.displayTitle = AppStringKeys.sharedMediaChatFiles,
     this.lockedTab = false,
+    this.showBackButton = true,
   });
   final int chatId;
   final String title;
   final int initialTab; // 0 图片视频, 1 文件, 2 链接, 3 语音, 4 视频, 5 音乐
   final String displayTitle;
   final bool lockedTab;
+  final bool showBackButton;
 
   @override
   State<SharedMediaView> createState() => _SharedMediaViewState();
@@ -754,21 +756,22 @@ class _SharedMediaViewState extends State<SharedMediaView> {
         child: Stack(
           alignment: Alignment.center,
           children: [
-            Align(
-              alignment: Alignment.centerLeft,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => Navigator.of(context).pop(),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                  child: AppIcon(
-                    HeroAppIcons.chevronLeft,
-                    size: 22,
-                    color: c.textPrimary,
+            if (widget.showBackButton)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => Navigator.of(context).pop(),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    child: AppIcon(
+                      HeroAppIcons.chevronLeft,
+                      size: 22,
+                      color: c.textPrimary,
+                    ),
                   ),
                 ),
               ),
-            ),
             Text(
               telegramText(widget.displayTitle),
               style: TextStyle(
@@ -1083,13 +1086,11 @@ class _SharedMediaViewState extends State<SharedMediaView> {
         final photo = message.image;
         if (photo == null) return;
         final index = photos.indexWhere((item) => item.id == photo.id);
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            fullscreenDialog: true,
-            builder: (_) => FullImageViewer(
-              items: photos,
-              startIndex: index < 0 ? 0 : index,
-            ),
+        unawaited(
+          openImagePreview(
+            context,
+            items: photos,
+            startIndex: index < 0 ? 0 : index,
           ),
         );
       },

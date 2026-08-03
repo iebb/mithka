@@ -100,6 +100,7 @@ class TopicChatView extends StatefulWidget {
     this.headerColor,
     this.chatRouteBelow = false,
     this.onOpenChatView,
+    this.onBack,
     this.routeSession,
     this.query,
   });
@@ -112,6 +113,7 @@ class TopicChatView extends StatefulWidget {
   final Color? headerColor;
   final bool chatRouteBelow;
   final VoidCallback? onOpenChatView;
+  final VoidCallback? onBack;
   final TopicChatRouteSession? routeSession;
   @visibleForTesting
   final ForumTopicMessageQuery? query;
@@ -1056,7 +1058,7 @@ class _TopicChatViewState extends State<TopicChatView> {
                 if (widget.showBackButton)
                   GestureDetector(
                     behavior: HitTestBehavior.opaque,
-                    onTap: () => Navigator.of(context).pop(),
+                    onTap: widget.onBack ?? () => Navigator.of(context).pop(),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
                         horizontal: AppSpacing.sm,

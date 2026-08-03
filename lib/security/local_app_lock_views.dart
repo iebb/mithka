@@ -315,6 +315,18 @@ class _AppLockSettingsViewState extends State<AppLockSettingsView> {
     ),
   );
 
+  Future<AppLockAutoLockOption?> _chooseAutoLock({
+    required AppLockAutoLockOption current,
+  }) => showAppModalSheet<AppLockAutoLockOption>(
+    context: context,
+    backgroundColor: Colors.transparent,
+    barrierColor: const Color(0x99000000),
+    builder: (sheetContext) => _AutoLockChooser(
+      current: current,
+      onSelected: (value) => Navigator.of(sheetContext).pop(value),
+    ),
+  );
+
   Future<bool> _openSetup(AppLockCredentialType type) async =>
       await Navigator.of(context).push<bool>(
         MaterialPageRoute(
@@ -374,6 +386,20 @@ class _AppLockSettingsViewState extends State<AppLockSettingsView> {
       if (!mounted || result == AppLockBiometricResult.success) return;
       final error = _biometricError(result);
       if (error != null) showToast(context, error);
+    } catch (_) {
+      if (mounted) showToast(context, AppStringKeys.appLockSetupFailed);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _changeAutoLock(AppLockAutoLockOption current) async {
+    if (_busy) return;
+    final option = await _chooseAutoLock(current: current);
+    if (!mounted || option == null) return;
+    setState(() => _busy = true);
+    try {
+      await context.read<LocalAppLockController>().setAutoLockOption(option);
     } catch (_) {
       if (mounted) showToast(context, AppStringKeys.appLockSetupFailed);
     } finally {
@@ -479,6 +505,35 @@ class _AppLockSettingsViewState extends State<AppLockSettingsView> {
                       alreadyLocalized: true,
                     ),
                   ],
+                  const SizedBox(height: 14),
+                  _SettingsCard(
+                    children: [
+                      _AppLockSettingsRow(
+                        icon: HeroAppIcons.clock,
+                        title: AppStringKeys.appLockAutoLock,
+                        value: _autoLockLabel(controller.autoLockOption),
+                        onTap: _busy
+                            ? null
+                            : () => _changeAutoLock(controller.autoLockOption),
+                        showChevron: true,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const _SettingsHint(
+                    text: AppStringKeys.appLockAutoLockDescription,
+                  ),
+                  const SizedBox(height: 18),
+                  _SettingsCard(
+                    children: [
+                      _AppLockSettingsRow(
+                        icon: HeroAppIcons.lock,
+                        title: AppStringKeys.appLockDisable,
+                        foregroundColor: Theme.of(context).colorScheme.error,
+                        onTap: _busy ? null : () => _toggleLock(false),
+                      ),
+                    ],
+                  ),
                 ],
               ],
             ),
@@ -1561,6 +1616,59 @@ class _MethodChooser extends StatelessWidget {
   }
 }
 
+class _AutoLockChooser extends StatelessWidget {
+  const _AutoLockChooser({required this.current, required this.onSelected});
+
+  final AppLockAutoLockOption current;
+  final ValueChanged<AppLockAutoLockOption> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return SafeArea(
+      top: false,
+      child: Container(
+        margin: const EdgeInsets.all(12),
+        padding: const EdgeInsets.fromLTRB(18, 20, 18, 12),
+        decoration: BoxDecoration(
+          color: c.card,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              AppStringKeys.appLockAutoLock.l10n(context),
+              style: AppTextStyle.title(
+                c.textPrimary,
+                weight: AppTextWeight.semibold,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              AppStringKeys.appLockAutoLockDescription.l10n(context),
+              style: AppTextStyle.body(c.textSecondary),
+            ),
+            const SizedBox(height: 14),
+            for (final option in AppLockAutoLockOption.values) ...[
+              _MethodChoice(
+                icon: HeroAppIcons.clock,
+                title: _autoLockLabel(option),
+                detail: null,
+                selected: current == option,
+                onTap: () => onSelected(option),
+              ),
+              if (option != AppLockAutoLockOption.values.last)
+                const SizedBox(height: 8),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _MethodChoice extends StatelessWidget {
   const _MethodChoice({
     required this.icon,
@@ -1572,7 +1680,7 @@ class _MethodChoice extends StatelessWidget {
 
   final AppIconData icon;
   final String title;
-  final String detail;
+  final String? detail;
   final bool selected;
   final VoidCallback onTap;
 
@@ -1606,11 +1714,13 @@ class _MethodChoice extends StatelessWidget {
                     title.l10n(context),
                     style: AppTextStyle.title(c.textPrimary),
                   ),
-                  const SizedBox(height: 3),
-                  Text(
-                    detail.l10n(context),
-                    style: AppTextStyle.footnote(c.textSecondary),
-                  ),
+                  if (detail != null) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      detail!.l10n(context),
+                      style: AppTextStyle.footnote(c.textSecondary),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -1647,6 +1757,7 @@ class _AppLockSettingsRow extends StatelessWidget {
     this.trailing,
     this.onTap,
     this.showChevron = false,
+    this.foregroundColor,
   });
 
   final AppIconData icon;
@@ -1655,6 +1766,7 @@ class _AppLockSettingsRow extends StatelessWidget {
   final Widget? trailing;
   final VoidCallback? onTap;
   final bool showChevron;
+  final Color? foregroundColor;
 
   @override
   Widget build(BuildContext context) {
@@ -1668,14 +1780,16 @@ class _AppLockSettingsRow extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
             children: [
-              AppIcon(icon, size: 21, color: c.linkBlue),
+              AppIcon(icon, size: 21, color: foregroundColor ?? c.linkBlue),
               const SizedBox(width: 14),
               Expanded(
                 child: Text(
                   title.l10n(context),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: AppTextStyle.bodyLarge(c.textPrimary),
+                  style: AppTextStyle.bodyLarge(
+                    foregroundColor ?? c.textPrimary,
+                  ),
                 ),
               ),
               if (value != null) ...[
@@ -1717,6 +1831,14 @@ class _SettingsHint extends StatelessWidget {
     ),
   );
 }
+
+String _autoLockLabel(AppLockAutoLockOption option) => switch (option) {
+  AppLockAutoLockOption.disabled => AppStringKeys.appLockAutoLockDisabled,
+  AppLockAutoLockOption.oneMinute => AppStringKeys.appLockAutoLockOneMinute,
+  AppLockAutoLockOption.fiveMinutes => AppStringKeys.appLockAutoLockFiveMinutes,
+  AppLockAutoLockOption.oneHour => AppStringKeys.appLockAutoLockOneHour,
+  AppLockAutoLockOption.fiveHours => AppStringKeys.appLockAutoLockFiveHours,
+};
 
 @immutable
 class _ChallengeResult {

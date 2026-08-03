@@ -25,7 +25,9 @@ import 'storage_usage_view.dart';
 import 'video_playback_settings_view.dart';
 
 class GeneralSettingsView extends StatefulWidget {
-  const GeneralSettingsView({super.key});
+  const GeneralSettingsView({super.key, this.showBackButton = true});
+
+  final bool showBackButton;
 
   @override
   State<GeneralSettingsView> createState() => _GeneralSettingsViewState();
@@ -34,7 +36,6 @@ class GeneralSettingsView extends StatefulWidget {
 class _GeneralSettingsViewState extends State<GeneralSettingsView> {
   String _cacheSize = '—';
   bool _loadingCache = true;
-  bool _clearing = false;
 
   @override
   void initState() {
@@ -53,22 +54,6 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
       _cacheSize = '—';
     }
     if (mounted) setState(() => _loadingCache = false);
-  }
-
-  Future<void> _clearCache() async {
-    setState(() => _clearing = true);
-    TdClient.shared.send({
-      '@type': 'optimizeStorage',
-      'size': 0,
-      'ttl': 0,
-      'count': 0,
-      'immunity_delay': 0,
-      'chat_limit': 0,
-      'return_deleted_file_statistics': false,
-    });
-    await Future.delayed(const Duration(milliseconds: 800));
-    if (mounted) setState(() => _clearing = false);
-    await _loadCache();
   }
 
   static String _formatBytes(int bytes) {
@@ -93,7 +78,9 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
         children: [
           NavHeader(
             title: AppStringKeys.settingsDataAndStorage,
-            onBack: () => Navigator.of(context).pop(),
+            onBack: widget.showBackButton && Navigator.of(context).canPop()
+                ? () => Navigator.of(context).pop()
+                : null,
           ),
           Expanded(
             child: DesktopContentConstraint(
@@ -262,38 +249,6 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
             () => Navigator.of(
               context,
             ).push(MaterialPageRoute(builder: (_) => const NetworkUsageView())),
-          ),
-          const InsetDivider(leadingInset: 56),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: _clearing || _loadingCache ? null : _clearCache,
-            child: SizedBox(
-              height: 52,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        _clearing
-                            ? AppStrings.t(AppStringKeys.generalClearingCache)
-                            : AppStrings.t(AppStringKeys.generalClearCache),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 16, color: AppTheme.tagRed),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    if (_clearing)
-                      const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                  ],
-                ),
-              ),
-            ),
           ),
         ]),
       ],

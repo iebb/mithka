@@ -6,7 +6,6 @@
 
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
-import 'package:provider/provider.dart';
 
 import '../app/app_navigator.dart';
 import '../chat/chat_view.dart';
@@ -15,8 +14,6 @@ import '../components/ui_components.dart';
 import '../l10n/telegram_language_controller.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
-import '../theme/date_text.dart';
-import '../theme/theme_controller.dart';
 import 'chat_row_view.dart';
 
 class ArchivedChatsRow extends StatelessWidget {
@@ -30,110 +27,59 @@ class ArchivedChatsRow extends StatelessWidget {
 
   ChatSummary? get _latest => archived.isEmpty ? null : archived.first;
   int get _totalUnread => archived.fold(0, (a, c) => a + c.unreadCount);
+
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
-    final theme = context.watch<ThemeController>();
-    final rowHeight = theme.rowHeight;
-    final avatarSize = theme.avatarSize;
-    return Container(
-      height: rowHeight,
-      color: c.background,
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
-      child: Row(
-        children: [
-          SizedBox(
-            width: avatarSize,
-            height: avatarSize,
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Container(
-                  width: avatarSize,
-                  height: avatarSize,
-                  alignment: Alignment.center,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFFF9D2E),
-                    shape: BoxShape.circle,
-                  ),
-                  child: AppIcon(
-                    HeroAppIcons.solidMessage,
-                    size: theme.scaled(22),
-                    color: Colors.white,
-                  ),
-                ),
-                if (_totalUnread > 0)
-                  Positioned(
-                    right: 0,
-                    top: 0,
-                    child: UnreadBadge(
-                      count: _totalUnread,
-                      muted: true,
-                      onClear: onClearUnread,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(width: AppSpacing.lg),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  telegramText(AppStringKeys.archivedChatsGroupAssistant),
-                  style: TextStyle(
-                    fontSize: AppTextSize.bodyLarge,
-                    fontWeight: FontWeight.w500,
-                    color: c.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.xs),
-                ChatPreviewText(
-                  sender: _latest?.title,
-                  message: _latest?.lastMessage ?? '',
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: AppSpacing.md),
-          SizedBox(
-            height: rowHeight,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                vertical: AppSpacing.lg + AppSpacing.xxs,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    DateText.listLabel(_latest?.date ?? 0),
-                    style: TextStyle(
-                      fontSize: AppTextSize.caption,
-                      color: c.textTertiary,
-                    ),
-                  ),
-                  const Spacer(),
-                  AppIcon(
-                    HeroAppIcons.bellSlash,
-                    size: AppIconSize.sm,
-                    color: c.textTertiary,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
+    final latest = _latest;
+    final title = telegramText(AppStringKeys.archivedChatsGroupAssistant);
+    final summary = ChatSummary(
+      id: 0,
+      title: title,
+      lastMessage: latest?.lastMessage ?? '',
+      lastMessageId: latest?.lastMessageId ?? 0,
+      date: latest?.date ?? 0,
+      unreadCount: _totalUnread,
+      order: latest?.order ?? 0,
+      isMuted: true,
+      lastSender: latest?.title,
+    );
+    return ChatRowView(
+      chat: summary,
+      archived: true,
+      onClearUnread: onClearUnread,
+      avatarBuilder: (size) => Container(
+        key: const ValueKey('archived-chats-avatar'),
+        width: size,
+        height: size,
+        alignment: Alignment.center,
+        decoration: const BoxDecoration(
+          color: Color(0xFFFF9D2E),
+          shape: BoxShape.circle,
+        ),
+        child: AppIcon(
+          HeroAppIcons.solidMessage,
+          size: size * 0.46,
+          color: Colors.white,
+        ),
       ),
     );
   }
 }
 
 class ArchivedChatsView extends StatelessWidget {
-  const ArchivedChatsView({super.key, required this.chats, this.onClearUnread});
+  const ArchivedChatsView({
+    super.key,
+    required this.chats,
+    this.onClearUnread,
+    this.onBack,
+    this.onChatSelected,
+    this.selectedChatId,
+  });
   final List<ChatSummary> chats;
   final ValueChanged<ChatSummary>? onClearUnread;
+  final VoidCallback? onBack;
+  final ValueChanged<ChatSummary>? onChatSelected;
+  final int? selectedChatId;
 
   @override
   Widget build(BuildContext context) {
@@ -144,7 +90,7 @@ class ArchivedChatsView extends StatelessWidget {
         children: [
           NavHeader(
             title: telegramText(AppStringKeys.archivedChatsGroupAssistant),
-            onBack: () => Navigator.of(context).pop(),
+            onBack: onBack ?? () => Navigator.of(context).pop(),
           ),
           Expanded(
             child: ListView.builder(
@@ -154,16 +100,11 @@ class ArchivedChatsView extends StatelessWidget {
                 final chat = chats[i];
                 return GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onTap: () => pushAppChatRoute(
-                    context,
-                    AppChatPageRoute(
-                      builder: (_) =>
-                          ChatView(chatId: chat.id, title: chat.title),
-                    ),
-                  ),
+                  onTap: () => _openChat(context, chat),
                   child: ChatRowView(
                     chat: chat,
                     archived: true,
+                    selected: chat.id == selectedChatId,
                     onClearUnread: () => onClearUnread?.call(chat),
                   ),
                 );
@@ -171,6 +112,20 @@ class ArchivedChatsView extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _openChat(BuildContext context, ChatSummary chat) {
+    final selectionHandler = onChatSelected;
+    if (selectionHandler != null) {
+      selectionHandler(chat);
+      return;
+    }
+    pushAppChatRoute(
+      context,
+      AppChatPageRoute(
+        builder: (_) => ChatView(chatId: chat.id, title: chat.title),
       ),
     );
   }

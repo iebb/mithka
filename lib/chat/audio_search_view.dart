@@ -25,14 +25,20 @@ class AudioSearchView extends StatefulWidget {
     super.key,
     this.onSend,
     this.onPickLocal,
+    this.onPickLocalInWindow,
+    this.onClose,
     this.initialQuery = '',
     this.selectOnly = false,
+    this.showBackButton = true,
   });
 
   final Future<void> Function(int sourceChatId, ChatMessage message)? onSend;
   final Future<void> Function()? onPickLocal;
+  final Future<bool> Function()? onPickLocalInWindow;
+  final Future<void> Function()? onClose;
   final String initialQuery;
   final bool selectOnly;
+  final bool showBackButton;
 
   @override
   State<AudioSearchView> createState() => _AudioSearchViewState();
@@ -58,6 +64,7 @@ class _AudioSearchViewState extends State<AudioSearchView> {
   Timer? _debounce;
   String _query = '';
   bool _loading = false;
+  bool _pickingLocal = false;
   int? _sendingMessageId;
   List<_AudioResult> _results = [];
 
@@ -162,7 +169,7 @@ class _AudioSearchViewState extends State<AudioSearchView> {
     setState(() => _sendingMessageId = result.message.id);
     try {
       await send(result.sourceChatId, result.message);
-      if (mounted) Navigator.of(context).pop();
+      if (mounted) await _close();
     } catch (_) {
       if (!mounted) return;
       setState(() => _sendingMessageId = null);
@@ -174,10 +181,38 @@ class _AudioSearchViewState extends State<AudioSearchView> {
   }
 
   Future<void> _pickLocal() async {
+    final inWindowAction = widget.onPickLocalInWindow;
+    if (inWindowAction != null) {
+      if (_pickingLocal) return;
+      setState(() => _pickingLocal = true);
+      try {
+        final sent = await inWindowAction();
+        if (mounted && sent) await _close();
+      } catch (_) {
+        if (mounted) {
+          showToast(
+            context,
+            AppStrings.t(AppStringKeys.audioSearchSendAudioFailed),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _pickingLocal = false);
+      }
+      return;
+    }
     final action = widget.onPickLocal;
     if (action == null) return;
     Navigator.of(context).pop();
     await action();
+  }
+
+  Future<void> _close() async {
+    final close = widget.onClose;
+    if (close != null) {
+      await close();
+      return;
+    }
+    if (mounted) await Navigator.of(context).maybePop();
   }
 
   @override
@@ -208,24 +243,26 @@ class _AudioSearchViewState extends State<AudioSearchView> {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           child: Row(
             children: [
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => Navigator.of(context).pop(),
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 10),
-                  child: AppIcon(
-                    HeroAppIcons.chevronLeft,
-                    size: 22,
-                    color: c.textPrimary,
+              if (widget.showBackButton)
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => unawaited(_close()),
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 10),
+                    child: AppIcon(
+                      HeroAppIcons.chevronLeft,
+                      size: 22,
+                      color: c.textPrimary,
+                    ),
                   ),
                 ),
-              ),
               Expanded(child: _searchField()),
-              if (widget.onPickLocal != null) ...[
+              if (widget.onPickLocal != null ||
+                  widget.onPickLocalInWindow != null) ...[
                 const SizedBox(width: 10),
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onTap: _pickLocal,
+                  onTap: _pickingLocal ? null : _pickLocal,
                   child: AppIcon(
                     HeroAppIcons.solidFolder,
                     size: 21,

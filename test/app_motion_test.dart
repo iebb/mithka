@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/theme/app_motion.dart';
+import 'package:mithka/theme/app_theme.dart';
 
 void main() {
   test('app page routes use the shared navigation contract', () {
@@ -28,18 +29,21 @@ void main() {
     await tester.pumpWidget(
       MediaQuery(
         data: const MediaQueryData(disableAnimations: true),
-        child: Builder(
-          builder: (context) {
-            final route = AppPageRoute<void>(pageBuilder: (_, _, _) => child);
-            transition = const AppPageTransitionsBuilder().buildTransitions(
-              route,
-              context,
-              const AlwaysStoppedAnimation<double>(0.4),
-              const AlwaysStoppedAnimation<double>(0.2),
-              child,
-            );
-            return transition;
-          },
+        child: Theme(
+          data: ThemeData(platform: TargetPlatform.android),
+          child: Builder(
+            builder: (context) {
+              final route = AppPageRoute<void>(pageBuilder: (_, _, _) => child);
+              transition = const AppPageTransitionsBuilder().buildTransitions(
+                route,
+                context,
+                const AlwaysStoppedAnimation<double>(0.4),
+                const AlwaysStoppedAnimation<double>(0.2),
+                child,
+              );
+              return transition;
+            },
+          ),
         ),
       ),
     );
@@ -47,6 +51,52 @@ void main() {
     expect(identical(transition, child), isTrue);
     expect(find.byKey(const ValueKey('reduced-route-child')), findsOneWidget);
   });
+
+  testWidgets(
+    'desktop routes replace content in place on a continuously painted surface',
+    (tester) async {
+      const childKey = ValueKey('desktop-route-child');
+      const background = Color(0xFF17324D);
+      late Widget transition;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          themeAnimationDuration: Duration.zero,
+          theme: ThemeData(
+            platform: TargetPlatform.macOS,
+            extensions: [AppColors.light.copyWith(background: background)],
+          ),
+          home: Builder(
+            builder: (context) {
+              const child = ColoredBox(key: childKey, color: Color(0xFF2A4D69));
+              final route = AppPageRoute<void>(pageBuilder: (_, _, _) => child);
+              transition = const AppPageTransitionsBuilder().buildTransitions(
+                route,
+                context,
+                const AlwaysStoppedAnimation<double>(0.08),
+                const AlwaysStoppedAnimation<double>(0.6),
+                child,
+              );
+              return SizedBox.expand(child: transition);
+            },
+          ),
+        ),
+      );
+
+      final surface = find.byKey(AppMotion.desktopRouteSurfaceKey);
+      expect(surface, findsOneWidget);
+      expect(tester.widget<ColoredBox>(surface).color, background);
+      expect(tester.getRect(surface), tester.getRect(find.byKey(childKey)));
+      expect(
+        find.descendant(of: surface, matching: find.byType(SlideTransition)),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: surface, matching: find.byType(Opacity)),
+        findsNothing,
+      );
+    },
+  );
 
   testWidgets('scroll behavior preserves the platform physics chain', (
     tester,

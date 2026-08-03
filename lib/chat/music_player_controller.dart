@@ -32,7 +32,7 @@ const Color musicPlayerAccent = Color(0xFF22C7A9);
 const Color _musicBlack = Color(0xFF000000);
 const Color _musicWhite = Color(0xFFFFFFFF);
 
-enum MusicPlaybackMode { sequence, repeatOne, shuffle }
+enum MusicPlaybackMode { sequence, reverseSequence, repeatOne, shuffle }
 
 class MusicPlayerController extends ChangeNotifier {
   MusicPlayerController._() {
@@ -265,6 +265,8 @@ class MusicPlayerController extends ChangeNotifier {
 
   void next() => _playAdjacent(1, manual: true);
 
+  void previous() => _playAdjacent(-1, manual: true);
+
   void seekFraction(double fraction) {
     final fallback = current?.music?.duration ?? 0;
     unawaited(_player.seekFraction(fraction, fallback));
@@ -272,11 +274,33 @@ class MusicPlayerController extends ChangeNotifier {
 
   void cycleMode() {
     mode = switch (mode) {
-      MusicPlaybackMode.sequence => MusicPlaybackMode.repeatOne,
+      MusicPlaybackMode.sequence => MusicPlaybackMode.reverseSequence,
+      MusicPlaybackMode.reverseSequence => MusicPlaybackMode.repeatOne,
       MusicPlaybackMode.repeatOne => MusicPlaybackMode.shuffle,
       MusicPlaybackMode.shuffle => MusicPlaybackMode.sequence,
     };
     notifyListeners();
+  }
+
+  @visibleForTesting
+  static int? resolveAdjacentIndex({
+    required int currentIndex,
+    required int itemCount,
+    required int delta,
+    required bool wrap,
+    required MusicPlaybackMode mode,
+  }) {
+    assert(delta == -1 || delta == 1);
+    if (itemCount <= 0 || currentIndex < 0 || currentIndex >= itemCount) {
+      return null;
+    }
+    final traversalDelta = mode == MusicPlaybackMode.reverseSequence
+        ? -delta
+        : delta;
+    final candidate = currentIndex + traversalDelta;
+    if (candidate >= 0 && candidate < itemCount) return candidate;
+    if (!wrap) return null;
+    return candidate < 0 ? itemCount - 1 : 0;
   }
 
   void collapse() {
@@ -330,12 +354,14 @@ class MusicPlayerController extends ChangeNotifier {
       (item) => item.music?.file?.id == active.music?.file?.id,
     );
     if (index < 0) return;
-    final nextIndex = index + delta;
-    if (nextIndex < 0 || nextIndex >= playable.length) {
-      if (!manual) return;
-      play(playable.first, visibleQueue: playable, reveal: manual);
-      return;
-    }
+    final nextIndex = resolveAdjacentIndex(
+      currentIndex: index,
+      itemCount: playable.length,
+      delta: delta,
+      wrap: manual,
+      mode: mode,
+    );
+    if (nextIndex == null) return;
     play(playable[nextIndex], visibleQueue: playable, reveal: manual);
   }
 
@@ -2129,6 +2155,10 @@ Widget _modeIconWidget(
       size: size,
       color: color,
     ),
+    MusicPlaybackMode.reverseSequence => _ReverseSequenceGlyph(
+      size: size,
+      color: color,
+    ),
     MusicPlaybackMode.repeatOne => _RepeatOneGlyph(size: size, color: color),
     MusicPlaybackMode.shuffle => _ShuffleGlyph(size: size, color: color),
   };
@@ -2164,6 +2194,58 @@ class _RepeatOneGlyph extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _ReverseSequenceGlyph extends StatelessWidget {
+  const _ReverseSequenceGlyph({required this.size, required this.color});
+
+  final double size;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox.square(
+      dimension: size,
+      child: CustomPaint(painter: _ReverseSequenceGlyphPainter(color)),
+    );
+  }
+}
+
+class _ReverseSequenceGlyphPainter extends CustomPainter {
+  const _ReverseSequenceGlyphPainter(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final stroke = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = (size.width * 0.1).clamp(1.6, 2.4)
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    for (final y in const [0.24, 0.5, 0.76]) {
+      canvas.drawLine(
+        Offset(size.width * 0.1, size.height * y),
+        Offset(size.width * 0.5, size.height * y),
+        stroke,
+      );
+    }
+
+    final arrow = Path()
+      ..moveTo(size.width * 0.76, size.height * 0.84)
+      ..lineTo(size.width * 0.76, size.height * 0.16)
+      ..moveTo(size.width * 0.58, size.height * 0.34)
+      ..lineTo(size.width * 0.76, size.height * 0.16)
+      ..lineTo(size.width * 0.94, size.height * 0.34);
+    canvas.drawPath(arrow, stroke);
+  }
+
+  @override
+  bool shouldRepaint(covariant _ReverseSequenceGlyphPainter oldDelegate) {
+    return oldDelegate.color != color;
   }
 }
 
@@ -2253,6 +2335,8 @@ class _ShuffleGlyphPainter extends CustomPainter {
 String _modeLabel(MusicPlaybackMode mode) {
   return AppStrings.t(switch (mode) {
     MusicPlaybackMode.sequence => AppStringKeys.musicPlayerModeSequence,
+    MusicPlaybackMode.reverseSequence =>
+      AppStringKeys.musicPlayerModeReverseSequence,
     MusicPlaybackMode.repeatOne => AppStringKeys.musicPlayerModeRepeatOne,
     MusicPlaybackMode.shuffle => AppStringKeys.musicPlayerModeShuffle,
   });

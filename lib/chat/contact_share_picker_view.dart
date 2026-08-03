@@ -12,7 +12,16 @@ import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 
 class ContactSharePickerView extends StatefulWidget {
-  const ContactSharePickerView({super.key});
+  const ContactSharePickerView({
+    super.key,
+    this.showBackButton = true,
+    this.onClose,
+    this.onSelect,
+  });
+
+  final bool showBackButton;
+  final FutureOr<void> Function()? onClose;
+  final FutureOr<void> Function(MessageContactCard contact)? onSelect;
 
   @override
   State<ContactSharePickerView> createState() => _ContactSharePickerViewState();
@@ -40,6 +49,24 @@ class _ContactSharePickerViewState extends State<ContactSharePickerView> {
 
   void _rebuild() {
     if (mounted) setState(() {});
+  }
+
+  void _close() {
+    final callback = widget.onClose;
+    if (callback != null) {
+      unawaited(Future<void>.sync(callback));
+      return;
+    }
+    Navigator.of(context).pop();
+  }
+
+  void _select(MessageContactCard contact) {
+    final callback = widget.onSelect;
+    if (callback != null) {
+      unawaited(Future<void>.sync(() => callback(contact)));
+      return;
+    }
+    Navigator.of(context).pop(contact);
   }
 
   Future<void> _load() async {
@@ -103,7 +130,7 @@ class _ContactSharePickerViewState extends State<ContactSharePickerView> {
         children: [
           NavHeader(
             title: AppStringKeys.contactShareTitle,
-            onBack: () => Navigator.of(context).pop(),
+            onBack: widget.showBackButton ? _close : null,
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
@@ -157,7 +184,7 @@ class _ContactSharePickerViewState extends State<ContactSharePickerView> {
                       return GestureDetector(
                         key: ValueKey('shareContact-${contact.card.userId}'),
                         behavior: HitTestBehavior.opaque,
-                        onTap: () => Navigator.of(context).pop(contact.card),
+                        onTap: () => _select(contact.card),
                         child: Container(
                           height: 64,
                           color: c.card,

@@ -5,14 +5,25 @@ import 'package:flutter/foundation.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 
+typedef SensitiveContentQuery =
+    Future<Map<String, dynamic>> Function(Map<String, dynamic> request);
+
 class SensitiveContentController extends ChangeNotifier {
-  SensitiveContentController._();
+  SensitiveContentController._({SensitiveContentQuery? query})
+    : _query = query ?? TdClient.shared.query;
+
+  @visibleForTesting
+  factory SensitiveContentController.forTesting({
+    required SensitiveContentQuery query,
+  }) => SensitiveContentController._(query: query);
 
   static final SensitiveContentController shared =
       SensitiveContentController._();
 
   static const canIgnoreOption = 'can_ignore_sensitive_content_restrictions';
   static const ignoreOption = 'ignore_sensitive_content_restrictions';
+
+  final SensitiveContentQuery _query;
 
   bool _initialized = false;
   bool _loading = false;
@@ -48,7 +59,7 @@ class SensitiveContentController extends ChangeNotifier {
   }
 
   Future<void> setEnabled(bool value) async {
-    await TdClient.shared.query({
+    await _query({
       '@type': 'setOption',
       'name': ignoreOption,
       'value': {'@type': 'optionValueBoolean', 'value': value},
@@ -60,10 +71,7 @@ class SensitiveContentController extends ChangeNotifier {
 
   Future<bool?> _optionBool(String name) async {
     try {
-      final option = await TdClient.shared.query({
-        '@type': 'getOption',
-        'name': name,
-      });
+      final option = await _query({'@type': 'getOption', 'name': name});
       return option.boolean('value');
     } catch (_) {
       return null;

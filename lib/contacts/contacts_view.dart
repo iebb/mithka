@@ -19,6 +19,7 @@ import '../components/app_interactive_surface.dart';
 import '../components/drawer_controller.dart' as dc;
 import '../components/photo_avatar.dart';
 import '../components/ui_components.dart';
+import '../profile/adaptive_profile_launcher.dart';
 import '../profile/profile_detail_view.dart';
 import '../tdlib/chat_membership.dart';
 import '../tdlib/json_helpers.dart';
@@ -39,9 +40,14 @@ bool contactMatchesQuery(Contact contact, String rawQuery) {
 }
 
 class ContactsView extends StatefulWidget {
-  const ContactsView({super.key, this.onOpenDetail});
+  const ContactsView({
+    super.key,
+    this.onOpenDetail,
+    this.desktopSidebar = false,
+  });
 
   final ValueChanged<Widget>? onOpenDetail;
+  final bool desktopSidebar;
 
   @override
   State<ContactsView> createState() => _ContactsViewState();
@@ -132,12 +138,12 @@ class _ContactsViewState extends State<ContactsView> {
       color: c.groupedBackground,
       child: Column(
         children: [
-          _header(),
+          if (!widget.desktopSidebar) _header(),
           Expanded(
             child: ListView(
               padding: EdgeInsets.zero,
               children: [
-                _searchPill(),
+                if (widget.desktopSidebar) _desktopToolbar() else _searchPill(),
                 _tabs(),
                 switch (_tab) {
                   0 => _contactList(contacts, loading: _vm.contactsLoading),
@@ -156,6 +162,7 @@ class _ContactsViewState extends State<ContactsView> {
   Widget _header() {
     final c = context.colors;
     return Container(
+      key: const ValueKey('contacts-root-header'),
       color: c.listHeaderTint,
       padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
       child: Padding(
@@ -198,57 +205,97 @@ class _ContactsViewState extends State<ContactsView> {
   }
 
   Widget _searchPill() {
-    final c = context.colors;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-      child: Container(
-        height: 36,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(
-          color: c.searchFill,
-          borderRadius: BorderRadius.circular(9),
-        ),
-        child: Row(
-          children: [
-            AppIcon(
-              HeroAppIcons.magnifyingGlass,
-              size: 16,
-              color: c.textTertiary,
-            ),
-            const SizedBox(width: 6),
-            Expanded(
-              child: TextField(
-                controller: _searchController,
-                textInputAction: TextInputAction.search,
-                onChanged: (_) => setState(() {}),
-                style: TextStyle(fontSize: 14, color: c.textPrimary),
-                decoration: InputDecoration(
-                  isCollapsed: true,
-                  border: InputBorder.none,
-                  hintText: AppStringKeys.topicChatSearch.l10n(context),
-                  hintStyle: TextStyle(fontSize: 14, color: c.textTertiary),
-                ),
-              ),
-            ),
-            if (_searchController.text.isNotEmpty)
-              AppInteractiveSurface(
-                semanticLabel: AppStringKeys.countryPickerCancel.l10n(context),
-                onTap: () {
-                  _searchController.clear();
-                  setState(() {});
-                },
+      child: _searchField(),
+    );
+  }
+
+  Widget _desktopToolbar() {
+    final c = context.colors;
+    return Padding(
+      key: const ValueKey('contacts-desktop-toolbar'),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+      child: Row(
+        children: [
+          Expanded(child: _searchField()),
+          const SizedBox(width: 8),
+          AppInteractiveSurface(
+            key: const ValueKey('contacts-desktop-add-action'),
+            semanticLabel: AppStringKeys.addPeopleFindPeople.l10n(context),
+            onTap: _showAddMenu,
+            borderRadius: BorderRadius.circular(9),
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: c.searchFill,
                 borderRadius: BorderRadius.circular(9),
-                child: Padding(
-                  padding: const EdgeInsets.all(4),
-                  child: AppIcon(
-                    HeroAppIcons.xmark,
-                    size: 14,
-                    color: c.textTertiary,
-                  ),
+              ),
+              child: Center(
+                child: AppIcon(
+                  HeroAppIcons.userPlus,
+                  size: 20,
+                  color: c.textPrimary,
                 ),
               ),
-          ],
-        ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _searchField() {
+    final c = context.colors;
+    return Container(
+      key: const ValueKey('contacts-search-field'),
+      height: 36,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: c.searchFill,
+        borderRadius: BorderRadius.circular(9),
+      ),
+      child: Row(
+        children: [
+          AppIcon(
+            HeroAppIcons.magnifyingGlass,
+            size: 16,
+            color: c.textTertiary,
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: TextField(
+              controller: _searchController,
+              textInputAction: TextInputAction.search,
+              onChanged: (_) => setState(() {}),
+              style: TextStyle(fontSize: 14, color: c.textPrimary),
+              decoration: InputDecoration(
+                isCollapsed: true,
+                border: InputBorder.none,
+                hintText: AppStringKeys.topicChatSearch.l10n(context),
+                hintStyle: TextStyle(fontSize: 14, color: c.textTertiary),
+              ),
+            ),
+          ),
+          if (_searchController.text.isNotEmpty)
+            AppInteractiveSurface(
+              semanticLabel: AppStringKeys.countryPickerCancel.l10n(context),
+              onTap: () {
+                _searchController.clear();
+                setState(() {});
+              },
+              borderRadius: BorderRadius.circular(9),
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: AppIcon(
+                  HeroAppIcons.xmark,
+                  size: 14,
+                  color: c.textTertiary,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -261,7 +308,14 @@ class _ContactsViewState extends State<ContactsView> {
       AppStringKeys.tabChannels,
       AppStringKeys.chatsSearchBots,
     ];
+    const desktopIcons = <AppIconData>[
+      HeroAppIcons.users,
+      HeroAppIcons.comments,
+      HeroAppIcons.towerBroadcast,
+      HeroAppIcons.cpuChip,
+    ];
     return Container(
+      key: const ValueKey('contacts-tabs'),
       margin: const EdgeInsets.only(top: 4),
       decoration: BoxDecoration(
         color: c.card,
@@ -271,43 +325,85 @@ class _ContactsViewState extends State<ContactsView> {
         children: [
           for (var i = 0; i < labels.length; i++)
             Expanded(
-              child: AppInteractiveSurface(
-                semanticLabel: labels[i].l10n(context),
-                selected: _tab == i,
-                onTap: () => setState(() => _tab = i),
-                child: SizedBox(
-                  height: 50,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      Text(
-                        labels[i].l10n(context),
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: _tab == i
-                              ? FontWeight.w600
-                              : FontWeight.w500,
-                          color: c.textPrimary,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 180),
-                        width: _tab == i ? 44 : 0,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: AppTheme.brand,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+              child: _contactTab(
+                index: i,
+                label: labels[i].l10n(context),
+                desktopIcon: desktopIcons[i],
               ),
             ),
         ],
       ),
     );
+  }
+
+  Widget _contactTab({
+    required int index,
+    required String label,
+    required AppIconData desktopIcon,
+  }) {
+    final c = context.colors;
+    final selected = _tab == index;
+    final surface = AppInteractiveSurface(
+      key: ValueKey('contacts-tab-$index'),
+      semanticLabel: label,
+      selected: selected,
+      onTap: () => setState(() => _tab = index),
+      child: SizedBox(
+        height: 50,
+        child: Column(
+          children: [
+            Expanded(
+              child: Center(
+                child: widget.desktopSidebar
+                    ? SizedBox(
+                        key: ValueKey('contacts-tab-icon-hit-$index'),
+                        width: 36,
+                        height: 36,
+                        child: Center(
+                          child: AppIcon(
+                            desktopIcon,
+                            key: ValueKey('contacts-tab-icon-$index'),
+                            size: 22,
+                            color: selected ? AppTheme.brand : c.textSecondary,
+                          ),
+                        ),
+                      )
+                    : Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: Text(
+                          label,
+                          key: ValueKey('contacts-tab-label-$index'),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: selected
+                                ? FontWeight.w600
+                                : FontWeight.w500,
+                            color: c.textPrimary,
+                          ),
+                        ),
+                      ),
+              ),
+            ),
+            AnimatedContainer(
+              key: ValueKey('contacts-tab-indicator-$index'),
+              duration: const Duration(milliseconds: 180),
+              width: selected ? (widget.desktopSidebar ? 32 : 44) : 0,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppTheme.brand,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (!widget.desktopSidebar) return surface;
+    return Tooltip(message: label, excludeFromSemantics: true, child: surface);
   }
 
   Widget _card(List<Widget> children) {
@@ -339,11 +435,18 @@ class _ContactsViewState extends State<ContactsView> {
           semanticValue: contact.statusText.isEmpty
               ? null
               : contact.statusText.l10n(context),
-          onTap: () => _openDetail(
-            ProfileDetailView(
+          onTap: () => unawaited(
+            openAdaptiveUserProfile(
+              context,
               userId: contact.id,
               name: contact.name,
-              showBackButton: widget.onOpenDetail == null,
+              openFallback: () => _openDetail(
+                ProfileDetailView(
+                  userId: contact.id,
+                  name: contact.name,
+                  showBackButton: widget.onOpenDetail == null,
+                ),
+              ),
             ),
           ),
           child: SizedBox(

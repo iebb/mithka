@@ -20,6 +20,63 @@ class AppIcon extends StatelessWidget {
   }
 }
 
+/// Owned push-pin glyph for pinned-item status.
+///
+/// Heroicons does not include a push pin; using its bookmark glyph made pinned
+/// chats look like Saved Messages. This compact outline keeps the visual
+/// language of the owned icon set without falling back to platform icons.
+class AppPinIcon extends StatelessWidget {
+  const AppPinIcon({super.key, this.size = 16, this.color});
+
+  final double size;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final resolvedColor =
+        color ?? IconTheme.of(context).color ?? const Color(0xFF000000);
+    return SizedBox.square(
+      dimension: size,
+      child: CustomPaint(painter: _AppPinIconPainter(color: resolvedColor)),
+    );
+  }
+}
+
+class _AppPinIconPainter extends CustomPainter {
+  const _AppPinIconPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final strokeWidth = (size.shortestSide * 0.11).clamp(1.1, 1.7);
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final body = Path()
+      ..moveTo(size.width * 0.30, size.height * 0.14)
+      ..lineTo(size.width * 0.70, size.height * 0.14)
+      ..lineTo(size.width * 0.64, size.height * 0.42)
+      ..lineTo(size.width * 0.78, size.height * 0.57)
+      ..lineTo(size.width * 0.22, size.height * 0.57)
+      ..lineTo(size.width * 0.36, size.height * 0.42)
+      ..close();
+    canvas.drawPath(body, paint);
+    canvas.drawLine(
+      Offset(size.width * 0.50, size.height * 0.57),
+      Offset(size.width * 0.50, size.height * 0.90),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_AppPinIconPainter oldDelegate) =>
+      oldDelegate.color != color;
+}
+
 class HeroAppIcons {
   const HeroAppIcons._();
 

@@ -12,6 +12,18 @@ bool get supportsDesktopVideoWindows => mithkaSupportsDesktopVideoWindows;
 
 typedef DesktopVideoWindowArguments = MithkaDesktopVideoWindowArguments;
 
+@visibleForTesting
+Future<bool> prepareDesktopVideoPlayback(
+  Future<bool> Function() prepare, {
+  int maximumAttempts = 2,
+}) async {
+  assert(maximumAttempts > 0);
+  for (var attempt = 0; attempt < maximumAttempts; attempt++) {
+    if (await prepare()) return true;
+  }
+  return false;
+}
+
 class DesktopVideoWindowService {
   DesktopVideoWindowService._();
 
@@ -21,12 +33,14 @@ class DesktopVideoWindowService {
   Future<bool> open(VideoSplitSession session, {bool muted = false}) async {
     if (!supportsDesktopVideoWindows) return false;
     final stream = TdVideoStreamServer(session.video.id);
-    final uri = await stream.start();
-    if (uri == null) {
-      await stream.close();
-      return false;
-    }
+    var handedOffToWindow = false;
     try {
+      final uri = await stream.start();
+      if (uri == null) return false;
+      final prepared = await prepareDesktopVideoPlayback(
+        stream.prepareForPlayback,
+      );
+      if (!prepared) return false;
       final windowId = await MithkaDesktopVideoWindows.instance.open(
         DesktopVideoWindowArguments(
           uri: uri,
@@ -38,10 +52,12 @@ class DesktopVideoWindowService {
         onClosed: stream.close,
       );
       if (windowId == null) throw StateError('Window creation failed');
+      handedOffToWindow = true;
       return true;
     } catch (_) {
-      await stream.close();
       return false;
+    } finally {
+      if (!handedOffToWindow) await stream.close();
     }
   }
 }
@@ -88,7 +104,6 @@ class _DesktopVideoWindowPlayer extends StatelessWidget {
         initialMuted: arguments.muted,
         autofocus: true,
         isFullscreen: fullscreen,
-        onClose: MithkaDesktopVideoWindows.closeCurrentWindow,
         onFullscreenChanged: (value) => unawaited(
           MithkaDesktopVideoWindows.setCurrentWindowFullscreen(value),
         ),

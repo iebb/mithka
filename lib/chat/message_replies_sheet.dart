@@ -12,7 +12,7 @@ import '../tdlib/td_models.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'emoji_catalog.dart';
-import 'full_image_viewer.dart';
+import 'image_preview.dart';
 import 'message_action_menu.dart';
 import 'message_bubble.dart';
 import 'outgoing_attachment.dart';
@@ -1128,11 +1128,11 @@ class _MessageRepliesSheetState extends State<_MessageRepliesSheet> {
     }
     final images = imageMessages.map((candidate) => candidate.image!).toList();
     final start = images.indexWhere((image) => image.id == selected.id);
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        fullscreenDialog: true,
-        builder: (_) =>
-            FullImageViewer(items: images, startIndex: start < 0 ? 0 : start),
+    unawaited(
+      openImagePreview(
+        context,
+        items: images,
+        startIndex: start < 0 ? 0 : start,
       ),
     );
   }

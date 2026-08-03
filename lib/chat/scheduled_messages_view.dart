@@ -19,10 +19,12 @@ class ScheduledMessagesView extends StatefulWidget {
     super.key,
     required this.chatId,
     this.chatTitle = '',
+    this.showBackButton = true,
   });
 
   final int chatId;
   final String chatTitle;
+  final bool showBackButton;
 
   @override
   State<ScheduledMessagesView> createState() => _ScheduledMessagesViewState();
@@ -214,7 +216,9 @@ class _ScheduledMessagesViewState extends State<ScheduledMessagesView> {
             title: widget.chatTitle.isEmpty
                 ? 'Scheduled messages'
                 : 'Scheduled · ${widget.chatTitle}',
-            onBack: () => Navigator.of(context).pop(),
+            onBack: widget.showBackButton
+                ? () => Navigator.of(context).pop()
+                : null,
             trailing: _refreshAction(),
           ),
           Expanded(

@@ -255,10 +255,16 @@ class TelegramAiEditorView extends StatefulWidget {
     super.key,
     required this.service,
     required this.source,
+    this.showBackButton = true,
+    this.onClose,
+    this.onSubmit,
   });
 
   final TelegramAiService service;
   final TelegramAiFormattedText source;
+  final bool showBackButton;
+  final FutureOr<void> Function()? onClose;
+  final FutureOr<void> Function(TelegramAiFormattedText result)? onSubmit;
 
   @override
   State<TelegramAiEditorView> createState() => _TelegramAiEditorViewState();
@@ -332,6 +338,26 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
     }
   }
 
+  void _close() {
+    final callback = widget.onClose;
+    if (callback != null) {
+      unawaited(Future<void>.sync(callback));
+      return;
+    }
+    Navigator.of(context).pop();
+  }
+
+  void _submitResult() {
+    final result = _result;
+    if (result == null) return;
+    final callback = widget.onSubmit;
+    if (callback != null) {
+      unawaited(Future<void>.sync(() => callback(result)));
+      return;
+    }
+    Navigator.of(context).pop(result);
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
@@ -341,7 +367,7 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
         children: [
           NavHeader(
             title: AppStrings.t(AppStringKeys.telegramAiEditorRewriteTitle),
-            onBack: () => Navigator.of(context).pop(),
+            onBack: widget.showBackButton ? _close : null,
           ),
           Expanded(
             child: AnimatedBuilder(
@@ -363,7 +389,7 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
                     onTap: _working
                         ? null
                         : _result != null
-                        ? () => Navigator.of(context).pop(_result)
+                        ? _submitResult
                         : _canGenerate
                         ? _generate
                         : null,

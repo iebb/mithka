@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:mithka/security/local_app_lock_controller.dart';
@@ -130,18 +132,53 @@ void main() {
     expect(controller.locked, isFalse);
     expect(storage, isEmpty);
   });
+
+  test(
+    'auto-lock options persist, migrate, and shield iOS snapshots',
+    () async {
+      final storage = <String, String>{};
+      final shieldStates = <bool>[];
+      final controller = _controller(storage, shieldStates: shieldStates);
+      await controller.initialize();
+      await controller.setCredential(AppLockCredentialType.pin, '1357');
+      await controller.setAutoLockOption(AppLockAutoLockOption.fiveMinutes);
+
+      expect(controller.autoLockOption, AppLockAutoLockOption.fiveMinutes);
+      expect(jsonDecode(storage.values.single)['version'], 2);
+
+      controller.handleLifecycleState(AppLifecycleState.paused);
+      expect(controller.locked, isFalse);
+      expect(shieldStates.last, isTrue);
+      controller.handleLifecycleState(AppLifecycleState.resumed);
+      expect(shieldStates.last, isFalse);
+
+      final legacy = jsonDecode(storage.values.single) as Map<String, dynamic>;
+      legacy
+        ..['version'] = 1
+        ..remove('autoLockSeconds');
+      storage[storage.keys.single] = jsonEncode(legacy);
+
+      final restored = _controller(storage);
+      await restored.initialize();
+      expect(restored.autoLockOption, AppLockAutoLockOption.disabled);
+      expect(jsonDecode(storage.values.single)['version'], 2);
+    },
+  );
 }
 
-LocalAppLockController _controller(Map<String, String> storage) =>
-    LocalAppLockController(
-      secureRead: (key) async => storage[key],
-      secureWrite: (key, value) async {
-        if (value == null) {
-          storage.remove(key);
-        } else {
-          storage[key] = value;
-        }
-      },
-      hashRounds: 4,
-      platformSupportsBiometrics: false,
-    );
+LocalAppLockController _controller(
+  Map<String, String> storage, {
+  List<bool>? shieldStates,
+}) => LocalAppLockController(
+  secureRead: (key) async => storage[key],
+  secureWrite: (key, value) async {
+    if (value == null) {
+      storage.remove(key);
+    } else {
+      storage[key] = value;
+    }
+  },
+  privacyShieldApply: (visible) async => shieldStates?.add(visible),
+  hashRounds: 4,
+  platformSupportsBiometrics: false,
+);

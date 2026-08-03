@@ -32,6 +32,10 @@ export 'src/controller.dart';
 /// 'subtitleFontFile': default subtitle font file as the fallback, can be an http url. If not set, 'assets/subfont.ttf' will be used, you can add it in pubspec.yaml if you need it.
 /// subfont.ttf can be downloaded from https://github.com/mpv-android/mpv-android/raw/master/app/src/main/assets/subfont.ttf
 ///
+/// 'installGlobalLogHandler': bool. Defaults to true. Set false in a secondary
+/// Flutter engine so it does not replace the process-global MDK log callback
+/// with a Dart port that becomes invalid when that child engine closes.
+///
 /// Example:
 /// ```dart
 /// registerWith(options: {

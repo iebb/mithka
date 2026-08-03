@@ -20,7 +20,6 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
 import '../components/app_icons.dart';
-import '../components/confirm_dialog.dart';
 import '../components/document_file_icon.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
@@ -50,6 +49,7 @@ import 'media_preview_geometry.dart';
 import 'message_action_menu.dart';
 import 'message_special_content.dart';
 import 'music_player_controller.dart';
+import 'sensitive_content_reveal_prompt.dart';
 import 'stretchable_message_bubble_background.dart';
 import 'video_sticker_view.dart';
 import 'voice_audio.dart';
@@ -105,6 +105,7 @@ class MessageBubble extends StatefulWidget {
     this.incomingBubbleTextColor,
     this.messageColors,
     this.hasCustomChatTheme = false,
+    this.sensitiveContentController,
   });
 
   final ChatMessage message;
@@ -163,6 +164,7 @@ class MessageBubble extends StatefulWidget {
   final Color? incomingBubbleTextColor;
   final TelegramMessageColors? messageColors;
   final bool hasCustomChatTheme;
+  final SensitiveContentController? sensitiveContentController;
 
   @override
   State<MessageBubble> createState() => _MessageBubbleState();
@@ -184,6 +186,7 @@ class _MessageBubbleState extends State<MessageBubble>
   bool _videoStickerReady = false;
   bool _musicPressed = false;
   bool _showTappedTimestamp = false;
+  bool _hoveringTimestamp = false;
   DateTime? _lastTapAt;
   bool _skipNextTap = false;
   double _swipeX = 0;
@@ -192,29 +195,56 @@ class _MessageBubbleState extends State<MessageBubble>
   final Set<String> _revealedSpoilers = {};
   bool _showRestrictedContent = false;
 
+  SensitiveContentController get _sensitiveContentController =>
+      widget.sensitiveContentController ?? SensitiveContentController.shared;
+
+  bool get _revealsRestrictedContent =>
+      _showRestrictedContent || _sensitiveContentController.enabled;
+
+  Rect? _bubbleBounds() {
+    final box = _bubbleKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return null;
+    return box.localToGlobal(Offset.zero) & box.size;
+  }
+
   void _handleLongPress([
     MessageActionSource source = MessageActionSource.normal,
   ]) {
     _lastTapAt = null;
     if (_shouldOfferSensitiveContentUnblock) {
-      unawaited(_showSensitiveContentUnblockDialog());
+      unawaited(_showSensitiveContentUnblockPrompt(anchor: _bubbleBounds()));
       return;
     }
     if (message.hasRestrictedRevealContent) {
       setState(() => _showRestrictedContent = !_showRestrictedContent);
       return;
     }
-    final box = _bubbleKey.currentContext?.findRenderObject() as RenderBox?;
-    Rect? bounds;
-    if (box != null && box.hasSize) {
-      bounds = box.localToGlobal(Offset.zero) & box.size;
+    widget.onLongPress?.call(message, _bubbleBounds(), source);
+  }
+
+  void _handleSecondaryTapUp(
+    TapUpDetails details, [
+    MessageActionSource source = MessageActionSource.normal,
+  ]) {
+    _lastTapAt = null;
+    final position = details.globalPosition;
+    if (_shouldOfferSensitiveContentUnblock) {
+      unawaited(
+        _showSensitiveContentUnblockPrompt(
+          anchor: Rect.fromLTWH(position.dx, position.dy, 0, 0),
+        ),
+      );
+      return;
     }
-    widget.onLongPress?.call(message, bounds, source);
+    widget.onLongPress?.call(
+      message,
+      Rect.fromLTWH(position.dx, position.dy, 0, 0),
+      source,
+    );
   }
 
   bool get _shouldOfferSensitiveContentUnblock {
-    if (!message.isContentRestricted || _showRestrictedContent) return false;
-    if (SensitiveContentController.shared.enabled) return false;
+    if (!message.isContentRestricted || _revealsRestrictedContent) return false;
     return TDParse.isPornographicRestrictionText(
           message.restrictionReasonCode,
         ) ||
@@ -222,16 +252,20 @@ class _MessageBubbleState extends State<MessageBubble>
         TDParse.isPornographicRestrictionText(message.text);
   }
 
-  Future<void> _showSensitiveContentUnblockDialog() async {
-    final ok = await confirmDialog(
+  Future<void> _showSensitiveContentUnblockPrompt({Rect? anchor}) async {
+    final choice = await showSensitiveContentRevealPrompt(
       context,
-      title: AppStringKeys.sensitiveContentUnblockTitle,
-      message: AppStringKeys.sensitiveContentUnblockMessage,
-      confirmText: AppStringKeys.sensitiveContentUnblockConfirm,
+      anchor: anchor,
     );
-    if (!ok) return;
+    if (!mounted || choice == SensitiveContentRevealChoice.keepOff) return;
+    if (choice == SensitiveContentRevealChoice.revealOnce) {
+      if (message.hasRestrictedRevealContent) {
+        setState(() => _showRestrictedContent = true);
+      }
+      return;
+    }
     try {
-      await SensitiveContentController.shared.setEnabled(true);
+      await _sensitiveContentController.setEnabled(true);
       if (!mounted) return;
       showToast(
         context,
@@ -273,6 +307,11 @@ class _MessageBubbleState extends State<MessageBubble>
     if (!alwaysShowTime) {
       setState(() => _showTappedTimestamp = !_showTappedTimestamp);
     }
+  }
+
+  void _setTimestampHover(bool hovering) {
+    if (_hoveringTimestamp == hovering) return;
+    setState(() => _hoveringTimestamp = hovering);
   }
 
   ChatMessage get message => widget.message;
@@ -537,6 +576,7 @@ class _MessageBubbleState extends State<MessageBubble>
   @override
   void initState() {
     super.initState();
+    _sensitiveContentController.addListener(_handleSensitiveContentChange);
     _swipeController = AnimationController.unbounded(vsync: this)
       ..addListener(() {
         if (mounted) setState(() => _swipeX = _swipeController.value);
@@ -544,7 +584,23 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   @override
+  void didUpdateWidget(covariant MessageBubble oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final oldController =
+        oldWidget.sensitiveContentController ??
+        SensitiveContentController.shared;
+    if (identical(oldController, _sensitiveContentController)) return;
+    oldController.removeListener(_handleSensitiveContentChange);
+    _sensitiveContentController.addListener(_handleSensitiveContentChange);
+  }
+
+  void _handleSensitiveContentChange() {
+    if (mounted && message.isContentRestricted) setState(() {});
+  }
+
+  @override
   void dispose() {
+    _sensitiveContentController.removeListener(_handleSensitiveContentChange);
     _swipeController.dispose();
     _voice.dispose();
     for (final r in _linkRecognizers) {
@@ -563,6 +619,7 @@ class _MessageBubbleState extends State<MessageBubble>
             : MediaQuery.sizeOf(context).width;
         return Stack(
           alignment: Alignment.centerRight,
+          clipBehavior: Clip.none,
           children: [
             Padding(
               padding: const EdgeInsets.only(right: 16),
@@ -648,33 +705,23 @@ class _MessageBubbleState extends State<MessageBubble>
         : widget.mePhoto;
     final alwaysShowTime =
         widget.forceShowTimestamp || theme.alwaysShowMessageTime;
+    final showDetailTime =
+        alwaysShowTime || _showTappedTimestamp || _hoveringTimestamp;
+    final timeInSenderHeader =
+        widget.isGroup && !outgoing && message.senderName != null;
     final body = GestureDetector(
       key: _bubbleKey,
       behavior: HitTestBehavior.opaque,
       onTapDown: _handleTapDown,
       onTap: () => _handleTap(alwaysShowTime),
       onLongPress: _handleLongPress,
-      onSecondaryTap: _handleLongPress,
+      onSecondaryTapUp: _handleSecondaryTapUp,
       onHorizontalDragStart: (_) => _swipeController.stop(),
       onHorizontalDragUpdate: _onDragUpdate,
       onHorizontalDragEnd: _onDragEnd,
-      child: Column(
+      child: KeyedSubtree(
         key: ValueKey('messageTapTarget-${message.id}'),
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: outgoing
-            ? CrossAxisAlignment.end
-            : CrossAxisAlignment.start,
-        children: [
-          _contentBody(outgoing),
-          if (_showTappedTimestamp || alwaysShowTime) ...[
-            const SizedBox(height: 3),
-            Text(
-              DateText.messageDetailLabel(message.date),
-              key: const ValueKey('messageTappedTimestamp'),
-              style: TextStyle(fontSize: 10, color: c.textTertiary),
-            ),
-          ],
-        ],
+        child: _contentBody(outgoing),
       ),
     );
     final contentWidget = ConstrainedBox(
@@ -708,7 +755,7 @@ class _MessageBubbleState extends State<MessageBubble>
         : contentWidget;
     final ownPhotoRepeat = outgoing && message.isPhoto && widget.showRepeat;
 
-    return Padding(
+    final messageRow = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -774,6 +821,7 @@ class _MessageBubbleState extends State<MessageBubble>
                     children: [
                       if (widget.isGroup && message.senderName != null)
                         Padding(
+                          key: ValueKey('messageSenderHeader-${message.id}'),
                           padding: const EdgeInsets.only(left: 4, bottom: 3),
                           child: Row(
                             children: [
@@ -795,6 +843,7 @@ class _MessageBubbleState extends State<MessageBubble>
                                   roleTitle: showSenderRole && showMemberTags
                                       ? senderTitle
                                       : null,
+                                  roleAfterName: isDesktopTargetPlatform(),
                                 ),
                               ),
                               if (showStatus) ...[
@@ -806,6 +855,17 @@ class _MessageBubbleState extends State<MessageBubble>
                                   animate: theme.chatStatusEmojiMode.animate,
                                 ),
                               ],
+                              const SizedBox(width: 5),
+                              SizedBox(
+                                width: 96,
+                                height: 14,
+                                child: showDetailTime
+                                    ? Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: _messageDetailTimestamp(),
+                                      )
+                                    : null,
+                              ),
                             ],
                           ),
                         ),
@@ -822,7 +882,36 @@ class _MessageBubbleState extends State<MessageBubble>
               ],
       ),
     );
+    return MouseRegion(
+      onEnter: (_) => _setTimestampHover(true),
+      onExit: (_) => _setTimestampHover(false),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          messageRow,
+          if (showDetailTime && !timeInSenderHeader)
+            Positioned(
+              left: outgoing ? null : 58,
+              right: outgoing ? 58 : null,
+              bottom: -5,
+              child: IgnorePointer(child: _messageDetailTimestamp()),
+            ),
+        ],
+      ),
+    );
   }
+
+  Widget _messageDetailTimestamp() => Text(
+    DateText.messageDetailLabel(message.date),
+    key: const ValueKey('messageTappedTimestamp'),
+    maxLines: 1,
+    textScaler: TextScaler.noScaling,
+    style: TextStyle(
+      fontSize: 10,
+      height: 1.2,
+      color: context.colors.textTertiary,
+    ),
+  );
 
   Widget _reactionChips(bool outgoing) {
     final c = context.colors;
@@ -902,7 +991,7 @@ class _MessageBubbleState extends State<MessageBubble>
 
   Widget _contentBody(bool outgoing) {
     late final Widget body;
-    if (message.isContentRestricted && !_showRestrictedContent) {
+    if (message.isContentRestricted && !_revealsRestrictedContent) {
       body = _textBubble(message.text, outgoing);
       return _withCommentsOnly(_withFloatingMeta(body, outgoing), outgoing);
     }
@@ -1206,14 +1295,14 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   String get _activeMessageText {
-    if (message.isContentRestricted && _showRestrictedContent) {
+    if (message.isContentRestricted && _revealsRestrictedContent) {
       return message.restrictedContentText ?? '';
     }
     return message.text;
   }
 
   List<MessageTextEntity> get _activeTextEntities {
-    if (message.isContentRestricted && _showRestrictedContent) {
+    if (message.isContentRestricted && _revealsRestrictedContent) {
       return message.restrictedContentTextEntities;
     }
     if (message.isContentRestricted) return const [];
@@ -1221,12 +1310,14 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   List<RichMessageBlock> get _activeRichBlocks {
-    if (message.isContentRestricted && !_showRestrictedContent) return const [];
+    if (message.isContentRestricted && !_revealsRestrictedContent) {
+      return const [];
+    }
     return message.richBlocks;
   }
 
   MessageLinkPreview? get _activeLinkPreview {
-    if (message.isContentRestricted && !_showRestrictedContent) return null;
+    if (message.isContentRestricted && !_revealsRestrictedContent) return null;
     return message.linkPreview;
   }
 
@@ -1544,7 +1635,7 @@ class _MessageBubbleState extends State<MessageBubble>
     }
     _linkRecognizers.clear();
     final emojiOnly = _isEmojiOnlyText(text);
-    final textFontSize = emojiOnly ? 34.0 : 15.0;
+    final textFontSize = emojiOnly ? 34.0 : AppTextSize.messageBody();
     final bubblePadding = emojiOnly
         ? const EdgeInsets.symmetric(horizontal: 10, vertical: 7)
         : const EdgeInsets.symmetric(horizontal: 12, vertical: 9);
@@ -3426,6 +3517,9 @@ class _MessageBubbleState extends State<MessageBubble>
     List<MessageTextEntity>? entities,
     double fontSize = 15,
   ]) {
+    final resolvedFontSize = fontSize == AppTextSize.body
+        ? AppTextSize.messageBody()
+        : fontSize;
     final sourceEntities = entities ?? message.textEntities;
     final blocks =
         sourceEntities.where((e) => e.isBlockQuote || e.isPreBlock).toList()
@@ -3441,7 +3535,7 @@ class _MessageBubbleState extends State<MessageBubble>
           outgoing,
           appendMeta,
           entities: sourceEntities,
-          fontSize: fontSize,
+          fontSize: resolvedFontSize,
         ),
       ];
     }
@@ -3464,7 +3558,7 @@ class _MessageBubbleState extends State<MessageBubble>
             outgoing,
             false,
             entities: sourceEntities,
-            fontSize: fontSize,
+            fontSize: resolvedFontSize,
           ),
         );
         widgets.add(const SizedBox(height: 5));
@@ -3479,7 +3573,7 @@ class _MessageBubbleState extends State<MessageBubble>
                 base,
                 link,
                 sourceEntities,
-                fontSize,
+                resolvedFontSize,
               )
             : _quoteBlock(
                 block,
@@ -3490,7 +3584,7 @@ class _MessageBubbleState extends State<MessageBubble>
                 link,
                 outgoing,
                 sourceEntities,
-                fontSize,
+                resolvedFontSize,
               ),
       );
       cursor = end;
@@ -3507,7 +3601,7 @@ class _MessageBubbleState extends State<MessageBubble>
           outgoing,
           appendMeta,
           entities: sourceEntities,
-          fontSize: fontSize,
+          fontSize: resolvedFontSize,
         ),
       );
       metaAdded = appendMeta;
@@ -3706,7 +3800,7 @@ class _MessageBubbleState extends State<MessageBubble>
     return (Theme.of(context).brightness == Brightness.dark
             ? Colors.white
             : Colors.black)
-        .withValues(alpha: 0.10);
+        .withValues(alpha: 0.05);
   }
 
   void _copyMonospaceText(String text) {
@@ -4376,7 +4470,8 @@ class _MessageBubbleState extends State<MessageBubble>
     final media = GestureDetector(
       onTap: () => widget.onPlayVideo?.call(message),
       onLongPress: () => _handleLongPress(MessageActionSource.video),
-      onSecondaryTap: () => _handleLongPress(MessageActionSource.video),
+      onSecondaryTapUp: (details) =>
+          _handleSecondaryTapUp(details, MessageActionSource.video),
       child: SizedBox(
         width: size.width,
         height: size.height,
@@ -4453,7 +4548,8 @@ class _MessageBubbleState extends State<MessageBubble>
     final media = GestureDetector(
       onTap: () => widget.onPlayVideo?.call(message),
       onLongPress: () => _handleLongPress(MessageActionSource.video),
-      onSecondaryTap: () => _handleLongPress(MessageActionSource.video),
+      onSecondaryTapUp: (details) =>
+          _handleSecondaryTapUp(details, MessageActionSource.video),
       child: ClipRRect(
         borderRadius: _messageBorderRadius(mediaRadius),
         child: SizedBox(
@@ -4902,7 +4998,8 @@ class _MessageBubbleState extends State<MessageBubble>
         context,
       ).push(MaterialPageRoute(builder: (_) => FileDetailView(doc: doc))),
       onLongPress: () => _handleGroupedFileLongPress(source, itemKey),
-      onSecondaryTap: () => _handleGroupedFileLongPress(source, itemKey),
+      onSecondaryTapUp: (details) =>
+          _handleGroupedFileSecondaryTap(source, details.globalPosition),
       child: isGif && doc.file != null
           ? SizedBox(
               key: itemKey,
@@ -4953,6 +5050,18 @@ class _MessageBubbleState extends State<MessageBubble>
         ? box.localToGlobal(Offset.zero) & box.size
         : null;
     widget.onLongPress?.call(source, bounds, MessageActionSource.normal);
+  }
+
+  void _handleGroupedFileSecondaryTap(
+    ChatMessage source,
+    Offset globalPosition,
+  ) {
+    _lastTapAt = null;
+    widget.onLongPress?.call(
+      source,
+      Rect.fromLTWH(globalPosition.dx, globalPosition.dy, 0, 0),
+      MessageActionSource.normal,
+    );
   }
 
   bool _isGifDocument(MessageDocument document) =>

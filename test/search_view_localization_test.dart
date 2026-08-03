@@ -3,12 +3,30 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/intl.dart';
+import 'package:mithka/chat/telegram_mini_app_recents.dart';
 import 'package:mithka/chats/mini_apps_page.dart';
 import 'package:mithka/chats/search_view.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  test('untitled and legacy Mini App recents follow the active locale', () {
+    Intl.withLocale('zh-Hans', () {
+      for (final title in ['', 'Mini App']) {
+        final recent = TelegramMiniAppRecent(
+          title: title,
+          url: 'https://example.com/app',
+          botUserId: 1,
+          chatId: 2,
+          updatedAt: 3,
+        );
+        expect(recent.launchTitle, '小程序');
+        expect(recent.displayTitle, '小程序');
+      }
+    });
+  });
+
   test('Mini App terminology is localized in every non-English CJK locale', () {
     const expectedNames = {
       'ja': 'ミニアプリ',

@@ -4,6 +4,8 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/chat_input_bar.dart';
 import 'package:mithka/chat/chat_view_model.dart';
+import 'package:mithka/chat/telegram_ai_service.dart';
+import 'package:mithka/components/app_interactive_surface.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/theme/app_theme.dart';
 
@@ -27,6 +29,9 @@ class _EnterToSendViewModel extends ChatViewModel {
 
   @override
   Future<bool> prepareMessageSend() async => true;
+
+  @override
+  Future<bool> currentUserIsPremium() async => true;
 
   @override
   Future<bool> sendFormatted(
@@ -188,6 +193,7 @@ void main() {
     await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
     await tester.pump();
     expect(vm.sentTexts, ['first']);
+    expect(tester.widget<TextField>(field).controller?.text, 'second\n');
   });
 
   testWidgets('disabled physical Ctrl-Enter sends but Enter does not', (
@@ -201,20 +207,330 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pump();
     expect(vm.sentTexts, isEmpty);
+    expect(tester.widget<TextField>(field).controller?.text, 'first\n');
 
     await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
     await tester.pump();
+    expect(vm.sentTexts, ['first\n']);
+  });
+
+  testWidgets('native desktop uses a compact toolbar above a flat composer', (
+    tester,
+  ) async {
+    await _pumpComposer(
+      tester,
+      enterToSend: false,
+      platform: TargetPlatform.macOS,
+      aiCompositionSupported: true,
+      includeSenderOptions: true,
+    );
+
+    final toolbar = find.byKey(const ValueKey('desktopComposerToolbar'));
+    final input = find.byKey(const ValueKey('desktopComposerInput'));
+    final inputBox = find.byKey(const ValueKey('composerTextInputBox'));
+    final field = find.byType(TextField);
+
+    expect(toolbar, findsOneWidget);
+    expect(input, findsOneWidget);
+    expect(tester.getSize(toolbar).height, 41);
+    expect(
+      tester.getTopLeft(toolbar).dy,
+      lessThan(tester.getTopLeft(input).dy),
+    );
+    expect(
+      tester.getSize(find.byKey(const ValueKey('desktopComposerEmojiAction'))),
+      const Size.square(32),
+    );
+    final richTextAction = find.byKey(
+      const ValueKey('desktopComposerRichTextAction'),
+    );
+    final aiReplyAction = find.byKey(
+      const ValueKey('desktopComposerAiReplyAction'),
+    );
+    final aiEditorAction = find.byKey(
+      const ValueKey('desktopComposerAiEditorAction'),
+    );
+    expect(richTextAction, findsOneWidget);
+    expect(aiReplyAction, findsOneWidget);
+    expect(aiEditorAction, findsOneWidget);
+    expect(
+      tester.widget<AppInteractiveSurface>(richTextAction).enabled,
+      isTrue,
+    );
+    expect(
+      tester.widget<AppInteractiveSurface>(aiReplyAction).enabled,
+      isFalse,
+    );
+    expect(
+      tester.widget<AppInteractiveSurface>(aiEditorAction).enabled,
+      isFalse,
+    );
+    expect(find.byKey(const ValueKey('composerAiReplyButton')), findsNothing);
+    expect(find.byKey(const ValueKey('composerAiPrefixButton')), findsNothing);
+    final desktopSender = find.byKey(
+      const ValueKey('desktopComposerSenderPicker'),
+    );
+    expect(desktopSender, findsOneWidget);
+    expect(find.byKey(const ValueKey('composerSenderPicker')), findsNothing);
+    expect(
+      tester.widget<AppInteractiveSurface>(desktopSender).semanticLabel,
+      'Send: Me',
+    );
+
+    final decoration = tester.widget<Container>(inputBox).decoration;
+    expect(decoration, isA<BoxDecoration>());
+    expect((decoration! as BoxDecoration).color, isNull);
+    final textField = tester.widget<TextField>(field);
+    expect(textField.minLines, isNull);
+    expect(textField.maxLines, isNull);
+    expect(textField.expands, isTrue);
+    expect(textField.textInputAction, TextInputAction.newline);
+    expect(
+      textField.style?.fontSize,
+      AppTextSize.messageBody(TargetPlatform.macOS),
+    );
+
+    await tester.tap(field);
+    await tester.enterText(field, 'hello\nworld');
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey('desktopComposerSendButton')),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(const ValueKey('desktopComposerShortcutHint')),
+          )
+          .data,
+      'Ctrl+Enter',
+    );
+    expect(
+      tester.widget<AppInteractiveSurface>(aiEditorAction).enabled,
+      isTrue,
+    );
+    expect(find.byKey(const ValueKey('composerAiPrefixButton')), findsNothing);
+
+    expect(
+      find.byKey(const ValueKey('desktopComposerResizeHandle')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('desktop composer toolbar scrolls instead of overflowing', (
+    tester,
+  ) async {
+    await _pumpComposer(
+      tester,
+      enterToSend: false,
+      platform: TargetPlatform.macOS,
+      composerWidth: 300,
+    );
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('desktopComposerToolbar')),
+        matching: find.byType(SingleChildScrollView),
+      ),
+      findsOneWidget,
+    );
+    final toolbar = find.byKey(const ValueKey('desktopComposerToolbar'));
+    final emoji = find.byKey(const ValueKey('desktopComposerEmojiAction'));
+    expect(tester.getSize(toolbar).width, 300);
+    expect(
+      tester.getTopLeft(emoji).dx,
+      closeTo(tester.getTopLeft(toolbar).dx + 10, 0.01),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('touch composer keeps AI editor in the input row', (
+    tester,
+  ) async {
+    await _pumpComposer(
+      tester,
+      enterToSend: false,
+      aiCompositionSupported: true,
+      includeSenderOptions: true,
+    );
+    final field = find.byType(TextField);
+
+    await tester.enterText(field, 'hello\nworld');
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey('composerAiPrefixButton')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('desktopComposerAiEditorAction')),
+      findsNothing,
+    );
+    expect(find.byKey(const ValueKey('composerSenderPicker')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('desktopComposerSenderPicker')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('desktop emoji action toggles the anchored popover', (
+    tester,
+  ) async {
+    await _pumpComposer(
+      tester,
+      enterToSend: false,
+      platform: TargetPlatform.macOS,
+    );
+
+    await tester.tapAt(
+      tester.getCenter(
+        find.byKey(const ValueKey('desktopComposerEmojiAction')),
+      ),
+    );
+    await tester.pump();
+    expect(find.byKey(const ValueKey('emojiPanelTabs')), findsOneWidget);
+
+    await tester.tapAt(
+      tester.getCenter(
+        find.byKey(const ValueKey('desktopComposerEmojiAction')),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('emojiPanelTabs')), findsNothing);
+    expect(find.byKey(const ValueKey('composerFunctionPanel')), findsNothing);
+  });
+
+  testWidgets('enabled desktop Enter sends while Ctrl-Enter stays multiline', (
+    tester,
+  ) async {
+    final vm = await _pumpComposer(
+      tester,
+      enterToSend: true,
+      platform: TargetPlatform.macOS,
+    );
+    final field = find.byType(TextField);
+
+    await tester.tap(field);
+    await tester.enterText(field, 'first');
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
     expect(vm.sentTexts, ['first']);
+
+    await tester.enterText(field, 'second');
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+    expect(vm.sentTexts, ['first']);
+    expect(tester.widget<TextField>(field).controller?.text, 'second\n');
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(const ValueKey('desktopComposerShortcutHint')),
+          )
+          .data,
+      'Enter',
+    );
+  });
+
+  testWidgets('desktop Enter never sends an active IME composition', (
+    tester,
+  ) async {
+    final vm = await _pumpComposer(
+      tester,
+      enterToSend: true,
+      platform: TargetPlatform.macOS,
+    );
+    final field = find.byType(TextField);
+    final controller = tester.widget<TextField>(field).controller!;
+
+    await tester.tap(field);
+    controller.value = const TextEditingValue(
+      text: '候補',
+      selection: TextSelection.collapsed(offset: 2),
+      composing: TextRange(start: 0, end: 2),
+    );
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    expect(vm.sentTexts, isEmpty);
+    expect(controller.text, '候補');
+
+    controller.value = const TextEditingValue(
+      text: '候補',
+      selection: TextSelection.collapsed(offset: 2),
+    );
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    expect(vm.sentTexts, ['候補']);
+  });
+
+  testWidgets('disabled desktop Ctrl-Enter sends while Enter stays multiline', (
+    tester,
+  ) async {
+    final vm = await _pumpComposer(
+      tester,
+      enterToSend: false,
+      platform: TargetPlatform.macOS,
+    );
+    final field = find.byType(TextField);
+
+    await tester.tap(field);
+    await tester.enterText(field, 'first');
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    expect(vm.sentTexts, isEmpty);
+    expect(tester.widget<TextField>(field).controller?.text, 'first\n');
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+    expect(vm.sentTexts, ['first\n']);
   });
 }
 
 Future<_EnterToSendViewModel> _pumpComposer(
   WidgetTester tester, {
   required bool enterToSend,
+  TargetPlatform platform = TargetPlatform.android,
+  bool aiCompositionSupported = false,
+  bool includeSenderOptions = false,
+  double? composerWidth,
 }) async {
   final vm = _EnterToSendViewModel();
+  if (includeSenderOptions) {
+    vm.availableMessageSenders = const [
+      MessageSenderOption(
+        sender: {'@type': 'messageSenderUser', 'user_id': 1},
+        id: 1,
+        title: 'Me',
+      ),
+      MessageSenderOption(
+        sender: {'@type': 'messageSenderChat', 'chat_id': 2},
+        id: 2,
+        title: 'Test',
+      ),
+    ];
+    vm.selectedMessageSender = vm.availableMessageSenders.first;
+  }
+  if (aiCompositionSupported) {
+    vm.aiCapabilities = const TelegramAiCapabilities(
+      tdlibVersion: 'test',
+      compositionSupported: true,
+      customStylesSupported: false,
+      summarySupported: false,
+      transcriptionSupported: false,
+      styleTitleMax: 0,
+      stylePromptMax: 0,
+      addedStyleCountMax: 0,
+    );
+  }
   addTearDown(vm.dispose);
   await tester.pumpWidget(
     MaterialApp(
@@ -226,19 +542,19 @@ Future<_EnterToSendViewModel> _pumpComposer(
         GlobalCupertinoLocalizations.delegate,
       ],
       supportedLocales: AppLocalizations.supportedLocales,
-      theme: ThemeData(
-        platform: TargetPlatform.android,
-        extensions: [AppColors.light],
-      ),
+      theme: ThemeData(platform: platform, extensions: [AppColors.light]),
       home: Scaffold(
         body: Align(
           alignment: Alignment.bottomCenter,
-          child: ChatInputBar(
-            vm: vm,
-            enterToSend: enterToSend,
-            quickRepliesEnabled: false,
-            onStartCall: (_) {},
-            onMessageSent: () {},
+          child: SizedBox(
+            width: composerWidth,
+            child: ChatInputBar(
+              vm: vm,
+              enterToSend: enterToSend,
+              quickRepliesEnabled: false,
+              onStartCall: (_) {},
+              onMessageSent: () {},
+            ),
           ),
         ),
       ),

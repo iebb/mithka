@@ -18,7 +18,7 @@ import '../app/app_navigator.dart';
 import '../chat/chat_picker_view.dart';
 import '../chat/chat_view.dart';
 import '../chat/forward_options.dart';
-import '../chat/full_image_viewer.dart';
+import '../chat/image_preview.dart';
 import '../chat/media_album_layout.dart';
 import '../chat/outgoing_attachment.dart';
 import '../chat/rich_text_composer_view.dart';
@@ -29,13 +29,16 @@ import '../chat/video_playback_queue.dart';
 import '../chat/video_player_view.dart';
 import '../chats/chat_list_view_model.dart';
 import '../components/app_icons.dart';
+import '../components/app_interactive_surface.dart';
+import '../components/desktop_content_constraint.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../l10n/telegram_language_controller.dart';
 import '../media/app_asset_picker.dart';
-import '../profile/profile_detail_view.dart';
+import '../platform/adaptive_platform.dart';
+import '../profile/adaptive_profile_launcher.dart';
 import '../settings/accent_color_picker_view.dart';
 import '../tdlib/chat_membership.dart';
 import '../tdlib/json_helpers.dart';
@@ -45,6 +48,7 @@ import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
 import '../theme/theme_controller.dart';
+import 'short_video_availability.dart';
 import 'short_video_view.dart';
 import 'story_authoring_view.dart';
 import 'story_management_view.dart';
@@ -168,11 +172,39 @@ Future<bool> _canPostToChannel(ChatSummary channel, int meId) async {
 Color _momentQuoteFill(AppColors c) =>
     c.groupedBackground.withValues(alpha: 0.88);
 
+const double desktopMomentsFeedMaxWidth = 760;
+
+/// Keeps the desktop timeline readable without changing phone/tablet sizing.
+class MomentsDesktopFeedLane extends StatelessWidget {
+  const MomentsDesktopFeedLane({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!isDesktopTargetPlatform()) return child;
+    return ColoredBox(
+      key: const ValueKey('desktop-moments-feed-lane'),
+      color: context.colors.groupedBackground,
+      child: DesktopContentConstraint(
+        maxWidth: desktopMomentsFeedMaxWidth,
+        child: child,
+      ),
+    );
+  }
+}
+
 class MomentsView extends StatefulWidget {
-  const MomentsView({super.key, this.onOpenDetail, this.storyService});
+  const MomentsView({
+    super.key,
+    this.onOpenDetail,
+    this.storyService,
+    this.desktopSidebar = false,
+  });
 
   final ValueChanged<Widget>? onOpenDetail;
   final StoryService? storyService;
+  final bool desktopSidebar;
 
   @override
   State<MomentsView> createState() => _MomentsViewState();
@@ -287,15 +319,55 @@ class _MomentsViewState extends State<MomentsView> {
     }
   }
 
+  void _openChannelMoments() {
+    _openDetail(
+      ChannelMomentsView(
+        isRootTab: widget.onOpenDetail != null,
+        title: widget.onOpenDetail == null
+            ? AppStrings.t(AppStringKeys.tabMoments)
+            : AppStrings.t(AppStringKeys.tabFriendMoments),
+        initialChannels: _allChannels,
+      ),
+    );
+  }
+
+  void _openMusic() {
+    _openDetail(
+      SharedMediaView(
+        chatId: 0,
+        title: AppStrings.t(AppStringKeys.momentsMusic),
+        initialTab: 5,
+        displayTitle: AppStringKeys.momentsMusic,
+        lockedTab: true,
+      ),
+    );
+  }
+
+  void _openVideos() {
+    _openDetail(
+      SharedMediaView(
+        chatId: 0,
+        title: telegramText(AppStringKeys.sharedMediaVideos),
+        initialTab: 4,
+        displayTitle: AppStringKeys.sharedMediaVideos,
+        lockedTab: true,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
     final theme = context.watch<ThemeController>();
+    final useDesktopSidebar =
+        widget.desktopSidebar && isDesktopTargetPlatform();
+    if (useDesktopSidebar) return _desktopSidebar(c);
     return Material(
       color: c.groupedBackground,
       child: Column(
         children: [
-          const NavHeader(title: AppStringKeys.tabMoments),
+          if (!widget.desktopSidebar)
+            const NavHeader(title: AppStringKeys.tabMoments),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.only(top: AppSpacing.md),
@@ -316,15 +388,7 @@ class _MomentsViewState extends State<MomentsView> {
                         iconColor: const Color(0xFFFFBE00),
                         title: AppStrings.t(AppStringKeys.tabMoments),
                         trailing: _channelActivity(),
-                        onTap: () => _openDetail(
-                          ChannelMomentsView(
-                            isRootTab: widget.onOpenDetail != null,
-                            title: widget.onOpenDetail == null
-                                ? AppStrings.t(AppStringKeys.tabMoments)
-                                : AppStrings.t(AppStringKeys.tabFriendMoments),
-                            initialChannels: _allChannels,
-                          ),
-                        ),
+                        onTap: _openChannelMoments,
                       ),
                     ],
                   ),
@@ -338,36 +402,19 @@ class _MomentsViewState extends State<MomentsView> {
                         icon: HeroAppIcons.music.data,
                         iconColor: const Color(0xFFFF8A2A),
                         title: AppStrings.t(AppStringKeys.momentsMusic),
-                        onTap: () => _openDetail(
-                          SharedMediaView(
-                            chatId: 0,
-                            title: AppStrings.t(AppStringKeys.momentsMusic),
-                            initialTab: 5,
-                            displayTitle: AppStringKeys.momentsMusic,
-                            lockedTab: true,
-                          ),
-                        ),
+                        onTap: _openMusic,
                       ),
                       _menuRow(
                         icon: HeroAppIcons.video.data,
                         iconColor: const Color(0xFF7B61FF),
                         title: telegramText(AppStringKeys.sharedMediaVideos),
-                        onTap: () => _openDetail(
-                          SharedMediaView(
-                            chatId: 0,
-                            title: telegramText(
-                              AppStringKeys.sharedMediaVideos,
-                            ),
-                            initialTab: 4,
-                            displayTitle: AppStringKeys.sharedMediaVideos,
-                            lockedTab: true,
-                          ),
-                        ),
+                        onTap: _openVideos,
                       ),
                     ],
                   ),
                 ),
-                if (theme.showShortVideos) ...[
+                if (theme.showShortVideos &&
+                    shortVideosAvailableOnPlatform()) ...[
                   const SizedBox(height: AppSpacing.md),
                   Container(
                     color: c.background,
@@ -383,6 +430,155 @@ class _MomentsViewState extends State<MomentsView> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _desktopSidebar(AppColors c) {
+    return Material(
+      key: const ValueKey('desktop-moments-sidebar'),
+      color: c.groupedBackground,
+      child: Column(
+        children: [
+          Container(
+            key: const ValueKey('desktop-moments-header'),
+            height: 58,
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+            alignment: Alignment.centerLeft,
+            decoration: BoxDecoration(
+              color: c.background,
+              border: Border(
+                bottom: BorderSide(color: c.divider, width: AppMetric.divider),
+              ),
+            ),
+            child: Text(
+              AppStringKeys.tabMoments.l10n(context),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: c.textPrimary,
+                fontSize: 19,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: StoryShelf(
+                    model: _stories,
+                    canPublish: _canPublishStories,
+                    onCreate: _createStory,
+                    onManage: _manageStories,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                _desktopMenuCard([
+                  _desktopMenuRow(
+                    key: const ValueKey('desktop-moments-friends'),
+                    icon: HeroAppIcons.star,
+                    iconColor: const Color(0xFFFFBE00),
+                    title: AppStringKeys.tabFriendMoments.l10n(context),
+                    trailing: _channelActivity(),
+                    onTap: _openChannelMoments,
+                  ),
+                ]),
+                const SizedBox(height: AppSpacing.md),
+                _desktopMenuCard([
+                  _desktopMenuRow(
+                    key: const ValueKey('desktop-moments-music'),
+                    icon: HeroAppIcons.music,
+                    iconColor: const Color(0xFFFF8A2A),
+                    title: AppStringKeys.momentsMusic.l10n(context),
+                    onTap: _openMusic,
+                  ),
+                  Divider(height: 1, indent: 58, color: c.divider),
+                  _desktopMenuRow(
+                    key: const ValueKey('desktop-moments-videos'),
+                    icon: HeroAppIcons.video,
+                    iconColor: const Color(0xFF7B61FF),
+                    title: telegramText(
+                      AppStringKeys.sharedMediaVideos,
+                    ).l10n(context),
+                    onTap: _openVideos,
+                  ),
+                ]),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _desktopMenuCard(List<Widget> children) {
+    final c = context.colors;
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: c.background,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: c.divider, width: AppMetric.divider),
+      ),
+      child: Column(mainAxisSize: MainAxisSize.min, children: children),
+    );
+  }
+
+  Widget _desktopMenuRow({
+    required Key key,
+    required AppIconData icon,
+    required Color iconColor,
+    required String title,
+    required VoidCallback onTap,
+    Widget? trailing,
+  }) {
+    final c = context.colors;
+    return AppInteractiveSurface(
+      key: key,
+      semanticLabel: title,
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: SizedBox(
+        height: 58,
+        child: Row(
+          children: [
+            const SizedBox(width: AppSpacing.md),
+            Container(
+              width: 34,
+              height: 34,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: AppIcon(icon, size: 20, color: iconColor),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  color: c.textPrimary,
+                ),
+              ),
+            ),
+            if (trailing != null)
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 132),
+                child: trailing,
+              ),
+            const SizedBox(width: AppSpacing.sm),
+            AppIcon(HeroAppIcons.chevronRight, size: 16, color: c.textTertiary),
+            const SizedBox(width: AppSpacing.md),
+          ],
+        ),
       ),
     );
   }
@@ -1488,6 +1684,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
   Widget build(BuildContext context) {
     final c = context.colors;
     final posts = _posts;
+    final useDesktopLayout = isDesktopTargetPlatform();
     return Material(
       color: c.groupedBackground,
       child: Column(
@@ -1528,54 +1725,104 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
               ],
             ),
           ),
-          Expanded(
-            child: Container(
-              color: c.background,
-              child: ListView.builder(
-                controller: _scroll,
-                padding: EdgeInsets.zero,
-                itemCount: posts.isEmpty ? 2 : posts.length + 1,
-                findChildIndexCallback: (key) => _feedIndexByKey[key],
-                itemBuilder: (context, i) {
-                  if (i == 0) {
-                    return KeyedSubtree(
-                      key: _composerHeaderKey,
-                      child: _MomentsComposerHeader(
-                        meName: _meName,
-                        mePhoto: _mePhoto,
-                        backgroundColor: _profileHeaderColor(context),
-                        canCompose: _postableChannels.isNotEmpty,
-                        onCompose: _openNewPostComposer,
-                      ),
-                    );
-                  }
-                  if (posts.isEmpty) {
-                    return SizedBox(height: 260, child: _empty());
-                  }
-                  final post = posts[i - 1];
-                  return KeyedSubtree(
-                    key: _postKey(post),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        ChannelPostRow(
-                          post: post,
-                          meName: _meName,
-                          mePhoto: _mePhoto,
-                          onOpenPost: _openPostDetail,
-                          onComment: _beginReplyFromInline,
-                        ),
-                        if (i != posts.length)
-                          const InsetDivider(leadingInset: 0),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
+          Expanded(child: _feed(posts, useDesktopLayout: useDesktopLayout)),
           if (_replyPost != null) _quickReplyBar(),
         ],
+      ),
+    );
+  }
+
+  Widget _feed(List<ChannelPost> posts, {required bool useDesktopLayout}) {
+    final c = context.colors;
+    final list = ListView.builder(
+      controller: _scroll,
+      padding: useDesktopLayout
+          ? const EdgeInsets.symmetric(vertical: AppSpacing.lg)
+          : EdgeInsets.zero,
+      itemCount: posts.isEmpty ? 2 : posts.length + 1,
+      findChildIndexCallback: (key) => _feedIndexByKey[key],
+      itemBuilder: (context, i) {
+        if (i == 0) {
+          final composer = _MomentsComposerHeader(
+            meName: _meName,
+            mePhoto: _mePhoto,
+            backgroundColor: _profileHeaderColor(context),
+            canCompose: _postableChannels.isNotEmpty,
+            onCompose: _openNewPostComposer,
+          );
+          return KeyedSubtree(
+            key: _composerHeaderKey,
+            child: useDesktopLayout ? _desktopFeedCard(composer) : composer,
+          );
+        }
+        if (posts.isEmpty) {
+          final empty = SizedBox(height: 260, child: _empty());
+          return useDesktopLayout ? _desktopFeedCard(empty) : empty;
+        }
+        final post = posts[i - 1];
+        final row = ChannelPostRow(
+          post: post,
+          meName: _meName,
+          mePhoto: _mePhoto,
+          onOpenPost: _openPostDetail,
+          onComment: _beginReplyFromInline,
+        );
+        return KeyedSubtree(
+          key: _postKey(post),
+          child: useDesktopLayout
+              ? _desktopFeedCard(row)
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    row,
+                    if (i != posts.length) const InsetDivider(leadingInset: 0),
+                  ],
+                ),
+        );
+      },
+    );
+    if (!useDesktopLayout) {
+      return ColoredBox(color: c.background, child: list);
+    }
+    return MomentsDesktopFeedLane(child: list);
+  }
+
+  Widget _desktopFeedCard(Widget child) {
+    final c = context.colors;
+    final media = MediaQuery.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        0,
+        AppSpacing.lg,
+        AppSpacing.md,
+      ),
+      child: Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: c.background,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: c.divider, width: AppMetric.divider),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(
+                alpha: Theme.of(context).brightness == Brightness.dark
+                    ? 0.16
+                    : 0.035,
+              ),
+              blurRadius: 14,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: LayoutBuilder(
+          builder: (context, constraints) => MediaQuery(
+            data: media.copyWith(
+              size: Size(constraints.maxWidth, media.size.height),
+            ),
+            child: child,
+          ),
+        ),
       ),
     );
   }
@@ -2885,10 +3132,11 @@ class _DetailCommentTile extends StatelessWidget {
                           color: c.textPrimary,
                         ),
                         onMentionTap: (userId, name) {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  ProfileDetailView(userId: userId, name: name),
+                          unawaited(
+                            openAdaptiveUserProfile(
+                              context,
+                              userId: userId,
+                              name: name,
                             ),
                           );
                         },
@@ -3568,10 +3816,11 @@ class ChannelPostRow extends StatelessWidget {
                   color: c.textPrimary,
                 ),
                 onMentionTap: (userId, name) {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          ProfileDetailView(userId: userId, name: name),
+                  unawaited(
+                    openAdaptiveUserProfile(
+                      context,
+                      userId: userId,
+                      name: name,
                     ),
                   );
                 },
@@ -3778,10 +4027,11 @@ class _InlineComments extends StatelessWidget {
                       color: c.textPrimary,
                     ),
                     onMentionTap: (userId, name) {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              ProfileDetailView(userId: userId, name: name),
+                      unawaited(
+                        openAdaptiveUserProfile(
+                          context,
+                          userId: userId,
+                          name: name,
                         ),
                       );
                     },
@@ -3913,15 +4163,11 @@ class _PostImageGroup extends StatelessWidget {
     final startIndex = photoMessages.indexWhere(
       (message) => message.id == startMessage.id,
     );
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => FullImageViewer(
-          items: refs,
-          startIndex: (startIndex < 0 ? 0 : startIndex).clamp(
-            0,
-            refs.length - 1,
-          ),
-        ),
+    unawaited(
+      openImagePreview(
+        context,
+        items: refs,
+        startIndex: (startIndex < 0 ? 0 : startIndex).clamp(0, refs.length - 1),
       ),
     );
   }

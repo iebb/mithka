@@ -62,6 +62,39 @@ void main() {
     expect(find.text('视频消息'), findsOneWidget);
   });
 
+  testWidgets('wide group header can own calls without a composer duplicate', (
+    tester,
+  ) async {
+    final previousLocale = Intl.defaultLocale;
+    Intl.defaultLocale = 'zh_Hans';
+    addTearDown(() => Intl.defaultLocale = previousLocale);
+
+    final vm = ChatViewModel(
+      chatId: 2,
+      title: 'Wide group',
+      markReadOnOpen: false,
+    )..isGroup = true;
+    addTearDown(vm.dispose);
+
+    await tester.pumpWidget(
+      _localizedApp(
+        ChatInputBar(
+          vm: vm,
+          showCallAction: false,
+          onStartCall: (_) {},
+          onMessageSent: () {},
+        ),
+      ),
+    );
+
+    await tester.tap(find.byIcon(HeroAppIcons.circlePlus.data));
+    await tester.pump();
+
+    expect(find.text('群通话'), findsNothing);
+    expect(find.text('位置'), findsOneWidget);
+    expect(find.text('联系人'), findsOneWidget);
+  });
+
   testWidgets('empty private-chat input opens inline quick replies', (
     tester,
   ) async {

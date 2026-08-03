@@ -1,6 +1,6 @@
 name: 🌙 Sync Nightly
 
-# Merge master into nightly twice per day. Every sync that incorporates new
+# Merge master into nightly once per day. Every sync that incorporates new
 # master commits increments the app's patch version once. Master is
 # authoritative for the nightly tree; only pubspec.yaml receives a generated
 # nightly version. A generated GITHUB_TOKEN push doesn't trigger other
@@ -9,7 +9,7 @@ name: 🌙 Sync Nightly
 
 on:
   schedule:
-    - cron: '0 0,12 * * *'
+    - cron: '0 0 * * *'
   workflow_dispatch:
 
 concurrency:

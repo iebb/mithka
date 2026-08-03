@@ -45,6 +45,7 @@ class CountryMessageFilter extends ChangeNotifier {
         prefs.getBool(_exemptThreeCommonGroupsKey) ?? true;
     _exemptPlainText = prefs.getBool(_exemptPlainTextKey) ?? true;
     _exemptNonDefaultAvatar = prefs.getBool(_exemptNonDefaultAvatarKey) ?? true;
+    notifyListeners();
   }
 
   void setCountrySelected(String iso, bool selected) {

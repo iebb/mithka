@@ -1694,6 +1694,44 @@ void main() {
     await tester.pump();
     await controller.dispose();
   });
+
+  testWidgets('time and speed labels ignore inherited link decoration', (
+    tester,
+  ) async {
+    final controller = _FakeVideoPlayerController();
+    await tester.pumpWidget(
+      _frame(
+        DefaultTextStyle(
+          style: const TextStyle(
+            color: Color(0xFFFFFF00),
+            fontSize: 24,
+            decoration: TextDecoration.underline,
+          ),
+          child: MithkaVideoPlayer(
+            source: _source('desktop-label-style'),
+            controller: controller,
+            autoplay: false,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final time = tester.widget<Text>(find.text('0:00 / 2:00'));
+    final speed = tester.widget<Text>(find.text('1x'));
+    for (final label in [time, speed]) {
+      expect(label.style?.inherit, isFalse);
+      expect(label.style?.color, const Color(0xFFFFFFFF));
+      expect(label.style?.fontWeight, FontWeight.normal);
+      expect(label.style?.decoration, TextDecoration.none);
+    }
+    expect(time.style?.fontSize, 13);
+    expect(speed.style?.fontSize, 13);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    await controller.dispose();
+  });
 }
 
 double _controlOpacity(WidgetTester tester) => tester

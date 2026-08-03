@@ -25,6 +25,32 @@ void main() {
   test('action menu matches the compact reaction bar width', () {
     expect(MessageActionMenu.widthForAvailable(400), 332);
     expect(MessageActionMenu.widthForAvailable(300), 300);
+    expect(MessageActionMenu.mobileWidthForActionCount(4, 400), 244);
+    expect(MessageActionMenu.mobileWidthForActionCount(3, 400), 186);
+    expect(MessageActionMenu.mobileWidthForActionCount(5, 400), 332);
+  });
+
+  test('desktop context menu starts at pointer and stays on screen', () {
+    expect(
+      MessageActionMenu.desktopOriginForPointer(
+        pointer: const Offset(180, 120),
+        viewport: const Size(640, 420),
+        menuSize: const Size(220, 240),
+        topSafe: 8,
+        bottomSafe: 412,
+      ),
+      const Offset(180, 120),
+    );
+    expect(
+      MessageActionMenu.desktopOriginForPointer(
+        pointer: const Offset(630, 410),
+        viewport: const Size(640, 420),
+        menuSize: const Size(220, 240),
+        topSafe: 8,
+        bottomSafe: 412,
+      ),
+      const Offset(410, 172),
+    );
   });
 
   testWidgets('ten or fewer reaction controls fit without overflow', (
@@ -152,6 +178,63 @@ void main() {
           .width,
       MessageActionMenu.preferredWidth,
     );
+  });
+
+  testWidgets('desktop message actions render as a compact vertical list', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final translation = TranslationController(prefs);
+    await tester.binding.setSurfaceSize(const Size(500, 700));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: translation,
+        child: MaterialApp(
+          theme: ThemeData(platform: TargetPlatform.macOS),
+          locale: const Locale('en'),
+          localizationsDelegates: const [AppLocalizations.delegate],
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.topLeft,
+              child: MessageActionMenu(
+                message: ChatMessage(
+                  id: 18,
+                  isOutgoing: false,
+                  text: 'desktop menu',
+                  date: 1,
+                  contentType: 'messageText',
+                ),
+                isPinned: false,
+                onSelect: (_) {},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final surface = find.byKey(const ValueKey('message-action-menu-surface'));
+    expect(
+      tester.getSize(surface).width,
+      MessageActionMenu.desktopPreferredWidth,
+    );
+    final copy = tester.getTopLeft(
+      find.byKey(const ValueKey('message-action-copy')),
+    );
+    final reply = tester.getTopLeft(
+      find.byKey(const ValueKey('message-action-reply')),
+    );
+    final forward = tester.getTopLeft(
+      find.byKey(const ValueKey('message-action-forward')),
+    );
+    expect(reply.dx, copy.dx);
+    expect(forward.dx, copy.dx);
+    expect(reply.dy, greaterThan(copy.dy));
+    expect(forward.dy, greaterThan(reply.dy));
   });
 
   testWidgets('captionless outgoing media still exposes edit', (tester) async {

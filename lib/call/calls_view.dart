@@ -30,7 +30,9 @@ Map<String, dynamic> callHistorySearchRequest({
 };
 
 class CallsView extends StatefulWidget {
-  const CallsView({super.key});
+  const CallsView({super.key, this.showBackButton = true});
+
+  final bool showBackButton;
 
   @override
   State<CallsView> createState() => _CallsViewState();
@@ -159,7 +161,9 @@ class _CallsViewState extends State<CallsView> {
         children: [
           NavHeader(
             title: AppStringKeys.callsTitle,
-            onBack: () => Navigator.of(context).pop(),
+            onBack: widget.showBackButton
+                ? () => Navigator.of(context).pop()
+                : null,
             trailing: _refreshAction(),
           ),
           Expanded(child: _body()),

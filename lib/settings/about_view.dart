@@ -23,7 +23,9 @@ import 'developer_mode_controller.dart';
 import 'feedback_report_view.dart';
 
 class AboutView extends StatefulWidget {
-  const AboutView({super.key});
+  const AboutView({super.key, this.showBackButton = true});
+
+  final bool showBackButton;
 
   @override
   State<AboutView> createState() => _AboutViewState();
@@ -64,7 +66,9 @@ class _AboutViewState extends State<AboutView> {
         children: [
           NavHeader(
             title: AppStrings.t(AppStringKeys.aboutTitle),
-            onBack: () => Navigator.of(context).pop(),
+            onBack: widget.showBackButton && Navigator.of(context).canPop()
+                ? () => Navigator.of(context).pop()
+                : null,
           ),
           Expanded(
             child: DesktopContentConstraint(

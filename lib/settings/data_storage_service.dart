@@ -44,8 +44,14 @@ class DataStorageService {
   final TdClient? _client;
   TdClient get client => _client ?? TdClient.shared;
 
+  Future<Map<String, dynamic>> fastStorageStatistics() =>
+      client.query({'@type': 'getStorageStatisticsFast'});
+
   Future<Map<String, dynamic>> storageStatistics({int chatLimit = 100}) =>
       client.query({'@type': 'getStorageStatistics', 'chat_limit': chatLimit});
+
+  Future<Map<String, dynamic>> chat(int chatId) =>
+      client.query({'@type': 'getChat', 'chat_id': chatId});
 
   Future<Map<String, dynamic>> optimize({
     required int size,
@@ -54,14 +60,20 @@ class DataStorageService {
     List<int> chatIds = const [],
     List<int> excludeChatIds = const [],
     bool returnDeletedStatistics = false,
+    int count = 1000000000,
+    int immunityDelay = 3600,
+    int chatLimit = 100,
   }) => client.query(
     buildOptimizeStorageRequest(
       size: size,
       ttl: ttl,
+      count: count,
+      immunityDelay: immunityDelay,
       fileTypes: fileTypes,
       chatIds: chatIds,
       excludeChatIds: excludeChatIds,
       returnDeletedStatistics: returnDeletedStatistics,
+      chatLimit: chatLimit,
     ),
   );
 

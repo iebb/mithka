@@ -58,6 +58,25 @@ class TdSessionRestoreException implements Exception {
   String toString() => message;
 }
 
+/// Transport used by a secondary desktop Flutter engine.
+///
+/// The primary engine remains the sole TDLib/database owner. Secondary chat
+/// windows send ordinary TDLib JSON requests over bounded local IPC and receive
+/// the same update objects that the primary engine broadcasts.
+class TdClientProxyTransport {
+  const TdClientProxyTransport({
+    required this.accountSlot,
+    required this.query,
+    required this.send,
+    required this.updates,
+  });
+
+  final int accountSlot;
+  final Future<Map<String, dynamic>> Function(Map<String, dynamic>) query;
+  final Future<void> Function(Map<String, dynamic>) send;
+  final Stream<Map<String, dynamic>> updates;
+}
+
 class _TdSessionStringInfo {
   const _TdSessionStringInfo({
     required this.rawSize,
@@ -103,6 +122,8 @@ class TdClient {
   // Lazy: only opened when first used, so demo/simulator builds (no tdjson) can
   // touch the singleton (e.g. read activeSlot) without resolving symbols.
   late final TdBindings _bindings = TdBindings.open();
+  TdClientProxyTransport? _proxyTransport;
+  StreamSubscription<Map<String, dynamic>>? _proxyUpdateSub;
 
   bool _isRunning = false;
   Timer? _debugReceiveTimer;
@@ -159,15 +180,79 @@ class TdClient {
       _latestChatFoldersByClient[clientId];
   Map<String, dynamic>? get latestEmojiChatThemesUpdate =>
       _latestEmojiChatThemesByClient[_activeClientId];
+  Map<String, dynamic>? latestEmojiChatThemesUpdateForClient(int clientId) =>
+      _latestEmojiChatThemesByClient[clientId];
   Map<String, dynamic>? get latestTextCompositionStylesUpdate =>
       _latestTextCompositionStylesByClient[_activeClientId];
+  Map<String, dynamic>? latestTextCompositionStylesUpdateForClient(
+    int clientId,
+  ) => _latestTextCompositionStylesByClient[clientId];
   Iterable<Map<String, dynamic>> get latestCommunityUpdates =>
       _latestCommunitiesByClient[_activeClientId]?.values ?? const [];
+  Iterable<Map<String, dynamic>> latestCommunityUpdatesForClient(
+    int clientId,
+  ) => _latestCommunitiesByClient[clientId]?.values ?? const [];
+
+  /// Configures this isolate as a read/write view onto the primary engine.
+  /// Must be called before any native TDLib lifecycle is started.
+  void configureProxy(TdClientProxyTransport transport) {
+    if (_isRunning || _proxyTransport != null) {
+      throw StateError(
+        'TDLib proxy must be configured exactly once at startup',
+      );
+    }
+    const proxyClientId = 1;
+    _proxyTransport = transport;
+    _activeSlot = transport.accountSlot;
+    _activeClientId = proxyClientId;
+    _slots = [transport.accountSlot];
+    _clientForSlot
+      ..clear()
+      ..[transport.accountSlot] = proxyClientId;
+    _slotForClient
+      ..clear()
+      ..[proxyClientId] = transport.accountSlot;
+    _proxyUpdateSub = transport.updates.listen(_routeProxyUpdate);
+  }
+
+  /// Releases a secondary-engine transport when its native window exits.
+  Future<void> closeProxy() async {
+    await _proxyUpdateSub?.cancel();
+    _proxyUpdateSub = null;
+  }
+
+  void _routeProxyUpdate(Map<String, dynamic> source) {
+    final object = <String, dynamic>{...source, '@client_id': _activeClientId};
+    AvatarAnimationIndex.shared.observe(_activeSlot, object);
+    TdUserIndex.shared.observe(_activeSlot, object);
+    if (object.type == 'updateChatFolders') {
+      _latestChatFoldersByClient[_activeClientId] = object;
+    }
+    if (object.type == 'updateEmojiChatThemes') {
+      _latestEmojiChatThemesByClient[_activeClientId] = object;
+    }
+    if (object.type == 'updateTextCompositionStyles') {
+      _latestTextCompositionStylesByClient[_activeClientId] = object;
+    }
+    if (object.type == 'updateCommunity') {
+      final community = object.obj('community');
+      final communityId = community?.int64('id');
+      if (community != null && communityId != null) {
+        _latestCommunitiesByClient.putIfAbsent(
+          _activeClientId,
+          () => {},
+        )[communityId] = object;
+      }
+    }
+    _allUpdates.add(object);
+    _updates.add(object);
+  }
 
   // MARK: - Lifecycle
 
   /// Creates a client for every known account and starts the receive isolate.
   Future<void> start() async {
+    if (_proxyTransport != null) return;
     if (_isRunning) return;
     _isRunning = true;
 
@@ -1182,7 +1267,17 @@ class TdClient {
 
   /// Fire-and-forget request to the active account.
   void send(Map<String, dynamic> request) {
-    _bindings.send(_activeClientId, jsonEncode(request));
+    sendTo(request, _activeClientId);
+  }
+
+  /// Fire-and-forget request to a specific account client.
+  void sendTo(Map<String, dynamic> request, int clientId) {
+    final proxy = _proxyTransport;
+    if (proxy != null) {
+      unawaited(proxy.send(Map<String, dynamic>.from(request)));
+      return;
+    }
+    _bindings.send(clientId, jsonEncode(request));
   }
 
   /// Sends a request to the active account and awaits its response.
@@ -1196,6 +1291,12 @@ class TdClient {
     Map<String, dynamic> request,
     int clientId,
   ) async {
+    final proxy = _proxyTransport;
+    if (proxy != null) {
+      final result = await proxy.query(Map<String, dynamic>.from(request));
+      if (result.type == 'error') throw TdError(result);
+      return result;
+    }
     final requestType = request.type ?? 'unknown';
     final stopwatch = Stopwatch()..start();
     final extra = _nextExtra();

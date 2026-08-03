@@ -100,6 +100,9 @@ class RichTextComposerView extends StatefulWidget {
     this.hintText = AppStringKeys.richTextComposerContentPlaceholder,
     this.allowMedia = true,
     this.asSheet = false,
+    this.showCloseAction = true,
+    this.onClose,
+    this.onSubmit,
   });
 
   final String initialText;
@@ -111,6 +114,9 @@ class RichTextComposerView extends StatefulWidget {
   final String hintText;
   final bool allowMedia;
   final bool asSheet;
+  final bool showCloseAction;
+  final FutureOr<void> Function()? onClose;
+  final FutureOr<void> Function(RichTextComposerResult result)? onSubmit;
 
   @override
   State<RichTextComposerView> createState() => _RichTextComposerViewState();
@@ -774,14 +780,27 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
     }
     flushAttachments();
     flushHtml();
-    Navigator.of(context).pop(
-      RichTextComposerResult(
-        text: buffer.toString(),
-        entities: entities,
-        attachments: List.unmodifiable(attachments),
-        segments: List.unmodifiable(segments),
-      ),
+    final result = RichTextComposerResult(
+      text: buffer.toString(),
+      entities: entities,
+      attachments: List.unmodifiable(attachments),
+      segments: List.unmodifiable(segments),
     );
+    final callback = widget.onSubmit;
+    if (callback != null) {
+      unawaited(Future<void>.sync(() => callback(result)));
+      return;
+    }
+    Navigator.of(context).pop(result);
+  }
+
+  void _close() {
+    final callback = widget.onClose;
+    if (callback != null) {
+      unawaited(Future<void>.sync(callback));
+      return;
+    }
+    Navigator.of(context).pop();
   }
 
   int _documentTextCharacterCount() {
@@ -1229,14 +1248,20 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
             height: 54,
             child: Row(
               children: [
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => Navigator.of(context).pop(),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Text(
-                      AppStringKeys.countryPickerCancel.l10n(context),
-                      style: TextStyle(fontSize: 16, color: c.textPrimary),
+                Visibility(
+                  visible: widget.showCloseAction,
+                  maintainSize: true,
+                  maintainAnimation: true,
+                  maintainState: true,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _close,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Text(
+                        AppStringKeys.countryPickerCancel.l10n(context),
+                        style: TextStyle(fontSize: 16, color: c.textPrimary),
+                      ),
                     ),
                   ),
                 ),

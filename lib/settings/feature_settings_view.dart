@@ -10,6 +10,7 @@ import 'package:provider/provider.dart';
 import '../components/desktop_content_constraint.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
+import '../moments/short_video_availability.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import 'safety_notice_controller.dart';
@@ -57,12 +58,14 @@ class FeatureSettingsView extends StatelessWidget {
                         value: theme.showMomentsTab,
                         onChanged: (value) => theme.showMomentsTab = value,
                       ),
-                      const InsetDivider(leadingInset: 16),
-                      SettingsSwitchRow(
-                        title: AppStrings.t(AppStringKeys.momentsShortVideos),
-                        value: theme.showShortVideos,
-                        onChanged: (value) => theme.showShortVideos = value,
-                      ),
+                      if (shortVideosAvailableOnPlatform()) ...[
+                        const InsetDivider(leadingInset: 16),
+                        SettingsSwitchRow(
+                          title: AppStrings.t(AppStringKeys.momentsShortVideos),
+                          value: theme.showShortVideos,
+                          onChanged: (value) => theme.showShortVideos = value,
+                        ),
+                      ],
                     ],
                   ),
                   const SizedBox(height: AppSpacing.section),

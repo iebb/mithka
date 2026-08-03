@@ -42,7 +42,7 @@ class _MiniAppsSearchTabState extends State<MiniAppsSearchTab> {
       chatId: app.chatId,
       botUserId: app.botUserId,
       url: app.url,
-      title: app.title,
+      title: app.launchTitle,
       keyboardButtonText: app.keyboardButtonText,
       mainWebApp: app.mainWebApp,
       startParameter: app.startParameter,

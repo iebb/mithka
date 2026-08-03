@@ -60,4 +60,16 @@ void main() {
       ),
     );
   });
+
+  test('desktop child engines can decline process-global log ownership', () {
+    const configuration = MithkaFvpConfiguration(
+      platforms: {MithkaFvpPlatform.macos},
+      installGlobalLogHandler: false,
+    );
+
+    expect(configuration.toFvpOptions(), {
+      'platforms': ['macos'],
+      'installGlobalLogHandler': false,
+    });
+  });
 }

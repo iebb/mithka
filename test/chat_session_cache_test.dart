@@ -99,4 +99,50 @@ void main() {
     expect(cache.read(accountSlot: 0, chatId: 1), isNull);
     expect(cache.read(accountSlot: 0, chatId: 2), isNull);
   });
+
+  test(
+    'write gate skips non-transcript notifications and refreshes on exit',
+    () {
+      final gate = ChatSessionCacheWriteGate();
+      final messages = [_message(1), _message(2)];
+
+      expect(
+        gate.shouldStore(
+          messages: messages,
+          anchoredHistory: false,
+          olderHistoryExhausted: false,
+          firstContactInfo: null,
+        ),
+        isTrue,
+      );
+      expect(
+        gate.shouldStore(
+          messages: messages,
+          anchoredHistory: false,
+          olderHistoryExhausted: false,
+          firstContactInfo: null,
+        ),
+        isFalse,
+      );
+      expect(
+        gate.shouldStore(
+          messages: messages,
+          anchoredHistory: false,
+          olderHistoryExhausted: false,
+          firstContactInfo: null,
+          force: true,
+        ),
+        isTrue,
+      );
+      expect(
+        gate.shouldStore(
+          messages: List<ChatMessage>.of(messages),
+          anchoredHistory: false,
+          olderHistoryExhausted: false,
+          firstContactInfo: null,
+        ),
+        isTrue,
+      );
+    },
+  );
 }

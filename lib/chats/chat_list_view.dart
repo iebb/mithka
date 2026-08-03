@@ -19,6 +19,8 @@ import 'package:provider/provider.dart';
 
 import '../app/adaptive_split_layout.dart';
 import '../app/app_navigator.dart';
+import '../app/desktop_chat_list_title_bar_anchors.dart';
+import '../app/desktop_chat_window.dart';
 import '../auth/account_store.dart';
 import '../auth/auth_manager.dart';
 import '../channels/forum_topic_browser_view.dart';
@@ -28,6 +30,7 @@ import '../chat/link_handler.dart';
 import '../communities/community_models.dart';
 import '../communities/community_view.dart';
 import '../components/app_icons.dart';
+import '../components/app_interactive_surface.dart';
 import '../components/app_press_ripple.dart';
 import '../components/drawer_controller.dart' as dc;
 import '../components/photo_avatar.dart';
@@ -37,6 +40,7 @@ import '../contacts/add_people_view.dart';
 import '../contacts/create_group_view.dart';
 import '../l10n/telegram_language_controller.dart';
 import '../profile/emoji_status_picker.dart';
+import '../security/local_app_lock_controller.dart';
 import '../settings/edit_field_view.dart';
 import '../settings/topic_group_display_mode.dart';
 import '../tdlib/json_helpers.dart';
@@ -59,10 +63,14 @@ class ChatListController extends ChangeNotifier {
   int _scrollToFirstUnreadRequests = 0;
   int _toggleFirstUnreadRequests = 0;
   int _markAllReadRequests = 0;
+  int _newChatRequests = 0;
+  int _focusSearchRequests = 0;
   bool _toggleRequestMayHaveUnread = false;
   int get scrollToFirstUnreadRequests => _scrollToFirstUnreadRequests;
   int get toggleFirstUnreadRequests => _toggleFirstUnreadRequests;
   int get markAllReadRequests => _markAllReadRequests;
+  int get newChatRequests => _newChatRequests;
+  int get focusSearchRequests => _focusSearchRequests;
   bool get toggleRequestMayHaveUnread => _toggleRequestMayHaveUnread;
 
   void scrollToFirstUnread() {
@@ -80,6 +88,16 @@ class ChatListController extends ChangeNotifier {
     _markAllReadRequests++;
     notifyListeners();
   }
+
+  void openNewChat() {
+    _newChatRequests++;
+    notifyListeners();
+  }
+
+  void focusSearch() {
+    _focusSearchRequests++;
+    notifyListeners();
+  }
 }
 
 class ChatListSelection {
@@ -87,6 +105,7 @@ class ChatListSelection {
     required this.chatId,
     required this.title,
     this.chat,
+    this.resolvedKind,
     this.initialMessageId,
     this.composerFocusRequestId = 0,
   });
@@ -97,16 +116,108 @@ class ChatListSelection {
   }) : chatId = chat.id,
        title = chat.title,
        chat = chat,
+       resolvedKind = chat.kind,
        initialMessageId = null;
 
   final int chatId;
   final String title;
   final ChatSummary? chat;
+  final ChatKind? resolvedKind;
   final int? initialMessageId;
   final int composerFocusRequestId;
 
+  ChatKind? get kind => chat?.kind ?? resolvedKind;
   bool get isForum => chat?.isForum ?? false;
   bool get supportsTopics => chat?.supportsTopics ?? false;
+
+  ChatListSelection withResolvedKind(ChatKind kind) => ChatListSelection(
+    chatId: chatId,
+    title: title,
+    chat: chat,
+    resolvedKind: kind,
+    initialMessageId: initialMessageId,
+    composerFocusRequestId: composerFocusRequestId,
+  );
+}
+
+/// Keeps the active conversation visually anchored in split layouts.
+///
+/// The subtle wash composes the user-selected brand color over the row's
+/// current themed surface. The short leading rail stays crisp in both light
+/// and dark/custom themes without changing the row's hit testing.
+class ChatListSelectionHighlight extends StatelessWidget {
+  const ChatListSelectionHighlight({
+    super.key,
+    required this.selected,
+    required this.child,
+  });
+
+  static const tintKey = ValueKey('chat-list-selected-tint');
+  static const railKey = ValueKey('chat-list-selected-rail');
+  static const semanticsKey = ValueKey('chat-list-selected-semantics');
+
+  final bool selected;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!selected) return child;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final brand = AppTheme.brand;
+    return Semantics(
+      key: semanticsKey,
+      container: true,
+      selected: true,
+      child: Stack(
+        fit: StackFit.passthrough,
+        children: [
+          child,
+          Positioned.fill(
+            child: IgnorePointer(
+              child: ColoredBox(
+                key: tintKey,
+                color: brand.withValues(alpha: isDark ? 0.13 : 0.08),
+              ),
+            ),
+          ),
+          PositionedDirectional(
+            start: 0,
+            top: AppSpacing.sm,
+            bottom: AppSpacing.sm,
+            child: IgnorePointer(
+              child: Container(
+                key: railKey,
+                width: 3,
+                decoration: BoxDecoration(
+                  color: brand,
+                  borderRadius: const BorderRadiusDirectional.horizontal(
+                    end: Radius.circular(2),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Live archive-list data handed to the adaptive shell when Archived Chats
+/// should replace only the list pane.
+///
+/// The chat list remains mounted behind that pane, so [chatsProvider] and
+/// [updates] continue to expose current archive contents while it is open.
+class ArchivedChatListSelection {
+  const ArchivedChatListSelection({
+    required this.chatsProvider,
+    required this.updates,
+    required this.onClearUnread,
+  });
+
+  final List<ChatSummary> Function() chatsProvider;
+  final Listenable updates;
+  final ValueChanged<ChatSummary> onClearUnread;
 }
 
 bool chatListPreviewSupportsQuickReply(ChatSummary chat) =>
@@ -434,6 +545,9 @@ class ChatListView extends StatefulWidget {
     this.controller,
     this.onChatSelected,
     this.onCommunitySelected,
+    this.onOpenArchived,
+    this.onOpenChatInSeparateWindow,
+    this.desktopSidebar = false,
     this.selectedChatId,
     this.selectedCommunityId,
   });
@@ -441,6 +555,9 @@ class ChatListView extends StatefulWidget {
   final ChatListController? controller;
   final ValueChanged<ChatListSelection>? onChatSelected;
   final ValueChanged<CommunityListSelection>? onCommunitySelected;
+  final ValueChanged<ArchivedChatListSelection>? onOpenArchived;
+  final Future<void> Function(ChatSummary)? onOpenChatInSeparateWindow;
+  final bool desktopSidebar;
   final int? selectedChatId;
   final int? selectedCommunityId;
 
@@ -475,6 +592,8 @@ class _ChatListViewState extends State<ChatListView>
   int _lastHandledScrollToFirstUnreadRequest = 0;
   int _lastHandledToggleFirstUnreadRequest = 0;
   int _lastHandledMarkAllReadRequest = 0;
+  int _lastHandledNewChatRequest = 0;
+  int _lastHandledFocusSearchRequest = 0;
   int _pendingScrollAttempts = 0;
   bool _toggleUnreadTargetNext = true;
   bool _archiveRevealed = false;
@@ -486,6 +605,8 @@ class _ChatListViewState extends State<ChatListView>
   int _lastVisibleRows = 1;
   final ChatListSwipeSession _chatListSwipeSession = ChatListSwipeSession();
   int _nextComposerFocusRequestId = 0;
+  OverlayEntry? _desktopChatMenuEntry;
+  OverlayEntry? _desktopPlusMenuEntry;
 
   static const double _refreshPullThreshold = 72;
 
@@ -607,6 +728,8 @@ class _ChatListViewState extends State<ChatListView>
 
   @override
   void dispose() {
+    _dismissDesktopChatMenu();
+    _dismissDesktopPlusMenu();
     _userSub?.cancel();
     widget.controller?.removeListener(_onControllerRequest);
     _folderTransition.dispose();
@@ -802,6 +925,7 @@ class _ChatListViewState extends State<ChatListView>
   }
 
   void _selectPlusMenuItem(String label) {
+    _dismissDesktopPlusMenu();
     setState(() => _showPlusMenu = false);
     switch (label) {
       case AppStringKeys.chatListScanQrCode:
@@ -815,6 +939,50 @@ class _ChatListViewState extends State<ChatListView>
       case AppStringKeys.communityTitle:
         _openCommunityDirectory();
     }
+  }
+
+  void _openPlusMenu() {
+    _dismissDesktopPlusMenu();
+    if (!widget.desktopSidebar) {
+      setState(() {
+        _showPlusMenu = true;
+        _showFilterMenu = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _showPlusMenu = false;
+      _showFilterMenu = false;
+    });
+    final overlay = Overlay.of(context, rootOverlay: true);
+    late final OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (_) => _DesktopTitleBarPlusMenuOverlay(
+        link: DesktopChatListTitleBarAnchors.add,
+        onDismiss: () {
+          if (identical(_desktopPlusMenuEntry, entry)) {
+            _desktopPlusMenuEntry = null;
+          }
+          entry.remove();
+        },
+        child: PlusMenu(
+          key: const ValueKey('desktop-title-bar-plus-menu'),
+          onSelect: _selectPlusMenuItem,
+          showCommunities:
+              context.read<ThemeController>().communitiesEnabled &&
+              _model.availableCommunities.isNotEmpty,
+        ),
+      ),
+    );
+    _desktopPlusMenuEntry = entry;
+    overlay.insert(entry);
+  }
+
+  void _dismissDesktopPlusMenu() {
+    final entry = _desktopPlusMenuEntry;
+    _desktopPlusMenuEntry = null;
+    entry?.remove();
   }
 
   void _openCommunityDirectory() {
@@ -892,6 +1060,20 @@ class _ChatListViewState extends State<ChatListView>
     if (markAllRequest > _lastHandledMarkAllReadRequest) {
       _lastHandledMarkAllReadRequest = markAllRequest;
       _model.markAllRead();
+    }
+
+    final newChatRequest = widget.controller?.newChatRequests ?? 0;
+    if (newChatRequest > _lastHandledNewChatRequest) {
+      _lastHandledNewChatRequest = newChatRequest;
+      _openPlusMenu();
+    }
+
+    final focusSearchRequest = widget.controller?.focusSearchRequests ?? 0;
+    if (focusSearchRequest > _lastHandledFocusSearchRequest) {
+      _lastHandledFocusSearchRequest = focusSearchRequest;
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute<void>(builder: (_) => const SearchView()));
     }
 
     final request = widget.controller?.scrollToFirstUnreadRequests ?? 0;
@@ -1016,9 +1198,9 @@ class _ChatListViewState extends State<ChatListView>
       itemIndex: itemIndex,
       rowHeight: context.read<ThemeController>().rowHeight,
       maxScrollExtent: _scrollController.position.maxScrollExtent,
-      leadingExtent: context.read<ThemeController>().showChatListSearch
-          ? _searchPillExtent
-          : 0,
+      leadingExtent: _leadingListControlsExtent(
+        context.read<ThemeController>(),
+      ),
     );
   }
 
@@ -1056,7 +1238,7 @@ class _ChatListViewState extends State<ChatListView>
           color: c.background,
           child: Column(
             children: [
-              _header(),
+              if (!widget.desktopSidebar) _header(),
               if (folderMode == ChatFolderDisplayMode.tabs &&
                   _model.filters.length > 1)
                 _chatFolderTabs(),
@@ -1082,6 +1264,7 @@ class _ChatListViewState extends State<ChatListView>
   }
 
   void _handleGesturePointerDown(PointerDownEvent event) {
+    if (!kIsWeb && isDesktopTargetPlatform(defaultTargetPlatform)) return;
     final wasSuppressingRows = _chatListSwipeSession.suppressRowSwipes;
     final tracked = _chatListSwipeSession.pointerDown(
       pointer: event.pointer,
@@ -1096,6 +1279,7 @@ class _ChatListViewState extends State<ChatListView>
   }
 
   void _handleGesturePointerMove(PointerMoveEvent event) {
+    if (!kIsWeb && isDesktopTargetPlatform(defaultTargetPlatform)) return;
     _chatListSwipeSession.pointerMove(
       pointer: event.pointer,
       position: event.position,
@@ -1103,10 +1287,12 @@ class _ChatListViewState extends State<ChatListView>
   }
 
   void _handleGesturePointerUp(PointerUpEvent event) {
+    if (!kIsWeb && isDesktopTargetPlatform(defaultTargetPlatform)) return;
     _handleGesturePointerEnd(event, canceled: false);
   }
 
   void _handleGesturePointerCancel(PointerCancelEvent event) {
+    if (!kIsWeb && isDesktopTargetPlatform(defaultTargetPlatform)) return;
     _handleGesturePointerEnd(event, canceled: true);
   }
 
@@ -1150,6 +1336,7 @@ class _ChatListViewState extends State<ChatListView>
   Widget _header() {
     final c = context.colors;
     final theme = context.watch<ThemeController>();
+    final appLock = context.watch<LocalAppLockController?>();
     final useFilterMenu =
         theme.chatFolderDisplayMode == ChatFolderDisplayMode.menu;
     final activeFilter = _model.selectedFilter;
@@ -1264,6 +1451,7 @@ class _ChatListViewState extends State<ChatListView>
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () => setState(() {
+                  _dismissDesktopPlusMenu();
                   _showFilterMenu = true;
                   _showPlusMenu = false;
                 }),
@@ -1277,12 +1465,30 @@ class _ChatListViewState extends State<ChatListView>
                   ),
                 ),
               ),
+            if (appLock?.enabled == true) ...[
+              const SizedBox(width: AppSpacing.xs),
+              Semantics(
+                button: true,
+                label: AppStringKeys.appLockLockNow.l10n(context),
+                child: GestureDetector(
+                  key: const ValueKey('chat-list-app-lock'),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: appLock!.lock,
+                  child: SizedBox(
+                    width: AppMetric.hitTarget,
+                    height: AppMetric.hitTarget,
+                    child: AppIcon(
+                      HeroAppIcons.lock,
+                      size: AppIconSize.toolbar,
+                      color: c.textPrimary,
+                    ),
+                  ),
+                ),
+              ),
+            ],
             GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: () => setState(() {
-                _showPlusMenu = true;
-                _showFilterMenu = false;
-              }),
+              onTap: _openPlusMenu,
               child: SizedBox(
                 width: AppMetric.hitTarget,
                 height: AppMetric.hitTarget,
@@ -1378,11 +1584,40 @@ class _ChatListViewState extends State<ChatListView>
 
   Widget _searchPill() {
     final c = context.colors;
-    return GestureDetector(
+    final search = GestureDetector(
       onTap: () => Navigator.of(
         context,
       ).push(MaterialPageRoute(builder: (_) => const SearchView())),
       child: Container(
+        height: AppMetric.searchHeight,
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+        decoration: BoxDecoration(
+          color: c.searchFill,
+          borderRadius: BorderRadius.circular(AppRadius.control),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            AppIcon(
+              HeroAppIcons.magnifyingGlass,
+              size: AppMetric.searchIcon,
+              color: c.textTertiary,
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Text(
+              AppStringKeys.topicChatSearch.l10n(context),
+              style: TextStyle(
+                fontSize: AppTextSize.callout,
+                color: c.textTertiary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!widget.desktopSidebar) {
+      return Container(
+        key: const ValueKey('chat-list-inline-search'),
         color: c.listHeaderTint,
         padding: const EdgeInsets.fromLTRB(
           AppSpacing.lg,
@@ -1390,32 +1625,62 @@ class _ChatListViewState extends State<ChatListView>
           AppSpacing.lg,
           AppSpacing.sm,
         ),
-        child: Container(
-          height: AppMetric.searchHeight,
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-          decoration: BoxDecoration(
-            color: c.searchFill,
-            borderRadius: BorderRadius.circular(AppRadius.control),
+        child: search,
+      );
+    }
+    final theme = context.watch<ThemeController>();
+    final showFolder =
+        theme.chatFolderDisplayMode == ChatFolderDisplayMode.menu &&
+        _model.filters.isNotEmpty;
+    if (!showFolder) return const SizedBox.shrink();
+    return Container(
+      key: const ValueKey('chat-list-desktop-toolbar'),
+      color: c.listHeaderTint,
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.md,
+        AppSpacing.lg,
+        AppSpacing.sm,
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          _desktopToolbarAction(
+            key: const ValueKey('chat-list-desktop-folder'),
+            icon: HeroAppIcons.folder,
+            label: AppStringKeys.appearanceChatFolders.l10n(context),
+            onTap: () => setState(() {
+              _dismissDesktopPlusMenu();
+              _showFilterMenu = true;
+              _showPlusMenu = false;
+            }),
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              AppIcon(
-                HeroAppIcons.magnifyingGlass,
-                size: AppMetric.searchIcon,
-                color: c.textTertiary,
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              Text(
-                AppStringKeys.topicChatSearch.l10n(context),
-                style: TextStyle(
-                  fontSize: AppTextSize.callout,
-                  color: c.textTertiary,
-                ),
-              ),
-            ],
-          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _desktopToolbarAction({
+    required Key key,
+    required AppIconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    final c = context.colors;
+    return AppInteractiveSurface(
+      key: key,
+      semanticLabel: label,
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadius.control),
+      child: Container(
+        width: AppMetric.searchHeight,
+        height: AppMetric.searchHeight,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: c.searchFill,
+          borderRadius: BorderRadius.circular(AppRadius.control),
         ),
+        child: AppIcon(icon, size: 20, color: c.textPrimary),
       ),
     );
   }
@@ -1425,7 +1690,8 @@ class _ChatListViewState extends State<ChatListView>
   Widget _chatList() {
     final c = context.colors;
     final theme = context.watch<ThemeController>();
-    final showSearch = theme.showChatListSearch;
+    final leadingControlsExtent = _leadingListControlsExtent(theme);
+    final showLeadingControls = leadingControlsExtent > 0;
     final archiveMode = effectiveChatListArchiveDisplayMode(
       theme.archivedChatsDisplayMode,
     );
@@ -1434,7 +1700,7 @@ class _ChatListViewState extends State<ChatListView>
       child: LayoutBuilder(
         builder: (context, geo) {
           final rowH = theme.rowHeight + 0.5;
-          final searchHeight = showSearch ? _searchPillExtent : 0.0;
+          final searchHeight = leadingControlsExtent;
           final visibleRows = math.max(1, (geo.maxHeight / rowH).ceil());
           _lastVisibleRows = visibleRows;
           final entries = _model.chatListEntries(
@@ -1468,16 +1734,16 @@ class _ChatListViewState extends State<ChatListView>
               padding: EdgeInsets.zero,
               itemCount:
                   visibleRows +
-                  (showSearch ? 1 : 0) +
+                  (showLeadingControls ? 1 : 0) +
                   (hasPullDownArchiveSlot ? 1 : 0),
               itemBuilder: (context, index) {
-                if (showSearch && index == 0) {
+                if (showLeadingControls && index == 0) {
                   return _archivePullSearchPill(hasPullDownArchiveSlot);
                 }
                 if (hasPullDownArchiveSlot &&
                     index ==
                         chatListPullDownArchiveItemIndex(
-                          showSearch: showSearch,
+                          showSearch: showLeadingControls,
                         )) {
                   return _pullDownArchiveSlot(
                     rowHeight: rowH,
@@ -1495,7 +1761,8 @@ class _ChatListViewState extends State<ChatListView>
               ),
               padding: EdgeInsets.zero,
               children: [
-                if (showSearch) _archivePullSearchPill(hasPullDownArchiveSlot),
+                if (showLeadingControls)
+                  _archivePullSearchPill(hasPullDownArchiveSlot),
                 if (hasPullDownArchiveSlot)
                   _pullDownArchiveSlot(
                     rowHeight: rowH,
@@ -1520,16 +1787,16 @@ class _ChatListViewState extends State<ChatListView>
               ),
               padding: EdgeInsets.zero,
               itemCount:
-                  (showSearch ? 1 : 0) +
+                  (showLeadingControls ? 1 : 0) +
                   entries.length +
                   (hasPullDownArchiveSlot ? 1 : 0) +
                   (showInlineArchive ? 1 : 0) +
                   (hasFiltered ? 1 : 0),
               itemBuilder: (context, index) {
-                if (showSearch && index == 0) {
+                if (showLeadingControls && index == 0) {
                   return _archivePullSearchPill(hasPullDownArchiveSlot);
                 }
-                final contentIndex = showSearch ? index - 1 : index;
+                final contentIndex = showLeadingControls ? index - 1 : index;
                 if (hasPullDownArchiveSlot && contentIndex == 0) {
                   return _pullDownArchiveSlot(
                     rowHeight: rowH,
@@ -1572,6 +1839,16 @@ class _ChatListViewState extends State<ChatListView>
         },
       ),
     );
+  }
+
+  double _leadingListControlsExtent(ThemeController theme) {
+    if (!widget.desktopSidebar) {
+      return theme.showChatListSearch ? _searchPillExtent : 0;
+    }
+    final showFolder =
+        theme.chatFolderDisplayMode == ChatFolderDisplayMode.menu &&
+        _model.filters.isNotEmpty;
+    return showFolder ? _searchPillExtent : 0;
   }
 
   Widget _archivePullSearchPill(bool pinDuringArchivePull) {
@@ -1694,7 +1971,10 @@ class _ChatListViewState extends State<ChatListView>
   }
 
   Widget _swipeRow(ChatSummary chat) {
+    final selected = widget.selectedChatId == chat.id;
     final swipeMode = context.watch<ThemeController>().chatListSwipeMode;
+    final desktopContextMenu =
+        !kIsWeb && isDesktopTargetPlatform(defaultTargetPlatform);
     final actions = chat.isPinned
         ? [
             SwipeActionItem(
@@ -1736,27 +2016,123 @@ class _ChatListViewState extends State<ChatListView>
       openRowId: _openSwipeChat,
       onOpenChanged: (id) => setState(() => _openSwipeChat = id),
       onTap: () => _openChat(chat),
-      onLongPress: () => _showChatPreview(chat),
-      horizontalSwipeEnabled: chatListRowSwipeActionsEnabled(
-        mode: swipeMode,
-        multiTouchActive: _chatListSwipeSession.suppressRowSwipes,
-      ),
+      onLongPress: desktopContextMenu ? null : () => _showChatPreview(chat),
+      onSecondaryTapDown: desktopContextMenu
+          ? (details) => _showDesktopChatMenu(chat, details.globalPosition)
+          : null,
+      horizontalSwipeEnabled:
+          !desktopContextMenu &&
+          chatListRowSwipeActionsEnabled(
+            mode: swipeMode,
+            multiTouchActive: _chatListSwipeSession.suppressRowSwipes,
+          ),
+      pressRippleEnabled: !desktopContextMenu,
       actions: actions,
-      child: ChatRowView(
-        chat: chat,
-        selected: widget.selectedChatId == chat.id,
-        onClearUnread: () => _model.markRead(chat),
+      child: ChatListSelectionHighlight(
+        selected: selected,
+        child: ChatRowView(
+          chat: chat,
+          selected: selected,
+          onClearUnread: () => _model.markRead(chat),
+        ),
       ),
     );
+  }
+
+  void _dismissDesktopChatMenu() {
+    final entry = _desktopChatMenuEntry;
+    _desktopChatMenuEntry = null;
+    entry?.remove();
+  }
+
+  void _showDesktopChatMenu(ChatSummary chat, Offset globalPosition) {
+    if (kIsWeb || !isDesktopTargetPlatform(defaultTargetPlatform)) return;
+    if (_openSwipeChat != null) setState(() => _openSwipeChat = null);
+    _dismissDesktopChatMenu();
+
+    final overlay = Overlay.of(context);
+    final overlayBox = overlay.context.findRenderObject() as RenderBox?;
+    if (overlayBox == null || !overlayBox.hasSize) return;
+    final anchor = overlayBox.globalToLocal(globalPosition);
+    final openInSeparateWindow =
+        widget.onOpenChatInSeparateWindow ??
+        (DesktopChatWindowService.instance.isSupported
+            ? _openChatInSeparateWindow
+            : null);
+
+    late final OverlayEntry entry;
+    void dismiss() {
+      if (_desktopChatMenuEntry != entry) return;
+      _dismissDesktopChatMenu();
+    }
+
+    entry = OverlayEntry(
+      builder: (_) => DesktopChatContextMenu(
+        anchor: anchor,
+        isPinned: chat.isPinned,
+        hasUnread: chat.unreadCount > 0 || chat.isMarkedUnread,
+        isMuted: chat.isMuted,
+        deleteOrLeaveLabel: _deleteOrLeaveTitle(chat),
+        onDismiss: dismiss,
+        onTogglePin: () => _model.togglePin(chat),
+        onToggleRead: () => chat.unreadCount > 0 || chat.isMarkedUnread
+            ? _model.markRead(chat)
+            : _model.markUnread(chat),
+        onOpenSeparateWindow: openInSeparateWindow == null
+            ? null
+            : () => unawaited(openInSeparateWindow(chat)),
+        onToggleMute: () => _model.toggleMute(chat),
+        onDeleteOrLeave: () => unawaited(_confirmDeleteChat(chat)),
+      ),
+    );
+    _desktopChatMenuEntry = entry;
+    overlay.insert(entry);
+  }
+
+  Future<void> _openChatInSeparateWindow(ChatSummary chat) async {
+    final theme = context.read<ThemeController>();
+    final accounts = context.read<AccountStore>();
+    final activeAccount = accounts.summaries
+        .where((account) => account.slot == accounts.activeSlot)
+        .firstOrNull;
+    final opened = await DesktopChatWindowService.instance.open(
+      DesktopChatWindowArguments(
+        accountSlot: accounts.activeSlot,
+        accountUserId: activeAccount?.userId,
+        accountName: activeAccount?.name ?? 'Mithka',
+        accountAvatarPath: activeAccount?.avatarPath,
+        chatId: chat.id,
+        title: chat.title,
+        localeTag: Localizations.localeOf(context).toLanguageTag(),
+        dark: Theme.of(context).brightness == Brightness.dark,
+        enterToSend: theme.enterToSend,
+        palette: DesktopChatWindowPalette.fromColors(
+          context.colors,
+          brand: AppTheme.brand,
+        ),
+      ),
+    );
+    if (!opened && mounted) {
+      showToast(context, AppStringKeys.desktopChatWindowUnavailable);
+    }
   }
 
   void _showChatPreview(ChatSummary chat) {
     if (_openSwipeChat != null) setState(() => _openSwipeChat = null);
     final hasUnread = chat.unreadCount > 0 || chat.isMarkedUnread;
+    final accounts = context.read<AccountStore>();
+    final activeAccount = accounts.summaries
+        .where((account) => account.slot == accounts.activeSlot)
+        .firstOrNull;
+    final avatarPath = activeAccount?.avatarPath?.trim();
     unawaited(
       showChatListPreview(
         context,
         chat: chat,
+        meName: activeAccount?.name,
+        mePhoto: avatarPath == null || avatarPath.isEmpty
+            ? null
+            : TdFileRef(id: 0, localPath: avatarPath),
         actions: [
           if (chatListPreviewSupportsQuickReply(chat))
             ChatListPreviewAction(
@@ -1870,17 +2246,32 @@ class _ChatListViewState extends State<ChatListView>
 
   Widget _assistantRow() {
     return GestureDetector(
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => ArchivedChatsView(
-            chats: _model.archived,
-            onClearUnread: _model.markRead,
-          ),
-        ),
-      ),
+      onTap: _openArchivedChats,
       child: ArchivedChatsRow(
         archived: _model.archived,
         onClearUnread: () => _model.markChatsRead(_model.archived),
+      ),
+    );
+  }
+
+  void _openArchivedChats() {
+    final onOpenArchived = widget.onOpenArchived;
+    if (onOpenArchived != null) {
+      onOpenArchived(
+        ArchivedChatListSelection(
+          chatsProvider: () => _model.archived,
+          updates: _model,
+          onClearUnread: _model.markRead,
+        ),
+      );
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ArchivedChatsView(
+          chats: _model.archived,
+          onClearUnread: _model.markRead,
+        ),
       ),
     );
   }
@@ -1953,6 +2344,60 @@ class _ChatListViewState extends State<ChatListView>
           ],
         ),
       ),
+    );
+  }
+}
+
+class _DesktopTitleBarPlusMenuOverlay extends StatelessWidget {
+  const _DesktopTitleBarPlusMenuOverlay({
+    required this.link,
+    required this.onDismiss,
+    required this.child,
+  });
+
+  final LayerLink link;
+  final VoidCallback onDismiss;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onDismiss,
+          child: ColoredBox(color: Colors.black.withValues(alpha: 0.12)),
+        ),
+        CompositedTransformFollower(
+          link: link,
+          showWhenUnlinked: false,
+          targetAnchor: Alignment.bottomRight,
+          followerAnchor: Alignment.topRight,
+          offset: const Offset(0, 6),
+          child: TweenAnimationBuilder<double>(
+            duration: AppMotion.duration(context, AppMotion.responsive),
+            curve: AppMotion.emphasized,
+            tween: Tween(begin: 0, end: 1),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {},
+              child: child,
+            ),
+            builder: (context, progress, child) => Opacity(
+              opacity: progress,
+              child: Transform.translate(
+                offset: Offset(0, -6 * (1 - progress)),
+                child: Transform.scale(
+                  alignment: Alignment.topRight,
+                  scale: 0.96 + 0.04 * progress,
+                  child: child,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -2366,6 +2811,240 @@ class ChatFilterMenu extends StatelessWidget {
 
 // MARK: - custom swipe row
 
+/// Resolves a pointer-anchored desktop menu without allowing it to escape the
+/// visible overlay. The two-pixel offset keeps the pointer clear of the first
+/// action while preserving the exact click location as the anchor.
+Offset desktopChatContextMenuTopLeft({
+  required Offset anchor,
+  required Size viewport,
+  required Size menuSize,
+  double margin = DesktopChatContextMenu.viewportMargin,
+}) {
+  final requested = anchor + const Offset(2, 2);
+  final maxX = math.max(margin, viewport.width - menuSize.width - margin);
+  final maxY = math.max(margin, viewport.height - menuSize.height - margin);
+  return Offset(
+    requested.dx.clamp(margin, maxX).toDouble(),
+    requested.dy.clamp(margin, maxY).toDouble(),
+  );
+}
+
+/// Compact, project-owned context menu used only by native desktop chat rows.
+class DesktopChatContextMenu extends StatelessWidget {
+  const DesktopChatContextMenu({
+    super.key,
+    required this.anchor,
+    required this.isPinned,
+    required this.hasUnread,
+    required this.isMuted,
+    required this.deleteOrLeaveLabel,
+    required this.onDismiss,
+    required this.onTogglePin,
+    required this.onToggleRead,
+    required this.onToggleMute,
+    required this.onDeleteOrLeave,
+    this.onOpenSeparateWindow,
+  });
+
+  static const double menuWidth = 232;
+  static const double rowHeight = 38;
+  static const double verticalPadding = 4;
+  static const double dividerHeight = 0.5;
+  static const double viewportMargin = 8;
+
+  final Offset anchor;
+  final bool isPinned;
+  final bool hasUnread;
+  final bool isMuted;
+  final String deleteOrLeaveLabel;
+  final VoidCallback onDismiss;
+  final VoidCallback onTogglePin;
+  final VoidCallback onToggleRead;
+  final VoidCallback? onOpenSeparateWindow;
+  final VoidCallback onToggleMute;
+  final VoidCallback onDeleteOrLeave;
+
+  double get _menuHeight =>
+      verticalPadding * 2 +
+      rowHeight * (onOpenSeparateWindow == null ? 4 : 5) +
+      dividerHeight;
+
+  void _select(VoidCallback action) {
+    onDismiss();
+    action();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final viewport = Size(constraints.maxWidth, constraints.maxHeight);
+        final resolvedWidth = math
+            .min(menuWidth, math.max(0.0, viewport.width - viewportMargin * 2))
+            .toDouble();
+        final menuSize = Size(resolvedWidth, _menuHeight);
+        final topLeft = desktopChatContextMenuTopLeft(
+          anchor: anchor,
+          viewport: viewport,
+          menuSize: menuSize,
+        );
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            GestureDetector(
+              key: const ValueKey('desktop-chat-context-barrier'),
+              behavior: HitTestBehavior.opaque,
+              onTap: onDismiss,
+              onSecondaryTap: onDismiss,
+              child: const ColoredBox(color: Colors.transparent),
+            ),
+            Positioned(
+              left: topLeft.dx,
+              top: topLeft.dy,
+              child: Container(
+                key: const ValueKey('desktop-chat-context-menu'),
+                width: resolvedWidth,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.2),
+                      blurRadius: 18,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: c.card,
+                      border: Border.all(color: c.divider, width: 0.5),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: verticalPadding,
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _DesktopChatContextMenuItem(
+                            key: const ValueKey('desktop-chat-context-pin'),
+                            icon: HeroAppIcons.thumbtack,
+                            label: isPinned
+                                ? AppStringKeys.chatListUnpin
+                                : AppStringKeys.chatInfoPin,
+                            onTap: () => _select(onTogglePin),
+                          ),
+                          _DesktopChatContextMenuItem(
+                            key: const ValueKey('desktop-chat-context-read'),
+                            icon: hasUnread
+                                ? HeroAppIcons.circleCheck
+                                : HeroAppIcons.eyeSlash,
+                            label: hasUnread
+                                ? AppStringKeys.channelDirectMessagesMarkRead
+                                : AppStringKeys.chatListMarkUnread,
+                            onTap: () => _select(onToggleRead),
+                          ),
+                          if (onOpenSeparateWindow case final openSeparate?)
+                            _DesktopChatContextMenuItem(
+                              key: const ValueKey(
+                                'desktop-chat-context-separate',
+                              ),
+                              icon: HeroAppIcons.pictureInPicture,
+                              label: AppStringKeys.desktopChatOpenSeparate,
+                              onTap: () => _select(openSeparate),
+                            ),
+                          _DesktopChatContextMenuItem(
+                            key: const ValueKey('desktop-chat-context-mute'),
+                            icon: isMuted
+                                ? HeroAppIcons.bell
+                                : HeroAppIcons.bellSlash,
+                            label: isMuted
+                                ? AppStringKeys.chatUnmute
+                                : AppStringKeys.callMute,
+                            onTap: () => _select(onToggleMute),
+                          ),
+                          SizedBox(
+                            height: dividerHeight,
+                            child: ColoredBox(color: c.divider),
+                          ),
+                          _DesktopChatContextMenuItem(
+                            key: const ValueKey('desktop-chat-context-delete'),
+                            icon: HeroAppIcons.trash,
+                            label: deleteOrLeaveLabel,
+                            color: const Color(0xFFFA5151),
+                            onTap: () => _select(onDeleteOrLeave),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _DesktopChatContextMenuItem extends StatelessWidget {
+  const _DesktopChatContextMenuItem({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.color,
+  });
+
+  final AppIconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final resolvedLabel = label.l10n(context);
+    final foreground = color ?? context.colors.textPrimary;
+    return AppInteractiveSurface(
+      semanticLabel: resolvedLabel,
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(6),
+      child: SizedBox(
+        height: DesktopChatContextMenu.rowHeight,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+          child: Row(
+            children: [
+              SizedBox(
+                width: AppMetric.menuIconSlot,
+                child: AppIcon(icon, size: 18, color: foreground),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Text(
+                  resolvedLabel,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.left,
+                  style: TextStyle(
+                    fontSize: AppTextSize.callout,
+                    color: foreground,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class SwipeActionItem {
   SwipeActionItem({
     required this.title,
@@ -2389,8 +3068,10 @@ class ChatSwipeRow extends StatefulWidget {
     required this.onTap,
     required this.child,
     this.onLongPress,
+    this.onSecondaryTapDown,
     this.requiresLongPressDrag = false,
     this.horizontalSwipeEnabled = true,
+    this.pressRippleEnabled = true,
   });
 
   final int rowId;
@@ -2400,8 +3081,10 @@ class ChatSwipeRow extends StatefulWidget {
   final VoidCallback onTap;
   final Widget child;
   final VoidCallback? onLongPress;
+  final GestureTapDownCallback? onSecondaryTapDown;
   final bool requiresLongPressDrag;
   final bool horizontalSwipeEnabled;
+  final bool pressRippleEnabled;
 
   @override
   State<ChatSwipeRow> createState() => _ChatSwipeRowState();
@@ -2522,6 +3205,11 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
     widget.onLongPress?.call();
   }
 
+  void _handleSecondaryTapDown(TapDownDetails details) {
+    if (_offset != 0) _close();
+    widget.onSecondaryTapDown?.call(details);
+  }
+
   void _settle(double velocity) {
     if (velocity < -520 || (velocity <= 360 && _offset < -_totalWidth * 0.38)) {
       _animateTo(-_totalWidth);
@@ -2536,6 +3224,50 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
   Widget build(BuildContext context) {
     final horizontalDragEnabled =
         widget.horizontalSwipeEnabled && !widget.requiresLongPressDrag;
+    final rowGesture = GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _offset != 0 ? _close() : widget.onTap(),
+      onLongPress: widget.requiresLongPressDrag
+          ? null
+          : widget.onLongPress == null
+          ? null
+          : _handleContextRequest,
+      onSecondaryTapDown: widget.onSecondaryTapDown == null
+          ? null
+          : _handleSecondaryTapDown,
+      onLongPressStart: (_) {
+        _stopAnimation();
+        _longPressStartOffset = _offset;
+      },
+      onLongPressMoveUpdate: widget.requiresLongPressDrag
+          ? (details) {
+              setState(() {
+                _offset = _rubberBandOffset(
+                  _longPressStartOffset + details.localOffsetFromOrigin.dx,
+                );
+              });
+            }
+          : null,
+      onLongPressEnd: (details) {
+        if (widget.requiresLongPressDrag) {
+          _settle(details.velocity.pixelsPerSecond.dx);
+        }
+      },
+      onHorizontalDragStart: !horizontalDragEnabled
+          ? null
+          : (_) => _stopAnimation(),
+      onHorizontalDragUpdate: !horizontalDragEnabled
+          ? null
+          : (details) {
+              setState(
+                () => _offset = _rubberBandOffset(_offset + details.delta.dx),
+              );
+            },
+      onHorizontalDragEnd: !horizontalDragEnabled
+          ? null
+          : (details) => _settle(details.primaryVelocity ?? 0),
+      child: widget.child,
+    );
     return ClipRect(
       child: Stack(
         children: [
@@ -2578,55 +3310,9 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
           // The row, sliding left to uncover the blocks.
           Transform.translate(
             offset: Offset(_offset, 0),
-            child: AppPressRipple(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => _offset != 0 ? _close() : widget.onTap(),
-                onLongPress: widget.requiresLongPressDrag
-                    ? null
-                    : widget.onLongPress == null
-                    ? null
-                    : _handleContextRequest,
-                onSecondaryTap: widget.onLongPress == null
-                    ? null
-                    : _handleContextRequest,
-                onLongPressStart: (_) {
-                  _stopAnimation();
-                  _longPressStartOffset = _offset;
-                },
-                onLongPressMoveUpdate: widget.requiresLongPressDrag
-                    ? (details) {
-                        setState(() {
-                          _offset = _rubberBandOffset(
-                            _longPressStartOffset +
-                                details.localOffsetFromOrigin.dx,
-                          );
-                        });
-                      }
-                    : null,
-                onLongPressEnd: (details) {
-                  if (widget.requiresLongPressDrag) {
-                    _settle(details.velocity.pixelsPerSecond.dx);
-                  }
-                },
-                onHorizontalDragStart: !horizontalDragEnabled
-                    ? null
-                    : (_) => _stopAnimation(),
-                onHorizontalDragUpdate: !horizontalDragEnabled
-                    ? null
-                    : (details) {
-                        setState(
-                          () => _offset = _rubberBandOffset(
-                            _offset + details.delta.dx,
-                          ),
-                        );
-                      },
-                onHorizontalDragEnd: !horizontalDragEnabled
-                    ? null
-                    : (details) => _settle(details.primaryVelocity ?? 0),
-                child: widget.child,
-              ),
-            ),
+            child: widget.pressRippleEnabled
+                ? AppPressRipple(child: rowGesture)
+                : rowGesture,
           ),
         ],
       ),

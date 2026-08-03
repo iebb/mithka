@@ -17,6 +17,7 @@ import 'package:flutter/services.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
+import '../app/adaptive_split_layout.dart';
 import '../app/app_navigator.dart';
 import '../app/desktop_video_window.dart';
 import '../app/video_split_controller.dart';
@@ -25,6 +26,7 @@ import '../call/call_manager.dart';
 import '../channels/topic_chat_view.dart';
 import '../components/app_dialog.dart';
 import '../components/app_icons.dart';
+import '../components/app_interactive_surface.dart';
 import '../components/confirm_dialog.dart';
 import '../components/full_page_back_swipe.dart';
 import '../components/photo_avatar.dart';
@@ -48,7 +50,6 @@ import '../settings/translation_api.dart';
 import '../settings/translation_controller.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
-import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
@@ -83,11 +84,10 @@ import 'chat_wallpaper.dart';
 import 'checklist_composer_view.dart';
 import 'custom_emoji.dart';
 import 'emoji_store.dart';
-import 'emoji_text_controller.dart';
 import 'forward_options.dart';
-import 'full_image_viewer.dart';
 import 'group_remark_controller.dart';
-import 'image_edit_view.dart';
+import 'image_preview.dart';
+import 'internal_chat_link_router.dart';
 import 'link_handler.dart';
 import 'media_album_layout.dart';
 import 'media_library_saver.dart';
@@ -101,7 +101,6 @@ import 'openai_compatible_unread_summary_provider.dart';
 import 'outgoing_attachment.dart';
 import 'poll_results_view.dart';
 import 'quick_reaction_choice.dart';
-import 'rich_text_composer_view.dart';
 import 'shared_contact_sheet.dart';
 import 'sticker_set_detail_view.dart';
 import 'sticker_viewer.dart';
@@ -414,15 +413,6 @@ class _MessageDeleteOptionsDialogState
 
 enum _MediaEditAction { edit, replace, delete }
 
-enum _MessageEditorMode { plain, richText }
-
-class _PlainMessageEditResult {
-  const _PlainMessageEditResult(this.text, this.entities);
-
-  final String text;
-  final List<Map<String, dynamic>> entities;
-}
-
 class _MediaEditActionDialog extends StatelessWidget {
   const _MediaEditActionDialog({required this.mediaLabel});
 
@@ -450,31 +440,6 @@ class _MediaEditActionDialog extends StatelessWidget {
           icon: HeroAppIcons.trash,
           label: AppStringKeys.chatMediaDelete,
           destructive: true,
-        ),
-      ],
-    );
-  }
-}
-
-class _MessageEditorModeDialog extends StatelessWidget {
-  const _MessageEditorModeDialog();
-
-  @override
-  Widget build(BuildContext context) {
-    return const _ChatEditChoiceDialog<_MessageEditorMode>(
-      title: AppStringKeys.chatEditMessageTitle,
-      choices: [
-        (
-          value: _MessageEditorMode.plain,
-          icon: HeroAppIcons.font,
-          label: AppStringKeys.chatEditPlainText,
-          destructive: false,
-        ),
-        (
-          value: _MessageEditorMode.richText,
-          icon: HeroAppIcons.wandMagicSparkles,
-          label: AppStringKeys.composerRichText,
-          destructive: false,
         ),
       ],
     );
@@ -572,169 +537,76 @@ class _ChatEditChoiceDialog<T> extends StatelessWidget {
   }
 }
 
-class _PlainMessageEditDialog extends StatefulWidget {
-  const _PlainMessageEditDialog({
-    required this.initialText,
-    required this.initialEntities,
-  });
+/// Lets an adaptive parent save a chat's measured viewport before replacing
+/// its detail pane. Waiting for [State.dispose] is too late on desktop because
+/// the render tree has already detached, so message geometry is unavailable.
+class ChatViewExitController {
+  VoidCallback? _prepareExit;
 
-  final String initialText;
-  final List<Map<String, dynamic>> initialEntities;
+  /// Registers the currently visible chat and returns a matching detacher.
+  VoidCallback register(VoidCallback prepareExit) {
+    _prepareExit = prepareExit;
+    return () {
+      if (identical(_prepareExit, prepareExit)) _prepareExit = null;
+    };
+  }
 
-  @override
-  State<_PlainMessageEditDialog> createState() =>
-      _PlainMessageEditDialogState();
+  void prepareExit() => _prepareExit?.call();
 }
 
-class _PlainMessageEditDialogState extends State<_PlainMessageEditDialog> {
-  late final EmojiTextEditingController _controller;
-  final FocusNode _focusNode = FocusNode();
+/// Keeps the chat header full-width while reserving a trailing context pane
+/// only below it. This avoids the empty header gutter produced by placing the
+/// context pane beside the entire chat view.
+@visibleForTesting
+class ChatHeaderTrailingPaneLayout extends StatelessWidget {
+  const ChatHeaderTrailingPaneLayout({
+    super.key,
+    required this.header,
+    required this.body,
+    this.trailingPane,
+    this.trailingPaneWidth = 0,
+  });
 
-  @override
-  void initState() {
-    super.initState();
-    _controller = EmojiTextEditingController()
-      ..setFormattedText(widget.initialText, widget.initialEntities);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _focusNode.requestFocus();
-    });
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    _focusNode.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    final (text, entities) = _controller.toFormatted();
-    Navigator.of(context).pop(_PlainMessageEditResult(text, entities));
-  }
+  final Widget header;
+  final Widget body;
+  final Widget? trailingPane;
+  final double trailingPaneWidth;
 
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
-    return AnimatedPadding(
-      duration: const Duration(milliseconds: 150),
-      curve: Curves.easeOutCubic,
-      padding: EdgeInsets.fromLTRB(
-        20,
-        20,
-        20,
-        MediaQuery.viewInsetsOf(context).bottom + 20,
-      ),
-      child: Center(
-        child: Container(
-          width: math.min(MediaQuery.sizeOf(context).width - 40, 480),
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
-          decoration: BoxDecoration(
-            color: c.card,
-            borderRadius: BorderRadius.circular(14),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.22),
-                blurRadius: 28,
-                offset: const Offset(0, 12),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                AppStringKeys.chatEditMessageTitle.l10n(context),
-                style: TextStyle(
-                  color: c.textPrimary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  decoration: TextDecoration.none,
+    final pane = trailingPane;
+    return Column(
+      children: [
+        KeyedSubtree(key: const ValueKey('chatFullWidthHeader'), child: header),
+        Expanded(
+          child: pane == null || trailingPaneWidth <= 0
+              ? KeyedSubtree(
+                  key: const ValueKey('chatConversationContent'),
+                  child: body,
+                )
+              : Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: KeyedSubtree(
+                        key: const ValueKey('chatConversationContent'),
+                        child: body,
+                      ),
+                    ),
+                    VerticalDivider(
+                      width: 1,
+                      thickness: 1,
+                      color: context.colors.divider,
+                    ),
+                    SizedBox(
+                      key: const ValueKey('chatTrailingContextPane'),
+                      width: trailingPaneWidth,
+                      child: pane,
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 14),
-              Container(
-                constraints: const BoxConstraints(
-                  minHeight: 88,
-                  maxHeight: 220,
-                ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  color: c.searchFill,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: EditableText(
-                  controller: _controller,
-                  focusNode: _focusNode,
-                  style: TextStyle(
-                    color: c.textPrimary,
-                    fontSize: 16,
-                    height: 1.35,
-                  ),
-                  cursorColor: AppTheme.brand,
-                  backgroundCursorColor: c.textTertiary,
-                  keyboardType: TextInputType.multiline,
-                  maxLines: null,
-                  textInputAction: TextInputAction.newline,
-                  selectionColor: AppTheme.brand.withValues(alpha: 0.24),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  _PlainEditButton(
-                    label: AppStringKeys.countryPickerCancel,
-                    color: c.textSecondary,
-                    onTap: () => Navigator.of(context).pop(),
-                  ),
-                  const SizedBox(width: 8),
-                  _PlainEditButton(
-                    label: AppStringKeys.messageActionEdit,
-                    color: AppTheme.brand,
-                    onTap: _submit,
-                  ),
-                ],
-              ),
-            ],
-          ),
         ),
-      ),
-    );
-  }
-}
-
-class _PlainEditButton extends StatelessWidget {
-  const _PlainEditButton({
-    required this.label,
-    required this.color,
-    required this.onTap,
-  });
-
-  final String label;
-  final Color color;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Text(
-          label.l10n(context),
-          style: TextStyle(
-            color: color,
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
-            decoration: TextDecoration.none,
-          ),
-        ),
-      ),
+      ],
     );
   }
 }
@@ -752,9 +624,16 @@ class ChatView extends StatefulWidget {
     this.showHeaderDivider = true,
     this.headerBottom,
     this.headerBottomHeight = 44,
+    this.trailingPane,
+    this.trailingPaneWidth = 0,
     this.requestComposerFocusOnReady = false,
     this.onOpenTopicMode,
+    this.onChatKindResolved,
+    this.onInfoPressed,
+    this.onOpenFullInfo,
+    this.onOpenUserProfile,
     this.onBack,
+    this.exitController,
   });
   final int chatId;
   final String title;
@@ -766,9 +645,16 @@ class ChatView extends StatefulWidget {
   final bool showHeaderDivider;
   final Widget? headerBottom;
   final double headerBottomHeight;
+  final Widget? trailingPane;
+  final double trailingPaneWidth;
   final bool requestComposerFocusOnReady;
   final ValueChanged<int?>? onOpenTopicMode;
+  final ValueChanged<ChatKind>? onChatKindResolved;
+  final VoidCallback? onInfoPressed;
+  final VoidCallback? onOpenFullInfo;
+  final void Function(int userId, String name)? onOpenUserProfile;
   final VoidCallback? onBack;
+  final ChatViewExitController? exitController;
 
   @override
   State<ChatView> createState() => _ChatViewState();
@@ -779,6 +665,93 @@ class ChatView extends StatefulWidget {
 void clearChatMemoryCaches() {
   _ChatViewState._sessionCache.clear();
   _ChatViewState._sessionScrollSnapshots.clear();
+}
+
+@visibleForTesting
+bool wideGroupHeaderActionsEnabled(
+  Size windowSize, {
+  required bool isGroup,
+  required bool hasContextPaneToggle,
+  TargetPlatform? platform,
+  bool isWeb = kIsWeb,
+}) =>
+    usesSplitSelectionLayout(windowSize, platform: platform, isWeb: isWeb) &&
+    (isGroup || hasContextPaneToggle);
+
+@visibleForTesting
+class WideGroupChatHeaderActions extends StatelessWidget {
+  const WideGroupChatHeaderActions({
+    super.key,
+    required this.onStartCall,
+    required this.onOpenFullInfo,
+    this.onToggleContext,
+  });
+
+  final ValueChanged<bool> onStartCall;
+  final VoidCallback? onToggleContext;
+  final VoidCallback onOpenFullInfo;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      _ChatHeaderAction(
+        key: const ValueKey('chatHeaderGroupVoiceCall'),
+        label: AppStringKeys.composerGroupVoiceCall.l10n(context),
+        icon: HeroAppIcons.phone,
+        onTap: () => onStartCall(false),
+      ),
+      _ChatHeaderAction(
+        key: const ValueKey('chatHeaderGroupVideoCall'),
+        label: AppStringKeys.composerGroupVideoCall.l10n(context),
+        icon: HeroAppIcons.video,
+        onTap: () => onStartCall(true),
+      ),
+      if (onToggleContext != null)
+        _ChatHeaderAction(
+          key: const ValueKey('chatHeaderGroupContextToggle'),
+          label: AppStringKeys.chatInfoGroupAnnouncement.l10n(context),
+          icon: HeroAppIcons.grip,
+          onTap: onToggleContext!,
+        ),
+      _ChatHeaderAction(
+        key: const ValueKey('chatHeaderFullInfo'),
+        label: AppStringKeys.chatInfoTitle.l10n(context),
+        icon: HeroAppIcons.gear,
+        onTap: onOpenFullInfo,
+      ),
+    ],
+  );
+}
+
+class _ChatHeaderAction extends StatelessWidget {
+  const _ChatHeaderAction({
+    super.key,
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String label;
+  final AppIconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return AppInteractiveSurface(
+      semanticLabel: label,
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadius.md),
+      child: SizedBox(
+        width: AppMetric.hitTarget,
+        height: AppMetric.hitTarget,
+        child: Center(
+          child: AppIcon(icon, size: AppIconSize.nav, color: c.textPrimary),
+        ),
+      ),
+    );
+  }
 }
 
 class _TranscriptEntry {
@@ -832,6 +805,7 @@ class _ChatViewState extends State<ChatView> {
   late final ChatSessionRenderState? _sessionRenderState;
   late bool _olderHistoryExhaustedHint;
   late final ChatViewModel _vm;
+  ChatKind? _reportedChatKind;
   late final TranslationController _translation;
   late final ScrollController _scroll;
   final _pinnedKey = GlobalKey(); // the pinned message's row, for scroll-to
@@ -934,6 +908,9 @@ class _ChatViewState extends State<ChatView> {
   final Set<int> _autoTranslationFailedMessageIds = <int>{};
   final Set<int> _autoTranslatedMessageIds = <int>{};
   bool _sendFailureDialogVisible = false;
+  VoidCallback? _detachExitController;
+  final ChatSessionCacheWriteGate _sessionCacheWriteGate =
+      ChatSessionCacheWriteGate();
 
   /// Gap (seconds) between messages that triggers a fresh time separator.
   static const _separatorGap = 300;
@@ -972,6 +949,7 @@ class _ChatViewState extends State<ChatView> {
   @override
   void initState() {
     super.initState();
+    _detachExitController = widget.exitController?.register(_prepareExitState);
     _wallpaperController.addListener(_onWallpaperChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -1130,6 +1108,14 @@ class _ChatViewState extends State<ChatView> {
       _scheduleChatLanguageDetection();
       _scheduleAutomaticTranslations();
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant ChatView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (identical(oldWidget.exitController, widget.exitController)) return;
+    _detachExitController?.call();
+    _detachExitController = widget.exitController?.register(_prepareExitState);
   }
 
   @override
@@ -1410,7 +1396,7 @@ class _ChatViewState extends State<ChatView> {
     if (!sessionReopenPending && !_maintainSessionScrollAnchor) {
       _saveSessionScrollSnapshot();
     }
-    _cacheCurrentTranscript();
+    _cacheCurrentTranscript(force: true);
     if (shouldMarkChatReadOnExit(
       isAtLoadedBottom: _isAtLoadedBottom(80),
       sessionReopenPending: sessionReopenPending,
@@ -1422,14 +1408,25 @@ class _ChatViewState extends State<ChatView> {
     }
   }
 
-  void _cacheCurrentTranscript() {
+  void _cacheCurrentTranscript({bool force = false}) {
     if (!_vm.initialLoaded || !_initialTranscriptReady) return;
+    final olderHistoryExhausted =
+        !_vm.hasOlderHistory || _olderHistoryExhaustedHint;
+    if (!_sessionCacheWriteGate.shouldStore(
+      messages: _vm.messages,
+      anchoredHistory: _vm.anchoredHistory,
+      olderHistoryExhausted: olderHistoryExhausted,
+      firstContactInfo: _vm.firstContactInfo,
+      force: force,
+    )) {
+      return;
+    }
     _sessionCache.store(
       accountSlot: _sessionKey.accountSlot,
       chatId: widget.chatId,
       messages: _vm.messages,
       anchoredHistory: _vm.anchoredHistory,
-      olderHistoryExhausted: !_vm.hasOlderHistory || _olderHistoryExhaustedHint,
+      olderHistoryExhausted: olderHistoryExhausted,
       firstContactInfo: _vm.firstContactInfo,
     );
   }
@@ -2061,10 +2058,16 @@ class _ChatViewState extends State<ChatView> {
 
     _sessionReopenResolutionInFlight = false;
     _sessionReopenDispositionResolved = true;
+    final prioritizeUnread = shouldPrioritizeUnreadOnChatReopen(
+      currentUnreadCount: _vm.unreadCount,
+      currentLastReadInboxId: _vm.lastReadInboxId,
+      savedAnchorMessageId: snapshot.anchorMessageId,
+      hasConfirmedNewUnread: confirmedUnreadMessageId != null,
+    );
     final disposition = resolveChatReopenDisposition(
       hasExplicitTarget: widget.initialMessageId != null,
       hasSavedPosition: true,
-      hasConfirmedNewUnread: confirmedUnreadMessageId != null,
+      prioritizeUnread: prioritizeUnread,
     );
     if (disposition != ChatReopenDisposition.firstUnread) return;
 
@@ -2101,6 +2104,7 @@ class _ChatViewState extends State<ChatView> {
 
   void _onModel() {
     if (!mounted) return;
+    _reportChatKindIfReady();
     if (!_viewTickerEnabled) {
       _modelDirtyWhileInactive = true;
       return;
@@ -2334,6 +2338,17 @@ class _ChatViewState extends State<ChatView> {
     _scheduleSessionScrollAnchorMaintenance();
     _scheduleRestoredBottomCorrection();
     _scheduleParkedShortTranscriptRepair();
+  }
+
+  void _reportChatKindIfReady() {
+    final kind = _vm.chatKind;
+    final callback = widget.onChatKindResolved;
+    if (kind == null || callback == null || kind == _reportedChatKind) return;
+    _reportedChatKind = kind;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _vm.chatKind != kind) return;
+      widget.onChatKindResolved?.call(kind);
+    });
   }
 
   void _setScrollTarget(int? messageId) {
@@ -3186,6 +3201,7 @@ class _ChatViewState extends State<ChatView> {
   @override
   void dispose() {
     _prepareExitState();
+    _detachExitController?.call();
     NotificationController.shared.unregisterVisibleChat(this);
     _wallpaperController.removeListener(_onWallpaperChanged);
     _bannerTimer?.cancel();
@@ -3756,11 +3772,11 @@ class _ChatViewState extends State<ChatView> {
         .toList();
     final items = pairs.map((m) => m.image!).toList();
     final start = pairs.indexWhere((m) => m.id == message.id);
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        fullscreenDialog: true,
-        builder: (_) =>
-            FullImageViewer(items: items, startIndex: start < 0 ? 0 : start),
+    unawaited(
+      openImagePreview(
+        context,
+        items: items,
+        startIndex: start < 0 ? 0 : start,
       ),
     );
   }
@@ -4389,6 +4405,14 @@ class _ChatViewState extends State<ChatView> {
 
   void _scheduleChatLanguageDetection({bool force = false}) {
     if (!_translation.translateChats || _chatLanguageDetectionRunning) return;
+    if (!force && _chatLanguageDetectionComplete) {
+      final detectedAt = _chatLanguageDetectedAt;
+      if (_detectedChatLanguage != null &&
+          detectedAt != null &&
+          DateTime.now().difference(detectedAt) < const Duration(hours: 1)) {
+        return;
+      }
+    }
     final samples = automaticTranslationLanguageSamples(_vm.messages);
     if (samples.isEmpty) return;
     final newestId = _vm.messages.reversed
@@ -4401,12 +4425,6 @@ class _ChatViewState extends State<ChatView> {
         )
         .id;
     if (!force && _chatLanguageDetectionComplete) {
-      final detectedAt = _chatLanguageDetectedAt;
-      if (_detectedChatLanguage != null &&
-          detectedAt != null &&
-          DateTime.now().difference(detectedAt) < const Duration(hours: 1)) {
-        return;
-      }
       if (_chatLanguageDetectionNewestMessageId == newestId) return;
     }
     _chatLanguageDetectionRunning = true;
@@ -4686,11 +4704,7 @@ class _ChatViewState extends State<ChatView> {
       if (!mounted || action == null) return;
       switch (action) {
         case _MediaEditAction.edit:
-          if (message.contentType == 'messagePhoto') {
-            await _editPhotoInPlace(message);
-          } else {
-            await _editMessageText(message);
-          }
+          await _editMessageText(message);
         case _MediaEditAction.replace:
           await _replaceMessageMedia(message);
         case _MediaEditAction.delete:
@@ -4701,100 +4715,9 @@ class _ChatViewState extends State<ChatView> {
     await _editMessageText(message);
   }
 
-  Future<void> _editMessageText(ChatMessage message) async {
-    var premium = false;
-    try {
-      premium = await _vm.currentUserIsPremium();
-    } catch (_) {}
-    if (!mounted) return;
-    var mode = _MessageEditorMode.plain;
-    if (premium) {
-      final selected = await showGeneralDialog<_MessageEditorMode>(
-        context: context,
-        barrierDismissible: true,
-        barrierLabel: AppStringKeys.countryPickerCancel.l10n(context),
-        barrierColor: Colors.black.withValues(alpha: 0.38),
-        transitionDuration: const Duration(milliseconds: 170),
-        pageBuilder: (_, _, _) => const _MessageEditorModeDialog(),
-      );
-      if (!mounted || selected == null) return;
-      mode = selected;
-    }
-    if (mode == _MessageEditorMode.richText) {
-      await _editMessageWithRichText(message);
-    } else {
-      await _editMessagePlain(message);
-    }
-  }
-
-  Future<void> _editMessagePlain(ChatMessage message) async {
-    final result = await showGeneralDialog<_PlainMessageEditResult>(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: AppStringKeys.countryPickerCancel.l10n(context),
-      barrierColor: Colors.black.withValues(alpha: 0.38),
-      transitionDuration: const Duration(milliseconds: 170),
-      pageBuilder: (_, _, _) => _PlainMessageEditDialog(
-        initialText: _editableMessageText(message),
-        initialEntities: [
-          for (final entity in message.textEntities) entity.toTdJson(),
-        ],
-      ),
-    );
-    if (!mounted || result == null) return;
-    try {
-      if (_isEditableMediaMessage(message)) {
-        await _vm.editMessageCaption(
-          message.id,
-          result.text,
-          entities: result.entities,
-        );
-      } else {
-        if (result.text.trim().isEmpty) {
-          showToast(context, AppStringKeys.chatMessageRequired);
-          return;
-        }
-        await _vm.editMessageText(
-          message.id,
-          result.text,
-          entities: result.entities,
-        );
-      }
-    } catch (e) {
-      if (mounted) showToast(context, '$e');
-    }
-  }
-
-  Future<void> _editPhotoInPlace(ChatMessage message) async {
-    final image = message.image;
-    if (image == null) return;
-    final path = await TdFileCenter.shared.pathFor(image);
-    if (!mounted) return;
-    if (path == null || path.isEmpty) {
-      showToast(context, AppStringKeys.composerOpenAttachmentFailed);
-      return;
-    }
-    final result = await Navigator.of(context).push<ImageEditResult>(
-      MaterialPageRoute(
-        builder: (_) => ImageEditView(
-          sourcePath: path,
-          initialCaption: _editableMessageText(message),
-        ),
-      ),
-    );
-    if (!mounted || result == null) return;
-    try {
-      await _vm.editMessageMedia(
-        message.id,
-        OutgoingAttachment(
-          path: result.path,
-          kind: OutgoingAttachmentKind.photo,
-        ),
-        caption: result.caption,
-      );
-    } catch (e) {
-      if (mounted) showToast(context, '$e');
-    }
+  Future<void> _editMessageText(ChatMessage message) {
+    _vm.beginMessageEdit(message);
+    return Future.value();
   }
 
   Future<void> _replaceMessageMedia(ChatMessage message) async {
@@ -4878,93 +4801,6 @@ class _ChatViewState extends State<ChatView> {
     _ => telegramText(AppStringKeys.topicPostContentFile),
   };
 
-  Future<void> _editMessageWithRichText(ChatMessage message) async {
-    final result = await showRichTextComposerSheet(
-      context,
-      initialText: message.text,
-      initialEntities: [
-        for (final entity in message.textEntities) entity.toTdJson(),
-      ],
-      title: AppStringKeys.chatEditMessageTitle,
-      submitText: AppStringKeys.messageActionEdit,
-      hintText: AppStringKeys.tabMessages,
-    );
-    if (!mounted || result == null) return;
-    if (result.text.trim().isEmpty && result.attachments.isEmpty) {
-      showToast(context, AppStringKeys.chatMessageRequired);
-      return;
-    }
-    try {
-      var mediaStart = 0;
-      if (result.attachments.isNotEmpty &&
-          (message.contentType == 'messagePhoto' ||
-              message.contentType == 'messageVideo')) {
-        final media = result.attachments.first;
-        final canReplaceMedia =
-            media.kind == OutgoingAttachmentKind.photo ||
-            media.kind == OutgoingAttachmentKind.video;
-        if (canReplaceMedia) {
-          await _vm.editMessageMedia(
-            message.id,
-            media,
-            caption: result.text,
-            entities: result.entities,
-          );
-          mediaStart = 1;
-        }
-      }
-      if (mediaStart == 0 &&
-          (result.text != message.text ||
-              !_sameFormattedEntities(result.entities, message.textEntities))) {
-        if (message.contentType == 'messagePhoto' ||
-            message.contentType == 'messageVideo') {
-          await _vm.editMessageCaption(
-            message.id,
-            result.text,
-            entities: result.entities,
-          );
-        } else {
-          await _vm.editMessageText(
-            message.id,
-            result.text,
-            entities: result.entities,
-          );
-        }
-      }
-      final extras = result.attachments.skip(mediaStart).toList();
-      if (extras.isNotEmpty) {
-        await _vm.sendAttachments(extras);
-        if (mounted) _onComposerMessageSent();
-      }
-    } catch (e) {
-      if (mounted) showToast(context, '$e');
-    }
-  }
-
-  bool _sameFormattedEntities(
-    List<Map<String, dynamic>> edited,
-    List<MessageTextEntity> original,
-  ) {
-    if (edited.length != original.length) return false;
-    for (var i = 0; i < edited.length; i++) {
-      final value = edited[i];
-      final expected = original[i];
-      final type = value['type'];
-      if (value['offset'] != expected.offset ||
-          value['length'] != expected.length ||
-          type is! Map ||
-          type['@type'] != expected.type ||
-          type['url'] != expected.url ||
-          type['user_id'] != expected.userId ||
-          '${type['custom_emoji_id'] ?? ''}' !=
-              '${expected.customEmojiId ?? ''}' ||
-          type['language'] != expected.language) {
-        return false;
-      }
-    }
-    return true;
-  }
-
   void _openSenderProfile(ChatMessage m) {
     if (m.senderIsChat) {
       final senderChatId = m.senderId;
@@ -5012,6 +4848,24 @@ class _ChatViewState extends State<ChatView> {
     await _scrollToMessage(messageId);
   }
 
+  void _handleInfoPressed() {
+    final onInfoPressed = widget.onInfoPressed;
+    if (onInfoPressed != null) {
+      onInfoPressed();
+      return;
+    }
+    unawaited(_openChatInfo());
+  }
+
+  void _handleFullInfoPressed() {
+    final onOpenFullInfo = widget.onOpenFullInfo;
+    if (onOpenFullInfo != null) {
+      onOpenFullInfo();
+      return;
+    }
+    unawaited(_openChatInfo());
+  }
+
   void _openPeerProfile() {
     final uid = _vm.peerUserId;
     if (uid == null || uid <= 0) return;
@@ -5019,6 +4873,11 @@ class _ChatViewState extends State<ChatView> {
   }
 
   void _openUserProfile(int userId, String name) {
+    final onOpenUserProfile = widget.onOpenUserProfile;
+    if (onOpenUserProfile != null) {
+      onOpenUserProfile(userId, name);
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => ProfileDetailView(userId: userId, name: name),
@@ -5153,6 +5012,14 @@ class _ChatViewState extends State<ChatView> {
 
   @override
   Widget build(BuildContext context) {
+    Widget withInternalLinkRouting(Widget child) => InternalChatLinkScope(
+      target: InternalChatLinkTarget(
+        chatId: widget.chatId,
+        openMessage: _scrollToMessage,
+      ),
+      child: child,
+    );
+
     final c = context.colors;
     final themeController = context.watch<ThemeController>();
     _themingEnabled = themeController.themingEnabled;
@@ -5179,13 +5046,14 @@ class _ChatViewState extends State<ChatView> {
     // Keep blocked-user hiding toggle in sync with theme.
     BlockedUserService.shared.enabled = themeController.hideBlockedUserMessages;
     if (_vm.isAdministeredDirectMessagesGroup) {
-      return ChannelDirectMessagesView(
-        chatId: widget.chatId,
-        title: widget.title,
+      return withInternalLinkRouting(
+        ChannelDirectMessagesView(chatId: widget.chatId, title: widget.title),
       );
     }
     if (_vm.isMessageBubbleRepository) {
-      return MessageBubbleRepositoryView(viewModel: _vm, onBack: _handleBack);
+      return withInternalLinkRouting(
+        MessageBubbleRepositoryView(viewModel: _vm, onBack: _handleBack),
+      );
     }
     final showPeerRestrictionBlock =
         _vm.isPeerRestricted && _vm.messages.isEmpty;
@@ -5194,53 +5062,59 @@ class _ChatViewState extends State<ChatView> {
     // Not a member, joinable, and nothing to preview → a custom join screen
     // (header + centered card) instead of the transcript + composer.
     if (!_vm.isMember && _vm.canJoin && _vm.messages.isEmpty) {
-      return _withExitState(
-        _withBackSwipe(
-          Scaffold(
-            backgroundColor: c.groupedBackground,
-            body: _joinScreenBody(),
+      return withInternalLinkRouting(
+        _withExitState(
+          _withBackSwipe(
+            Scaffold(
+              backgroundColor: c.groupedBackground,
+              body: _joinScreenBody(),
+            ),
           ),
         ),
       );
     }
-    return _withExitState(
-      _withBackSwipe(
-        Scaffold(
-          backgroundColor: c.inputBarBackground,
-          resizeToAvoidBottomInset: true,
-          body: ChatWallpaperBackground(
-            wallpaper: _effectiveWallpaper(),
-            fallbackColor: c.chatBackground,
-            brightness: Theme.of(context).brightness,
-            child: ChatMediaDropRegion(
-              enabled:
-                  _vm.canSendMessages &&
-                  !_isSelecting &&
-                  !showPeerRestrictionBlock,
-              onImagesDropped: _previewAndSendDroppedImages,
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: Column(
-                      children: [
-                        showPeerRestrictionBlock
+    return withInternalLinkRouting(
+      _withExitState(
+        _withBackSwipe(
+          Scaffold(
+            backgroundColor: c.inputBarBackground,
+            resizeToAvoidBottomInset: true,
+            body: ChatWallpaperBackground(
+              wallpaper: _effectiveWallpaper(),
+              fallbackColor: c.chatBackground,
+              brightness: Theme.of(context).brightness,
+              child: ChatMediaDropRegion(
+                enabled:
+                    _vm.canSendMessages &&
+                    !_isSelecting &&
+                    !showPeerRestrictionBlock,
+                onImagesDropped: _previewAndSendDroppedImages,
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: ChatHeaderTrailingPaneLayout(
+                        header: showPeerRestrictionBlock
                             ? _header()
                             : (_isSelecting ? _selectionHeader() : _header()),
-                        if (showPeerRestrictionBlock)
-                          Expanded(child: _restrictedPeerBlockPage())
-                        else ...[
-                          Expanded(child: _transcriptLayer()),
-                          _chatMusicPlayer(),
-                          _isSelecting
-                              ? _selectionActionBar()
-                              : _composerArea(),
-                        ],
-                      ],
+                        body: showPeerRestrictionBlock
+                            ? _restrictedPeerBlockPage()
+                            : Column(
+                                children: [
+                                  Expanded(child: _transcriptLayer()),
+                                  _chatMusicPlayer(),
+                                  _isSelecting
+                                      ? _selectionActionBar()
+                                      : _composerArea(),
+                                ],
+                              ),
+                        trailingPane: widget.trailingPane,
+                        trailingPaneWidth: widget.trailingPaneWidth,
+                      ),
                     ),
-                  ),
-                  if (_actionTarget != null && !_isSelecting)
-                    _actionMenuOverlay(),
-                ],
+                    if (_actionTarget != null && !_isSelecting)
+                      _actionMenuOverlay(),
+                  ],
+                ),
               ),
             ),
           ),
@@ -6020,6 +5894,7 @@ class _ChatViewState extends State<ChatView> {
             quickRepliesEnabled: context
                 .watch<ThemeController>()
                 .quickRepliesEnabled,
+            showCallAction: !_usesWideGroupHeader,
             onStartCall: _startCall,
             onMessageSent: _onComposerMessageSent,
             onPanelGeometryChanged: _onComposerPanelGeometryChanged,
@@ -6250,72 +6125,70 @@ class _ChatViewState extends State<ChatView> {
         : (_vm.joinByRequest
               ? AppStringKeys.chatRequestToJoin
               : AppStringKeys.chatJoinGroup);
-    return Column(
-      children: [
-        _header(),
-        Expanded(
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 40),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  PhotoAvatar(
-                    title: _vm.peerTitle,
-                    photo: _vm.peerPhoto,
-                    size: 88,
-                    square:
-                        _vm.isGroup &&
-                        !context.watch<ThemeController>().circularGroupAvatars,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    _vm.peerTitle,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w600,
-                      color: c.textPrimary,
-                    ),
-                  ),
-                  if (_vm.memberCount > 0) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      AppStrings.t(AppStringKeys.chatMemberCount, {
-                        'value1': _vm.memberCount,
-                      }),
-                      style: TextStyle(fontSize: 14, color: c.textSecondary),
-                    ),
-                  ],
-                  const SizedBox(height: 28),
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: requested ? null : () => _vm.joinChat(),
-                    child: Container(
-                      height: 46,
-                      constraints: const BoxConstraints(minWidth: 200),
-                      alignment: Alignment.center,
-                      padding: const EdgeInsets.symmetric(horizontal: 28),
-                      decoration: BoxDecoration(
-                        color: requested ? c.searchFill : AppTheme.brand,
-                        borderRadius: BorderRadius.circular(23),
-                      ),
-                      child: Text(
-                        telegramText(label),
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: requested ? c.textSecondary : AppTheme.onBrand,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+    return ChatHeaderTrailingPaneLayout(
+      header: _header(),
+      trailingPane: widget.trailingPane,
+      trailingPaneWidth: widget.trailingPaneWidth,
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 40),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              PhotoAvatar(
+                title: _vm.peerTitle,
+                photo: _vm.peerPhoto,
+                size: 88,
+                square:
+                    _vm.isGroup &&
+                    !context.watch<ThemeController>().circularGroupAvatars,
               ),
-            ),
+              const SizedBox(height: 16),
+              Text(
+                _vm.peerTitle,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  color: c.textPrimary,
+                ),
+              ),
+              if (_vm.memberCount > 0) ...[
+                const SizedBox(height: 6),
+                Text(
+                  AppStrings.t(AppStringKeys.chatMemberCount, {
+                    'value1': _vm.memberCount,
+                  }),
+                  style: TextStyle(fontSize: 14, color: c.textSecondary),
+                ),
+              ],
+              const SizedBox(height: 28),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: requested ? null : () => _vm.joinChat(),
+                child: Container(
+                  height: 46,
+                  constraints: const BoxConstraints(minWidth: 200),
+                  alignment: Alignment.center,
+                  padding: const EdgeInsets.symmetric(horizontal: 28),
+                  decoration: BoxDecoration(
+                    color: requested ? c.searchFill : AppTheme.brand,
+                    borderRadius: BorderRadius.circular(23),
+                  ),
+                  child: Text(
+                    telegramText(label),
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: requested ? c.textSecondary : AppTheme.onBrand,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
-      ],
+      ),
     );
   }
 
@@ -6323,6 +6196,7 @@ class _ChatViewState extends State<ChatView> {
     final c = context.colors;
     final subtitle = _vm.subtitle;
     final actionActive = _vm.hasActiveChatAction;
+    final wideGroupHeader = _usesWideGroupHeader;
     return Container(
       padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
       decoration: BoxDecoration(
@@ -6356,25 +6230,31 @@ class _ChatViewState extends State<ChatView> {
                   else
                     const SizedBox(width: 4),
                   Expanded(child: _headerTitleBlock(subtitle, actionActive)),
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => unawaited(_openChatInfo()),
-                    child: AppIcon(
-                      HeroAppIcons.bars,
-                      size: 22,
-                      color: c.textPrimary,
+                  if (wideGroupHeader)
+                    WideGroupChatHeaderActions(
+                      onStartCall: (isVideo) => unawaited(_startCall(isVideo)),
+                      onToggleContext: widget.onInfoPressed == null
+                          ? null
+                          : _handleInfoPressed,
+                      onOpenFullInfo: _handleFullInfoPressed,
+                    )
+                  else
+                    _ChatHeaderAction(
+                      key: const ValueKey('chatHeaderInfo'),
+                      label: AppStringKeys.chatInfoTitle.l10n(context),
+                      icon: widget.onOpenFullInfo == null
+                          ? HeroAppIcons.bars
+                          : HeroAppIcons.gear,
+                      onTap: widget.onOpenFullInfo == null
+                          ? _handleInfoPressed
+                          : _handleFullInfoPressed,
                     ),
-                  ),
                   if (_vm.supportsTopics) ...[
-                    const SizedBox(width: 18),
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
+                    _ChatHeaderAction(
+                      key: const ValueKey('chatHeaderTopics'),
+                      label: AppStringKeys.topicChatAllTopics.l10n(context),
+                      icon: HeroAppIcons.hashtag,
                       onTap: _openTopicMode,
-                      child: AppIcon(
-                        HeroAppIcons.hashtag,
-                        size: 22,
-                        color: c.textPrimary,
-                      ),
                     ),
                   ],
                 ],
@@ -6389,6 +6269,14 @@ class _ChatViewState extends State<ChatView> {
             ),
         ],
       ),
+    );
+  }
+
+  bool get _usesWideGroupHeader {
+    return wideGroupHeaderActionsEnabled(
+      MediaQuery.sizeOf(context),
+      isGroup: _vm.isGroup,
+      hasContextPaneToggle: widget.onInfoPressed != null,
     );
   }
 
@@ -7953,9 +7841,11 @@ class _ChatViewState extends State<ChatView> {
     required int extraCount,
   }) {
     final tileKey = GlobalKey();
-    void showActions() {
+    void showActions({Offset? pointerPosition}) {
       final box = tileKey.currentContext?.findRenderObject() as RenderBox?;
-      final rect = box != null && box.hasSize
+      final rect = pointerPosition != null
+          ? Rect.fromLTWH(pointerPosition.dx, pointerPosition.dy, 0, 0)
+          : box != null && box.hasSize
           ? box.localToGlobal(Offset.zero) & box.size
           : null;
       _showActionMenuForMessage(
@@ -7981,7 +7871,9 @@ class _ChatViewState extends State<ChatView> {
         }
       },
       onLongPress: _isSelecting ? null : showActions,
-      onSecondaryTap: _isSelecting ? null : showActions,
+      onSecondaryTapUp: _isSelecting
+          ? null
+          : (details) => showActions(pointerPosition: details.globalPosition),
       child: SizedBox(
         key: tileKey,
         width: width,
@@ -8098,15 +7990,38 @@ class _ChatViewState extends State<ChatView> {
 
   Widget _actionMenuOverlay() {
     final media = MediaQuery.of(context);
+    final screenW = media.size.width;
     final screenH = media.size.height;
     final topSafe = media.padding.top + 8;
     final bottomSafe = screenH - media.padding.bottom - 8;
     final outgoing = _actionTarget!.isOutgoing;
     final rect = _actionRect;
     final showActionMenu = !_reactionExpanded;
+    final desktopMenu = isDesktopTargetPlatform(Theme.of(context).platform);
+    final pointerAnchored =
+        desktopMenu && rect != null && rect.width == 0 && rect.height == 0;
+    final showReactions = !desktopMenu && !_actionTarget!.isCall;
+    final actionMenu = MessageActionMenu(
+      message: _actionTarget!,
+      isPinned: _vm.pinnedMessage?.id == _actionTarget!.id,
+      allowForwarding: _vm.canForwardContent,
+      allowSuggestedPostOffer:
+          _vm.isDirectMessagesGroup && !_vm.isAdministeredDirectMessagesGroup,
+      source: _actionSource,
+      onSelect: (action) => _perform(action, _actionTarget!),
+    );
 
-    final reactionH = _reactionExpanded ? 268.0 : 48.0;
-    final menuH = showActionMenu ? MessageActionMenu.preferredHeight : 0.0;
+    final reactionH = !showReactions
+        ? 0.0
+        : _reactionExpanded
+        ? 268.0
+        : 48.0;
+    final menuH = showActionMenu
+        ? math.min(
+            actionMenu.preferredHeightFor(context),
+            math.max(0.0, bottomSafe - topSafe),
+          )
+        : 0.0;
     const gap = 8.0;
     final menuGap = showActionMenu ? gap : 0.0;
 
@@ -8118,12 +8033,28 @@ class _ChatViewState extends State<ChatView> {
         topSafe,
         bottomSafe - reactionH,
       );
-      menuTop = (rect.bottom + gap).clamp(topSafe, bottomSafe - menuH);
+      menuTop = (desktopMenu ? rect.top : rect.bottom + gap).clamp(
+        topSafe,
+        bottomSafe - menuH,
+      );
     } else {
       reactionTop = (screenH - reactionH - menuH - menuGap) / 2;
       menuTop = reactionTop + reactionH + menuGap;
     }
     final align = outgoing ? Alignment.centerRight : Alignment.centerLeft;
+    final desktopMenuWidth = math.min(
+      MessageActionMenu.desktopPreferredWidth,
+      math.max(0.0, screenW - 20),
+    );
+    final pointerMenuOrigin = pointerAnchored
+        ? MessageActionMenu.desktopOriginForPointer(
+            pointer: rect.topLeft,
+            viewport: media.size,
+            menuSize: Size(desktopMenuWidth, menuH),
+            topSafe: topSafe,
+            bottomSafe: bottomSafe,
+          )
+        : const Offset(10, 0);
 
     void dismiss() => setState(() {
       _actionTarget = null;
@@ -8137,13 +8068,14 @@ class _ChatViewState extends State<ChatView> {
         children: [
           Positioned.fill(
             child: GestureDetector(
+              key: const ValueKey('message-action-dismiss-layer'),
               behavior: HitTestBehavior.opaque,
               onTap: dismiss,
-              child: Container(color: Colors.black.withValues(alpha: 0.25)),
+              child: const SizedBox.expand(),
             ),
           ),
           // Call logs and other special messages aren't reactable — no +1 bar.
-          if (!_actionTarget!.isCall)
+          if (showReactions)
             Positioned(
               top: reactionTop,
               left: 10,
@@ -8174,22 +8106,12 @@ class _ChatViewState extends State<ChatView> {
             ),
           if (showActionMenu)
             Positioned(
-              top: menuTop,
-              left: 10,
-              right: 10,
-              child: Align(
-                alignment: align,
-                child: MessageActionMenu(
-                  message: _actionTarget!,
-                  isPinned: _vm.pinnedMessage?.id == _actionTarget!.id,
-                  allowForwarding: _vm.canForwardContent,
-                  allowSuggestedPostOffer:
-                      _vm.isDirectMessagesGroup &&
-                      !_vm.isAdministeredDirectMessagesGroup,
-                  source: _actionSource,
-                  onSelect: (action) => _perform(action, _actionTarget!),
-                ),
-              ),
+              top: pointerAnchored ? pointerMenuOrigin.dy : menuTop,
+              left: pointerAnchored ? pointerMenuOrigin.dx : 10,
+              right: pointerAnchored ? null : 10,
+              child: pointerAnchored
+                  ? actionMenu
+                  : Align(alignment: align, child: actionMenu),
             ),
         ],
       ),

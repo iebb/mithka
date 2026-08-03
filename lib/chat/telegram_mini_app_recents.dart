@@ -9,6 +9,7 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../l10n/app_localizations.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -42,7 +43,22 @@ class TelegramMiniAppRecent {
   final bool allowWriteAccess;
   final TdFileRef? photo;
 
-  String get displayTitle => botTitle.trim().isEmpty ? title : botTitle.trim();
+  String get launchTitle => _localizedMiniAppFallback(title);
+
+  String get displayTitle {
+    final candidate = botTitle.trim().isEmpty ? title : botTitle.trim();
+    return _localizedMiniAppFallback(candidate);
+  }
+
+  static String _localizedMiniAppFallback(String value) {
+    final clean = value.trim();
+    // Migrate the presentation of legacy recents that persisted the previous
+    // English fallback. New records keep an empty semantic value so changing
+    // the app language can update the fallback immediately.
+    return clean.isEmpty || clean == 'Mini App'
+        ? AppStrings.t(AppStringKeys.miniAppName)
+        : clean;
+  }
 
   TelegramMiniAppRecent withBotIdentity({String? botTitle, TdFileRef? photo}) {
     return TelegramMiniAppRecent(
@@ -88,7 +104,6 @@ class TelegramMiniAppRecent {
     final mainWebApp = value['mainWebApp'] == true;
     final shortName = value['webAppShortName'] as String? ?? '';
     if (title == null ||
-        title.isEmpty ||
         url == null ||
         (!mainWebApp && shortName.isEmpty && url.isEmpty) ||
         botUserId == null ||
@@ -203,8 +218,8 @@ abstract final class TelegramMiniAppRecents {
           final botTitle = chat.str('title')?.trim() ?? '';
           apps.add(
             TelegramMiniAppRecent(
-              title: text.isEmpty ? 'Mini App' : text,
-              botTitle: botTitle.isEmpty ? 'Mini App' : botTitle,
+              title: text,
+              botTitle: botTitle,
               url: url,
               botUserId: userId,
               chatId: chatId,
@@ -242,8 +257,8 @@ abstract final class TelegramMiniAppRecents {
           final title = chat.str('title')?.trim();
           apps.add(
             TelegramMiniAppRecent(
-              title: title == null || title.isEmpty ? 'Mini App' : title,
-              botTitle: title == null || title.isEmpty ? 'Mini App' : title,
+              title: title ?? '',
+              botTitle: title ?? '',
               url: '',
               botUserId: userId,
               chatId: chatId,
@@ -279,7 +294,7 @@ abstract final class TelegramMiniAppRecents {
     bool allowWriteAccess = false,
     TdFileRef? photo,
   }) async {
-    final cleanTitle = title.trim().isEmpty ? 'Mini App' : title.trim();
+    final cleanTitle = title.trim();
     final cleanUrl = url.trim();
     if (cleanUrl.isEmpty && !mainWebApp && webAppShortName.isEmpty) return;
 
@@ -464,7 +479,7 @@ List<TelegramMiniAppRecent> mergeTelegramMiniAppRecents(
       continue;
     }
     merged[index] = merged[index].withBotIdentity(
-      botTitle: app.displayTitle,
+      botTitle: app.botTitle.trim().isNotEmpty ? app.botTitle : app.title,
       photo: app.photo,
     );
   }

@@ -1,6 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mithka/chats/chat_row_view.dart';
 import 'package:mithka/communities/community_models.dart';
 import 'package:mithka/communities/community_view.dart';
 import 'package:mithka/components/app_icons.dart';
@@ -191,6 +193,112 @@ void main() {
       );
       expect(preview.sender, 'Fexis');
       expect(preview.message, 'Latest message');
+      final icons = tester.widgetList<AppIcon>(find.byType(AppIcon)).toList();
+      expect(
+        icons.any((icon) => icon.icon == HeroAppIcons.objectGroup),
+        isTrue,
+      );
+      expect(
+        icons.any((icon) => icon.icon == HeroAppIcons.chevronRight),
+        isTrue,
+      );
+      expect(icons.any((icon) => icon.icon == HeroAppIcons.bellSlash), isFalse);
+    });
+
+    testWidgets('collapsed community uses the shared desktop chat row', (
+      tester,
+    ) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+      try {
+        SharedPreferences.setMockInitialValues({});
+        final prefs = await SharedPreferences.getInstance();
+        final theme = ThemeController(prefs);
+        addTearDown(theme.dispose);
+        final community = CommunitySummary(
+          id: 42,
+          name: 'Formula Paddock',
+          haveAccess: true,
+          isAdministrator: false,
+          canEditChatList: false,
+        );
+        final latest =
+            _chat(
+                id: 1,
+                title: 'Race Chat',
+                order: 100,
+                unread: 3,
+                sender: 'Fexis',
+              )
+              ..isMuted = true
+              ..isPinned = true;
+        final marked = _chat(
+          id: 2,
+          title: 'Pit Chat',
+          order: 90,
+          unread: 2,
+          markedUnread: true,
+        )..isMuted = true;
+
+        await tester.pumpWidget(
+          ChangeNotifierProvider<ThemeController>.value(
+            value: theme,
+            child: MaterialApp(
+              theme: ThemeData(
+                brightness: Brightness.light,
+                extensions: [AppColors.light],
+              ),
+              home: Scaffold(
+                body: CommunityChatListRow(
+                  entry: CommunityGroupEntry(
+                    community: community,
+                    chats: [latest, marked],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+
+        final sharedRowFinder = find.descendant(
+          of: find.byType(CommunityChatListRow),
+          matching: find.byType(ChatRowView),
+        );
+        expect(sharedRowFinder, findsOneWidget);
+        final sharedRow = tester.widget<ChatRowView>(sharedRowFinder);
+        expect(sharedRow.chat.title, 'Formula Paddock');
+        expect(sharedRow.chat.unreadCount, 5);
+        expect(sharedRow.chat.isMuted, isTrue);
+        expect(sharedRow.chat.isPinned, isTrue);
+        expect(sharedRow.chat.isMarkedUnread, isTrue);
+        expect(sharedRow.chat.lastSender, 'Fexis');
+        expect(sharedRow.chat.lastMessage, 'Latest message');
+        expect(sharedRow.avatarBuilder, isNotNull);
+        expect(sharedRow.titleTrailing, isNotNull);
+        expect(sharedRow.trailingIndicator, isNotNull);
+        expect(
+          tester.getSize(find.byType(CommunityChatListRow)).height,
+          AppMetric.chatListRowHeight(TargetPlatform.macOS),
+        );
+        expect(
+          tester.getSize(find.byKey(const ValueKey('community-avatar-front'))),
+          Size.square(AppMetric.chatListAvatarSize(TargetPlatform.macOS)),
+        );
+        final icons = tester.widgetList<AppIcon>(find.byType(AppIcon)).toList();
+        expect(
+          icons.any((icon) => icon.icon == HeroAppIcons.objectGroup),
+          isTrue,
+        );
+        expect(
+          icons.any((icon) => icon.icon == HeroAppIcons.bellSlash),
+          isTrue,
+        );
+        expect(
+          icons.any((icon) => icon.icon == HeroAppIcons.chevronRight),
+          isFalse,
+        );
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
     });
 
     test('requests the native community peer catalog', () {

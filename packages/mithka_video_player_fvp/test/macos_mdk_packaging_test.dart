@@ -21,7 +21,17 @@ void main() {
     expect(script, isNot(contains('grep -Fq')));
     expect(script, contains(r'load_commands="$(/usr/bin/otool -l'));
     expect(script, contains('EXPANDED_CODE_SIGN_IDENTITY'));
-    expect(script, contains('codesign --verify --strict'));
+    expect(script, contains("-type f -name '*.dylib' -print0"));
+    expect(script, contains(r'codesign --verify --strict "$nested_dylib"'));
+    expect(script, contains('codesign --verify --deep --strict'));
+    expect(
+      script.indexOf(r'--sign "$signing_identity"'),
+      lessThan(script.lastIndexOf(r'--sign "$signing_identity"')),
+    );
+    expect(
+      script.indexOf(r'"$nested_dylib"'),
+      lessThan(script.indexOf(r'"$mdk_framework"')),
+    );
 
     expect(rootProject, contains('Sanitize embedded MDK'));
     expect(rootProject, contains('/bin/bash'));
