@@ -101,6 +101,7 @@ class TopicChatView extends StatefulWidget {
     this.chatRouteBelow = false,
     this.onOpenChatView,
     this.routeSession,
+    this.query,
   });
 
   final ChatSummary chat;
@@ -112,6 +113,8 @@ class TopicChatView extends StatefulWidget {
   final bool chatRouteBelow;
   final VoidCallback? onOpenChatView;
   final TopicChatRouteSession? routeSession;
+  @visibleForTesting
+  final ForumTopicMessageQuery? query;
 
   @override
   State<TopicChatView> createState() => _TopicChatViewState();
@@ -212,6 +215,37 @@ Map<String, dynamic> forumTopicViewMessagesRequest({
 typedef ForumTopicMessageQuery =
     Future<Map<String, dynamic>> Function(Map<String, dynamic> request);
 
+const forumTopicInitialMessageAlignment = 0.15;
+
+Future<Map<String, dynamic>> queryForumTopicHistoryWithFallback({
+  required ForumTopicMessageQuery query,
+  required int chatId,
+  required int forumTopicId,
+  required int fromMessageId,
+  required int offset,
+  required int limit,
+}) async {
+  try {
+    return await query({
+      '@type': 'getForumTopicHistory',
+      'chat_id': chatId,
+      'forum_topic_id': forumTopicId,
+      'from_message_id': fromMessageId,
+      'offset': offset,
+      'limit': limit,
+    });
+  } catch (_) {
+    return query({
+      '@type': 'getMessageThreadHistory',
+      'chat_id': chatId,
+      'message_id': forumTopicId,
+      'from_message_id': fromMessageId,
+      'offset': offset,
+      'limit': limit,
+    });
+  }
+}
+
 Map<String, dynamic> forumTopicScopedSendRequest({
   required Map<String, dynamic> request,
   required int forumTopicId,
@@ -258,15 +292,21 @@ class _TopicChatViewState extends State<TopicChatView> {
   final _senderCache = <int, _SenderInfo>{};
   bool _loading = true;
   bool _visibleMessageUpdateScheduled = false;
+  bool _initialMessagePositionScheduled = false;
   int? _selectedThreadId;
+  int? _pendingInitialMessageId;
 
   @override
   void initState() {
     super.initState();
     _selectedThreadId = widget.initialThreadId;
+    _pendingInitialMessageId = widget.initialMessageId;
     _scroll.addListener(_scheduleVisibleMessageUpdate);
     _loadTopics();
   }
+
+  Future<Map<String, dynamic>> _query(Map<String, dynamic> request) =>
+      (widget.query ?? TdClient.shared.query)(request);
 
   @override
   void dispose() {
@@ -278,7 +318,7 @@ class _TopicChatViewState extends State<TopicChatView> {
   Future<void> _loadTopics() async {
     setState(() => _loading = true);
     try {
-      final response = await TdClient.shared.query({
+      final response = await _query({
         '@type': 'getForumTopics',
         'chat_id': widget.chat.id,
         'query': '',
@@ -345,9 +385,14 @@ class _TopicChatViewState extends State<TopicChatView> {
     }
     _loadingThreads.add(topic.id);
     try {
+      final targetMessageId = topic.id == _selectedThreadId
+          ? _pendingInitialMessageId
+          : null;
       final response = await _queryForumTopicHistory(
         topic.id,
         _selectedThreadId == null ? 6 : 40,
+        fromMessageId: targetMessageId ?? 0,
+        offset: targetMessageId == null ? 0 : -20,
       );
       final messages =
           (response.objects('messages') ?? const <Map<String, dynamic>>[])
@@ -372,31 +417,23 @@ class _TopicChatViewState extends State<TopicChatView> {
 
   Future<Map<String, dynamic>> _queryForumTopicHistory(
     int forumTopicId,
-    int limit,
-  ) async {
-    try {
-      return await TdClient.shared.query({
-        '@type': 'getForumTopicHistory',
-        'chat_id': widget.chat.id,
-        'forum_topic_id': forumTopicId,
-        'from_message_id': 0,
-        'offset': 0,
-        'limit': limit,
-      });
-    } catch (_) {
-      return TdClient.shared.query({
-        '@type': 'getMessageThreadHistory',
-        'chat_id': widget.chat.id,
-        'message_id': forumTopicId,
-        'from_message_id': 0,
-        'offset': 0,
-        'limit': limit,
-      });
-    }
-  }
+    int limit, {
+    int fromMessageId = 0,
+    int offset = 0,
+  }) => queryForumTopicHistoryWithFallback(
+    query: _query,
+    chatId: widget.chat.id,
+    forumTopicId: forumTopicId,
+    fromMessageId: fromMessageId,
+    offset: offset,
+    limit: limit,
+  );
 
   void _selectTopic(int? threadId) {
-    setState(() => _selectedThreadId = threadId);
+    setState(() {
+      _pendingInitialMessageId = null;
+      _selectedThreadId = threadId;
+    });
     _loadVisibleThreads();
     if (_scroll.hasClients) {
       _scroll.animateTo(
@@ -489,6 +526,71 @@ class _TopicChatViewState extends State<TopicChatView> {
     }
     posts.sort((a, b) => b.message.date.compareTo(a.message.date));
     return posts;
+  }
+
+  void _scheduleInitialMessagePosition(List<_TopicPost> posts) {
+    final targetMessageId = _pendingInitialMessageId;
+    if (targetMessageId == null || _initialMessagePositionScheduled) return;
+    final targetIndex = posts.indexWhere(
+      (post) => post.message.id == targetMessageId,
+    );
+    if (targetIndex < 0) {
+      if (!_loading && _loadingThreads.isEmpty) {
+        _pendingInitialMessageId = null;
+      }
+      return;
+    }
+    _initialMessagePositionScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initialMessagePositionScheduled = false;
+      if (!mounted || _pendingInitialMessageId != targetMessageId) return;
+      unawaited(
+        _positionInitialMessage(
+          messageId: targetMessageId,
+          targetIndex: targetIndex,
+          postCount: posts.length,
+        ),
+      );
+    });
+  }
+
+  Future<void> _positionInitialMessage({
+    required int messageId,
+    required int targetIndex,
+    required int postCount,
+  }) async {
+    final key = _postVisibilityKeys.putIfAbsent(messageId, GlobalKey.new);
+    for (var attempt = 0; attempt < 3; attempt++) {
+      if (!mounted || _pendingInitialMessageId != messageId) return;
+      final itemContext = key.currentContext;
+      if (itemContext != null && itemContext.mounted) {
+        await Scrollable.ensureVisible(
+          itemContext,
+          alignment: forumTopicInitialMessageAlignment,
+        );
+        if (mounted && _pendingInitialMessageId == messageId) {
+          _pendingInitialMessageId = null;
+          _scheduleVisibleMessageUpdate();
+        }
+        return;
+      }
+      if (!_scroll.hasClients || postCount <= 1) break;
+      final position = _scroll.position;
+      final fraction = targetIndex / (postCount - 1);
+      final estimatedOffset =
+          position.minScrollExtent +
+          (position.maxScrollExtent - position.minScrollExtent) * fraction;
+      _scroll.jumpTo(
+        estimatedOffset.clamp(
+          position.minScrollExtent,
+          position.maxScrollExtent,
+        ),
+      );
+      await WidgetsBinding.instance.endOfFrame;
+    }
+    if (mounted && _pendingInitialMessageId == messageId) {
+      _pendingInitialMessageId = null;
+    }
   }
 
   void _scheduleVisibleMessageUpdate() {
@@ -1167,6 +1269,7 @@ class _TopicChatViewState extends State<TopicChatView> {
       );
     }
     _scheduleVisibleMessageUpdate();
+    _scheduleInitialMessagePosition(posts);
     return ListView.separated(
       key: _topicViewportKey,
       controller: _scroll,
@@ -1181,14 +1284,17 @@ class _TopicChatViewState extends State<TopicChatView> {
         );
         return KeyedSubtree(
           key: visibilityKey,
-          child: _TopicPostRow(
-            chatId: widget.chat.id,
-            post: post,
-            sender: _senderCache[post.message.senderId],
-            onLike: () => _addReaction(post, '❤️'),
-            onPickReaction: () => _showReactionPicker(post),
-            onComments: () => _openComments(post),
-            onShare: () => _sharePost(post),
+          child: KeyedSubtree(
+            key: ValueKey('topic-post-${post.message.id}'),
+            child: _TopicPostRow(
+              chatId: widget.chat.id,
+              post: post,
+              sender: _senderCache[post.message.senderId],
+              onLike: () => _addReaction(post, '❤️'),
+              onPickReaction: () => _showReactionPicker(post),
+              onComments: () => _openComments(post),
+              onShare: () => _sharePost(post),
+            ),
           ),
         );
       },

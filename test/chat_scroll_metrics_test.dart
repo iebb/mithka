@@ -5,6 +5,91 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/chat_scroll_metrics.dart';
 
 void main() {
+  test('history swipes never replace the window with the latest page', () {
+    final source = File('lib/chat/chat_view.dart').readAsStringSync();
+    final scrollStart = source.indexOf('void _onScroll()');
+    final scrollEnd = source.indexOf(
+      'bool _onTranscriptUserScroll(',
+      scrollStart,
+    );
+    final userScrollEnd = source.indexOf(
+      'bool _onTranscriptScrollNotification(',
+      scrollEnd,
+    );
+    expect(scrollStart, greaterThanOrEqualTo(0));
+    expect(scrollEnd, greaterThan(scrollStart));
+    expect(userScrollEnd, greaterThan(scrollEnd));
+    final dragHandlers = source.substring(scrollStart, userScrollEnd);
+    expect(dragHandlers, isNot(contains('_requestReturnToLatest(')));
+    expect(
+      source,
+      contains('_requestReturnToLatest(userInitiated: true);'),
+      reason: 'the explicit latest button and send flow remain available',
+    );
+  });
+
+  test('targeted chats persist the position reached before exit', () {
+    final source = File('lib/chat/chat_view.dart').readAsStringSync();
+    final saveStart = source.indexOf(
+      'void _saveSessionScrollSnapshot({bool captureAnchor = true})',
+    );
+    final saveEnd = source.indexOf('bool get _sessionReopenPending', saveStart);
+    final cacheStart = source.indexOf('void _cacheCurrentTranscript()');
+    final cacheEnd = source.indexOf('void _handleBack()', cacheStart);
+
+    expect(saveStart, greaterThanOrEqualTo(0));
+    expect(saveEnd, greaterThan(saveStart));
+    expect(cacheStart, greaterThanOrEqualTo(0));
+    expect(cacheEnd, greaterThan(cacheStart));
+    expect(
+      source.substring(saveStart, saveEnd),
+      isNot(contains('widget.initialMessageId != null')),
+    );
+    expect(
+      source.substring(cacheStart, cacheEnd),
+      isNot(contains('widget.initialMessageId != null')),
+    );
+  });
+
+  test(
+    'cold unread and evicted session anchors never create stale targets',
+    () {
+      final source = File('lib/chat/chat_view_model.dart').readAsStringSync();
+      final unreadStart = source.indexOf(
+        'Future<bool> _loadInitialAroundLastRead()',
+      );
+      final unreadEnd = source.indexOf(
+        'Future<void> _loadInitialLatestHistory()',
+        unreadStart,
+      );
+      final unreadMethod = source.substring(unreadStart, unreadEnd);
+      expect(unreadStart, greaterThanOrEqualTo(0));
+      expect(unreadEnd, greaterThan(unreadStart));
+      expect(
+        RegExp(r'loadAroundMessage\(').allMatches(unreadMethod),
+        hasLength(4),
+      );
+      expect(
+        RegExp(
+          r'loadAroundMessage\([\s\S]*?scrollToTarget: false[\s\S]*?\)',
+        ).allMatches(unreadMethod),
+        hasLength(4),
+      );
+
+      final sessionStart = source.indexOf(
+        '} else if (sessionAnchorMessageId != null) {',
+      );
+      final sessionEnd = source.indexOf('} else {', sessionStart);
+      final sessionLoad = source.substring(sessionStart, sessionEnd);
+      expect(sessionLoad, contains('onlyLocal: true'));
+      expect(
+        RegExp(r'loadAroundMessage\(').allMatches(sessionLoad),
+        hasLength(2),
+        reason: 'a local cache miss must retry the saved anchor remotely',
+      );
+    },
+  );
+
   test('loaded message jumps wait for the retargeted key layout', () {
     final source = File('lib/chat/chat_view.dart').readAsStringSync();
     final methodStart = source.indexOf(

@@ -22,25 +22,32 @@ class ChatSessionCache {
   ChatSessionCache({this.capacity = 24}) : assert(capacity > 0);
 
   final int capacity;
-  final LinkedHashMap<int, ChatSessionRenderState> _states =
-      LinkedHashMap<int, ChatSessionRenderState>();
+  final LinkedHashMap<({int accountSlot, int chatId}), ChatSessionRenderState>
+  _states =
+      LinkedHashMap<({int accountSlot, int chatId}), ChatSessionRenderState>();
 
-  ChatSessionRenderState? read(int chatId) {
-    final state = _states.remove(chatId);
-    if (state != null) _states[chatId] = state;
+  ChatSessionRenderState? read({
+    required int accountSlot,
+    required int chatId,
+  }) {
+    final key = (accountSlot: accountSlot, chatId: chatId);
+    final state = _states.remove(key);
+    if (state != null) _states[key] = state;
     return state;
   }
 
   void store({
+    required int accountSlot,
     required int chatId,
     required List<ChatMessage> messages,
     required bool anchoredHistory,
     bool olderHistoryExhausted = false,
     ChatFirstContactInfo? firstContactInfo,
   }) {
-    _states.remove(chatId);
+    final key = (accountSlot: accountSlot, chatId: chatId);
+    _states.remove(key);
     if (messages.isEmpty) return;
-    _states[chatId] = ChatSessionRenderState(
+    _states[key] = ChatSessionRenderState(
       messages: List<ChatMessage>.unmodifiable(messages),
       anchoredHistory: anchoredHistory,
       olderHistoryExhausted: olderHistoryExhausted,

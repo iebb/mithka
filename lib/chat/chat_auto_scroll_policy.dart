@@ -188,20 +188,84 @@ class ChatRestoredPositionGuard {
   }
 }
 
-bool shouldRequestAutomaticReturnToLatest({
+/// Session restoration must distinguish an exact latest-edge position from a
+/// viewport that merely happens to be close to it. A generous "near bottom"
+/// threshold is useful for read markers and UI affordances, but using it here
+/// discards the final partially visible reading position on reopen.
+bool isChatSessionAtLoadedBottom({
   required bool anchoredHistory,
-  required bool restoredPositionProtected,
-  required bool pointerDown,
-  required bool hasScrollTarget,
-  required bool hasScrollClients,
-  required bool isNearLatestEdge,
+  required double distanceToLoadedBottom,
+  double epsilon = 0.5,
 }) {
-  return anchoredHistory &&
-      !restoredPositionProtected &&
-      !pointerDown &&
-      !hasScrollTarget &&
-      hasScrollClients &&
-      isNearLatestEdge;
+  return !anchoredHistory &&
+      distanceToLoadedBottom.isFinite &&
+      distanceToLoadedBottom >= 0 &&
+      distanceToLoadedBottom <= epsilon;
+}
+
+enum ChatInitialViewportTargetKind {
+  message,
+  firstUnread,
+  readBoundary,
+  loadedBottom,
+  preserveAnchoredHistory,
+}
+
+class ChatInitialViewportTarget {
+  const ChatInitialViewportTarget(this.kind, {this.messageId});
+
+  final ChatInitialViewportTargetKind kind;
+  final int? messageId;
+}
+
+/// Resolves one shared initial-position contract for both the estimate and
+/// post-layout correction passes.
+///
+/// In particular, an around-last-read history window is anchored, but its
+/// unread boundary still takes precedence over preserving an arbitrary window
+/// offset. Explicit search/reply targets remain the highest priority.
+ChatInitialViewportTarget resolveChatInitialViewportTarget({
+  required int? explicitMessageId,
+  required int? pendingMessageId,
+  required bool openAtBottom,
+  required bool anchoredHistory,
+  required int unreadCount,
+  required int? firstUnreadMessageId,
+  required bool unreadBoundaryLoaded,
+  required int lastReadInboxId,
+}) {
+  final messageTarget = explicitMessageId ?? pendingMessageId;
+  if (messageTarget != null) {
+    return ChatInitialViewportTarget(
+      ChatInitialViewportTargetKind.message,
+      messageId: messageTarget,
+    );
+  }
+  if (openAtBottom) {
+    return const ChatInitialViewportTarget(
+      ChatInitialViewportTargetKind.loadedBottom,
+    );
+  }
+  if (unreadCount > 0 && firstUnreadMessageId != null && unreadBoundaryLoaded) {
+    return ChatInitialViewportTarget(
+      ChatInitialViewportTargetKind.firstUnread,
+      messageId: firstUnreadMessageId,
+    );
+  }
+  if (unreadCount > 0 && lastReadInboxId > 0) {
+    return ChatInitialViewportTarget(
+      ChatInitialViewportTargetKind.readBoundary,
+      messageId: lastReadInboxId,
+    );
+  }
+  if (anchoredHistory) {
+    return const ChatInitialViewportTarget(
+      ChatInitialViewportTargetKind.preserveAnchoredHistory,
+    );
+  }
+  return const ChatInitialViewportTarget(
+    ChatInitialViewportTargetKind.loadedBottom,
+  );
 }
 
 class ChatInitialScrollPlan {

@@ -119,29 +119,94 @@ void main() {
     expect(guard.blocksAutomaticReturn, isFalse);
   });
 
-  test('automatic latest return respects restored-position protection', () {
-    bool decide({required bool protected}) =>
-        shouldRequestAutomaticReturnToLatest(
-          anchoredHistory: true,
-          restoredPositionProtected: protected,
-          pointerDown: false,
-          hasScrollTarget: false,
-          hasScrollClients: true,
-          isNearLatestEdge: true,
+  test('session snapshots only round an exact latest position to bottom', () {
+    bool decide(double distance, {bool anchored = false}) =>
+        isChatSessionAtLoadedBottom(
+          anchoredHistory: anchored,
+          distanceToLoadedBottom: distance,
         );
 
-    expect(decide(protected: true), isFalse);
-    expect(decide(protected: false), isTrue);
-    expect(
-      shouldRequestAutomaticReturnToLatest(
+    expect(decide(0), isTrue);
+    expect(decide(0.5), isTrue);
+    expect(decide(0.51), isFalse);
+    expect(decide(1), isFalse);
+    expect(decide(40), isFalse);
+    expect(decide(79), isFalse);
+    expect(decide(0, anchored: true), isFalse);
+    expect(decide(double.nan), isFalse);
+  });
+
+  test(
+    'anchored unread entry positions the first unread before its window',
+    () {
+      final unread = resolveChatInitialViewportTarget(
+        explicitMessageId: null,
+        pendingMessageId: null,
+        openAtBottom: false,
         anchoredHistory: true,
-        restoredPositionProtected: false,
-        pointerDown: true,
-        hasScrollTarget: false,
-        hasScrollClients: true,
-        isNearLatestEdge: true,
-      ),
-      isFalse,
+        unreadCount: 4,
+        firstUnreadMessageId: 101,
+        unreadBoundaryLoaded: true,
+        lastReadInboxId: 100,
+      );
+
+      expect(unread.kind, ChatInitialViewportTargetKind.firstUnread);
+      expect(unread.messageId, 101);
+
+      final boundaryFallback = resolveChatInitialViewportTarget(
+        explicitMessageId: null,
+        pendingMessageId: null,
+        openAtBottom: false,
+        anchoredHistory: true,
+        unreadCount: 4,
+        firstUnreadMessageId: 140,
+        unreadBoundaryLoaded: false,
+        lastReadInboxId: 100,
+      );
+      expect(boundaryFallback.kind, ChatInitialViewportTargetKind.readBoundary);
+      expect(boundaryFallback.messageId, 100);
+    },
+  );
+
+  test('explicit targets and latest entry retain positioning precedence', () {
+    final explicit = resolveChatInitialViewportTarget(
+      explicitMessageId: 777,
+      pendingMessageId: 666,
+      openAtBottom: true,
+      anchoredHistory: true,
+      unreadCount: 4,
+      firstUnreadMessageId: 101,
+      unreadBoundaryLoaded: true,
+      lastReadInboxId: 100,
+    );
+    expect(explicit.kind, ChatInitialViewportTargetKind.message);
+    expect(explicit.messageId, 777);
+
+    final bottom = resolveChatInitialViewportTarget(
+      explicitMessageId: null,
+      pendingMessageId: null,
+      openAtBottom: true,
+      anchoredHistory: false,
+      unreadCount: 4,
+      firstUnreadMessageId: 101,
+      unreadBoundaryLoaded: true,
+      lastReadInboxId: 100,
+    );
+    expect(bottom.kind, ChatInitialViewportTargetKind.loadedBottom);
+
+    final anchored = resolveChatInitialViewportTarget(
+      explicitMessageId: null,
+      pendingMessageId: null,
+      openAtBottom: false,
+      anchoredHistory: true,
+      unreadCount: 0,
+      firstUnreadMessageId: null,
+      unreadBoundaryLoaded: false,
+      lastReadInboxId: 0,
+    );
+    expect(
+      anchored.kind,
+      ChatInitialViewportTargetKind.preserveAnchoredHistory,
     );
   });
 

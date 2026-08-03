@@ -276,6 +276,7 @@ class ChatViewModel extends ChangeNotifier {
     required this.markReadOnOpen,
     this.initialMessageId,
     this.sessionAnchorMessageId,
+    this.sessionFallbackOpenAtLatest,
     List<ChatMessage>? sessionMessages,
     bool sessionAnchoredHistory = false,
     ChatFirstContactInfo? sessionFirstContactInfo,
@@ -301,6 +302,7 @@ class ChatViewModel extends ChangeNotifier {
   final int chatId;
   final int? initialMessageId;
   final int? sessionAnchorMessageId;
+  final bool? sessionFallbackOpenAtLatest;
   final bool markReadOnOpen;
   int? _historyAnchorMessageId;
   int? get historyAnchorMessageId => _historyAnchorMessageId;
@@ -657,14 +659,23 @@ class ChatViewModel extends ChangeNotifier {
         await loadAroundMessage(target);
         if (_chatOpenWorkIsStale) return;
       } else if (sessionAnchorMessageId != null) {
-        final restored = await loadAroundMessage(
+        var restored = await loadAroundMessage(
           sessionAnchorMessageId!,
           scrollToTarget: false,
           onlyLocal: true,
         );
         if (_chatOpenWorkIsStale) return;
         if (!restored) {
-          await _loadInitialHistory(openAtLatest: markReadOnOpen);
+          restored = await loadAroundMessage(
+            sessionAnchorMessageId!,
+            scrollToTarget: false,
+          );
+          if (_chatOpenWorkIsStale) return;
+        }
+        if (!restored) {
+          await _loadInitialHistory(
+            openAtLatest: sessionFallbackOpenAtLatest ?? markReadOnOpen,
+          );
           if (_chatOpenWorkIsStale) return;
         }
       } else {
@@ -3753,6 +3764,7 @@ class ChatViewModel extends ChangeNotifier {
     final loadedLocal = await loadAroundMessage(
       lastReadInboxId,
       onlyLocal: true,
+      scrollToTarget: false,
     );
     if (_chatOpenWorkIsStale) return false;
     if (loadedLocal) {
@@ -3774,7 +3786,7 @@ class ChatViewModel extends ChangeNotifier {
       );
       return true;
     }
-    return loadAroundMessage(lastReadInboxId);
+    return loadAroundMessage(lastReadInboxId, scrollToTarget: false);
   }
 
   Future<void> _loadInitialLatestHistory() async {
