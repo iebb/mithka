@@ -56,8 +56,7 @@ class ProfileViewModel extends ChangeNotifier {
     // Keep the profile (and the "我" drawer, which is this same view) live: when
     // our own user changes — e.g. after editing the name — TDLib emits updateUser
     // for us, so re-parse instead of waiting for an app restart.
-    _sub = TdClient.shared.subscribe().listen((u) {
-      if (u.type != 'updateUser') return;
+    _sub = TdClient.shared.updatesOf('updateUser').listen((u) {
       final usr = u.obj('user');
       if (usr != null && usr.int64('id') == user?.id) _applyUser(usr);
     });

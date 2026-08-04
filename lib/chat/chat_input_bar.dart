@@ -832,7 +832,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
       _controller.text,
       _controller.selection,
     );
-    if (query == null || !vm.isGroup || vm.isChannel) {
+    // Commands complete in groups (member bots' commands) and in private bot
+    // chats (the bot's own command list from userFullInfo).
+    final supportsCommands = (vm.isGroup && !vm.isChannel) || vm.peerIsBot;
+    if (query == null || !supportsCommands) {
       if (_botCommandQuery == null && _botCommandCandidates.isEmpty) return;
       _botCommandQuery = null;
       _botCommandCandidates = const [];
@@ -2421,7 +2424,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
       onVerticalDragUpdate: _resizeDesktopComposer,
       onVerticalDragEnd: _persistDesktopComposerHeight,
       child: Semantics(
-        label: 'Resize message input',
+        label: AppStrings.t(AppStringKeys.chatInputResizeMessageInput),
         child: SizedBox(
           height: 9,
           width: double.infinity,
@@ -4248,8 +4251,6 @@ class _ChatInputBarState extends State<ChatInputBar> {
         replyTarget != null &&
         _isAiReplyTargetEligible(replyTarget);
     final sender = vm.selectedMessageSender;
-    final botMenu = vm.botMenu;
-    final menuWebApp = !editing && botMenu?.isWebApp == true ? botMenu : null;
     final webAppButton = editing ? null : _webAppButton(replyKeyboard);
     final desktopCanvasHeight = clampDesktopComposerCanvasHeight(
       _desktopComposerCanvasHeight,
@@ -4270,10 +4271,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
                 : null,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              if (menuWebApp != null) ...[
-                _botMenuMiniAppAction(menuWebApp),
-                const SizedBox(width: 8),
-              ] else if (webAppButton != null && replyKeyboard != null) ...[
+              // The bot-menu mini-app launcher lives in the chat header now
+              // (menu bar), not on the message row — bots with a menu web app
+              // fall through to the standard bot-menu icon here.
+              if (webAppButton != null && replyKeyboard != null) ...[
                 _replyKeyboardMiniAppAction(replyKeyboard, webAppButton),
                 const SizedBox(width: 8),
               ] else if (!editing &&
@@ -5036,51 +5037,6 @@ class _ChatInputBarState extends State<ChatInputBar> {
                     size: 19,
                     color: AppTheme.brand,
                   ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _botMenuMiniAppAction(BotMenuInfo menu) {
-    final c = context.colors;
-    return Semantics(
-      button: true,
-      label: menu.actionTitle,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => unawaited(_openBotMenuWebApp(menu)),
-        onLongPress: () => _showBotMenu(forceMenu: true),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 156),
-          child: Container(
-            height: 38,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              color: AppTheme.brand,
-              borderRadius: BorderRadius.circular(19),
-              border: Border.all(
-                color: c.inputBarBackground.withValues(alpha: 0.72),
-                width: 2,
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Flexible(
-                  child: Text(
-                    menu.actionTitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
           ),
         ),
       ),

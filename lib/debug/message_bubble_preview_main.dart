@@ -1,4 +1,5 @@
 import 'package:flutter/widgets.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 
 import '../chat/stretchable_message_bubble_background.dart';
 import '../theme/message_bubble_background.dart';
@@ -92,12 +93,12 @@ class _PreviewGallery extends StatelessWidget {
     final items = [..._items.skip(6), ..._items.take(6)];
     return CustomScrollView(
       slivers: [
-        const SliverPadding(
-          padding: EdgeInsets.fromLTRB(18, 18, 18, 6),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 6),
           sliver: SliverToBoxAdapter(
             child: Text(
-              'Message bubble genres',
-              style: TextStyle(
+              AppStrings.t(AppStringKeys.debugBubblePreviewGenres),
+              style: const TextStyle(
                 color: Color(0xFFF4F4F7),
                 fontSize: 19,
                 fontWeight: FontWeight.w700,
@@ -106,12 +107,12 @@ class _PreviewGallery extends StatelessWidget {
             ),
           ),
         ),
-        const SliverPadding(
-          padding: EdgeInsets.fromLTRB(18, 0, 18, 14),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
           sliver: SliverToBoxAdapter(
             child: Text(
-              'Experimental — styles may change at any time.',
-              style: TextStyle(
+              AppStrings.t(AppStringKeys.debugBubblePreviewExperimental),
+              style: const TextStyle(
                 color: Color(0xFFA9ABB6),
                 fontSize: 11,
                 decoration: TextDecoration.none,

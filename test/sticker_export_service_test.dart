@@ -106,7 +106,7 @@ void main() {
     final source = utf8.encode(
       '{"v":"5.7.4","fr":60,"ip":0,"op":120,"w":512,"h":512,"layers":[]}',
     );
-    final tgs = Uint8List.fromList(GZipEncoder().encode(source)!);
+    final tgs = Uint8List.fromList(const GZipEncoder().encode(source));
     final decoded = StickerExportService.decodeTgsLottie(tgs);
     expect(decoded, isNotNull);
     expect(jsonDecode(utf8.decode(decoded!))['w'], 512);

@@ -19,7 +19,7 @@ import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
 
 Uint8List _inflateTgsSticker(Uint8List bytes) {
-  return Uint8List.fromList(GZipDecoder().decodeBytes(bytes));
+  return Uint8List.fromList(const GZipDecoder().decodeBytes(bytes));
 }
 
 final Map<String, Future<Uint8List?>> _inflatedTgsCache = {};

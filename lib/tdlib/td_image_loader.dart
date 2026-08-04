@@ -80,8 +80,7 @@ class TdFileCenter {
   void _startIfNeeded() {
     if (_started) return;
     _started = true;
-    _client.subscribe().listen((update) {
-      if (update.type != 'updateFile') return;
+    _client.updatesOf('updateFile').listen((update) {
       final file = update.obj('file');
       if (file != null) _ingest(file);
     });

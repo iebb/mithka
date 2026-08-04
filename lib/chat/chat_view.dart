@@ -3826,6 +3826,29 @@ class _ChatViewState extends State<ChatView> {
     );
   }
 
+  /// Header-bar launcher for a bot's menu mini app (mirrors the composer's
+  /// former pill action).
+  Future<void> _openBotMenuApp(BotMenuInfo menu) async {
+    final botUserId = _vm.peerUserId;
+    if (botUserId == null) {
+      if (!menu.isLegacyMenuUrl && menu.webAppUrl.isNotEmpty) {
+        await openLink(context, menu.webAppUrl);
+      }
+      return;
+    }
+    final opened = await openTelegramMiniApp(
+      context,
+      chatId: _vm.chatId,
+      botUserId: botUserId,
+      url: menu.url,
+      title: menu.actionTitle,
+      menuWebApp: true,
+    );
+    if (!opened && mounted) {
+      showToast(context, AppStrings.t(AppStringKeys.miniAppCannotStart));
+    }
+  }
+
   Future<void> _pressMessageButton(
     ChatMessage message,
     MessageButton button,
@@ -6226,6 +6249,15 @@ class _ChatViewState extends State<ChatView> {
                   else
                     const SizedBox(width: 4),
                   Expanded(child: _headerTitleBlock(subtitle, actionActive)),
+                  // Bot mini-app launcher lives in the header (menu bar), not
+                  // on the message row.
+                  if (_vm.peerIsBot && _vm.botMenu?.isWebApp == true)
+                    _ChatHeaderAction(
+                      key: const ValueKey('chatHeaderBotApp'),
+                      label: _vm.botMenu!.actionTitle,
+                      icon: HeroAppIcons.tableCells,
+                      onTap: () => unawaited(_openBotMenuApp(_vm.botMenu!)),
+                    ),
                   if (wideGroupHeader)
                     WideGroupChatHeaderActions(
                       onStartCall: (isVideo) => unawaited(_startCall(isVideo)),

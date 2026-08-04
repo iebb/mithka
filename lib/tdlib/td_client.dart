@@ -264,7 +264,13 @@ class TdClient {
       jsonEncode({'@type': 'setLogVerbosityLevel', 'new_verbosity_level': 1}),
     );
 
-    _prefs = await SharedPreferences.getInstance();
+    // Prefs and the support directory are independent platform channels;
+    // resolving them serially costs a full round trip on the launch path.
+    final (prefs, supportDir) = await (
+      SharedPreferences.getInstance(),
+      getApplicationSupportDirectory(),
+    ).wait;
+    _prefs = prefs;
     final transferBoost = TransferBoostConfig.fromPrefs(_prefs);
     _bindings.configureTransferBoost(
       downloadChunkSize: transferBoost.downloadEnabled
@@ -280,7 +286,7 @@ class TdClient {
           ? transferBoost.uploadParallelism
           : 0,
     );
-    _supportDir = (await getApplicationSupportDirectory()).path;
+    _supportDir = supportDir.path;
     if (kDebugMode) await _closeStaleDebugClients();
 
     final stored =
@@ -1069,7 +1075,7 @@ class TdClient {
 
     _allUpdates.add(object);
     // Most UI consumers only need the active account's updates.
-    if (clientId == _activeClientId) _updates.add(object);
+    if (clientId == _activeClientId) _dispatchToActiveSubscribers(object);
 
     // Internal: receive isolate reported a fatal error (e.g. td_receive threw
     // after Android background→foreground). Mark it dead so a later resume
@@ -1346,6 +1352,27 @@ class TdClient {
   /// A fresh stream of the ACTIVE account's TDLib updates.
   Stream<Map<String, dynamic>> subscribe() => _updates.stream;
 
+  /// Updates of exactly one @type from the active account. Prefer this over
+  /// [subscribe] + a type filter: during TDLib bursts (login sync, file
+  /// progress) every [subscribe] listener runs for every event, while typed
+  /// listeners run only for their own type.
+  Stream<Map<String, dynamic>> updatesOf(String type) =>
+      (_typedUpdates[type] ??= StreamController<Map<String, dynamic>>.broadcast(
+        sync: true,
+      )).stream;
+
+  final Map<String, StreamController<Map<String, dynamic>>> _typedUpdates = {};
+
+  void _dispatchToActiveSubscribers(Map<String, dynamic> update) {
+    _updates.add(update);
+    final type = update['@type'];
+    if (type is! String) return;
+    // Session-lifetime like _updates itself; never closed by design.
+    // ignore: close_sinks
+    final typed = _typedUpdates[type];
+    if (typed != null && typed.hasListener) typed.add(update);
+  }
+
   /// Updates from every configured account. Consumers must use @client_id to
   /// keep account-scoped identifiers separate.
   Stream<Map<String, dynamic>> subscribeAll() => _allUpdates.stream;
@@ -1356,7 +1383,8 @@ class TdClient {
   /// updates. Use this only after sending the corresponding TDLib request, so
   /// list and badge UI can converge immediately while waiting for TDLib's
   /// eventual aggregate updates.
-  void emitLocalUpdate(Map<String, dynamic> update) => _updates.add(update);
+  void emitLocalUpdate(Map<String, dynamic> update) =>
+      _dispatchToActiveSubscribers(update);
 
   String _safeSystemLanguageCode() {
     try {

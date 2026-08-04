@@ -3046,7 +3046,10 @@ void main() {
           ),
         );
 
-        expect(find.text('小程序购买'), findsOneWidget);
+        // The mini-app launcher lives in the chat header now, not on the
+        // composer row — the composer shows the standard bot-menu icon.
+        expect(find.text('小程序购买'), findsNothing);
+        expect(find.bySemanticsLabel('Open bot menu'), findsOneWidget);
         expect(find.bySemanticsLabel('Show bot keyboard'), findsOneWidget);
         expect(find.text('购买套餐'), findsNothing);
 
@@ -3055,10 +3058,11 @@ void main() {
         expect(find.bySemanticsLabel('Hide bot keyboard'), findsOneWidget);
         expect(find.text('购买套餐'), findsOneWidget);
 
-        await tester.longPress(find.text('小程序购买'));
+        // Long-press forces the command sheet (tap may launch a legacy
+        // menu:// web app instead), matching the old pill's long-press.
+        await tester.longPress(find.bySemanticsLabel('Open bot menu'));
         await tester.pumpAndSettle();
         expect(find.text('/start'), findsOneWidget);
-        expect(find.byIcon(HeroAppIcons.code.data), findsOneWidget);
       },
     );
 

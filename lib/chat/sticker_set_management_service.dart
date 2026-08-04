@@ -225,7 +225,7 @@ abstract final class StickerInputValidator {
           );
         }
         try {
-          final decoded = GZipDecoder().decodeBytes(bytes);
+          final decoded = const GZipDecoder().decodeBytes(bytes);
           final document = jsonDecode(utf8.decode(decoded));
           if (document is! Map<String, dynamic>) {
             throw const FormatException('not an object');

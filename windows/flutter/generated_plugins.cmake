@@ -3,6 +3,7 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  app_links
   fc_native_video_thumbnail
   file_selector_windows
   firebase_core

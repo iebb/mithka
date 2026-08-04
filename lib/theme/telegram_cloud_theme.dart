@@ -1361,7 +1361,9 @@ String _documentName(Map<String, dynamic> document) {
 String _normalizedThemeLink(String raw) {
   final trimmed = raw.trim();
   final uri = Uri.tryParse(trimmed);
-  if (uri?.scheme.toLowerCase() == 'tg' && uri?.host == 'addtheme') {
+  const appSchemes = {'tg', 'mk', 'mithka'};
+  if (appSchemes.contains(uri?.scheme.toLowerCase()) &&
+      uri?.host == 'addtheme') {
     final slug = uri?.queryParameters['slug'] ?? '';
     if (slug.isEmpty) throw const FormatException('Theme slug is missing');
     return 'https://t.me/addtheme/$slug';

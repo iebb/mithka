@@ -9,9 +9,11 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/cupertino.dart' show CupertinoSlider;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app/adaptive_split_layout.dart';
 import '../app/primary_chat_launcher.dart';
@@ -162,13 +164,53 @@ class _SharedMediaViewState extends State<SharedMediaView> {
   Timer? _searchDebounce;
   String _query = '';
   _SharedMediaFileFilter _fileFilter = _SharedMediaFileFilter.all;
+
+  /// Minimum video duration for the video tab, persisted device-wide so the
+  /// choice survives across chats and launches (phone/tablet/desktop alike).
+  static const _minVideoDurationPrefsKey =
+      'mithka.sharedMedia.minVideoDuration';
+  static const _minVideoDurationStops = [0, 10, 30, 60, 300, 1800];
+  int _minVideoDurationSeconds = 0;
+  SharedPreferences? _prefs;
+
+  Future<void> _loadMinVideoDuration() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    _prefs = prefs;
+    final saved = prefs.getInt(_minVideoDurationPrefsKey) ?? 0;
+    if (saved != _minVideoDurationSeconds &&
+        _minVideoDurationStops.contains(saved)) {
+      setState(() => _minVideoDurationSeconds = saved);
+    }
+  }
+
+  void _setMinVideoDuration(int seconds) {
+    if (_minVideoDurationSeconds == seconds) return;
+    setState(() => _minVideoDurationSeconds = seconds);
+    unawaited(_prefs?.setInt(_minVideoDurationPrefsKey, seconds));
+  }
+
+  String _minVideoDurationLabel(int seconds) {
+    if (seconds <= 0) {
+      return telegramText(AppStringKeys.sharedMediaFilterAll);
+    }
+    if (seconds < 60) {
+      return AppStrings.t(AppStringKeys.tdMessageSecondsDuration, {
+        'value1': seconds,
+      });
+    }
+    return AppStrings.t(AppStringKeys.tdMessageMinutesDuration, {
+      'value1': seconds ~/ 60,
+    });
+  }
+
   bool _musicPlayerHostAttached = false;
 
   @override
   void initState() {
     super.initState();
-    _fileSub = _client.subscribe().listen((update) {
-      if (update.type != 'updateFile') return;
+    unawaited(_loadMinVideoDuration());
+    _fileSub = _client.updatesOf('updateFile').listen((update) {
       final file = update.obj('file');
       if (file != null) _applyFile(file);
     });
@@ -949,9 +991,51 @@ class _SharedMediaViewState extends State<SharedMediaView> {
               telegramText(AppStringKeys.sharedMediaFilterNotDownloaded),
               _SharedMediaFileFilter.notDownloaded,
             ),
+            if (_tabs[_tab].videoOnly) ...[
+              const SizedBox(width: 16),
+              _minDurationControl(),
+            ],
           ],
         ),
       ),
+    );
+  }
+
+  /// Discrete min-duration slider for the video tab: 0 · 10s · 30s · 1m ·
+  /// 5m · 30m. Rendered inside the filter strip so every form factor gets it.
+  Widget _minDurationControl() {
+    final c = context.colors;
+    final index = _minVideoDurationStops
+        .indexOf(_minVideoDurationSeconds)
+        .clamp(0, _minVideoDurationStops.length - 1);
+    return Row(
+      key: const ValueKey('shared-media-min-duration'),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          AppStrings.t(AppStringKeys.sharedMediaMinDuration),
+          style: TextStyle(fontSize: 13, color: c.textSecondary),
+        ),
+        SizedBox(
+          width: 132,
+          child: CupertinoSlider(
+            value: index.toDouble(),
+            max: (_minVideoDurationStops.length - 1).toDouble(),
+            divisions: _minVideoDurationStops.length - 1,
+            activeColor: AppTheme.brand,
+            onChanged: (value) =>
+                _setMinVideoDuration(_minVideoDurationStops[value.round()]),
+          ),
+        ),
+        SizedBox(
+          width: 46,
+          child: Text(
+            _minVideoDurationLabel(_minVideoDurationSeconds),
+            maxLines: 1,
+            style: TextStyle(fontSize: 13, color: c.textPrimary),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1029,6 +1113,11 @@ class _SharedMediaViewState extends State<SharedMediaView> {
     var filtered = items.where((message) {
       if ((_tabs[_tab].videoOnly || _tab == 1) &&
           !_matchesFileFilter(message)) {
+        return false;
+      }
+      if (_tabs[_tab].videoOnly &&
+          _minVideoDurationSeconds > 0 &&
+          (message.videoDuration ?? 0) < _minVideoDurationSeconds) {
         return false;
       }
       if (query.isEmpty) return true;

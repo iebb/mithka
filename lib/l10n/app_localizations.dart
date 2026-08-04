@@ -123,6 +123,33 @@ extension AppLocalizationsContext on BuildContext {
 }
 
 abstract final class AppStringKeys {
+  static const appearancePreviewChatTextSample =
+      'appearancePreviewChatTextSample';
+  static const appearancePreviewMessageSample =
+      'appearancePreviewMessageSample';
+  static const appearancePreviewUsersSample = 'appearancePreviewUsersSample';
+  static const chatInputResizeMessageInput = 'chatInputResizeMessageInput';
+  static const debugBubblePreviewExperimental =
+      'debugBubblePreviewExperimental';
+  static const debugBubblePreviewGenres = 'debugBubblePreviewGenres';
+  static const mainTabResizeSidebar = 'mainTabResizeSidebar';
+  static const messageBubbleApply = 'messageBubbleApply';
+  static const messageBubbleRepoApplied = 'messageBubbleRepoApplied';
+  static const messageBubbleRepoDownloadFailed =
+      'messageBubbleRepoDownloadFailed';
+  static const messageBubbleRepoPreview = 'messageBubbleRepoPreview';
+  static const messageBubbleRepoSizeRule = 'messageBubbleRepoSizeRule';
+  static const messageBubbleRepoTitle = 'messageBubbleRepoTitle';
+  static const messageBubbleSettingsAllMessages =
+      'messageBubbleSettingsAllMessages';
+  static const messageBubbleSettingsApplyTo = 'messageBubbleSettingsApplyTo';
+  static const messageBubbleSettingsOpenFailed =
+      'messageBubbleSettingsOpenFailed';
+  static const messageBubbleSettingsOpenRepo = 'messageBubbleSettingsOpenRepo';
+  static const messageBubbleSettingsOwnMessages =
+      'messageBubbleSettingsOwnMessages';
+  static const messageBubbleSettingsRepoDescription =
+      'messageBubbleSettingsRepoDescription';
   static const navigationBack = 'navigationBack';
   static const aboutReportProblem = 'aboutReportProblem';
   static const aboutReportProblemDetail = 'aboutReportProblemDetail';
@@ -1825,6 +1852,7 @@ abstract final class AppStringKeys {
   static const momentsShareSomethingPlaceholder =
       'momentsShareSomethingPlaceholder';
   static const momentsStories = 'momentsStories';
+  static const sharedMediaMinDuration = 'sharedMediaMinDuration';
   static const storiesActiveCount = 'storiesActiveCount';
   static const storiesAdd = 'storiesAdd';
   static const storiesCountNew = 'storiesCountNew';

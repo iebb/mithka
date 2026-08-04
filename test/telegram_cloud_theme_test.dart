@@ -124,7 +124,7 @@ windowShadowFg: #01020380;
 '''),
       )
       ..addFile(ArchiveFile('tiled.jpg', 7, [0xFF, 0xD8, 1, 2, 3, 0xFF, 0xD9]));
-    final bytes = Uint8List.fromList(ZipEncoder().encode(archive)!);
+    final bytes = Uint8List.fromList(ZipEncoder().encode(archive));
 
     final parsed = parseTelegramThemeFile(
       TelegramThemePlatform.desktop,
@@ -186,7 +186,7 @@ avatar_nameInMessageRed=#ff112233
                 'msgOutBgSelected: #112233;',
           ),
         );
-      await desktop.writeAsBytes(ZipEncoder().encode(desktopArchive)!);
+      await desktop.writeAsBytes(ZipEncoder().encode(desktopArchive));
 
       final service = TelegramCloudThemeService(
         query: (_) async => _themePreview([
@@ -332,7 +332,7 @@ msgOutBg: #f3b4bd;
 '''),
       )
       ..addFile(ArchiveFile('background.jpg', 5, [0xFF, 0xD8, 1, 0xFF, 0xD9]));
-    await desktop.writeAsBytes(ZipEncoder().encode(desktopArchive)!);
+    await desktop.writeAsBytes(ZipEncoder().encode(desktopArchive));
     final service = TelegramCloudThemeService(
       query: (_) async => _themePreview([
         _themeDocument(1, 'empty.tgios-theme', 'tgtheme-ios'),

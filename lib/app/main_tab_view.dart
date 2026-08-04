@@ -995,7 +995,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
         ? AppTheme.brand.withValues(alpha: 0.78)
         : context.colors.divider;
     return Semantics(
-      label: 'Resize sidebar',
+      label: AppStrings.t(AppStringKeys.mainTabResizeSidebar),
       child: MouseRegion(
         cursor: SystemMouseCursors.resizeColumn,
         onEnter: (_) {

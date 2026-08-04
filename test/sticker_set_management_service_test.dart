@@ -106,11 +106,11 @@ void main() {
       expect(validImage.isValid, isTrue, reason: validImage.errors.join(', '));
 
       final tgs = Uint8List.fromList(
-        GZipEncoder().encode(
+        const GZipEncoder().encode(
           utf8.encode(
             jsonEncode({'w': 512, 'h': 512, 'fr': 60, 'ip': 0, 'op': 180}),
           ),
-        )!,
+        ),
       );
       final validAnimated = StickerInputValidator.validateBytes(
         path: 'sticker.tgs',

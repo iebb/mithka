@@ -60,7 +60,12 @@ class _MessageBubbleSettingsViewState extends State<MessageBubbleSettingsView> {
         ),
       );
     } catch (_) {
-      if (mounted) showToast(context, 'Could not open @msgbubble.');
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(AppStringKeys.messageBubbleSettingsOpenFailed),
+        );
+      }
     } finally {
       if (mounted) setState(() => _opening = false);
     }
@@ -186,7 +191,9 @@ class _MessageBubbleSettingsViewState extends State<MessageBubbleSettingsView> {
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          'Browse the public channel as a bubble grid. Repository images are exactly 360 × 180 px, with a 300 × 120 bubble box and 30 px transparent padding on every side.',
+                          AppStrings.t(
+                            AppStringKeys.messageBubbleSettingsRepoDescription,
+                          ),
                           style: TextStyle(
                             color: c.textSecondary,
                             fontSize: 13.5,
@@ -239,7 +246,10 @@ class _MessageBubbleSettingsViewState extends State<MessageBubbleSettingsView> {
                                       ),
                                       const SizedBox(width: 7),
                                       Text(
-                                        'Open bubble repository',
+                                        AppStrings.t(
+                                          AppStringKeys
+                                              .messageBubbleSettingsOpenRepo,
+                                        ),
                                         style: TextStyle(
                                           color: AppTheme.onBrand,
                                           fontSize: 15,
@@ -307,7 +317,7 @@ class _MessageBubbleSettingsViewState extends State<MessageBubbleSettingsView> {
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 13, 14, 5),
             child: Text(
-              'Apply bubble to',
+              AppStrings.t(AppStringKeys.messageBubbleSettingsApplyTo),
               style: TextStyle(
                 color: c.textSecondary,
                 fontSize: 13,
@@ -315,9 +325,15 @@ class _MessageBubbleSettingsViewState extends State<MessageBubbleSettingsView> {
               ),
             ),
           ),
-          choice('My messages only', MessageBubbleApplicationScope.ownMessages),
+          choice(
+            AppStrings.t(AppStringKeys.messageBubbleSettingsOwnMessages),
+            MessageBubbleApplicationScope.ownMessages,
+          ),
           Divider(height: 0.5, thickness: 0.5, color: c.divider),
-          choice('All messages', MessageBubbleApplicationScope.allMessages),
+          choice(
+            AppStrings.t(AppStringKeys.messageBubbleSettingsAllMessages),
+            MessageBubbleApplicationScope.allMessages,
+          ),
         ],
       ),
     );

@@ -175,8 +175,7 @@ class AutoDownloadMediaController extends ChangeNotifier {
     _mobileHighResImages = prefs.getBool(_mobileKey) ?? false;
     _wifiHighResImages = prefs.getBool(_wifiKey) ?? false;
     _loadProfiles(prefs.getString(_profilesKey));
-    _tdSub ??= _client.subscribe().listen((update) {
-      if (update.type != 'updateAuthorizationState') return;
+    _tdSub ??= _client.updatesOf('updateAuthorizationState').listen((update) {
       final state = update.obj('authorization_state');
       if (state?.type == 'authorizationStateReady') {
         unawaited(apply().catchError((_) {}));

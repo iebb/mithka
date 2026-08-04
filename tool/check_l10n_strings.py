@@ -32,14 +32,19 @@ ALLOWED_VISIBLE_VALUES = {
     "A",
     "AI",
     "GitHub",
+    "H",
+    "H$level",
     "LaTeX",
+    "M",
     "MM/YY",
     "Mini App",
     "Mithka",
+    "OCR",
     "RTMP URL",
     "Smart Glocal",
     "TEST",
     "business_bot",
+    "en",
     "· · ·",
     "\\u00B7 \\u00B7 \\u00B7",
     "github.com/iebb/mithka",
@@ -66,6 +71,17 @@ CONTENT_RENDER_EXPRESSIONS = {
     "_initial(widget.title)",
     "item.title",
     "m.senderName ?? widget.title",
+    # DesktopNavigationAction labels are localized at construction
+    # (AppStrings.t in main_tab_view), not at render.
+    "action.label",
+}
+
+# Files whose Han/kana/hangul content is classification DATA, not UI copy:
+# the unread-summary short-reply corpus and the AI editor's native language
+# names (each language written in itself, like the appLocale* keys).
+RAW_SCRIPT_EXEMPT_PATHS = {
+    "lib/chat/telegram_ai_editor_view.dart",
+    "lib/chat/unread_chat_summary_service.dart",
 }
 
 
@@ -301,13 +317,17 @@ def main() -> int:
                 continue
             text = path.read_text()
             comments = strip_comments_mask(text)
-            raw_localized_lines = {
-                line_for(text, i)
-                for i, ch in enumerate(text)
-                if not comments[i] and has_localized_script(ch)
-            }
-            for line in sorted(raw_localized_lines):
-                failures.append(f"{rel}:{line}: raw localized script outside lib/l10n")
+            script_exempt = str(rel) in RAW_SCRIPT_EXEMPT_PATHS
+            if not script_exempt:
+                raw_localized_lines = {
+                    line_for(text, i)
+                    for i, ch in enumerate(text)
+                    if not comments[i] and has_localized_script(ch)
+                }
+                for line in sorted(raw_localized_lines):
+                    failures.append(
+                        f"{rel}:{line}: raw localized script outside lib/l10n"
+                    )
             for offset in direct_text_key_renders(text):
                 failures.append(
                     f"{rel}:{line_for(text, offset)}: "
@@ -317,9 +337,11 @@ def main() -> int:
                 failures.append(f"{rel}:{line_for(text, offset)}: {reason}")
             for literal in parse_literals(text):
                 if has_localized_script(literal.value):
-                    failures.append(
-                        f"{rel}:{line_for(text, literal.start)}: localized literal: {literal.raw}"
-                    )
+                    if not script_exempt:
+                        failures.append(
+                            f"{rel}:{line_for(text, literal.start)}: "
+                            f"localized literal: {literal.raw}"
+                        )
                     continue
                 if is_visible_ui_literal(text, literal.start) and not is_nonlocalized_token(
                     literal.value

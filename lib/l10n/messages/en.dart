@@ -1,4 +1,25 @@
 const enMessages = <String, String>{
+  'appearancePreviewChatTextSample': "This is how chat text will look.",
+  'appearancePreviewMessageSample': "Jennie: See you in the chat",
+  'appearancePreviewUsersSample': "Mithka Users",
+  'chatInputResizeMessageInput': "Resize message input",
+  'debugBubblePreviewExperimental':
+      "Experimental — styles may change at any time.",
+  'debugBubblePreviewGenres': "Message bubble genres",
+  'mainTabResizeSidebar': "Resize sidebar",
+  'messageBubbleApply': "Apply bubble",
+  'messageBubbleRepoApplied': "Message bubble applied.",
+  'messageBubbleRepoDownloadFailed': "Could not download this bubble.",
+  'messageBubbleRepoPreview': "Bubble preview",
+  'messageBubbleRepoSizeRule': "Bubble images must be exactly 360 × 180 px.",
+  'messageBubbleRepoTitle': "Message bubbles",
+  'messageBubbleSettingsAllMessages': "All messages",
+  'messageBubbleSettingsApplyTo': "Apply bubble to",
+  'messageBubbleSettingsOpenFailed': "Could not open @msgbubble.",
+  'messageBubbleSettingsOpenRepo': "Open bubble repository",
+  'messageBubbleSettingsOwnMessages': "My messages only",
+  'messageBubbleSettingsRepoDescription':
+      "Browse the public channel as a bubble grid. Repository images are exactly 360 × 180 px, with a 300 × 120 bubble box and 30 px transparent padding on every side.",
   'navigationBack': "Back",
   'appearanceArchivedChatsDesktopHint':
       "On desktop, pull-down archives stay visible at the top so they remain mouse-accessible. The saved choice still applies on mobile.",
@@ -1464,6 +1485,7 @@ const enMessages = <String, String>{
   'momentsSending': "Sending",
   'momentsShareSomethingPlaceholder': "Share something new...",
   'momentsStories': "Stories",
+  'sharedMediaMinDuration': "Min duration",
   'storiesActiveCount': "{value1} active",
   'storiesAdd': "Add story",
   'storiesCountNew': "{value1} stories · New",

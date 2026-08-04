@@ -251,8 +251,7 @@ class ChatRowView extends StatelessWidget {
                       showTrailingIndicator &&
                       trailingIndicator != null)
                     const SizedBox(width: AppSpacing.xs),
-                  if (showTrailingIndicator)
-                    if (trailingIndicator case final indicator?) indicator,
+                  if (showTrailingIndicator) ?trailingIndicator,
                 ],
               ),
             ),

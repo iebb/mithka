@@ -125,11 +125,16 @@ class _DesktopPrimaryWindowFrameState extends State<DesktopPrimaryWindowFrame> {
     super.dispose();
   }
 
-  Future<void> _openSearchAll(String query) async {
+  Future<void> _openSearchAll(String query) => _openSearch(query, null);
+
+  Future<void> _openSearchCategory(String query, SearchTab tab) =>
+      _openSearch(query, tab);
+
+  Future<void> _openSearch(String query, SearchTab? tab) async {
     final trimmed = query.trim();
     if (trimmed.isEmpty) return;
     final override = widget.onOpenSearchAll;
-    if (override != null) {
+    if (override != null && tab == null) {
       await override(trimmed);
       return;
     }
@@ -143,10 +148,11 @@ class _DesktopPrimaryWindowFrameState extends State<DesktopPrimaryWindowFrame> {
             kind: DesktopUtilityWindowKind.search,
             accountSlot: accounts.activeSlot,
             accountUserId: accountUserId,
-            title: AppStringKeys.topicChatSearch.l10n(context),
+            title: tab?.label ?? AppStringKeys.topicChatSearch.l10n(context),
             localeTag: Localizations.localeOf(context).toLanguageTag(),
             dark: Theme.of(context).brightness == Brightness.dark,
             initialQuery: trimmed,
+            initialSearchTab: tab?.name,
             instanceId: createDesktopUtilityWindowInstanceId(),
           ),
         );
@@ -158,7 +164,7 @@ class _DesktopPrimaryWindowFrameState extends State<DesktopPrimaryWindowFrame> {
         appNavigatorKey.currentState ?? Navigator.maybeOf(context);
     await navigator?.push<void>(
       MaterialPageRoute<void>(
-        builder: (_) => SearchView(initialQuery: trimmed),
+        builder: (_) => SearchView(initialQuery: trimmed, initialTab: tab),
       ),
     );
   }
@@ -324,6 +330,7 @@ class _DesktopPrimaryWindowFrameState extends State<DesktopPrimaryWindowFrame> {
                 child: DesktopInlineSearchPanel(
                   controller: _searchController,
                   onSearchAll: _openSearchAll,
+                  onSearchCategory: _openSearchCategory,
                 ),
               ),
             ),

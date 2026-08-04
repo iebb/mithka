@@ -1,7 +1,7 @@
 name: mithka
 description: "Mithka — a cross-platform Telegram client (Flutter), built on TDLib."
 publish_to: 'none'
-version: 0.9.7+281
+version: 0.9.8+281
 
 environment:
   sdk: ^3.12.2
@@ -117,17 +117,21 @@ dependencies:
   webview_flutter_android: ^4.13.0
   webview_flutter_wkwebview: ^3.26.0
   local_auth: ^3.0.2
+  app_links: ^7.2.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   integration_test:
     sdk: flutter
+  flutter_driver:
+    sdk: flutter
   flutter_lints: ^6.0.0
 
   # Generates iOS/Android launcher icons from the Drachma app icon.
   flutter_launcher_icons: ^0.14.1
 
+  video_player_platform_interface: any
 dependency_overrides:
   fvp:
     path: third_party/fvp

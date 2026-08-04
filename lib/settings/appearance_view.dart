@@ -1253,7 +1253,7 @@ class _RepresentativeChatListRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Mithka Users',
+                  AppStrings.t(AppStringKeys.appearancePreviewUsersSample),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -1264,7 +1264,7 @@ class _RepresentativeChatListRow extends StatelessWidget {
                 ),
                 const SizedBox(height: AppSpacing.xxs),
                 Text(
-                  'Jennie: See you in the chat',
+                  AppStrings.t(AppStringKeys.appearancePreviewMessageSample),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -1337,7 +1337,7 @@ class _RepresentativeMessageBubble extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'This is how chat text will look.',
+              AppStrings.t(AppStringKeys.appearancePreviewChatTextSample),
               style: TextStyle(
                 fontSize: AppTextSize.bodyLarge,
                 color: c.bubbleIncomingText,

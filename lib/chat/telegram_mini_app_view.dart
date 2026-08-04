@@ -21,6 +21,7 @@ import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 
 import '../app/desktop_mini_app_window.dart';
+import '../app/desktop_window_drag_area.dart';
 import '../auth/account_store.dart';
 import '../chats/qr_scanner_view.dart';
 import '../components/app_confirm_dialog.dart';
@@ -618,6 +619,7 @@ class TelegramMiniAppView extends StatefulWidget {
     this.fullscreen = false,
     this.showSheetHandle = true,
     this.closeTdLaunchOnDispose = true,
+    this.standaloneWindowChrome = false,
     this.onClose,
     this.onFullscreenChanged,
   });
@@ -626,6 +628,11 @@ class TelegramMiniAppView extends StatefulWidget {
   final bool fullscreen;
   final bool showSheetHandle;
   final bool closeTdLaunchOnDispose;
+
+  /// True when this view IS the window: the toolbar doubles as a
+  /// custom-rendered title bar (drag-to-move + traffic-light inset) because
+  /// the native one is hidden.
+  final bool standaloneWindowChrome;
   final Future<void> Function()? onClose;
   final ValueChanged<bool>? onFullscreenChanged;
 
@@ -1953,16 +1960,26 @@ class _TelegramMiniAppViewState extends State<TelegramMiniAppView>
           ],
           ColoredBox(
             color: header,
-            child: _MiniAppToolbar(
-              title: widget.launch.title,
-              leadingIcon: _backButtonVisible
-                  ? HeroAppIcons.chevronLeft
-                  : HeroAppIcons.xmark,
-              leadingSize: _backButtonVisible ? 20 : 24,
-              onLeadingPressed: _pressLeading,
-              onSettings: _settingsButtonVisible ? _pressSettingsButton : null,
-              onReload: _controller.reload,
-              onOpenExternal: () => _openExternal(widget.launch.url),
+            child: _windowChrome(
+              _MiniAppToolbar(
+                title: widget.launch.title,
+                leadingIcon: _backButtonVisible
+                    ? HeroAppIcons.chevronLeft
+                    : HeroAppIcons.xmark,
+                leadingSize: _backButtonVisible ? 20 : 24,
+                trafficLightInset:
+                    widget.standaloneWindowChrome &&
+                        !widget.fullscreen &&
+                        defaultTargetPlatform == TargetPlatform.macOS
+                    ? 64
+                    : 0,
+                onLeadingPressed: _pressLeading,
+                onSettings: _settingsButtonVisible
+                    ? _pressSettingsButton
+                    : null,
+                onReload: _controller.reload,
+                onOpenExternal: () => _openExternal(widget.launch.url),
+              ),
             ),
           ),
           if (!_pageReady || _progress < 100)
@@ -1995,6 +2012,12 @@ class _TelegramMiniAppViewState extends State<TelegramMiniAppView>
       ),
     );
   }
+
+  /// The standalone window hides the native title bar, so its toolbar has to
+  /// provide window dragging itself.
+  Widget _windowChrome(Widget toolbar) => widget.standaloneWindowChrome
+      ? desktopWindowDragArea(child: toolbar)
+      : toolbar;
 
   Widget? _layoutBottomButtons({
     required Widget? mainButton,
@@ -2184,8 +2207,12 @@ class _MiniAppToolbar extends StatelessWidget {
     this.onSettings,
     required this.onReload,
     required this.onOpenExternal,
+    this.trafficLightInset = 0,
   });
 
+  /// Left inset reserving space for macOS window buttons when the toolbar is
+  /// the window's custom title bar.
+  final double trafficLightInset;
   final String title;
   final AppIconData leadingIcon;
   final double leadingSize;
@@ -2200,7 +2227,7 @@ class _MiniAppToolbar extends StatelessWidget {
     return SizedBox(
       height: 52,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8),
+        padding: EdgeInsets.only(left: 8 + trafficLightInset, right: 8),
         child: Row(
           children: [
             _MiniAppToolbarAction(

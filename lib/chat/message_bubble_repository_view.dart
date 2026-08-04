@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
 import '../components/photo_avatar.dart';
@@ -56,14 +57,19 @@ Future<void> applyMessageBubbleRepositoryPhoto(
   String? sourceMessageLink,
 }) async {
   if (!isEligibleMessageBubbleRepositoryPhoto(message)) {
-    showToast(context, 'Bubble images must be exactly 360 × 180 px.');
+    showToast(context, AppStrings.t(AppStringKeys.messageBubbleRepoSizeRule));
     return;
   }
   final path = await TdFileCenter.shared.pathFor(
     messageBubbleRepositoryFile(message)!,
   );
   if (path == null || !await File(path).exists()) {
-    if (context.mounted) showToast(context, 'Could not download this bubble.');
+    if (context.mounted) {
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.messageBubbleRepoDownloadFailed),
+      );
+    }
     return;
   }
   try {
@@ -76,12 +82,13 @@ Future<void> applyMessageBubbleRepositoryPhoto(
     context.read<ThemeController>().installCustomMessageBubbleBackground(
       custom,
     );
-    showToast(context, 'Message bubble applied.');
+    showToast(context, AppStrings.t(AppStringKeys.messageBubbleRepoApplied));
   } on CustomMessageBubbleImportException catch (error) {
     if (!context.mounted) return;
     final text = switch (error.failure) {
-      CustomMessageBubbleImportFailure.wrongRepositorySize =>
-        'Bubble images must be exactly 360 × 180 px.',
+      CustomMessageBubbleImportFailure.wrongRepositorySize => AppStrings.t(
+        AppStringKeys.messageBubbleRepoSizeRule,
+      ),
       CustomMessageBubbleImportFailure.invalidPalette =>
         'The four color swatches must each be one solid color.',
       _ => 'This image is not a valid message bubble.',
@@ -147,7 +154,10 @@ class _MessageBubbleRepositoryViewState
       backgroundColor: c.groupedBackground,
       body: Column(
         children: [
-          NavHeader(title: 'Message bubbles', onBack: widget.onBack),
+          NavHeader(
+            title: AppStrings.t(AppStringKeys.messageBubbleRepoTitle),
+            onBack: widget.onBack,
+          ),
           if (previewMessage != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
@@ -302,7 +312,7 @@ class _RepositoryBubbleThumbnailState
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(20, 10, 18, 9),
                     child: Text(
-                      'Bubble preview',
+                      AppStrings.t(AppStringKeys.messageBubbleRepoPreview),
                       maxLines: 2,
                       textAlign: TextAlign.center,
                       overflow: TextOverflow.clip,

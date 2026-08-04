@@ -44,14 +44,14 @@ class DesktopInlineSearchController extends ChangeNotifier {
     focusNode.addListener(_handleFocusChanged);
   }
 
-  static const List<_SearchTab> _searchTabs = [
-    _SearchTab.chats,
-    _SearchTab.posts,
-    _SearchTab.media,
-    _SearchTab.links,
-    _SearchTab.files,
-    _SearchTab.music,
-    _SearchTab.voice,
+  static const List<SearchTab> _searchTabs = [
+    SearchTab.chats,
+    SearchTab.posts,
+    SearchTab.media,
+    SearchTab.links,
+    SearchTab.files,
+    SearchTab.music,
+    SearchTab.voice,
   ];
   static const int _chatResultLimit = 4;
   static const int _messageResultLimit = 3;
@@ -83,9 +83,7 @@ class DesktopInlineSearchController extends ChangeNotifier {
           hits: _model
               .resultsFor(tab)
               .take(
-                tab == _SearchTab.chats
-                    ? _chatResultLimit
-                    : _messageResultLimit,
+                tab == SearchTab.chats ? _chatResultLimit : _messageResultLimit,
               )
               .toList(growable: false),
         ),
@@ -200,7 +198,7 @@ class DesktopInlineSearchController extends ChangeNotifier {
 class _DesktopInlineSearchSection {
   const _DesktopInlineSearchSection({required this.tab, required this.hits});
 
-  final _SearchTab tab;
+  final SearchTab tab;
   final List<_SearchHit> hits;
 }
 
@@ -315,6 +313,7 @@ class DesktopInlineSearchPanel extends StatelessWidget {
     super.key,
     required this.controller,
     required this.onSearchAll,
+    this.onSearchCategory,
     this.onOpenMiniApp,
   });
 
@@ -323,7 +322,23 @@ class DesktopInlineSearchPanel extends StatelessWidget {
 
   final DesktopInlineSearchController controller;
   final FutureOr<void> Function(String query) onSearchAll;
+
+  /// Section-header chevron: run the full search scoped to that category.
+  /// Falls back to [onSearchAll] when null.
+  final FutureOr<void> Function(String query, SearchTab tab)? onSearchCategory;
   final FutureOr<void> Function(TelegramMiniAppRecent app)? onOpenMiniApp;
+
+  void _openCategory(SearchTab tab) {
+    final query = controller.query.trim();
+    if (query.isEmpty) return;
+    controller.dismiss();
+    final scoped = onSearchCategory;
+    if (scoped != null) {
+      unawaited(Future<void>.sync(() => scoped(query, tab)));
+    } else {
+      unawaited(Future<void>.sync(() => onSearchAll(query)));
+    }
+  }
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
@@ -472,9 +487,16 @@ class DesktopInlineSearchPanel extends StatelessWidget {
       }
     }
 
+    final highlight = controller.query.trim();
+
     void addSearchSection(_DesktopInlineSearchSection section) {
       addDivider();
-      widgets.add(_DesktopInlineSearchSectionHeader(tab: section.tab));
+      widgets.add(
+        _DesktopInlineSearchSectionHeader(
+          tab: section.tab,
+          onOpenCategory: () => _openCategory(section.tab),
+        ),
+      );
       for (var index = 0; index < section.hits.length; index++) {
         final hit = section.hits[index];
         if (index > 0) {
@@ -489,6 +511,7 @@ class DesktopInlineSearchPanel extends StatelessWidget {
         widgets.add(
           _DesktopInlineSearchHitAction(
             hit: hit,
+            highlight: highlight,
             onOpen: () {
               controller.dismiss();
               unawaited(_openSearchHit(context, hit));
@@ -499,14 +522,17 @@ class DesktopInlineSearchPanel extends StatelessWidget {
     }
 
     for (final section in sections.where(
-      (section) => section.tab == _SearchTab.chats,
+      (section) => section.tab == SearchTab.chats,
     )) {
       addSearchSection(section);
     }
     if (miniApps.isNotEmpty) {
       addDivider();
       widgets.add(
-        const _DesktopInlineSearchSectionHeader(tab: _SearchTab.miniApps),
+        _DesktopInlineSearchSectionHeader(
+          tab: SearchTab.miniApps,
+          onOpenCategory: () => _openCategory(SearchTab.miniApps),
+        ),
       );
       for (var index = 0; index < miniApps.length; index++) {
         if (index > 0) {
@@ -536,7 +562,7 @@ class DesktopInlineSearchPanel extends StatelessWidget {
       }
     }
     for (final section in sections.where(
-      (section) => section.tab != _SearchTab.chats,
+      (section) => section.tab != SearchTab.chats,
     )) {
       addSearchSection(section);
     }
@@ -567,42 +593,103 @@ Future<void> _openDesktopInlineMiniApp(
 }
 
 class _DesktopInlineSearchSectionHeader extends StatelessWidget {
-  const _DesktopInlineSearchSectionHeader({required this.tab});
+  const _DesktopInlineSearchSectionHeader({
+    required this.tab,
+    this.onOpenCategory,
+  });
 
-  final _SearchTab tab;
+  final SearchTab tab;
+
+  /// Opens the full search scoped to this category (the trailing chevron).
+  final VoidCallback? onOpenCategory;
 
   @override
-  Widget build(BuildContext context) => Container(
-    key: ValueKey('desktop-inline-search-section-${tab.name}'),
-    height: 28,
-    alignment: Alignment.centerLeft,
-    padding: const EdgeInsets.symmetric(horizontal: 12),
-    child: Text(
-      tab.label,
-      style: TextStyle(
-        fontSize: 12,
-        fontWeight: FontWeight.w600,
-        color: context.colors.textSecondary,
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final header = Container(
+      key: ValueKey('desktop-inline-search-section-${tab.name}'),
+      height: 28,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              tab.label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: c.textSecondary,
+              ),
+            ),
+          ),
+          if (onOpenCategory != null)
+            AppIcon(HeroAppIcons.chevronRight, size: 12, color: c.textTertiary),
+        ],
       ),
-    ),
-  );
+    );
+    if (onOpenCategory == null) return header;
+    return AppInteractiveSurface(
+      key: ValueKey('desktop-inline-search-section-open-${tab.name}'),
+      semanticLabel: tab.label,
+      onTap: onOpenCategory,
+      child: header,
+    );
+  }
 }
 
 class _DesktopInlineSearchHitAction extends StatelessWidget {
   const _DesktopInlineSearchHitAction({
     required this.hit,
     required this.onOpen,
+    this.highlight = '',
   });
 
   final _SearchHit hit;
   final VoidCallback onOpen;
+  final String highlight;
 
   @override
   Widget build(BuildContext context) => AppInteractiveSurface(
     semanticLabel: hit.title,
     onTap: onOpen,
-    child: _DesktopCompactSearchHitRow(hit: hit),
+    child: _DesktopCompactSearchHitRow(hit: hit, highlight: highlight),
   );
+}
+
+/// Splits [text] into spans with case-insensitive occurrences of each
+/// whitespace-separated term of [query] rendered in the highlight style.
+List<InlineSpan> searchHighlightSpans(
+  String text,
+  String query, {
+  required TextStyle base,
+  required TextStyle highlight,
+}) {
+  final terms = query
+      .split(RegExp(r'\s+'))
+      .where((term) => term.isNotEmpty)
+      .map(RegExp.escape)
+      .toList();
+  if (text.isEmpty || terms.isEmpty) {
+    return [TextSpan(text: text, style: base)];
+  }
+  final pattern = RegExp(terms.join('|'), caseSensitive: false);
+  final spans = <InlineSpan>[];
+  var cursor = 0;
+  for (final match in pattern.allMatches(text)) {
+    if (match.start > cursor) {
+      spans.add(
+        TextSpan(text: text.substring(cursor, match.start), style: base),
+      );
+    }
+    spans.add(
+      TextSpan(text: text.substring(match.start, match.end), style: highlight),
+    );
+    cursor = match.end;
+  }
+  if (cursor < text.length) {
+    spans.add(TextSpan(text: text.substring(cursor), style: base));
+  }
+  return spans;
 }
 
 class _DesktopInlineMiniAppAction extends StatelessWidget {
@@ -662,13 +749,20 @@ class _DesktopInlineMiniAppAction extends StatelessWidget {
 }
 
 class _DesktopCompactSearchHitRow extends StatelessWidget {
-  const _DesktopCompactSearchHitRow({required this.hit});
+  const _DesktopCompactSearchHitRow({required this.hit, this.highlight = ''});
 
   final _SearchHit hit;
+  final String highlight;
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final titleStyle = TextStyle(
+      fontSize: 14,
+      fontWeight: FontWeight.w600,
+      color: c.textPrimary,
+    );
+    final subtitleStyle = TextStyle(fontSize: 12, color: c.textSecondary);
     return SizedBox(
       height: 56,
       child: Padding(
@@ -682,23 +776,34 @@ class _DesktopCompactSearchHitRow extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    hit.title,
+                  Text.rich(
+                    TextSpan(
+                      children: searchHighlightSpans(
+                        hit.title,
+                        highlight,
+                        base: titleStyle,
+                        highlight: titleStyle.copyWith(color: AppTheme.brand),
+                      ),
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: c.textPrimary,
-                    ),
                   ),
                   if (hit.subtitle.isNotEmpty) ...[
                     const SizedBox(height: 2),
-                    Text(
-                      hit.subtitle,
+                    Text.rich(
+                      TextSpan(
+                        children: searchHighlightSpans(
+                          hit.subtitle,
+                          highlight,
+                          base: subtitleStyle,
+                          highlight: subtitleStyle.copyWith(
+                            color: AppTheme.brand,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 12, color: c.textSecondary),
                     ),
                   ],
                 ],
@@ -770,10 +875,15 @@ class SearchView extends StatefulWidget {
   const SearchView({
     super.key,
     this.initialQuery = '',
+    this.initialTab,
     this.showBackButton = true,
   });
 
   final String initialQuery;
+
+  /// Opens the view pre-scoped to one category (the dropdown's per-section
+  /// chevrons land here).
+  final SearchTab? initialTab;
   final bool showBackButton;
 
   @override
@@ -784,7 +894,7 @@ class _SearchViewState extends State<SearchView> {
   late final TextEditingController _controller;
   final _focus = FocusNode();
   final _vm = _SearchViewModel();
-  _SearchTab _tab = _SearchTab.chats;
+  late SearchTab _tab = widget.initialTab ?? SearchTab.chats;
   late String _query;
 
   @override
@@ -948,11 +1058,11 @@ class _SearchViewState extends State<SearchView> {
 
   Widget _results() {
     final c = context.colors;
-    if (_tab == _SearchTab.miniApps) {
+    if (_tab == SearchTab.miniApps) {
       return MiniAppsSearchTab(query: _query);
     }
     final hits = _vm.resultsFor(_tab);
-    final allowEmptyQuery = _tab != _SearchTab.chats;
+    final allowEmptyQuery = _tab != SearchTab.chats;
     if (_query.trim().isEmpty && !allowEmptyQuery) {
       return _empty(AppStrings.t(AppStringKeys.chatsSearchPlaceholder));
     }
@@ -1117,13 +1227,13 @@ class _SearchViewState extends State<SearchView> {
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 18),
         child: Row(
-          children: [for (final tab in _SearchTab.values) _tabButton(tab)],
+          children: [for (final tab in SearchTab.values) _tabButton(tab)],
         ),
       ),
     );
   }
 
-  Widget _tabButton(_SearchTab tab) {
+  Widget _tabButton(SearchTab tab) {
     final c = context.colors;
     final selected = _tab == tab;
     return GestureDetector(
@@ -1207,7 +1317,7 @@ Future<void> _openSearchHit(BuildContext context, _SearchHit hit) async {
   } catch (_) {}
 }
 
-enum _SearchTab {
+enum SearchTab {
   chats,
   miniApps,
   posts,
@@ -1218,45 +1328,45 @@ enum _SearchTab {
   voice;
 
   String get label => switch (this) {
-    _SearchTab.chats => AppStrings.t(AppStringKeys.searchTabChats),
-    _SearchTab.miniApps => AppStrings.t(AppStringKeys.searchTabMiniApps),
-    _SearchTab.posts => AppStrings.t(AppStringKeys.searchTabMessages),
-    _SearchTab.media => AppStrings.t(AppStringKeys.searchTabMedia),
-    _SearchTab.links => AppStrings.t(AppStringKeys.searchTabLinks),
-    _SearchTab.files => AppStrings.t(AppStringKeys.searchTabFiles),
-    _SearchTab.music => AppStrings.t(AppStringKeys.searchTabMusic),
-    _SearchTab.voice => AppStrings.t(AppStringKeys.searchTabVoiceMessages),
+    SearchTab.chats => AppStrings.t(AppStringKeys.searchTabChats),
+    SearchTab.miniApps => AppStrings.t(AppStringKeys.searchTabMiniApps),
+    SearchTab.posts => AppStrings.t(AppStringKeys.searchTabMessages),
+    SearchTab.media => AppStrings.t(AppStringKeys.searchTabMedia),
+    SearchTab.links => AppStrings.t(AppStringKeys.searchTabLinks),
+    SearchTab.files => AppStrings.t(AppStringKeys.searchTabFiles),
+    SearchTab.music => AppStrings.t(AppStringKeys.searchTabMusic),
+    SearchTab.voice => AppStrings.t(AppStringKeys.searchTabVoiceMessages),
   };
 
   String? get filter => switch (this) {
-    _SearchTab.chats => null,
-    _SearchTab.miniApps => null,
-    _SearchTab.posts => 'searchMessagesFilterEmpty',
-    _SearchTab.media => 'searchMessagesFilterPhotoAndVideo',
-    _SearchTab.links => 'searchMessagesFilterUrl',
-    _SearchTab.files => 'searchMessagesFilterDocument',
-    _SearchTab.music => 'searchMessagesFilterAudio',
-    _SearchTab.voice => 'searchMessagesFilterVoiceNote',
+    SearchTab.chats => null,
+    SearchTab.miniApps => null,
+    SearchTab.posts => 'searchMessagesFilterEmpty',
+    SearchTab.media => 'searchMessagesFilterPhotoAndVideo',
+    SearchTab.links => 'searchMessagesFilterUrl',
+    SearchTab.files => 'searchMessagesFilterDocument',
+    SearchTab.music => 'searchMessagesFilterAudio',
+    SearchTab.voice => 'searchMessagesFilterVoiceNote',
   };
 }
 
 class _SearchViewModel extends ChangeNotifier {
-  final Map<_SearchTab, List<_SearchHit>> _results = {
-    for (final tab in _SearchTab.values) tab: <_SearchHit>[],
+  final Map<SearchTab, List<_SearchHit>> _results = {
+    for (final tab in SearchTab.values) tab: <_SearchHit>[],
   };
-  final Set<_SearchTab> _loading = {};
-  final Map<_SearchTab, String> _queries = {
-    for (final tab in _SearchTab.values) tab: '',
+  final Set<SearchTab> _loading = {};
+  final Map<SearchTab, String> _queries = {
+    for (final tab in SearchTab.values) tab: '',
   };
-  final Map<_SearchTab, int> _runIds = {
-    for (final tab in _SearchTab.values) tab: 0,
+  final Map<SearchTab, int> _runIds = {
+    for (final tab in SearchTab.values) tab: 0,
   };
   bool _disposed = false;
 
-  List<_SearchHit> resultsFor(_SearchTab tab) => _results[tab] ?? const [];
-  bool isLoading(_SearchTab tab) => _loading.contains(tab);
+  List<_SearchHit> resultsFor(SearchTab tab) => _results[tab] ?? const [];
+  bool isLoading(SearchTab tab) => _loading.contains(tab);
 
-  void search(String q, _SearchTab tab) {
+  void search(String q, SearchTab tab) {
     if (_disposed) return;
     _startSearch(q.trim(), tab, resultLimit: 60);
     notifyListeners();
@@ -1264,7 +1374,7 @@ class _SearchViewModel extends ChangeNotifier {
 
   void searchMany(
     String q,
-    Iterable<_SearchTab> tabs, {
+    Iterable<SearchTab> tabs, {
     required int resultLimitPerTab,
   }) {
     if (_disposed) return;
@@ -1275,7 +1385,7 @@ class _SearchViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  void clearTabs(Iterable<_SearchTab> tabs) {
+  void clearTabs(Iterable<SearchTab> tabs) {
     if (_disposed) return;
     for (final tab in tabs) {
       _queries[tab] = '';
@@ -1286,27 +1396,23 @@ class _SearchViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _startSearch(
-    String trimmed,
-    _SearchTab tab, {
-    required int resultLimit,
-  }) {
+  void _startSearch(String trimmed, SearchTab tab, {required int resultLimit}) {
     if (_disposed) return;
     final runId = (_runIds[tab] ?? 0) + 1;
     _runIds[tab] = runId;
     _queries[tab] = trimmed;
-    if (tab == _SearchTab.miniApps) {
+    if (tab == SearchTab.miniApps) {
       _results[tab] = const [];
       _loading.remove(tab);
       return;
     }
-    if (trimmed.isEmpty && tab == _SearchTab.chats) {
+    if (trimmed.isEmpty && tab == SearchTab.chats) {
       _results[tab] = const [];
       _loading.remove(tab);
       return;
     }
     _loading.add(tab);
-    if (tab == _SearchTab.chats) {
+    if (tab == SearchTab.chats) {
       unawaited(_runChats(trimmed, tab, runId, resultLimit));
     } else {
       unawaited(_runMessages(trimmed, tab, runId, resultLimit));
@@ -1315,7 +1421,7 @@ class _SearchViewModel extends ChangeNotifier {
 
   Future<void> _runChats(
     String trimmed,
-    _SearchTab tab,
+    SearchTab tab,
     int runId,
     int resultLimit,
   ) async {
@@ -1420,7 +1526,7 @@ class _SearchViewModel extends ChangeNotifier {
 
   Future<void> _runMessages(
     String trimmed,
-    _SearchTab tab,
+    SearchTab tab,
     int runId,
     int resultLimit,
   ) async {
@@ -1505,21 +1611,21 @@ class _SearchViewModel extends ChangeNotifier {
     }
   }
 
-  void _finish(_SearchTab tab, int runId, String query, List<_SearchHit> out) {
+  void _finish(SearchTab tab, int runId, String query, List<_SearchHit> out) {
     if (!_isCurrent(tab, runId, query)) return;
     _results[tab] = out;
     _loading.remove(tab);
     notifyListeners();
   }
 
-  bool _isCurrent(_SearchTab tab, int runId, String query) =>
+  bool _isCurrent(SearchTab tab, int runId, String query) =>
       !_disposed && _runIds[tab] == runId && _queries[tab] == query;
 
   @override
   void dispose() {
     if (_disposed) return;
     _disposed = true;
-    for (final tab in _SearchTab.values) {
+    for (final tab in SearchTab.values) {
       _runIds[tab] = (_runIds[tab] ?? 0) + 1;
     }
     _loading.clear();

@@ -580,6 +580,11 @@ enum _PlayerGesture { brightness, volume, seek, changeVideo, skipTenSeconds }
 
 enum _PlayerGestureSide { left, right }
 
+// Vertical adjustments should require a deliberate drag.  Mapping one screen
+// height to the full range made small phone swipes change volume and brightness
+// too abruptly, especially while holding the device in one hand.
+const _verticalGestureSensitivity = 0.5;
+
 class _VideoControlsLayout {
   const _VideoControlsLayout({
     required this.left,
@@ -2060,17 +2065,17 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
               .clamp(0, duration.inMilliseconds),
         );
       case _PlayerGesture.volume:
-        _gestureValue = (_gestureStartValue - delta.dy / size.height).clamp(
-          0.0,
-          1.0,
-        );
+        _gestureValue =
+            (_gestureStartValue -
+                    delta.dy / size.height * _verticalGestureSensitivity)
+                .clamp(0.0, 1.0);
         controller.setVolume(_gestureValue);
       case _PlayerGesture.brightness:
         if (!_gestureBrightnessReady) break;
-        _gestureValue = (_gestureStartValue - delta.dy / size.height).clamp(
-          0.01,
-          1.0,
-        );
+        _gestureValue =
+            (_gestureStartValue -
+                    delta.dy / size.height * _verticalGestureSensitivity)
+                .clamp(0.01, 1.0);
         unawaited(_setPlayerBrightness(_gestureValue));
       case _PlayerGesture.changeVideo:
         final threshold = (size.width * 0.14).clamp(56.0, 120.0);

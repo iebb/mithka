@@ -10,6 +10,7 @@
 #include <file_selector_linux/file_selector_plugin.h>
 #include <flutter_secure_storage_linux/flutter_secure_storage_linux_plugin.h>
 #include <fvp/fvp_plugin.h>
+#include <gtk/gtk_plugin.h>
 #include <hotkey_manager_linux/hotkey_manager_linux_plugin.h>
 #include <multi_window_manager/multi_window_manager_plugin.h>
 #include <screen_capturer_linux/screen_capturer_linux_plugin.h>
@@ -29,6 +30,9 @@ void fl_register_plugins(FlPluginRegistry* registry) {
   g_autoptr(FlPluginRegistrar) fvp_registrar =
       fl_plugin_registry_get_registrar_for_plugin(registry, "FvpPlugin");
   fvp_plugin_register_with_registrar(fvp_registrar);
+  g_autoptr(FlPluginRegistrar) gtk_registrar =
+      fl_plugin_registry_get_registrar_for_plugin(registry, "GtkPlugin");
+  gtk_plugin_register_with_registrar(gtk_registrar);
   g_autoptr(FlPluginRegistrar) hotkey_manager_linux_registrar =
       fl_plugin_registry_get_registrar_for_plugin(registry, "HotkeyManagerLinuxPlugin");
   hotkey_manager_linux_plugin_register_with_registrar(hotkey_manager_linux_registrar);

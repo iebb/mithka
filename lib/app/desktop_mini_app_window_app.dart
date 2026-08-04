@@ -189,6 +189,7 @@ class _DesktopMiniAppSurfaceState extends State<_DesktopMiniAppSurface> {
       ),
       fullscreen: _fullscreen,
       showSheetHandle: false,
+      standaloneWindowChrome: true,
       closeTdLaunchOnDispose: false,
       onClose: DesktopMiniAppWindowService.instance.closeCurrentWindow,
       onFullscreenChanged: _requestFullscreen,

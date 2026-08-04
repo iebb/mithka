@@ -69,8 +69,10 @@ InlineGifSearchPage parseInlineGifSearchPage(Map<String, dynamic> response) {
 
 class GifStore extends ChangeNotifier {
   GifStore._() {
-    _subscription = TdClient.shared.subscribe().listen((update) {
-      if (update.type == 'updateSavedAnimations') {
+    _subscription = TdClient.shared.updatesOf('updateSavedAnimations').listen((
+      update,
+    ) {
+      {
         unawaited(_load(force: true));
       }
     });

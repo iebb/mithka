@@ -1,4 +1,26 @@
 const esMessages = <String, String>{
+  'appearancePreviewChatTextSample': "Así se verá el texto del chat.",
+  'appearancePreviewMessageSample': "Jennie: Nos vemos en el chat",
+  'appearancePreviewUsersSample': "Usuarios de Mithka",
+  'chatInputResizeMessageInput': "Cambiar tamaño del cuadro de mensaje",
+  'debugBubblePreviewExperimental':
+      "Experimental: los estilos pueden cambiar en cualquier momento.",
+  'debugBubblePreviewGenres': "Estilos de burbuja de mensaje",
+  'mainTabResizeSidebar': "Cambiar tamaño de la barra lateral",
+  'messageBubbleApply': "Aplicar burbuja",
+  'messageBubbleRepoApplied': "Burbuja de mensaje aplicada.",
+  'messageBubbleRepoDownloadFailed': "No se pudo descargar esta burbuja.",
+  'messageBubbleRepoPreview': "Vista previa de la burbuja",
+  'messageBubbleRepoSizeRule':
+      "Las imágenes de burbuja deben medir exactamente 360 × 180 px.",
+  'messageBubbleRepoTitle': "Burbujas de mensaje",
+  'messageBubbleSettingsAllMessages': "Todos los mensajes",
+  'messageBubbleSettingsApplyTo': "Aplicar burbuja a",
+  'messageBubbleSettingsOpenFailed': "No se pudo abrir @msgbubble.",
+  'messageBubbleSettingsOpenRepo': "Abrir repositorio de burbujas",
+  'messageBubbleSettingsOwnMessages': "Solo mis mensajes",
+  'messageBubbleSettingsRepoDescription':
+      "Explora el canal público como una cuadrícula de burbujas. Las imágenes del repositorio miden exactamente 360 × 180 px, con un área de burbuja de 300 × 120 y 30 px de margen transparente en cada lado.",
   'navigationBack': "Atrás",
   'appearanceArchivedChatsDesktopHint':
       "En el escritorio, los chats archivados al deslizar permanecen visibles arriba para poder acceder con el ratón. La opción guardada sigue aplicándose en el móvil.",
@@ -1421,6 +1443,7 @@ const esMessages = <String, String>{
   'momentsSending': "Enviando",
   'momentsShareSomethingPlaceholder': "Comparte algo nuevo...",
   'momentsStories': "Historias",
+  'sharedMediaMinDuration': "Duración mín.",
   'storiesActiveCount': "{value1} activas",
   'storiesAdd': "Añadir historia",
   'storiesCountNew': "{value1} historias · Nuevas",

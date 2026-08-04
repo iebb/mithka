@@ -1,4 +1,27 @@
 const deMessages = <String, String>{
+  'appearancePreviewChatTextSample': "So wird der Chat-Text aussehen.",
+  'appearancePreviewMessageSample': "Jennie: Wir sehen uns im Chat",
+  'appearancePreviewUsersSample': "Mithka-Nutzer",
+  'chatInputResizeMessageInput': "Eingabefeld anpassen",
+  'debugBubblePreviewExperimental':
+      "Experimentell — Stile können sich jederzeit ändern.",
+  'debugBubblePreviewGenres': "Nachrichtenblasen-Stile",
+  'mainTabResizeSidebar': "Seitenleiste anpassen",
+  'messageBubbleApply': "Blase anwenden",
+  'messageBubbleRepoApplied': "Nachrichtenblase angewendet.",
+  'messageBubbleRepoDownloadFailed':
+      "Diese Blase konnte nicht heruntergeladen werden.",
+  'messageBubbleRepoPreview': "Blasenvorschau",
+  'messageBubbleRepoSizeRule':
+      "Blasenbilder müssen genau 360 × 180 px groß sein.",
+  'messageBubbleRepoTitle': "Nachrichtenblasen",
+  'messageBubbleSettingsAllMessages': "Alle Nachrichten",
+  'messageBubbleSettingsApplyTo': "Blase anwenden auf",
+  'messageBubbleSettingsOpenFailed': "@msgbubble konnte nicht geöffnet werden.",
+  'messageBubbleSettingsOpenRepo': "Blasen-Repository öffnen",
+  'messageBubbleSettingsOwnMessages': "Nur meine Nachrichten",
+  'messageBubbleSettingsRepoDescription':
+      "Durchsuche den öffentlichen Kanal als Blasenraster. Repository-Bilder sind genau 360 × 180 px groß, mit einem 300 × 120-Blasenbereich und 30 px transparentem Rand auf jeder Seite.",
   'navigationBack': "Zurück",
   'appearanceArchivedChatsDesktopHint':
       "Auf dem Desktop bleiben Archive zum Herunterziehen oben sichtbar, damit sie mit der Maus erreichbar sind. Die gespeicherte Auswahl gilt weiterhin auf Mobilgeräten.",
@@ -1432,6 +1455,7 @@ const deMessages = <String, String>{
   'momentsSending': "Wird gesendet",
   'momentsShareSomethingPlaceholder': "Teile etwas Neues...",
   'momentsStories': "Storys",
+  'sharedMediaMinDuration': "Mindestdauer",
   'storiesActiveCount': "{value1} aktiv",
   'storiesAdd': "Story hinzufügen",
   'storiesCountNew': "{value1} Storys · Neu",

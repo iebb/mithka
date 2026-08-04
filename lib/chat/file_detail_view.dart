@@ -50,8 +50,7 @@ class _FileDetailViewState extends State<FileDetailView> {
   Future<void> _start() async {
     final id = _fileId;
     if (id == 0) return;
-    _sub = TdClient.shared.subscribe().listen((u) {
-      if (u.type != 'updateFile') return;
+    _sub = TdClient.shared.updatesOf('updateFile').listen((u) {
       final f = u.obj('file');
       if (f != null && f.integer('id') == id) _apply(f);
     });

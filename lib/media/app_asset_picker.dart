@@ -127,6 +127,10 @@ abstract final class AppAssetPicker {
       );
       if (state == PermissionState.authorized ||
           state == PermissionState.limited) {
+        // The permission dialog awaited above; the host route may be gone.
+        if (!context.mounted) {
+          return const AppAssetPickerSelection(assets: [], failedCount: 0);
+        }
         final assets = await AssetPicker.pickAssets(
           context,
           pickerConfig: buildConfig(

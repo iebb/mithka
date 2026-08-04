@@ -119,7 +119,9 @@ class _StoryViewerViewState extends State<StoryViewerView>
       ..addStatusListener(_handleProgressStatus);
     _replyFocus.addListener(_handleReplyFocus);
     _resolveSender();
-    _updates = TdClient.shared.subscribe().listen(_handleUpdate);
+    _updates = TdClient.shared
+        .updatesOf('updateStoryStealthMode')
+        .listen(_handleUpdate);
     if (widget.storyIds.isNotEmpty) _load(_index);
   }
 

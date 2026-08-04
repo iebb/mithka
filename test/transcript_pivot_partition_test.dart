@@ -134,15 +134,18 @@ void main() {
   });
 
   group('isLatestTranscriptArmShort', () {
-    test('treats a tall single bubble as short when the arm has few entries', () {
-      expect(
-        isLatestTranscriptArmShort(
-          maxScrollExtent: 400,
-          afterCenterEntryCount: 1,
-        ),
-        isTrue,
-      );
-    });
+    test(
+      'treats a tall single bubble as short when the arm has few entries',
+      () {
+        expect(
+          isLatestTranscriptArmShort(
+            maxScrollExtent: 400,
+            afterCenterEntryCount: 1,
+          ),
+          isTrue,
+        );
+      },
+    );
 
     test('treats a low max extent as short even with several entries', () {
       expect(
@@ -166,15 +169,18 @@ void main() {
   });
 
   group('shouldFreezeTranscriptPivot', () {
-    test('refuses to freeze while older history can still fill a short arm', () {
-      expect(
-        shouldFreezeTranscriptPivot(
-          latestArmIsShort: true,
-          canLoadOlder: true,
-        ),
-        isFalse,
-      );
-    });
+    test(
+      'refuses to freeze while older history can still fill a short arm',
+      () {
+        expect(
+          shouldFreezeTranscriptPivot(
+            latestArmIsShort: true,
+            canLoadOlder: true,
+          ),
+          isFalse,
+        );
+      },
+    );
 
     test('freezes once the latest arm is full', () {
       expect(

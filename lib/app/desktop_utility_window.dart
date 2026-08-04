@@ -662,6 +662,8 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
     ),
     DesktopUtilityWindowKind.search => SearchView(
       initialQuery: widget.arguments.initialQuery ?? '',
+      initialTab: SearchTab.values
+          .asNameMap()[widget.arguments.initialSearchTab],
       showBackButton: false,
     ),
     DesktopUtilityWindowKind.settings => SettingsView(

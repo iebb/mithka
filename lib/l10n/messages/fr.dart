@@ -1,4 +1,28 @@
 const frMessages = <String, String>{
+  'appearancePreviewChatTextSample':
+      "Voici à quoi ressemblera le texte du chat.",
+  'appearancePreviewMessageSample':
+      "Jennie : À tout de suite dans la discussion",
+  'appearancePreviewUsersSample': "Utilisateurs Mithka",
+  'chatInputResizeMessageInput': "Redimensionner la zone de saisie",
+  'debugBubblePreviewExperimental':
+      "Expérimental — les styles peuvent changer à tout moment.",
+  'debugBubblePreviewGenres': "Styles de bulles de message",
+  'mainTabResizeSidebar': "Redimensionner la barre latérale",
+  'messageBubbleApply': "Appliquer la bulle",
+  'messageBubbleRepoApplied': "Bulle de message appliquée.",
+  'messageBubbleRepoDownloadFailed': "Impossible de télécharger cette bulle.",
+  'messageBubbleRepoPreview': "Aperçu de la bulle",
+  'messageBubbleRepoSizeRule':
+      "Les images de bulle doivent faire exactement 360 × 180 px.",
+  'messageBubbleRepoTitle': "Bulles de message",
+  'messageBubbleSettingsAllMessages': "Tous les messages",
+  'messageBubbleSettingsApplyTo': "Appliquer la bulle à",
+  'messageBubbleSettingsOpenFailed': "Impossible d’ouvrir @msgbubble.",
+  'messageBubbleSettingsOpenRepo': "Ouvrir le dépôt de bulles",
+  'messageBubbleSettingsOwnMessages': "Mes messages uniquement",
+  'messageBubbleSettingsRepoDescription':
+      "Parcourez le canal public sous forme de grille de bulles. Les images du dépôt font exactement 360 × 180 px, avec une zone de bulle de 300 × 120 et 30 px de marge transparente de chaque côté.",
   'navigationBack': "Retour",
   'appearanceArchivedChatsDesktopHint':
       "Sur ordinateur, les archives accessibles par glissement restent visibles en haut pour être utilisables à la souris. Le choix enregistré continue de s’appliquer sur mobile.",
@@ -1429,6 +1453,7 @@ const frMessages = <String, String>{
   'momentsSending': "Envoi",
   'momentsShareSomethingPlaceholder': "Partagez une nouveauté...",
   'momentsStories': "Stories",
+  'sharedMediaMinDuration': "Durée min.",
   'storiesActiveCount': "{value1} actives",
   'storiesAdd': "Ajouter une story",
   'storiesCountNew': "{value1} stories · Nouvelles",

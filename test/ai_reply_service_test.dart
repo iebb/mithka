@@ -223,12 +223,7 @@ void main() {
         replyToMessageId: 30,
       ),
       for (var id = 90; id <= 100; id++)
-        _chatMessage(
-          id: id,
-          text: 'Nearby target context $id',
-          senderName: 'Alice',
-          senderId: 11,
-        ),
+        _chatMessage(id: id, text: 'Nearby target context $id', senderId: 11),
     ];
 
     final request = AiReplyRequest.fromChatMessages(

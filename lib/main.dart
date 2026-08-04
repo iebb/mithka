@@ -29,6 +29,7 @@ import 'app/app_performance_controller.dart';
 import 'app/app_version.dart';
 import 'app/chat_deep_link_controller.dart';
 import 'app/content_view.dart';
+import 'app/deep_link_service.dart';
 import 'app/desktop_chat_window.dart';
 import 'app/desktop_hotkey_host.dart';
 import 'app/desktop_image_preview_window.dart';
@@ -154,16 +155,27 @@ Future<void> main(List<String> arguments) async {
 
 Future<void> _bootstrapAndRunApp() async {
   GoogleFonts.config.allowRuntimeFetching = true;
+  // Bring TDLib up first: session restore is the longest serial chain in a
+  // launch, and nothing below depends on it — the widget tree attaches to
+  // AuthManager's stream whenever it is ready.
+  final auth = AuthManager()..start();
   _initializeVideoBackend();
-  // Let iPhone and iPad follow every physical orientation.
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-    DeviceOrientation.landscapeLeft,
-    DeviceOrientation.landscapeRight,
-  ]);
-  // Draw under transparent status / navigation bars (edge-to-edge).
-  configureImmersiveSystemUI();
+  final isMobile =
+      defaultTargetPlatform == TargetPlatform.iOS ||
+      defaultTargetPlatform == TargetPlatform.android;
+  if (isMobile) {
+    // Let iPhone and iPad follow every physical orientation. Desktop windows
+    // have no orientation/system bars — skip both platform-channel round
+    // trips there.
+    await SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+    // Draw under transparent status / navigation bars (edge-to-edge).
+    configureImmersiveSystemUI();
+  }
   final prefs = await SharedPreferences.getInstance();
   DesktopHotkeyController.initializeShared(prefs, replace: true);
   await LocalAppLockController.shared.initialize();
@@ -177,7 +189,7 @@ Future<void> _bootstrapAndRunApp() async {
   // trips that nothing in the widget tree depends on — initialize them in
   // parallel with the first frame instead of blocking it.
   unawaited(_initTelemetry());
-  final app = MithkaApp(prefs: prefs);
+  final app = MithkaApp(prefs: prefs, auth: auth);
   _runAppWithNonFatalGoogleFonts(app);
 }
 
@@ -307,15 +319,19 @@ typedef _MithkaAppConsumer =
     >;
 
 class MithkaApp extends StatefulWidget {
-  const MithkaApp({super.key, required this.prefs});
+  const MithkaApp({super.key, required this.prefs, this.auth});
   final SharedPreferences prefs;
+
+  /// Bootstrap-started AuthManager, so TDLib session restore runs in
+  /// parallel with the first build instead of after it.
+  final AuthManager? auth;
 
   @override
   State<MithkaApp> createState() => _MithkaAppState();
 }
 
 class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
-  late final AuthManager _auth = AuthManager();
+  late final AuthManager _auth = widget.auth ?? AuthManager();
   late final AccountStore _accounts = AccountStore(widget.prefs);
   late final MithkaProService _mithkaPro = MithkaProService.shared;
   late ThemeController _theme = ThemeController(
@@ -368,6 +384,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
     _theme.loadSelectedEmojiFontIfAvailable();
     _autoDownload.initialize(widget.prefs);
     _auth.start();
+    DeepLinkService.shared.start();
     DesktopMiniAppWindowService.instance.attachMainProxy();
     DesktopChatWindowService.instance.attachMainProxy(
       accountUserIdForSlot: _accountUserIdForSlot,

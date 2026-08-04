@@ -86,6 +86,16 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
+            <!-- The app's own deep-link schemes (tg:// grammar): mk:// and
+                 mithka://. Registered here instead of tg:// so Mithka never
+                 competes with official Telegram clients for their links. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="mk"/>
+                <data android:scheme="mithka"/>
+            </intent-filter>
         </activity>
         <activity-alias
             android:name=".MainActivityDefault"

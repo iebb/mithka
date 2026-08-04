@@ -190,7 +190,9 @@ WindowOptions desktopMiniAppWindowOptions(
   backgroundColor: arguments.dark
       ? const Color(0xFF111113)
       : const Color(0xFFFFFFFF),
-  titleBarStyle: TitleBarStyle.normal,
+  // The mini-app toolbar is the title bar (custom-rendered chrome); the
+  // native bar would double it.
+  titleBarStyle: TitleBarStyle.hidden,
   windowButtonVisibility: true,
 );
 

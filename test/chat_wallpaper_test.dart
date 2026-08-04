@@ -875,7 +875,7 @@ void main() {
         if (await root.exists()) await root.delete(recursive: true);
       });
       final source = File('${root.path}/pattern.tgv');
-      await source.writeAsBytes(GZipEncoder().encode(utf8.encode(svg))!);
+      await source.writeAsBytes(const GZipEncoder().encode(utf8.encode(svg)));
       final controller = ChatWallpaperController(
         activeSlot: () => 0,
         hasActiveClient: () => true,

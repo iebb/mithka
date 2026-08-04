@@ -182,6 +182,7 @@ class DesktopUtilityWindowArguments {
     this.userId,
     this.initialSettingsCategoryId,
     this.initialQuery,
+    this.initialSearchTab,
     this.instanceId,
   });
 
@@ -195,6 +196,9 @@ class DesktopUtilityWindowArguments {
   final bool dark;
   final String? initialSettingsCategoryId;
   final String? initialQuery;
+
+  /// SearchTab name to scope a search window to a single category.
+  final String? initialSearchTab;
   final String? instanceId;
 
   DesktopUtilityWindowKey get key => DesktopUtilityWindowKey(
@@ -226,6 +230,8 @@ class DesktopUtilityWindowArguments {
     ),
     if (kind == DesktopUtilityWindowKind.search)
       'initialQuery': normalizeSearchQuery(initialQuery),
+    if (kind == DesktopUtilityWindowKind.search && initialSearchTab != null)
+      'initialSearchTab': initialSearchTab,
     if (kind == DesktopUtilityWindowKind.search)
       'instanceId': normalizeInstanceId(instanceId),
   });
@@ -278,6 +284,9 @@ class DesktopUtilityWindowArguments {
         ),
         initialQuery: kind == DesktopUtilityWindowKind.search
             ? normalizeSearchQuery(decoded['initialQuery'] as String?)
+            : null,
+        initialSearchTab: kind == DesktopUtilityWindowKind.search
+            ? decoded['initialSearchTab'] as String?
             : null,
         instanceId: kind == DesktopUtilityWindowKind.search
             ? normalizeInstanceId(decoded['instanceId'] as String?)

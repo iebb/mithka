@@ -4249,7 +4249,7 @@ class _MessageBubbleState extends State<MessageBubble>
                         ),
                         const SizedBox(width: 7),
                         Text(
-                          'Apply bubble',
+                          AppStrings.t(AppStringKeys.messageBubbleApply),
                           style: TextStyle(
                             color: AppTheme.onBrand,
                             fontSize: 13,

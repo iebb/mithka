@@ -573,7 +573,10 @@ Future<bool> _openTelegramFallback(
   final uri = Uri.tryParse(link);
   if (uri == null) return false;
 
-  if (uri.scheme.toLowerCase() == 'tg') {
+  // mk:// and mithka:// are the app's own registered schemes; they carry the
+  // same path/query grammar as tg:// links.
+  const appSchemes = {'tg', 'mk', 'mithka'};
+  if (appSchemes.contains(uri.scheme.toLowerCase())) {
     final host = uri.host.toLowerCase();
     final params = uri.queryParameters;
     final userId = int.tryParse(params['id'] ?? '');

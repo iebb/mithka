@@ -121,7 +121,7 @@ class ProxyConfig {
     final scheme = uri.scheme.toLowerCase();
     final host = uri.host.toLowerCase();
     String? kind;
-    if (scheme == 'tg') {
+    if (scheme == 'tg' || scheme == 'mk' || scheme == 'mithka') {
       final tgTarget = host.isNotEmpty ? host : uri.path.toLowerCase();
       kind = switch (tgTarget) {
         'socks' => 'socks5',
