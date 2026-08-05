@@ -18,7 +18,6 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app/chat_deep_link_controller.dart';
-import '../l10n/telegram_language_controller.dart';
 import '../settings/country_chat_blocker.dart';
 import '../settings/keyword_blocker.dart';
 import '../tdlib/chat_membership.dart';
@@ -66,6 +65,16 @@ String notificationTitleForAccount({
 TdFileRef? notificationChatPhotoFromChat(Map<String, dynamic> chat) =>
     TDParse.smallPhoto(chat.obj('photo'));
 
+/// Incoming messages up to `last_read_inbox_message_id` are read, no matter
+/// which device read them. TDLib replays the whole offline backlog as
+/// `updateNewMessage` once it reconnects, so this marker is what keeps a
+/// launch from announcing conversations the user already cleared elsewhere.
+@visibleForTesting
+bool notificationMessageIsRead({
+  required int messageId,
+  required int lastReadInboxMessageId,
+}) => messageId <= lastReadInboxMessageId;
+
 class InAppNotificationBannerData {
   const InAppNotificationBannerData({
     required this.target,
@@ -99,6 +108,10 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
   );
   static const _inAppBannersKey = 'mithka.notifications.inAppBanners.v1';
 
+  /// How long the offline backlog is held when an account never reports
+  /// `connectionStateReady` — a stalled sync must not mute notifications.
+  static const _backlogSettleTimeout = Duration(seconds: 8);
+
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
   final IOSCommunicationNotificationBridge _iosCommunicationNotifications =
@@ -120,6 +133,10 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
   final Map<Object, _VisibleChatRegistration> _visibleChats = {};
   final Map<(int, int), Map<String, dynamic>> _chatNotificationSettings = {};
   final Map<int, int> _accountUserIdsByClient = {};
+  final Map<(int, int), int> _lastReadInboxMessageIds = {};
+  final Map<(int, int), Map<String, dynamic>> _backlogMessages = {};
+  final Map<int, Timer> _backlogTimers = {};
+  final Set<int> _syncedClients = {};
 
   bool get inAppBannersEnabled => _inAppBannersEnabled;
   InAppNotificationBannerData? get inAppBanner => _inAppBanner;
@@ -225,6 +242,14 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
   Future<void> _handle(Map<String, dynamic> update) async {
     final clientId = update.integer('@client_id') ?? _client.activeClientId;
     final isActiveAccount = clientId == _client.activeClientId;
+    if (update.type == 'updateConnectionState') {
+      _applyConnectionStateUpdate(update, clientId: clientId);
+      return;
+    }
+    if (update.type == 'updateChatReadInbox') {
+      _applyChatReadInboxUpdate(update, clientId: clientId);
+      return;
+    }
     if (update.type == 'updateChatNotificationSettings') {
       _applyChatNotificationSettingsUpdate(update, clientId: clientId);
       return;
@@ -264,6 +289,26 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
     final raw = update.obj('message');
     if (raw == null || (raw.boolean('is_outgoing') ?? false)) return;
 
+    // TDLib replays everything that arrived while the app was offline as fresh
+    // `updateNewMessage` events, before it has caught up on where the other
+    // devices left off. Hold that backlog until the account finishes syncing
+    // so read conversations stay silent instead of flooding the launch.
+    if (!_syncedClients.contains(clientId)) {
+      _holdBacklogMessage(raw, update, clientId: clientId);
+      return;
+    }
+
+    await _announceNewMessage(update, clientId: clientId);
+  }
+
+  Future<void> _announceNewMessage(
+    Map<String, dynamic> update, {
+    required int clientId,
+  }) async {
+    final raw = update.obj('message');
+    if (raw == null) return;
+    final isActiveAccount = clientId == _client.activeClientId;
+
     if (!await _receivesNotificationsFrom(
       clientId,
       isActiveAccount: isActiveAccount,
@@ -284,6 +329,14 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
     if (chatId == null || messageId == null || content == null) return;
 
     final chat = await _chat(chatId, clientId: clientId);
+    if (_isReadMessage(
+      clientId: clientId,
+      chatId: chatId,
+      messageId: messageId,
+      chat: chat,
+    )) {
+      return;
+    }
     final effective = chat == null
         ? null
         : await _effectiveSettings(chat, clientId);
@@ -626,6 +679,111 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
         text.contains('Error 2003');
   }
 
+  void _applyConnectionStateUpdate(
+    Map<String, dynamic> update, {
+    required int clientId,
+  }) {
+    final state = update.obj('state')?.type;
+    if (state == null) return;
+    if (state == 'connectionStateReady') {
+      unawaited(_finishSync(clientId));
+      return;
+    }
+    // `connectionStateUpdating` is TDLib downloading what arrived while the
+    // app was offline. Every state short of ready can still deliver a backlog,
+    // so a dropped connection re-arms the hold for the next reconnect.
+    _syncedClients.remove(clientId);
+  }
+
+  /// Keeps only the newest held message per chat: a backlog is a summary of
+  /// what was missed, not a replay of every message one notification at a time.
+  void _holdBacklogMessage(
+    Map<String, dynamic> message,
+    Map<String, dynamic> update, {
+    required int clientId,
+  }) {
+    final chatId = message.int64('chat_id');
+    final messageId = message.int64('id');
+    if (chatId == null || messageId == null) return;
+    final key = (clientId, chatId);
+    if (notificationMessageIsRead(
+      messageId: messageId,
+      lastReadInboxMessageId: _lastReadInboxMessageIds[key] ?? 0,
+    )) {
+      return;
+    }
+    final held = _backlogMessages[key]?.obj('message')?.int64('id') ?? 0;
+    if (messageId >= held) _backlogMessages[key] = update;
+    _backlogTimers[clientId] ??= Timer(
+      _backlogSettleTimeout,
+      () => unawaited(_finishSync(clientId)),
+    );
+  }
+
+  Future<void> _finishSync(int clientId) async {
+    _backlogTimers.remove(clientId)?.cancel();
+    _syncedClients.add(clientId);
+    final backlog = <Map<String, dynamic>>[];
+    _backlogMessages.removeWhere((key, update) {
+      if (key.$1 != clientId) return false;
+      backlog.add(update);
+      return true;
+    });
+    for (final update in backlog) {
+      await _announceNewMessage(update, clientId: clientId);
+    }
+  }
+
+  void _applyChatReadInboxUpdate(
+    Map<String, dynamic> update, {
+    required int clientId,
+  }) {
+    final chatId = update.int64('chat_id');
+    final lastReadMessageId = update.int64('last_read_inbox_message_id');
+    if (chatId == null || lastReadMessageId == null) return;
+    final key = (clientId, chatId);
+    if (lastReadMessageId > (_lastReadInboxMessageIds[key] ?? 0)) {
+      _lastReadInboxMessageIds[key] = lastReadMessageId;
+    }
+
+    final held = _backlogMessages[key]?.obj('message')?.int64('id');
+    if (held != null &&
+        notificationMessageIsRead(
+          messageId: held,
+          lastReadInboxMessageId: lastReadMessageId,
+        )) {
+      _backlogMessages.remove(key);
+    }
+
+    // Reading on another device should also retire what is already on screen.
+    final banner = _inAppBanner;
+    final bannerMessageId = banner?.target.messageId;
+    if (banner != null &&
+        bannerMessageId != null &&
+        banner.target.chatId == chatId &&
+        _targetClientId(banner.target) == clientId &&
+        notificationMessageIsRead(
+          messageId: bannerMessageId,
+          lastReadInboxMessageId: lastReadMessageId,
+        )) {
+      dismissInAppBanner();
+    }
+  }
+
+  bool _isReadMessage({
+    required int clientId,
+    required int chatId,
+    required int messageId,
+    Map<String, dynamic>? chat,
+  }) {
+    final tracked = _lastReadInboxMessageIds[(clientId, chatId)] ?? 0;
+    final reported = chat?.int64('last_read_inbox_message_id') ?? 0;
+    return notificationMessageIsRead(
+      messageId: messageId,
+      lastReadInboxMessageId: tracked > reported ? tracked : reported,
+    );
+  }
+
   void _applyChatNotificationSettingsUpdate(
     Map<String, dynamic> update, {
     required int clientId,
@@ -692,6 +850,69 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
       update,
       clientId: update.integer('@client_id') ?? _client.activeClientId,
     );
+  }
+
+  @visibleForTesting
+  void applyChatReadInboxUpdateForTesting(Map<String, dynamic> update) {
+    _applyChatReadInboxUpdate(
+      update,
+      clientId: update.integer('@client_id') ?? _client.activeClientId,
+    );
+  }
+
+  @visibleForTesting
+  void applyConnectionStateUpdateForTesting(Map<String, dynamic> update) {
+    _applyConnectionStateUpdate(
+      update,
+      clientId: update.integer('@client_id') ?? _client.activeClientId,
+    );
+  }
+
+  /// Holds a `updateNewMessage` the way [_handle] would while an account is
+  /// still syncing, and reports the chats still queued for announcement.
+  @visibleForTesting
+  List<int> holdBacklogMessageForTesting(Map<String, dynamic> update) {
+    final clientId = update.integer('@client_id') ?? _client.activeClientId;
+    final message = update.obj('message');
+    if (message != null) {
+      _holdBacklogMessage(message, update, clientId: clientId);
+    }
+    return heldBacklogChatIdsForTesting(clientId);
+  }
+
+  @visibleForTesting
+  List<int> heldBacklogChatIdsForTesting(int clientId) => [
+    for (final key in _backlogMessages.keys)
+      if (key.$1 == clientId) key.$2,
+  ];
+
+  @visibleForTesting
+  bool isSyncedForTesting(int clientId) => _syncedClients.contains(clientId);
+
+  @visibleForTesting
+  bool isMessageReadForTesting({
+    required int chatId,
+    required int messageId,
+    Map<String, dynamic>? chat,
+    int? clientId,
+  }) => _isReadMessage(
+    clientId: clientId ?? _client.activeClientId,
+    chatId: chatId,
+    messageId: messageId,
+    chat: chat,
+  );
+
+  @visibleForTesting
+  void resetSyncStateForTesting() => _resetSyncState();
+
+  void _resetSyncState() {
+    for (final timer in _backlogTimers.values) {
+      timer.cancel();
+    }
+    _backlogTimers.clear();
+    _backlogMessages.clear();
+    _lastReadInboxMessageIds.clear();
+    _syncedClients.clear();
   }
 
   Future<Map<String, dynamic>?> _chat(
@@ -797,7 +1018,7 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
   String _notificationText(Map<String, dynamic> content) {
     final text = TDParse.messageText(content).replaceAll('\n', ' ').trim();
     return text.isEmpty
-        ? telegramText(AppStringKeys.chatSearchMessageResultLabel)
+        ? AppStrings.t(AppStringKeys.chatSearchMessageResultLabel)
         : text;
   }
 
@@ -927,6 +1148,7 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
     WidgetsBinding.instance.removeObserver(this);
     dismissInAppBanner();
     _visibleChats.clear();
+    _resetSyncState();
     await _sub?.cancel();
     _sub = null;
     _ready = false;

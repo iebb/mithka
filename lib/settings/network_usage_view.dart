@@ -117,12 +117,8 @@ class _NetworkUsageViewState extends State<NetworkUsageView> {
                 : ListView(
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
                     children: [
-                      Container(
+                      SettingsPanel(
                         padding: const EdgeInsets.all(18),
-                        decoration: BoxDecoration(
-                          color: c.card,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
                         child: Row(
                           children: [
                             _metric(HeroAppIcons.arrowUp, 'Sent', _bytes(sent)),
@@ -191,35 +187,28 @@ class _NetworkUsageViewState extends State<NetworkUsageView> {
   }
 
   Widget _networkCard(String type, (int, int, double) value) {
-    final c = context.colors;
-    return Container(
-      decoration: BoxDecoration(
-        color: c.card,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        children: [
-          SettingsRow(
-            title: AppStrings.t(AppStringKeys.messageInfoSent),
-            value: _bytes(value.$1),
-            showChevron: false,
-          ),
+    return SettingsCard(
+      children: [
+        SettingsRow(
+          title: AppStrings.t(AppStringKeys.messageInfoSent),
+          value: _bytes(value.$1),
+          showChevron: false,
+        ),
+        const Divider(height: 1),
+        SettingsRow(
+          title: AppStrings.t(AppStringKeys.networkUsageReceived),
+          value: _bytes(value.$2),
+          showChevron: false,
+        ),
+        if (value.$3 > 0) ...[
           const Divider(height: 1),
           SettingsRow(
-            title: AppStrings.t(AppStringKeys.networkUsageReceived),
-            value: _bytes(value.$2),
+            title: AppStrings.t(AppStringKeys.networkUsageCallDuration),
+            value: _duration(value.$3.round()),
             showChevron: false,
           ),
-          if (value.$3 > 0) ...[
-            const Divider(height: 1),
-            SettingsRow(
-              title: AppStrings.t(AppStringKeys.networkUsageCallDuration),
-              value: _duration(value.$3.round()),
-              showChevron: false,
-            ),
-          ],
         ],
-      ),
+      ],
     );
   }
 
@@ -236,11 +225,8 @@ class _NetworkUsageViewState extends State<NetworkUsageView> {
         old.$2 + (entry.int64('received_bytes') ?? 0),
       );
     }
-    return Container(
-      decoration: BoxDecoration(
-        color: c.card,
-        borderRadius: BorderRadius.circular(14),
-      ),
+    return SettingsPanel(
+      padding: const EdgeInsets.all(18),
       clipBehavior: Clip.antiAlias,
       child: totals.isEmpty
           ? Padding(

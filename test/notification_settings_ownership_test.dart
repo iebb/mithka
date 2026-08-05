@@ -59,8 +59,10 @@ void main() {
         tester.getTopLeft(telegramSection).dy,
         lessThan(tester.getTopLeft(deviceSection).dy),
       );
-      expect(find.text('MESSAGE NOTIFICATIONS'), findsOneWidget);
-      expect(find.text('NOTIFICATIONS ON THIS DEVICE'), findsOneWidget);
+      // Notification settings was the one screen that uppercased its section
+      // labels; they read like every other screen now.
+      expect(find.text('Message Notifications'), findsOneWidget);
+      expect(find.text('Notifications on This Device'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('notification-telegram-loading')),
         findsOneWidget,

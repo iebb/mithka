@@ -347,13 +347,9 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
 
   Widget _folderOrderCard() {
     final entries = _orderedEntries();
-    return Container(
+    return SettingsPanel(
       key: const ValueKey('folder-list'),
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-      decoration: BoxDecoration(
-        color: context.colors.card,
-        borderRadius: BorderRadius.circular(AppRadius.card),
-      ),
       child: ReorderableListView(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
@@ -539,15 +535,11 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
     ),
   );
 
-  Widget _card({required Key key, required List<Widget> children}) => Container(
-    key: key,
-    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-    decoration: BoxDecoration(
-      color: context.colors.card,
-      borderRadius: BorderRadius.circular(AppRadius.card),
-    ),
-    child: Column(children: children),
-  );
+  Widget _card({required Key key, required List<Widget> children}) =>
+      SettingsPanel(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+        child: Column(children: children),
+      );
 
   Widget _divider() => Container(height: 0.5, color: context.colors.divider);
 }
@@ -985,7 +977,7 @@ class _ChatFolderEditorViewState extends State<ChatFolderEditorView> {
             color: selected ? AppTheme.brand : c.divider,
             width: selected ? 1.5 : 1,
           ),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(AppRadius.card),
         ),
         child: AppIcon(
           icon,
@@ -1052,12 +1044,8 @@ class _ChatFolderEditorViewState extends State<ChatFolderEditorView> {
     ),
   );
 
-  Widget _card(List<Widget> children) => Container(
+  Widget _card(List<Widget> children) => SettingsPanel(
     padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-    decoration: BoxDecoration(
-      color: context.colors.card,
-      borderRadius: BorderRadius.circular(AppRadius.card),
-    ),
     child: Column(children: children),
   );
 
@@ -1238,12 +1226,8 @@ class _ChatFolderInviteLinksViewState extends State<ChatFolderInviteLinksView> {
     final link = item.str('invite_link') ?? '';
     final name = item.str('name') ?? '';
     final count = item.int64Array('chat_ids')?.length ?? 0;
-    return Container(
+    return SettingsPanel(
       padding: const EdgeInsets.all(AppSpacing.lg),
-      decoration: BoxDecoration(
-        color: c.card,
-        borderRadius: BorderRadius.circular(AppRadius.card),
-      ),
       child: Row(
         children: [
           AppIcon(HeroAppIcons.link, size: 22, color: AppTheme.brand),
@@ -1582,12 +1566,8 @@ class _ChatFolderInviteLinkEditorViewState
     ),
   );
 
-  Widget _card(List<Widget> children) => Container(
+  Widget _card(List<Widget> children) => SettingsPanel(
     padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-    decoration: BoxDecoration(
-      color: context.colors.card,
-      borderRadius: BorderRadius.circular(AppRadius.card),
-    ),
     child: Column(children: children),
   );
 

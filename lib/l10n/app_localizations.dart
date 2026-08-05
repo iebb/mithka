@@ -1,15 +1,8 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show SynchronousFuture;
 import 'package:flutter/widgets.dart';
 import 'package:intl/intl.dart';
-import 'country_names.dart';
-import 'messages/de.dart';
-import 'messages/en.dart';
-import 'messages/es.dart';
-import 'messages/fr.dart';
-import 'messages/ja.dart';
-import 'messages/ko.dart';
-import 'messages/zh_hans.dart';
-import 'messages/zh_hant.dart';
+
+import 'locale_catalogue.dart';
 
 class AppLocalizations {
   const AppLocalizations(this.locale);
@@ -108,7 +101,7 @@ class AppLocalizations {
   String get _key => localeKeyFor(locale);
 
   String t(String key, [Map<String, Object?> placeholders = const {}]) =>
-      AppStrings.tForLocaleWithTelegram(_key, key, placeholders);
+      AppStrings.tForLocale(_key, key, placeholders);
 
   String format(String key, String value) =>
       t(key, {'value1': value, 'value': value});
@@ -503,8 +496,8 @@ abstract final class AppStringKeys {
       'appearanceSenderNameReadability';
   static const appearanceSenderNameReadabilityBackground =
       'appearanceSenderNameReadabilityBackground';
-  static const appearanceSenderNameReadabilityShadow =
-      'appearanceSenderNameReadabilityShadow';
+  static const appearanceSenderNameReadabilityBlend =
+      'appearanceSenderNameReadabilityBlend';
   static const appearanceSenderNameReadabilityNone =
       'appearanceSenderNameReadabilityNone';
   static const appearanceShowChatListSearch = 'appearanceShowChatListSearch';
@@ -518,6 +511,9 @@ abstract final class AppStringKeys {
   static const appearanceShowPremiumStatusEmoji =
       'appearanceShowPremiumStatusEmoji';
   static const appearanceShowUnreadChatCount = 'appearanceShowUnreadChatCount';
+  static const appearanceSectionText = 'appearanceSectionText';
+  static const appearanceSectionChat = 'appearanceSectionChat';
+  static const appearanceSectionChatList = 'appearanceSectionChatList';
   static const appearanceSize = 'appearanceSize';
   static const appearanceSystem = 'appearanceSystem';
   static const appearanceSystemEmojiFont = 'appearanceSystemEmojiFont';
@@ -938,10 +934,19 @@ abstract final class AppStringKeys {
   static const chatSaveToPhotosPermissionDenied =
       'chatSaveToPhotosPermissionDenied';
   static const chatSavingToPhotos = 'chatSavingToPhotos';
+  static const chatSearchAllResults = 'chatSearchAllResults';
   static const chatSearchHistoryTitle = 'chatSearchHistoryTitle';
+  static const chatSearchInThisChat = 'chatSearchInThisChat';
+  static const chatSearchMatchCounter = 'chatSearchMatchCounter';
   static const chatSearchMessagePlaceholder = 'chatSearchMessagePlaceholder';
   static const chatSearchMessageResultLabel = 'chatSearchMessageResultLabel';
+  static const chatSearchNewerMatch = 'chatSearchNewerMatch';
   static const chatSearchNoMessagesFound = 'chatSearchNoMessagesFound';
+  static const chatSearchOlderMatch = 'chatSearchOlderMatch';
+  static const chatSearchResultCount = 'chatSearchResultCount';
+  static const chatSearchSearching = 'chatSearchSearching';
+  static const chatSearchTokenFrom = 'chatSearchTokenFrom';
+  static const chatSearchTokenHint = 'chatSearchTokenHint';
   static const chatSelectedMessagesCount = 'chatSelectedMessagesCount';
   static const chatSelectUntilHere = 'chatSelectUntilHere';
   static const chatsSearchBots = 'chatsSearchBots';
@@ -951,6 +956,9 @@ abstract final class AppStringKeys {
       'chatsSearchPublicGroupsAndChannels';
   static const desktopSearchAll = 'desktopSearchAll';
   static const desktopSearchClear = 'desktopSearchClear';
+  static const desktopSearchScopeIn = 'desktopSearchScopeIn';
+  static const desktopSearchScopePlaceholder = 'desktopSearchScopePlaceholder';
+  static const desktopSearchScopeRemove = 'desktopSearchScopeRemove';
   static const chatStickerAddSuccess = 'chatStickerAddSuccess';
   static const chatThemeApply = 'chatThemeApply';
   static const chatThemeChanged = 'chatThemeChanged';
@@ -1308,6 +1316,7 @@ abstract final class AppStringKeys {
       'developerPerformanceWaitingForFrames';
   static const developerModeTitle = 'developerModeTitle';
   static const developerModeUnlocked = 'developerModeUnlocked';
+  static const editProfileAddPhoto = 'editProfileAddPhoto';
   static const editProfileAnimatedAvatar = 'editProfileAnimatedAvatar';
   static const editProfileAnimatedAvatarDescription =
       'editProfileAnimatedAvatarDescription';
@@ -1335,12 +1344,18 @@ abstract final class AppStringKeys {
   static const editProfileNoBirthYear = 'editProfileNoBirthYear';
   static const editProfileNotBound = 'editProfileNotBound';
   static const editProfilePhone = 'editProfilePhone';
+  static const editProfilePhotoCurrent = 'editProfilePhotoCurrent';
+  static const editProfilePhotoPublic = 'editProfilePhotoPublic';
   static const editProfileProfileColor = 'editProfileProfileColor';
   static const editProfileProfileColorDescription =
       'editProfileProfileColorDescription';
   static const editProfileProfileIcon = 'editProfileProfileIcon';
   static const editProfileProfileIconEmpty = 'editProfileProfileIconEmpty';
   static const editProfileSaveFailed = 'editProfileSaveFailed';
+  static const editProfileSectionAbout = 'editProfileSectionAbout';
+  static const editProfileSectionAccount = 'editProfileSectionAccount';
+  static const editProfileSectionAppearance = 'editProfileSectionAppearance';
+  static const editProfileSectionName = 'editProfileSectionName';
   static const editProfileSetUsername = 'editProfileSetUsername';
   static const editProfileStaticAvatar = 'editProfileStaticAvatar';
   static const editProfileStaticAvatarDescription =
@@ -1528,6 +1543,9 @@ abstract final class AppStringKeys {
       'groupManagementLogChangedSlowMode';
   static const groupManagementLogCreatedTopic =
       'groupManagementLogCreatedTopic';
+  static const groupManagementLogClosedTopic = 'groupManagementLogClosedTopic';
+  static const groupManagementLogReopenedTopic =
+      'groupManagementLogReopenedTopic';
   static const groupManagementLogDeletedInviteLink =
       'groupManagementLogDeletedInviteLink';
   static const groupManagementLogDeletedMessage =
@@ -1632,12 +1650,6 @@ abstract final class AppStringKeys {
   static const keywordBlockerRulesUpToDate = 'keywordBlockerRulesUpToDate';
   static const keywordBlockerTitle = 'keywordBlockerTitle';
   static const languageMithkaLanguage = 'languageMithkaLanguage';
-  static const languageTelegramFollowMithka = 'languageTelegramFollowMithka';
-  static const languageTelegramLanguage = 'languageTelegramLanguage';
-  static const languageTelegramLoadFailed = 'languageTelegramLoadFailed';
-  static const languageTelegramLoading = 'languageTelegramLoading';
-  static const languageTelegramOfficial = 'languageTelegramOfficial';
-  static const languageTelegramUsing = 'languageTelegramUsing';
   static const languageTitle = 'languageTitle';
   static const linkHandlerGroupLabel = 'linkHandlerGroupLabel';
   static const linkHandlerJoin = 'linkHandlerJoin';
@@ -2792,9 +2804,12 @@ abstract final class AppStringKeys {
   static const videoPlayerNextVideo = 'videoPlayerNextVideo';
   static const videoPlayerNoNextVideo = 'videoPlayerNoNextVideo';
   static const videoPlayerNoPreviousVideo = 'videoPlayerNoPreviousVideo';
+  static const videoPlayerOrientationChangeFailed =
+      'videoPlayerOrientationChangeFailed';
   static const videoPlayerPictureInPicture = 'videoPlayerPictureInPicture';
   static const videoPlayerPictureInPictureFailed =
       'videoPlayerPictureInPictureFailed';
+  static const videoPlayerPlayHorizontally = 'videoPlayerPlayHorizontally';
   static const videoPlayerPlaybackSpeed = 'videoPlayerPlaybackSpeed';
   static const videoPlayerPlayNext = 'videoPlayerPlayNext';
   static const videoPlayerPreviousVideo = 'videoPlayerPreviousVideo';
@@ -2806,6 +2821,8 @@ abstract final class AppStringKeys {
   static const videoPlayerSwipeFurther = 'videoPlayerSwipeFurther';
   static const videoPlayerToggleDisplayMode = 'videoPlayerToggleDisplayMode';
   static const videoPlayerUpNext = 'videoPlayerUpNext';
+  static const videoPlayerUseSystemOrientation =
+      'videoPlayerUseSystemOrientation';
   static const videoPlayerWaitingForFile = 'videoPlayerWaitingForFile';
   static const vipBadgeLabel = 'vipBadgeLabel';
   static const blockingBlocklist = 'blockingBlocklist';
@@ -3933,10 +3950,18 @@ abstract final class AppStringKeys {
   static const telegramMiniAppThirdPartyAttachmentPrompt =
       'telegramMiniAppThirdPartyAttachmentPrompt';
   static const telegramMiniAppThisMiniApp = 'telegramMiniAppThisMiniApp';
+  static const presenceOnline = 'presenceOnline';
+  static const presenceLastSeenRecently = 'presenceLastSeenRecently';
+  static const presenceLastSeenWithinWeek = 'presenceLastSeenWithinWeek';
+  static const presenceLastSeenWithinMonth = 'presenceLastSeenWithinMonth';
+  static const aboutCheckForUpdates = 'aboutCheckForUpdates';
+  static const aboutCheckingForUpdates = 'aboutCheckingForUpdates';
+  static const aboutUpToDate = 'aboutUpToDate';
+  static const aboutUpdateAvailable = 'aboutUpdateAvailable';
+  static const aboutUpdateCheckFailed = 'aboutUpdateCheckFailed';
+  static const aboutDownloadUpdate = 'aboutDownloadUpdate';
+  static const settingsChooseSection = 'settingsChooseSection';
 }
-
-typedef TelegramStringResolver =
-    String? Function(String key, Map<String, Object?> placeholders);
 
 abstract final class AppStrings {
   // t() runs for every localized string render; re-parsing the Intl tag each
@@ -3944,17 +3969,47 @@ abstract final class AppStrings {
   // until the tag changes.
   static String? _cachedTag;
   static String _cachedLocaleKey = 'en';
-  static TelegramStringResolver? telegramStringResolver;
 
-  static String t(String key, [Map<String, Object?> placeholders = const {}]) {
-    return tForLocaleWithTelegram(_currentLocaleKey, key, placeholders);
+  /// Loads the catalogues for [locale] and the English fallback.
+  ///
+  /// Call this before `runApp`. Until it completes there is nothing to render
+  /// a string from, and [t] returns the key itself.
+  static Future<void> ensureLoaded(Locale locale) =>
+      LocaleCatalogues.ensureLoaded(
+        AppLocalizations.localeKeyFor(AppLocalizations.resolve(locale)),
+      );
+
+  static bool get isReady => LocaleCatalogues.isReady;
+
+  /// Sets the locale used by callers that cannot pass a [BuildContext].
+  ///
+  /// Most widgets resolve through `context.l10n`, but a few shared services
+  /// and desktop chrome render strings without a localization context. Keep
+  /// that path in sync before the next rebuild so a locale change cannot
+  /// briefly mix the previous language with the new catalogue.
+  static void setLocale(Locale locale) {
+    final resolved = AppLocalizations.resolve(locale);
+    final tag = resolved.toLanguageTag();
+    Intl.defaultLocale = tag;
+    _cachedTag = tag;
+    _cachedLocaleKey = AppLocalizations.localeKeyFor(resolved);
   }
 
-  static String tLocal(
-    String key, [
+  static String t(String key, [Map<String, Object?> placeholders = const {}]) {
+    return tForLocale(_currentLocaleKey, key, placeholders);
+  }
+
+  /// Resolves a counted key, choosing the plural form for [count].
+  ///
+  /// `{count}` is supplied automatically, so a template only has to write it:
+  ///
+  ///     plural(AppStringKeys.chatMemberCount, members)
+  static String plural(
+    String key,
+    num count, [
     Map<String, Object?> placeholders = const {},
   ]) {
-    return tForLocale(_currentLocaleKey, key, placeholders);
+    return pluralForLocale(_currentLocaleKey, key, count, placeholders);
   }
 
   static String get _currentLocaleKey {
@@ -3971,17 +4026,10 @@ abstract final class AppStrings {
     return _cachedLocaleKey;
   }
 
-  static String tForLocaleWithTelegram(
-    String localeKey,
-    String key, [
-    Map<String, Object?> placeholders = const {},
-  ]) {
-    final telegram = telegramStringResolver?.call(key, placeholders);
-    if (telegram != null && telegram.trim().isNotEmpty) {
-      final result = _interpolatePlaceholders(telegram, placeholders);
-      if (!_hasUnresolvedPlaceholder(result)) return result;
-    }
-    return tForLocale(localeKey, key, placeholders);
+  @visibleForTesting
+  static void resetLocaleCache() {
+    _cachedTag = null;
+    _cachedLocaleKey = 'en';
   }
 
   static String tForLocale(
@@ -3989,17 +4037,41 @@ abstract final class AppStrings {
     String key, [
     Map<String, Object?> placeholders = const {},
   ]) {
-    // Message keys and country keys are disjoint (the checker forbids
-    // country* message keys), so the common message-table hit short-circuits
-    // before the country lookup.
-    final localeMessages = _messages[localeKey] ?? _messages['en'];
-    final value =
-        localeMessages?[key] ??
-        countryNameForLocale(localeKey, key) ??
-        _messages['en']?[key] ??
+    return _resolve(localeKey, key, null, placeholders);
+  }
+
+  static String pluralForLocale(
+    String localeKey,
+    String key,
+    num count, [
+    Map<String, Object?> placeholders = const {},
+  ]) {
+    return _resolve(localeKey, key, count, {'count': count, ...placeholders});
+  }
+
+  static String _resolve(
+    String localeKey,
+    String key,
+    num? count,
+    Map<String, Object?> placeholders,
+  ) {
+    // Country names live in their own map so the common message lookup does
+    // not pay for them; the two key spaces are disjoint by construction.
+    final catalogue = LocaleCatalogues.forAppKey(localeKey);
+    final fallback = LocaleCatalogues.fallback;
+    final template =
+        catalogue?.template(key, count: count) ??
+        _countryName(catalogue, key) ??
+        fallback?.template(key, count: count) ??
+        _countryName(fallback, key) ??
         key;
-    if (placeholders.isEmpty) return value;
-    return _interpolatePlaceholders(value, placeholders);
+    if (placeholders.isEmpty) return template;
+    return _interpolatePlaceholders(template, placeholders);
+  }
+
+  static String? _countryName(LocaleCatalogue? catalogue, String key) {
+    if (catalogue == null || !key.startsWith('country')) return null;
+    return catalogue.countries[key];
   }
 
   static String _interpolatePlaceholders(
@@ -4007,42 +4079,13 @@ abstract final class AppStrings {
     Map<String, Object?> placeholders,
   ) {
     if (placeholders.isEmpty) return value;
-    // Normalise fullwidth ％／＄ used in some CJK Telegram language
-    // packs so the replacement patterns below can match.
-    var result = value.replaceAll('％', '%').replaceAll('＄', '\$');
+    var result = value;
     placeholders.forEach((placeholder, replacement) {
-      final replacementText = '$replacement';
-      result = result.replaceAll('{$placeholder}', replacementText);
-      final indexMatch = RegExp(r'^value(\d+)$').firstMatch(placeholder);
-      if (indexMatch != null) {
-        final index = indexMatch.group(1)!;
-        result = result
-            .replaceAll('%$index\$@', replacementText)
-            .replaceAll('%$index\$s', replacementText)
-            .replaceAll('%$index\$d', replacementText);
-      }
+      result = result.replaceAll('{$placeholder}', '$replacement');
     });
     return result;
   }
-
-  static final _unresolvedPlaceholderPattern = RegExp(
-    r'\{value\d+\}|[%％]\d+[\$＄][@sd]|[%％][sd@]',
-  );
-
-  static bool _hasUnresolvedPlaceholder(String value) =>
-      _unresolvedPlaceholderPattern.hasMatch(value);
 }
-
-const _messages = <String, Map<String, String>>{
-  'zhHans': zhHansMessages,
-  'zhHant': zhHantMessages,
-  'ja': jaMessages,
-  'ko': koMessages,
-  'en': enMessages,
-  'fr': frMessages,
-  'es': esMessages,
-  'de': deMessages,
-};
 
 class _AppLocalizationsDelegate
     extends LocalizationsDelegate<AppLocalizations> {
@@ -4054,8 +4097,19 @@ class _AppLocalizationsDelegate
   @override
   Future<AppLocalizations> load(Locale locale) {
     final resolved = AppLocalizations.resolve(locale);
-    Intl.defaultLocale = resolved.toLanguageTag();
-    return SynchronousFuture(AppLocalizations(resolved));
+    AppStrings.setLocale(resolved);
+    // Resolve synchronously when the catalogue is already in memory, which is
+    // the normal case because main() preloads before runApp. An async future
+    // here would leave Localizations — and therefore the whole app — blank for
+    // a frame on every locale change.
+    final appKey = AppLocalizations.localeKeyFor(resolved);
+    if (LocaleCatalogues.isReady &&
+        LocaleCatalogues.forAppKey(appKey) != null) {
+      return SynchronousFuture(AppLocalizations(resolved));
+    }
+    return LocaleCatalogues.ensureLoaded(
+      appKey,
+    ).then((_) => AppLocalizations(resolved));
   }
 
   @override

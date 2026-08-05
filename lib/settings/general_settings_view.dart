@@ -99,23 +99,12 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
     );
   }
 
-  Widget _sectionHeader(String title) => Padding(
-    padding: const EdgeInsets.only(left: 16, bottom: 6),
-    child: Align(
-      alignment: Alignment.centerLeft,
-      child: Text(
-        title.l10n(context),
-        style: TextStyle(fontSize: 13, color: context.colors.textTertiary),
-      ),
-    ),
-  );
-
   Widget _autoDownloadCard() {
     final auto = context.watch<AutoDownloadMediaController>();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionHeader(AppStrings.t(AppStringKeys.generalAutoDownloadMedia)),
+        const SettingsSectionHeader(AppStringKeys.generalAutoDownloadMedia),
         _card([
           _toggleRowWithSubtitle(
             HeroAppIcons.mobileScreenButton,
@@ -174,14 +163,7 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
       SettingsIconTile(icon: icon, backgroundColor: color);
 
   Widget _card(List<Widget> children) {
-    return Container(
-      decoration: BoxDecoration(
-        color: context.colors.card,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(children: children),
-    );
+    return SettingsCard(children: children);
   }
 
   Widget _storageCard() {
@@ -189,7 +171,7 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionHeader(AppStrings.t(AppStringKeys.generalStorage)),
+        const SettingsSectionHeader(AppStringKeys.generalStorage),
         _card([
           SizedBox(
             height: 52,

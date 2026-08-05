@@ -88,9 +88,19 @@ void main() {
         find.descendant(of: firstMemberRow, matching: find.byType(PhotoAvatar)),
       );
       expect(avatar.size, 24);
-      expect(tester.getTopLeft(firstMemberRow).dx, 12);
+      // The row spans the pane so its hover fills the width; the inset lives
+      // on the content, not on the list.
+      expect(tester.getTopLeft(firstMemberRow).dx, 0);
+      expect(tester.getBottomRight(firstMemberRow).dx, desktopInfoPaneWidth);
       expect(
-        desktopInfoPaneWidth - tester.getBottomRight(firstMemberRow).dx,
+        tester
+            .getTopLeft(
+              find.descendant(
+                of: firstMemberRow,
+                matching: find.byType(PhotoAvatar),
+              ),
+            )
+            .dx,
         12,
       );
       final ownerBadge = find.byKey(

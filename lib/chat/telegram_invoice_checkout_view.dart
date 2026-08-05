@@ -1072,7 +1072,7 @@ class _PaymentPasswordDialog extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
           decoration: BoxDecoration(
             color: c.card,
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
             boxShadow: const [
               BoxShadow(
                 color: Color(0x30000000),
@@ -1155,7 +1155,7 @@ class _ProductCard extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: c.card,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(color: c.divider),
       ),
       child: Row(
@@ -1166,7 +1166,7 @@ class _ProductCard extends StatelessWidget {
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: c.linkBlue.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(15),
+              borderRadius: BorderRadius.circular(AppRadius.lg),
             ),
             child: AppIcon(HeroAppIcons.clipboard, size: 26, color: c.linkBlue),
           ),
@@ -1210,7 +1210,7 @@ class _ProductCard extends StatelessWidget {
                         ),
                         decoration: BoxDecoration(
                           color: c.textTertiary.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(7),
+                          borderRadius: BorderRadius.circular(AppRadius.md),
                         ),
                         child: Text(
                           'TEST',
@@ -1241,7 +1241,7 @@ class _CheckoutCard extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     decoration: BoxDecoration(
       color: context.colors.card,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(AppRadius.card),
       border: Border.all(color: context.colors.divider),
     ),
     clipBehavior: Clip.antiAlias,
@@ -1421,7 +1421,7 @@ class _ToggleRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
           color: c.card,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(AppRadius.card),
           border: Border.all(color: c.divider),
         ),
         child: Row(
@@ -1488,7 +1488,7 @@ class _SuggestionChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: context.colors.card,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(AppRadius.control),
         border: Border.all(color: context.colors.divider),
       ),
       child: Text(
@@ -1529,7 +1529,7 @@ class _PrimaryPaymentAction extends StatelessWidget {
           color: onTap == null
               ? context.colors.textTertiary.withValues(alpha: 0.45)
               : context.colors.linkBlue,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(AppRadius.card),
           boxShadow: onTap == null
               ? null
               : [
@@ -1610,7 +1610,7 @@ class _StatusCard extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.09),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: color.withValues(alpha: 0.22)),
       ),
       child: Row(
@@ -1659,7 +1659,7 @@ class _DialogAction extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14),
       decoration: BoxDecoration(
         color: fill ?? context.colors.groupedBackground,
-        borderRadius: BorderRadius.circular(11),
+        borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       child: Text(
         label,

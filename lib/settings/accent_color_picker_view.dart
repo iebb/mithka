@@ -62,7 +62,7 @@ class _AccentColorPickerViewState extends State<AccentColorPickerView> {
             trailing: AppInteractiveSurface(
               semanticLabel: AppStrings.t(AppStringKeys.accentColorPickerSave),
               onTap: () => Navigator.of(context).pop(_sel),
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(AppRadius.control),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: Text(
@@ -80,12 +80,8 @@ class _AccentColorPickerViewState extends State<AccentColorPickerView> {
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                Container(
+                SettingsPanel(
                   padding: const EdgeInsets.all(18),
-                  decoration: BoxDecoration(
-                    color: c.card,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
                   child: Wrap(
                     spacing: 18,
                     runSpacing: 18,

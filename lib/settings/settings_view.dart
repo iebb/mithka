@@ -33,12 +33,10 @@ import 'advanced_settings_view.dart';
 import 'ai_settings_view.dart';
 import 'appearance_view.dart';
 import 'blocking_settings_view.dart';
-import 'business_settings_view.dart';
 import 'chat_folder_management_view.dart';
 import 'desktop_hotkey_settings_view.dart';
 import 'developer_mode_controller.dart';
 import 'developer_settings_view.dart';
-import 'edit_profile_view.dart';
 import 'feature_settings_view.dart';
 import 'general_settings_view.dart';
 import 'language_settings_view.dart';
@@ -84,6 +82,15 @@ class _SettingsViewState extends State<SettingsView> {
   final FocusNode _searchFocusNode = FocusNode();
   late String _selectedCategoryId;
 
+  /// The destination shown in the detail pane, once one has been chosen.
+  ///
+  /// Null means the category was selected but none of its children yet, which
+  /// only happens for a category the user just expanded.
+  String? _selectedDestinationId;
+
+  /// Categories expanded in the sidebar. The selected one is always open.
+  final Set<String> _expandedCategoryIds = <String>{};
+
   @override
   void initState() {
     super.initState();
@@ -94,6 +101,7 @@ class _SettingsViewState extends State<SettingsView> {
         )
         ? initialCategoryId!
         : 'general';
+    _expandedCategoryIds.add(_selectedCategoryId);
     _searchController.addListener(_searchChanged);
     if (widget.focusSearch) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -239,7 +247,7 @@ class _SettingsViewState extends State<SettingsView> {
                     _splitSidebarHeader(context),
                     _searchField(context, compact: true),
                     Expanded(
-                      child: ListView.separated(
+                      child: ListView(
                         key: const PageStorageKey<String>(
                           'settings-category-list',
                         ),
@@ -249,19 +257,16 @@ class _SettingsViewState extends State<SettingsView> {
                           AppSpacing.md,
                           AppSpacing.xl,
                         ),
-                        itemCount: categories.length,
-                        separatorBuilder: (_, _) =>
-                            const SizedBox(height: AppSpacing.xs),
-                        itemBuilder: (context, index) {
-                          final category = categories[index];
-                          return _categoryRow(
-                            context,
-                            category,
-                            selected: category.id == selected.id,
-                          );
-                        },
+                        children: query.isEmpty
+                            ? _sidebarTree(context, categories, selected)
+                            : _sidebarMatches(context, matches),
                       ),
                     ),
+                    // Signing out belongs to the account, not to any one
+                    // section, so it sits under the tree rather than inside a
+                    // category's screen.
+                    if (widget.allowSessionLifecycleActions)
+                      _sidebarLogOut(context),
                   ],
                 ),
               ),
@@ -334,61 +339,264 @@ class _SettingsViewState extends State<SettingsView> {
     );
   }
 
-  Widget _categoryRow(
+  /// The sidebar as a nested list: categories, each expanding in place to show
+  /// its own screens.
+  ///
+  /// A category holding a single screen is a leaf — expanding to reveal one
+  /// child that repeats its parent's name would be noise.
+  List<Widget> _sidebarTree(
     BuildContext context,
-    _SettingsCategory category, {
+    List<_SettingsCategory> categories,
+    _SettingsCategory selected,
+  ) {
+    final rows = <Widget>[];
+    for (final category in categories) {
+      final isLeaf = category.destinations.length == 1;
+      final isSelectedCategory = category.id == selected.id;
+      final expanded = !isLeaf && _expandedCategoryIds.contains(category.id);
+
+      rows.add(
+        _sidebarRow(
+          context,
+          key: ValueKey('settings-category-${category.id}'),
+          label: category.titleKey.l10n(context),
+          icon: category.icon,
+          // A leaf highlights only while its screen is the one on show.
+          selected:
+              isLeaf &&
+              isSelectedCategory &&
+              _selectedDestinationId == category.destinations.single.id,
+          expanded: isLeaf ? null : expanded,
+          onTap: () => isLeaf
+              ? _selectDestination(category, category.destinations.single)
+              : _toggleCategory(category),
+        ),
+      );
+
+      if (!expanded) continue;
+      for (final destination in category.destinations) {
+        rows.add(
+          _sidebarRow(
+            context,
+            key: ValueKey('settings-child-${destination.id}'),
+            label: destination.titleKey.l10n(context),
+            icon: destination.icon,
+            selected: _selectedDestinationId == destination.id,
+            indented: true,
+            onTap: () => _selectDestination(category, destination),
+          ),
+        );
+      }
+    }
+    return rows;
+  }
+
+  /// Search replaces the tree with its matches; the grouping is not what the
+  /// user is navigating by at that point.
+  List<Widget> _sidebarMatches(
+    BuildContext context,
+    List<_SettingsDestination> matches,
+  ) {
+    if (matches.isEmpty) {
+      return [
+        Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.xl,
+          ),
+          child: Text(
+            AppStringKeys.settingsNoResults.l10n(context),
+            style: AppTextStyle.footnote(context.colors.textTertiary),
+          ),
+        ),
+      ];
+    }
+    return [
+      for (final destination in matches)
+        _sidebarRow(
+          context,
+          key: ValueKey('settings-match-${destination.id}'),
+          label: destination.titleKey.l10n(context),
+          icon: destination.icon,
+          selected: _selectedDestinationId == destination.id,
+          onTap: () => _selectDestination(
+            _categoryFor(destination) ??
+                _settingsCategories([destination]).first,
+            destination,
+          ),
+        ),
+    ];
+  }
+
+  /// One sidebar row, at either level.
+  ///
+  /// [expanded] non-null draws a disclosure chevron, which is what separates a
+  /// category from a screen.
+  Widget _sidebarRow(
+    BuildContext context, {
+    required Key key,
+    required String label,
+    required AppIconData icon,
     required bool selected,
+    required VoidCallback onTap,
+    bool? expanded,
+    bool indented = false,
   }) {
     final c = context.colors;
     final desktopDense = !kIsWeb && isDesktopTargetPlatform();
     final foreground = selected ? c.linkBlue : c.textSecondary;
-    return AppInteractiveSurface(
-      key: ValueKey('settings-category-${category.id}'),
-      semanticLabel: category.titleKey.l10n(context),
-      selected: selected,
-      onTap: () {
-        if (_selectedCategoryId == category.id) return;
-        setState(() => _selectedCategoryId = category.id);
-      },
-      borderRadius: BorderRadius.circular(desktopDense ? 9 : 12),
-      child: AnimatedContainer(
-        duration: AppMotion.duration(context, AppMotion.responsive),
-        curve: AppMotion.standard,
-        constraints: BoxConstraints(minHeight: desktopDense ? 40 : 48),
-        padding: EdgeInsets.symmetric(
-          horizontal: desktopDense ? 12 : AppSpacing.lg,
-          vertical: desktopDense ? 7 : AppSpacing.md,
-        ),
-        decoration: BoxDecoration(
-          color: selected
-              ? c.linkBlue.withValues(alpha: 0.13)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(desktopDense ? 9 : 12),
-        ),
-        child: Row(
-          children: [
-            AppIcon(
-              category.icon,
-              size: desktopDense ? 17 : 20,
-              color: foreground,
-            ),
-            SizedBox(width: desktopDense ? 10 : AppSpacing.lg),
-            Expanded(
-              child: Text(
-                category.titleKey.l10n(context),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: selected ? c.textPrimary : foreground,
-                  fontSize: desktopDense ? 14 : AppTextSize.body,
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+    final radius = BorderRadius.circular(desktopDense ? 7 : 9);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.xxs),
+      child: AppInteractiveSurface(
+        key: key,
+        semanticLabel: label,
+        selected: selected,
+        onTap: onTap,
+        borderRadius: radius,
+        child: AnimatedContainer(
+          duration: AppMotion.duration(context, AppMotion.responsive),
+          curve: AppMotion.standard,
+          constraints: BoxConstraints(minHeight: desktopDense ? 34 : 42),
+          padding: EdgeInsets.fromLTRB(
+            (desktopDense ? 10 : AppSpacing.lg) + (indented ? 18 : 0),
+            desktopDense ? 6 : AppSpacing.md,
+            desktopDense ? 8 : AppSpacing.lg,
+            desktopDense ? 6 : AppSpacing.md,
+          ),
+          decoration: BoxDecoration(
+            color: selected
+                ? c.linkBlue.withValues(alpha: 0.13)
+                : Colors.transparent,
+            borderRadius: radius,
+          ),
+          child: Row(
+            children: [
+              AppIcon(icon, size: desktopDense ? 16 : 19, color: foreground),
+              SizedBox(width: desktopDense ? 9 : AppSpacing.lg),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: selected ? c.textPrimary : foreground,
+                    fontSize: desktopDense ? 13.5 : AppTextSize.body,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  ),
                 ),
               ),
-            ),
-          ],
+              if (expanded != null) ...[
+                const SizedBox(width: AppSpacing.sm),
+                AnimatedRotation(
+                  duration: AppMotion.duration(context, AppMotion.quick),
+                  curve: AppMotion.standard,
+                  turns: expanded ? 0.25 : 0,
+                  child: AppIcon(
+                    HeroAppIcons.chevronRight,
+                    size: desktopDense ? 12 : 14,
+                    color: c.textTertiary,
+                  ),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  Widget _sidebarLogOut(BuildContext context) {
+    final c = context.colors;
+    final desktopDense = !kIsWeb && isDesktopTargetPlatform();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.xs,
+        AppSpacing.md,
+        AppSpacing.lg,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Divider(height: AppMetric.divider, color: c.divider),
+          const SizedBox(height: AppSpacing.md),
+          AppInteractiveSurface(
+            key: const ValueKey('settings-log-out'),
+            semanticLabel: AppStrings.t(AppStringKeys.settingsLogOut),
+            onTap: () => unawaited(
+              context.read<AccountStore>().logOutActive(
+                context.read<AuthManager>(),
+              ),
+            ),
+            borderRadius: BorderRadius.circular(desktopDense ? 7 : 9),
+            child: Container(
+              constraints: BoxConstraints(minHeight: desktopDense ? 34 : 42),
+              padding: EdgeInsets.symmetric(
+                horizontal: desktopDense ? 10 : AppSpacing.lg,
+                vertical: desktopDense ? 6 : AppSpacing.md,
+              ),
+              child: Row(
+                children: [
+                  AppIcon(
+                    HeroAppIcons.rightFromBracket,
+                    size: desktopDense ? 16 : 19,
+                    color: AppTheme.tagRed,
+                  ),
+                  SizedBox(width: desktopDense ? 9 : AppSpacing.lg),
+                  Expanded(
+                    child: Text(
+                      AppStrings.t(AppStringKeys.settingsLogOut),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: AppTheme.tagRed,
+                        fontSize: desktopDense ? 13.5 : AppTextSize.body,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  _SettingsCategory? _categoryFor(_SettingsDestination destination) {
+    for (final definition in _settingsCategoryDefinitions) {
+      if (!definition.destinationIds.contains(destination.id)) continue;
+      return _SettingsCategory(
+        id: definition.id,
+        titleKey: definition.titleKey,
+        icon: definition.icon,
+        destinations: [destination],
+      );
+    }
+    return null;
+  }
+
+  void _toggleCategory(_SettingsCategory category) {
+    setState(() {
+      if (!_expandedCategoryIds.remove(category.id)) {
+        _expandedCategoryIds.add(category.id);
+      }
+      _selectedCategoryId = category.id;
+    });
+  }
+
+  void _selectDestination(
+    _SettingsCategory category,
+    _SettingsDestination destination,
+  ) {
+    setState(() {
+      _selectedCategoryId = category.id;
+      _selectedDestinationId = destination.id;
+      _expandedCategoryIds.add(category.id);
+    });
   }
 
   Widget _splitDetailNavigator(
@@ -397,83 +605,72 @@ class _SettingsViewState extends State<SettingsView> {
     required String query,
     required List<_SettingsDestination> matches,
   }) {
-    final identity = query.isEmpty ? selected.id : 'search-$query';
-    final directDestination = query.isEmpty && selected.destinations.length == 1
-        ? selected.destinations.single.splitDestination
-        : null;
+    // The sidebar now names every screen, so the detail pane shows the chosen
+    // one rather than a list that repeats what is already on the left.
+    final chosen = _resolveSelected(selected, query: query, matches: matches);
+    final identity =
+        chosen?.id ?? 'empty-${query.isEmpty ? selected.id : query}';
     return KeyedSubtree(
       key: ValueKey('settings-detail-$identity'),
       child: Navigator(
         onGenerateRoute: (_) => MaterialPageRoute<void>(
-          builder: (detailContext) =>
-              directDestination?.call() ??
-              _splitOverview(
+          builder: (detailContext) {
+            if (chosen == null) {
+              return _splitPlaceholder(
                 detailContext,
                 titleKey: query.isEmpty
                     ? selected.titleKey
                     : AppStringKeys.settingsSearchHint,
-                destinations: query.isEmpty ? selected.destinations : matches,
-                emptySearch: query.isNotEmpty && matches.isEmpty,
-              ),
+                messageKey: query.isEmpty
+                    ? AppStringKeys.settingsChooseSection
+                    : AppStringKeys.settingsNoResults,
+              );
+            }
+            return (chosen.splitDestination ?? chosen.destination)();
+          },
         ),
       ),
     );
   }
 
-  Widget _splitOverview(
+  /// The destination the detail pane should show, if any.
+  _SettingsDestination? _resolveSelected(
+    _SettingsCategory selected, {
+    required String query,
+    required List<_SettingsDestination> matches,
+  }) {
+    final pool = query.isEmpty ? selected.destinations : matches;
+    if (pool.isEmpty) return null;
+    for (final destination in pool) {
+      if (destination.id == _selectedDestinationId) return destination;
+    }
+    // A single-screen category needs no explicit pick to show its screen.
+    if (query.isEmpty && pool.length == 1) return pool.single;
+    return null;
+  }
+
+  Widget _splitPlaceholder(
     BuildContext context, {
     required String titleKey,
-    required List<_SettingsDestination> destinations,
-    required bool emptySearch,
+    required String messageKey,
   }) {
     final c = context.colors;
     return Scaffold(
-      key: const ValueKey('settings-split-detail'),
+      key: const ValueKey('settings-split-placeholder'),
       backgroundColor: c.groupedBackground,
       body: Column(
         children: [
           NavHeader(title: titleKey),
           Expanded(
-            child: DesktopContentConstraint(
-              maxWidth: 860,
-              child: emptySearch
-                  ? Center(
-                      key: const ValueKey('settings-search-empty'),
-                      child: Padding(
-                        padding: const EdgeInsets.all(AppSpacing.section),
-                        child: Text(
-                          AppStringKeys.settingsNoResults.l10n(context),
-                          textAlign: TextAlign.center,
-                          style: AppTextStyle.body(c.textSecondary),
-                        ),
-                      ),
-                    )
-                  : ListView(
-                      key: const PageStorageKey<String>(
-                        'settings-split-destinations',
-                      ),
-                      padding: const EdgeInsets.fromLTRB(
-                        AppSpacing.xl,
-                        AppSpacing.xl,
-                        AppSpacing.xl,
-                        AppSpacing.section,
-                      ),
-                      children: [
-                        _destinationCard(
-                          context,
-                          destinations,
-                          showOwner: _searchController.text.isNotEmpty,
-                          onOpen: (destination) =>
-                              _openDestination(destination, context: context),
-                        ),
-                        if (widget.allowSessionLifecycleActions &&
-                            _selectedCategoryId == 'general' &&
-                            _searchController.text.isEmpty) ...[
-                          const SizedBox(height: AppSpacing.xl),
-                          _logoutCard(context),
-                        ],
-                      ],
-                    ),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.section),
+                child: Text(
+                  messageKey.l10n(context),
+                  textAlign: TextAlign.center,
+                  style: AppTextStyle.body(c.textSecondary),
+                ),
+              ),
             ),
           ),
         ],
@@ -485,35 +682,6 @@ class _SettingsViewState extends State<SettingsView> {
     final developer = context.watch<DeveloperModeController>();
     final pro = context.watch<MithkaProService>();
     return [
-      _SettingsDestination(
-        id: 'edit-profile',
-        owner: _SettingsOwner.telegram,
-        group: 0,
-        order: 0,
-        titleKey: AppStringKeys.editProfileTitle,
-        icon: HeroAppIcons.solidCircleUser,
-        color: const Color(0xFF3C8CF0),
-        destination: () => const EditProfileView(),
-        searchTerms: const ['account', 'name', 'username', 'phone', 'bio'],
-      ),
-      _SettingsDestination(
-        id: 'telegram-business',
-        owner: _SettingsOwner.telegram,
-        group: 0,
-        order: 10,
-        titleKey: AppStringKeys.businessSettingsTitle,
-        icon: HeroAppIcons.venue,
-        color: const Color(0xFF7467F0),
-        destination: () => const BusinessSettingsView(),
-        searchTerms: const [
-          'business',
-          'hours',
-          'location',
-          'greeting',
-          'away',
-          'quick replies',
-        ],
-      ),
       _SettingsDestination(
         id: 'notifications',
         group: 2,
@@ -588,10 +756,10 @@ class _SettingsViewState extends State<SettingsView> {
         owner: _SettingsOwner.telegram,
         group: 4,
         order: 10,
-        titleKey: AppStringKeys.languageTelegramLanguage,
+        titleKey: AppStringKeys.languageMithkaLanguage,
         icon: HeroAppIcons.globe,
         color: const Color(0xFF34A2DF),
-        destination: () => const TelegramLanguageSettingsView(),
+        destination: () => const AppLanguageSettingsView(),
         searchTerms: const [
           'language pack',
           'telegram text',
@@ -600,25 +768,37 @@ class _SettingsViewState extends State<SettingsView> {
           'locale',
         ],
       ),
+      if (pro.storeAvailable)
+        _SettingsDestination(
+          id: 'mithka-pro',
+          owner: _SettingsOwner.mithka,
+          group: 1,
+          order: 0,
+          titleKey: AppStringKeys.mithkaProTitle,
+          icon: HeroAppIcons.solidStar,
+          color: const Color(0xFF7C5CFC),
+          destination: () => const MithkaProView(),
+          trailingKey: pro.isPro ? AppStringKeys.mithkaProActive : null,
+          platformNeutralRoute: true,
+          searchTerms: const ['pro', 'support', 'subscription'],
+        ),
       _SettingsDestination(
-        id: 'mithka-pro',
+        id: 'mithka-theme',
         owner: _SettingsOwner.mithka,
-        group: 1,
+        group: 3,
         order: 0,
-        titleKey: AppStringKeys.mithkaProTitle,
-        icon: HeroAppIcons.solidStar,
-        color: const Color(0xFF7C5CFC),
-        destination: () => const MithkaProView(),
-        trailingKey: pro.isPro ? AppStringKeys.mithkaProActive : null,
-        platformNeutralRoute: true,
-        searchTerms: const ['pro', 'support', 'subscription'],
+        titleKey: AppStringKeys.appearanceTheme,
+        icon: HeroAppIcons.palette,
+        color: const Color(0xFF6C5CE7),
+        destination: () => const ThemeSettingsView(),
+        searchTerms: const ['theme', 'colors', 'wallpaper', 'background'],
       ),
       _SettingsDestination(
         id: 'mithka-appearance',
         owner: _SettingsOwner.mithka,
         group: 3,
-        order: 0,
-        titleKey: AppStringKeys.appearanceTitle,
+        order: 5,
+        titleKey: AppStringKeys.appearanceSize,
         icon: HeroAppIcons.wandMagicSparkles,
         color: const Color(0xFF8E7BFF),
         destination: () => const AppearanceView(),
@@ -1062,7 +1242,6 @@ class _SettingsViewState extends State<SettingsView> {
   }
 
   Widget _logoutCard(BuildContext context) {
-    final c = context.colors;
     return AppInteractiveSurface(
       key: const ValueKey('settings-log-out'),
       semanticLabel: AppStrings.t(AppStringKeys.settingsLogOut),
@@ -1076,18 +1255,10 @@ class _SettingsViewState extends State<SettingsView> {
         );
       },
       borderRadius: BorderRadius.circular(AppRadius.card),
-      child: Container(
-        constraints: const BoxConstraints(
-          minHeight: AppMetric.settingsRowHeight,
-        ),
-        alignment: Alignment.center,
+      child: SettingsPanel(
         padding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.xxl,
           vertical: AppSpacing.md,
-        ),
-        decoration: BoxDecoration(
-          color: c.card,
-          borderRadius: BorderRadius.circular(AppRadius.card),
         ),
         child: Text(
           AppStrings.t(AppStringKeys.settingsLogOut),
@@ -1132,7 +1303,7 @@ const _settingsCategoryDefinitions = <_SettingsCategoryDefinition>[
     id: 'general',
     titleKey: AppStringKeys.generalTitle,
     icon: HeroAppIcons.gear,
-    destinationIds: ['edit-profile', 'telegram-business', 'mithka-pro'],
+    destinationIds: ['mithka-pro'],
   ),
   _SettingsCategoryDefinition(
     id: 'notifications',
@@ -1157,10 +1328,16 @@ const _settingsCategoryDefinitions = <_SettingsCategoryDefinition>[
     titleKey: AppStringKeys.appearanceTitle,
     icon: HeroAppIcons.wandMagicSparkles,
     destinationIds: [
+      'mithka-theme',
       'mithka-appearance',
-      'telegram-chat-folders',
       'mithka-chat-behavior',
     ],
+  ),
+  _SettingsCategoryDefinition(
+    id: 'chat-folders',
+    titleKey: AppStringKeys.appearanceChatFolders,
+    icon: HeroAppIcons.solidFolder,
+    destinationIds: ['telegram-chat-folders'],
   ),
   _SettingsCategoryDefinition(
     id: 'data-storage',

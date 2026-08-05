@@ -719,7 +719,23 @@ msgOutBg: #f3b4bd;
     );
 
     expect(theme.uiColors.pinnedRow.toARGB32(), 0xFF18263B);
-    expect(theme.uiColors.onAccent.toARGB32(), 0xFF171717);
+
+    // The accent is pale, but this palette names no on-accent key, so the
+    // stored default stands — same as Telegram, which reads its own key and
+    // never measures the accent. Only an explicit key moves it.
+    expect(theme.uiColors.onAccent.toARGB32(), 0xFFFFFFFF);
+    expect(
+      TelegramCloudTheme(
+        slug: theme.slug,
+        rawTitle: theme.rawTitle,
+        baseTheme: theme.baseTheme,
+        accentColorValue: theme.accentColorValue,
+        outgoingColors: theme.outgoingColors,
+        palette: {...theme.palette, 'chats_actionIcon': 0xFF171717},
+      ).uiColors.onAccent.toARGB32(),
+      0xFF171717,
+    );
+
     expect(readableForeground(const Color(0xFFF3B4BD)).toARGB32(), 0xFF171717);
     expect(readableForeground(const Color(0xFF101820)).toARGB32(), 0xFFFFFFFF);
   });

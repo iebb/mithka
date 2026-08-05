@@ -306,7 +306,7 @@ class _ChatPickerViewState extends State<ChatPickerView> {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
           color: c.card,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(AppRadius.control),
           border: Border.all(color: c.divider, width: 0.5),
         ),
         child: Row(
@@ -359,7 +359,7 @@ class _ChatPickerViewState extends State<ChatPickerView> {
             height: 20,
             decoration: BoxDecoration(
               color: selected ? c.linkBlue : c.searchFill,
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(AppRadius.md),
               border: Border.all(color: selected ? c.linkBlue : c.divider),
             ),
             child: selected

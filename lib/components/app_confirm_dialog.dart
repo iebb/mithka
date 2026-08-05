@@ -35,7 +35,7 @@ Future<bool> showAppConfirmDialog(
             child: DecoratedBox(
               decoration: BoxDecoration(
                 color: c.card,
-                borderRadius: BorderRadius.circular(18),
+                borderRadius: BorderRadius.circular(AppRadius.lg),
                 boxShadow: const [
                   BoxShadow(
                     color: Color(0x44000000),

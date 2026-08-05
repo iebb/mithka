@@ -102,7 +102,7 @@ class _FeedbackReportViewState extends State<FeedbackReportView> {
                   padding: const EdgeInsets.all(AppSpacing.xl),
                   decoration: BoxDecoration(
                     color: colors.card,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(AppRadius.card),
                     border: Border.all(color: colors.divider, width: 0.5),
                   ),
                   child: TextField(
@@ -138,7 +138,7 @@ class _FeedbackReportViewState extends State<FeedbackReportView> {
                       color: canSend
                           ? AppTheme.brand
                           : colors.textTertiary.withValues(alpha: 0.35),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(AppRadius.card),
                     ),
                     child: Center(
                       child: Row(

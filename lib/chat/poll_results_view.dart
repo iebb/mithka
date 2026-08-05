@@ -179,13 +179,16 @@ class _PollResultsViewState extends State<PollResultsView> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        AppStrings.t(
-                          _statistics == null
-                              ? AppStringKeys.messagePollVotes
-                              : AppStringKeys
+                        _statistics == null
+                            ? AppStrings.plural(
+                                AppStringKeys.messagePollVotes,
+                                _poll.totalVoterCount,
+                              )
+                            : AppStrings.t(
+                                AppStringKeys
                                     .pollResultsVotesWithDetailedStatistics,
-                          {'value1': _poll.totalVoterCount},
-                        ),
+                                {'value1': _poll.totalVoterCount},
+                              ),
                         style: TextStyle(
                           color: colors.textSecondary,
                           fontSize: 13,
@@ -215,7 +218,9 @@ class _PollResultsViewState extends State<PollResultsView> {
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
                             color: selected ? AppTheme.brand : colors.card,
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(
+                              AppRadius.control,
+                            ),
                             border: Border.all(
                               color: selected ? AppTheme.brand : colors.divider,
                             ),

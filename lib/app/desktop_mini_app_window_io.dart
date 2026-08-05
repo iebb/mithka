@@ -50,12 +50,14 @@ Future<bool> openDesktopMiniAppWindow(DesktopMiniAppWindowLaunch launch) async {
 Future<bool> openChatInPrimaryWindowFromDesktopMiniApp(
   ChatDeepLinkRequest request,
 ) async {
-  if (!supportsDesktopMiniAppWindows || MultiWindowManager.current.id <= 0) {
-    return false;
-  }
+  if (!supportsDesktopMiniAppWindows) return false;
+  // Only a registered child hands a conversation over, and `current` throws
+  // until the window manager is initialized — so the child check has to come
+  // first or the primary window's own callers blow up here.
   final source = _childArguments;
   if (source == null) return false;
   try {
+    if (MultiWindowManager.current.id <= 0) return false;
     final response = await MultiWindowManager.current
         .invokeMethodToWindow(0, _openPrimaryChatMethod, {
           ...source.toIpcJson(),

@@ -406,7 +406,7 @@ class _GroupAppearanceViewState extends State<GroupAppearanceView> {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: c.card,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
       ),
       child: Row(
         children: [
@@ -431,7 +431,7 @@ class _GroupAppearanceViewState extends State<GroupAppearanceView> {
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
       decoration: BoxDecoration(
         color: c.card,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -536,7 +536,7 @@ class _GroupAppearanceViewState extends State<GroupAppearanceView> {
     return Container(
       decoration: BoxDecoration(
         color: c.card,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -588,7 +588,7 @@ class _GroupAppearanceViewState extends State<GroupAppearanceView> {
                   ),
                   decoration: BoxDecoration(
                     color: const Color(0xFF8B5CF6),
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(AppRadius.control),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -605,7 +605,7 @@ class _GroupAppearanceViewState extends State<GroupAppearanceView> {
                         }),
                         style: const TextStyle(
                           fontSize: 10,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w600,
                           color: Color(0xFFFFFFFF),
                         ),
                       ),

@@ -78,4 +78,11 @@ class ChatDeepLinkController extends ChangeNotifier {
     _pending = null;
     return request;
   }
+
+  /// Whether a host (MainTabView) is listening and can act on a request.
+  ///
+  /// Callers route through this controller so a conversation lands in the
+  /// desktop split pane; without a host they must open the chat themselves
+  /// rather than drop the request on the floor.
+  bool get hasHost => hasListeners;
 }

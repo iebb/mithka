@@ -280,7 +280,7 @@ class _ScheduledMessagesViewState extends State<ScheduledMessagesView> {
       padding: const EdgeInsets.fromLTRB(14, 12, 10, 10),
       decoration: BoxDecoration(
         color: colors.card,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: colors.divider, width: 0.5),
       ),
       child: Column(

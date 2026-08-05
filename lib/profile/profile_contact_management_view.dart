@@ -711,7 +711,7 @@ class _ProfileContactManagementViewState
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: colors.card,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -756,7 +756,7 @@ class _ProfileContactManagementViewState
         Container(
           decoration: BoxDecoration(
             color: colors.card,
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(AppRadius.card),
           ),
           clipBehavior: Clip.antiAlias,
           child: Column(
@@ -993,7 +993,7 @@ class _ContactEditDialogState extends State<_ContactEditDialog> {
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
         color: colors.searchFill,
-        borderRadius: BorderRadius.circular(11),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: colors.divider),
       ),
       alignment: Alignment.center,
@@ -1026,7 +1026,7 @@ class _CheckBox extends StatelessWidget {
     height: 22,
     decoration: BoxDecoration(
       color: value ? AppTheme.brand : Colors.transparent,
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: BorderRadius.circular(AppRadius.md),
       border: Border.all(
         color: value ? AppTheme.brand : context.colors.textTertiary,
       ),
@@ -1127,7 +1127,7 @@ class _BirthdateDialogState extends State<_BirthdateDialog> {
       padding: const EdgeInsets.symmetric(horizontal: 9),
       decoration: BoxDecoration(
         color: colors.searchFill,
-        borderRadius: BorderRadius.circular(11),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: colors.divider),
       ),
       alignment: Alignment.center,

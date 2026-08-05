@@ -9,8 +9,8 @@ import 'package:mithka/auth/account_store.dart';
 import 'package:mithka/auth/auth_manager.dart';
 import 'package:mithka/chats/chat_list_view.dart';
 import 'package:mithka/components/drawer_controller.dart' as dc;
+import 'package:mithka/l10n/app_locale_controller.dart';
 import 'package:mithka/l10n/app_localizations.dart';
-import 'package:mithka/l10n/telegram_language_controller.dart';
 import 'package:mithka/settings/translation_controller.dart';
 import 'package:mithka/tdlib/td_models.dart';
 import 'package:mithka/theme/app_theme.dart';
@@ -163,12 +163,12 @@ Future<void> _pumpMainShell(WidgetTester tester) async {
     MultiProvider(
       providers: [
         ChangeNotifierProvider<ThemeController>.value(value: theme),
+        ChangeNotifierProvider<AppLocaleController>.value(
+          value: AppLocaleController(prefs),
+        ),
         ChangeNotifierProvider<AccountStore>.value(value: accounts),
         ChangeNotifierProvider<AuthManager>.value(value: auth),
         ChangeNotifierProvider<TranslationController>.value(value: translation),
-        ChangeNotifierProvider<TelegramLanguageController>.value(
-          value: TelegramLanguageController.shared,
-        ),
         ChangeNotifierProvider<ChatDeepLinkController>.value(value: deepLinks),
         ChangeNotifierProvider<dc.DrawerController>.value(value: drawer),
       ],

@@ -12,6 +12,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
+import 'package:provider/provider.dart';
 
 import '../chat/chat_picker_view.dart';
 import '../chat/image_edit_view.dart';
@@ -25,6 +26,7 @@ import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
+import '../theme/theme_controller.dart';
 import 'keyword_blocker.dart';
 import 'privacy_rule_options.dart';
 import 'qr_login_scanner_view.dart';
@@ -936,6 +938,7 @@ class _PrivacyRuleViewState extends State<PrivacyRuleView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final theme = context.watch<ThemeController>();
     return Scaffold(
       backgroundColor: c.groupedBackground,
       body: Column(
@@ -980,6 +983,19 @@ class _PrivacyRuleViewState extends State<PrivacyRuleView> {
                         const InsetDivider(leadingInset: 16),
                     ],
                   ]),
+                  if (_isPhoneNumber) ...[
+                    const SizedBox(height: 14),
+                    _card([
+                      KeyedSubtree(
+                        key: const ValueKey('privacy-sidebar-phone-row'),
+                        child: _toggleAction(
+                          label: AppStringKeys.appearanceHidePhoneInSidebar,
+                          value: theme.hideSidebarPhone,
+                          onChanged: (value) => theme.hideSidebarPhone = value,
+                        ),
+                      ),
+                    ]),
+                  ],
                   if (_isProfilePhoto) ...[
                     _hint(
                       AppStrings.t(
@@ -1108,7 +1124,7 @@ class _PrivacyRuleViewState extends State<PrivacyRuleView> {
                 ),
                 decoration: BoxDecoration(
                   color: AppTheme.brand,
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(AppRadius.control),
                 ),
                 child: Text(
                   AppStrings.t(AppStringKeys.privacyRetry),
@@ -1474,15 +1490,7 @@ class _PrivacyRuleViewState extends State<PrivacyRuleView> {
   }
 
   Widget _card(List<Widget> children) {
-    final c = context.colors;
-    return Container(
-      decoration: BoxDecoration(
-        color: c.card,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(children: children),
-    );
+    return SettingsCard(children: children);
   }
 }
 
@@ -1670,8 +1678,8 @@ class _ActiveSessionsViewState extends State<ActiveSessionsView> {
                   ]),
                   const SizedBox(height: 14),
                   if (_current != null) ...[
-                    _sectionLabel(
-                      AppStrings.t(AppStringKeys.privacyCurrentDevice),
+                    const SettingsSectionHeader(
+                      AppStringKeys.privacyCurrentDevice,
                     ),
                     _card([_sessionRow(_current!, current: true)]),
                     const SizedBox(height: 14),
@@ -1698,8 +1706,8 @@ class _ActiveSessionsViewState extends State<ActiveSessionsView> {
                       ]),
                     ),
                     const SizedBox(height: 14),
-                    _sectionLabel(
-                      AppStrings.t(AppStringKeys.privacyOtherDevices),
+                    const SettingsSectionHeader(
+                      AppStringKeys.privacyOtherDevices,
                     ),
                     _card([
                       for (var i = 0; i < _others.length; i++) ...[
@@ -1709,8 +1717,8 @@ class _ActiveSessionsViewState extends State<ActiveSessionsView> {
                       ],
                     ]),
                   ] else ...[
-                    _sectionLabel(
-                      AppStrings.t(AppStringKeys.privacyOtherDevices),
+                    const SettingsSectionHeader(
+                      AppStringKeys.privacyOtherDevices,
                     ),
                     _card([
                       SizedBox(
@@ -1735,22 +1743,7 @@ class _ActiveSessionsViewState extends State<ActiveSessionsView> {
     );
   }
 
-  Widget _sectionLabel(String t) => Padding(
-    padding: const EdgeInsets.only(left: 16, bottom: 6),
-    child: Text(
-      t,
-      style: TextStyle(fontSize: 13, color: context.colors.textTertiary),
-    ),
-  );
-
-  Widget _card(List<Widget> children) => Container(
-    decoration: BoxDecoration(
-      color: context.colors.card,
-      borderRadius: BorderRadius.circular(12),
-    ),
-    clipBehavior: Clip.antiAlias,
-    child: Column(children: children),
-  );
+  Widget _card(List<Widget> children) => SettingsCard(children: children);
 
   Widget _sessionRow(Map<String, dynamic> s, {bool current = false}) {
     final c = context.colors;
@@ -1947,7 +1940,7 @@ class _BlockedUsersViewState extends State<BlockedUsersView> {
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
               decoration: BoxDecoration(
                 border: Border.all(color: AppTheme.brand),
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(AppRadius.card),
               ),
               child: Text(
                 AppStrings.t(AppStringKeys.privacyUnblock),

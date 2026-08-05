@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
 import '../chat/stretchable_message_bubble_background.dart';
+import '../theme/app_theme.dart';
 import '../theme/message_bubble_background.dart';
 
 const _canvasColor = Color(0xFF17181C);
@@ -101,7 +102,7 @@ class _PreviewGallery extends StatelessWidget {
               style: const TextStyle(
                 color: Color(0xFFF4F4F7),
                 fontSize: 19,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w600,
                 decoration: TextDecoration.none,
               ),
             ),
@@ -135,7 +136,7 @@ class _PreviewGallery extends StatelessWidget {
               return DecoratedBox(
                 decoration: BoxDecoration(
                   color: const Color(0xFF24252B),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                   border: Border.all(color: const Color(0xFF363840)),
                 ),
                 child: Padding(
@@ -149,7 +150,9 @@ class _PreviewGallery extends StatelessWidget {
                             background: item.background,
                             constraints: const BoxConstraints.expand(),
                             fallbackColor: const Color(0xFF33343A),
-                            fallbackBorderRadius: BorderRadius.circular(10),
+                            fallbackBorderRadius: BorderRadius.circular(
+                              AppRadius.control,
+                            ),
                             fallbackPadding: EdgeInsets.zero,
                             child: const SizedBox.shrink(),
                           ),

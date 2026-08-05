@@ -61,7 +61,7 @@ class _SensitiveContentRevealPrompt extends StatelessWidget {
           key: const ValueKey('sensitive-content-choice-surface'),
           decoration: BoxDecoration(
             color: c.card,
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(AppRadius.card),
             border: Border.all(color: c.divider, width: 0.5),
             boxShadow: [
               BoxShadow(
@@ -72,7 +72,7 @@ class _SensitiveContentRevealPrompt extends StatelessWidget {
             ],
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(AppRadius.card),
             child: DefaultTextStyle(
               style: AppTextStyle.body(c.textPrimary),
               child: Column(

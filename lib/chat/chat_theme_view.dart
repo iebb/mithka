@@ -152,7 +152,7 @@ class _ChatThemeViewState extends State<ChatThemeView> {
         ? null
         : _controller.themeWallpaper(_selection?.themeName ?? '', dark: _dark);
     return ClipRRect(
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(AppRadius.lg),
       child: SizedBox(
         height: 270,
         child: ChatWallpaperBackground(
@@ -217,7 +217,7 @@ class _ChatThemeViewState extends State<ChatThemeView> {
         padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
         decoration: BoxDecoration(
           color: background,
-          borderRadius: BorderRadius.circular(15),
+          borderRadius: BorderRadius.circular(AppRadius.lg),
           boxShadow: const [
             BoxShadow(
               color: Color(0x22000000),
@@ -316,10 +316,10 @@ class _ChatThemeViewState extends State<ChatThemeView> {
         padding: EdgeInsets.all(selected ? 3 : 1),
         decoration: BoxDecoration(
           color: selected ? c.linkBlue : c.divider,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(AppRadius.card),
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(11),
+          borderRadius: BorderRadius.circular(AppRadius.card),
           child: Stack(
             fit: StackFit.expand,
             children: [
@@ -336,7 +336,7 @@ class _ChatThemeViewState extends State<ChatThemeView> {
                       ),
                       decoration: BoxDecoration(
                         color: const Color(0xC57D4DE8),
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(AppRadius.control),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -354,7 +354,7 @@ class _ChatThemeViewState extends State<ChatThemeView> {
                             ),
                             style: const TextStyle(
                               fontSize: 10,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w600,
                               color: Color(0xFFFFFFFF),
                             ),
                           ),
@@ -388,7 +388,7 @@ class _ChatThemeViewState extends State<ChatThemeView> {
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: enabled ? c.linkBlue : c.linkBlue.withValues(alpha: 0.45),
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(AppRadius.card),
             ),
             child: Text(
               access.allowed
@@ -399,7 +399,7 @@ class _ChatThemeViewState extends State<ChatThemeView> {
               style: const TextStyle(
                 color: Color(0xFFFFFFFF),
                 fontSize: 16,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),

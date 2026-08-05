@@ -217,7 +217,7 @@ class _ChatDeleteScopeDialog extends StatelessWidget {
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   color: c.card,
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(AppRadius.lg),
                   border: Border.all(color: c.divider, width: 0.5),
                   boxShadow: const [
                     BoxShadow(

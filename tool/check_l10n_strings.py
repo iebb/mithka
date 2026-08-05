@@ -228,7 +228,7 @@ def direct_text_key_renders(text: str) -> list[int]:
             and ".l10n.t(" not in expression
             and "AppStrings.t(" not in expression
             and "AppLocalizations.of(" not in expression
-            and "telegramText(" not in expression
+            and "AppStrings.plural(" not in expression
         ):
             offsets.append(index)
         index = close_index + 1
@@ -265,7 +265,8 @@ def indirect_key_render_failures(text: str) -> list[tuple[int, str]]:
             if (
                 f"widget.{field}" not in expression
                 or ".l10n(" in expression
-                or "telegramText(" in expression
+                or "AppStrings.t(" in expression
+                or "AppStrings.plural(" in expression
             ):
                 continue
             if expression in CONTENT_RENDER_EXPRESSIONS:
@@ -275,7 +276,7 @@ def indirect_key_render_failures(text: str) -> list[tuple[int, str]]:
         if (
             ".l10n(" in expression
             or "AppStrings.t(" in expression
-            or "telegramText(" in expression
+            or "AppStrings.plural(" in expression
         ):
             continue
         if expression in CONTENT_RENDER_EXPRESSIONS:

@@ -1,0 +1,53 @@
+{
+  "source": "en-US",
+  "locales": [
+    {
+      "tag": "en-US",
+      "appKey": "en",
+      "name": "English",
+      "nativeName": "English"
+    },
+    {
+      "tag": "zh-Hans-CN",
+      "appKey": "zhHans",
+      "name": "Chinese (Simplified)",
+      "nativeName": "简体中文"
+    },
+    {
+      "tag": "zh-Hant-TW",
+      "appKey": "zhHant",
+      "name": "Chinese (Traditional)",
+      "nativeName": "繁體中文"
+    },
+    {
+      "tag": "ja-JP",
+      "appKey": "ja",
+      "name": "Japanese",
+      "nativeName": "日本語"
+    },
+    {
+      "tag": "ko-KR",
+      "appKey": "ko",
+      "name": "Korean",
+      "nativeName": "한국어"
+    },
+    {
+      "tag": "fr-FR",
+      "appKey": "fr",
+      "name": "French",
+      "nativeName": "Français"
+    },
+    {
+      "tag": "es-ES",
+      "appKey": "es",
+      "name": "Spanish",
+      "nativeName": "Español"
+    },
+    {
+      "tag": "de-DE",
+      "appKey": "de",
+      "name": "German",
+      "nativeName": "Deutsch"
+    }
+  ]
+}

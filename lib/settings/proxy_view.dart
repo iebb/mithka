@@ -181,15 +181,7 @@ class _ProxyViewState extends State<ProxyView> {
   }
 
   Widget _card(List<Widget> children) {
-    final c = context.colors;
-    return Container(
-      decoration: BoxDecoration(
-        color: c.card,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(children: children),
-    );
+    return SettingsCard(children: children);
   }
 
   Widget _noneRow() {
@@ -555,7 +547,7 @@ class _ProxyEditViewState extends State<ProxyEditView> {
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         color: c.searchFill,
-        borderRadius: BorderRadius.circular(9),
+        borderRadius: BorderRadius.circular(AppRadius.control),
       ),
       child: Row(
         children: [
@@ -569,7 +561,7 @@ class _ProxyEditViewState extends State<ProxyEditView> {
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: _type == t.$1 ? c.card : Colors.transparent,
-                    borderRadius: BorderRadius.circular(7),
+                    borderRadius: BorderRadius.circular(AppRadius.md),
                   ),
                   child: Text(
                     t.$2,
@@ -590,15 +582,7 @@ class _ProxyEditViewState extends State<ProxyEditView> {
   }
 
   Widget _card(List<Widget> children) {
-    final c = context.colors;
-    return Container(
-      decoration: BoxDecoration(
-        color: c.card,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(children: children),
-    );
+    return SettingsCard(children: children);
   }
 
   Widget _field(

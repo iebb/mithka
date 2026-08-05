@@ -24,7 +24,6 @@ import '../components/icon_grid.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
-import '../l10n/telegram_language_controller.dart';
 import '../moments/story_management_view.dart';
 import '../notifications/notification_settings_payload.dart';
 import '../profile/qr_code_view.dart';
@@ -32,10 +31,12 @@ import '../settings/edit_field_view.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
+import '../tdlib/td_user_index.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import 'add_members_view.dart';
+import 'chat_members_cache.dart';
 import 'chat_members_view.dart';
 import 'chat_search_view.dart';
 import 'chat_theme_view.dart';
@@ -524,7 +525,7 @@ class _ChatInfoViewState extends State<ChatInfoView> {
 
   BoxDecoration get _card => BoxDecoration(
     color: context.colors.card,
-    borderRadius: BorderRadius.circular(12),
+    borderRadius: BorderRadius.circular(AppRadius.card),
   );
 
   void _openQR() {
@@ -656,7 +657,7 @@ class _ChatInfoViewState extends State<ChatInfoView> {
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: c.searchFill,
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -683,7 +684,7 @@ class _ChatInfoViewState extends State<ChatInfoView> {
             child: Row(
               children: [
                 Text(
-                  telegramText(AppStringKeys.chatInfoGroupMembers),
+                  AppStrings.t(AppStringKeys.chatInfoGroupMembers),
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w500,
@@ -843,7 +844,7 @@ class _ChatInfoViewState extends State<ChatInfoView> {
           if (!_vm.isGroup) ...[
             const InsetDivider(leadingInset: 14),
             _infoRow(
-              telegramText(AppStringKeys.topicPostContentFile),
+              AppStrings.t(AppStringKeys.topicPostContentFile),
               () => Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (_) => SharedMediaView(
@@ -948,7 +949,7 @@ class _ChatInfoViewState extends State<ChatInfoView> {
                   _groupAppItem(
                     icon: HeroAppIcons.solidFolder.data,
                     color: const Color(0xFFFFB300),
-                    label: telegramText(AppStringKeys.topicPostContentFile),
+                    label: AppStrings.t(AppStringKeys.topicPostContentFile),
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => SharedMediaView(
@@ -995,7 +996,7 @@ class _ChatInfoViewState extends State<ChatInfoView> {
                   _groupAppItem(
                     icon: HeroAppIcons.solidStar.data,
                     color: const Color(0xFF18C26E),
-                    label: telegramText(AppStringKeys.chatInfoPinnedHighlights),
+                    label: AppStrings.t(AppStringKeys.chatInfoPinnedHighlights),
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => PinnedMessagesView(
@@ -1587,7 +1588,7 @@ class _ChatFolderMembershipViewState extends State<ChatFolderMembershipView> {
         Container(
           decoration: BoxDecoration(
             color: c.card,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(AppRadius.card),
           ),
           clipBehavior: Clip.antiAlias,
           child: Column(
@@ -1833,7 +1834,7 @@ class _CreateChatFolderPromptState extends State<_CreateChatFolderPrompt> {
                 padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
                 decoration: BoxDecoration(
                   color: c.card,
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(AppRadius.lg),
                   boxShadow: const [
                     BoxShadow(
                       color: Color(0x30000000),
@@ -1851,7 +1852,7 @@ class _CreateChatFolderPromptState extends State<_CreateChatFolderPrompt> {
                       style: TextStyle(
                         color: c.textPrimary,
                         fontSize: 19,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -1861,7 +1862,7 @@ class _CreateChatFolderPromptState extends State<_CreateChatFolderPrompt> {
                       padding: const EdgeInsets.symmetric(horizontal: 14),
                       decoration: BoxDecoration(
                         color: c.searchFill,
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(AppRadius.card),
                       ),
                       child: Stack(
                         alignment: Alignment.centerLeft,
@@ -2000,6 +2001,10 @@ class ChatInfoViewModel extends ChangeNotifier {
   bool isArchived = false;
   int autoDeleteTime = 0;
   List<ChatMember> members = [];
+  // Suppresses progressive streaming during a refresh: the strip is already
+  // showing a full cached list, so filling it one member at a time would
+  // shrink it back to one and regrow.
+  bool _paintedFromCache = false;
   bool canInvite = false;
   bool canRemove = false;
   bool canManageGroup = false;
@@ -2076,7 +2081,22 @@ class ChatInfoViewModel extends ChangeNotifier {
   void load() {
     if (_loaded) return;
     _loaded = true;
+    _seedMembersFromCache();
     _loadAsync();
+  }
+
+  /// Paints a previously resolved member strip before the network pass starts,
+  /// so switching back to a chat does not replay the whole resolve. The strip
+  /// stays live: [_loadMembers] still refreshes and overwrites it.
+  void _seedMembersFromCache() {
+    final cached = ChatMembersCache.shared.read(
+      accountSlot: TdClient.shared.activeSlot,
+      chatId: chatId,
+    );
+    if (cached == null) return;
+    members = cached.members;
+    memberCount = cached.memberCount;
+    _paintedFromCache = true;
   }
 
   Future<void> _loadAsync() async {
@@ -2295,10 +2315,13 @@ class ChatInfoViewModel extends ChangeNotifier {
       final uid = memberId?.int64('user_id');
       if (uid == null) continue;
       try {
-        final user = await TdClient.shared.query({
-          '@type': 'getUser',
-          'user_id': uid,
-        });
+        // TDLib guarantees updateUser lands before the id is handed to us, so
+        // the index usually already holds this user and the round-trip is
+        // pure latency — the resolve is sequential, so it costs the strip a
+        // full RTT per member.
+        final user =
+            TdUserIndex.shared.userFor(TdClient.shared.activeSlot, uid) ??
+            await TdClient.shared.query({'@type': 'getUser', 'user_id': uid});
         final status = entry.obj('status');
         final roleTitle = _memberTitle(entry, status);
         var role = switch (status?.type) {
@@ -2317,10 +2340,28 @@ class ChatInfoViewModel extends ChangeNotifier {
           ),
         );
         // Stream after each resolve so the grid fills progressively and a slow
-        // or failing lookup can't keep the whole list empty.
+        // or failing lookup can't keep the whole list empty. Skipped once a
+        // cached strip is on screen — there is nothing to fill in, and the
+        // partial lists would only flicker.
+        if (!_paintedFromCache) {
+          members = List.of(result);
+          notifyListeners();
+        }
+      } catch (_) {}
+    }
+    if (result.isNotEmpty) {
+      if (_paintedFromCache) {
+        // Swap in one step. An empty result here means the refresh failed
+        // rather than that the group emptied, so the cached strip stands.
         members = List.of(result);
         notifyListeners();
-      } catch (_) {}
+      }
+      ChatMembersCache.shared.store(
+        accountSlot: TdClient.shared.activeSlot,
+        chatId: chatId,
+        members: result,
+        memberCount: memberCount,
+      );
     }
   }
 

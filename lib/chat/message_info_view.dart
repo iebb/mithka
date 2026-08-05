@@ -203,7 +203,7 @@ class _MessageInfoViewState extends State<MessageInfoView> {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: c.card,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       child: Text(
         AppStringKeys.messageInfoLoadFailed.l10n(context),
@@ -290,7 +290,7 @@ class _MessageInfoViewState extends State<MessageInfoView> {
     return Container(
       decoration: BoxDecoration(
         color: c.card,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -353,7 +353,7 @@ class _InfoCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: context.colors.card,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(

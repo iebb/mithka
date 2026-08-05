@@ -90,7 +90,7 @@ class _ChatMediaDropRegionState extends State<ChatMediaDropRegion> {
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
                       color: context.colors.card,
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(AppRadius.control),
                       border: Border.all(color: AppTheme.brand, width: 2),
                     ),
                     child: AppIcon(

@@ -9,6 +9,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
 import '../theme/app_motion.dart';
+import '../theme/app_theme.dart';
 import 'group_call_controller.dart';
 
 class GroupCallScreen extends StatefulWidget {
@@ -265,7 +266,7 @@ class _GroupCallScreenState extends State<GroupCallScreen> {
       builder: (context, candidates, _) => AnimatedContainer(
         duration: const Duration(milliseconds: 140),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(AppRadius.lg),
           border: candidates.isEmpty
               ? null
               : Border.all(color: Colors.white, width: 2),
@@ -408,7 +409,7 @@ class _ParticipantTile extends StatelessWidget {
         ? 'group:local'
         : 'group:${participant.videoEndpointId}';
     return ClipRRect(
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(AppRadius.lg),
       child: Stack(
         fit: StackFit.expand,
         children: [
@@ -468,7 +469,7 @@ class _ParticipantTile extends StatelessWidget {
         color: compactVoiceTile
             ? Colors.transparent
             : Colors.black.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -557,7 +558,7 @@ class _GlassButton extends StatelessWidget {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: Colors.white.withValues(alpha: 0.28),
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(AppRadius.card),
           ),
           child: AppIcon(icon, size: 23, color: Colors.white),
         ),
@@ -590,7 +591,7 @@ class _SquareCallButton extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: background,
-          borderRadius: BorderRadius.circular(21),
+          borderRadius: BorderRadius.circular(AppRadius.xl),
         ),
         child: AppIcon(icon, size: 29, color: foreground),
       ),

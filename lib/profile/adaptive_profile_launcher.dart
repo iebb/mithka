@@ -14,15 +14,24 @@ typedef DesktopProfileWindowOpener =
 /// Desktop surfaces use a native utility window. Phone and tablet callers keep
 /// their existing navigation behavior through [openFallback], while callers
 /// without a custom split-pane destination receive the normal profile route.
+///
+/// [preferInlinePane] is for a caller that already has a detail pane sitting
+/// empty beside its list — the contacts tab. Sending that profile to a separate
+/// window would leave the pane it was going to fill blank.
 Future<void> openAdaptiveUserProfile(
   BuildContext context, {
   required int userId,
   required String name,
   VoidCallback? openFallback,
+  bool preferInlinePane = false,
   DesktopProfileWindowOpener? desktopWindowOpener,
   TargetPlatform? platform,
   bool? desktopWindowsSupported,
 }) async {
+  if (preferInlinePane && openFallback != null) {
+    openFallback();
+    return;
+  }
   final utilityWindows = DesktopUtilityWindowService.instance;
   final useDesktopWindow =
       isDesktopTargetPlatform(platform) &&

@@ -19,6 +19,7 @@ import '../components/desktop_content_constraint.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../theme/app_theme.dart';
+import '../update/update_checker.dart';
 import 'developer_mode_controller.dart';
 import 'feedback_report_view.dart';
 
@@ -38,6 +39,37 @@ class _AboutViewState extends State<AboutView> {
   late final Future<AppVersion> _versionFuture = AppVersion.load();
   int _versionTapCount = 0;
   DateTime? _lastVersionTapAt;
+  bool _checking = false;
+  UpdateCheckOutcome? _updateOutcome;
+
+  /// Trailing text on the update row: the last outcome, or nothing yet.
+  String _updateStatusLabel() {
+    if (_checking) return AppStrings.t(AppStringKeys.aboutCheckingForUpdates);
+    return switch (_updateOutcome) {
+      null => '',
+      UpdateCheckOutcome.upToDate => AppStrings.t(AppStringKeys.aboutUpToDate),
+      UpdateCheckOutcome.unavailable => AppStrings.t(
+        AppStringKeys.aboutUpdateCheckFailed,
+      ),
+      // checkNow already offered the download; the row just records it.
+      UpdateCheckOutcome.updateAvailable => AppStrings.t(
+        AppStringKeys.aboutDownloadUpdate,
+      ),
+    };
+  }
+
+  Future<void> _checkForUpdates() async {
+    setState(() {
+      _checking = true;
+      _updateOutcome = null;
+    });
+    final outcome = await UpdateChecker.checkNow(context);
+    if (!mounted) return;
+    setState(() {
+      _checking = false;
+      _updateOutcome = outcome;
+    });
+  }
 
   Future<void> _handleVersionTap() async {
     final now = DateTime.now();
@@ -83,7 +115,7 @@ class _AboutViewState extends State<AboutView> {
                           height: 84,
                           decoration: BoxDecoration(
                             gradient: AppTheme.brandGradient,
-                            borderRadius: BorderRadius.circular(20),
+                            borderRadius: BorderRadius.circular(AppRadius.xl),
                           ),
                           child: const Padding(
                             padding: EdgeInsets.all(10),
@@ -98,7 +130,7 @@ class _AboutViewState extends State<AboutView> {
                           'Mithka',
                           style: TextStyle(
                             fontSize: 22,
-                            fontWeight: FontWeight.bold,
+                            fontWeight: FontWeight.w600,
                             color: c.textPrimary,
                           ),
                         ),
@@ -132,17 +164,38 @@ class _AboutViewState extends State<AboutView> {
                     ),
                   ),
                   const SizedBox(height: 30),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: c.card,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                  SettingsPanel(
+                    padding: const EdgeInsets.only(left: 48),
                     clipBehavior: Clip.antiAlias,
                     child: Column(
                       children: [
+                        if (UpdateChecker.supportsManualCheck) ...[
+                          SettingsRow(
+                            leading: AppIcon(
+                              HeroAppIcons.download,
+                              size: AppIconSize.lg,
+                              color: AppTheme.brand,
+                            ),
+                            title: AppStrings.t(
+                              AppStringKeys.aboutCheckForUpdates,
+                            ),
+                            value: _updateStatusLabel(),
+                            onTap: _checking
+                                ? null
+                                : () => unawaited(_checkForUpdates()),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.only(left: 48),
+                            child: Divider(height: 1, color: c.divider),
+                          ),
+                        ],
                         if (sentryEnabled) ...[
-                          _AboutLinkRow(
-                            icon: HeroAppIcons.comments.data,
+                          SettingsRow(
+                            leading: AppIcon(
+                              HeroAppIcons.comments,
+                              size: AppIconSize.lg,
+                              color: AppTheme.brand,
+                            ),
                             title: AppStrings.t(
                               AppStringKeys.aboutReportProblem,
                             ),
@@ -163,8 +216,12 @@ class _AboutViewState extends State<AboutView> {
                             child: Divider(height: 1, color: c.divider),
                           ),
                         ],
-                        _AboutLinkRow(
-                          icon: HeroAppIcons.globe.data,
+                        SettingsRow(
+                          leading: AppIcon(
+                            HeroAppIcons.globe,
+                            size: AppIconSize.lg,
+                            color: AppTheme.brand,
+                          ),
                           title: AppStrings.t(AppStringKeys.aboutWebsite),
                           value: 'mithka.ieb.app',
                           onTap: () => openLink(context, _websiteUrl),
@@ -173,8 +230,12 @@ class _AboutViewState extends State<AboutView> {
                           padding: const EdgeInsets.only(left: 48),
                           child: Divider(height: 1, color: c.divider),
                         ),
-                        _AboutLinkRow(
-                          icon: HeroAppIcons.solidPaperPlane.data,
+                        SettingsRow(
+                          leading: AppIcon(
+                            HeroAppIcons.solidPaperPlane,
+                            size: AppIconSize.lg,
+                            color: AppTheme.brand,
+                          ),
                           title: AppStrings.t(
                             AppStringKeys.aboutTelegramChannel,
                           ),
@@ -185,8 +246,12 @@ class _AboutViewState extends State<AboutView> {
                           padding: const EdgeInsets.only(left: 48),
                           child: Divider(height: 1, color: c.divider),
                         ),
-                        _AboutLinkRow(
-                          icon: HeroAppIcons.code.data,
+                        SettingsRow(
+                          leading: AppIcon(
+                            HeroAppIcons.code,
+                            size: AppIconSize.lg,
+                            color: AppTheme.brand,
+                          ),
                           title: 'GitHub',
                           value: 'github.com/iebb/mithka',
                           onTap: () => openLink(context, _githubUrl),
@@ -199,66 +264,6 @@ class _AboutViewState extends State<AboutView> {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _AboutLinkRow extends StatelessWidget {
-  const _AboutLinkRow({
-    required this.icon,
-    required this.title,
-    required this.value,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String title;
-  final String value;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: SizedBox(
-        height: 52,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              Icon(icon, size: 20, color: AppTheme.brand),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 16, color: c.textPrimary),
-                ),
-              ),
-              const SizedBox(width: 12),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 140),
-                child: Text(
-                  value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.right,
-                  style: TextStyle(fontSize: 14, color: c.textSecondary),
-                ),
-              ),
-              const SizedBox(width: 6),
-              AppIcon(
-                HeroAppIcons.chevronRight,
-                size: 14,
-                color: c.textTertiary,
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }

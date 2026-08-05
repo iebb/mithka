@@ -1,0 +1,91 @@
+{
+  "source": "en-US",
+  "_pluralCategories": "CLDR categories that apply to integer counts, which is all Mithka formats. Categories CLDR only reaches through compact or decimal forms (Spanish and French 'many') are deliberately omitted.",
+  "locales": [
+    {
+      "tag": "en-US",
+      "appKey": "en",
+      "name": "English",
+      "nativeName": "English",
+      "pluralCategories": [
+        "one",
+        "other"
+      ],
+      "telegramCode": "en"
+    },
+    {
+      "tag": "zh-Hans-CN",
+      "appKey": "zhHans",
+      "name": "Chinese (Simplified)",
+      "nativeName": "简体中文",
+      "pluralCategories": [
+        "other"
+      ],
+      "telegramCode": "zh-hans"
+    },
+    {
+      "tag": "zh-Hant-TW",
+      "appKey": "zhHant",
+      "name": "Chinese (Traditional)",
+      "nativeName": "繁體中文",
+      "pluralCategories": [
+        "other"
+      ],
+      "telegramCode": "zh-hant"
+    },
+    {
+      "tag": "ja-JP",
+      "appKey": "ja",
+      "name": "Japanese",
+      "nativeName": "日本語",
+      "pluralCategories": [
+        "other"
+      ],
+      "telegramCode": "ja"
+    },
+    {
+      "tag": "ko-KR",
+      "appKey": "ko",
+      "name": "Korean",
+      "nativeName": "한국어",
+      "pluralCategories": [
+        "other"
+      ],
+      "telegramCode": "ko"
+    },
+    {
+      "tag": "fr-FR",
+      "appKey": "fr",
+      "name": "French",
+      "nativeName": "Français",
+      "pluralCategories": [
+        "one",
+        "other"
+      ],
+      "telegramCode": "fr"
+    },
+    {
+      "tag": "es-ES",
+      "appKey": "es",
+      "name": "Spanish",
+      "nativeName": "Español",
+      "pluralCategories": [
+        "one",
+        "other"
+      ],
+      "telegramCode": "es"
+    },
+    {
+      "tag": "de-DE",
+      "appKey": "de",
+      "name": "German",
+      "nativeName": "Deutsch",
+      "pluralCategories": [
+        "one",
+        "other"
+      ],
+      "telegramCode": "de"
+    }
+  ],
+  "_telegramCode": "Language code on translations.telegram.org, used only by tools/import_telegram.py to fill untranslated strings."
+}

@@ -19,6 +19,8 @@ enum DesktopUtilityWindowKind {
   videos('videos'),
   search('search'),
   settings('settings'),
+  editProfile('edit-profile'),
+  businessProfile('business-profile'),
   chatInfo('chat-info'),
   userProfile('user-profile'),
   audioPicker('audio-picker'),

@@ -7,6 +7,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
 import 'gif_item.dart';
 import 'looping_video_view.dart';
 
@@ -18,7 +19,7 @@ class GifPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: BorderRadius.circular(AppRadius.md),
       child: LoopingVideoView(
         file: item.file,
         fallback: item.thumbnail ?? item.file,

@@ -133,7 +133,7 @@ void main() {
       'Future<bool> _scrollToMessageAndReport(',
     );
     final methodEnd = source.indexOf(
-      'Future<void> _openHashtagSearch(',
+      'void _openHashtagSearch(',
       methodStart,
     );
     expect(methodStart, greaterThanOrEqualTo(0));
@@ -172,7 +172,7 @@ void main() {
       'Future<bool> _scrollToMessageAndReport(',
     );
     final scrollEnd = viewSource.indexOf(
-      'Future<void> _openHashtagSearch(',
+      'void _openHashtagSearch(',
       scrollStart,
     );
     final sessionScroll = viewSource.substring(scrollStart, scrollEnd);
@@ -299,7 +299,7 @@ void main() {
     expect(targetCancellation, lessThan(targetDelegate));
 
     final reportEnd = source.indexOf(
-      'Future<void> _openHashtagSearch(',
+      'void _openHashtagSearch(',
       targetWrapperEnd,
     );
     final sessionReport = source.substring(targetWrapperEnd, reportEnd);
@@ -308,7 +308,9 @@ void main() {
     expect(source, contains('unawaited(_jumpToFirstUnread())'));
     expect(source, contains('_scrollToMessage(pinned.id, pinnedJump: true)'));
     expect(source, contains('await _scrollToMessage(messageId)'));
-    expect(source, contains('await _scrollToMessage(result)'));
+    // Search hits — including a tapped hashtag — jump through the cancelling
+    // wrapper rather than the raw reporting call.
+    expect(source, contains('await _scrollToMessage(result.id'));
   });
 
   group('oldest history pull', () {

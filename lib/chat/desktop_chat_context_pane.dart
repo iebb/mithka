@@ -336,12 +336,9 @@ class _MemberSectionState extends State<_MemberSection> {
                 )
               : ListView.builder(
                   key: const ValueKey('desktopChatContextMemberList'),
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.lg,
-                    0,
-                    AppSpacing.lg,
-                    AppSpacing.lg,
-                  ),
+                  // Vertical only: the rows own their horizontal inset so a
+                  // hovered row fills the pane instead of leaving gutters.
+                  padding: const EdgeInsets.only(bottom: AppSpacing.lg),
                   itemCount: shownMembers.length,
                   itemBuilder: (context, index) {
                     final member = shownMembers[index];
@@ -421,35 +418,38 @@ class _MemberRow extends StatelessWidget {
       onTap: onTap,
       child: SizedBox(
         height: 36,
-        child: Row(
-          children: [
-            PhotoAvatar(
-              title: member.name,
-              photo: member.photo,
-              size: 24,
-              allowAnimation: false,
-            ),
-            const SizedBox(width: AppSpacing.md),
-            Expanded(
-              child: Text(
-                member.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTextStyle.footnote(c.textPrimary),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+          child: Row(
+            children: [
+              PhotoAvatar(
+                title: member.name,
+                photo: member.photo,
+                size: 24,
+                allowAnimation: false,
               ),
-            ),
-            if (member.role case final role?) ...[
-              const SizedBox(width: AppSpacing.sm),
-              KeyedSubtree(
-                key: ValueKey('desktopChatContextMemberRole-${member.id}'),
-                child: RoleTag(
-                  role: role,
-                  title: member.roleTitle,
-                  fontSize: 9,
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Text(
+                  member.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyle.footnote(c.textPrimary),
                 ),
               ),
+              if (member.role case final role?) ...[
+                const SizedBox(width: AppSpacing.sm),
+                KeyedSubtree(
+                  key: ValueKey('desktopChatContextMemberRole-${member.id}'),
+                  child: RoleTag(
+                    role: role,
+                    title: member.roleTitle,
+                    fontSize: 9,
+                  ),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

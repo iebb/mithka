@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -61,6 +63,7 @@ class AppLocaleController extends ChangeNotifier {
     final normalized = value == null ? null : AppLocalizations.resolve(value);
     if (_sameLocale(_locale, normalized)) return;
     _locale = normalized;
+    AppStrings.setLocale(normalized ?? ui.PlatformDispatcher.instance.locale);
     if (normalized == null) {
       _prefs.remove(_localeKey);
     } else {

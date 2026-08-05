@@ -10,6 +10,7 @@
 import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
+import '../theme/app_theme.dart';
 
 void showToast(
   BuildContext context,
@@ -94,7 +95,7 @@ class _ToastState extends State<_Toast> with SingleTickerProviderStateMixin {
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
               decoration: BoxDecoration(
                 color: Colors.black.withValues(alpha: 0.82),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(AppRadius.control),
               ),
               child: Text(
                 widget.message,

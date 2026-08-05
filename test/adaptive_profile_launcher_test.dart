@@ -101,4 +101,43 @@ void main() {
 
     expect(fallbackCalls, 1);
   });
+
+  testWidgets('a caller with a detail pane keeps the profile inline', (
+    tester,
+  ) async {
+    var openedWindow = false;
+    var openedInline = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => openAdaptiveUserProfile(
+              context,
+              userId: 7,
+              name: 'Contact',
+              preferInlinePane: true,
+              openFallback: () => openedInline = true,
+              platform: TargetPlatform.macOS,
+              desktopWindowsSupported: true,
+              desktopWindowOpener: (_) async {
+                openedWindow = true;
+                return true;
+              },
+            ),
+            child: const Text('open'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    expect(openedInline, isTrue);
+    expect(
+      openedWindow,
+      isFalse,
+      reason: 'the pane beside the list would have been left empty',
+    );
+  });
 }

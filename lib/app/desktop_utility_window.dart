@@ -36,7 +36,6 @@ import '../components/keyboard_dismiss_on_tap.dart';
 import '../components/toast.dart';
 import '../l10n/app_locale_controller.dart';
 import '../l10n/app_localizations.dart';
-import '../l10n/telegram_language_controller.dart';
 import '../pro/mithka_pro_service.dart';
 import '../profile/profile_detail_view.dart';
 import '../security/local_app_lock_controller.dart';
@@ -67,6 +66,8 @@ import 'desktop_utility_window_stub.dart'
     if (dart.library.io) 'desktop_utility_window_io.dart'
     as implementation;
 import 'global_video_split_host.dart';
+import '../settings/edit_profile_view.dart';
+import '../settings/business_settings_view.dart';
 
 export 'desktop_utility_window_models.dart';
 
@@ -150,8 +151,6 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
   late TranslationController _translation = TranslationController(widget.prefs);
   late final AiSettingsController _ai = AiSettingsController(widget.prefs);
   late AppLocaleController _locale = AppLocaleController(widget.prefs);
-  late final TelegramLanguageController _telegramLanguage =
-      TelegramLanguageController.shared;
   late final GroupRemarkController _groupRemarks = GroupRemarkController(
     widget.prefs,
     initialAccountUserId: widget.arguments.accountUserId,
@@ -237,10 +236,6 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
       unawaited(
         _initializeAndAttachSettingsSource(_mithkaPro.initialize, _mithkaPro),
       );
-      // Attach before TDLib finishes loading remote packs so a fast language
-      // choice still reaches the primary engine and every open child window.
-      _attachSettingsSyncSource(_telegramLanguage);
-      unawaited(_telegramLanguage.initialize(widget.prefs));
       unawaited(
         _initializeAndAttachSettingsSource(_appIcons.initialize, _appIcons),
       );
@@ -250,7 +245,6 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
     } else {
       unawaited(_ai.initialize());
       unawaited(_mithkaPro.initialize());
-      unawaited(_telegramLanguage.initialize(widget.prefs));
       unawaited(_appIcons.initialize());
       unawaited(_appLock.initialize());
     }
@@ -318,7 +312,6 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
             );
         final nextTranslation = TranslationController(widget.prefs);
         final nextLocale = AppLocaleController(widget.prefs);
-        unawaited(_telegramLanguage.reloadPreferences(widget.prefs));
 
         if (widget.arguments.kind == DesktopUtilityWindowKind.settings) {
           _settingsSyncDebounce?.cancel();
@@ -441,7 +434,7 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
     );
   }
 
-  Locale _effectiveLocale() => _telegramLanguage.mithkaLocale;
+  Locale? _effectiveLocale() => _locale.locale;
 
   Future<void> _sendSearchedAudio(int sourceChatId, ChatMessage message) =>
       _pickerViewModel.sendAudioFromMessage(sourceChatId, message);
@@ -666,6 +659,10 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
           .asNameMap()[widget.arguments.initialSearchTab],
       showBackButton: false,
     ),
+    DesktopUtilityWindowKind.editProfile => const EditProfileView(
+      showBackButton: false,
+    ),
+    DesktopUtilityWindowKind.businessProfile => const BusinessSettingsView(),
     DesktopUtilityWindowKind.settings => SettingsView(
       showBackButton: false,
       allowSessionLifecycleActions: false,
@@ -744,7 +741,6 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
       ChangeNotifierProvider.value(value: _translation),
       ChangeNotifierProvider.value(value: _ai),
       ChangeNotifierProvider.value(value: _locale),
-      ChangeNotifierProvider.value(value: _telegramLanguage),
       ChangeNotifierProvider.value(value: _groupRemarks),
       ChangeNotifierProvider.value(value: _mithkaPro),
       ChangeNotifierProvider.value(value: _appIcons),
@@ -757,10 +753,9 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
       ChangeNotifierProvider.value(value: _calls),
     ],
     child: AnimatedBuilder(
-      animation: Listenable.merge([_theme, _locale, _telegramLanguage]),
+      animation: Listenable.merge([_theme, _locale]),
       builder: (context, _) {
         final locale = _effectiveLocale();
-        unawaited(_telegramLanguage.syncAppLocale(locale));
         return MaterialApp(
           navigatorKey: appNavigatorKey,
           title: widget.arguments.title,
@@ -796,7 +791,15 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
                   boldText: media.boldText,
                 ),
               ),
-              child: child ?? const SizedBox.shrink(),
+              // Cupertino-rooted screens (SearchView and friends) sit under no
+              // text style of their own, so any Text that omits a decoration
+              // inherits Flutter's yellow "unstyled" underline. A Material
+              // ancestor would also fix it, but the app avoids Material
+              // surfaces and only the text default is actually missing.
+              child: DefaultTextStyle.merge(
+                style: const TextStyle(decoration: TextDecoration.none),
+                child: child ?? const SizedBox.shrink(),
+              ),
             );
             final appSurface = Stack(
               children: [

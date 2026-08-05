@@ -1,0 +1,596 @@
+import 'dart:math' as math;
+
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../components/app_icons.dart';
+import '../components/photo_avatar.dart';
+import '../l10n/app_localizations.dart';
+import '../platform/adaptive_platform.dart';
+import '../tdlib/td_models.dart';
+import '../theme/app_theme.dart';
+import '../theme/date_text.dart';
+import '../theme/message_name_colors.dart';
+import '../theme/telegram_cloud_theme.dart';
+import '../theme/theme_controller.dart';
+import 'chat_appearance_preview.dart';
+import 'media_album_layout.dart';
+import 'message_action_menu.dart';
+import 'telegram_rich_text.dart';
+
+typedef MediaAlbumImageBuilder =
+    Widget Function(
+      BuildContext context,
+      ChatMessage message,
+      double width,
+      double height,
+    );
+
+/// The production visual-media album row shared by chats and appearance
+/// previews. Keeping the preview on this renderer ensures album geometry,
+/// sender titles, name treatments, timestamps, and bubble colors stay honest.
+class ImageMediaAlbumBubble extends StatelessWidget {
+  const ImageMediaAlbumBubble({
+    super.key,
+    required this.messages,
+    required this.peerTitle,
+    required this.isGroup,
+    this.peerPhoto,
+    this.meName = AppStringKeys.chatMeLabel,
+    this.mePhoto,
+    this.hasCustomChatTheme = false,
+    this.showCommentAttachment = false,
+    this.channelHasLinkedDiscussion = false,
+    this.selecting = false,
+    this.selectedMessageIds = const <int>{},
+    this.outgoingBubbleColor,
+    this.outgoingBubbleTextColor,
+    this.incomingBubbleColor,
+    this.incomingBubbleTextColor,
+    this.messageColors,
+    this.onAvatarTap,
+    this.onAvatarLongPress,
+    this.onOpenImage,
+    this.onPlayVideo,
+    this.onEditCaption,
+    this.onOpenComments,
+    this.onLongPress,
+    this.onToggleSelection,
+    this.onBotCommandTap,
+    this.onHashtagTap,
+    this.onMentionTap,
+    this.imageBuilder,
+  }) : assert(messages.length >= 2);
+
+  final List<ChatMessage> messages;
+  final String peerTitle;
+  final TdFileRef? peerPhoto;
+  final bool isGroup;
+  final String meName;
+  final TdFileRef? mePhoto;
+  final bool hasCustomChatTheme;
+  final bool showCommentAttachment;
+  final bool channelHasLinkedDiscussion;
+  final bool selecting;
+  final Set<int> selectedMessageIds;
+  final Color? outgoingBubbleColor;
+  final Color? outgoingBubbleTextColor;
+  final Color? incomingBubbleColor;
+  final Color? incomingBubbleTextColor;
+  final TelegramMessageColors? messageColors;
+  final ValueChanged<ChatMessage>? onAvatarTap;
+  final ValueChanged<ChatMessage>? onAvatarLongPress;
+  final ValueChanged<ChatMessage>? onOpenImage;
+  final ValueChanged<ChatMessage>? onPlayVideo;
+  final ValueChanged<ChatMessage>? onEditCaption;
+  final ValueChanged<ChatMessage>? onOpenComments;
+  final void Function(
+    ChatMessage message,
+    Rect? bounds,
+    MessageActionSource source,
+  )?
+  onLongPress;
+  final ValueChanged<ChatMessage>? onToggleSelection;
+  final ValueChanged<String>? onBotCommandTap;
+  final ValueChanged<String>? onHashtagTap;
+  final void Function(int userId, String name)? onMentionTap;
+  final MediaAlbumImageBuilder? imageBuilder;
+
+  ChatMessage get _first => messages.first;
+
+  @override
+  Widget build(BuildContext context) {
+    final first = _first;
+    final outgoing = first.isOutgoing;
+    final avatarTitle = outgoing
+        ? (first.senderIsChat ? (first.senderName ?? meName) : meName)
+        : (isGroup && (first.senderName?.isNotEmpty ?? false))
+        ? first.senderName!
+        : peerTitle;
+    final avatarPhoto = outgoing
+        ? (first.senderIsChat ? first.senderPhoto : mePhoto)
+        : (isGroup ? first.senderPhoto : peerPhoto);
+    final captionMessage = messages
+        .where((message) => message.text.trim().isNotEmpty)
+        .firstOrNull;
+
+    Widget avatar() => GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => onAvatarTap?.call(first),
+      onLongPress: outgoing ? null : () => onAvatarLongPress?.call(first),
+      child: PhotoAvatar(title: avatarTitle, photo: avatarPhoto, size: 38),
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final chatWidth = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width;
+        final gallery = _gallery(
+          context,
+          outgoing: outgoing,
+          captionMessage: captionMessage,
+          maxWidth: math.max(1, chatWidth * 0.75),
+        );
+        final body = outgoing
+            ? gallery
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (isGroup && first.senderName != null)
+                    _senderHeader(context),
+                  gallery,
+                ],
+              );
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisAlignment: outgoing
+                ? MainAxisAlignment.end
+                : MainAxisAlignment.start,
+            children: outgoing
+                ? [
+                    Flexible(
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: body,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    avatar(),
+                  ]
+                : [avatar(), const SizedBox(width: 8), Flexible(child: body)],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _senderHeader(BuildContext context) {
+    final first = _first;
+    final colors = context.colors;
+    final theme = context.watch<ThemeController>();
+    final showMemberTags = theme.showMemberTags;
+    final showSenderRole = switch (first.senderRole) {
+      null => false,
+      MemberRole.member =>
+        theme.showPlainMemberRoleTags ||
+            (showMemberTags && (first.senderTitle?.trim().isNotEmpty ?? false)),
+      _ => true,
+    };
+    final cloudTheme = theme.cloudThemeFor(Theme.of(context).brightness);
+    final nameColor = messageNameColorForSender(
+      theme: cloudTheme,
+      accentColorId: first.senderAccentColorId,
+      showNameColors: theme.chatNameColorAudience.shows(
+        isPremium: first.senderIsPremium,
+      ),
+      nameColorsDisabledFallback:
+          cloudTheme?.senderNameColor ?? colors.linkBlue,
+    );
+    final bubbleBackground = theme.effectiveMessageBubbleBackgroundSpecFor(
+      outgoing: false,
+    );
+    final incomingColor =
+        bubbleBackground.backgroundColor ??
+        incomingBubbleColor ??
+        cloudTheme?.incomingColor ??
+        colors.bubbleIncoming;
+    final incomingTextColor =
+        bubbleBackground.foregroundColor ??
+        incomingBubbleTextColor ??
+        colors.bubbleIncomingText;
+    final senderTitle = first.senderTitle?.trim();
+
+    return Padding(
+      key: ValueKey('messageSenderHeader-${first.id}'),
+      padding: const EdgeInsets.only(left: 2, bottom: 4),
+      child: Row(
+        children: [
+          Flexible(
+            child: SenderIdentityPills(
+              readabilityMode: theme.senderNameReadabilityMode,
+              bubbleColor: incomingColor,
+              textColor: incomingTextColor,
+              name: first.senderName!,
+              nameStyle: TextStyle(
+                fontSize: 12,
+                color: nameColor,
+                fontWeight: FontWeight.w500,
+              ),
+              role: showSenderRole ? first.senderRole : null,
+              roleTitle: showSenderRole && showMemberTags ? senderTitle : null,
+              roleAfterName: isDesktopTargetPlatform(),
+            ),
+          ),
+          if (theme.alwaysShowMessageTime) ...[
+            const SizedBox(width: 5),
+            SizedBox(
+              width: 96,
+              height: 14,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  DateText.messageDetailLabel(first.date),
+                  key: const ValueKey('messageTappedTimestamp'),
+                  maxLines: 1,
+                  textScaler: TextScaler.noScaling,
+                  style: TextStyle(
+                    fontSize: 10,
+                    height: 1.2,
+                    color: colors.textTertiary,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _gallery(
+    BuildContext context, {
+    required bool outgoing,
+    required ChatMessage? captionMessage,
+    required double maxWidth,
+  }) {
+    final colors = context.colors;
+    final theme = context.watch<ThemeController>();
+    final bubbleBackground = theme.effectiveMessageBubbleBackgroundSpecFor(
+      outgoing: outgoing,
+    );
+    final showsSurface = theme.shouldRenderMessageBubbleSurface(
+      outgoing: outgoing,
+      brightness: Theme.of(context).brightness,
+      hasCustomChatTheme: hasCustomChatTheme,
+    );
+    final outgoingColor =
+        bubbleBackground.backgroundColor ??
+        outgoingBubbleColor ??
+        AppTheme.bubbleOutgoing;
+    final incomingColor =
+        bubbleBackground.backgroundColor ??
+        incomingBubbleColor ??
+        colors.bubbleIncoming;
+    final outgoingText = !showsSurface
+        ? colors.textPrimary
+        : bubbleBackground.foregroundColor ??
+              outgoingBubbleTextColor ??
+              readableForeground(outgoingColor);
+    final incomingText = !showsSurface
+        ? colors.textPrimary
+        : bubbleBackground.foregroundColor ??
+              incomingBubbleTextColor ??
+              colors.bubbleIncomingText;
+    final themedMessageColors = showsSurface && !bubbleBackground.isDecorative
+        ? messageColors
+        : null;
+    final visible = messages.take(9).toList(growable: false);
+    const padding = 4.0;
+    final layout = buildTelegramMediaAlbumLayout(
+      items: [
+        for (final message in visible)
+          MediaAlbumItem(
+            width: message.imageWidth,
+            height: message.imageHeight,
+          ),
+      ],
+      maxWidth: math.max(1, maxWidth - padding * 2),
+      gap: 4,
+      maxSingleHeight: 300,
+      minRowHeight: 82,
+      maxRowHeight: 230,
+    );
+    final width = layout.width + padding * 2;
+    final interactionOwner = selectMediaAlbumInteractionOwner(messages);
+    final showComments =
+        showCommentAttachment &&
+        !interactionOwner.isContentRestricted &&
+        (interactionOwner.hasCommentThread ||
+            interactionOwner.commentCount > 0 ||
+            (channelHasLinkedDiscussion && !interactionOwner.isService));
+
+    return Container(
+      key: ValueKey('messageImageAlbumCard-${messages.first.id}'),
+      constraints: BoxConstraints(maxWidth: width),
+      decoration: showsSurface
+          ? BoxDecoration(
+              color: outgoing ? outgoingColor : incomingColor,
+              borderRadius: BorderRadius.circular(AppRadius.card),
+              border: outgoing || themedMessageColors != null
+                  ? null
+                  : Border.all(color: colors.divider, width: 0.5),
+            )
+          : null,
+      clipBehavior: showsSurface ? Clip.antiAlias : Clip.none,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(padding),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: layout.width,
+                  height: layout.height,
+                  child: Stack(
+                    children: [
+                      for (var i = 0; i < visible.length; i++)
+                        Positioned.fromRect(
+                          rect: layout.tiles[i],
+                          child: _tile(
+                            context,
+                            visible[i],
+                            width: layout.tiles[i].width,
+                            height: layout.tiles[i].height,
+                            extraCount: i == visible.length - 1
+                                ? math.max(0, messages.length - visible.length)
+                                : 0,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                if (captionMessage != null)
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: outgoing
+                        ? () => onEditCaption?.call(captionMessage)
+                        : null,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(6, 7, 6, 3),
+                      child: TelegramRichText(
+                        text: captionMessage.text,
+                        entities: captionMessage.textEntities,
+                        style: TextStyle(
+                          fontSize: 15,
+                          height: 1.25,
+                          color: outgoing ? outgoingText : incomingText,
+                        ),
+                        linkColor: outgoing
+                            ? themedMessageColors?.outgoingLink ?? outgoingText
+                            : themedMessageColors?.incomingLink ??
+                                  colors.linkBlue,
+                        onBotCommandTap: onBotCommandTap,
+                        onHashtagTap: onHashtagTap,
+                        onMentionTap: onMentionTap,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          if (showComments)
+            _commentsAttachment(
+              context,
+              interactionOwner,
+              outgoing: outgoing,
+              width: width,
+              outgoingTextColor: outgoingText,
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _tile(
+    BuildContext context,
+    ChatMessage message, {
+    required double width,
+    required double height,
+    required int extraCount,
+  }) {
+    final tileKey = GlobalKey();
+    void showActions({Offset? pointerPosition}) {
+      final box = tileKey.currentContext?.findRenderObject() as RenderBox?;
+      final bounds = pointerPosition != null
+          ? Rect.fromLTWH(pointerPosition.dx, pointerPosition.dy, 0, 0)
+          : box != null && box.hasSize
+          ? box.localToGlobal(Offset.zero) & box.size
+          : null;
+      onLongPress?.call(
+        message,
+        bounds,
+        message.video != null
+            ? MessageActionSource.video
+            : MessageActionSource.normal,
+      );
+    }
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        if (selecting) {
+          onToggleSelection?.call(message);
+        } else if (message.video != null) {
+          onPlayVideo?.call(message);
+        } else {
+          onOpenImage?.call(message);
+        }
+      },
+      onLongPress: selecting ? null : showActions,
+      onSecondaryTapUp: selecting
+          ? null
+          : (details) => showActions(pointerPosition: details.globalPosition),
+      child: SizedBox(
+        key: ValueKey('messageImageAlbumTile-${message.id}'),
+        width: width,
+        height: height,
+        child: Stack(
+          key: tileKey,
+          fit: StackFit.expand,
+          children: [
+            imageBuilder?.call(context, message, width, height) ??
+                TDImage(
+                  photo: message.image,
+                  cornerRadius: 5,
+                  cacheWidth: _cachePx(context, width),
+                  cacheHeight: _cachePx(context, height),
+                  showProgress: true,
+                ),
+            if (message.video != null)
+              Center(
+                child: Container(
+                  width: 42,
+                  height: 42,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.45),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const AppIcon(
+                    HeroAppIcons.play,
+                    color: Colors.white,
+                    size: 21,
+                  ),
+                ),
+              ),
+            if (extraCount > 0)
+              Container(
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.45),
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
+                ),
+                child: Text(
+                  '+$extraCount',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            if (selecting)
+              Positioned(
+                top: 6,
+                right: 6,
+                child: IgnorePointer(
+                  child: _selectionIndicator(context, message),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _selectionIndicator(BuildContext context, ChatMessage message) {
+    final selected = selectedMessageIds.contains(message.id);
+    return Container(
+      key: ValueKey('media-selection-${message.id}'),
+      width: 24,
+      height: 24,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: selected ? AppTheme.brand : Colors.black.withValues(alpha: 0.28),
+        border: Border.all(
+          color: selected ? AppTheme.brand : Colors.white,
+          width: selected ? 0 : 1.4,
+        ),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.18), blurRadius: 4),
+        ],
+      ),
+      child: selected
+          ? const AppIcon(HeroAppIcons.check, size: 17, color: Colors.white)
+          : null,
+    );
+  }
+
+  Widget _commentsAttachment(
+    BuildContext context,
+    ChatMessage message, {
+    required bool outgoing,
+    required double width,
+    required Color outgoingTextColor,
+  }) {
+    final colors = context.colors;
+    final count = message.commentCount;
+    final label = count == 0
+        ? AppStrings.t(AppStringKeys.messageLeaveAComment)
+        : AppStrings.plural(AppStringKeys.momentsCommentCount, count);
+    final foreground = outgoing ? outgoingTextColor : colors.textPrimary;
+    final accent = outgoing
+        ? outgoingTextColor.withValues(alpha: 0.72)
+        : colors.linkBlue;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => onOpenComments?.call(message),
+      child: Container(
+        key: ValueKey('messageCommentsAttachment-${message.id}'),
+        width: width,
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+        decoration: BoxDecoration(
+          border: Border(
+            top: BorderSide(
+              color: outgoing
+                  ? outgoingTextColor.withValues(alpha: 0.16)
+                  : colors.divider.withValues(alpha: 0.7),
+              width: 0.5,
+            ),
+          ),
+        ),
+        child: Row(
+          children: [
+            AppIcon(HeroAppIcons.comments, size: 18, color: accent),
+            const SizedBox(width: 7),
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: foreground,
+                ),
+              ),
+            ),
+            AppIcon(HeroAppIcons.chevronRight, size: 17, color: accent),
+          ],
+        ),
+      ),
+    );
+  }
+
+  int _cachePx(BuildContext context, double logical) =>
+      (logical * MediaQuery.devicePixelRatioOf(context)).ceil();
+}
+
+ChatMessage selectMediaAlbumInteractionOwner(List<ChatMessage> group) {
+  for (final message in group) {
+    if (message.hasCommentThread || message.hasActualReplies) return message;
+  }
+  for (final message in group) {
+    if (message.reactions.isNotEmpty) return message;
+  }
+  return group.first;
+}

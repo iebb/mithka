@@ -37,6 +37,49 @@ Map<String, dynamic> _authorizationUpdate(String type) => <String, dynamic>{
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test('global chat wallpaper prioritizes the user selection', () {
+    const selectedWallpaper = ChatWallpaper.telegram(
+      backgroundId: 1,
+      remoteType: 'fill',
+      colors: [0x112233],
+    );
+    const cloudThemeWallpaper = ChatWallpaper.telegram(
+      backgroundId: 2,
+      remoteType: 'fill',
+      colors: [0x445566],
+    );
+    const globalThemeWallpaper = ChatWallpaper.telegram(
+      backgroundId: 3,
+      remoteType: 'fill',
+      colors: [0x778899],
+    );
+
+    expect(
+      selectGlobalChatWallpaper(
+        defaultWallpaper: selectedWallpaper,
+        cloudThemeWallpaper: cloudThemeWallpaper,
+        globalThemeWallpaper: globalThemeWallpaper,
+      ),
+      selectedWallpaper,
+    );
+    expect(
+      selectGlobalChatWallpaper(
+        defaultWallpaper: null,
+        cloudThemeWallpaper: cloudThemeWallpaper,
+        globalThemeWallpaper: globalThemeWallpaper,
+      ),
+      cloudThemeWallpaper,
+    );
+    expect(
+      selectGlobalChatWallpaper(
+        defaultWallpaper: null,
+        cloudThemeWallpaper: null,
+        globalThemeWallpaper: globalThemeWallpaper,
+      ),
+      globalThemeWallpaper,
+    );
+  });
+
   test('wallpaper JSON preserves preset and image values', () {
     const preset = ChatWallpaper.preset('sky');
     const image = ChatWallpaper.image(

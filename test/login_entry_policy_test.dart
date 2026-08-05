@@ -1,8 +1,10 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mithka/l10n/messages/en.dart';
-import 'package:mithka/l10n/messages/zh_hans.dart';
+
+import 'support/l10n_fixtures.dart';
+
+final fixtures = L10nFixtures.load();
 
 void main() {
   test('login exposes passkeys as an Android-only labeled button', () {
@@ -43,11 +45,11 @@ void main() {
 
   test('login explains existing Telegram account requirement', () {
     expect(
-      enMessages['loginCodeWillBeSentToNumber'],
+      fixtures.messages('en')['loginCodeWillBeSentToNumber'],
       "We will send a verification code to your Telegram account. If you don't have one, create it in an official Telegram client first.",
     );
     expect(
-      zhHansMessages['loginCodeWillBeSentToNumber'],
+      fixtures.messages('zhHans')['loginCodeWillBeSentToNumber'],
       contains('Telegram 官方客户端'),
     );
   });

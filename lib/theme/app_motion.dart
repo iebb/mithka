@@ -116,7 +116,7 @@ Future<T?> showAppModalSheet<T>({
       : constraints;
   final effectiveShape = useDesktopPresentation
       ? RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(AppRadius.xl),
           side: shape is RoundedRectangleBorder ? shape.side : BorderSide.none,
         )
       : shape;

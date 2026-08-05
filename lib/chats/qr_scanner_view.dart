@@ -287,7 +287,7 @@ class _QrScannerViewState extends State<QrScannerView> {
                     style: const TextStyle(
                       color: Color(0xFFFFFFFF),
                       fontSize: 22,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w600,
                       decoration: TextDecoration.none,
                     ),
                   ),
@@ -361,7 +361,7 @@ class _QrScannerFrame extends StatelessWidget {
                   width: side,
                   height: side,
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(24),
+                    borderRadius: BorderRadius.circular(AppRadius.xxl),
                     border: Border.all(
                       color: const Color(0xFFFFFFFF),
                       width: 2.5,
@@ -464,7 +464,7 @@ class _QrChoiceCard extends StatelessWidget {
                         '${index + 1}',
                         style: TextStyle(
                           color: context.colors.linkBlue,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
@@ -561,7 +561,7 @@ class _QrDetailCard extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: context.colors.groupedBackground,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(AppRadius.control),
         ),
         child: SingleChildScrollView(
           child: Text(
@@ -599,7 +599,7 @@ class _QrBottomCard extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       decoration: BoxDecoration(
         color: context.colors.card,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         boxShadow: const [
           BoxShadow(
             color: Color(0x33000000),
@@ -631,7 +631,7 @@ class _QrBottomCard extends StatelessWidget {
                       style: TextStyle(
                         color: context.colors.textPrimary,
                         fontSize: 17,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                     const SizedBox(height: 2),

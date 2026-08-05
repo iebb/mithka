@@ -113,7 +113,7 @@ class _ChatWallpaperColorViewState extends State<ChatWallpaperColorView> {
               padding: const EdgeInsets.fromLTRB(14, 14, 14, 18),
               children: [
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(AppRadius.lg),
                   child: SizedBox(
                     height: 230,
                     child: ChatWallpaperBackground(
@@ -215,14 +215,14 @@ class _ChatWallpaperColorViewState extends State<ChatWallpaperColorView> {
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: c.linkBlue,
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(AppRadius.card),
                   ),
                   child: Text(
                     AppStringKeys.accentColorPickerSave.l10n(context),
                     style: TextStyle(
                       color: c.onAccent,
                       fontSize: 16,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
@@ -360,7 +360,7 @@ class _ChatWallpaperColorViewState extends State<ChatWallpaperColorView> {
         decoration: BoxDecoration(
           color: c.card,
           border: Border.all(color: c.divider),
-          borderRadius: BorderRadius.circular(11),
+          borderRadius: BorderRadius.circular(AppRadius.card),
         ),
         child: AppIcon(icon, size: 17, color: c.linkBlue),
       ),
@@ -381,9 +381,12 @@ class _ChatWallpaperColorViewState extends State<ChatWallpaperColorView> {
         padding: EdgeInsets.all(selected ? 3 : 1),
         decoration: BoxDecoration(
           color: selected ? c.linkBlue : c.divider,
-          borderRadius: BorderRadius.circular(13),
+          borderRadius: BorderRadius.circular(AppRadius.card),
         ),
-        child: ClipRRect(borderRadius: BorderRadius.circular(10), child: child),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(AppRadius.control),
+          child: child,
+        ),
       ),
     );
   }
@@ -404,7 +407,7 @@ class _ChatWallpaperColorViewState extends State<ChatWallpaperColorView> {
         decoration: BoxDecoration(
           color: selected ? c.linkBlue.withValues(alpha: 0.13) : c.card,
           border: Border.all(color: selected ? c.linkBlue : c.divider),
-          borderRadius: BorderRadius.circular(13),
+          borderRadius: BorderRadius.circular(AppRadius.card),
         ),
         child: Row(
           children: [
@@ -463,7 +466,7 @@ class _WallpaperValueSlider extends StatelessWidget {
                 top: 9,
                 bottom: 9,
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
                   child: CustomPaint(painter: painter),
                 ),
               ),

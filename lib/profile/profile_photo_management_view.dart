@@ -13,7 +13,6 @@ import '../l10n/app_localizations.dart';
 import '../media/app_asset_picker.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
-import '../tdlib/td_models.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'profile_contact_service.dart';
@@ -32,7 +31,7 @@ class _ProfilePhotoManagementViewState
   bool _loading = true;
   int _currentPhotoId = 0;
   int _publicPhotoId = 0;
-  List<_ProfilePhotoEntry> _photos = const [];
+  List<ProfilePhotoEntry> _photos = const [];
 
   @override
   void initState() {
@@ -47,20 +46,10 @@ class _ProfilePhotoManagementViewState
       final userId = me.int64('id') ?? 0;
       final results = await Future.wait([
         _client.query({'@type': 'getUserFullInfo', 'user_id': userId}),
-        _client.query({
-          '@type': 'getUserProfilePhotos',
-          'user_id': userId,
-          'offset': 0,
-          'limit': 100,
-        }),
+        _client.query(ProfilePhotoEntry.request(userId: userId)),
       ]);
       final snapshot = ProfileContactSnapshot.fromFullInfo(results[0]);
-      final photos = <_ProfilePhotoEntry>[];
-      for (final photo
-          in results[1].objects('photos') ?? const <Map<String, dynamic>>[]) {
-        final entry = _ProfilePhotoEntry.fromChatPhoto(photo);
-        if (entry != null) photos.add(entry);
-      }
+      final photos = ProfilePhotoEntry.listFromResponse(results[1]);
       if (!mounted) return;
       setState(() {
         _currentPhotoId = snapshot.currentPhotoId;
@@ -136,7 +125,7 @@ class _ProfilePhotoManagementViewState
   }
 
   Future<void> _usePrevious(
-    _ProfilePhotoEntry entry, {
+    ProfilePhotoEntry entry, {
     required bool isPublic,
   }) async {
     try {
@@ -165,7 +154,7 @@ class _ProfilePhotoManagementViewState
     }
   }
 
-  Future<void> _delete(_ProfilePhotoEntry entry) async {
+  Future<void> _delete(ProfilePhotoEntry entry) async {
     final confirmed = await confirmDialog(
       context,
       title: AppStrings.t(AppStringKeys.profilePhotoDeleteTitle),
@@ -191,7 +180,7 @@ class _ProfilePhotoManagementViewState
     }
   }
 
-  Future<void> _showActions(_ProfilePhotoEntry entry) async {
+  Future<void> _showActions(ProfilePhotoEntry entry) async {
     final action = await showAppModalSheet<_PhotoAction>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -289,7 +278,7 @@ class _ProfilePhotoManagementViewState
     return Container(
       decoration: BoxDecoration(
         color: context.colors.card,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -356,7 +345,7 @@ class _ProfilePhotoManagementViewState
     padding: const EdgeInsets.all(24),
     decoration: BoxDecoration(
       color: context.colors.card,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(AppRadius.card),
     ),
     child: Text(
       AppStrings.t(AppStringKeys.profilePhotoManagementNoProfilePhotosYet),
@@ -365,7 +354,7 @@ class _ProfilePhotoManagementViewState
     ),
   );
 
-  Widget _photoTile(_ProfilePhotoEntry entry) {
+  Widget _photoTile(ProfilePhotoEntry entry) {
     final badges = <Widget>[];
     if (entry.id == _currentPhotoId) badges.add(_badge('Current'));
     if (entry.id == _publicPhotoId) badges.add(_badge('Public'));
@@ -373,7 +362,7 @@ class _ProfilePhotoManagementViewState
       onTap: () => _showActions(entry),
       onLongPress: () => _showActions(entry),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(AppRadius.control),
         child: Stack(
           fit: StackFit.expand,
           children: [
@@ -395,7 +384,7 @@ class _ProfilePhotoManagementViewState
     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
     decoration: BoxDecoration(
       color: Colors.black.withValues(alpha: 0.62),
-      borderRadius: BorderRadius.circular(7),
+      borderRadius: BorderRadius.circular(AppRadius.md),
     ),
     child: Text(
       text,
@@ -406,25 +395,6 @@ class _ProfilePhotoManagementViewState
       ),
     ),
   );
-}
-
-class _ProfilePhotoEntry {
-  const _ProfilePhotoEntry({required this.id, required this.file});
-
-  static _ProfilePhotoEntry? fromChatPhoto(Map<String, dynamic> photo) {
-    final id = photo.int64('id') ?? 0;
-    final sizes = photo.objects('sizes') ?? const <Map<String, dynamic>>[];
-    if (id == 0 || sizes.isEmpty) return null;
-    final largest = sizes.reduce(
-      (a, b) => (a.integer('width') ?? 0) >= (b.integer('width') ?? 0) ? a : b,
-    );
-    final file = TDParse.fileRef(largest.obj('photo'));
-    if (file == null) return null;
-    return _ProfilePhotoEntry(id: id, file: file);
-  }
-
-  final int id;
-  final TdFileRef file;
 }
 
 enum _PhotoAction { useCurrent, usePublic, delete }
@@ -444,7 +414,7 @@ class _PhotoActionSheet extends StatelessWidget {
         margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
         decoration: BoxDecoration(
           color: colors.card,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(AppRadius.card),
         ),
         clipBehavior: Clip.antiAlias,
         child: Column(

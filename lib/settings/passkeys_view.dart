@@ -127,7 +127,7 @@ class _PasskeysViewState extends State<PasskeysView> {
               semanticLabel: AppStrings.t(AppStringKeys.passkeysAdd),
               onTap: _working ? null : () => unawaited(_add()),
               enabled: !_working,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(AppRadius.control),
               child: Padding(
                 padding: const EdgeInsets.only(left: 12),
                 child: AppIcon(
@@ -162,14 +162,10 @@ class _PasskeysViewState extends State<PasskeysView> {
                         ),
                       ),
                       if (_items.isEmpty)
-                        Container(
+                        SettingsPanel(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 24,
                             vertical: 34,
-                          ),
-                          decoration: BoxDecoration(
-                            color: c.card,
-                            borderRadius: BorderRadius.circular(12),
                           ),
                           child: Column(
                             children: [
@@ -191,25 +187,18 @@ class _PasskeysViewState extends State<PasskeysView> {
                           ),
                         )
                       else
-                        Container(
-                          decoration: BoxDecoration(
-                            color: c.card,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          clipBehavior: Clip.antiAlias,
-                          child: Column(
-                            children: [
-                              for (
-                                var index = 0;
-                                index < _items.length;
-                                index++
-                              ) ...[
-                                _passkeyRow(_items[index]),
-                                if (index != _items.length - 1)
-                                  const InsetDivider(leadingInset: 54),
-                              ],
+                        SettingsCard(
+                          children: [
+                            for (
+                              var index = 0;
+                              index < _items.length;
+                              index++
+                            ) ...[
+                              _passkeyRow(_items[index]),
+                              if (index != _items.length - 1)
+                                const InsetDivider(leadingInset: 54),
                             ],
-                          ),
+                          ],
                         ),
                     ],
                   ),

@@ -95,7 +95,7 @@ class _StoryAreaEditorViewState extends State<StoryAreaEditorView> {
                   style: TextStyle(
                     color: AppTheme.brand,
                     fontSize: 16,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
@@ -111,7 +111,7 @@ class _StoryAreaEditorViewState extends State<StoryAreaEditorView> {
                     builder: (context, constraints) {
                       _canvasSize = constraints.biggest;
                       return ClipRRect(
-                        borderRadius: BorderRadius.circular(18),
+                        borderRadius: BorderRadius.circular(AppRadius.lg),
                         child: Stack(
                           fit: StackFit.expand,
                           children: [
@@ -121,7 +121,9 @@ class _StoryAreaEditorViewState extends State<StoryAreaEditorView> {
                                 border: Border.all(
                                   color: Colors.white.withValues(alpha: 0.22),
                                 ),
-                                borderRadius: BorderRadius.circular(18),
+                                borderRadius: BorderRadius.circular(
+                                  AppRadius.lg,
+                                ),
                               ),
                             ),
                             for (var i = 0; i < _areas.length; i++)
@@ -176,7 +178,9 @@ class _StoryAreaEditorViewState extends State<StoryAreaEditorView> {
                                   color: index == _selected
                                       ? AppTheme.brand
                                       : c.searchFill,
-                                  borderRadius: BorderRadius.circular(19),
+                                  borderRadius: BorderRadius.circular(
+                                    AppRadius.xl,
+                                  ),
                                 ),
                                 child: Text(
                                   storyAreaDraftLabel(_areas[index]),
@@ -289,7 +293,7 @@ class _StoryAreaEditorViewState extends State<StoryAreaEditorView> {
             padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
             decoration: BoxDecoration(
               color: Colors.black.withValues(alpha: selected ? 0.58 : 0.4),
-              borderRadius: BorderRadius.circular(11),
+              borderRadius: BorderRadius.circular(AppRadius.card),
               border: Border.all(
                 color: selected ? AppTheme.brand : Colors.white54,
                 width: selected ? 2 : 1,
@@ -303,7 +307,7 @@ class _StoryAreaEditorViewState extends State<StoryAreaEditorView> {
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 11,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),

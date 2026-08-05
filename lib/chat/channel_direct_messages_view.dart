@@ -256,7 +256,7 @@ class _DirectMessagesTopicRow extends StatelessWidget {
                             color: colors.textPrimary,
                             fontSize: 15,
                             fontWeight: unread
-                                ? FontWeight.w700
+                                ? FontWeight.w600
                                 : FontWeight.w600,
                           ),
                         ),
@@ -323,7 +323,7 @@ class _DirectMessagesTopicRow extends StatelessWidget {
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 10,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                         ),
@@ -622,7 +622,7 @@ class _ChannelDirectMessageTopicViewState
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     decoration: BoxDecoration(
                       color: colors.searchFill,
-                      borderRadius: BorderRadius.circular(19),
+                      borderRadius: BorderRadius.circular(AppRadius.xl),
                     ),
                     child: TextField(
                       controller: _text,
@@ -922,7 +922,7 @@ class _SuggestedPostActions extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(11, 8, 11, 7),
       decoration: BoxDecoration(
         color: colors.card,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(AppRadius.control),
         border: Border.all(color: colors.divider, width: 0.5),
       ),
       child: Column(
@@ -1023,7 +1023,7 @@ class _CompactAction extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.11),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(AppRadius.control),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1146,7 +1146,7 @@ class _SuggestedPostComposerSheetState
                 style: TextStyle(
                   color: colors.textPrimary,
                   fontSize: 19,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
               if (!widget.offerOnly) ...[
@@ -1164,7 +1164,7 @@ class _SuggestedPostComposerSheetState
                     filled: true,
                     fillColor: colors.searchFill,
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(11),
+                      borderRadius: BorderRadius.circular(AppRadius.card),
                       borderSide: BorderSide.none,
                     ),
                   ),
@@ -1211,7 +1211,7 @@ class _SuggestedPostComposerSheetState
                     filled: true,
                     fillColor: colors.searchFill,
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(11),
+                      borderRadius: BorderRadius.circular(AppRadius.card),
                       borderSide: BorderSide.none,
                     ),
                   ),
@@ -1228,7 +1228,7 @@ class _SuggestedPostComposerSheetState
                   ),
                   decoration: BoxDecoration(
                     color: colors.searchFill,
-                    borderRadius: BorderRadius.circular(11),
+                    borderRadius: BorderRadius.circular(AppRadius.card),
                   ),
                   child: Row(
                     children: [
@@ -1284,7 +1284,7 @@ class _SuggestedPostComposerSheetState
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: AppTheme.brand,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(AppRadius.card),
                   ),
                   child: Text(
                     AppStrings.t(
@@ -1295,7 +1295,7 @@ class _SuggestedPostComposerSheetState
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 15,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
@@ -1321,7 +1321,7 @@ class _SuggestedPostComposerSheetState
           color: selected
               ? AppTheme.brand.withValues(alpha: 0.14)
               : context.colors.searchFill,
-          borderRadius: BorderRadius.circular(9),
+          borderRadius: BorderRadius.circular(AppRadius.control),
           border: Border.all(
             color: selected ? AppTheme.brand : Colors.transparent,
           ),
@@ -1349,7 +1349,7 @@ class _SuggestedPostComposerSheetState
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: colors.searchFill,
-          borderRadius: BorderRadius.circular(11),
+          borderRadius: BorderRadius.circular(AppRadius.card),
         ),
         child: attachment == null
             ? Row(
@@ -1883,7 +1883,7 @@ class _TextAction extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
       decoration: BoxDecoration(
         color: AppTheme.brand.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(AppRadius.control),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

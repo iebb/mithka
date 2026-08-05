@@ -10,14 +10,6 @@ import 'package:mithka/chat/rich_text_composer_view.dart';
 import 'package:mithka/components/app_icons.dart';
 import 'package:mithka/components/ui_components.dart';
 import 'package:mithka/l10n/app_localizations.dart';
-import 'package:mithka/l10n/messages/de.dart';
-import 'package:mithka/l10n/messages/en.dart';
-import 'package:mithka/l10n/messages/es.dart';
-import 'package:mithka/l10n/messages/fr.dart';
-import 'package:mithka/l10n/messages/ja.dart';
-import 'package:mithka/l10n/messages/ko.dart';
-import 'package:mithka/l10n/messages/zh_hans.dart';
-import 'package:mithka/l10n/messages/zh_hant.dart';
 import 'package:mithka/settings/advanced_settings_view.dart';
 import 'package:mithka/settings/rich_message_relay_config.dart';
 import 'package:mithka/settings/rich_message_relay_view.dart';
@@ -25,6 +17,8 @@ import 'package:mithka/tdlib/td_client.dart';
 import 'package:mithka/theme/theme_controller.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'support/l10n_fixtures.dart';
 
 class _NonPremiumChatViewModel extends ChatViewModel {
   _NonPremiumChatViewModel()
@@ -57,6 +51,8 @@ class _UnsupportedPremiumChatViewModel extends ChatViewModel {
   }
 }
 
+final fixtures = L10nFixtures.load();
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -78,15 +74,15 @@ void main() {
   });
 
   test('relay setup copy exists in every supported locale', () {
-    const tables = [
-      enMessages,
-      deMessages,
-      esMessages,
-      frMessages,
-      jaMessages,
-      koMessages,
-      zhHansMessages,
-      zhHantMessages,
+    final tables = [
+      fixtures.messages('en'),
+      fixtures.messages('de'),
+      fixtures.messages('es'),
+      fixtures.messages('fr'),
+      fixtures.messages('ja'),
+      fixtures.messages('ko'),
+      fixtures.messages('zhHans'),
+      fixtures.messages('zhHant'),
     ];
     const keys = [
       'advancedInput',

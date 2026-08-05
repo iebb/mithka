@@ -276,7 +276,7 @@ class _ContactsViewState extends State<ContactsView> {
             AppInteractiveSurface(
               semanticLabel: AppStringKeys.addPeopleFindPeople.l10n(context),
               onTap: _showAddMenu,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(AppRadius.control),
               child: Padding(
                 padding: const EdgeInsets.all(8),
                 child: AppIcon(
@@ -312,13 +312,13 @@ class _ContactsViewState extends State<ContactsView> {
             key: const ValueKey('contacts-desktop-add-action'),
             semanticLabel: AppStringKeys.addPeopleFindPeople.l10n(context),
             onTap: _showAddMenu,
-            borderRadius: BorderRadius.circular(9),
+            borderRadius: BorderRadius.circular(AppRadius.control),
             child: Container(
               width: 36,
               height: 36,
               decoration: BoxDecoration(
                 color: c.searchFill,
-                borderRadius: BorderRadius.circular(9),
+                borderRadius: BorderRadius.circular(AppRadius.control),
               ),
               child: Center(
                 child: AppIcon(
@@ -342,7 +342,7 @@ class _ContactsViewState extends State<ContactsView> {
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
         color: c.searchFill,
-        borderRadius: BorderRadius.circular(9),
+        borderRadius: BorderRadius.circular(AppRadius.control),
       ),
       child: Row(
         children: [
@@ -373,7 +373,7 @@ class _ContactsViewState extends State<ContactsView> {
                 _searchController.clear();
                 setState(() {});
               },
-              borderRadius: BorderRadius.circular(9),
+              borderRadius: BorderRadius.circular(AppRadius.control),
               child: Padding(
                 padding: const EdgeInsets.all(4),
                 child: AppIcon(
@@ -525,6 +525,9 @@ class _ContactsViewState extends State<ContactsView> {
               context,
               userId: contact.id,
               name: contact.name,
+              // The contacts tab owns a detail pane; a window would leave it
+              // showing its "select a contact" placeholder.
+              preferInlinePane: widget.onOpenDetail != null,
               openFallback: () => _openDetail(
                 ProfileDetailView(
                   userId: contact.id,

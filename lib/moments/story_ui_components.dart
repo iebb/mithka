@@ -42,7 +42,7 @@ Future<String?> showStoryTextEntry(
                   padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
                   decoration: BoxDecoration(
                     color: c.background,
-                    borderRadius: BorderRadius.circular(18),
+                    borderRadius: BorderRadius.circular(AppRadius.lg),
                     border: Border.all(color: c.divider),
                     boxShadow: const [
                       BoxShadow(
@@ -61,7 +61,7 @@ Future<String?> showStoryTextEntry(
                         style: TextStyle(
                           color: c.textPrimary,
                           fontSize: 18,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                       const SizedBox(height: 14),
@@ -70,7 +70,7 @@ Future<String?> showStoryTextEntry(
                         padding: const EdgeInsets.symmetric(horizontal: 13),
                         decoration: BoxDecoration(
                           color: c.searchFill,
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(AppRadius.card),
                           border: Border.all(color: c.divider),
                         ),
                         child: TextField(
@@ -151,7 +151,7 @@ class StoryDialogAction extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16),
         decoration: BoxDecoration(
           color: fill,
-          borderRadius: BorderRadius.circular(11),
+          borderRadius: BorderRadius.circular(AppRadius.card),
           border: primary || destructive ? null : Border.all(color: c.divider),
         ),
         child: Text(
@@ -159,7 +159,7 @@ class StoryDialogAction extends StatelessWidget {
           style: TextStyle(
             color: foreground,
             fontSize: 14,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w600,
           ),
         ),
       ),

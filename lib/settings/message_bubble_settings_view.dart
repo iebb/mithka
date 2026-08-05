@@ -111,25 +111,21 @@ class _MessageBubbleSettingsViewState extends State<MessageBubbleSettingsView> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(14, 18, 14, 28),
               children: [
-                Container(
-                  decoration: BoxDecoration(
-                    color: c.card,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: c.divider, width: 0.5),
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: SettingsSwitchRow(
-                    key: const ValueKey('message-bubbles-enabled'),
-                    title: AppStrings.t(
-                      AppStringKeys.appearanceShowMessageBubbles,
+                SettingsCard(
+                  children: [
+                    SettingsSwitchRow(
+                      key: const ValueKey('message-bubbles-enabled'),
+                      title: AppStrings.t(
+                        AppStringKeys.appearanceShowMessageBubbles,
+                      ),
+                      value: theme.messageBubblesEnabled,
+                      onChanged: (value) => theme.messageBubblesEnabled = value,
+                      leading: SettingsIconTile(
+                        icon: HeroAppIcons.message,
+                        backgroundColor: AppTheme.brand,
+                      ),
                     ),
-                    value: theme.messageBubblesEnabled,
-                    onChanged: (value) => theme.messageBubblesEnabled = value,
-                    leading: SettingsIconTile(
-                      icon: HeroAppIcons.message,
-                      backgroundColor: AppTheme.brand,
-                    ),
-                  ),
+                  ],
                 ),
                 const SizedBox(height: 8),
                 Padding(
@@ -160,13 +156,8 @@ class _MessageBubbleSettingsViewState extends State<MessageBubbleSettingsView> {
                   const SizedBox(height: 16),
                   _applicationScopeCard(context, theme),
                   const SizedBox(height: 16),
-                  Container(
+                  SettingsPanel(
                     padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: c.card,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: c.divider, width: 0.5),
-                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -183,7 +174,7 @@ class _MessageBubbleSettingsViewState extends State<MessageBubbleSettingsView> {
                                 style: TextStyle(
                                   color: c.textPrimary,
                                   fontSize: 17,
-                                  fontWeight: FontWeight.w700,
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
                             ),
@@ -225,7 +216,9 @@ class _MessageBubbleSettingsViewState extends State<MessageBubbleSettingsView> {
                             alignment: Alignment.center,
                             decoration: BoxDecoration(
                               color: AppTheme.brand,
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(
+                                AppRadius.card,
+                              ),
                             ),
                             child: _opening
                                 ? SizedBox(
@@ -253,7 +246,7 @@ class _MessageBubbleSettingsViewState extends State<MessageBubbleSettingsView> {
                                         style: TextStyle(
                                           color: AppTheme.onBrand,
                                           fontSize: 15,
-                                          fontWeight: FontWeight.w700,
+                                          fontWeight: FontWeight.w600,
                                         ),
                                       ),
                                     ],
@@ -304,12 +297,7 @@ class _MessageBubbleSettingsViewState extends State<MessageBubbleSettingsView> {
       );
     }
 
-    return Container(
-      decoration: BoxDecoration(
-        color: c.card,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: c.divider, width: 0.5),
-      ),
+    return SettingsPanel(
       clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

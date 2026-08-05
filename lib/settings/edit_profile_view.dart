@@ -8,6 +8,7 @@
 //  TDLib.
 //
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/cupertino.dart';
@@ -18,12 +19,14 @@ import 'package:mithka/l10n/app_localizations.dart';
 import '../chat/custom_emoji.dart';
 import '../chat/image_edit_view.dart';
 import '../components/app_icons.dart';
+import '../components/app_interactive_surface.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../media/app_asset_picker.dart';
 import '../platform/animated_avatar_preparer.dart';
 import '../profile/profile_contact_management_view.dart';
+import '../profile/profile_contact_service.dart';
 import '../profile/profile_icon_picker_view.dart';
 import '../profile/profile_photo_policy.dart';
 import '../tdlib/json_helpers.dart';
@@ -37,9 +40,17 @@ import 'business_settings_view.dart';
 import 'edit_field_view.dart';
 
 class EditProfileView extends StatefulWidget {
-  const EditProfileView({super.key, this.openAvatarPicker = false});
+  const EditProfileView({
+    super.key,
+    this.openAvatarPicker = false,
+    this.showBackButton = true,
+  });
 
   final bool openAvatarPicker;
+
+  /// False in a detached desktop window, where there is nothing behind this
+  /// screen to go back to.
+  final bool showBackButton;
 
   @override
   State<EditProfileView> createState() => _EditProfileViewState();
@@ -48,7 +59,9 @@ class EditProfileView extends StatefulWidget {
 enum _AvatarKind { static, animated }
 
 class _EditProfileViewState extends State<EditProfileView> {
-  static const _fieldLabelWidth = 112.0;
+  static const _heroAvatarSize = 92.0;
+  static const _photoTileSize = 54.0;
+  static const _cameraBadgeSize = 28.0;
 
   final TdClient _client = TdClient.shared;
   String _firstName = '';
@@ -63,6 +76,9 @@ class _EditProfileViewState extends State<EditProfileView> {
   int _profileBackgroundCustomEmojiId = 0;
   int? _bDay, _bMonth, _bYear;
   TdFileRef? _photo;
+  List<ProfilePhotoEntry> _photos = const [];
+  int _currentPhotoId = 0;
+  int _publicPhotoId = 0;
   bool _isPremium = false;
   bool _loading = true;
   bool _openedAvatarPicker = false;
@@ -102,6 +118,10 @@ class _EditProfileViewState extends State<EditProfileView> {
           final y = bd.integer('year') ?? 0;
           _bYear = y == 0 ? null : y;
         }
+        final snapshot = ProfileContactSnapshot.fromFullInfo(full);
+        _currentPhotoId = snapshot.currentPhotoId;
+        _publicPhotoId = snapshot.publicPhotoId;
+        await _loadPhotos(uid);
       }
     } catch (_) {}
     if (!mounted) return;
@@ -111,6 +131,34 @@ class _EditProfileViewState extends State<EditProfileView> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _changeAvatar();
       });
+    }
+  }
+
+  /// The account's photo stack. An empty list is a normal answer here — it
+  /// only means the strip has nothing to draw — so a failure is not surfaced.
+  Future<void> _loadPhotos(int userId) async {
+    try {
+      final response = await _client.query(
+        ProfilePhotoEntry.request(userId: userId, limit: 24),
+      );
+      _photos = ProfilePhotoEntry.listFromResponse(response);
+    } catch (_) {
+      _photos = const [];
+    }
+  }
+
+  Future<void> _usePhoto(ProfilePhotoEntry entry) async {
+    if (entry.id == _currentPhotoId) return;
+    try {
+      await _client.query(
+        setOwnProfilePhotoRequest(
+          photo: previousChatPhoto(entry.id),
+          isPublic: false,
+        ),
+      );
+      await _finishAvatarUpdate();
+    } catch (_) {
+      _toast(AppStrings.t(AppStringKeys.editProfileSaveFailed));
     }
   }
 
@@ -367,13 +415,9 @@ class _EditProfileViewState extends State<EditProfileView> {
       builder: (context) {
         return SafeArea(
           top: false,
-          child: Container(
-            margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          child: SettingsPanel(
             padding: const EdgeInsets.symmetric(vertical: 8),
-            decoration: BoxDecoration(
-              color: c.card,
-              borderRadius: BorderRadius.circular(18),
-            ),
+            margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -431,7 +475,7 @@ class _EditProfileViewState extends State<EditProfileView> {
               height: 38,
               decoration: BoxDecoration(
                 color: AppTheme.brand.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(AppRadius.card),
               ),
               child: Center(
                 child: AppIcon(icon, size: 21, color: AppTheme.brand),
@@ -584,10 +628,23 @@ class _EditProfileViewState extends State<EditProfileView> {
     _toast(AppStrings.t(AppStringKeys.editProfileAvatarUpdated));
     // The new photo propagates via updateUser after upload; re-read shortly.
     await Future<void>.delayed(const Duration(milliseconds: 800));
-    final me = await _client.query({'@type': 'getMe'});
-    if (mounted) {
-      setState(() => _photo = TDParse.smallPhoto(me.obj('profile_photo')));
-    }
+    try {
+      final me = await _client.query({'@type': 'getMe'});
+      final userId = me.int64('id') ?? _userId;
+      final photo = TDParse.smallPhoto(me.obj('profile_photo'));
+      final full = await _client.query({
+        '@type': 'getUserFullInfo',
+        'user_id': userId,
+      });
+      final snapshot = ProfileContactSnapshot.fromFullInfo(full);
+      await _loadPhotos(userId);
+      if (!mounted) return;
+      setState(() {
+        _photo = photo;
+        _currentPhotoId = snapshot.currentPhotoId;
+        _publicPhotoId = snapshot.publicPhotoId;
+      });
+    } catch (_) {}
   }
 
   void _toast(String m) => showToast(context, m);
@@ -601,135 +658,195 @@ class _EditProfileViewState extends State<EditProfileView> {
         children: [
           NavHeader(
             title: AppStrings.t(AppStringKeys.editProfileTitle),
-            onBack: () => Navigator.of(context).pop(),
+            onBack: widget.showBackButton
+                ? () => Navigator.of(context).pop()
+                : null,
           ),
           Expanded(
             child: _loading
-                ? const Center(
-                    child: SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator.adaptive(strokeWidth: 2),
-                    ),
-                  )
+                ? const Center(child: AppActivityIndicator(size: 24))
                 : ListView(
-                    padding: const EdgeInsets.fromLTRB(12, 18, 12, 24),
+                    padding: AppInsets.screen,
                     children: [
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: _changeAvatar,
-                        child: Column(
-                          children: [
-                            Center(
-                              child: PhotoAvatar(
-                                title: '$_firstName $_lastName'.trim(),
-                                photo: _photo,
-                                size: 88,
-                              ),
+                      _identityCard(),
+                      const SizedBox(height: AppSpacing.section),
+                      const SettingsSectionHeader(
+                        AppStringKeys.editProfileSectionName,
+                      ),
+                      SettingsCard(
+                        children: [
+                          SettingsRow(
+                            title: AppStrings.t(AppStringKeys.loginFirstName),
+                            value: _firstName.isEmpty
+                                ? AppStrings.t(
+                                    AppStringKeys.editProfileTapToSet,
+                                  )
+                                : _firstName,
+                            onTap: _editFirstName,
+                          ),
+                          const InsetDivider(
+                            leadingInset: AppMetric.settingsLeadingInset,
+                          ),
+                          SettingsRow(
+                            title: AppStrings.t(
+                              AppStringKeys.editProfileLastName,
                             ),
-                            const SizedBox(height: 8),
-                            Center(
-                              child: Text(
-                                AppStrings.t(
-                                  AppStringKeys.editProfileChangeAvatar,
+                            value: _lastName.isEmpty
+                                ? AppStrings.t(
+                                    AppStringKeys.editProfileTapToSet,
+                                  )
+                                : _lastName,
+                            onTap: _editLastName,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: AppSpacing.section),
+                      const SettingsSectionHeader(
+                        AppStringKeys.editProfileSectionAccount,
+                      ),
+                      SettingsCard(
+                        children: [
+                          SettingsRow(
+                            title: AppStrings.t(
+                              AppStringKeys.editProfileUsername,
+                            ),
+                            value: _username.isEmpty
+                                ? AppStrings.t(
+                                    AppStringKeys
+                                        .editProfileUsernameUnsetHandle,
+                                  )
+                                : '@$_username',
+                            onTap: _editUsername,
+                          ),
+                          const InsetDivider(
+                            leadingInset: AppMetric.settingsLeadingInset,
+                          ),
+                          // The phone number can only change through an OTP
+                          // flow, so this row is a readout, not a control.
+                          SettingsRow(
+                            title: AppStrings.t(AppStringKeys.editProfilePhone),
+                            value: _phone.isEmpty
+                                ? AppStrings.t(
+                                    AppStringKeys.editProfileNotBound,
+                                  )
+                                : TDParse.formatPhone(_phone),
+                            showChevron: false,
+                          ),
+                          const InsetDivider(
+                            leadingInset: AppMetric.settingsLeadingInset,
+                          ),
+                          SettingsRow(
+                            title: AppStrings.t(
+                              AppStringKeys.profileDetailBirthday,
+                            ),
+                            value: _birthdayText,
+                            onTap: _editBirthday,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: AppSpacing.section),
+                      const SettingsSectionHeader(
+                        AppStringKeys.editProfileSectionAbout,
+                      ),
+                      SettingsCard(
+                        children: [
+                          SettingsRow(
+                            title: AppStrings.t(AppStringKeys.editProfileBio),
+                            value: _bio.isEmpty
+                                ? AppStrings.t(
+                                    AppStringKeys.editProfileTapToFillBio,
+                                  )
+                                : _bio,
+                            onTap: _editBio,
+                          ),
+                        ],
+                      ),
+                      _footnote(
+                        AppStrings.t(AppStringKeys.editProfileBioPlaceholder),
+                      ),
+                      const SizedBox(height: AppSpacing.section),
+                      const SettingsSectionHeader(
+                        AppStringKeys.editProfileSectionAppearance,
+                      ),
+                      SettingsCard(
+                        children: [
+                          SettingsRow(
+                            title: AppStrings.t(
+                              AppStringKeys.editProfileNameColor,
+                            ),
+                            value: _accentColorLabel(_accentColorId),
+                            trailing: _colorSwatch(_accentColorId),
+                            onTap: _editNameColor,
+                          ),
+                          const InsetDivider(
+                            leadingInset: AppMetric.settingsLeadingInset,
+                          ),
+                          SettingsRow(
+                            title: AppStrings.t(
+                              AppStringKeys.editProfileProfileColor,
+                            ),
+                            value: _accentColorLabel(_profileAccentColorId),
+                            trailing: _colorSwatch(_profileAccentColorId),
+                            onTap: _editProfileColor,
+                          ),
+                          const InsetDivider(
+                            leadingInset: AppMetric.settingsLeadingInset,
+                          ),
+                          SettingsRow(
+                            title: AppStringKeys.editProfileProfileIcon.l10n(
+                              context,
+                            ),
+                            value: _profileBackgroundCustomEmojiId == 0
+                                ? AppStrings.t(AppStringKeys.editProfileDefault)
+                                : '',
+                            trailing: _profileIconSwatch(),
+                            onTap: _editProfileIcon,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: AppSpacing.section),
+                      SettingsCard(
+                        children: [
+                          SettingsRow(
+                            title: AppStrings.t(
+                              AppStringKeys.businessSettingsEntry,
+                            ),
+                            value: AppStrings.t(
+                              AppStringKeys.businessSettingsSummary,
+                            ),
+                            onTap: () async {
+                              await Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const BusinessSettingsView(),
                                 ),
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: AppTheme.brand,
+                              );
+                            },
+                          ),
+                          const InsetDivider(
+                            leadingInset: AppMetric.settingsLeadingInset,
+                          ),
+                          SettingsRow(
+                            title: AppStrings.t(
+                              AppStringKeys.profileToolsTitle,
+                            ),
+                            value: AppStrings.t(
+                              AppStringKeys.profileToolsPhotoChatSummary,
+                            ),
+                            onTap: () async {
+                              await Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => ProfileContactManagementView(
+                                    userId: _userId,
+                                    initialName: '$_firstName $_lastName'
+                                        .trim(),
+                                  ),
                                 ),
-                              ),
-                            ),
-                          ],
-                        ),
+                              );
+                              if (mounted) await _load();
+                            },
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 18),
-                      _field(
-                        AppStrings.t(AppStringKeys.loginFirstName),
-                        _firstName.isEmpty
-                            ? AppStrings.t(AppStringKeys.editProfileTapToSet)
-                            : _firstName,
-                        _editFirstName,
-                      ),
-                      _field(
-                        AppStrings.t(AppStringKeys.editProfileLastName),
-                        _lastName.isEmpty
-                            ? AppStrings.t(AppStringKeys.editProfileTapToSet)
-                            : _lastName,
-                        _editLastName,
-                        faded: _lastName.isEmpty,
-                      ),
-                      _field(
-                        AppStrings.t(AppStringKeys.editProfileUsername),
-                        _username.isEmpty
-                            ? AppStrings.t(
-                                AppStringKeys.editProfileUsernameUnsetHandle,
-                              )
-                            : '@$_username',
-                        _editUsername,
-                      ),
-                      _readonlyField(
-                        AppStrings.t(AppStringKeys.editProfilePhone),
-                        _phone.isEmpty
-                            ? AppStrings.t(AppStringKeys.editProfileNotBound)
-                            : TDParse.formatPhone(_phone),
-                      ),
-                      _field(
-                        AppStrings.t(AppStringKeys.profileDetailBirthday),
-                        _birthdayText,
-                        _editBirthday,
-                        faded: _bDay == null,
-                      ),
-                      _field(
-                        AppStrings.t(AppStringKeys.editProfileBio),
-                        _bio.isEmpty
-                            ? AppStrings.t(
-                                AppStringKeys.editProfileTapToFillBio,
-                              )
-                            : _bio,
-                        _editBio,
-                        faded: _bio.isEmpty,
-                      ),
-                      _field(
-                        AppStrings.t(AppStringKeys.businessSettingsEntry),
-                        AppStrings.t(AppStringKeys.businessSettingsSummary),
-                        () async {
-                          await Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => const BusinessSettingsView(),
-                            ),
-                          );
-                        },
-                        faded: true,
-                      ),
-                      _field(
-                        AppStrings.t(AppStringKeys.profileToolsTitle),
-                        AppStrings.t(
-                          AppStringKeys.profileToolsPhotoChatSummary,
-                        ),
-                        () async {
-                          await Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => ProfileContactManagementView(
-                                userId: _userId,
-                                initialName: '$_firstName $_lastName'.trim(),
-                              ),
-                            ),
-                          );
-                          if (mounted) await _load();
-                        },
-                        faded: true,
-                      ),
-                      _colorField(
-                        AppStrings.t(AppStringKeys.editProfileNameColor),
-                        _accentColorId,
-                        _editNameColor,
-                      ),
-                      _colorField(
-                        AppStrings.t(AppStringKeys.editProfileProfileColor),
-                        _profileAccentColorId,
-                        _editProfileColor,
-                      ),
-                      _profileIconField(),
                     ],
                   ),
           ),
@@ -738,170 +855,232 @@ class _EditProfileViewState extends State<EditProfileView> {
     );
   }
 
-  Widget _field(
-    String label,
-    String value,
-    VoidCallback onTap, {
-    bool faded = false,
-  }) {
+  /// Avatar, identity, and the account's photo stack in one card.
+  ///
+  /// The stack used to be two screens away under Profile tools, so an account
+  /// with several photos looked like an account with one. Here every photo is
+  /// on the screen you go to when you want to change your photo: tap one to
+  /// wear it, tap the leading tile to add a new one.
+  Widget _identityCard() {
     final c = context.colors;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: c.card,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          children: [
-            SizedBox(
-              width: _fieldLabelWidth,
-              child: Text(
-                label,
-                style: TextStyle(fontSize: 15, color: c.textSecondary),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                value,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 16,
-                  color: faded ? c.textTertiary : c.textPrimary,
-                ),
-              ),
-            ),
-            AppIcon(HeroAppIcons.chevronRight, size: 14, color: c.textTertiary),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// A non-editable row (no chevron, no tap) — used for the phone number, which
-  /// can only be changed through an OTP verification flow.
-  Widget _readonlyField(String label, String value) {
-    final c = context.colors;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: c.card,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
+    final name = '$_firstName $_lastName'.trim();
+    final handle = _username.isEmpty
+        ? AppStrings.t(AppStringKeys.editProfileUsernameUnsetHandle)
+        : '@$_username';
+    return SettingsPanel(
+      child: Column(
         children: [
-          SizedBox(
-            width: _fieldLabelWidth,
-            child: Text(
-              label,
-              style: TextStyle(fontSize: 15, color: c.textSecondary),
+          const SizedBox(height: AppSpacing.section),
+          AppInteractiveSurface(
+            onTap: _changeAvatar,
+            semanticLabel: AppStrings.t(AppStringKeys.editProfileChangeAvatar),
+            borderRadius: BorderRadius.circular(AppRadius.pill),
+            child: SizedBox(
+              width: _heroAvatarSize,
+              height: _heroAvatarSize,
+              child: Stack(
+                children: [
+                  PhotoAvatar(
+                    title: name,
+                    photo: _photo,
+                    size: _heroAvatarSize,
+                  ),
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      width: _cameraBadgeSize,
+                      height: _cameraBadgeSize,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: AppTheme.brand,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: c.card, width: 2),
+                      ),
+                      child: const AppIcon(
+                        HeroAppIcons.camera,
+                        size: AppIconSize.xs,
+                        color: Color(0xFFFFFFFF),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-          const SizedBox(width: 8),
-          Expanded(
+          const SizedBox(height: AppSpacing.lg),
+          Padding(
+            padding: AppInsets.row,
             child: Text(
-              value,
+              name,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 16, color: c.textPrimary),
+              textAlign: TextAlign.center,
+              style: AppTextStyle.display(c.textPrimary),
             ),
           ),
+          const SizedBox(height: AppSpacing.xxs),
+          Padding(
+            padding: AppInsets.row,
+            child: Text(
+              handle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTextStyle.footnote(c.textSecondary),
+            ),
+          ),
+          if (_photos.isEmpty)
+            const SizedBox(height: AppSpacing.section)
+          else ...[
+            const SizedBox(height: AppSpacing.xl),
+            _photoStrip(),
+            const SizedBox(height: AppSpacing.xxl),
+          ],
         ],
       ),
     );
   }
 
-  /// A row whose value is a color swatch (name / profile accent color).
-  Widget _colorField(String label, int colorId, VoidCallback onTap) {
+  Widget _photoStrip() {
+    return SizedBox(
+      height: _photoTileSize,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: AppInsets.row,
+        itemCount: _photos.length + 1,
+        separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.md),
+        itemBuilder: (_, index) =>
+            index == 0 ? _addPhotoTile() : _photoTile(_photos[index - 1]),
+      ),
+    );
+  }
+
+  Widget _addPhotoTile() {
     final c = context.colors;
-    final color = (colorId >= 0 && colorId < kAccentColors.length)
-        ? kAccentColors[colorId]
-        : null;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
+    return AppInteractiveSurface(
+      onTap: _changeAvatar,
+      semanticLabel: AppStrings.t(AppStringKeys.editProfileAddPhoto),
+      borderRadius: BorderRadius.circular(AppRadius.pill),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        width: _photoTileSize,
+        height: _photoTileSize,
+        alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: c.card,
-          borderRadius: BorderRadius.circular(12),
+          color: AppTheme.brand.withValues(alpha: 0.12),
+          shape: BoxShape.circle,
+          border: Border.all(color: c.divider),
         ),
-        child: Row(
+        child: AppIcon(
+          HeroAppIcons.plus,
+          size: AppIconSize.lg,
+          color: AppTheme.brand,
+        ),
+      ),
+    );
+  }
+
+  Widget _photoTile(ProfilePhotoEntry entry) {
+    final c = context.colors;
+    final isCurrent = entry.id == _currentPhotoId;
+    final isPublic = entry.id == _publicPhotoId;
+    return AppInteractiveSurface(
+      onTap: isCurrent ? null : () => unawaited(_usePhoto(entry)),
+      selected: isCurrent,
+      semanticLabel: AppStrings.t(
+        isCurrent
+            ? AppStringKeys.editProfilePhotoCurrent
+            : AppStringKeys.profilePhotoSetAsAvatar,
+      ),
+      borderRadius: BorderRadius.circular(AppRadius.pill),
+      child: SizedBox(
+        width: _photoTileSize,
+        height: _photoTileSize,
+        child: Stack(
           children: [
-            SizedBox(
-              width: _fieldLabelWidth,
-              child: Text(
-                label,
-                style: TextStyle(fontSize: 15, color: c.textSecondary),
+            Container(
+              width: _photoTileSize,
+              height: _photoTileSize,
+              padding: EdgeInsets.all(
+                isCurrent ? AppMetric.selectedBorder : 0.0,
+              ),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: isCurrent ? AppTheme.brand : c.divider,
+                  width: isCurrent ? AppMetric.selectedBorder : 1,
+                ),
+              ),
+              child: ClipOval(
+                child: TDImage(photo: entry.file, cornerRadius: 0),
               ),
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: color == null
-                  ? Text(
-                      AppStrings.t(AppStringKeys.editProfileDefault),
-                      style: TextStyle(fontSize: 16, color: c.textTertiary),
-                    )
-                  : const SizedBox.shrink(),
-            ),
-            if (color != null)
-              Container(
-                width: 24,
-                height: 24,
-                margin: const EdgeInsets.only(right: 8),
-                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            if (isPublic)
+              Positioned(
+                right: 0,
+                bottom: 0,
+                child: Semantics(
+                  label: AppStrings.t(AppStringKeys.editProfilePhotoPublic),
+                  child: Container(
+                    width: AppIconSize.md,
+                    height: AppIconSize.md,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: c.card,
+                      shape: BoxShape.circle,
+                    ),
+                    child: AppIcon(
+                      HeroAppIcons.globe,
+                      size: AppIconSize.xs - 2,
+                      color: c.textSecondary,
+                    ),
+                  ),
+                ),
               ),
-            AppIcon(HeroAppIcons.chevronRight, size: 14, color: c.textTertiary),
           ],
         ),
       ),
     );
   }
 
-  Widget _profileIconField() {
-    final c = context.colors;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: _editProfileIcon,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: c.card,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          children: [
-            SizedBox(
-              width: _fieldLabelWidth,
-              child: Text(
-                AppStringKeys.editProfileProfileIcon.l10n(context),
-                style: TextStyle(fontSize: 15, color: c.textSecondary),
-              ),
-            ),
-            const SizedBox(width: 8),
-            const Spacer(),
-            if (_profileBackgroundCustomEmojiId != 0) ...[
-              CustomEmojiView(
-                id: _profileBackgroundCustomEmojiId,
-                size: 25,
-                color: c.textPrimary,
-              ),
-              const SizedBox(width: 8),
-            ],
-            AppIcon(HeroAppIcons.chevronRight, size: 14, color: c.textTertiary),
-          ],
-        ),
-      ),
+  Color? _accentColor(int colorId) =>
+      (colorId >= 0 && colorId < kAccentColors.length)
+      ? kAccentColors[colorId]
+      : null;
+
+  /// An unset accent reads as a word, not an absent swatch, so the row still
+  /// says something. [SettingsRow] draws whichever of the two is non-null.
+  String _accentColorLabel(int colorId) => _accentColor(colorId) == null
+      ? AppStrings.t(AppStringKeys.editProfileDefault)
+      : '';
+
+  Widget? _colorSwatch(int colorId) {
+    final color = _accentColor(colorId);
+    if (color == null) return null;
+    return Container(
+      width: AppIconSize.xl,
+      height: AppIconSize.xl,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
     );
   }
+
+  Widget? _profileIconSwatch() {
+    if (_profileBackgroundCustomEmojiId == 0) return null;
+    return CustomEmojiView(
+      id: _profileBackgroundCustomEmojiId,
+      size: AppIconSize.add,
+      color: context.colors.textPrimary,
+    );
+  }
+
+  Widget _footnote(String text) => Padding(
+    padding: const EdgeInsets.fromLTRB(
+      AppSpacing.xxl,
+      AppSpacing.md,
+      AppSpacing.xxl,
+      0,
+    ),
+    child: Text(text, style: AppTextStyle.caption(context.colors.textTertiary)),
+  );
 }
 
 /// Result of [_BirthdayPickerSheet]: either a value (year 0 = no year) or clear.

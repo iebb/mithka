@@ -460,7 +460,7 @@ class _AudioSearchViewState extends State<AudioSearchView> {
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: AppTheme.brand.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(AppRadius.control),
       ),
       child: AppIcon(
         HeroAppIcons.compactDisc,

@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/components/app_icons.dart';
-import 'package:mithka/components/app_interactive_surface.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/pro/mithka_pro_service.dart';
 import 'package:mithka/settings/about_view.dart';
@@ -12,7 +11,6 @@ import 'package:mithka/settings/chat_folder_management_view.dart';
 import 'package:mithka/settings/desktop_hotkey_settings_view.dart';
 import 'package:mithka/settings/developer_mode_controller.dart';
 import 'package:mithka/settings/general_settings_view.dart';
-import 'package:mithka/settings/notification_settings_view.dart';
 import 'package:mithka/settings/settings_view.dart';
 import 'package:mithka/settings/storage_usage_view.dart';
 import 'package:mithka/theme/app_theme.dart';
@@ -44,9 +42,8 @@ void main() {
     expect(find.byKey(const ValueKey('settings-section-mithka')), findsNothing);
 
     const expectedOrder = [
-      'edit-profile',
-      'telegram-business',
-      'mithka-pro',
+      // edit-profile and telegram-business are top-level entries now, and
+      // mithka-pro is hidden wherever no store can open its paywall.
       'notifications',
       'telegram-privacy',
       'telegram-blocked-users',
@@ -213,9 +210,7 @@ void main() {
     );
   });
 
-  testWidgets('desktop settings use a persistent category sidebar', (
-    tester,
-  ) async {
+  testWidgets('desktop settings use a nested category sidebar', (tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
     addTearDown(() => debugDefaultTargetPlatformOverride = null);
     tester.view.physicalSize = const Size(1200, 800);
@@ -239,143 +234,162 @@ void main() {
     );
     expect(find.byKey(const ValueKey('settings-root-back')), findsNothing);
     expect(find.byKey(const ValueKey('settings-log-out')), findsNothing);
+
+    // General is absent here: it holds only Mithka Pro, which hides itself
+    // where no store can open its paywall. The first category is Notifications,
+    // a single-screen category that is its own row rather than a parent.
     expect(
       find.byKey(const ValueKey('settings-category-general')),
-      findsOneWidget,
+      findsNothing,
     );
     expect(
-      find.byKey(const ValueKey('settings-destination-edit-profile')),
+      find.byKey(const ValueKey('settings-category-notifications')),
+      findsOneWidget,
+      reason: 'a single-screen category is its own row in the sidebar',
+    );
+
+    // A collapsed category hides its children until it is opened.
+    expect(
+      find.byKey(const ValueKey('settings-child-mithka-chat-behavior')),
+      findsNothing,
+    );
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('settings-category-appearance')),
+    );
+    // Bounded pumps: the default pane is now Notifications, whose loading
+    // indicator spins forever without a TDLib connection, so nothing settles.
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(
+      find.byKey(const ValueKey('settings-category-appearance')),
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(
+      find.byKey(const ValueKey('settings-child-mithka-chat-behavior')),
       findsOneWidget,
     );
 
-    await tester.tap(
-      find.byKey(const ValueKey('settings-category-notifications')),
+    // Choosing a child shows it in the detail pane, with no intermediate list.
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('settings-child-mithka-chat-behavior')),
     );
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 250));
-
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('settings-child-mithka-chat-behavior')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(ChatBehaviorSettingsView), findsOneWidget);
     expect(
       find.byKey(const ValueKey('settings-category-sidebar')),
       findsOneWidget,
-    );
-    expect(find.byType(NotificationSettingsView), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('settings-destination-notifications')),
-      findsNothing,
+      reason: 'the sidebar stays put while the detail pane changes',
     );
 
-    final rootBackIcons = find.byWidgetPredicate(
-      (widget) => widget is AppIcon && widget.icon == HeroAppIcons.chevronLeft,
-    );
-    expect(rootBackIcons, findsNothing);
-
-    await tester.tap(
+    // Tapping the header again collapses it without changing the detail pane.
+    await tester.ensureVisible(
       find.byKey(const ValueKey('settings-category-appearance')),
     );
     await tester.pumpAndSettle();
     await tester.tap(
-      find.byKey(const ValueKey('settings-destination-mithka-chat-behavior')),
+      find.byKey(const ValueKey('settings-category-appearance')),
     );
     await tester.pumpAndSettle();
-
-    expect(find.byType(ChatBehaviorSettingsView), findsOneWidget);
-    final detailBackIcon = find.byWidgetPredicate(
-      (widget) => widget is AppIcon && widget.icon == HeroAppIcons.chevronLeft,
-    );
-    expect(detailBackIcon, findsOneWidget);
-    await tester.tap(
-      find.ancestor(
-        of: detailBackIcon,
-        matching: find.byType(AppInteractiveSurface),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.byType(ChatBehaviorSettingsView), findsNothing);
     expect(
-      find.byKey(const ValueKey('settings-destination-mithka-chat-behavior')),
-      findsOneWidget,
+      find.byKey(const ValueKey('settings-child-mithka-chat-behavior')),
+      findsNothing,
     );
+    expect(find.byType(ChatBehaviorSettingsView), findsOneWidget);
 
+    // A single-screen category is a leaf: no children, no disclosure step.
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('settings-category-data-storage')),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(const ValueKey('settings-category-data-storage')),
     );
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pumpAndSettle();
     expect(find.byType(StorageUsageView), findsOneWidget);
     expect(
-      find.byKey(const ValueKey('settings-destination-mithka-data-storage')),
+      find.byKey(const ValueKey('settings-child-mithka-data-storage')),
       findsNothing,
     );
-    expect(rootBackIcons, findsNothing);
 
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('settings-category-about')),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('settings-category-about')));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pumpAndSettle();
     expect(find.byType(AboutView), findsOneWidget);
+
+    // Nothing in the split layout pushes a route, so no back affordance.
     expect(
-      find.byKey(const ValueKey('settings-destination-mithka-about')),
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is AppIcon && widget.icon == HeroAppIcons.chevronLeft,
+      ),
       findsNothing,
     );
-    expect(rootBackIcons, findsNothing);
 
+    // Search replaces the tree with flat matches.
     await tester.enterText(
       find.byKey(const ValueKey('settings-search-field')),
       'backup',
     );
     await tester.pump();
     expect(
-      find.byKey(const ValueKey('settings-destination-mithka-account-backup')),
+      find.byKey(const ValueKey('settings-category-general')),
       findsNothing,
+      reason: 'the tree gives way to matches while searching',
     );
-    expect(find.byKey(const ValueKey('settings-search-empty')), findsOneWidget);
-    debugDefaultTargetPlatformOverride = null;
-  });
-
-  testWidgets('landscape iPad uses split settings and portrait stays compact', (
-    tester,
-  ) async {
-    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
-    addTearDown(() => debugDefaultTargetPlatformOverride = null);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetDevicePixelRatio);
-    addTearDown(tester.view.resetPhysicalSize);
-
-    tester.view.physicalSize = const Size(1024, 768);
-    await _pumpSettings(tester);
-    expect(find.byKey(const ValueKey('settings-split-layout')), findsOneWidget);
     expect(
-      find.byKey(const ValueKey('settings-root-back')),
+      find.byKey(const ValueKey('settings-match-mithka-account-backup')),
       findsNothing,
-      reason: 'a root Settings route has nowhere to go back to',
+      reason: 'session actions are off in this configuration',
     );
-    expect(find.byKey(const ValueKey('settings-log-out')), findsOneWidget);
+
     await tester.enterText(
       find.byKey(const ValueKey('settings-search-field')),
-      'backup',
+      'appearance',
     );
     await tester.pump();
     expect(
-      find.byKey(const ValueKey('settings-destination-mithka-account-backup')),
+      find.byKey(const ValueKey('settings-match-mithka-appearance')),
       findsOneWidget,
     );
+
     await tester.enterText(
       find.byKey(const ValueKey('settings-search-field')),
       '',
     );
     await tester.pump();
-
-    tester.view.physicalSize = const Size(768, 1024);
-    await _pumpSettings(tester);
-    expect(find.byKey(const ValueKey('settings-split-layout')), findsNothing);
-    expect(
-      find.byKey(const ValueKey('settings-compact-layout')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const PageStorageKey<String>('settings-list')),
-      findsOneWidget,
-    );
     debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('signing out lives under the sidebar tree', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    // Reset inside the body: addTearDown runs after Flutter asserts that debug
+    // variables were left unset, which would mask a real failure here.
+    try {
+      await _pumpSettings(tester);
+
+      final logOut = find.byKey(const ValueKey('settings-log-out'));
+      expect(logOut, findsOneWidget);
+      expect(
+        tester.getCenter(logOut).dx,
+        lessThan(312),
+        reason:
+            'it belongs to the account, not to a section, so it sits in '
+            'the sidebar rather than inside one category',
+      );
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
   });
 
   testWidgets('desktop shortcut can select Appearance initially', (
@@ -388,18 +402,26 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await _pumpSettings(tester, initialCategoryId: 'appearance');
+    try {
+      await _pumpSettings(tester, initialCategoryId: 'appearance');
 
-    expect(find.byKey(const ValueKey('settings-split-layout')), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('settings-destination-mithka-appearance')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey('settings-destination-edit-profile')),
-      findsNothing,
-    );
-    debugDefaultTargetPlatformOverride = null;
+      expect(
+        find.byKey(const ValueKey('settings-split-layout')),
+        findsOneWidget,
+      );
+      // The shortcut opens the category, so its screens are listed and
+      // General's are not.
+      expect(
+        find.byKey(const ValueKey('settings-child-mithka-appearance')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('settings-child-notifications')),
+        findsNothing,
+      );
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
   });
 
   testWidgets('desktop split exposes a direct keyboard shortcuts category', (

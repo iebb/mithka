@@ -343,7 +343,7 @@ class _ChatListPreviewSurfaceState extends State<ChatListPreviewSurface> {
       key: const ValueKey('chat-list-preview-card'),
       decoration: BoxDecoration(
         color: c.card,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
         border: Border.all(
           color: c.divider.withValues(alpha: 0.82),
           width: 0.5,
@@ -357,7 +357,7 @@ class _ChatListPreviewSurfaceState extends State<ChatListPreviewSurface> {
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
         child: Column(
           children: [
             _previewHeader(context),
@@ -514,7 +514,7 @@ class _ChatListPreviewSurfaceState extends State<ChatListPreviewSurface> {
       key: const ValueKey('chat-list-preview-actions'),
       decoration: BoxDecoration(
         color: c.card,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(
           color: c.divider.withValues(alpha: 0.82),
           width: 0.5,
@@ -528,7 +528,7 @@ class _ChatListPreviewSurfaceState extends State<ChatListPreviewSurface> {
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         child: ListView.separated(
           padding: EdgeInsets.zero,
           itemCount: widget.actions.length,

@@ -1,25 +1,21 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/l10n/app_localizations.dart';
-import 'package:mithka/l10n/messages/de.dart';
-import 'package:mithka/l10n/messages/en.dart';
-import 'package:mithka/l10n/messages/es.dart';
-import 'package:mithka/l10n/messages/fr.dart';
-import 'package:mithka/l10n/messages/ja.dart';
-import 'package:mithka/l10n/messages/ko.dart';
-import 'package:mithka/l10n/messages/zh_hans.dart';
-import 'package:mithka/l10n/messages/zh_hant.dart';
+
+import 'support/l10n_fixtures.dart';
+
+final fixtures = L10nFixtures.load();
 
 void main() {
   test('diagnostic feedback copy exists in every supported locale', () {
-    const tables = [
-      enMessages,
-      deMessages,
-      esMessages,
-      frMessages,
-      jaMessages,
-      koMessages,
-      zhHansMessages,
-      zhHantMessages,
+    final tables = [
+      fixtures.messages('en'),
+      fixtures.messages('de'),
+      fixtures.messages('es'),
+      fixtures.messages('fr'),
+      fixtures.messages('ja'),
+      fixtures.messages('ko'),
+      fixtures.messages('zhHans'),
+      fixtures.messages('zhHant'),
     ];
     const keys = [
       AppStringKeys.aboutReportProblem,

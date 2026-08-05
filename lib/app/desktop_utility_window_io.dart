@@ -106,12 +106,14 @@ Future<bool> openDesktopUtilityWindow(
 Future<bool> openChatInPrimaryWindowFromDesktopUtility(
   ChatDeepLinkRequest request,
 ) async {
-  if (!supportsDesktopUtilityWindows || MultiWindowManager.current.id <= 0) {
-    return false;
-  }
+  if (!supportsDesktopUtilityWindows) return false;
+  // Only a registered child hands a conversation over, and `current` throws
+  // until the window manager is initialized — so the child check has to come
+  // first or the primary window's own callers blow up here.
   final source = _childArguments;
   if (source == null) return false;
   try {
+    if (MultiWindowManager.current.id <= 0) return false;
     final response = await MultiWindowManager.current
         .invokeMethodToWindow(0, _openPrimaryChatMethod, {
           ...source.toIpcJson(),
@@ -193,6 +195,12 @@ WindowOptions desktopUtilityWindowOptions(
     DesktopUtilityWindowKind.settings => (
       const Size(1080, 760),
       const Size(760, 560),
+    ),
+    // Single-column forms; they do not need the settings window's width.
+    DesktopUtilityWindowKind.editProfile ||
+    DesktopUtilityWindowKind.businessProfile => (
+      const Size(620, 760),
+      const Size(480, 560),
     ),
     DesktopUtilityWindowKind.audioPicker => (
       const Size(640, 720),

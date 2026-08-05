@@ -2383,7 +2383,7 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
                             style: const TextStyle(
                               color: Color(0xFFFFFFFF),
                               fontSize: 11,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                         ),
@@ -3009,7 +3009,7 @@ class _TextControlButton extends StatelessWidget {
               style: const TextStyle(
                 color: Color(0xFFFFFFFF),
                 fontSize: 14,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),

@@ -32,8 +32,8 @@ class DesktopNavigationAction {
   final VoidCallback onTap;
 }
 
-class DesktopLanguageMenuOption {
-  const DesktopLanguageMenuOption({
+class DesktopMenuChoice {
+  const DesktopMenuChoice({
     required this.id,
     required this.label,
     required this.selected,
@@ -70,6 +70,8 @@ class DesktopNavigationRail extends StatefulWidget {
     this.applicationMenuLabel = 'Menu',
     this.languageMenuLabel = 'Language',
     this.languageOptions = const [],
+    this.themeMenuLabel = 'Theme',
+    this.themeOptions = const [],
     this.applicationMenuQuickActions = const [],
     this.applicationMenuActions = const [],
   });
@@ -92,7 +94,9 @@ class DesktopNavigationRail extends StatefulWidget {
   final List<DesktopNavigationAction> actions;
   final String applicationMenuLabel;
   final String languageMenuLabel;
-  final List<DesktopLanguageMenuOption> languageOptions;
+  final List<DesktopMenuChoice> languageOptions;
+  final String themeMenuLabel;
+  final List<DesktopMenuChoice> themeOptions;
   final List<DesktopNavigationAction> applicationMenuQuickActions;
   final List<DesktopNavigationAction> applicationMenuActions;
 
@@ -201,6 +205,8 @@ class _DesktopNavigationRailState extends State<DesktopNavigationRail> {
         label: widget.applicationMenuLabel,
         languageMenuLabel: widget.languageMenuLabel,
         languageOptions: widget.languageOptions,
+        themeMenuLabel: widget.themeMenuLabel,
+        themeOptions: widget.themeOptions,
         quickActions: widget.applicationMenuQuickActions,
         actions: widget.applicationMenuActions,
         onDismiss: _closeApplicationMenu,
@@ -326,7 +332,7 @@ class _DesktopApplicationMenuButton extends StatelessWidget {
         child: AppInteractiveSurface(
           semanticLabel: label,
           onTap: onTap,
-          borderRadius: BorderRadius.circular(9),
+          borderRadius: BorderRadius.circular(AppRadius.control),
           child: SizedBox(
             width: 38,
             height: 38,
@@ -368,7 +374,7 @@ class _DesktopThemeToggleButton extends StatelessWidget {
         child: AppInteractiveSurface(
           semanticLabel: label,
           onTap: onTap,
-          borderRadius: BorderRadius.circular(9),
+          borderRadius: BorderRadius.circular(AppRadius.control),
           child: SizedBox(
             width: 38,
             height: 38,
@@ -394,6 +400,8 @@ class _DesktopApplicationMenuOverlay extends StatefulWidget {
     required this.label,
     required this.languageMenuLabel,
     required this.languageOptions,
+    required this.themeMenuLabel,
+    required this.themeOptions,
     required this.quickActions,
     required this.actions,
     required this.onDismiss,
@@ -403,7 +411,9 @@ class _DesktopApplicationMenuOverlay extends StatefulWidget {
   final double bottom;
   final String label;
   final String languageMenuLabel;
-  final List<DesktopLanguageMenuOption> languageOptions;
+  final List<DesktopMenuChoice> languageOptions;
+  final String themeMenuLabel;
+  final List<DesktopMenuChoice> themeOptions;
   final List<DesktopNavigationAction> quickActions;
   final List<DesktopNavigationAction> actions;
   final VoidCallback onDismiss;
@@ -415,14 +425,17 @@ class _DesktopApplicationMenuOverlay extends StatefulWidget {
 
 class _DesktopApplicationMenuOverlayState
     extends State<_DesktopApplicationMenuOverlay> {
-  bool _showLanguages = false;
+  /// The submenu currently replacing the menu body, if any. Language and
+  /// theme are the same shape, so they share one slot rather than one flag
+  /// each.
+  ({String label, List<DesktopMenuChoice> options})? _submenu;
 
   void _run(DesktopNavigationAction action) {
     widget.onDismiss();
     action.onTap();
   }
 
-  void _runLanguage(DesktopLanguageMenuOption option) {
+  void _runChoice(DesktopMenuChoice option) {
     widget.onDismiss();
     option.onTap();
   }
@@ -430,6 +443,7 @@ class _DesktopApplicationMenuOverlayState
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final submenu = _submenu;
     final maximumHeight =
         MediaQuery.sizeOf(context).height - widget.bottom - 16;
     return Stack(
@@ -461,7 +475,7 @@ class _DesktopApplicationMenuOverlayState
                   ),
                   decoration: BoxDecoration(
                     color: c.card,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(AppRadius.card),
                     border: Border.all(color: c.divider),
                     boxShadow: [
                       BoxShadow(
@@ -478,12 +492,11 @@ class _DesktopApplicationMenuOverlayState
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
-                      children: _showLanguages
+                      children: submenu != null
                           ? [
                               _DesktopApplicationLanguageHeader(
-                                label: widget.languageMenuLabel,
-                                onBack: () =>
-                                    setState(() => _showLanguages = false),
+                                label: submenu.label,
+                                onBack: () => setState(() => _submenu = null),
                               ),
                               Padding(
                                 padding: const EdgeInsets.symmetric(
@@ -495,10 +508,10 @@ class _DesktopApplicationMenuOverlayState
                                   color: c.divider,
                                 ),
                               ),
-                              for (final option in widget.languageOptions)
+                              for (final option in submenu.options)
                                 _DesktopApplicationLanguageOptionRow(
                                   option: option,
-                                  onTap: () => _runLanguage(option),
+                                  onTap: () => _runChoice(option),
                                 ),
                             ]
                           : [
@@ -524,6 +537,7 @@ class _DesktopApplicationMenuOverlayState
                                 ),
                               if (widget.quickActions.isNotEmpty &&
                                   (widget.languageOptions.isNotEmpty ||
+                                      widget.themeOptions.isNotEmpty ||
                                       widget.actions.isNotEmpty))
                                 Padding(
                                   padding: const EdgeInsets.fromLTRB(
@@ -539,10 +553,32 @@ class _DesktopApplicationMenuOverlayState
                                   ),
                                 ),
                               if (widget.languageOptions.isNotEmpty)
-                                _DesktopApplicationLanguageMenuRow(
+                                _DesktopApplicationSubmenuRow(
+                                  key: const ValueKey(
+                                    'desktop-application-language',
+                                  ),
                                   label: widget.languageMenuLabel,
-                                  onTap: () =>
-                                      setState(() => _showLanguages = true),
+                                  icon: HeroAppIcons.language,
+                                  onTap: () => setState(
+                                    () => _submenu = (
+                                      label: widget.languageMenuLabel,
+                                      options: widget.languageOptions,
+                                    ),
+                                  ),
+                                ),
+                              if (widget.themeOptions.isNotEmpty)
+                                _DesktopApplicationSubmenuRow(
+                                  key: const ValueKey(
+                                    'desktop-application-theme',
+                                  ),
+                                  label: widget.themeMenuLabel,
+                                  icon: HeroAppIcons.palette,
+                                  onTap: () => setState(
+                                    () => _submenu = (
+                                      label: widget.themeMenuLabel,
+                                      options: widget.themeOptions,
+                                    ),
+                                  ),
                                 ),
                               for (final action in widget.actions)
                                 _DesktopApplicationMenuRow(
@@ -606,20 +642,22 @@ class _DesktopApplicationLanguageHeader extends StatelessWidget {
   }
 }
 
-class _DesktopApplicationLanguageMenuRow extends StatelessWidget {
-  const _DesktopApplicationLanguageMenuRow({
+class _DesktopApplicationSubmenuRow extends StatelessWidget {
+  const _DesktopApplicationSubmenuRow({
+    super.key,
     required this.label,
+    required this.icon,
     required this.onTap,
   });
 
   final String label;
+  final AppIconData icon;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
     return AppInteractiveSurface(
-      key: const ValueKey('desktop-application-language'),
       semanticLabel: label,
       onTap: onTap,
       child: SizedBox(
@@ -628,7 +666,7 @@ class _DesktopApplicationLanguageMenuRow extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
           child: Row(
             children: [
-              AppIcon(HeroAppIcons.language, size: 17, color: c.textSecondary),
+              AppIcon(icon, size: 17, color: c.textSecondary),
               const SizedBox(width: AppSpacing.md),
               Expanded(
                 child: Text(
@@ -659,7 +697,7 @@ class _DesktopApplicationLanguageOptionRow extends StatelessWidget {
     required this.onTap,
   });
 
-  final DesktopLanguageMenuOption option;
+  final DesktopMenuChoice option;
   final VoidCallback onTap;
 
   @override
@@ -715,7 +753,7 @@ class _DesktopApplicationQuickAction extends StatelessWidget {
       key: ValueKey('desktop-application-quick-${action.id}'),
       semanticLabel: action.label,
       onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(AppRadius.control),
       child: Padding(
         padding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.xs,
@@ -807,7 +845,7 @@ class _DesktopAccountSwitchButton extends StatelessWidget {
         child: AppInteractiveSurface(
           semanticLabel: label,
           onTap: onTap,
-          borderRadius: BorderRadius.circular(9),
+          borderRadius: BorderRadius.circular(AppRadius.control),
           child: SizedBox(
             width: 38,
             height: 38,
@@ -875,7 +913,7 @@ class _DesktopAccountSwitcherOverlay extends StatelessWidget {
               ),
               decoration: BoxDecoration(
                 color: c.card,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(AppRadius.card),
                 border: Border.all(color: c.divider),
                 boxShadow: [
                   BoxShadow(
@@ -1054,7 +1092,7 @@ class _DesktopAccountAvatar extends StatelessWidget {
               style: TextStyle(
                 color: Colors.white,
                 fontSize: size * 0.4,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w600,
               ),
             ),
     );
@@ -1152,7 +1190,7 @@ class _DesktopNavigationButton extends StatelessWidget {
               semanticLabel: destination.label,
               selected: selected,
               onTap: onTap,
-              borderRadius: BorderRadius.circular(9),
+              borderRadius: BorderRadius.circular(AppRadius.control),
               child: AnimatedContainer(
                 duration: AppMotion.duration(context, AppMotion.responsive),
                 curve: AppMotion.standard,
@@ -1162,7 +1200,7 @@ class _DesktopNavigationButton extends StatelessWidget {
                   color: selected
                       ? AppTheme.brand.withValues(alpha: 0.13)
                       : Colors.transparent,
-                  borderRadius: BorderRadius.circular(9),
+                  borderRadius: BorderRadius.circular(AppRadius.control),
                 ),
                 child: Stack(
                   clipBehavior: Clip.none,

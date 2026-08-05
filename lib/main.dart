@@ -52,7 +52,6 @@ import 'components/drawer_controller.dart' as dc;
 import 'components/keyboard_dismiss_on_tap.dart';
 import 'l10n/app_locale_controller.dart';
 import 'l10n/app_localizations.dart';
-import 'l10n/telegram_language_controller.dart';
 import 'notifications/in_app_notification_banner.dart';
 import 'notifications/notification_controller.dart';
 import 'notifications/push_device_registrar.dart';
@@ -78,6 +77,26 @@ import 'theme/app_motion.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_controller.dart';
 
+/// Loads the locale catalogue before the first frame.
+///
+/// Strings come from assets now, so every entry point — the app and each
+/// desktop child window — has to await this or its early widgets render bare
+/// keys. [prefs] supplies the saved language when the entry point has it;
+/// without it the window follows the system language.
+Future<void> _preloadLocaleCatalogue([SharedPreferences? prefs]) {
+  WidgetsFlutterBinding.ensureInitialized();
+  Locale? saved;
+  if (prefs != null) {
+    // Only the stored value is wanted here; the tree builds its own controller.
+    final reader = AppLocaleController(prefs);
+    saved = reader.locale;
+    reader.dispose();
+  }
+  final locale = saved ?? ui.PlatformDispatcher.instance.locale;
+  AppStrings.setLocale(locale);
+  return AppStrings.ensureLoaded(locale);
+}
+
 Future<void> main(List<String> arguments) async {
   if (supportsDesktopVideoWindows) {
     final videoArguments = await MithkaDesktopVideoWindows.initialize(
@@ -85,6 +104,7 @@ Future<void> main(List<String> arguments) async {
     );
     if (videoArguments != null) {
       _initializeVideoBackend(installGlobalLogHandler: false);
+      await _preloadLocaleCatalogue();
       runApp(DesktopVideoWindowApp(arguments: videoArguments));
       return;
     }
@@ -95,6 +115,7 @@ Future<void> main(List<String> arguments) async {
       final launch = await DesktopMiniAppWindowService.instance
           .configureChildProxy(miniAppArguments);
       final prefs = await SharedPreferences.getInstance();
+      await _preloadLocaleCatalogue(prefs);
       runApp(DesktopMiniAppWindowApp(launch: launch, prefs: prefs));
       return;
     }
@@ -102,6 +123,7 @@ Future<void> main(List<String> arguments) async {
         DesktopImagePreviewWindowArguments.tryParseLaunchArguments(arguments);
     if (imageArguments != null) {
       configureAppImageCache();
+      await _preloadLocaleCatalogue();
       runApp(DesktopImagePreviewWindowApp(arguments: imageArguments));
       return;
     }
@@ -115,6 +137,7 @@ Future<void> main(List<String> arguments) async {
       );
       final prefs = await SharedPreferences.getInstance();
       DesktopHotkeyController.initializeShared(prefs, replace: true);
+      await _preloadLocaleCatalogue(prefs);
       runApp(
         DesktopUtilityWindowApp(arguments: utilityArguments, prefs: prefs),
       );
@@ -130,6 +153,7 @@ Future<void> main(List<String> arguments) async {
         chatArguments,
       );
       final prefs = await SharedPreferences.getInstance();
+      await _preloadLocaleCatalogue(prefs);
       runApp(DesktopChatWindowApp(arguments: chatArguments, prefs: prefs));
       return;
     }
@@ -177,6 +201,7 @@ Future<void> _bootstrapAndRunApp() async {
     configureImmersiveSystemUI();
   }
   final prefs = await SharedPreferences.getInstance();
+  await _preloadLocaleCatalogue(prefs);
   DesktopHotkeyController.initializeShared(prefs, replace: true);
   await LocalAppLockController.shared.initialize();
   KeywordBlocker.shared.initialize(prefs);
@@ -311,12 +336,7 @@ bool _isGoogleFontLoadFailureText(String value) {
 }
 
 typedef _MithkaAppConsumer =
-    Consumer4<
-      ThemeController,
-      AccountStore,
-      AppLocaleController,
-      TelegramLanguageController
-    >;
+    Consumer3<ThemeController, AccountStore, AppLocaleController>;
 
 class MithkaApp extends StatefulWidget {
   const MithkaApp({super.key, required this.prefs, this.auth});
@@ -342,8 +362,6 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
   late TranslationController _translation = TranslationController(widget.prefs);
   late AiSettingsController _ai = AiSettingsController(widget.prefs);
   late AppLocaleController _locale = AppLocaleController(widget.prefs);
-  late final TelegramLanguageController _telegramLanguage =
-      TelegramLanguageController.shared;
   late final dc.DrawerController _drawer = dc.DrawerController();
   late final ChatDeepLinkController _chatDeepLinks =
       ChatDeepLinkController.shared;
@@ -395,7 +413,6 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
     );
     unawaited(_ai.initialize());
     unawaited(_mithkaPro.initialize());
-    unawaited(_telegramLanguage.initialize(widget.prefs));
     unawaited(_appIcons.initialize());
     unawaited(_accounts.recoverPendingAddOnStartup(_auth));
     NotificationController.shared.start(widget.prefs);
@@ -510,7 +527,6 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
         if (nextTheme.hideBlockedUserMessages) {
           unawaited(BlockedUserService.shared.loadBlockedUsers());
         }
-        unawaited(_telegramLanguage.reloadPreferences(widget.prefs));
         unawaited(_appLock.reloadFromStorage());
         unawaited(_mithkaPro.refresh());
         unawaited(nextAi.initialize());
@@ -618,17 +634,6 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
         ChangeNotifierProvider.value(value: _translation),
         ChangeNotifierProvider.value(value: _ai),
         ChangeNotifierProvider.value(value: _locale),
-        ChangeNotifierProxyProvider<
-          AppLocaleController,
-          TelegramLanguageController
-        >(
-          create: (_) => _telegramLanguage,
-          update: (_, locale, telegramLanguage) {
-            final controller = telegramLanguage ?? _telegramLanguage;
-            unawaited(controller.syncAppLocale(locale.locale));
-            return controller;
-          },
-        ),
         ChangeNotifierProvider.value(value: _accounts),
         ChangeNotifierProvider.value(value: _groupRemarks),
         ChangeNotifierProvider.value(value: _mithkaPro),
@@ -644,12 +649,14 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
         ChangeNotifierProvider<dc.DrawerController>.value(value: _drawer),
       ],
       child: _MithkaAppConsumer(
-        builder: (context, theme, accounts, locale, telegramLanguage, _) {
+        builder: (context, theme, accounts, locale, _) {
           return MaterialApp(
             navigatorKey: appNavigatorKey,
             title: 'Mithka',
             debugShowCheckedModeBanner: false,
-            locale: telegramLanguage.mithkaLocale,
+            // Null follows the system language, which is what
+            // AppLocaleController stores for "follow system".
+            locale: locale.locale,
             localeResolutionCallback: (locale, _) => locale == null
                 ? AppLocalizations.fallbackLocale
                 : AppLocalizations.resolve(locale),
@@ -685,7 +692,15 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
                     boldText: media.boldText,
                   ),
                 ),
-                child: child ?? const SizedBox.shrink(),
+                // Cupertino-rooted screens (SearchView and friends) sit under no
+                // text style of their own, so any Text that omits a decoration
+                // inherits Flutter's yellow "unstyled" underline. A Material
+                // ancestor would also fix it, but the app avoids Material
+                // surfaces and only the text default is actually missing.
+                child: DefaultTextStyle.merge(
+                  style: const TextStyle(decoration: TextDecoration.none),
+                  child: child ?? const SizedBox.shrink(),
+                ),
               );
               final unlockedApp = Stack(
                 children: [

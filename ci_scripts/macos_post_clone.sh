@@ -50,13 +50,30 @@ if [ -n "${MITHKA_CI_PLATFORM:-}" ] && [ "$MITHKA_CI_PLATFORM" != "macos" ]; the
 fi
 
 RAW_VERSION="$(awk '/^version:/ { print $2; exit }' pubspec.yaml)"
-APP_VERSION="${RAW_VERSION%%+*}"
-case "$APP_VERSION" in
+SOURCE_VERSION="${RAW_VERSION%%+*}"
+case "$SOURCE_VERSION" in
   ''|*[!0-9.]*|.*|*.)
     echo "error: expected a numeric macOS version in pubspec.yaml" >&2
     exit 1
     ;;
 esac
+
+# Keep the major/minor from pubspec.yaml but force the patch component to
+# zero, matching iOS. The nightly job advances the patch for Android and the
+# desktop GitHub releases; without this TestFlight would see a new marketing
+# version for every one of them.
+#
+# Unlike iOS, the macOS project does not hardcode FLUTTER_BUILD_NAME — it
+# reads the generated xcconfig — so passing --build-name below is the whole
+# fix, with no project file to rewrite.
+APP_VERSION="$(
+  printf '%s\n' "$SOURCE_VERSION" |
+    awk -F. 'NF == 3 && $1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ { print $1 "." $2 ".0" }'
+)"
+if [ -z "$APP_VERSION" ]; then
+  echo "error: expected a numeric X.Y.Z version in pubspec.yaml, got $SOURCE_VERSION" >&2
+  exit 1
+fi
 
 # Xcode Cloud replaces distributed products' build number with its own
 # monotonically increasing CI build number. Use the same value in the archive
@@ -65,7 +82,7 @@ esac
 APP_BUILD_NUMBER="${CI_BUILD_NUMBER:-$(date -u '+%s')}"
 GIT_COMMIT="${CI_COMMIT:-$(git rev-parse --short HEAD)}"
 GIT_COMMIT="$(printf '%s' "$GIT_COMMIT" | cut -c1-7)"
-echo "Preparing Mithka macOS ${APP_VERSION}+${APP_BUILD_NUMBER} (${GIT_COMMIT})"
+echo "Preparing Mithka macOS ${APP_VERSION}+${APP_BUILD_NUMBER} (${GIT_COMMIT}, source: ${SOURCE_VERSION})"
 
 if ! command -v flutter >/dev/null 2>&1; then
   echo "Installing Flutter $FLUTTER_VERSION"

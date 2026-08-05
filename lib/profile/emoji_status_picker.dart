@@ -256,7 +256,7 @@ Widget _statusTabStrip(
         margin: const EdgeInsets.symmetric(horizontal: 2),
         decoration: BoxDecoration(
           color: active ? c.searchFill : null,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(AppRadius.control),
         ),
         alignment: Alignment.center,
         child: child,

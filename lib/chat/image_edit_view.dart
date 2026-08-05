@@ -602,7 +602,7 @@ class _ImageEditViewState extends State<ImageEditView> {
           filled: true,
           fillColor: Colors.white.withValues(alpha: 0.08),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
             borderSide: BorderSide.none,
           ),
           isDense: true,

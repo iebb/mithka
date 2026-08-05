@@ -594,7 +594,7 @@ class _MessageRepliesSheetState extends State<_MessageRepliesSheet> {
                 height: 6,
                 decoration: BoxDecoration(
                   color: c.divider,
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
                 ),
               ),
               Padding(
@@ -750,7 +750,7 @@ class _MessageRepliesSheetState extends State<_MessageRepliesSheet> {
                       ),
                       border: OutlineInputBorder(
                         borderSide: BorderSide.none,
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(AppRadius.control),
                       ),
                       hintText: replyTo == null
                           ? null

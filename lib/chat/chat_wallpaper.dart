@@ -26,6 +26,15 @@ enum ChatThemeKind { emoji, gift }
 
 enum GlobalChatThemeStock { classic, dark, day, night }
 
+/// Chooses the wallpaper used by global chat surfaces and their previews.
+/// A wallpaper explicitly selected by the user takes precedence over the
+/// active cloud or global chat theme's bundled wallpaper.
+ChatWallpaper? selectGlobalChatWallpaper({
+  required ChatWallpaper? defaultWallpaper,
+  required ChatWallpaper? cloudThemeWallpaper,
+  required ChatWallpaper? globalThemeWallpaper,
+}) => defaultWallpaper ?? cloudThemeWallpaper ?? globalThemeWallpaper;
+
 @immutable
 class ChatWallpaper {
   const ChatWallpaper._({

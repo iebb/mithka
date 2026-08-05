@@ -12,7 +12,6 @@ import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
-import '../l10n/telegram_language_controller.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -32,7 +31,7 @@ class StickerViewer extends StatefulWidget {
 }
 
 class _StickerViewerState extends State<StickerViewer> {
-  String _setTitle = telegramText(AppStringKeys.messageActionSticker);
+  String _setTitle = AppStrings.t(AppStringKeys.messageActionSticker);
   bool _installed = false;
   bool _exporting = false;
   final LayerLink _exportMenuLink = LayerLink();
@@ -120,7 +119,7 @@ class _StickerViewerState extends State<StickerViewer> {
               clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(
                 color: c.card,
-                borderRadius: BorderRadius.circular(13),
+                borderRadius: BorderRadius.circular(AppRadius.card),
                 border: Border.all(color: c.divider, width: 0.5),
                 boxShadow: const [
                   BoxShadow(

@@ -9,14 +9,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('sender name readability defaults to shadow and persists', () async {
+  test('sender name readability defaults to blend and persists', () async {
     SharedPreferences.setMockInitialValues({});
     final preferences = await SharedPreferences.getInstance();
     final controller = ThemeController(preferences);
 
     expect(
       controller.senderNameReadabilityMode,
-      SenderNameReadabilityMode.shadow,
+      SenderNameReadabilityMode.blend,
     );
 
     controller.senderNameReadabilityMode = SenderNameReadabilityMode.background;
@@ -80,33 +80,112 @@ void main() {
     expect(decoration.boxShadow, isNotEmpty);
   });
 
-  testWidgets('shadow mode uses its incoming theme bubble color', (
-    tester,
-  ) async {
-    const renderedBubbleColor = Color(0xFF223344);
-    const incomingThemeBubbleColor = Color(0xFF556677);
+  test('blend meets the bubble text colour halfway', () {
+    const senderColor = Color(0xFF00A0FF);
+    const textColor = Color(0xFF202020);
+
+    expect(
+      senderNameReadabilityColor(
+        mode: SenderNameReadabilityMode.blend,
+        senderColor: senderColor,
+        textColor: textColor,
+      ),
+      Color.lerp(textColor, senderColor, 0.5),
+    );
+    // Every other mode renders the sender's own colour untouched.
+    for (final mode in [
+      SenderNameReadabilityMode.background,
+      SenderNameReadabilityMode.none,
+    ]) {
+      expect(
+        senderNameReadabilityColor(
+          mode: mode,
+          senderColor: senderColor,
+          textColor: textColor,
+        ),
+        senderColor,
+      );
+    }
+  });
+
+  testWidgets('blend renders the name in the blended colour', (tester) async {
+    const senderColor = Color(0xFF00A0FF);
+    const textColor = Color(0xFF202020);
     await tester.pumpWidget(
       const Directionality(
         textDirection: TextDirection.ltr,
-        child: SenderNameReadabilityPlate(
-          mode: SenderNameReadabilityMode.shadow,
-          bubbleColor: renderedBubbleColor,
-          shadowColor: incomingThemeBubbleColor,
-          child: Text('Bob Harris'),
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: SenderIdentityPills(
+            readabilityMode: SenderNameReadabilityMode.blend,
+            bubbleColor: Color(0xFF223344),
+            textColor: textColor,
+            name: 'Bob Harris',
+            nameStyle: TextStyle(color: senderColor, fontSize: 12),
+          ),
         ),
       ),
     );
 
-    final defaultText = tester.widget<DefaultTextStyle>(
-      find.byKey(const ValueKey('senderNameReadabilityShadow')),
+    final name = tester.widget<Text>(find.text('Bob Harris'));
+    expect(name.style?.color, Color.lerp(textColor, senderColor, 0.5));
+    expect(name.style?.shadows, isNull);
+  });
+
+  testWidgets('the background pill keeps its tag leading on desktop', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const Directionality(
+        textDirection: TextDirection.ltr,
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: SenderIdentityPills(
+            readabilityMode: SenderNameReadabilityMode.background,
+            bubbleColor: Color(0xFF223344),
+            name: 'Bob Harris',
+            nameStyle: TextStyle(color: Color(0xFF00A0FF), fontSize: 12),
+            role: MemberRole.admin,
+            // What a desktop caller asks for; the continuous pill overrides it.
+            roleAfterName: true,
+          ),
+        ),
+      ),
     );
-    final shadows = defaultText.style.shadows!;
-    expect(shadows, hasLength(2));
-    expect(shadows.map((shadow) => shadow.color), [
-      incomingThemeBubbleColor,
-      incomingThemeBubbleColor,
-    ]);
-    expect(shadows.map((shadow) => shadow.blurRadius), [12, 6]);
+
+    expect(
+      find.byKey(const ValueKey('connectedSenderIdentityPills')),
+      findsOneWidget,
+    );
+    final tag = tester.getTopLeft(find.byType(RoleTag)).dx;
+    final name = tester.getTopLeft(find.text('Bob Harris')).dx;
+    expect(tag, lessThan(name));
+  });
+
+  testWidgets('an emoji status reads before the sender badge', (tester) async {
+    await tester.pumpWidget(
+      const Directionality(
+        textDirection: TextDirection.ltr,
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: SenderIdentityPills(
+            readabilityMode: SenderNameReadabilityMode.blend,
+            bubbleColor: Color(0xFF223344),
+            name: 'Bob Harris',
+            nameStyle: TextStyle(color: Color(0xFF00A0FF), fontSize: 12),
+            role: MemberRole.admin,
+            roleAfterName: true,
+            trailing: SizedBox.square(key: ValueKey('status'), dimension: 14),
+          ),
+        ),
+      ),
+    );
+
+    final status = tester.getTopLeft(find.byKey(const ValueKey('status'))).dx;
+    final badge = tester.getTopLeft(find.byType(RoleTag)).dx;
+    final name = tester.getTopLeft(find.text('Bob Harris')).dx;
+    expect(name, lessThan(status));
+    expect(status, lessThan(badge));
   });
 
   testWidgets('sender role and name become connected equal-size pills', (
@@ -185,7 +264,8 @@ void main() {
         child: Align(
           alignment: Alignment.topLeft,
           child: SenderIdentityPills(
-            readabilityMode: SenderNameReadabilityMode.background,
+            // Every mode but the continuous pill keeps the desktop ordering.
+            readabilityMode: SenderNameReadabilityMode.blend,
             bubbleColor: Color(0xFF223344),
             name: 'Bob Harris',
             nameStyle: TextStyle(fontSize: 12),

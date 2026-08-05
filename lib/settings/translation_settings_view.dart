@@ -13,7 +13,6 @@ import 'package:provider/provider.dart';
 import '../components/app_icons.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
-import '../l10n/telegram_language_controller.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'ai_settings_controller.dart';
@@ -94,7 +93,7 @@ class _AiTranslationPromptEditorViewState
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
                       color: c.card,
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(AppRadius.card),
                       border: Border.all(color: c.divider, width: 0.5),
                     ),
                     child: TextField(
@@ -168,7 +167,7 @@ class _AiTranslationPromptEditorViewState
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: backgroundColor ?? AppTheme.brand,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(AppRadius.card),
           border: borderColor == null ? null : Border.all(color: borderColor),
         ),
         child: Text(
@@ -210,7 +209,7 @@ class _TranslationSettingsViewState extends State<TranslationSettingsView> {
       body: Column(
         children: [
           NavHeader(
-            title: telegramText(AppStringKeys.messageActionTranslate),
+            title: AppStrings.t(AppStringKeys.messageActionTranslate),
             onBack: () => Navigator.of(context).pop(),
           ),
           Expanded(
@@ -239,9 +238,8 @@ class _TranslationSettingsViewState extends State<TranslationSettingsView> {
                   ),
                 ]),
                 const SizedBox(height: 14),
-                _sectionTitle(
-                  context,
-                  AppStringKeys.translationSettingsAiSection.l10n(context),
+                const SettingsSectionHeader(
+                  AppStringKeys.translationSettingsAiSection,
                 ),
                 _card(context, [
                   _switchRow(
@@ -304,11 +302,8 @@ class _TranslationSettingsViewState extends State<TranslationSettingsView> {
                   AppStringKeys.translationSettingsAiDescription.l10n(context),
                 ),
                 const SizedBox(height: 14),
-                _sectionTitle(
-                  context,
-                  AppStringKeys.translationSettingsStandardSection.l10n(
-                    context,
-                  ),
+                const SettingsSectionHeader(
+                  AppStringKeys.translationSettingsStandardSection,
                 ),
                 _card(context, [
                   _navRow(
@@ -359,12 +354,9 @@ class _TranslationSettingsViewState extends State<TranslationSettingsView> {
         final c = context.colors;
         final translation = context.watch<TranslationController>();
         return SafeArea(
-          child: Container(
+          child: SettingsPanel(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            decoration: BoxDecoration(
-              color: c.card,
-              borderRadius: BorderRadius.circular(14),
-            ),
             clipBehavior: Clip.antiAlias,
             child: FutureBuilder<Set<TranslationProvider>>(
               future: _availableProvidersFuture,
@@ -442,12 +434,9 @@ class _TranslationSettingsViewState extends State<TranslationSettingsView> {
         final c = context.colors;
         final translation = context.watch<TranslationController>();
         return SafeArea(
-          child: Container(
+          child: SettingsPanel(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            decoration: BoxDecoration(
-              color: c.card,
-              borderRadius: BorderRadius.circular(14),
-            ),
             clipBehavior: Clip.antiAlias,
             child: ListView.separated(
               shrinkWrap: true,
@@ -543,15 +532,9 @@ class _TranslationSettingsViewState extends State<TranslationSettingsView> {
         final c = context.colors;
         final translation = context.watch<TranslationController>();
         return SafeArea(
-          child: Container(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.sizeOf(context).height * 0.72,
-            ),
+          child: SettingsPanel(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
             margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            decoration: BoxDecoration(
-              color: c.card,
-              borderRadius: BorderRadius.circular(14),
-            ),
             clipBehavior: Clip.antiAlias,
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -566,7 +549,7 @@ class _TranslationSettingsViewState extends State<TranslationSettingsView> {
                       ),
                       style: TextStyle(
                         fontSize: 17,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w600,
                         color: c.textPrimary,
                       ),
                     ),
@@ -637,26 +620,8 @@ class _TranslationSettingsViewState extends State<TranslationSettingsView> {
     );
   }
 
-  Widget _card(BuildContext context, List<Widget> children) => Container(
-    decoration: BoxDecoration(
-      color: context.colors.card,
-      borderRadius: BorderRadius.circular(12),
-    ),
-    clipBehavior: Clip.antiAlias,
-    child: Column(children: children),
-  );
-
-  Widget _sectionTitle(BuildContext context, String title) => Padding(
-    padding: const EdgeInsetsDirectional.only(start: 4, bottom: 8),
-    child: Text(
-      title,
-      style: TextStyle(
-        color: context.colors.textTertiary,
-        fontSize: 13,
-        fontWeight: FontWeight.w600,
-      ),
-    ),
-  );
+  Widget _card(BuildContext context, List<Widget> children) =>
+      SettingsCard(children: children);
 
   Widget _note(BuildContext context, String text) => Padding(
     padding: const EdgeInsetsDirectional.fromSTEB(4, 8, 4, 0),

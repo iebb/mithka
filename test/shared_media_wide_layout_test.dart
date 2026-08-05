@@ -341,16 +341,27 @@ void main() {
 
       await tester.tapAt(const Offset(4, 4));
       await tester.pumpAndSettle();
+      // The states moved into a dropdown, so open it before choosing one.
+      final filterDropdown = find.byKey(
+        const ValueKey('shared-media-filter-dropdown'),
+      );
+      expect(filterDropdown, findsOneWidget);
+      expect(
+        tester
+            .getSemantics(filterDropdown)
+            .getSemanticsData()
+            .hasAction(SemanticsAction.tap),
+        isTrue,
+      );
+      await tester.tap(filterDropdown);
+      await tester.pumpAndSettle();
+
       final downloadedFilter = find.byKey(
         const ValueKey('shared-media-filter-downloaded'),
       );
       expect(downloadedFilter, findsOneWidget);
-      final filterSemantics = tester
-          .getSemantics(downloadedFilter)
-          .getSemanticsData();
-      expect(filterSemantics.hasAction(SemanticsAction.tap), isTrue);
       await tester.tap(downloadedFilter);
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       expect(first, findsOneWidget);
       expect(second, findsNothing);

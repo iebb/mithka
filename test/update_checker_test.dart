@@ -14,4 +14,15 @@ void main() {
       isFalse,
     );
   });
+
+  test('a manual check follows the same distribution rule', () {
+    // supportsManualCheck reads Platform.isAndroid, which is false under the
+    // test VM; the point here is that a Play build disables it regardless.
+    expect(
+      UpdateChecker.automaticChecksEnabled(isGooglePlayBuild: true),
+      isFalse,
+      reason: 'About must not offer GitHub APKs to a Play install',
+    );
+    expect(UpdateChecker.supportsManualCheck, isFalse);
+  });
 }

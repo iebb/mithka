@@ -124,11 +124,8 @@ class _AutoDeleteViewState extends State<AutoDeleteView> {
 
   Widget _card() {
     final c = context.colors;
-    return Container(
-      decoration: BoxDecoration(
-        color: c.card,
-        borderRadius: BorderRadius.circular(12),
-      ),
+    return SettingsPanel(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [

@@ -163,6 +163,11 @@ class MithkaProService extends ChangeNotifier {
   bool get loading => _loading;
   bool get working => _working;
   bool get initialized => _initialized;
+
+  /// Whether this build can actually reach a store. The platform reports it,
+  /// and it stays false until it does, so a build with no purchase channel
+  /// never advertises a paywall it cannot open.
+  bool get storeAvailable => _state.storeAvailable;
   bool get isPro => _state.isPro;
   Future<void> initialize() async {
     if (_initialized || _loading) return;

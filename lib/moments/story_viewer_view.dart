@@ -619,7 +619,7 @@ class _StoryViewerViewState extends State<StoryViewerView>
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
             decoration: BoxDecoration(
               color: Colors.black.withValues(alpha: 0.42),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(AppRadius.card),
               border: Border.all(color: Colors.white.withValues(alpha: 0.35)),
             ),
             child: Text(
@@ -846,7 +846,7 @@ class _StoryViewerViewState extends State<StoryViewerView>
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
           decoration: BoxDecoration(
             color: const Color(0xFF242426),
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -978,7 +978,7 @@ class _StoryViewerViewState extends State<StoryViewerView>
           margin: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: const Color(0xFF242426),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1309,7 +1309,7 @@ class _StoryViewerViewState extends State<StoryViewerView>
                 margin: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: const Color(0xFF242426),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.lg),
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,

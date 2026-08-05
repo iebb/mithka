@@ -48,6 +48,8 @@ import 'package:mithka/theme/theme_controller.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/l10n_fixtures.dart';
+
 Future<MusicPlayerController> _pumpMusicPlayerBar(WidgetTester tester) async {
   SharedPreferences.setMockInitialValues({});
   final prefs = await SharedPreferences.getInstance();
@@ -5519,6 +5521,50 @@ void main() {
       expect(entry.emojiVersion, '15.0');
       expect(entry.extension, 'ttf');
     });
+
+    test(
+      'keeps the color Noto selection instead of remapping it to mono',
+      () async {
+        SharedPreferences.setMockInitialValues({
+          'emojiFontChoice': 'noto',
+          'emojiFontLabel': 'Google Noto Color Emoji',
+          'emojiFontLicense': 'Apache-2.0 / OFL-1.1',
+        });
+        final prefs = await SharedPreferences.getInstance();
+        final theme = ThemeController(prefs);
+        addTearDown(theme.dispose);
+
+        expect(theme.emojiFontChoice.key, 'noto');
+        expect(theme.emojiFontChoice.label, 'Google Noto Color Emoji');
+
+        final restored = ThemeController(prefs);
+        addTearDown(restored.dispose);
+        expect(restored.emojiFontChoice.key, 'noto');
+      },
+    );
+
+    test('migrates pre-catalog keys exactly once', () async {
+      SharedPreferences.setMockInitialValues({'emojiFontChoice': 'noto'});
+      final prefs = await SharedPreferences.getInstance();
+      final theme = ThemeController(prefs);
+      addTearDown(theme.dispose);
+
+      expect(theme.emojiFontChoice.key, 'noto-mono');
+      expect(prefs.getString('emojiFontChoice'), 'noto-mono');
+
+      final restored = ThemeController(prefs);
+      addTearDown(restored.dispose);
+      expect(restored.emojiFontChoice.key, 'noto-mono');
+    });
+
+    test('migrates the legacy color Noto key onto the catalog key', () async {
+      SharedPreferences.setMockInitialValues({'emojiFontChoice': 'notoColor'});
+      final prefs = await SharedPreferences.getInstance();
+      final theme = ThemeController(prefs);
+      addTearDown(theme.dispose);
+
+      expect(theme.emojiFontChoice.key, 'noto');
+    });
   });
 
   group('TranslationController', () {
@@ -5647,14 +5693,7 @@ void main() {
       final keys = RegExp(
         r"static const [A-Za-z0-9_]+ = '([^']+)';",
       ).allMatches(source).map((match) => match.group(1)!).toSet();
-      final zhValues = <String, String>{};
-      final zhBlock = File('lib/l10n/messages/zh_hans.dart').readAsStringSync();
-      for (final match in RegExp(
-        r''' '([^']+)':\s*"((?:\\.|[^"])*)" '''.trim(),
-        dotAll: true,
-      ).allMatches(zhBlock)) {
-        zhValues[match.group(1)!] = match.group(2)!;
-      }
+      final zhValues = L10nFixtures.load().messages('zhHans');
       final intentionalHan = RegExp(r'^(appLocale|country|markdown|theme)');
       final han = RegExp(r'[\u3400-\u9fff]');
       final failures = <String>[];
@@ -5754,6 +5793,49 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Messages'), findsOneWidget);
       expect(find.text('消息'), findsNothing);
+    });
+
+    testWidgets('global AppStrings text follows language changes', (
+      tester,
+    ) async {
+      Intl.defaultLocale = null;
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final controller = AppLocaleController(prefs)
+        ..locale = const Locale.fromSubtags(
+          languageCode: 'zh',
+          scriptCode: 'Hans',
+        );
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider.value(
+          value: controller,
+          child: Consumer<AppLocaleController>(
+            builder: (context, locale, _) {
+              return MaterialApp(
+                locale: locale.locale,
+                supportedLocales: AppLocalizations.supportedLocales,
+                localizationsDelegates: const [
+                  AppLocalizations.delegate,
+                  GlobalMaterialLocalizations.delegate,
+                  GlobalCupertinoLocalizations.delegate,
+                  GlobalWidgetsLocalizations.delegate,
+                ],
+                home: Text(
+                  AppStrings.t(AppStringKeys.businessSettingsTitle),
+                  textDirection: ui.TextDirection.ltr,
+                ),
+              );
+            },
+          ),
+        ),
+      );
+      expect(find.text('企业资料'), findsOneWidget);
+
+      controller.locale = const Locale('en');
+      await tester.pumpAndSettle();
+      expect(find.text('Business Profile'), findsOneWidget);
+      expect(find.text('企业资料'), findsNothing);
     });
   });
 }

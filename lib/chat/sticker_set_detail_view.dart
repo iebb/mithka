@@ -88,7 +88,7 @@ class _StickerSetDetailViewState extends State<StickerSetDetailView> {
               clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(
                 color: c.card,
-                borderRadius: BorderRadius.circular(13),
+                borderRadius: BorderRadius.circular(AppRadius.card),
                 border: Border.all(color: c.divider, width: 0.5),
                 boxShadow: const [
                   BoxShadow(
@@ -320,7 +320,7 @@ class _StickerSetDetailViewState extends State<StickerSetDetailView> {
             padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
             decoration: BoxDecoration(
               color: c.card,
-              borderRadius: BorderRadius.circular(15),
+              borderRadius: BorderRadius.circular(AppRadius.lg),
               boxShadow: const [
                 BoxShadow(
                   color: Color(0x38000000),
@@ -450,7 +450,7 @@ class _StickerSetDetailViewState extends State<StickerSetDetailView> {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: c.card,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       child: Row(
         children: [
@@ -478,9 +478,10 @@ class _StickerSetDetailViewState extends State<StickerSetDetailView> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  AppStrings.t(AppStringKeys.stickerSetDetailStickerCount, {
-                    'value1': _stickers.length,
-                  }),
+                  AppStrings.plural(
+                    AppStringKeys.stickerSetDetailStickerCount,
+                    _stickers.length,
+                  ),
                   style: TextStyle(fontSize: 13, color: c.textSecondary),
                 ),
               ],
@@ -503,7 +504,7 @@ class _StickerSetDetailViewState extends State<StickerSetDetailView> {
         padding: const EdgeInsets.symmetric(horizontal: 16),
         decoration: BoxDecoration(
           color: _installed ? c.searchFill : AppTheme.brand,
-          borderRadius: BorderRadius.circular(17),
+          borderRadius: BorderRadius.circular(AppRadius.lg),
         ),
         child: _working
             ? SizedBox(

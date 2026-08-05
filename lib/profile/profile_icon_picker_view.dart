@@ -141,7 +141,7 @@ class _ProfileIconPickerViewState extends State<ProfileIconPickerView> {
       child: Container(
         decoration: BoxDecoration(
           color: c.card,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(AppRadius.card),
           border: widget.selectedId == 0
               ? Border.all(color: c.linkBlue, width: 2)
               : null,
@@ -164,7 +164,7 @@ class _ProfileIconPickerViewState extends State<ProfileIconPickerView> {
       child: Container(
         decoration: BoxDecoration(
           color: c.card,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(AppRadius.card),
           border: widget.selectedId == id
               ? Border.all(color: c.linkBlue, width: 2)
               : null,

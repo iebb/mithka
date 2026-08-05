@@ -146,7 +146,7 @@ class _GlobalChatThemeViewState extends State<GlobalChatThemeView> {
       padding: const EdgeInsets.all(2),
       decoration: BoxDecoration(
         color: c.panelBackground,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(AppRadius.control),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -186,7 +186,7 @@ class _GlobalChatThemeViewState extends State<GlobalChatThemeView> {
           color: selected
               ? c.linkBlue.withValues(alpha: 0.15)
               : const Color(0x00000000),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(AppRadius.control),
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -224,7 +224,7 @@ class _GlobalChatThemeViewState extends State<GlobalChatThemeView> {
     final c = context.colors;
     final appearance = context.watch<ThemeController>();
     return ClipRRect(
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(AppRadius.lg),
       child: SizedBox(
         height: 220,
         child: ChatWallpaperBackground(
@@ -256,7 +256,7 @@ class _GlobalChatThemeViewState extends State<GlobalChatThemeView> {
                   style: const TextStyle(
                     color: Color(0xF2FFFFFF),
                     fontSize: 13,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w600,
                     shadows: [Shadow(color: Color(0x77000000), blurRadius: 6)],
                   ),
                 ),
@@ -300,10 +300,10 @@ class _GlobalChatThemeViewState extends State<GlobalChatThemeView> {
             padding: EdgeInsets.all(selected ? 3 : 1),
             decoration: BoxDecoration(
               color: selected ? c.linkBlue : c.divider,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(AppRadius.lg),
             ),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(13),
+              borderRadius: BorderRadius.circular(AppRadius.card),
               child: ChatWallpaperBackground(
                 // Official emoji-theme cards mirror Telegram iOS: the emoji
                 // stays legible over the authored fill/gradient, while the
@@ -354,7 +354,7 @@ class _GlobalChatThemeViewState extends State<GlobalChatThemeView> {
             height: 22,
             decoration: BoxDecoration(
               color: style.outgoingColor,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(AppRadius.card),
             ),
           ),
         ),
@@ -366,7 +366,7 @@ class _GlobalChatThemeViewState extends State<GlobalChatThemeView> {
             height: 22,
             decoration: BoxDecoration(
               color: style.incomingColor,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(AppRadius.card),
             ),
           ),
         ),

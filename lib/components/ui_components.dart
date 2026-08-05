@@ -264,7 +264,10 @@ class _UnreadBadgeBody extends StatelessWidget {
       child: Text(
         label,
         style: AppTextStyle.caption(
-          Colors.white,
+          // Telegram stores the counter's label colour alongside its fill
+          // (chats_unreadCounterText), so a theme can darken it for a pale
+          // badge instead of being stuck with white.
+          context.colors.badgeText,
           weight: AppTextWeight.semibold,
         ),
       ),
@@ -429,6 +432,49 @@ class InsetDivider extends StatelessWidget {
 
 /// Standard grouped settings card. Use this for left-label/right-value rows
 /// instead of duplicating per-screen private `_settingsCard` variants.
+/// Label above a group of settings rows.
+///
+/// Every settings screen used to define its own: sixteen private copies under
+/// five names, with three paddings, two sizes, two colours, and one that
+/// uppercased its text. This is the one shape they all share.
+class SettingsSectionHeader extends StatelessWidget {
+  /// [titleKey] is an `AppStringKeys` constant.
+  const SettingsSectionHeader(this.titleKey, {super.key, this.text})
+    : assert(
+        titleKey != null || text != null,
+        'a section header needs a key or literal text',
+      );
+
+  /// For a label that is data rather than copy — a folder name, say.
+  const SettingsSectionHeader.text(String this.text, {super.key})
+    : titleKey = null;
+
+  final String? titleKey;
+  final String? text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.xxl,
+        AppSpacing.lg,
+        AppSpacing.xxl,
+        AppSpacing.sm,
+      ),
+      child: Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: Text(
+          text ?? AppStrings.t(titleKey!),
+          style: TextStyle(
+            fontSize: AppTextSize.footnote,
+            color: context.colors.textTertiary,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class SettingsCard extends StatelessWidget {
   const SettingsCard({super.key, required this.children, this.margin});
 
@@ -446,6 +492,45 @@ class SettingsCard extends StatelessWidget {
       child: Column(mainAxisSize: MainAxisSize.min, children: children),
     );
     return margin == null ? card : Padding(padding: margin!, child: card);
+  }
+}
+
+/// Card surface holding arbitrary content rather than a list of rows.
+///
+/// [SettingsCard] is a column of rows and clips to its own corners, which is
+/// wrong for a chart, a paragraph, a slider or a wrap of chips. Those used to
+/// hand-roll the same BoxDecoration, which is how the corner radius drifted
+/// across seven values in the first place.
+class SettingsPanel extends StatelessWidget {
+  const SettingsPanel({
+    super.key,
+    required this.child,
+    this.padding,
+    this.margin,
+    this.clipBehavior = Clip.none,
+  });
+
+  final Widget child;
+
+  /// Null leaves the child to manage its own insets, which several panels do.
+  final EdgeInsetsGeometry? padding;
+  final EdgeInsetsGeometry? margin;
+
+  /// Set when the child paints into the corners — a list or an image.
+  final Clip clipBehavior;
+
+  @override
+  Widget build(BuildContext context) {
+    final panel = Container(
+      padding: padding,
+      clipBehavior: clipBehavior,
+      decoration: BoxDecoration(
+        color: context.colors.card,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+      ),
+      child: child,
+    );
+    return margin == null ? panel : Padding(padding: margin!, child: panel);
   }
 }
 
@@ -628,8 +713,11 @@ class AppSwitch extends StatelessWidget {
     final padding = pointerDense ? 2.0 : 2.0;
     final handleSize = pointerDense ? 18.0 : 26.0;
     final trackColor = value ? c.linkBlue : c.textTertiary;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final handleColor = isDark ? const Color(0xFF171717) : const Color(0xFFFFFFFF);
+    // The active handle sits on the accent, so it follows the theme's own
+    // on-accent token rather than the page brightness — a light accent needs a
+    // dark handle whatever the rest of the theme is doing. Off, the handle
+    // sits on the neutral track and stays white.
+    final handleColor = value ? c.onAccent : const Color(0xFFFFFFFF);
     return AppInteractiveSurface(
       semanticLabel:
           semanticLabel ??
@@ -705,7 +793,7 @@ class AppCheckbox extends StatelessWidget {
       checked: value,
       onTap: enabled ? () => onChanged(!value) : null,
       enabled: enabled,
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: BorderRadius.circular(AppRadius.md),
       child: AnimatedOpacity(
         duration: const Duration(milliseconds: 150),
         opacity: enabled ? 1 : 0.42,
@@ -716,7 +804,7 @@ class AppCheckbox extends StatelessWidget {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: value ? AppTheme.brand : Colors.transparent,
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: BorderRadius.circular(AppRadius.md),
             border: Border.all(
               color: value ? AppTheme.brand : foreground,
               width: 1.6,
@@ -735,6 +823,96 @@ class AppCheckbox extends StatelessWidget {
   }
 }
 
+/// Pill-shaped filter chip for a settings list's segmented header.
+///
+/// Data & Storage and Downloads each grew their own: different radii (8/18 vs
+/// 16), different selected fills (a neutral wash vs an accent tint), one
+/// density-aware and one not, one reachable by keyboard and screen reader and
+/// one a bare GestureDetector. This is the union of the better halves, so a
+/// new filter strip does not start a third dialect.
+class SettingsFilterChip extends StatelessWidget {
+  const SettingsFilterChip({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.icon,
+    this.trailingLabel,
+    this.expand = false,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  final AppIconData? icon;
+
+  /// Quiet secondary value after the label — a size, a count.
+  final String? trailingLabel;
+
+  /// Fills the available width, for a strip that divides a row evenly rather
+  /// than sitting inline.
+  final bool expand;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final dense = isDesktopTargetPlatform();
+    final radius = BorderRadius.circular(dense ? 8 : 18);
+    // Selected reads as the accent, not a grey wash, and takes it from the
+    // palette so an imported theme moves it.
+    final foreground = selected ? c.linkBlue : c.textSecondary;
+    final label$ = Text(
+      label,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        color: foreground,
+        fontSize: dense ? AppTextSize.footnote : AppTextSize.callout,
+        fontWeight: selected ? AppTextWeight.semibold : AppTextWeight.medium,
+      ),
+    );
+    return AppInteractiveSurface(
+      onTap: onTap,
+      selected: selected,
+      semanticLabel: label,
+      borderRadius: radius,
+      child: Container(
+        constraints: BoxConstraints(minHeight: dense ? 36 : 42),
+        padding: EdgeInsets.symmetric(horizontal: dense ? 10 : 13),
+        decoration: BoxDecoration(
+          color: selected ? c.linkBlue.withValues(alpha: 0.13) : c.card,
+          borderRadius: radius,
+        ),
+        child: Row(
+          mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
+          // A vertical rail wants its glyphs on one straight edge to scan;
+          // an inline chip centres its own content.
+          mainAxisAlignment: expand
+              ? MainAxisAlignment.start
+              : MainAxisAlignment.center,
+          children: [
+            if (icon != null) ...[
+              AppIcon(icon!, size: dense ? 15 : 18, color: foreground),
+              const SizedBox(width: AppSpacing.sm),
+            ],
+            if (expand) Flexible(child: label$) else label$,
+            if (trailingLabel != null && !expand) ...[
+              const SizedBox(width: AppSpacing.sm),
+              Text(
+                trailingLabel!,
+                style: TextStyle(
+                  color: c.textTertiary,
+                  fontSize: AppTextSize.tiny + 1,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class SettingsSwitchRow extends StatelessWidget {
   const SettingsSwitchRow({
     super.key,
@@ -742,6 +920,8 @@ class SettingsSwitchRow extends StatelessWidget {
     required this.value,
     required this.onChanged,
     this.leading,
+    this.subtitle,
+    this.enabled = true,
     this.height = AppMetric.settingsRowHeight,
     this.leadingInset = AppMetric.settingsLeadingInset,
   });
@@ -750,6 +930,15 @@ class SettingsSwitchRow extends StatelessWidget {
   final bool value;
   final ValueChanged<bool> onChanged;
   final Widget? leading;
+
+  /// Explanatory line under the title, for a switch whose effect is not
+  /// obvious from its label alone.
+  final String? subtitle;
+
+  /// A disabled row still reads, but dims and stops responding — used where
+  /// the platform, not the user, decides.
+  final bool enabled;
+
   final double height;
   final double leadingInset;
 
@@ -769,7 +958,8 @@ class SettingsSwitchRow extends StatelessWidget {
     final verticalPadding = pointerDense ? AppSpacing.sm : AppSpacing.md;
     return AppInteractiveSurface(
       toggled: value,
-      onTap: () => onChanged(!value),
+      enabled: enabled,
+      onTap: enabled ? () => onChanged(!value) : null,
       borderRadius: BorderRadius.circular(AppRadius.sm),
       child: ConstrainedBox(
         constraints: BoxConstraints(minHeight: effectiveHeight),
@@ -789,18 +979,39 @@ class SettingsSwitchRow extends StatelessWidget {
                 SizedBox(width: horizontalGap),
               ],
               Expanded(
-                child: Text(
-                  title.l10n(context),
-                  style: pointerDense
-                      ? AppTextStyle.callout(c.textPrimary)
-                      : AppTextStyle.body(c.textPrimary),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title.l10n(context),
+                      style: pointerDense
+                          ? AppTextStyle.callout(
+                              enabled ? c.textPrimary : c.textTertiary,
+                            )
+                          : AppTextStyle.body(
+                              enabled ? c.textPrimary : c.textTertiary,
+                            ),
+                    ),
+                    if (subtitle != null && subtitle!.isNotEmpty) ...[
+                      const SizedBox(height: AppSpacing.xxs),
+                      Text(
+                        subtitle!.l10n(context),
+                        style: AppTextStyle.footnote(c.textTertiary),
+                      ),
+                    ],
+                  ],
                 ),
               ),
               SizedBox(width: horizontalGap),
               ExcludeSemantics(
                 child: ExcludeFocus(
                   child: IgnorePointer(
-                    child: AppSwitch(value: value, onChanged: onChanged),
+                    child: AppSwitch(
+                      value: value,
+                      onChanged: onChanged,
+                      enabled: enabled,
+                    ),
                   ),
                 ),
               ),
@@ -900,12 +1111,17 @@ class AppValueScrubber extends StatelessWidget {
     required this.min,
     required this.max,
     required this.onChanged,
+    this.compact = false,
   });
 
   final double value;
   final double min;
   final double max;
   final ValueChanged<double> onChanged;
+
+  /// Slimmer track and thumb, for a scrubber sitting inline in a toolbar
+  /// rather than owning a settings row.
+  final bool compact;
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -922,7 +1138,7 @@ class AppValueScrubber extends StatelessWidget {
           onTapDown: (event) => update(event.localPosition.dx),
           onHorizontalDragUpdate: (event) => update(event.localPosition.dx),
           child: SizedBox(
-            height: 34,
+            height: compact ? 22 : 34,
             child: Stack(
               alignment: Alignment.centerLeft,
               children: [
@@ -930,7 +1146,7 @@ class AppValueScrubber extends StatelessWidget {
                   left: 0,
                   right: 0,
                   child: Container(
-                    height: 4,
+                    height: compact ? 3 : 4,
                     decoration: BoxDecoration(
                       color: context.colors.divider,
                       borderRadius: BorderRadius.circular(2),
@@ -941,7 +1157,7 @@ class AppValueScrubber extends StatelessWidget {
                   left: 0,
                   width: constraints.maxWidth * progress,
                   child: Container(
-                    height: 4,
+                    height: compact ? 3 : 4,
                     decoration: BoxDecoration(
                       color: context.colors.linkBlue,
                       borderRadius: BorderRadius.circular(2),
@@ -949,14 +1165,17 @@ class AppValueScrubber extends StatelessWidget {
                   ),
                 ),
                 Positioned(
-                  left: constraints.maxWidth * progress - 9,
+                  left: constraints.maxWidth * progress - (compact ? 6 : 9),
                   child: Container(
-                    width: 18,
-                    height: 18,
+                    width: compact ? 12 : 18,
+                    height: compact ? 12 : 18,
                     decoration: BoxDecoration(
                       color: context.colors.linkBlue,
                       shape: BoxShape.circle,
-                      border: Border.all(color: context.colors.card, width: 2),
+                      border: Border.all(
+                        color: context.colors.card,
+                        width: compact ? 1.5 : 2,
+                      ),
                       boxShadow: const [
                         BoxShadow(
                           color: Color(0x28000000),

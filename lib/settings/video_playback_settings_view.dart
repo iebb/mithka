@@ -91,7 +91,7 @@ class _VideoPlaybackSettingsViewState extends State<VideoPlaybackSettingsView> {
                 : ListView(
                     padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
                     children: [
-                      _sectionHeader(
+                      const SettingsSectionHeader(
                         AppStringKeys.videoPlaybackHorizontalSwipe,
                       ),
                       _choiceCard<VideoHorizontalSwipeAction>(
@@ -101,7 +101,7 @@ class _VideoPlaybackSettingsViewState extends State<VideoPlaybackSettingsView> {
                         onSelected: _setSwipeAction,
                       ),
                       const SizedBox(height: 18),
-                      _sectionHeader(
+                      const SettingsSectionHeader(
                         AppStringKeys.videoPlaybackLeftVerticalSwipe,
                       ),
                       _choiceCard<VideoVerticalSwipeAction>(
@@ -111,7 +111,7 @@ class _VideoPlaybackSettingsViewState extends State<VideoPlaybackSettingsView> {
                         onSelected: _setLeftVerticalSwipeAction,
                       ),
                       const SizedBox(height: 18),
-                      _sectionHeader(
+                      const SettingsSectionHeader(
                         AppStringKeys.videoPlaybackRightVerticalSwipe,
                       ),
                       _choiceCard<VideoVerticalSwipeAction>(
@@ -121,7 +121,9 @@ class _VideoPlaybackSettingsViewState extends State<VideoPlaybackSettingsView> {
                         onSelected: _setRightVerticalSwipeAction,
                       ),
                       const SizedBox(height: 18),
-                      _sectionHeader(AppStringKeys.videoPlaybackWhenFinished),
+                      const SettingsSectionHeader(
+                        AppStringKeys.videoPlaybackWhenFinished,
+                      ),
                       _choiceCard<VideoCompletionAction>(
                         values: VideoCompletionAction.values,
                         selected: _preferences.completionAction,
@@ -136,17 +138,6 @@ class _VideoPlaybackSettingsViewState extends State<VideoPlaybackSettingsView> {
     );
   }
 
-  Widget _sectionHeader(String title) => Padding(
-    padding: const EdgeInsets.only(left: 16, bottom: 6),
-    child: Align(
-      alignment: Alignment.centerLeft,
-      child: Text(
-        title.l10n(context),
-        style: TextStyle(fontSize: 13, color: context.colors.textTertiary),
-      ),
-    ),
-  );
-
   Widget _choiceCard<T>({
     required List<T> values,
     required T selected,
@@ -154,11 +145,8 @@ class _VideoPlaybackSettingsViewState extends State<VideoPlaybackSettingsView> {
     required ValueChanged<T> onSelected,
   }) {
     final c = context.colors;
-    return Container(
-      decoration: BoxDecoration(
-        color: c.card,
-        borderRadius: BorderRadius.circular(12),
-      ),
+    return SettingsPanel(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [

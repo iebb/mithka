@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/intl.dart';
 import 'package:mithka/chat/message_send_options.dart';
 import 'package:mithka/l10n/app_localizations.dart';
+import 'package:mithka/theme/app_theme.dart';
 
 void main() {
   test('send options presentation adapts to desktop and landscape iPad', () {
@@ -172,7 +173,7 @@ void main() {
     expect(surface.padding, EdgeInsets.zero);
     expect(
       (surface.decoration! as BoxDecoration).borderRadius,
-      BorderRadius.circular(18),
+      BorderRadius.circular(AppRadius.xl),
     );
 
     await tester.tap(find.text('Choose date'));

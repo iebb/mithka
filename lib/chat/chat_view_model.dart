@@ -15,7 +15,6 @@ import 'package:flutter/foundation.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/notifications/scope_notification_settings.dart';
 
-import '../l10n/telegram_language_controller.dart';
 import '../notifications/notification_settings_payload.dart';
 import '../settings/blocked_user_service.dart';
 import '../settings/keyword_blocker.dart';
@@ -470,7 +469,7 @@ class ChatViewModel extends ChangeNotifier {
     final base = isGroup
         ? ''
         : (peerOnline
-              ? telegramPresenceText(TelegramPresenceLabel.online)
+              ? AppStrings.t(AppStringKeys.presenceOnline)
               : peerStatusText);
     final action = _chatActionSubtitle;
     if (base.isEmpty) return action;
@@ -5033,14 +5032,14 @@ class ChatViewModel extends ChangeNotifier {
         'chat_id': senderId,
       });
       return _SenderInfo(
-        chat.str('title') ?? telegramText(AppStringKeys.chatInfoGroupMembers),
+        chat.str('title') ?? AppStrings.t(AppStringKeys.chatInfoGroupMembers),
         TDParse.smallPhoto(chat.obj('photo')),
         MemberRole.member,
         null,
       );
     } catch (_) {
       return _SenderInfo(
-        telegramText(AppStringKeys.chatInfoGroupMembers),
+        AppStrings.t(AppStringKeys.chatInfoGroupMembers),
         null,
         MemberRole.member,
         null,
@@ -5247,10 +5246,10 @@ class ChatViewModel extends ChangeNotifier {
       });
     }
     if (q.voice != null) {
-      return telegramText(AppStringKeys.composerVoicePreview);
+      return AppStrings.t(AppStringKeys.composerVoicePreview);
     }
     if (q.location != null) {
-      return telegramText(AppStringKeys.composerLocationPreview);
+      return AppStrings.t(AppStringKeys.composerLocationPreview);
     }
     if (q.isDice) {
       return q.diceEmoji ?? q.text;
@@ -5259,13 +5258,13 @@ class ChatViewModel extends ChangeNotifier {
       return q.text;
     }
     if (q.animatedSticker != null) {
-      return telegramText(AppStringKeys.composerAnimatedEmojiPreview);
+      return AppStrings.t(AppStringKeys.composerAnimatedEmojiPreview);
     }
     if (q.image != null) {
       final placeholder = switch (q.contentType) {
-        'messagePhoto' => telegramText(AppStringKeys.composerImagePreview),
-        'messageVideo' => telegramText(AppStringKeys.chatVideoPlaceholder),
-        'messageAnimation' => telegramText(AppStringKeys.tdMessageGif),
+        'messagePhoto' => AppStrings.t(AppStringKeys.composerImagePreview),
+        'messageVideo' => AppStrings.t(AppStringKeys.chatVideoPlaceholder),
+        'messageAnimation' => AppStrings.t(AppStringKeys.tdMessageGif),
         _ => null,
       };
       return q.text == placeholder ? '' : q.text;
@@ -6012,14 +6011,14 @@ class ChatViewModel extends ChangeNotifier {
           });
           info = _SenderInfo(
             chat.str('title') ??
-                telegramText(AppStringKeys.chatInfoGroupMembers),
+                AppStrings.t(AppStringKeys.chatInfoGroupMembers),
             TDParse.smallPhoto(chat.obj('photo')),
             MemberRole.channel,
             null,
           );
         } catch (_) {
           info = _SenderInfo(
-            telegramText(AppStringKeys.chatInfoGroupMembers),
+            AppStrings.t(AppStringKeys.chatInfoGroupMembers),
             null,
             MemberRole.channel,
             null,

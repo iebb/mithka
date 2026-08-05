@@ -327,7 +327,11 @@ class _TopicChannelsViewState extends State<TopicChannelsView> {
               .toList()
             ..sort((a, b) => b.date.compareTo(a.date));
       final roots = messages
-          .where((message) => message.replyToMessageId == null)
+          .where(
+            (message) =>
+                message.replyToMessageId == null ||
+                message.replyToMessageId == threadId,
+          )
           .toList();
       if (roots.isNotEmpty) return roots;
       if (messages.isNotEmpty) return messages;

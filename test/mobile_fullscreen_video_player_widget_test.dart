@@ -26,7 +26,17 @@ void main() {
       tester.view.physicalSize = const Size(390, 844);
       tester.view.padding = const FakeViewPadding(top: 47, bottom: 34);
       tester.view.viewPadding = const FakeViewPadding(top: 47, bottom: 34);
+      final orientationCalls = <MethodCall>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+            if (call.method == 'SystemChrome.setPreferredOrientations') {
+              orientationCalls.add(call);
+            }
+            return null;
+          });
       addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(SystemChannels.platform, null);
         tester.view.resetDevicePixelRatio();
         tester.view.resetPhysicalSize();
         tester.view.resetPadding();
@@ -139,6 +149,23 @@ void main() {
         expect(previousRect.center.dy, closeTo(nextRect.center.dy, 0.01));
         expect(previousRect.bottom, lessThanOrEqualTo(pauseRect.top));
         expect(nextRect.bottom, lessThanOrEqualTo(pauseRect.top));
+
+        expect(_semanticsWidget('Play horizontally'), findsOneWidget);
+        await tester.tap(_semanticsWidget('Play horizontally'));
+        await tester.pumpAndSettle();
+        expect(_semanticsWidget('Use system orientation'), findsOneWidget);
+        expect(orientationCalls, hasLength(1));
+        expect(
+          orientationCalls.single.arguments,
+          containsAll(<String>[
+            'DeviceOrientation.landscapeLeft',
+            'DeviceOrientation.landscapeRight',
+          ]),
+        );
+        await tester.tap(_semanticsWidget('Use system orientation'));
+        await tester.pumpAndSettle();
+        expect(_semanticsWidget('Play horizontally'), findsOneWidget);
+        expect(orientationCalls, hasLength(2));
 
         await tester.tapAt(const Offset(195, 200));
         await tester.pump(const Duration(milliseconds: 400));

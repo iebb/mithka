@@ -885,21 +885,14 @@ class _SecurityCard extends StatelessWidget {
   final List<Widget> children;
 
   @override
-  Widget build(BuildContext context) => Container(
-    decoration: BoxDecoration(
-      color: context.colors.card,
-      borderRadius: BorderRadius.circular(12),
-    ),
-    clipBehavior: Clip.antiAlias,
-    child: Column(
-      children: [
-        for (var index = 0; index < children.length; index++) ...[
-          if (index > 0)
-            Divider(height: 1, indent: 52, color: context.colors.divider),
-          children[index],
-        ],
+  Widget build(BuildContext context) => SettingsCard(
+    children: [
+      for (var index = 0; index < children.length; index++) ...[
+        if (index > 0)
+          Divider(height: 1, indent: 52, color: context.colors.divider),
+        children[index],
       ],
-    ),
+    ],
   );
 }
 
@@ -1039,17 +1032,20 @@ class _PrimarySecurityButton extends StatelessWidget {
             ? context.colors.textTertiary
             : destructive
             ? AppTheme.unreadBadge
-            : AppTheme.brand,
-        borderRadius: BorderRadius.circular(12),
+            : context.colors.accentButton,
+        borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       child: working
-          ? const AppActivityIndicator(size: 20, color: Colors.white)
+          ? AppActivityIndicator(
+              size: 20,
+              color: context.colors.accentButtonText,
+            )
           : Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
+                fontWeight: FontWeight.w600,
+                color: context.colors.accentButtonText,
               ),
             ),
     ),

@@ -1963,6 +1963,12 @@ class _TelegramMiniAppViewState extends State<TelegramMiniAppView>
             child: _windowChrome(
               _MiniAppToolbar(
                 title: widget.launch.title,
+                // A standalone window closes from its own chrome and names
+                // itself in the page below, so its toolbar would otherwise
+                // repeat both. Back navigation is not redundant and stays.
+                showLeading:
+                    !widget.standaloneWindowChrome || _backButtonVisible,
+                showTitle: !widget.standaloneWindowChrome,
                 leadingIcon: _backButtonVisible
                     ? HeroAppIcons.chevronLeft
                     : HeroAppIcons.xmark,
@@ -2117,7 +2123,7 @@ class _MiniAppNativeDialog extends StatelessWidget {
             child: DecoratedBox(
               decoration: BoxDecoration(
                 color: colors.card,
-                borderRadius: BorderRadius.circular(18),
+                borderRadius: BorderRadius.circular(AppRadius.lg),
                 boxShadow: const [
                   BoxShadow(
                     color: Color(0x44000000),
@@ -2208,6 +2214,8 @@ class _MiniAppToolbar extends StatelessWidget {
     required this.onReload,
     required this.onOpenExternal,
     this.trafficLightInset = 0,
+    this.showLeading = true,
+    this.showTitle = true,
   });
 
   /// Left inset reserving space for macOS window buttons when the toolbar is
@@ -2217,6 +2225,12 @@ class _MiniAppToolbar extends StatelessWidget {
   final AppIconData leadingIcon;
   final double leadingSize;
   final VoidCallback onLeadingPressed;
+
+  /// False in a standalone window that already closes from its own chrome.
+  final bool showLeading;
+
+  /// False where the page states its own name right below the toolbar.
+  final bool showTitle;
   final VoidCallback? onSettings;
   final VoidCallback onReload;
   final VoidCallback onOpenExternal;
@@ -2230,24 +2244,28 @@ class _MiniAppToolbar extends StatelessWidget {
         padding: EdgeInsets.only(left: 8 + trafficLightInset, right: 8),
         child: Row(
           children: [
-            _MiniAppToolbarAction(
-              label: AppStrings.t(AppStringKeys.miniAppClose),
-              icon: leadingIcon,
-              size: leadingSize,
-              onPressed: onLeadingPressed,
-            ),
-            const SizedBox(width: 4),
-            Expanded(
-              child: Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: c.textPrimary,
-                  fontSize: AppTextSize.bodyLarge,
-                  fontWeight: context.appFontWeight(FontWeight.w500),
-                ),
+            if (showLeading) ...[
+              _MiniAppToolbarAction(
+                label: AppStrings.t(AppStringKeys.miniAppClose),
+                icon: leadingIcon,
+                size: leadingSize,
+                onPressed: onLeadingPressed,
               ),
+              const SizedBox(width: 4),
+            ],
+            Expanded(
+              child: showTitle
+                  ? Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: c.textPrimary,
+                        fontSize: AppTextSize.bodyLarge,
+                        fontWeight: context.appFontWeight(FontWeight.w500),
+                      ),
+                    )
+                  : const SizedBox.shrink(),
             ),
             if (onSettings != null)
               _MiniAppToolbarAction(
@@ -2387,7 +2405,7 @@ class _MiniAppBottomButton extends StatelessWidget {
             color: onPressed == null
                 ? background.withValues(alpha: 0.45)
                 : background,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(AppRadius.control),
           ),
           child: Stack(
             alignment: Alignment.center,
@@ -2482,7 +2500,7 @@ class _MiniAppButtonShineState extends State<_MiniAppButtonShine>
 
   @override
   Widget build(BuildContext context) => ClipRRect(
-    borderRadius: BorderRadius.circular(8),
+    borderRadius: BorderRadius.circular(AppRadius.control),
     child: AnimatedBuilder(
       animation: _controller,
       builder: (context, _) => FractionalTranslation(

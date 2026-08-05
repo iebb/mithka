@@ -5,15 +5,11 @@ import 'package:mithka/chats/chat_delete_dialog.dart';
 import 'package:mithka/chats/chat_delete_policy.dart';
 import 'package:mithka/components/app_confirm_dialog.dart';
 import 'package:mithka/l10n/app_localizations.dart';
-import 'package:mithka/l10n/messages/de.dart';
-import 'package:mithka/l10n/messages/en.dart';
-import 'package:mithka/l10n/messages/es.dart';
-import 'package:mithka/l10n/messages/fr.dart';
-import 'package:mithka/l10n/messages/ja.dart';
-import 'package:mithka/l10n/messages/ko.dart';
-import 'package:mithka/l10n/messages/zh_hans.dart';
-import 'package:mithka/l10n/messages/zh_hant.dart';
 import 'package:mithka/tdlib/td_models.dart';
+
+import 'support/l10n_fixtures.dart';
+
+final fixtures = L10nFixtures.load();
 
 void main() {
   test('reads Telegram chat deletion capabilities', () {
@@ -61,15 +57,15 @@ void main() {
   });
 
   test('delete scope copy exists in every supported locale', () {
-    const tables = [
-      enMessages,
-      deMessages,
-      esMessages,
-      frMessages,
-      jaMessages,
-      koMessages,
-      zhHansMessages,
-      zhHantMessages,
+    final tables = [
+      fixtures.messages('en'),
+      fixtures.messages('de'),
+      fixtures.messages('es'),
+      fixtures.messages('fr'),
+      fixtures.messages('ja'),
+      fixtures.messages('ko'),
+      fixtures.messages('zhHans'),
+      fixtures.messages('zhHant'),
     ];
     const keys = [
       'chatDeleteAllMembersDescription',
@@ -352,7 +348,9 @@ void main() {
           tester.element(find.byType(FilledButton)),
           title: AppStringKeys.savedMessagesClearFinalQuestion,
           message: AppStringKeys.chatDeleteFinalWarning,
-          confirmText: deMessages[AppStringKeys.savedMessagesClear]!,
+          confirmText: fixtures.messages(
+            'de',
+          )[AppStringKeys.savedMessagesClear]!,
           destructive: true,
         ),
       ),
@@ -361,7 +359,7 @@ void main() {
     await tester.tap(find.byType(FilledButton));
     await tester.pumpAndSettle();
 
-    final label = deMessages[AppStringKeys.savedMessagesClear]!;
+    final label = fixtures.messages('de')[AppStringKeys.savedMessagesClear]!;
     final labelFinder = find.text(label);
     final acceptFinder = find.byKey(const ValueKey('app-confirm-accept'));
     final cancelFinder = find.byKey(const ValueKey('app-confirm-cancel'));

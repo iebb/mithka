@@ -6,6 +6,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import '../auth/country_picker.dart';
 import '../auth/telegram_country_names.dart';
 import '../components/app_icons.dart';
+import '../components/country_flag.dart';
 import '../components/ui_components.dart';
 import '../theme/app_theme.dart';
 import 'country_message_filter.dart';
@@ -135,21 +136,11 @@ class _CountryMessageFilterViewState extends State<CountryMessageFilterView> {
                     behavior: HitTestBehavior.opaque,
                     onTap: () =>
                         _filter.setCountrySelected(country.iso, !isSelected),
-                    child: Container(
-                      height: 56,
+                    child: SettingsPanel(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
-                      decoration: BoxDecoration(
-                        color: c.card,
-                        borderRadius: BorderRadius.circular(
-                          index == 0 || index == _countries.length - 1 ? 10 : 0,
-                        ),
-                      ),
                       child: Row(
                         children: [
-                          Text(
-                            country.flag,
-                            style: const TextStyle(fontSize: 22),
-                          ),
+                          CountryFlag(iso: country.iso, size: 22),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(
@@ -177,7 +168,7 @@ class _CountryMessageFilterViewState extends State<CountryMessageFilterView> {
                               color: isSelected
                                   ? AppTheme.brand
                                   : Colors.transparent,
-                              borderRadius: BorderRadius.circular(5),
+                              borderRadius: BorderRadius.circular(AppRadius.sm),
                               border: Border.all(
                                 color: isSelected
                                     ? AppTheme.brand

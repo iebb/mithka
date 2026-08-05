@@ -139,7 +139,7 @@ class _ContactSharePickerViewState extends State<ContactSharePickerView> {
               padding: const EdgeInsets.symmetric(horizontal: 11),
               decoration: BoxDecoration(
                 color: c.searchFill,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(AppRadius.control),
               ),
               child: Row(
                 children: [

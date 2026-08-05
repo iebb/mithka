@@ -81,7 +81,7 @@ class DocumentFileIcon extends StatelessWidget {
                   style: TextStyle(
                     color: const Color(0xFFFFFFFF),
                     fontSize: size * 0.35,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w600,
                     height: 1,
                   ),
                 ),

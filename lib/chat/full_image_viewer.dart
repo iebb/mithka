@@ -128,7 +128,9 @@ class _FullImageViewerState extends State<FullImageViewer> {
                                 color: const Color(
                                   0xFFFFFFFF,
                                 ).withValues(alpha: 0.18),
-                                borderRadius: BorderRadius.circular(16),
+                                borderRadius: BorderRadius.circular(
+                                  AppRadius.lg,
+                                ),
                               ),
                               child: Text(
                                 '${_index + 1} / ${widget.items.length}',
@@ -178,7 +180,7 @@ class _FullImageViewerState extends State<FullImageViewer> {
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
                         color: AppTheme.brand,
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(AppRadius.card),
                         boxShadow: const [
                           BoxShadow(
                             color: Color(0x55000000),

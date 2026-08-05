@@ -31,12 +31,9 @@ Future<T?> _businessChoiceSheet<T>(
     final c = sheetContext.colors;
     return SafeArea(
       top: false,
-      child: Container(
+      child: SettingsPanel(
+        padding: const EdgeInsets.fromLTRB(16, 15, 16, 10),
         margin: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: c.card,
-          borderRadius: BorderRadius.circular(18),
-        ),
         clipBehavior: Clip.antiAlias,
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -50,7 +47,7 @@ Future<T?> _businessChoiceSheet<T>(
                   style: TextStyle(
                     color: c.textPrimary,
                     fontSize: 17,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
@@ -192,7 +189,7 @@ class _BusinessIntroStickerPickerViewState
                         color: selected
                             ? AppTheme.brand.withValues(alpha: 0.14)
                             : c.card,
-                        borderRadius: BorderRadius.circular(11),
+                        borderRadius: BorderRadius.circular(AppRadius.card),
                         border: Border.all(
                           color: selected ? AppTheme.brand : c.divider,
                           width: 0.5,
@@ -2049,7 +2046,7 @@ class BusinessRecipientsEditor extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
                 decoration: BoxDecoration(
                   color: c.searchFill,
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(AppRadius.control),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -2142,13 +2139,9 @@ class _BusinessBotChatControlSheetState
     final c = context.colors;
     return SafeArea(
       top: false,
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      child: SettingsPanel(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-        decoration: BoxDecoration(
-          color: c.card,
-          borderRadius: BorderRadius.circular(18),
-        ),
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -2179,7 +2172,7 @@ class _BusinessBotChatControlSheetState
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: AppTheme.tagRed.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                 ),
                 child: Text(
                   AppStrings.t(AppStringKeys.businessToolsRemoveFromThisChat),
@@ -2382,14 +2375,8 @@ class _BusinessDateTimeSheetState extends State<_BusinessDateTimeSheet> {
   }
 }
 
-Widget _surface(BuildContext context, {required Widget child}) => Container(
-  decoration: BoxDecoration(
-    color: context.colors.card,
-    borderRadius: BorderRadius.circular(12),
-  ),
-  clipBehavior: Clip.antiAlias,
-  child: child,
-);
+Widget _surface(BuildContext context, {required Widget child}) =>
+    SettingsPanel(clipBehavior: Clip.antiAlias, child: child);
 
 Widget _label(BuildContext context, String value) => Padding(
   padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),

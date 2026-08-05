@@ -131,7 +131,7 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
                     color: c.textPrimary,
                     fontSize: 25,
                     height: 1.2,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w600,
                   ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
@@ -223,7 +223,7 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 15),
       decoration: BoxDecoration(
         color: c.card,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: c.divider, width: 0.5),
       ),
       child: Column(
@@ -273,7 +273,7 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: c.card,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: c.divider, width: 0.5),
       ),
       child: Column(
@@ -337,7 +337,7 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: c.groupedBackground,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(AppRadius.control),
                 border: Border.all(color: c.divider, width: 0.5),
               ),
               child: SelectableText(
@@ -428,7 +428,7 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: const Color(0xFFE39A20).withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(AppRadius.control),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -553,7 +553,7 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
             color: c.textPrimary,
             fontSize: 18,
             height: 1.35,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w600,
           ),
         ),
         if (timeRange != null) ...[
@@ -591,7 +591,7 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
             text: '${AppStringKeys.aiSummaryRant.l10n(context)}：',
             style: const TextStyle(
               color: Color(0xFF2EBF75),
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],
@@ -641,7 +641,7 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
           Container(
             decoration: BoxDecoration(
               color: c.card,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(AppRadius.card),
               border: Border.all(color: c.divider, width: 0.5),
             ),
             clipBehavior: Clip.antiAlias,
@@ -736,7 +736,7 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
                     padding: const EdgeInsets.symmetric(horizontal: 5),
                     decoration: BoxDecoration(
                       color: context.colors.searchFill,
-                      borderRadius: BorderRadius.circular(9),
+                      borderRadius: BorderRadius.circular(AppRadius.control),
                     ),
                     child: Text(
                       '${evidenceIndex + 1}',
@@ -805,7 +805,7 @@ class _UnreadChatSummaryViewState extends State<UnreadChatSummaryView> {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: filled ? AppTheme.brand : Colors.transparent,
-          borderRadius: BorderRadius.circular(11),
+          borderRadius: BorderRadius.circular(AppRadius.card),
           border: filled ? null : Border.all(color: AppTheme.brand),
         ),
         child: Text(

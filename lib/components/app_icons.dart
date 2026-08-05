@@ -129,6 +129,10 @@ class HeroAppIcons {
   static const compactDisc = AppIconData(HeroiconsOutline.circleStack);
   static const crop = AppIconData(HeroiconsOutline.viewfinderCircle);
   static const cpuChip = AppIconData(HeroiconsOutline.cpuChip);
+
+  /// Bot chats and the bot menu. Heroicons has no robot; the chip is what
+  /// the app already uses for machine-driven features.
+  static const bot = AppIconData(HeroiconsOutline.cpuChip);
   static const cube = AppIconData(HeroiconsOutline.cubeTransparent);
   static const download = AppIconData(HeroiconsOutline.arrowDownTray);
   static const droplet = AppIconData(HeroiconsOutline.beaker);

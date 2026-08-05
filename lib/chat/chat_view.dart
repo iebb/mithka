@@ -17,6 +17,7 @@ import 'package:flutter/services.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
+import '../app/active_conversation.dart';
 import '../app/adaptive_split_layout.dart';
 import '../app/desktop_video_window.dart';
 import '../app/primary_chat_launcher.dart';
@@ -32,7 +33,6 @@ import '../components/full_page_back_swipe.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
-import '../l10n/telegram_language_controller.dart';
 import '../media/app_asset_picker.dart';
 import '../moments/story_viewer_view.dart';
 import '../notifications/notification_controller.dart';
@@ -71,11 +71,12 @@ import 'chat_info_view.dart';
 import 'chat_input_bar.dart';
 import 'chat_media_drop_region.dart';
 import 'chat_message_merge.dart';
+import 'chat_message_search_bar.dart';
+import 'chat_message_search_controller.dart';
 import 'chat_open_performance.dart';
 import 'chat_picker_view.dart';
 import 'chat_return_to_latest_coordinator.dart';
 import 'chat_scroll_metrics.dart';
-import 'chat_search_view.dart';
 import 'chat_send_failure.dart';
 import 'chat_session_cache.dart';
 import 'chat_translation_panel.dart';
@@ -87,6 +88,7 @@ import 'custom_emoji.dart';
 import 'emoji_store.dart';
 import 'forward_options.dart';
 import 'group_remark_controller.dart';
+import 'image_media_album_bubble.dart';
 import 'image_preview.dart';
 import 'internal_chat_link_router.dart';
 import 'link_handler.dart';
@@ -107,24 +109,12 @@ import 'sticker_set_detail_view.dart';
 import 'sticker_viewer.dart';
 import 'telegram_cocoon_unread_summary_provider.dart';
 import 'telegram_mini_app_view.dart';
-import 'telegram_rich_text.dart';
 import 'transcript_pivot_partition.dart';
 import 'unread_chat_summary_models.dart';
 import 'unread_chat_summary_service.dart';
 import 'unread_chat_summary_view.dart';
 import 'video_playback_queue.dart';
 import 'video_player_view.dart';
-
-@visibleForTesting
-ChatMessage selectMediaAlbumInteractionOwner(List<ChatMessage> group) {
-  for (final message in group) {
-    if (message.hasCommentThread || message.hasActualReplies) return message;
-  }
-  for (final message in group) {
-    if (message.reactions.isNotEmpty) return message;
-  }
-  return group.first;
-}
 
 @visibleForTesting
 bool chatTranscriptBoundaryChanged({
@@ -252,7 +242,7 @@ class _MessageDeleteOptionsDialogState
           padding: const EdgeInsets.fromLTRB(24, 24, 24, 18),
           decoration: BoxDecoration(
             color: c.card,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.2),
@@ -270,7 +260,7 @@ class _MessageDeleteOptionsDialogState
                 style: TextStyle(
                   fontSize: 19,
                   height: 1.28,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w600,
                   color: c.textPrimary,
                   decoration: TextDecoration.none,
                 ),
@@ -356,7 +346,7 @@ class _MessageDeleteOptionsDialogState
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: value ? AppTheme.brand : Colors.transparent,
-                borderRadius: BorderRadius.circular(5),
+                borderRadius: BorderRadius.circular(AppRadius.sm),
                 border: Border.all(
                   color: value ? AppTheme.brand : c.textTertiary,
                   width: 2,
@@ -402,7 +392,7 @@ class _MessageDeleteOptionsDialogState
           label,
           style: TextStyle(
             fontSize: 16,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w600,
             color: color,
             decoration: TextDecoration.none,
           ),
@@ -469,7 +459,7 @@ class _ChatEditChoiceDialog<T> extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(18, 18, 18, 12),
         decoration: BoxDecoration(
           color: c.card,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(AppRadius.card),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.22),
@@ -491,7 +481,7 @@ class _ChatEditChoiceDialog<T> extends StatelessWidget {
                 style: TextStyle(
                   color: c.textPrimary,
                   fontSize: 17,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w600,
                   decoration: TextDecoration.none,
                 ),
               ),
@@ -854,6 +844,12 @@ class _ChatViewState extends State<ChatView> {
   int _entryLastReadInboxId = 0;
   int? _entryFirstUnreadMessageId;
   bool _showEntryUnreadBanner = false;
+  late final ChatMessageSearchController _search;
+
+  /// The hit the search cursor is sitting on. Unlike [_scrollTargetId] this
+  /// survives the jump that put it there, so the bubble stays marked while the
+  /// user steps through the rest of the results.
+  int? _searchHighlightId;
   double _keyboardInset = 0;
   bool _shortTranscriptFillScheduled = false;
   bool _isFillingShortTranscript = false;
@@ -1091,6 +1087,10 @@ class _ChatViewState extends State<ChatView> {
       _lastNewestMessageId = _latestServerMessage(_vm.messages)?.id;
       _lastOldestMessageId = _oldestServerMessage(_vm.messages)?.id;
     }
+    _search = ChatMessageSearchController(
+      chatId: widget.chatId,
+      onActivateResult: _openSearchResult,
+    )..addListener(_onSearchChanged);
     _vm.addListener(_onModel);
     _setScrollTarget(widget.initialMessageId);
     _vm.onAppear();
@@ -1140,13 +1140,23 @@ class _ChatViewState extends State<ChatView> {
     }
     if (!_notificationVisibilityRegistered) {
       _notificationVisibilityRegistered = true;
+      bool isVisible() =>
+          mounted &&
+          (ModalRoute.of(context)?.isCurrent ?? false) &&
+          TickerMode.valuesOf(context).enabled;
       NotificationController.shared.registerVisibleChat(
         this,
         widget.chatId,
-        () =>
-            mounted &&
-            (ModalRoute.of(context)?.isCurrent ?? false) &&
-            TickerMode.valuesOf(context).enabled,
+        isVisible,
+      );
+      // The desktop title-bar search scopes to whatever conversation is in
+      // front; the title is read lazily so it follows the loaded peer name
+      // rather than freezing the placeholder this route opened with.
+      ActiveConversation.shared.register(
+        this,
+        chatId: widget.chatId,
+        title: () => _vm.peerTitle.isEmpty ? widget.title : _vm.peerTitle,
+        isVisible: isVisible,
       );
     }
   }
@@ -1445,8 +1455,15 @@ class _ChatViewState extends State<ChatView> {
 
   Widget _withExitState(Widget child) {
     return PopScope(
+      // Back closes search before it closes the chat, so a hit list never
+      // takes the whole conversation with it.
+      canPop: !_search.isActive,
       onPopInvokedWithResult: (didPop, _) {
-        if (didPop) _prepareExitState();
+        if (didPop) {
+          _prepareExitState();
+          return;
+        }
+        if (_search.isActive) _closeSearch();
       },
       child: child,
     );
@@ -2992,7 +3009,10 @@ class _ChatViewState extends State<ChatView> {
   }
 
   bool get _canBackSwipe =>
-      widget.showBackButton && !_isSelecting && _actionTarget == null;
+      widget.showBackButton &&
+      !_isSelecting &&
+      !_search.isActive &&
+      _actionTarget == null;
 
   Future<void> _popFromBackSwipe() async {
     if (_backSwipePopping || !mounted) return;
@@ -3205,10 +3225,14 @@ class _ChatViewState extends State<ChatView> {
     _prepareExitState();
     _detachExitController?.call();
     NotificationController.shared.unregisterVisibleChat(this);
+    ActiveConversation.shared.unregister(this);
     _wallpaperController.removeListener(_onWallpaperChanged);
     _bannerTimer?.cancel();
     _readSyncTimer?.cancel();
     _translation.removeListener(_onTranslationSettingsChanged);
+    _search
+      ..removeListener(_onSearchChanged)
+      ..dispose();
     _vm.removeListener(_onModel);
     _vm.onDisappear();
     _vm.dispose();
@@ -3284,7 +3308,7 @@ class _ChatViewState extends State<ChatView> {
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: c.card.withValues(alpha: 0.72),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(AppRadius.lg),
               border: Border.all(
                 color: c.divider.withValues(alpha: 0.55),
                 width: 0.5,
@@ -3314,6 +3338,7 @@ class _ChatViewState extends State<ChatView> {
     }
     return MessageBubble(
       message: message,
+      selected: _selectedMessageIds.contains(message.id),
       groupedMedia: groupedMedia,
       peerTitle: _vm.peerTitle,
       peerPhoto: _vm.peerPhoto,
@@ -3495,7 +3520,7 @@ class _ChatViewState extends State<ChatView> {
               padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
               decoration: BoxDecoration(
                 color: c.card,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(AppRadius.lg),
                 boxShadow: const [
                   BoxShadow(
                     color: Color(0x33000000),
@@ -3530,7 +3555,7 @@ class _ChatViewState extends State<ChatView> {
                       filled: true,
                       fillColor: c.searchFill,
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(AppRadius.control),
                         borderSide: BorderSide.none,
                       ),
                     ),
@@ -4035,7 +4060,7 @@ class _ChatViewState extends State<ChatView> {
           if (!mounted) return;
           showToastOverlay(
             Overlay.of(context),
-            telegramText(AppStringKeys.chatTodoSetSuccess),
+            AppStrings.t(AppStringKeys.chatTodoSetSuccess),
           );
         } catch (e) {
           if (!mounted) return;
@@ -4050,7 +4075,7 @@ class _ChatViewState extends State<ChatView> {
           if (!mounted) return;
           showToastOverlay(
             Overlay.of(context),
-            telegramText(AppStringKeys.chatTodoUnsetSuccess),
+            AppStrings.t(AppStringKeys.chatTodoUnsetSuccess),
           );
         } catch (e) {
           if (!mounted) return;
@@ -4548,7 +4573,7 @@ class _ChatViewState extends State<ChatView> {
           margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
           decoration: BoxDecoration(
             color: c.card,
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(AppRadius.card),
           ),
           clipBehavior: Clip.antiAlias,
           child: ListView.separated(
@@ -4814,11 +4839,11 @@ class _ChatViewState extends State<ChatView> {
   }
 
   String _mediaLabel(ChatMessage message) => switch (message.contentType) {
-    'messagePhoto' => telegramText(AppStringKeys.composerImagePreview),
-    'messageVideo' => telegramText(AppStringKeys.chatVideoPlaceholder),
-    'messageAnimation' => telegramText(AppStringKeys.tdMessageGif),
-    'messageAudio' => telegramText(AppStringKeys.tdMessageMusic),
-    _ => telegramText(AppStringKeys.topicPostContentFile),
+    'messagePhoto' => AppStrings.t(AppStringKeys.composerImagePreview),
+    'messageVideo' => AppStrings.t(AppStringKeys.chatVideoPlaceholder),
+    'messageAnimation' => AppStrings.t(AppStringKeys.tdMessageGif),
+    'messageAudio' => AppStrings.t(AppStringKeys.tdMessageMusic),
+    _ => AppStrings.t(AppStringKeys.topicPostContentFile),
   };
 
   void _openSenderProfile(ChatMessage m) {
@@ -5111,23 +5136,45 @@ class _ChatViewState extends State<ChatView> {
                   key: _actionOverlayKey,
                   children: [
                     Positioned.fill(
-                      child: ChatHeaderTrailingPaneLayout(
-                        header: showPeerRestrictionBlock
-                            ? _header()
-                            : (_isSelecting ? _selectionHeader() : _header()),
-                        body: showPeerRestrictionBlock
-                            ? _restrictedPeerBlockPage()
-                            : Column(
-                                children: [
-                                  Expanded(child: _transcriptLayer()),
-                                  _chatMusicPlayer(),
-                                  _isSelecting
-                                      ? _selectionActionBar()
-                                      : _composerArea(),
-                                ],
-                              ),
-                        trailingPane: widget.trailingPane,
-                        trailingPaneWidth: widget.trailingPaneWidth,
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final searchPane = _searchUsesResultsPane(
+                            constraints.maxWidth,
+                          );
+                          final searching = _search.isActive;
+                          return ChatHeaderTrailingPaneLayout(
+                            header: showPeerRestrictionBlock
+                                ? _header()
+                                : searching
+                                ? _searchHeader(showSteppers: searchPane)
+                                : (_isSelecting
+                                      ? _selectionHeader()
+                                      : _header()),
+                            body: showPeerRestrictionBlock
+                                ? _restrictedPeerBlockPage()
+                                : Column(
+                                    children: [
+                                      Expanded(child: _transcriptLayer()),
+                                      _chatMusicPlayer(),
+                                      // A narrow chat trades the composer for
+                                      // the hit navigator; a wide one keeps
+                                      // composing available beside the results.
+                                      if (searching && !searchPane)
+                                        _searchNavigator()
+                                      else if (_isSelecting)
+                                        _selectionActionBar()
+                                      else
+                                        _composerArea(),
+                                    ],
+                                  ),
+                            trailingPane: searchPane
+                                ? _searchResultsPane()
+                                : widget.trailingPane,
+                            trailingPaneWidth: searchPane
+                                ? chatSearchResultsPaneWidth
+                                : widget.trailingPaneWidth,
+                          );
+                        },
                       ),
                     ),
                     if (_actionTarget != null && !_isSelecting)
@@ -5188,7 +5235,7 @@ class _ChatViewState extends State<ChatView> {
         padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
         decoration: BoxDecoration(
           color: surface,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(AppRadius.card),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: isDark ? 0.24 : 0.12),
@@ -5474,7 +5521,7 @@ class _ChatViewState extends State<ChatView> {
         ),
         decoration: BoxDecoration(
           color: c.navBar,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(AppRadius.lg),
           border: Border.all(color: c.divider, width: 0.5),
           boxShadow: [
             BoxShadow(
@@ -5581,7 +5628,7 @@ class _ChatViewState extends State<ChatView> {
               style: TextStyle(
                 color: c.textPrimary,
                 fontSize: 13,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w600,
                 letterSpacing: 0.2,
               ),
             ),
@@ -5854,7 +5901,7 @@ class _ChatViewState extends State<ChatView> {
             style: TextStyle(
               color: Colors.white,
               fontSize: 18,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ),
@@ -6098,7 +6145,7 @@ class _ChatViewState extends State<ChatView> {
             borderRadius: BorderRadius.circular(23),
           ),
           child: Text(
-            telegramText(label),
+            AppStrings.t(label),
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
@@ -6175,9 +6222,10 @@ class _ChatViewState extends State<ChatView> {
               if (_vm.memberCount > 0) ...[
                 const SizedBox(height: 6),
                 Text(
-                  AppStrings.t(AppStringKeys.chatMemberCount, {
-                    'value1': _vm.memberCount,
-                  }),
+                  AppStrings.plural(
+                    AppStringKeys.chatMemberCount,
+                    _vm.memberCount,
+                  ),
                   style: TextStyle(fontSize: 14, color: c.textSecondary),
                 ),
               ],
@@ -6192,10 +6240,10 @@ class _ChatViewState extends State<ChatView> {
                   padding: const EdgeInsets.symmetric(horizontal: 28),
                   decoration: BoxDecoration(
                     color: requested ? c.searchFill : AppTheme.brand,
-                    borderRadius: BorderRadius.circular(23),
+                    borderRadius: BorderRadius.circular(AppRadius.xxl),
                   ),
                   child: Text(
-                    telegramText(label),
+                    AppStrings.t(label),
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
@@ -6258,6 +6306,13 @@ class _ChatViewState extends State<ChatView> {
                       icon: HeroAppIcons.tableCells,
                       onTap: () => unawaited(_openBotMenuApp(_vm.botMenu!)),
                     ),
+                  if (_canSearchMessages)
+                    _ChatHeaderAction(
+                      key: const ValueKey('chatHeaderSearch'),
+                      label: AppStringKeys.chatSearchInThisChat.l10n(context),
+                      icon: HeroAppIcons.magnifyingGlass,
+                      onTap: _openSearch,
+                    ),
                   if (wideGroupHeader)
                     WideGroupChatHeaderActions(
                       onStartCall: (isVideo) => unawaited(_startCall(isVideo)),
@@ -6299,6 +6354,12 @@ class _ChatViewState extends State<ChatView> {
       ),
     );
   }
+
+  /// The join screen and a restricted peer both render the chat header over a
+  /// page with no transcript behind it. Offering search there would open a
+  /// field that can only ever report nothing.
+  bool get _canSearchMessages =>
+      !_vm.isPeerRestricted && (_vm.isMember || _vm.messages.isNotEmpty);
 
   bool get _usesWideGroupHeader {
     return wideGroupHeaderActionsEnabled(
@@ -6658,7 +6719,7 @@ class _ChatViewState extends State<ChatView> {
   Widget _pinnedBar(ChatMessage pinned) {
     final c = context.colors;
     final text = pinned.text.trim().isEmpty
-        ? telegramText(AppStringKeys.chatSearchMessageResultLabel)
+        ? AppStrings.t(AppStringKeys.chatSearchMessageResultLabel)
         : pinned.text.replaceAll('\n', ' ');
     final canPrevious = _vm.hasPreviousPinnedMessage;
     final canNext = _vm.hasNextPinnedMessage;
@@ -6670,7 +6731,7 @@ class _ChatViewState extends State<ChatView> {
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
           color: c.card.withValues(alpha: 0.86),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(AppRadius.card),
           border: Border.all(
             color: c.divider.withValues(alpha: 0.55),
             width: 0.5,
@@ -6844,21 +6905,76 @@ class _ChatViewState extends State<ChatView> {
     );
   }
 
-  Future<void> _openHashtagSearch(String hashtag) async {
+  /// A hashtag is already a query over the open chat, so it opens in-chat
+  /// search rather than pushing a screen over the transcript it refers to.
+  void _openHashtagSearch(String hashtag) {
     final tag = hashtag.trim();
     if (tag.isEmpty) return;
-    final result = await Navigator.of(context).push<int>(
-      MaterialPageRoute(
-        builder: (_) => ChatSearchView(
-          chatId: widget.chatId,
-          title: _vm.peerTitle,
-          initialQuery: tag.startsWith('#') ? tag : '#$tag',
-        ),
-      ),
-    );
-    if (!mounted || result == null) return;
-    await _scrollToMessage(result);
+    _openSearch(initialQuery: tag.startsWith('#') ? tag : '#$tag');
   }
+
+  // MARK: - In-chat search
+
+  void _onSearchChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _openSearch({String? initialQuery}) {
+    if (_isSelecting) _exitSelection();
+    _search.open(initialQuery: initialQuery);
+  }
+
+  void _closeSearch() {
+    if (!_search.isActive) return;
+    setState(() => _searchHighlightId = null);
+    _search.close();
+  }
+
+  /// Moves the transcript to a hit and leaves it marked.
+  ///
+  /// The alignment sits the message just above centre so the messages around
+  /// it — the reason the user searched — are on screen too.
+  Future<void> _openSearchResult(ChatMessage result) async {
+    setState(() => _searchHighlightId = result.id);
+    await _scrollToMessage(result.id, alignment: 0.38, forceAlignment: true);
+  }
+
+  bool _searchUsesResultsPane(double conversationWidth) =>
+      _search.isActive &&
+      chatSearchUsesResultsPane(
+        windowSize: MediaQuery.sizeOf(context),
+        conversationWidth: conversationWidth,
+      );
+
+  /// [showSteppers] follows the results pane: a wide chat keeps the composer,
+  /// so the up/down controls ride in the header beside the field, while a
+  /// narrow one gets them in the navigator that replaces the composer.
+  Widget _searchHeader({required bool showSteppers}) => ChatSearchHeaderBar(
+    controller: _search,
+    height: widget.headerHeight,
+    backgroundColor: widget.headerColor,
+    showDivider: widget.showHeaderDivider,
+    showSteppers: showSteppers,
+    onClose: _closeSearch,
+  );
+
+  Widget _searchResultsPane() => ChatSearchResultsPane(
+    controller: _search,
+    peerTitle: _vm.peerTitle,
+    onSelect: _search.selectResult,
+  );
+
+  Widget _searchNavigator() => ChatSearchNavigator(
+    controller: _search,
+    onShowResults: () => unawaited(
+      showChatSearchResultsSheet(
+        context: context,
+        controller: _search,
+        peerTitle: _vm.peerTitle,
+        onSelect: _search.selectResult,
+      ),
+    ),
+  );
 
   Future<void> _ensureMessageVisible(
     int messageId, {
@@ -6965,10 +7081,14 @@ class _ChatViewState extends State<ChatView> {
     final media = MediaQuery.of(context);
     final origin = renderObject.localToGlobal(Offset.zero);
     final rect = origin & renderObject.size;
+    // Search replaces the whole header, translation panel and header bottom
+    // included, with the field plus its filter strip.
     final viewportTop =
         media.padding.top +
         widget.headerHeight +
-        (widget.headerBottom == null ? 0 : widget.headerBottomHeight) +
+        (_search.isActive
+            ? ChatSearchFilterStrip.height
+            : (widget.headerBottom == null ? 0 : widget.headerBottomHeight)) +
         (widget.showHeaderDivider ? 1 : 0);
     final viewportBottom =
         media.size.height - media.viewInsets.bottom - media.padding.bottom - 72;
@@ -7276,8 +7396,24 @@ class _ChatViewState extends State<ChatView> {
       key: entry.key,
       child: KeyedSubtree(
         key: visibilityKey,
-        child: RepaintBoundary(child: content),
+        child: RepaintBoundary(child: _searchHighlight(entry, content)),
       ),
+    );
+  }
+
+  /// Washes the row holding the current search hit. A full-width tint rather
+  /// than a bubble outline, so an album or a document run reads as one hit.
+  Widget _searchHighlight(_TranscriptEntry entry, Widget content) {
+    final highlightId = _searchHighlightId;
+    if (highlightId == null) return content;
+    final highlighted = entry.messages.any((m) => m.id == highlightId);
+    return AnimatedContainer(
+      duration: AppMotion.duration(context, AppMotion.deliberate),
+      curve: AppMotion.standard,
+      color: highlighted
+          ? AppTheme.brand.withValues(alpha: 0.12)
+          : Colors.transparent,
+      child: content,
     );
   }
 
@@ -7578,430 +7714,40 @@ class _ChatViewState extends State<ChatView> {
   }
 
   Widget _imageGroupBubble(List<ChatMessage> group) {
-    final c = context.colors;
-    final first = group.first;
-    final interactionOwner = _mediaAlbumInteractionOwner(group);
-    final outgoing = first.isOutgoing;
-    final avatarTitle = outgoing
-        ? (first.senderIsChat ? (first.senderName ?? _vm.meName) : _vm.meName)
-        : (_vm.isGroup && (first.senderName?.isNotEmpty ?? false))
-        ? first.senderName!
-        : _vm.peerTitle;
-    final avatarPhoto = outgoing
-        ? (first.senderIsChat ? first.senderPhoto : _vm.mePhoto)
-        : (_vm.isGroup ? first.senderPhoto : _vm.peerPhoto);
-    ChatMessage? captionMessage;
-    for (final message in group) {
-      if (_albumCaption(message).isNotEmpty) {
-        captionMessage = message;
-        break;
-      }
-    }
-    Widget avatar() => GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => _openSenderProfile(first),
-      onLongPress: outgoing
-          ? null
-          : () {
-              if (_vm.isGroup && (first.senderName?.isNotEmpty ?? false)) {
-                _vm.insertMention(first);
-              }
-            },
-      child: PhotoAvatar(title: avatarTitle, photo: avatarPhoto, size: 38),
-    );
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final chatWidth = constraints.maxWidth.isFinite
-            ? constraints.maxWidth
-            : MediaQuery.sizeOf(context).width;
-        final gallery = _imageGroupGallery(
-          group,
-          outgoing,
-          captionMessage,
-          interactionOwner,
-          maxWidth: _messageMediaMaxWidth(chatWidth),
-        );
-        final Widget body = outgoing
-            ? gallery
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (_vm.isGroup && (first.senderName?.isNotEmpty ?? false))
-                    Padding(
-                      padding: const EdgeInsets.only(left: 2, bottom: 4),
-                      child: Text(
-                        first.senderName!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 12, color: c.textSecondary),
-                      ),
-                    ),
-                  gallery,
-                ],
-              );
-
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            mainAxisAlignment: outgoing
-                ? MainAxisAlignment.end
-                : MainAxisAlignment.start,
-            children: outgoing
-                ? [
-                    Flexible(
-                      child: Align(
-                        alignment: Alignment.centerRight,
-                        child: body,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    avatar(),
-                  ]
-                : [avatar(), const SizedBox(width: 8), Flexible(child: body)],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _imageGroupGallery(
-    List<ChatMessage> group,
-    bool outgoing,
-    ChatMessage? captionMessage,
-    ChatMessage interactionOwner, {
-    required double maxWidth,
-  }) {
-    final c = context.colors;
-    final themeController = context.watch<ThemeController>();
-    final bubbleBackground = themeController
-        .effectiveMessageBubbleBackgroundSpecFor(outgoing: outgoing);
-    final showsMessageBubbleSurface = themeController
-        .shouldRenderMessageBubbleSurface(
-          outgoing: outgoing,
-          brightness: Theme.of(context).brightness,
-          hasCustomChatTheme: _hasCustomChatTheme,
-        );
-    final themedOutgoing = _effectiveOutgoingColor();
-    final themedIncoming = _effectiveIncomingColor();
-    final outgoingColor =
-        bubbleBackground.backgroundColor ??
-        themedOutgoing ??
-        AppTheme.bubbleOutgoing;
-    final incomingColor =
-        bubbleBackground.backgroundColor ?? themedIncoming ?? c.bubbleIncoming;
-    final outgoingTextColor = !showsMessageBubbleSurface
-        ? c.textPrimary
-        : bubbleBackground.foregroundColor ??
-              _effectiveOutgoingTextColor() ??
-              (outgoingColor.computeLuminance() > 0.64
-                  ? const Color(0xFF171717)
-                  : AppTheme.bubbleOutgoingText);
-    final incomingTextColor = !showsMessageBubbleSurface
-        ? c.textPrimary
-        : bubbleBackground.foregroundColor ??
-              _effectiveIncomingTextColor() ??
-              c.bubbleIncomingText;
-    final messageColors =
-        showsMessageBubbleSurface && !bubbleBackground.isDecorative
-        ? _effectiveMessageColors()
-        : null;
-    final visible = group.take(9).toList();
-    final showComments =
-        _vm.isChannel &&
-        !interactionOwner.isContentRestricted &&
-        (interactionOwner.hasCommentThread ||
-            interactionOwner.commentCount > 0 ||
-            (_vm.hasLinkedDiscussion && !interactionOwner.isService));
-    const padding = 4.0;
-    final layout = buildTelegramMediaAlbumLayout(
-      items: [
-        for (final message in visible)
-          MediaAlbumItem(
-            width: message.imageWidth,
-            height: message.imageHeight,
-          ),
-      ],
-      maxWidth: maxWidth - padding * 2,
-      gap: 4,
-      maxSingleHeight: 300,
-      minRowHeight: 82,
-      maxRowHeight: 230,
-    );
-    final width = layout.width + padding * 2;
-    return Container(
-      constraints: BoxConstraints(maxWidth: width),
-      decoration: showsMessageBubbleSurface
-          ? BoxDecoration(
-              color: outgoing ? outgoingColor : incomingColor,
-              borderRadius: BorderRadius.circular(12),
-              border: outgoing || messageColors != null
-                  ? null
-                  : Border.all(color: c.divider, width: 0.5),
-            )
-          : null,
-      clipBehavior: showsMessageBubbleSurface ? Clip.antiAlias : Clip.none,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(padding),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: layout.width,
-                  height: layout.height,
-                  child: Stack(
-                    children: [
-                      for (var i = 0; i < visible.length; i++)
-                        Positioned.fromRect(
-                          rect: layout.tiles[i],
-                          child: _imageGroupTile(
-                            visible[i],
-                            width: layout.tiles[i].width,
-                            height: layout.tiles[i].height,
-                            extraCount: i == visible.length - 1
-                                ? math.max(0, group.length - visible.length)
-                                : 0,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                if (captionMessage != null)
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: outgoing
-                        ? () => unawaited(_editMessageText(captionMessage))
-                        : null,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(6, 7, 6, 3),
-                      child: TelegramRichText(
-                        text: _albumCaption(captionMessage),
-                        entities: captionMessage.textEntities,
-                        style: TextStyle(
-                          fontSize: 15,
-                          height: 1.25,
-                          color: outgoing
-                              ? outgoingTextColor
-                              : incomingTextColor,
-                        ),
-                        linkColor: outgoing
-                            ? messageColors?.outgoingLink ??
-                                  (showsMessageBubbleSurface
-                                      ? outgoingTextColor
-                                      : c.linkBlue)
-                            : messageColors?.incomingLink ?? c.linkBlue,
-                        onBotCommandTap: _sendCommand,
-                        onHashtagTap: _openHashtagSearch,
-                        onMentionTap: _openUserProfile,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          if (showComments)
-            _imageAlbumCommentsAttachment(
-              interactionOwner,
-              outgoing: outgoing,
-              width: width,
-              outgoingTextColor: outgoingTextColor,
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _imageAlbumCommentsAttachment(
-    ChatMessage message, {
-    required bool outgoing,
-    required double width,
-    required Color outgoingTextColor,
-  }) {
-    final c = context.colors;
-    final count = message.commentCount;
-    final label = count == 0
-        ? AppStrings.t(AppStringKeys.messageLeaveAComment)
-        : AppStrings.t(AppStringKeys.momentsCommentCount, {'value1': count});
-    final foreground = outgoing ? outgoingTextColor : c.textPrimary;
-    final accent = outgoing
-        ? outgoingTextColor.withValues(alpha: 0.72)
-        : c.linkBlue;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => _openMessageComments(message),
-      child: Container(
-        key: ValueKey('messageCommentsAttachment-${message.id}'),
-        width: width,
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
-        decoration: BoxDecoration(
-          border: Border(
-            top: BorderSide(
-              color: outgoing
-                  ? outgoingTextColor.withValues(alpha: 0.16)
-                  : c.divider.withValues(alpha: 0.7),
-              width: 0.5,
-            ),
-          ),
-        ),
-        child: Row(
-          children: [
-            AppIcon(HeroAppIcons.comments, size: 18, color: accent),
-            const SizedBox(width: 7),
-            Expanded(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: foreground,
-                ),
-              ),
-            ),
-            AppIcon(HeroAppIcons.chevronRight, size: 17, color: accent),
-          ],
-        ),
-      ),
-    );
-  }
-
-  String _albumCaption(ChatMessage message) {
-    final text = message.text;
-    return text.trim().isEmpty ? '' : text;
-  }
-
-  Widget _imageGroupTile(
-    ChatMessage message, {
-    required double width,
-    required double height,
-    required int extraCount,
-  }) {
-    final tileKey = GlobalKey();
-    void showActions({Offset? pointerPosition}) {
-      final box = tileKey.currentContext?.findRenderObject() as RenderBox?;
-      final rect = pointerPosition != null
-          ? Rect.fromLTWH(pointerPosition.dx, pointerPosition.dy, 0, 0)
-          : box != null && box.hasSize
-          ? box.localToGlobal(Offset.zero) & box.size
-          : null;
-      _showActionMenuForMessage(
-        message,
-        rect,
-        message.video != null
-            ? MessageActionSource.video
-            : MessageActionSource.normal,
-      );
-    }
-
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () {
-        if (_isSelecting) {
-          _toggleSelection([message]);
-          return;
-        }
-        if (message.video != null) {
-          _playVideo(message);
-        } else {
-          _openImage(message);
+    return ImageMediaAlbumBubble(
+      messages: group,
+      peerTitle: _vm.peerTitle,
+      peerPhoto: _vm.peerPhoto,
+      isGroup: _vm.isGroup,
+      meName: _vm.meName,
+      mePhoto: _vm.mePhoto,
+      hasCustomChatTheme: _hasCustomChatTheme,
+      showCommentAttachment: _vm.isChannel,
+      channelHasLinkedDiscussion: _vm.hasLinkedDiscussion,
+      selecting: _isSelecting,
+      selectedMessageIds: _selectedMessageIds,
+      outgoingBubbleColor: _effectiveOutgoingColor(),
+      outgoingBubbleTextColor: _effectiveOutgoingTextColor(),
+      incomingBubbleColor: _effectiveIncomingColor(),
+      incomingBubbleTextColor: _effectiveIncomingTextColor(),
+      messageColors: _effectiveMessageColors(),
+      onAvatarTap: _openSenderProfile,
+      onAvatarLongPress: (message) {
+        if (_vm.isGroup && (message.senderName?.isNotEmpty ?? false)) {
+          _vm.insertMention(message);
         }
       },
-      onLongPress: _isSelecting ? null : showActions,
-      onSecondaryTapUp: _isSelecting
-          ? null
-          : (details) => showActions(pointerPosition: details.globalPosition),
-      child: SizedBox(
-        key: tileKey,
-        width: width,
-        height: height,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            TDImage(
-              photo: message.image,
-              cornerRadius: 5,
-              cacheWidth: _cachePx(width),
-              cacheHeight: _cachePx(height),
-              showProgress: true,
-            ),
-            if (message.video != null)
-              Center(
-                child: Container(
-                  width: 42,
-                  height: 42,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.45),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const AppIcon(
-                    HeroAppIcons.play,
-                    color: Colors.white,
-                    size: 21,
-                  ),
-                ),
-              ),
-            if (extraCount > 0)
-              Container(
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.45),
-                  borderRadius: BorderRadius.circular(5),
-                ),
-                child: Text(
-                  '+$extraCount',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            if (_isSelecting)
-              Positioned(
-                top: 6,
-                right: 6,
-                child: IgnorePointer(child: _mediaSelectionIndicator(message)),
-              ),
-          ],
-        ),
-      ),
+      onOpenImage: _openImage,
+      onPlayVideo: _playVideo,
+      onEditCaption: (message) => unawaited(_editMessageText(message)),
+      onOpenComments: _openMessageComments,
+      onLongPress: _showActionMenuForMessage,
+      onToggleSelection: (message) => _toggleSelection([message]),
+      onBotCommandTap: _sendCommand,
+      onHashtagTap: _openHashtagSearch,
+      onMentionTap: _openUserProfile,
     );
   }
-
-  Widget _mediaSelectionIndicator(ChatMessage message) {
-    final selected = _selectedMessageIds.contains(message.id);
-    return Container(
-      key: ValueKey('media-selection-${message.id}'),
-      width: 24,
-      height: 24,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: selected ? AppTheme.brand : Colors.black.withValues(alpha: 0.28),
-        border: Border.all(
-          color: selected ? AppTheme.brand : Colors.white,
-          width: selected ? 0 : 1.4,
-        ),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.18), blurRadius: 4),
-        ],
-      ),
-      child: selected
-          ? const AppIcon(HeroAppIcons.check, size: 17, color: Colors.white)
-          : null,
-    );
-  }
-
-  int _cachePx(double logical) =>
-      (logical * MediaQuery.devicePixelRatioOf(context)).ceil();
 
   void _react(String emoji) {
     final target = _actionTarget;
@@ -8169,7 +7915,7 @@ class _ChatViewState extends State<ChatView> {
       height: 268,
       decoration: BoxDecoration(
         color: const Color(0xFF2C2C2E),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         boxShadow: [
           BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 12),
         ],
@@ -8312,7 +8058,7 @@ class _ChatViewState extends State<ChatView> {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: selected ? const Color(0xFF4A4A4E) : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(AppRadius.control),
         ),
         child: SizedBox(width: 28, height: 28, child: Center(child: child)),
       ),
@@ -8448,7 +8194,7 @@ class _ReactionUsersSheetState extends State<_ReactionUsersSheet> {
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
           color: selected ? AppTheme.brand : c.searchFill,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(AppRadius.control),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -8618,7 +8364,7 @@ class _MessageTextSelectionDialogState
                 width: double.infinity,
                 decoration: BoxDecoration(
                   color: c.card,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                   border: Border.all(color: c.divider, width: 0.5),
                   boxShadow: [
                     BoxShadow(
@@ -8644,7 +8390,7 @@ class _MessageTextSelectionDialogState
                               style: TextStyle(
                                 color: c.textPrimary,
                                 fontSize: 17,
-                                fontWeight: FontWeight.w700,
+                                fontWeight: FontWeight.w600,
                                 decoration: TextDecoration.none,
                               ),
                             ),

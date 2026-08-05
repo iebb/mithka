@@ -254,7 +254,7 @@ class _Header extends StatelessWidget {
           color: _Palette.text,
           fontSize: 30,
           height: 1.12,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w600,
           letterSpacing: -0.7,
         ),
       ),
@@ -286,7 +286,7 @@ class _SourceSelector extends StatelessWidget {
         style: TextStyle(
           color: _Palette.subtle,
           fontSize: 11,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w600,
           letterSpacing: 1.1,
         ),
       ),
@@ -573,7 +573,7 @@ class _ShortcutReference extends StatelessWidget {
             style: TextStyle(
               color: _Palette.subtle,
               fontSize: 11,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w600,
               letterSpacing: 1.1,
             ),
           ),
@@ -594,7 +594,7 @@ class _ShortcutReference extends StatelessWidget {
                           style: const TextStyle(
                             color: _Palette.text,
                             fontSize: 12,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),

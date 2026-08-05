@@ -1,12 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mithka/l10n/messages/de.dart';
-import 'package:mithka/l10n/messages/en.dart';
-import 'package:mithka/l10n/messages/es.dart';
-import 'package:mithka/l10n/messages/fr.dart';
-import 'package:mithka/l10n/messages/ja.dart';
-import 'package:mithka/l10n/messages/ko.dart';
-import 'package:mithka/l10n/messages/zh_hans.dart';
-import 'package:mithka/l10n/messages/zh_hant.dart';
+
+import 'support/l10n_fixtures.dart';
+
+final fixtures = L10nFixtures.load();
 
 void main() {
   test('all supported locale maps own the Pro and backup consent copy', () {
@@ -39,15 +35,15 @@ void main() {
       'mithkaProTitle',
       'mithkaProYearly',
     };
-    const locales = <String, Map<String, String>>{
-      'en': enMessages,
-      'zhHans': zhHansMessages,
-      'zhHant': zhHantMessages,
-      'ja': jaMessages,
-      'ko': koMessages,
-      'fr': frMessages,
-      'es': esMessages,
-      'de': deMessages,
+    final locales = <String, Map<String, String>>{
+      'en': fixtures.messages('en'),
+      'zhHans': fixtures.messages('zhHans'),
+      'zhHant': fixtures.messages('zhHant'),
+      'ja': fixtures.messages('ja'),
+      'ko': fixtures.messages('ko'),
+      'fr': fixtures.messages('fr'),
+      'es': fixtures.messages('es'),
+      'de': fixtures.messages('de'),
     };
 
     for (final entry in locales.entries) {
@@ -73,18 +69,20 @@ void main() {
       if (entry.key != 'en') {
         expect(
           entry.value['mithkaProSupportDevelopmentDescription'],
-          isNot(enMessages['mithkaProSupportDevelopmentDescription']),
+          isNot(
+            fixtures.messages('en')['mithkaProSupportDevelopmentDescription'],
+          ),
           reason: '${entry.key} needs native support copy',
         );
       }
     }
 
     expect(
-      enMessages['mithkaProSupportDevelopmentDescription'],
+      fixtures.messages('en')['mithkaProSupportDevelopmentDescription'],
       'The warm feeling that you supported the development.',
     );
     expect(
-      enMessages['mithkaProSupportOnly'],
+      fixtures.messages('en')['mithkaProSupportOnly'],
       'All features are available without Pro.',
     );
   });

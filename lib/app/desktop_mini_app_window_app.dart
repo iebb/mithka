@@ -137,7 +137,15 @@ class _DesktopMiniAppWindowAppState extends State<DesktopMiniAppWindowApp> {
                     boldText: media.boldText,
                   ),
                 ),
-                child: child ?? const SizedBox.shrink(),
+                // Cupertino-rooted screens (SearchView and friends) sit under no
+                // text style of their own, so any Text that omits a decoration
+                // inherits Flutter's yellow "unstyled" underline. A Material
+                // ancestor would also fix it, but the app avoids Material
+                // surfaces and only the text default is actually missing.
+                child: DefaultTextStyle.merge(
+                  style: const TextStyle(decoration: TextDecoration.none),
+                  child: child ?? const SizedBox.shrink(),
+                ),
               ),
             );
           },

@@ -41,10 +41,7 @@ class FeatureSettingsView extends StatelessWidget {
                   AppSpacing.section,
                 ),
                 children: [
-                  _sectionHeader(
-                    context,
-                    AppStrings.t(AppStringKeys.featureBottomTabs),
-                  ),
+                  const SettingsSectionHeader(AppStringKeys.featureBottomTabs),
                   SettingsCard(
                     children: [
                       SettingsSwitchRow(
@@ -69,10 +66,7 @@ class FeatureSettingsView extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: AppSpacing.section),
-                  _sectionHeader(
-                    context,
-                    AppStrings.t(AppStringKeys.communityTitle),
-                  ),
+                  const SettingsSectionHeader(AppStringKeys.communityTitle),
                   SettingsCard(
                     children: [
                       SettingsSwitchRow(
@@ -85,10 +79,7 @@ class FeatureSettingsView extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: AppSpacing.section),
-                  _sectionHeader(
-                    context,
-                    AppStrings.t(AppStringKeys.featureSafety),
-                  ),
+                  const SettingsSectionHeader(AppStringKeys.featureSafety),
                   SettingsCard(
                     children: [
                       SettingsSwitchRow(
@@ -108,18 +99,4 @@ class FeatureSettingsView extends StatelessWidget {
       ),
     );
   }
-
-  Widget _sectionHeader(BuildContext context, String title) => Padding(
-    padding: const EdgeInsets.only(left: 4, bottom: AppSpacing.sm),
-    child: Align(
-      alignment: Alignment.centerLeft,
-      child: Text(
-        title.l10n(context),
-        style: TextStyle(
-          fontSize: AppTextSize.caption,
-          color: context.colors.textTertiary,
-        ),
-      ),
-    ),
-  );
 }

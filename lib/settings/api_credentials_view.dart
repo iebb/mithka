@@ -106,7 +106,7 @@ class _ApiCredentialsViewState extends State<ApiCredentialsView> {
               semanticLabel: AppStrings.t(AppStringKeys.accentColorPickerSave),
               onTap: _valid && !_saving ? _save : null,
               enabled: _valid && !_saving,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(AppRadius.control),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: Text(
@@ -155,8 +155,8 @@ class _ApiCredentialsViewState extends State<ApiCredentialsView> {
                         ),
                       ]),
                       const SizedBox(height: 14),
-                      _sectionTitle(
-                        AppStrings.t(AppStringKeys.apiCredentialsUserAgent),
+                      const SettingsSectionHeader(
+                        AppStringKeys.apiCredentialsUserAgent,
                       ),
                       _card([
                         _field(
@@ -201,33 +201,7 @@ class _ApiCredentialsViewState extends State<ApiCredentialsView> {
   }
 
   Widget _card(List<Widget> children) {
-    final c = context.colors;
-    return Container(
-      decoration: BoxDecoration(
-        color: c.card,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(children: children),
-    );
-  }
-
-  Widget _sectionTitle(String title) {
-    final c = context.colors;
-    return Padding(
-      padding: const EdgeInsets.only(left: 4, bottom: 8),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Text(
-          title,
-          style: TextStyle(
-            color: c.textTertiary,
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ),
-    );
+    return SettingsCard(children: children);
   }
 
   String get _systemVersionHint {

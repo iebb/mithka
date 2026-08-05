@@ -401,7 +401,7 @@ class _StorageUsageViewState extends State<StorageUsageView> {
             trailing: AppInteractiveSurface(
               onTap: _loading ? null : () => unawaited(_load()),
               semanticLabel: AppStrings.t(AppStringKeys.groupAdminRefresh),
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(AppRadius.control),
               child: const Padding(
                 padding: EdgeInsets.all(7),
                 child: AppIcon(HeroAppIcons.arrowsRotate, size: 19),
@@ -514,13 +514,9 @@ class _StorageUsageViewState extends State<StorageUsageView> {
         const Color(0xFFEC6B91),
       ),
     ];
-    return Container(
+    return SettingsPanel(
       key: const ValueKey('storage-other-card'),
       padding: EdgeInsets.all(desktopDense ? 14 : 17),
-      decoration: BoxDecoration(
-        color: c.card,
-        borderRadius: BorderRadius.circular(desktopDense ? 10 : 14),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -529,7 +525,7 @@ class _StorageUsageViewState extends State<StorageUsageView> {
             style: TextStyle(
               color: c.textPrimary,
               fontSize: desktopDense ? 15 : 17,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(height: 4),
@@ -582,49 +578,42 @@ class _StorageUsageViewState extends State<StorageUsageView> {
 
   Widget _policyCard({required bool desktopDense}) {
     final c = context.colors;
-    return Container(
-      decoration: BoxDecoration(
-        color: c.card,
-        borderRadius: BorderRadius.circular(desktopDense ? 10 : 14),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          SettingsRow(
-            height: desktopDense ? 44 : 52,
-            title: AppStrings.t(AppStringKeys.storageUsageKeepMedia),
-            value: _retentionOptions[_retention] ?? '',
-            onTap: _working
-                ? null
-                : () => unawaited(
-                    _choosePolicy(
-                      title: AppStrings.t(AppStringKeys.storageUsageKeepMedia),
-                      options: _retentionOptions,
-                      selected: _retention,
-                      onSelected: (value) => _savePolicy(retention: value),
-                    ),
+    return SettingsCard(
+      children: [
+        SettingsRow(
+          height: desktopDense ? 44 : 52,
+          title: AppStrings.t(AppStringKeys.storageUsageKeepMedia),
+          value: _retentionOptions[_retention] ?? '',
+          onTap: _working
+              ? null
+              : () => unawaited(
+                  _choosePolicy(
+                    title: AppStrings.t(AppStringKeys.storageUsageKeepMedia),
+                    options: _retentionOptions,
+                    selected: _retention,
+                    onSelected: (value) => _savePolicy(retention: value),
                   ),
-          ),
-          Divider(height: 1, color: c.divider),
-          SettingsRow(
-            height: desktopDense ? 44 : 52,
-            title: AppStrings.t(AppStringKeys.storageUsageMaximumCacheSize),
-            value: _limitOptions[_limit] ?? '',
-            onTap: _working
-                ? null
-                : () => unawaited(
-                    _choosePolicy(
-                      title: AppStrings.t(
-                        AppStringKeys.storageUsageMaximumCacheSize,
-                      ),
-                      options: _limitOptions,
-                      selected: _limit,
-                      onSelected: (value) => _savePolicy(limit: value),
+                ),
+        ),
+        Divider(height: 1, color: c.divider),
+        SettingsRow(
+          height: desktopDense ? 44 : 52,
+          title: AppStrings.t(AppStringKeys.storageUsageMaximumCacheSize),
+          value: _limitOptions[_limit] ?? '',
+          onTap: _working
+              ? null
+              : () => unawaited(
+                  _choosePolicy(
+                    title: AppStrings.t(
+                      AppStringKeys.storageUsageMaximumCacheSize,
                     ),
+                    options: _limitOptions,
+                    selected: _limit,
+                    onSelected: (value) => _savePolicy(limit: value),
                   ),
-          ),
-        ],
-      ),
+                ),
+        ),
+      ],
     );
   }
 
@@ -650,12 +639,9 @@ class _StorageUsageViewState extends State<StorageUsageView> {
         const NetworkUsageView(),
       ),
     ];
-    return Container(
+    return SettingsPanel(
       key: const ValueKey('storage-related-settings'),
-      decoration: BoxDecoration(
-        color: c.card,
-        borderRadius: BorderRadius.circular(desktopDense ? 10 : 14),
-      ),
+      padding: EdgeInsets.symmetric(horizontal: desktopDense ? 12 : 15),
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
@@ -728,12 +714,9 @@ class _StorageUsageViewState extends State<StorageUsageView> {
         final c = sheetContext.colors;
         return SafeArea(
           top: false,
-          child: Container(
+          child: SettingsPanel(
+            padding: const EdgeInsets.fromLTRB(16, 15, 16, 10),
             margin: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: c.card,
-              borderRadius: BorderRadius.circular(18),
-            ),
             clipBehavior: Clip.antiAlias,
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -747,7 +730,7 @@ class _StorageUsageViewState extends State<StorageUsageView> {
                       style: TextStyle(
                         color: c.textPrimary,
                         fontSize: 17,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
@@ -823,7 +806,7 @@ class _StorageDonutSummary extends StatelessWidget {
                     style: TextStyle(
                       color: c.textPrimary,
                       fontSize: desktopDense ? 22 : 25,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                   const SizedBox(height: 3),
@@ -853,7 +836,7 @@ class _StorageDonutSummary extends StatelessWidget {
           style: TextStyle(
             color: c.textPrimary,
             fontSize: desktopDense ? 20 : 21,
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w600,
           ),
         ),
         const SizedBox(height: 6),
@@ -963,7 +946,7 @@ class _LegendDot extends StatelessWidget {
         style: TextStyle(
           color: context.colors.textPrimary,
           fontSize: desktopDense ? 12 : 13,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w600,
         ),
       ),
     ],
@@ -1064,12 +1047,8 @@ class _StorageActionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return Container(
+    return SettingsPanel(
       padding: EdgeInsets.all(desktopDense ? 14 : 17),
-      decoration: BoxDecoration(
-        color: c.card,
-        borderRadius: BorderRadius.circular(desktopDense ? 10 : 14),
-      ),
       child: Row(
         children: [
           Container(
@@ -1096,7 +1075,7 @@ class _StorageActionCard extends StatelessWidget {
                   style: TextStyle(
                     color: c.textPrimary,
                     fontSize: desktopDense ? 15 : 17,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -1124,7 +1103,7 @@ class _StorageActionCard extends StatelessWidget {
           AppInteractiveSurface(
             onTap: enabled ? onTap : null,
             semanticLabel: action,
-            borderRadius: BorderRadius.circular(9),
+            borderRadius: BorderRadius.circular(AppRadius.control),
             child: Container(
               constraints: BoxConstraints(
                 minWidth: desktopDense ? 70 : 76,
@@ -1136,7 +1115,7 @@ class _StorageActionCard extends StatelessWidget {
                 color: destructive
                     ? AppTheme.tagRed.withValues(alpha: 0.11)
                     : AppTheme.brand.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(9),
+                borderRadius: BorderRadius.circular(AppRadius.control),
               ),
               child: showProgress
                   ? const SizedBox(
@@ -1149,7 +1128,7 @@ class _StorageActionCard extends StatelessWidget {
                       style: TextStyle(
                         color: destructive ? AppTheme.tagRed : AppTheme.brand,
                         fontSize: desktopDense ? 12 : 14,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
             ),
@@ -1336,64 +1315,18 @@ class _StorageManagerViewState extends State<_StorageManagerView> {
   );
 
   Widget _filterChip(StorageMediaFilter filter, {required bool desktopDense}) {
-    final c = context.colors;
     final selected = filter == _filter;
-    return AppInteractiveSurface(
+    return SettingsFilterChip(
       key: ValueKey('storage-filter-${filter.name}'),
+      label: AppStrings.t(filter.titleKey),
+      icon: filter.icon,
+      trailingLabel: formatStorageBytes(widget.snapshot.sizeFor(filter)),
       selected: selected,
-      semanticLabel: AppStrings.t(filter.titleKey),
+      expand: desktopDense,
       onTap: () => setState(() {
         _filter = filter;
         _selected.clear();
       }),
-      borderRadius: BorderRadius.circular(desktopDense ? 8 : 18),
-      child: Container(
-        constraints: BoxConstraints(minHeight: desktopDense ? 36 : 42),
-        padding: EdgeInsets.symmetric(horizontal: desktopDense ? 10 : 13),
-        decoration: BoxDecoration(
-          color: selected ? c.textPrimary.withValues(alpha: 0.10) : c.card,
-          borderRadius: BorderRadius.circular(desktopDense ? 8 : 18),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AppIcon(
-              filter.icon,
-              size: desktopDense ? 15 : 18,
-              color: selected ? AppTheme.brand : c.textSecondary,
-            ),
-            const SizedBox(width: 8),
-            if (desktopDense)
-              Expanded(
-                child: Text(
-                  AppStrings.t(filter.titleKey),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: selected ? c.textPrimary : c.textSecondary,
-                    fontSize: 13,
-                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                  ),
-                ),
-              )
-            else ...[
-              Text(
-                AppStrings.t(filter.titleKey),
-                style: TextStyle(
-                  color: selected ? c.textPrimary : c.textSecondary,
-                  fontSize: 14,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                formatStorageBytes(widget.snapshot.sizeFor(filter)),
-                style: TextStyle(color: c.textTertiary, fontSize: 11),
-              ),
-            ],
-          ],
-        ),
-      ),
     );
   }
 
@@ -1436,7 +1369,7 @@ class _StorageManagerViewState extends State<_StorageManagerView> {
                   style: TextStyle(
                     color: c.textPrimary,
                     fontSize: desktopDense ? 13 : 15,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
@@ -1450,7 +1383,7 @@ class _StorageManagerViewState extends State<_StorageManagerView> {
                 semanticLabel: AppStrings.t(
                   AppStringKeys.storageManagerClearSelected,
                 ),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(AppRadius.control),
                 child: Container(
                   constraints: BoxConstraints(
                     minHeight: desktopDense ? 30 : 38,
@@ -1461,7 +1394,7 @@ class _StorageManagerViewState extends State<_StorageManagerView> {
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: AppTheme.tagRed.withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(AppRadius.control),
                   ),
                   child: _working
                       ? const SizedBox(
@@ -1476,7 +1409,7 @@ class _StorageManagerViewState extends State<_StorageManagerView> {
                           style: TextStyle(
                             color: AppTheme.tagRed,
                             fontSize: desktopDense ? 11 : 13,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                 ),
@@ -1519,7 +1452,7 @@ class _StorageManagerViewState extends State<_StorageManagerView> {
       selected: selected,
       semanticLabel: label,
       onTap: () => setState(() => _sort = sort),
-      borderRadius: BorderRadius.circular(7),
+      borderRadius: BorderRadius.circular(AppRadius.md),
       child: Container(
         padding: EdgeInsets.symmetric(
           horizontal: desktopDense ? 8 : 9,
@@ -1529,14 +1462,14 @@ class _StorageManagerViewState extends State<_StorageManagerView> {
           color: selected
               ? c.textPrimary.withValues(alpha: 0.09)
               : Colors.transparent,
-          borderRadius: BorderRadius.circular(7),
+          borderRadius: BorderRadius.circular(AppRadius.md),
         ),
         child: Text(
           label,
           style: TextStyle(
             color: selected ? c.textPrimary : c.textSecondary,
             fontSize: desktopDense ? 11 : 12,
-            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
           ),
         ),
       ),
@@ -1633,7 +1566,7 @@ class _StorageManagerViewState extends State<_StorageManagerView> {
   }) => AppInteractiveSurface(
     checked: selected,
     onTap: onTap,
-    borderRadius: BorderRadius.circular(99),
+    borderRadius: BorderRadius.circular(AppRadius.pill),
     child: Container(
       width: desktopDense ? 18 : 22,
       height: desktopDense ? 18 : 22,
@@ -1682,7 +1615,7 @@ class _StorageErrorState extends StatelessWidget {
             AppInteractiveSurface(
               onTap: () => unawaited(onRetry()),
               semanticLabel: AppStrings.t(AppStringKeys.callsRetry),
-              borderRadius: BorderRadius.circular(9),
+              borderRadius: BorderRadius.circular(AppRadius.control),
               child: Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
@@ -1690,13 +1623,13 @@ class _StorageErrorState extends StatelessWidget {
                 ),
                 decoration: BoxDecoration(
                   color: AppTheme.brand.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(9),
+                  borderRadius: BorderRadius.circular(AppRadius.control),
                 ),
                 child: Text(
                   AppStrings.t(AppStringKeys.callsRetry),
                   style: TextStyle(
                     color: AppTheme.brand,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),

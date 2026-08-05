@@ -64,7 +64,7 @@ Widget _aiPrimaryButton(
         color: onTap == null
             ? AppTheme.brand.withValues(alpha: 0.42)
             : AppTheme.brand,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       child: working
           ? const AppActivityIndicator(size: 20, color: Colors.white)
@@ -201,7 +201,7 @@ Future<T?> _aiChoiceSheet<T>(
         ),
         decoration: BoxDecoration(
           color: c.card,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(AppRadius.lg),
           border: Border.all(color: c.divider, width: 0.5),
         ),
         child: Column(
@@ -216,7 +216,7 @@ Future<T?> _aiChoiceSheet<T>(
                   style: TextStyle(
                     color: c.textPrimary,
                     fontSize: 17,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
@@ -427,7 +427,7 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
       width: double.infinity,
       decoration: BoxDecoration(
         color: c.card,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(color: c.divider, width: 0.5),
       ),
       child: Column(
@@ -545,7 +545,7 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: c.textPrimary.withValues(alpha: 0.055),
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(AppRadius.xxl),
       ),
       child: Row(
         children: [
@@ -590,7 +590,7 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
               color: selected
                   ? AppTheme.brand.withValues(alpha: 0.12)
                   : Colors.transparent,
-              borderRadius: BorderRadius.circular(24),
+              borderRadius: BorderRadius.circular(AppRadius.xxl),
             ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -608,7 +608,7 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
                   style: TextStyle(
                     color: selected ? AppTheme.brand : c.textSecondary,
                     fontSize: 13,
-                    fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w600,
                   ),
                 ),
               ],
@@ -630,7 +630,7 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
     return Container(
       decoration: BoxDecoration(
         color: c.card,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: c.divider, width: 0.5),
       ),
       child: Column(
@@ -675,7 +675,7 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
       padding: const EdgeInsets.fromLTRB(14, 13, 14, 14),
       decoration: BoxDecoration(
         color: c.card,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: c.divider, width: 0.5),
       ),
       child: Column(
@@ -758,7 +758,7 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
             color: selected
                 ? AppTheme.brand.withValues(alpha: 0.12)
                 : c.searchFill,
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
             border: Border.all(
               color: selected
                   ? AppTheme.brand.withValues(alpha: 0.60)
@@ -843,7 +843,7 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: c.groupedBackground,
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(AppRadius.control),
                     border: Border.all(color: c.divider, width: 0.5),
                   ),
                   child: ConstrainedBox(
@@ -958,7 +958,7 @@ class _TelegramAiStylesViewState extends State<TelegramAiStylesView> {
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
                 decoration: BoxDecoration(
                   color: c.card,
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(AppRadius.lg),
                   border: Border.all(color: c.divider, width: 0.5),
                 ),
                 child: SingleChildScrollView(
@@ -975,7 +975,7 @@ class _TelegramAiStylesViewState extends State<TelegramAiStylesView> {
                         style: TextStyle(
                           color: c.textPrimary,
                           fontSize: 18,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                       const SizedBox(height: 14),
@@ -1184,7 +1184,7 @@ class _TelegramAiStylesViewState extends State<TelegramAiStylesView> {
                     return Container(
                       decoration: BoxDecoration(
                         color: c.card,
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(AppRadius.card),
                         border: Border.all(color: c.divider, width: 0.5),
                       ),
                       child: _aiRow(

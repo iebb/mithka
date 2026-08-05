@@ -154,7 +154,7 @@ void main() {
                       'es': 'Español',
                       'de': 'Deutsch',
                     }.entries)
-                      DesktopLanguageMenuOption(
+                      DesktopMenuChoice(
                         id: entry.key,
                         label: entry.value,
                         selected: entry.key == 'en',

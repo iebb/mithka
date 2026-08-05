@@ -14,10 +14,10 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
 import '../components/app_icons.dart';
-import '../l10n/telegram_language_controller.dart';
 import '../platform/adaptive_platform.dart';
 import '../settings/translation_controller.dart';
 import '../tdlib/td_models.dart';
+import '../theme/app_theme.dart';
 import 'custom_emoji.dart';
 import 'emoji_store.dart';
 import 'quick_reaction_choice.dart';
@@ -81,7 +81,7 @@ class QuickReactionBar extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
         color: const Color(0xFF2C2C2E),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(AppRadius.xxl),
         boxShadow: [
           BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 12),
         ],
@@ -347,7 +347,7 @@ class MessageActionMenu extends StatelessWidget {
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
             color: _surface,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.3),
@@ -416,7 +416,7 @@ class _DesktopActionList extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: MessageActionMenu._surface,
-        borderRadius: BorderRadius.circular(9),
+        borderRadius: BorderRadius.circular(AppRadius.control),
         border: Border.all(
           color: Colors.white.withValues(alpha: 0.22),
           width: 0.75,
@@ -468,7 +468,7 @@ class _DesktopActionList extends StatelessWidget {
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
-                            telegramText(action.label),
+                            AppStrings.t(action.label),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
@@ -537,7 +537,7 @@ class _ActionRow extends StatelessWidget {
                     ),
                   const SizedBox(height: 5),
                   Text(
-                    telegramText(action.label),
+                    AppStrings.t(action.label),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(

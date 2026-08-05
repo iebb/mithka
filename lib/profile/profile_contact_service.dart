@@ -1,5 +1,6 @@
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
+import '../tdlib/td_models.dart';
 
 Map<String, dynamic> profileImportedContact({
   required String phoneNumber,
@@ -65,6 +66,45 @@ Map<String, dynamic> deleteOwnProfilePhotoRequest(int photoId) => {
   '@type': 'deleteProfilePhoto',
   'profile_photo_id': photoId,
 };
+
+/// One entry of `getUserProfilePhotos`: the id needed to reuse or delete the
+/// photo, plus the largest size to draw it from. An account keeps a stack of
+/// these, so both the edit-profile strip and the management grid read them.
+class ProfilePhotoEntry {
+  const ProfilePhotoEntry({required this.id, required this.file});
+
+  static ProfilePhotoEntry? fromChatPhoto(Map<String, dynamic> photo) {
+    final id = photo.int64('id') ?? 0;
+    final sizes = photo.objects('sizes') ?? const <Map<String, dynamic>>[];
+    if (id == 0 || sizes.isEmpty) return null;
+    final largest = sizes.reduce(
+      (a, b) => (a.integer('width') ?? 0) >= (b.integer('width') ?? 0) ? a : b,
+    );
+    final file = TDParse.fileRef(largest.obj('photo'));
+    if (file == null) return null;
+    return ProfilePhotoEntry(id: id, file: file);
+  }
+
+  static List<ProfilePhotoEntry> listFromResponse(Map<String, dynamic> value) {
+    final entries = <ProfilePhotoEntry>[];
+    for (final photo in value.objects('photos') ?? const []) {
+      final entry = ProfilePhotoEntry.fromChatPhoto(photo);
+      if (entry != null) entries.add(entry);
+    }
+    return entries;
+  }
+
+  static Map<String, dynamic> request({required int userId, int limit = 100}) =>
+      {
+        '@type': 'getUserProfilePhotos',
+        'user_id': userId,
+        'offset': 0,
+        'limit': limit,
+      };
+
+  final int id;
+  final TdFileRef file;
+}
 
 Map<String, dynamic> setPersonalProfilePhotoRequest({
   required int userId,

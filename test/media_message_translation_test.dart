@@ -269,6 +269,14 @@ void main() {
     final media = find.byType(TDImage);
     expect(quote, findsOneWidget);
     expect(media, findsOneWidget);
+    expect(
+      (tester.widget<Container>(quote).decoration! as BoxDecoration)
+          .borderRadius,
+      const BorderRadius.only(
+        topRight: Radius.circular(AppRadius.control),
+        bottomRight: Radius.circular(AppRadius.control),
+      ),
+    );
     expect(find.byKey(const ValueKey('messageForwardHeader-7')), findsNothing);
     expect(
       tester.getRect(quote).bottom,

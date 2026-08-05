@@ -121,7 +121,7 @@ class _TelegramRichTextState extends State<TelegramRichText> {
             padding: const EdgeInsets.fromLTRB(10, 7, 10, 7),
             decoration: BoxDecoration(
               color: widget.quoteBackgroundColor,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(AppRadius.control),
             ),
             child: _richTextSegment(
               text,
@@ -350,7 +350,7 @@ class _TelegramRichTextState extends State<TelegramRichText> {
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
           decoration: BoxDecoration(
             color: _codeBackgroundColor,
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: BorderRadius.circular(AppRadius.sm),
           ),
           child: Text(segment, style: style),
         ),
@@ -395,7 +395,7 @@ class _TelegramRichTextState extends State<TelegramRichText> {
     for (final entity in active) {
       switch (entity.type) {
         case 'textEntityTypeBold':
-          style = style.copyWith(fontWeight: FontWeight.w700);
+          style = style.copyWith(fontWeight: FontWeight.w600);
         case 'textEntityTypeItalic':
           style = style.copyWith(fontStyle: FontStyle.italic);
         case 'textEntityTypeUnderline':

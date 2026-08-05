@@ -285,7 +285,7 @@ class _LocationPickerViewState extends State<LocationPickerView> {
                     color: _sending
                         ? AppTheme.brand.withValues(alpha: 0.55)
                         : AppTheme.brand,
-                    borderRadius: BorderRadius.circular(6),
+                    borderRadius: BorderRadius.circular(AppRadius.md),
                   ),
                   child: Text(
                     AppStrings.t(AppStringKeys.composerSend),
@@ -325,7 +325,9 @@ class _LocationPickerViewState extends State<LocationPickerView> {
                         width: 44,
                         decoration: BoxDecoration(
                           color: c.card,
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(
+                            AppRadius.control,
+                          ),
                           boxShadow: [
                             BoxShadow(
                               color: Colors.black.withValues(alpha: 0.18),

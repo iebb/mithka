@@ -572,7 +572,7 @@ class EmojiTextEditingController extends TextEditingController {
       switch (entity.typeName) {
         case 'textEntityTypeBold':
           style = (style ?? const TextStyle()).copyWith(
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w600,
           );
         case 'textEntityTypeItalic':
           style = (style ?? const TextStyle()).copyWith(

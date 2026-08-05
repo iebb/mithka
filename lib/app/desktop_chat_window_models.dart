@@ -143,12 +143,22 @@ class DesktopChatWindowPalette {
       panelBackground: Color(inputBarBackground),
       bubbleIncoming: Color(bubbleIncoming),
       bubbleIncomingText: Color(bubbleIncomingText),
+      bubbleOutgoingText: Color(onAccent),
       textPrimary: Color(textPrimary),
       textSecondary: Color(textSecondary),
       textTertiary: Color(textTertiary),
       divider: Color(divider),
       linkBlue: Color(linkBlue),
       onAccent: Color(onAccent),
+      // This palette is a reduced projection sent across the window boundary,
+      // so these follow the transported tokens rather than widening the wire
+      // format for a surface a detached chat window barely shows.
+      dialogButton: Color(linkBlue),
+      dialogText: Color(textPrimary),
+      badgeBackground: Color(brand),
+      badgeText: Color(onAccent),
+      accentButton: Color(brand),
+      accentButtonText: Color(onAccent),
     );
   }
 

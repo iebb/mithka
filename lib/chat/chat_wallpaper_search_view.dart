@@ -188,7 +188,7 @@ class _ChatWallpaperSearchViewState extends State<ChatWallpaperSearchView> {
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
         color: c.searchFill,
-        borderRadius: BorderRadius.circular(13),
+        borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       child: Row(
         children: [
@@ -295,7 +295,7 @@ class _ChatWallpaperSearchViewState extends State<ChatWallpaperSearchView> {
           behavior: HitTestBehavior.opaque,
           onTap: () => _select(result),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(9),
+            borderRadius: BorderRadius.circular(AppRadius.control),
             child: Stack(
               fit: StackFit.expand,
               children: [

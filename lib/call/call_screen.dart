@@ -20,6 +20,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
 import '../components/photo_avatar.dart'; // PhotoAvatar + TDImage
+import '../theme/app_theme.dart';
 import 'call_manager.dart';
 
 class CallScreen extends StatefulWidget {
@@ -271,7 +272,7 @@ class _CallScreenState extends State<CallScreen> {
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: Colors.black.withValues(alpha: 0.4),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(AppRadius.card),
           border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
         ),
         child: showVideo
@@ -416,7 +417,7 @@ class _CallScreenState extends State<CallScreen> {
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 14),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

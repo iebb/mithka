@@ -308,7 +308,7 @@ class _VideoNoteRecorderViewState extends State<VideoNoteRecorderView>
                     ),
                     decoration: BoxDecoration(
                       color: Colors.black.withValues(alpha: 0.55),
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(AppRadius.lg),
                     ),
                     child: Text(
                       _paused ? 'Paused · $_elapsedLabel' : _elapsedLabel,
@@ -410,7 +410,9 @@ class _VideoNoteRecorderViewState extends State<VideoNoteRecorderView>
           decoration: BoxDecoration(
             color: locked ? AppTheme.brand : const Color(0xFFE53935),
             shape: locked ? BoxShape.rectangle : BoxShape.circle,
-            borderRadius: locked ? BorderRadius.circular(10) : null,
+            borderRadius: locked
+                ? BorderRadius.circular(AppRadius.control)
+                : null,
           ),
         ),
       ),

@@ -48,7 +48,7 @@ class TelegramLinkDetailsView extends StatelessWidget {
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
                       color: c.linkBlue.withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(22),
+                      borderRadius: BorderRadius.circular(AppRadius.xl),
                     ),
                     child: AppIcon(icon, size: 36, color: c.linkBlue),
                   ),
@@ -77,7 +77,7 @@ class TelegramLinkDetailsView extends StatelessWidget {
                   Container(
                     decoration: BoxDecoration(
                       color: c.card,
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(AppRadius.card),
                     ),
                     clipBehavior: Clip.antiAlias,
                     child: Column(

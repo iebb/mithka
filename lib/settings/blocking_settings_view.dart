@@ -137,14 +137,8 @@ class BlockingSettingsView extends StatelessWidget {
     );
   }
 
-  Widget _card(BuildContext context, List<Widget> children) => Container(
-    decoration: BoxDecoration(
-      color: context.colors.card,
-      borderRadius: BorderRadius.circular(12),
-    ),
-    clipBehavior: Clip.antiAlias,
-    child: Column(children: children),
-  );
+  Widget _card(BuildContext context, List<Widget> children) =>
+      SettingsCard(children: children);
 
   Widget _label(BuildContext context, String key) => Padding(
     padding: const EdgeInsets.only(left: 16, bottom: 6),

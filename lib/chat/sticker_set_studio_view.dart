@@ -134,7 +134,7 @@ class _StickerSetStudioViewState extends State<StickerSetStudioView> {
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
         color: colors.card,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       child: Row(
         children: [
@@ -198,7 +198,7 @@ class _StickerSetStudioViewState extends State<StickerSetStudioView> {
           padding: const EdgeInsets.all(11),
           decoration: BoxDecoration(
             color: colors.card,
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(AppRadius.card),
           ),
           child: Row(
             children: [
@@ -208,7 +208,7 @@ class _StickerSetStudioViewState extends State<StickerSetStudioView> {
                 clipBehavior: Clip.antiAlias,
                 decoration: BoxDecoration(
                   color: colors.searchFill,
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(AppRadius.control),
                 ),
                 child: cover == null
                     ? Center(
@@ -1089,7 +1089,7 @@ class _StickerSetManageViewState extends State<StickerSetManageView> {
   Widget _manageCard(AppColors colors) => Container(
     decoration: BoxDecoration(
       color: colors.card,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(AppRadius.card),
     ),
     child: Column(
       children: [
@@ -1317,7 +1317,9 @@ class _StickerDraftEditorViewState extends State<StickerDraftEditorView> {
                               height: 64,
                               decoration: BoxDecoration(
                                 color: colors.searchFill,
-                                borderRadius: BorderRadius.circular(12),
+                                borderRadius: BorderRadius.circular(
+                                  AppRadius.card,
+                                ),
                               ),
                               child: Center(
                                 child: AppIcon(
@@ -1592,7 +1594,7 @@ class _StickerMaskPlacementViewState extends State<StickerMaskPlacementView> {
     padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
     decoration: BoxDecoration(
       color: colors.card,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(AppRadius.card),
     ),
     child: Column(
       children: [
@@ -1756,7 +1758,7 @@ class _OwnedDialog extends StatelessWidget {
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: context.colors.card,
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
             border: Border.all(color: context.colors.divider, width: 0.5),
             boxShadow: const [
               BoxShadow(
@@ -1847,7 +1849,7 @@ Widget _section(AppColors colors, {required List<Widget> children}) =>
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: colors.card,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       child: Column(children: children),
     );
@@ -1937,7 +1939,7 @@ class _DraftPreview extends StatelessWidget {
     clipBehavior: Clip.antiAlias,
     decoration: BoxDecoration(
       color: context.colors.searchFill,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(AppRadius.control),
     ),
     child: draft.format == StickerFileFormat.webp
         ? Image.file(

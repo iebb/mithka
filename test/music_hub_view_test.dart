@@ -43,11 +43,18 @@ void main() {
       tester.getCenter(find.text('All')).dy,
       greaterThan(tester.getCenter(find.text('File')).dy),
     );
+    // The three states are a dropdown now, so the current one reads as label
+    // text on the control rather than white-on-brand inside a selected pill.
+    expect(
+      find.byKey(const ValueKey('shared-media-filter-dropdown')),
+      findsOneWidget,
+    );
     final selectedFilter = tester.widget<Text>(find.text('All'));
-    expect(selectedFilter.style?.color, AppTheme.onBrand);
+    expect(selectedFilter.style?.color, isNot(AppTheme.onBrand));
     expect(
       _contrastRatio(AppTheme.brand, AppTheme.onBrand),
       greaterThanOrEqualTo(4.5),
+      reason: 'the brand pair is still used elsewhere and must stay legible',
     );
   });
 

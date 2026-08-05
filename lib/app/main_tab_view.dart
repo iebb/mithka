@@ -32,7 +32,6 @@ import '../components/ui_components.dart';
 import '../contacts/contacts_view.dart';
 import '../l10n/app_locale_controller.dart';
 import '../l10n/app_localizations.dart';
-import '../l10n/telegram_language_controller.dart';
 import '../moments/moments_view.dart';
 import '../profile/profile_view.dart';
 import '../settings/desktop_hotkey_controller.dart';
@@ -54,6 +53,7 @@ import 'desktop_navigation_rail.dart';
 import 'desktop_utility_window.dart';
 import 'detail_content_reveal.dart';
 import 'unread_badge_model.dart';
+import '../chat/emoji_store.dart';
 
 @visibleForTesting
 bool desktopChatKindUsesContextPane(ChatKind? kind) =>
@@ -623,7 +623,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
     int activeTabIndex,
   ) {
     final theme = context.watch<ThemeController>();
-    final telegramLanguage = context.watch<TelegramLanguageController>();
+    final appLocale = context.watch<AppLocaleController>();
     final accounts = context.watch<AccountStore>();
     final size = MediaQuery.sizeOf(context);
     final contentWidth = size.width - desktopNavigationRailWidth;
@@ -669,8 +669,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
           icon: tab.icon,
         ),
     ];
-    final fileLabel = telegramText(AppStringKeys.topicPostContentFile);
-    final videoLabel = telegramText(AppStringKeys.sharedMediaVideos);
+    final fileLabel = AppStrings.t(AppStringKeys.topicPostContentFile);
     final railActions = [
       DesktopNavigationAction(
         id: 'calls',
@@ -680,13 +679,6 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
           DesktopUtilityWindowKind.calls,
           AppStrings.t(AppStringKeys.callsTitle),
         ),
-      ),
-      DesktopNavigationAction(
-        id: 'videos',
-        label: videoLabel,
-        icon: HeroAppIcons.video,
-        onTap: () =>
-            _openDesktopUtility(DesktopUtilityWindowKind.videos, videoLabel),
       ),
     ];
     final applicationMenuQuickActions = [
@@ -710,7 +702,30 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
         onTap: _openGlobalThemeSelector,
       ),
     ];
-    final applicationMenuActions = [
+    // Recomputed on each rail rebuild: the premium gate below changes after
+    // the first frame, and a list captured in build() would stay stale.
+    List<DesktopNavigationAction> applicationMenuActions() => [
+      DesktopNavigationAction(
+        id: 'profile',
+        label: AppStrings.t(AppStringKeys.editProfileTitle),
+        icon: HeroAppIcons.solidCircleUser,
+        onTap: () => _openDesktopUtility(
+          DesktopUtilityWindowKind.editProfile,
+          AppStrings.t(AppStringKeys.editProfileTitle),
+        ),
+      ),
+      // Business tools need Telegram Premium; without it the screen is only a
+      // wall of locked rows, so it does not earn a place in the menu.
+      if (EmojiStore.shared.isPremium)
+        DesktopNavigationAction(
+          id: 'business-profile',
+          label: AppStrings.t(AppStringKeys.businessSettingsTitle),
+          icon: HeroAppIcons.venue,
+          onTap: () => _openDesktopUtility(
+            DesktopUtilityWindowKind.businessProfile,
+            AppStrings.t(AppStringKeys.businessSettingsTitle),
+          ),
+        ),
       DesktopNavigationAction(
         id: 'settings',
         label: AppStrings.t(AppStringKeys.profileSettings),
@@ -722,19 +737,40 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
       ),
     ];
     final selectedLocaleKey = AppLocalizations.localeKeyFor(
-      telegramLanguage.mithkaLocale,
+      appLocale.locale ?? Localizations.localeOf(context),
     );
     final languageOptions = [
       for (final option in AppLocaleController.options)
-        DesktopLanguageMenuOption(
+        DesktopMenuChoice(
           id: option.tag,
           label: option.label.l10n(context),
           selected:
               AppLocalizations.localeKeyFor(option.locale) == selectedLocaleKey,
           onTap: () => unawaited(() async {
-            await telegramLanguage.selectSupportedLocale(option.locale);
+            appLocale.locale = option.locale;
             await DesktopChatWindowService.instance.notifyPresentationChanged();
           }()),
+        ),
+    ];
+    // Quick theme switching, so a look can be changed without walking into
+    // Settings › Appearance › Theme. It applies to the brightness on screen —
+    // switching a dark theme while in light mode would change nothing visible.
+    final themeBrightness = Theme.of(context).brightness;
+    final activeCloudTheme = theme.cloudThemeFor(themeBrightness);
+    final themeOptions = [
+      DesktopMenuChoice(
+        id: 'default',
+        label: AppStrings.t(AppStringKeys.globalThemeDefault),
+        selected: activeCloudTheme == null,
+        onTap: () => theme.clearCloudTheme(themeBrightness),
+      ),
+      for (final cloudTheme in theme.installedCloudThemes)
+        DesktopMenuChoice(
+          id: cloudTheme.slug,
+          label: cloudTheme.displayTitle,
+          selected: cloudTheme.slug == activeCloudTheme?.slug,
+          onTap: () =>
+              theme.installCloudTheme(cloudTheme, brightness: themeBrightness),
         ),
     ];
     return AnimatedBuilder(
@@ -747,7 +783,10 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
                 Row(
                   children: [
                     AnimatedBuilder(
-                      animation: _unread,
+                      // EmojiStore carries the is_premium option, which decides
+                      // whether the business entry is in the menu at all and
+                      // lands after the first frame.
+                      animation: Listenable.merge([_unread, EmojiStore.shared]),
                       builder: (context, _) => DesktopNavigationRail(
                         destinations: destinations,
                         selection: selection,
@@ -787,12 +826,16 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
                           AppStringKeys.chatMenu,
                         ),
                         languageMenuLabel: AppStrings.t(
-                          AppStringKeys.languageTelegramLanguage,
+                          AppStringKeys.languageMithkaLanguage,
                         ),
                         languageOptions: languageOptions,
+                        themeMenuLabel: AppStrings.t(
+                          AppStringKeys.appearanceTheme,
+                        ),
+                        themeOptions: themeOptions,
                         applicationMenuQuickActions:
                             applicationMenuQuickActions,
-                        applicationMenuActions: applicationMenuActions,
+                        applicationMenuActions: applicationMenuActions(),
                       ),
                     ),
                     if (geometry.showListPane)
@@ -1574,7 +1617,9 @@ class _ForumSplitDetailPaneState extends State<_ForumSplitDetailPane> {
       color: Colors.transparent,
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
       child: Align(
-        alignment: Alignment.centerLeft,
+        // Desktop split pane: the mode switch sits top-right, mirroring the
+        // header actions above it.
+        alignment: Alignment.centerRight,
         child: Container(
           height: 32,
           decoration: BoxDecoration(

@@ -414,7 +414,7 @@ class _PublicDiscoveryViewState extends State<PublicDiscoveryView> {
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: _tab == tab
-                                ? FontWeight.w700
+                                ? FontWeight.w600
                                 : FontWeight.w500,
                             color: _tab == tab
                                 ? AppTheme.brand
@@ -451,7 +451,7 @@ class _PublicDiscoveryViewState extends State<PublicDiscoveryView> {
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
           color: c.searchFill,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(AppRadius.control),
         ),
         child: Row(
           children: [
@@ -525,7 +525,7 @@ class _PublicDiscoveryViewState extends State<PublicDiscoveryView> {
                 color: selected
                     ? AppTheme.brand.withValues(alpha: 0.14)
                     : c.groupedBackground,
-                borderRadius: BorderRadius.circular(17),
+                borderRadius: BorderRadius.circular(AppRadius.lg),
                 border: Border.all(
                   color: selected ? AppTheme.brand : c.divider,
                 ),
@@ -603,7 +603,7 @@ class _PublicDiscoveryViewState extends State<PublicDiscoveryView> {
     return Container(
       decoration: BoxDecoration(
         color: c.card,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -615,7 +615,7 @@ class _PublicDiscoveryViewState extends State<PublicDiscoveryView> {
               title,
               style: TextStyle(
                 fontSize: 13,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w600,
                 color: c.textSecondary,
               ),
             ),
@@ -732,7 +732,7 @@ class _PublicDiscoveryViewState extends State<PublicDiscoveryView> {
                     AppStrings.t(AppStringKeys.confirmContinue),
                     style: const TextStyle(
                       fontSize: 14,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w600,
                       color: Colors.white,
                     ),
                   ),
@@ -798,7 +798,7 @@ class _PublicDiscoveryViewState extends State<PublicDiscoveryView> {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 14,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w600,
                             color: c.textPrimary,
                           ),
                         ),

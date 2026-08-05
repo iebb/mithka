@@ -105,7 +105,7 @@ class _MithkaProViewState extends State<MithkaProView> {
                   Container(
                     decoration: BoxDecoration(
                       color: c.card,
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(AppRadius.card),
                     ),
                     clipBehavior: Clip.antiAlias,
                     child: Column(
@@ -122,7 +122,7 @@ class _MithkaProViewState extends State<MithkaProView> {
                   Container(
                     decoration: BoxDecoration(
                       color: c.card,
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(AppRadius.card),
                     ),
                     clipBehavior: Clip.antiAlias,
                     child: Column(
@@ -243,7 +243,7 @@ class _MithkaProViewState extends State<MithkaProView> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: context.colors.card,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       child: Row(
         children: [
@@ -253,7 +253,7 @@ class _MithkaProViewState extends State<MithkaProView> {
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: AppTheme.brand.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(AppRadius.card),
             ),
             child: AppIcon(
               HeroAppIcons.solidStar,
@@ -270,7 +270,7 @@ class _MithkaProViewState extends State<MithkaProView> {
                   AppStrings.t(AppStringKeys.mithkaProTitle),
                   style: TextStyle(
                     fontSize: 18,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w600,
                     color: context.colors.textPrimary,
                   ),
                 ),
@@ -304,7 +304,7 @@ class _MithkaProViewState extends State<MithkaProView> {
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: AppTheme.brand.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(AppRadius.control),
             ),
             child: AppIcon(icon, size: 17, color: AppTheme.brand),
           ),
@@ -395,13 +395,15 @@ class _MithkaProViewState extends State<MithkaProView> {
                             ),
                             decoration: BoxDecoration(
                               color: AppTheme.brand.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: BorderRadius.circular(
+                                AppRadius.control,
+                              ),
                             ),
                             child: Text(
                               AppStrings.t(badgeKey),
                               style: TextStyle(
                                 fontSize: 9,
-                                fontWeight: FontWeight.w700,
+                                fontWeight: FontWeight.w600,
                                 color: AppTheme.brand,
                               ),
                             ),
@@ -448,7 +450,7 @@ class _MithkaProViewState extends State<MithkaProView> {
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: AppTheme.brand,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(AppRadius.card),
             ),
             child: service.working
                 ? AppActivityIndicator(size: 19, color: AppTheme.onBrand)

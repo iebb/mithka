@@ -153,6 +153,13 @@ enum TelegramThemeSemanticColor {
   tertiaryText,
   divider,
   accent,
+  onAccent,
+  dialogButton,
+  dialogText,
+  badgeBackground,
+  badgeText,
+  accentButton,
+  accentButtonText,
   chatBackground,
   searchFill,
   inputBarBackground,
@@ -356,6 +363,16 @@ class TelegramCloudTheme {
     'textBubble_incoming',
     'historyTextInFg',
   ]);
+
+  /// Bubble fill while the message is selected. Telegram ships this as its own
+  /// key rather than tinting the base fill — the defaults are a wash over it
+  /// (#ecf7fd over white incoming, #d9f7c5 over #efffde outgoing), so a theme
+  /// is free to make the selected state anything it likes.
+  Color? get incomingSelectedColor =>
+      _paletteColor(const ['chat_inBubbleSelected', 'msgInBgSelected']);
+
+  Color? get outgoingSelectedColor =>
+      _paletteColor(const ['chat_outBubbleSelected', 'msgOutBgSelected']);
 
   TelegramMessageColors get messageColors {
     final ui = uiColors;
@@ -568,6 +585,60 @@ class TelegramCloudTheme {
           'basicAccent',
           'link',
           'windowActiveTextFg',
+        ],
+        // What Telegram draws *on top of* an accent fill — the glyph on the
+        // floating action button, the label on the blue "Add" button, the tick
+        // inside a filled checkbox. Every client stores this as its own key and
+        // none of them derive it from the accent, so neither do we.
+        TelegramThemeSemanticColor.onAccent => const [
+          'chats_actionIcon',
+          'featuredStickers_buttonText',
+          'checkboxCheck',
+          'list.itemCheckColors.foregroundColor',
+          'list.itemCheckColors.foreground',
+          'underSelectedColor',
+          'activeButtonFg',
+        ],
+        // Dialog buttons are flat text in every client, so this is the label
+        // colour rather than a fill.
+        TelegramThemeSemanticColor.dialogButton => const [
+          'dialogButton',
+          'actionSheet.controlAccent',
+          'accentColor',
+          'windowActiveTextFg',
+        ],
+        TelegramThemeSemanticColor.dialogText => const [
+          'dialogTextBlack',
+          'actionSheet.primaryText',
+          'textColor',
+          'windowFg',
+        ],
+        TelegramThemeSemanticColor.badgeBackground => const [
+          'chats_unreadCounter',
+          'chatList.unreadBadgeActive',
+          'badgeBackgroundColor',
+          'dialogsUnreadBg',
+        ],
+        TelegramThemeSemanticColor.badgeText => const [
+          'chats_unreadCounterText',
+          'chatList.unreadBadgeActiveText',
+          'badgeTextColor',
+          'dialogsUnreadFg',
+        ],
+        // The filled accent button. Telegram keys the fill and the label as
+        // two independent values, so a theme can restyle one without the
+        // other and neither is inferred from the accent.
+        TelegramThemeSemanticColor.accentButton => const [
+          'featuredStickers_addButton',
+          'list.itemCheckColors.fillColor',
+          'accentColor',
+          'activeButtonBg',
+        ],
+        TelegramThemeSemanticColor.accentButtonText => const [
+          'featuredStickers_buttonText',
+          'list.itemCheckColors.foregroundColor',
+          'underSelectedColor',
+          'activeButtonFg',
         ],
         TelegramThemeSemanticColor.chatBackground => const [
           'chat_wallpaper',
@@ -815,7 +886,22 @@ class TelegramCloudTheme {
       ),
       divider: divider,
       linkBlue: accent,
-      onAccent: readableForeground(accent),
+      onAccent: value(TelegramThemeSemanticColor.onAccent, base.onAccent),
+      dialogButton: value(TelegramThemeSemanticColor.dialogButton, accent),
+      dialogText: value(TelegramThemeSemanticColor.dialogText, primary),
+      badgeBackground: value(
+        TelegramThemeSemanticColor.badgeBackground,
+        accent,
+      ),
+      badgeText: value(
+        TelegramThemeSemanticColor.badgeText,
+        value(TelegramThemeSemanticColor.onAccent, base.onAccent),
+      ),
+      accentButton: value(TelegramThemeSemanticColor.accentButton, accent),
+      accentButtonText: value(
+        TelegramThemeSemanticColor.accentButtonText,
+        value(TelegramThemeSemanticColor.onAccent, base.onAccent),
+      ),
     );
   }
 

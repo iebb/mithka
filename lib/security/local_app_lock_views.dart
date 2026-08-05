@@ -1575,7 +1575,7 @@ class _MethodChooser extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(18, 20, 18, 12),
         decoration: BoxDecoration(
           color: c.card,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(AppRadius.lg),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1632,7 +1632,7 @@ class _AutoLockChooser extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(18, 20, 18, 12),
         decoration: BoxDecoration(
           color: c.card,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(AppRadius.lg),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1742,7 +1742,7 @@ class _SettingsCard extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     decoration: BoxDecoration(
       color: context.colors.card,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(AppRadius.card),
     ),
     clipBehavior: Clip.antiAlias,
     child: Column(children: children),

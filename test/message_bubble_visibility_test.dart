@@ -77,7 +77,7 @@ void main() {
     return theme;
   }
 
-  testWidgets('disabled standard bubbles remove only the directional surface', (
+  testWidgets('disabled preference still draws the theme surface', (
     tester,
   ) async {
     final message = ChatMessage(
@@ -95,29 +95,32 @@ void main() {
       onLongPress: (message) => longPressed = message,
     );
 
+    // The preference chooses the bubble's look, not whether one exists, so
+    // the surface is still here — just the theme's rather than an image.
     final messageSurface = find.byKey(const ValueKey('messageTextBubble-410'));
     expect(messageSurface, findsOneWidget);
-    expect(find.byType(StretchableMessageBubbleBackground), findsNothing);
-
-    final plainContainer = tester.widget<Container>(messageSurface);
-    expect(
-      plainContainer.padding,
-      const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+    final surface = tester.widget<StretchableMessageBubbleBackground>(
+      messageSurface,
     );
-    expect(plainContainer.decoration, isNull);
+    expect(surface.background, MessageBubbleBackgroundSpec.standard);
     final messageText = tester
         .widgetList<RichText>(find.byType(RichText))
         .singleWhere(
           (widget) => widget.text.toPlainText().contains('Visible message'),
         );
+    // On a bubble the text takes the palette's outgoing ink, not the page's
+    // primary text. The default outgoing fill is the brand colour, so this is
+    // white — and it comes from the palette rather than a measurement.
     expect(
       (messageText.text as TextSpan).style?.color,
-      AppColors.light.textPrimary,
+      AppColors.light.bubbleOutgoingText,
     );
     final link = _textSpans(
       messageText.text,
     ).singleWhere((span) => span.text == 'https://example.com');
-    expect(link.style?.color, AppColors.light.linkBlue);
+    // Links inside an outgoing bubble follow the bubble's own ink rather than
+    // the page link colour, which would not carry on this fill.
+    expect(link.style?.color, AppColors.light.bubbleOutgoingText);
 
     final delivery = tester.widget<CustomPaint>(
       find.descendant(
@@ -126,7 +129,7 @@ void main() {
       ),
     );
     final dynamic deliveryPainter = delivery.painter;
-    expect(deliveryPainter.color, AppColors.light.textPrimary);
+    expect(deliveryPainter.color, AppColors.light.bubbleOutgoingText);
 
     await tester.longPress(find.byKey(const ValueKey('messageTapTarget-410')));
     await tester.pump();
@@ -134,7 +137,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('disabled preference preserves a decorative bubble surface', (
+  testWidgets('disabled preference falls back from a decorative bubble', (
     tester,
   ) async {
     await pumpMessage(
@@ -152,20 +155,13 @@ void main() {
     final surface = tester.widget<StretchableMessageBubbleBackground>(
       find.byKey(const ValueKey('messageTextBubble-413')),
     );
-    expect(surface.background, MessageBubbleBackgroundSpec.emberArcade);
-    final messageText = tester
-        .widgetList<RichText>(find.byType(RichText))
-        .singleWhere(
-          (widget) => widget.text.toPlainText().contains('Decorative message'),
-        );
-    expect(
-      (messageText.text as TextSpan).style?.color,
-      MessageBubbleBackgroundSpec.emberArcade.foregroundColor,
-    );
+    // The image is dropped; the selection itself is kept for re-enabling.
+    expect(surface.background, MessageBubbleBackgroundSpec.standard);
+    expect(find.text('Decorative message', findRichText: true), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('decorative own-message scope leaves incoming messages flat', (
+  testWidgets('own-message scope leaves incoming on the theme surface', (
     tester,
   ) async {
     await pumpMessage(
@@ -181,11 +177,10 @@ void main() {
       bubbleScope: MessageBubbleApplicationScope.ownMessages,
     );
 
-    expect(find.byType(StretchableMessageBubbleBackground), findsNothing);
-    final surface = tester.widget<Container>(
+    final surface = tester.widget<StretchableMessageBubbleBackground>(
       find.byKey(const ValueKey('messageTextBubble-417')),
     );
-    expect(surface.decoration, isNull);
+    expect(surface.background, MessageBubbleBackgroundSpec.standard);
     expect(tester.takeException(), isNull);
   });
 
@@ -229,7 +224,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('disabled preference keeps built-in cloud bubbles flat', (
+  testWidgets('disabled preference keeps built-in cloud bubbles standard', (
     tester,
   ) async {
     const builtInTheme = TelegramCloudTheme(
@@ -252,11 +247,10 @@ void main() {
       cloudTheme: builtInTheme,
     );
 
-    expect(find.byType(StretchableMessageBubbleBackground), findsNothing);
-    final surface = tester.widget<Container>(
+    final surface = tester.widget<StretchableMessageBubbleBackground>(
       find.byKey(const ValueKey('messageTextBubble-415')),
     );
-    expect(surface.decoration, isNull);
+    expect(surface.background, MessageBubbleBackgroundSpec.standard);
     expect(tester.takeException(), isNull);
   });
 
@@ -310,11 +304,12 @@ void main() {
       outgoingBubbleTextColor: const Color(0xFFF6E9FF),
     );
 
-    expect(find.byType(StretchableMessageBubbleBackground), findsNothing);
-    final surface = tester.widget<Container>(
+    // Theming off means the custom chat colours are ignored too, so this is
+    // the plain theme bubble rather than the chat's purple.
+    final surface = tester.widget<StretchableMessageBubbleBackground>(
       find.byKey(const ValueKey('messageTextBubble-418')),
     );
-    expect(surface.decoration, isNull);
+    expect(surface.background, MessageBubbleBackgroundSpec.standard);
     expect(tester.takeException(), isNull);
   });
 
@@ -336,7 +331,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('disabled grouped captions keep media clipping', (tester) async {
+  testWidgets('captioned media clips to the bubble it sits in', (tester) async {
     await pumpMessage(
       tester,
       ChatMessage(
@@ -352,11 +347,13 @@ void main() {
       bubblesEnabled: false,
     );
 
+    // Captioned media sits inside a bubble, which owns the rounding, so the
+    // inner clip is square rather than rounding a second time.
     expect(find.byType(StretchableMessageBubbleBackground), findsNothing);
     final mediaClip = tester.widget<ClipRRect>(
       find.byKey(const ValueKey('messageMediaClip-412')),
     );
-    expect(mediaClip.borderRadius, BorderRadius.circular(10));
+    expect(mediaClip.borderRadius, BorderRadius.zero);
     expect(tester.takeException(), isNull);
 
     // Expire the file lookup timeout scheduled by the image placeholder.

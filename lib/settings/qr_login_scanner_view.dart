@@ -166,7 +166,7 @@ class _QrLoginScannerViewState extends State<QrLoginScannerView> {
                   style: const TextStyle(
                     color: Color(0xFFFFFFFF),
                     fontSize: 22,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w600,
                     decoration: TextDecoration.none,
                   ),
                 ),
@@ -209,7 +209,7 @@ class _ScannerOverlay extends StatelessWidget {
                 width: side,
                 height: side,
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(28),
+                  borderRadius: BorderRadius.circular(AppRadius.xxl),
                   border: Border.all(
                     color: accepting ? AppTheme.brand : const Color(0xFFFFFFFF),
                     width: 3,

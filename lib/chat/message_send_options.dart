@@ -249,7 +249,8 @@ class _MessageSendOptionsSheetState extends State<_MessageSendOptionsSheet> {
       decoration: BoxDecoration(
         color: colors.background,
         borderRadius: widget.centeredModal
-            ? BorderRadius.circular(18)
+            // A centered modal is the most prominent surface on screen.
+            ? BorderRadius.circular(AppRadius.xl)
             : const BorderRadius.vertical(top: Radius.circular(18)),
         border: widget.centeredModal
             ? Border.all(color: colors.divider.withValues(alpha: 0.78))
@@ -445,7 +446,7 @@ class _MessageSendOptionsSheetState extends State<_MessageSendOptionsSheet> {
                           color: selected
                               ? AppTheme.brand.withValues(alpha: 0.14)
                               : colors.card,
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(AppRadius.card),
                           border: Border.all(
                             color: selected ? AppTheme.brand : colors.divider,
                           ),
@@ -479,7 +480,7 @@ class _MessageSendOptionsSheetState extends State<_MessageSendOptionsSheet> {
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: colors.card,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(AppRadius.card),
                   ),
                   child: Text(
                     AppStrings.t(
@@ -504,7 +505,7 @@ class _MessageSendOptionsSheetState extends State<_MessageSendOptionsSheet> {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: AppTheme.brand,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                 ),
                 child: Text(
                   (_value.hasScheduling
@@ -532,7 +533,7 @@ class _MessageSendOptionsSheetState extends State<_MessageSendOptionsSheet> {
       style: TextStyle(
         color: context.colors.textPrimary,
         fontSize: 18,
-        fontWeight: FontWeight.w700,
+        fontWeight: FontWeight.w600,
       ),
     ),
   );
@@ -559,7 +560,7 @@ class _MessageSendOptionsSheetState extends State<_MessageSendOptionsSheet> {
     padding: const EdgeInsets.only(left: 12, right: 4),
     decoration: BoxDecoration(
       color: context.colors.card,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(AppRadius.card),
     ),
     child: Row(
       children: [
@@ -586,7 +587,7 @@ class _MessageSendOptionsSheetState extends State<_MessageSendOptionsSheet> {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: selected ? AppTheme.brand : context.colors.card,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(AppRadius.control),
             border: Border.all(
               color: selected ? AppTheme.brand : context.colors.divider,
             ),
@@ -797,7 +798,7 @@ class _OwnedSchedulePickerState extends State<_OwnedSchedulePicker> {
       decoration: BoxDecoration(
         color: c.background,
         borderRadius: widget.centeredModal
-            ? BorderRadius.circular(20)
+            ? BorderRadius.circular(AppRadius.xl)
             : const BorderRadius.vertical(top: Radius.circular(20)),
         border: widget.centeredModal
             ? Border.all(color: c.divider.withValues(alpha: 0.78))
@@ -841,7 +842,7 @@ class _OwnedSchedulePickerState extends State<_OwnedSchedulePicker> {
               padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
               decoration: BoxDecoration(
                 color: c.card,
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(AppRadius.card),
                 border: Border.all(color: c.divider, width: 0.5),
               ),
               child: Column(
@@ -1047,7 +1048,7 @@ class _OwnedTimeStepper extends StatelessWidget {
       height: 48,
       decoration: BoxDecoration(
         color: c.card,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: c.divider, width: 0.5),
       ),
       child: Row(
@@ -1093,7 +1094,7 @@ class _OwnedPickerAction extends StatelessWidget {
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: color,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: context.colors.divider, width: 0.5),
       ),
       child: Text(

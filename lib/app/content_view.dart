@@ -23,6 +23,7 @@ import '../platform/adaptive_platform.dart';
 import '../settings/desktop_hotkey_controller.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
+import 'active_conversation.dart';
 import 'app_navigator.dart';
 import 'desktop_chat_list_title_bar_anchors.dart';
 import 'desktop_utility_window.dart';
@@ -101,7 +102,7 @@ class _DesktopPrimaryWindowFrameState extends State<DesktopPrimaryWindowFrame> {
     if (!kIsWeb && isDesktopTargetPlatform(defaultTargetPlatform)) {
       _focusSearchRegistration = DesktopHotkeyRegistry.instance.register(
         DesktopHotkeyAction.focusSearch,
-        _searchController.focus,
+        _focusSearch,
         isEnabled: () => widget.accountReady,
       );
     }
@@ -124,6 +125,12 @@ class _DesktopPrimaryWindowFrameState extends State<DesktopPrimaryWindowFrame> {
     _searchController.dispose();
     super.dispose();
   }
+
+  /// Focusing search from inside a conversation pre-fills an `in: <chat>`
+  /// filter, so the common case — "find this in what I'm reading" — needs no
+  /// second step, while removing the chip widens the search again.
+  void _focusSearch() =>
+      _searchController.focus(scope: ActiveConversation.shared.current);
 
   Future<void> _openSearchAll(String query) => _openSearch(query, null);
 
@@ -248,7 +255,7 @@ class _DesktopPrimaryWindowFrameState extends State<DesktopPrimaryWindowFrame> {
                         semanticLabel: label,
                         enabled: widget.accountReady,
                         onTap: widget.accountReady ? _showProfile : null,
-                        borderRadius: BorderRadius.circular(7),
+                        borderRadius: BorderRadius.circular(AppRadius.md),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 6),
                           child: Row(
@@ -349,7 +356,10 @@ class _DesktopChatTitleBarActions extends StatelessWidget {
   });
 
   static const double actionSize = 28;
-  static const double iconSize = 16;
+
+  /// Matches the search field's own glyph, which sits directly beside it — at
+  /// 16 the plus read as a size larger than everything around it.
+  static const double iconSize = 14;
   static const double gap = 4;
 
   final DesktopInlineSearchController searchController;
@@ -358,9 +368,18 @@ class _DesktopChatTitleBarActions extends StatelessWidget {
   final FutureOr<void> Function(String query) onSearchAll;
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-    width: DesktopInlineSearchField.width + gap + actionSize,
-    height: actionSize,
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: searchController,
+    builder: (context, child) => SizedBox(
+      // The field grows when it carries an `in: <chat>` chip; the title bar
+      // has to give it that room in the same frame or the chip overflows.
+      width:
+          DesktopInlineSearchField.widthFor(searchController) +
+          gap +
+          actionSize,
+      height: actionSize,
+      child: child,
+    ),
     // DesktopPrimaryWindowFrame wraps the app Navigator from MaterialApp's
     // builder, so title-bar controls are siblings of (not descendants of) the
     // Navigator's Overlay. EditableText needs its own local Overlay ancestor
@@ -386,12 +405,15 @@ class _DesktopChatTitleBarActions extends StatelessWidget {
               const SizedBox(width: gap),
               CompositedTransformTarget(
                 link: DesktopChatListTitleBarAnchors.add,
-                child: _action(
-                  overlayContext,
-                  key: const ValueKey('desktop-title-bar-add'),
-                  icon: HeroAppIcons.plus,
-                  label: AppStringKeys.chatInfoCreate.l10n(overlayContext),
-                  action: DesktopHotkeyAction.newChat,
+                child: KeyedSubtree(
+                  key: DesktopChatListTitleBarAnchors.addButton,
+                  child: _action(
+                    overlayContext,
+                    key: const ValueKey('desktop-title-bar-add'),
+                    icon: HeroAppIcons.plus,
+                    label: AppStringKeys.chatInfoCreate.l10n(overlayContext),
+                    action: DesktopHotkeyAction.newChat,
+                  ),
                 ),
               ),
             ],
@@ -411,7 +433,7 @@ class _DesktopChatTitleBarActions extends StatelessWidget {
     key: key,
     semanticLabel: label,
     onTap: () => DesktopHotkeyRegistry.instance.invoke(action),
-    borderRadius: BorderRadius.circular(6),
+    borderRadius: BorderRadius.circular(AppRadius.md),
     child: SizedBox.square(
       dimension: actionSize,
       child: Center(
@@ -448,7 +470,7 @@ class _MacosTitleBarAvatar extends StatelessWidget {
         style: TextStyle(
           color: Colors.white,
           fontSize: size * 0.4,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w600,
           decoration: TextDecoration.none,
         ),
       ),
@@ -493,7 +515,7 @@ class _DesktopTitleBarProfilePopup extends StatelessWidget {
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: c.card,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(AppRadius.card),
           border: Border.all(color: c.divider),
           boxShadow: [
             BoxShadow(
@@ -526,7 +548,7 @@ class _DesktopTitleBarProfilePopup extends StatelessWidget {
                     style: TextStyle(
                       color: c.textPrimary,
                       fontSize: 15,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w600,
                       decoration: TextDecoration.none,
                     ),
                   ),

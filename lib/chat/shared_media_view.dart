@@ -9,7 +9,6 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/cupertino.dart' show CupertinoSlider;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
@@ -17,13 +16,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app/adaptive_split_layout.dart';
 import '../app/primary_chat_launcher.dart';
+import '../chats/search_view.dart';
 import '../components/app_icons.dart';
+import '../components/app_interactive_surface.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
-import '../l10n/telegram_language_controller.dart';
+import '../components/ui_components.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
 import 'file_detail_view.dart';
@@ -192,7 +194,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
 
   String _minVideoDurationLabel(int seconds) {
     if (seconds <= 0) {
-      return telegramText(AppStringKeys.sharedMediaFilterAll);
+      return AppStrings.t(AppStringKeys.sharedMediaFilterAll);
     }
     if (seconds < 60) {
       return AppStrings.t(AppStringKeys.tdMessageSecondsDuration, {
@@ -572,9 +574,10 @@ class _SharedMediaViewState extends State<SharedMediaView> {
               for (final playlist in controller.playlists)
                 _musicSourceRow(
                   title: playlist.title,
-                  subtitle: AppStrings.t(AppStringKeys.musicPlayerTrackCount, {
-                    'value1': playlist.tracks.length,
-                  }),
+                  subtitle: AppStrings.plural(
+                    AppStringKeys.musicPlayerTrackCount,
+                    playlist.tracks.length,
+                  ),
                   icon: HeroAppIcons.music,
                   onTap: () =>
                       unawaited(showMusicPlaylistTracks(context, playlist)),
@@ -613,7 +616,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
               title,
               style: TextStyle(
                 fontSize: 18,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w600,
                 color: c.textPrimary,
               ),
             ),
@@ -856,7 +859,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
                 ),
               ),
             Text(
-              telegramText(widget.displayTitle),
+              AppStrings.t(widget.displayTitle),
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
@@ -894,7 +897,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
                     ),
                   ),
                   child: Text(
-                    telegramText(_tabs[i].label),
+                    AppStrings.t(_tabs[i].label),
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 14,
@@ -920,7 +923,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
         padding: const EdgeInsets.symmetric(horizontal: 10),
         decoration: BoxDecoration(
           color: c.searchFill,
-          borderRadius: BorderRadius.circular(9),
+          borderRadius: BorderRadius.circular(AppRadius.control),
         ),
         child: Row(
           children: [
@@ -969,106 +972,175 @@ class _SharedMediaViewState extends State<SharedMediaView> {
 
   Widget _fileFilterBar() {
     final c = context.colors;
+    final dense = isDesktopTargetPlatform();
+    final duration = _tabs[_tab].videoOnly ? _minDurationControl() : null;
+
+    // Desktop keeps one row at the search field's own height. Touch splits it
+    // so neither control ends up cramped.
+    final children = dense
+        ? [
+            Row(
+              children: [
+                _fileFilterDropdown(),
+                if (duration != null) ...[
+                  const SizedBox(width: AppSpacing.lg),
+                  Expanded(child: duration),
+                ],
+              ],
+            ),
+          ]
+        : [
+            Row(children: [_fileFilterDropdown()]),
+            if (duration != null) ...[
+              const SizedBox(height: AppSpacing.md),
+              duration,
+            ],
+          ];
+
     return Container(
       color: c.navBar,
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-      child: SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(12, dense ? 6 : 8, 12, dense ? 6 : 8),
+      child: Column(
         key: const ValueKey('shared-media-filter-strip'),
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            _filterChip(
-              telegramText(AppStringKeys.sharedMediaFilterAll),
-              _SharedMediaFileFilter.all,
-            ),
-            const SizedBox(width: 8),
-            _filterChip(
-              telegramText(AppStringKeys.sharedMediaFilterDownloaded),
-              _SharedMediaFileFilter.downloaded,
-            ),
-            const SizedBox(width: 8),
-            _filterChip(
-              telegramText(AppStringKeys.sharedMediaFilterNotDownloaded),
-              _SharedMediaFileFilter.notDownloaded,
-            ),
-            if (_tabs[_tab].videoOnly) ...[
-              const SizedBox(width: 16),
-              _minDurationControl(),
-            ],
-          ],
-        ),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: children,
       ),
     );
   }
 
-  /// Discrete min-duration slider for the video tab: 0 · 10s · 30s · 1m ·
-  /// 5m · 30m. Rendered inside the filter strip so every form factor gets it.
+  /// Discrete min-duration scrubber for the video tab: 0 · 10s · 30s · 1m ·
+  /// 5m · 30m. On the app's own scrubber rather than CupertinoSlider, whose
+  /// thumb dwarfs everything beside it in a toolbar.
   Widget _minDurationControl() {
     final c = context.colors;
+    final dense = isDesktopTargetPlatform();
     final index = _minVideoDurationStops
         .indexOf(_minVideoDurationSeconds)
         .clamp(0, _minVideoDurationStops.length - 1);
     return Row(
       key: const ValueKey('shared-media-min-duration'),
-      mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           AppStrings.t(AppStringKeys.sharedMediaMinDuration),
-          style: TextStyle(fontSize: 13, color: c.textSecondary),
-        ),
-        SizedBox(
-          width: 132,
-          child: CupertinoSlider(
-            value: index.toDouble(),
-            max: (_minVideoDurationStops.length - 1).toDouble(),
-            divisions: _minVideoDurationStops.length - 1,
-            activeColor: AppTheme.brand,
-            onChanged: (value) =>
-                _setMinVideoDuration(_minVideoDurationStops[value.round()]),
+          style: TextStyle(
+            fontSize: dense ? AppTextSize.footnote : AppTextSize.callout,
+            color: c.textSecondary,
           ),
         ),
+        SizedBox(width: dense ? AppSpacing.md : AppSpacing.lg),
+        Expanded(
+          child: AppValueScrubber(
+            compact: dense,
+            value: index.toDouble(),
+            min: 0,
+            max: (_minVideoDurationStops.length - 1).toDouble(),
+            onChanged: (value) => _setMinVideoDuration(
+              _minVideoDurationStops[value.round().clamp(
+                0,
+                _minVideoDurationStops.length - 1,
+              )],
+            ),
+          ),
+        ),
+        SizedBox(width: dense ? AppSpacing.md : AppSpacing.lg),
         SizedBox(
           width: 46,
           child: Text(
             _minVideoDurationLabel(_minVideoDurationSeconds),
             maxLines: 1,
-            style: TextStyle(fontSize: 13, color: c.textPrimary),
+            style: TextStyle(
+              fontSize: dense ? AppTextSize.footnote : AppTextSize.callout,
+              color: c.textPrimary,
+            ),
           ),
         ),
       ],
     );
   }
 
-  Widget _filterChip(String label, _SharedMediaFileFilter filter) {
+  String _fileFilterLabel(_SharedMediaFileFilter filter) => switch (filter) {
+    _SharedMediaFileFilter.all => AppStrings.t(
+      AppStringKeys.sharedMediaFilterAll,
+    ),
+    _SharedMediaFileFilter.downloaded => AppStrings.t(
+      AppStringKeys.sharedMediaFilterDownloaded,
+    ),
+    _SharedMediaFileFilter.notDownloaded => AppStrings.t(
+      AppStringKeys.sharedMediaFilterNotDownloaded,
+    ),
+  };
+
+  /// The three states as a dropdown rather than a row of pills: only one can
+  /// be active, and three stadium chips took the width of the whole bar.
+  Widget _fileFilterDropdown() {
     final c = context.colors;
-    final selected = _fileFilter == filter;
-    return Semantics(
-      key: ValueKey('shared-media-filter-${filter.name}'),
-      button: true,
-      selected: selected,
-      label: label,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => _setFileFilter(filter),
-        child: Container(
-          height: 28,
-          alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            color: selected ? AppTheme.brand : c.searchFill,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-              color: selected ? AppTheme.onBrand : c.textSecondary,
+    final dense = isDesktopTargetPlatform();
+    final height = dense ? DesktopInlineSearchField.height : 32.0;
+    // The surface carries its own semantics; wrapping it in another Semantics
+    // node leaves the tap action on the inner one where callers cannot see it.
+    return AppInteractiveSurface(
+      key: const ValueKey('shared-media-filter-dropdown'),
+      semanticLabel: _fileFilterLabel(_fileFilter),
+      onTap: _pickFileFilter,
+      borderRadius: BorderRadius.circular(AppRadius.control),
+      child: Container(
+        height: height,
+        padding: EdgeInsets.symmetric(horizontal: dense ? 10 : 12),
+        decoration: BoxDecoration(
+          color: c.searchFill,
+          borderRadius: BorderRadius.circular(AppRadius.control),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              _fileFilterLabel(_fileFilter),
+              style: TextStyle(
+                fontSize: dense ? AppTextSize.footnote : AppTextSize.callout,
+                color: c.textPrimary,
+              ),
             ),
-          ),
+            SizedBox(width: dense ? 6 : 8),
+            AppIcon(
+              HeroAppIcons.chevronDown,
+              size: dense ? 11 : 13,
+              color: c.textTertiary,
+            ),
+          ],
         ),
       ),
     );
+  }
+
+  Future<void> _pickFileFilter() async {
+    final chosen = await showAppModalSheet<_SharedMediaFileFilter>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => SafeArea(
+        top: false,
+        child: SettingsCard(
+          margin: const EdgeInsets.all(10),
+          children: [
+            for (final filter in _SharedMediaFileFilter.values)
+              SettingsRow(
+                key: ValueKey('shared-media-filter-${filter.name}'),
+                title: _fileFilterLabel(filter),
+                showChevron: false,
+                trailing: filter == _fileFilter
+                    ? AppIcon(
+                        HeroAppIcons.check,
+                        size: AppIconSize.md,
+                        color: AppTheme.brand,
+                      )
+                    : null,
+                onTap: () => Navigator.of(sheetContext).pop(filter),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (chosen != null) _setFileFilter(chosen);
   }
 
   Widget _body() {
@@ -1095,7 +1167,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
     if (filtered.isEmpty) {
       return Center(
         child: Text(
-          telegramText(AppStringKeys.sharedMediaNoMatches),
+          AppStrings.t(AppStringKeys.sharedMediaNoMatches),
           style: TextStyle(fontSize: 14, color: c.textSecondary),
         ),
       );
@@ -1270,7 +1342,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
                   ),
                   decoration: BoxDecoration(
                     color: Colors.black.withValues(alpha: 0.62),
-                    borderRadius: BorderRadius.circular(4),
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
                   ),
                   child: Text(
                     _duration(message.videoDuration!),
@@ -1369,7 +1441,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
             color: c.card,
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(AppRadius.card),
             border: Border.all(color: c.divider, width: 0.5),
             boxShadow: [
               BoxShadow(
@@ -1804,7 +1876,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
                 width: 86,
                 height: 56,
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(7),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
@@ -1935,7 +2007,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
             color: state?.completed == true
                 ? const Color(0xFF1ABC7B).withValues(alpha: 0.16)
                 : AppTheme.brand.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(9),
+            borderRadius: BorderRadius.circular(AppRadius.control),
           ),
           child: Icon(
             isVoice
@@ -1980,10 +2052,10 @@ class _SharedMediaViewState extends State<SharedMediaView> {
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: const Color(0xFF1ABC7B).withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(5),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
       ),
       child: Text(
-        telegramText(AppStringKeys.sharedMediaFilterDownloaded),
+        AppStrings.t(AppStringKeys.sharedMediaFilterDownloaded),
         style: const TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w600,
@@ -1998,7 +2070,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.62),
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
       ),
       child: Text(
         text,
@@ -2124,7 +2196,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
     final siteName = preview?.siteName.trim() ?? '';
     if (siteName.isNotEmpty) return siteName;
     final text = message.text.trim().replaceAll('\n', ' ');
-    return text.isEmpty ? telegramText(AppStringKeys.sharedMediaLinks) : text;
+    return text.isEmpty ? AppStrings.t(AppStringKeys.sharedMediaLinks) : text;
   }
 
   String _linkUrl(ChatMessage message) {
@@ -2157,7 +2229,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
     final sender = message.senderName?.trim();
     if (sender != null && sender.isNotEmpty) return sender;
     if (message.isOutgoing) return AppStrings.t(AppStringKeys.chatMeLabel);
-    return telegramText(AppStringKeys.sharedMediaVoiceMessages);
+    return AppStrings.t(AppStringKeys.sharedMediaVoiceMessages);
   }
 
   String _downloadLabel(ChatMessage message, _SharedFileState? state) {

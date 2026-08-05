@@ -98,10 +98,7 @@ class _AiSettingsViewState extends State<AiSettingsView> {
                           ),
                         ),
                         const SizedBox(height: AppSpacing.section),
-                        _sectionTitle(
-                          context,
-                          AppStringKeys.aiModels.l10n(context),
-                        ),
+                        const SettingsSectionHeader(AppStringKeys.aiModels),
                         SettingsCard(
                           children: [
                             SettingsRow(
@@ -128,9 +125,8 @@ class _AiSettingsViewState extends State<AiSettingsView> {
                           ],
                         ),
                         const SizedBox(height: AppSpacing.section),
-                        _sectionTitle(
-                          context,
-                          AppStringKeys.aiModelConfiguration.l10n(context),
+                        const SettingsSectionHeader(
+                          AppStringKeys.aiModelConfiguration,
                         ),
                         SettingsCard(
                           children: [
@@ -1451,17 +1447,9 @@ class _PickerCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
     return SafeArea(
-      child: Container(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(context).height * 0.72,
-        ),
+      child: SettingsPanel(
         margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-        decoration: BoxDecoration(
-          color: c.card,
-          borderRadius: BorderRadius.circular(14),
-        ),
         clipBehavior: Clip.antiAlias,
         child: ListView.separated(
           shrinkWrap: true,
@@ -1777,11 +1765,6 @@ Widget _modelTestResponse(
     ),
   );
 }
-
-Widget _sectionTitle(BuildContext context, String title) => Padding(
-  padding: const EdgeInsets.only(left: 4, bottom: AppSpacing.sm),
-  child: Text(title, style: AppTextStyle.caption(context.colors.textTertiary)),
-);
 
 Widget _note(BuildContext context, String text) => Padding(
   padding: const EdgeInsets.fromLTRB(4, AppSpacing.sm, 4, 0),

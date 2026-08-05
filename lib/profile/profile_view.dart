@@ -28,7 +28,6 @@ import '../components/drawer_controller.dart' as dc;
 import '../components/photo_avatar.dart';
 import '../components/ui_components.dart';
 import '../components/vip_badge.dart';
-import '../l10n/telegram_language_controller.dart';
 import '../settings/edit_profile_view.dart';
 import '../settings/settings_view.dart';
 import '../tdlib/json_helpers.dart';
@@ -354,7 +353,7 @@ class _ProfileViewState extends State<ProfileView> {
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   fontSize: 22,
-                                  fontWeight: FontWeight.bold,
+                                  fontWeight: FontWeight.w600,
                                   color: foreground,
                                 ),
                               ),
@@ -472,13 +471,13 @@ class _ProfileViewState extends State<ProfileView> {
           _row(
             HeroAppIcons.folder,
             const Color(0xFF3C8CF0),
-            telegramText(AppStringKeys.topicPostContentFile),
+            AppStrings.t(AppStringKeys.topicPostContentFile),
             () {
               _root.push(
                 MaterialPageRoute(
                   builder: (_) => SharedMediaView(
                     chatId: 0,
-                    title: telegramText(AppStringKeys.topicPostContentFile),
+                    title: AppStrings.t(AppStringKeys.topicPostContentFile),
                     initialTab: 1,
                     displayTitle: AppStringKeys.topicPostContentFile,
                   ),
@@ -489,13 +488,13 @@ class _ProfileViewState extends State<ProfileView> {
           _row(
             HeroAppIcons.video,
             const Color(0xFF7B61FF),
-            telegramText(AppStringKeys.sharedMediaVideos),
+            AppStrings.t(AppStringKeys.sharedMediaVideos),
             () {
               _root.push(
                 MaterialPageRoute(
                   builder: (_) => SharedMediaView(
                     chatId: 0,
-                    title: telegramText(AppStringKeys.sharedMediaVideos),
+                    title: AppStrings.t(AppStringKeys.sharedMediaVideos),
                     initialTab: 4,
                     displayTitle: AppStringKeys.sharedMediaVideos,
                     lockedTab: true,
@@ -558,7 +557,7 @@ class _ProfileViewState extends State<ProfileView> {
       margin: const EdgeInsets.symmetric(),
       decoration: BoxDecoration(
         color: c.card,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -739,6 +738,19 @@ class _ProfileViewState extends State<ProfileView> {
           child: Row(
             children: [
               const SizedBox(width: 16),
+              // Profile sits before settings here as it does in the desktop
+              // application menu: it is a thing you own, not a preference.
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _root.push(
+                  MaterialPageRoute(builder: (_) => const EditProfileView()),
+                ),
+                child: _barItem(
+                  HeroAppIcons.solidCircleUser,
+                  AppStrings.t(AppStringKeys.editProfileTitle),
+                ),
+              ),
+              const SizedBox(width: 24),
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () => _root.push(

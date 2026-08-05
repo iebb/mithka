@@ -266,7 +266,7 @@ class _VoiceNotePreviewViewState extends State<VoiceNotePreviewView> {
                 padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
                 decoration: BoxDecoration(
                   color: c.card,
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(AppRadius.lg),
                   border: Border.all(color: c.divider, width: 0.5),
                 ),
                 child: Row(

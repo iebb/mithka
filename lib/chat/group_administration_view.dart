@@ -793,7 +793,7 @@ class _ReactionConfigurationViewState extends State<ReactionConfigurationView> {
                                   ? AppTheme.brand
                                   : context.colors.divider,
                             ),
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(AppRadius.card),
                           ),
                           child: Text(
                             emoji,
@@ -828,7 +828,7 @@ class _ReactionConfigurationViewState extends State<ReactionConfigurationView> {
                           decoration: BoxDecoration(
                             color: AppTheme.brand.withValues(alpha: 0.14),
                             border: Border.all(color: AppTheme.brand),
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(AppRadius.card),
                           ),
                           child: CustomEmojiView(
                             id: id,
@@ -846,7 +846,7 @@ class _ReactionConfigurationViewState extends State<ReactionConfigurationView> {
                         decoration: BoxDecoration(
                           color: context.colors.searchFill,
                           border: Border.all(color: context.colors.divider),
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(AppRadius.card),
                         ),
                         child: AppIcon(
                           HeroAppIcons.plus,
@@ -2076,7 +2076,7 @@ class _ForumTopicsAdministrationViewState
                   Container(
                     decoration: BoxDecoration(
                       color: context.colors.card,
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(AppRadius.card),
                     ),
                     child: ReorderableListView(
                       shrinkWrap: true,
@@ -2501,7 +2501,7 @@ class _AdminSection extends StatelessWidget {
       Container(
         decoration: BoxDecoration(
           color: context.colors.card,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(AppRadius.card),
         ),
         clipBehavior: Clip.antiAlias,
         child: Column(
@@ -2748,7 +2748,7 @@ class _AdminDialog extends StatelessWidget {
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: context.colors.card,
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
             border: Border.all(color: context.colors.divider, width: 0.5),
             boxShadow: const [
               BoxShadow(
@@ -2903,7 +2903,7 @@ class _AdminActionButton extends StatelessWidget {
         color: destructive
             ? const Color(0xFFFF3B30).withValues(alpha: 0.12)
             : AppTheme.brand.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(11),
+        borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       child: Text(
         label,

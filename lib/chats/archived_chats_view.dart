@@ -11,7 +11,6 @@ import '../app/app_navigator.dart';
 import '../chat/chat_view.dart';
 import '../components/app_icons.dart';
 import '../components/ui_components.dart';
-import '../l10n/telegram_language_controller.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import 'chat_row_view.dart';
@@ -31,7 +30,7 @@ class ArchivedChatsRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final latest = _latest;
-    final title = telegramText(AppStringKeys.archivedChatsGroupAssistant);
+    final title = AppStrings.t(AppStringKeys.archivedChatsGroupAssistant);
     final summary = ChatSummary(
       id: 0,
       title: title,
@@ -89,7 +88,7 @@ class ArchivedChatsView extends StatelessWidget {
       body: Column(
         children: [
           NavHeader(
-            title: telegramText(AppStringKeys.archivedChatsGroupAssistant),
+            title: AppStrings.t(AppStringKeys.archivedChatsGroupAssistant),
             onBack: onBack ?? () => Navigator.of(context).pop(),
           ),
           Expanded(

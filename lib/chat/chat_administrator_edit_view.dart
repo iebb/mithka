@@ -291,7 +291,7 @@ class _ChatAdministratorEditViewState extends State<ChatAdministratorEditView> {
   Widget _section(List<Widget> children) => Container(
     decoration: BoxDecoration(
       color: context.colors.card,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(AppRadius.control),
     ),
     clipBehavior: Clip.antiAlias,
     child: Column(children: children),

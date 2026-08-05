@@ -43,10 +43,26 @@ abstract final class AppTextWeight {
   static const FontWeight regular = FontWeight.w400;
   static const FontWeight medium = FontWeight.w500;
   static const FontWeight semibold = FontWeight.w600;
-  static const FontWeight bold = FontWeight.w700;
+  static const FontWeight bold = FontWeight.w600;
+
+  /// The only weights Mithka's own styles use. Anything heavier reads as a
+  /// different typeface at the sizes the app draws at.
+  ///
+  /// [forSystemBoldText] is exempt — it answers a system accessibility
+  /// setting rather than a design choice.
+  static const allowed = <FontWeight>[
+    FontWeight.w300,
+    FontWeight.w400,
+    FontWeight.w500,
+    FontWeight.w600,
+  ];
 
   /// Mirrors the platform Bold Text accessibility setting without making
   /// explicitly regular labels bold in the normal system configuration.
+  ///
+  /// This ladder deliberately climbs past [allowed]: the user asked the system
+  /// for heavier text, and honouring that matters more than the app's own
+  /// typographic range.
   static FontWeight forSystemBoldText(
     FontWeight weight, {
     required bool boldText,
@@ -170,12 +186,31 @@ abstract final class AppInsets {
   );
 }
 
+/// Corner radii. Every rounded surface picks a step here rather than a
+/// literal — the literals had drifted across every value from 1 to 28, so the
+/// same kind of element was a different shape depending on the screen.
+///
+/// The lower steps keep their original values, so adopting them moved nothing.
 abstract final class AppRadius {
   static const double sm = 4;
   static const double md = 6;
   static const double control = 9;
   static const double card = 12;
-  static const double lg = 12;
+
+  /// Sheets, previews, and panels that want more roundness than a card.
+  static const double lg = 16;
+
+  /// The most prominent surfaces — modals, large overlays.
+  static const double xl = 20;
+
+  /// Full-height sheets and the story composer, which read as softer than a
+  /// modal at the sizes they draw at.
+  static const double xxl = 24;
+
+  /// Fully rounded. On a square box this is a circle, on a wide one a stadium,
+  /// and unlike a hardcoded half-of-the-height it stays right when the size
+  /// changes.
+  static const double pill = 999;
 }
 
 abstract final class AppIconSize {
@@ -209,6 +244,21 @@ abstract final class AppMetric {
   static const double menuWidth = 220;
   static const double menuRowHeight = 50;
   static const double menuIconSlot = 24;
+
+  // Anchored popup menus. The touch sizes above are built for a fingertip; on
+  // a pointer they read as oversized next to the title bar they hang from.
+  static double popupMenuWidth([TargetPlatform? platform]) =>
+      isDesktopTargetPlatform(platform) ? 196 : menuWidth;
+  static double popupMenuRowHeight([TargetPlatform? platform]) =>
+      isDesktopTargetPlatform(platform) ? 32 : menuRowHeight;
+  static double popupMenuIconSlot([TargetPlatform? platform]) =>
+      isDesktopTargetPlatform(platform) ? 18 : menuIconSlot;
+  static double popupMenuTextSize([TargetPlatform? platform]) =>
+      isDesktopTargetPlatform(platform)
+      ? AppTextSize.footnote
+      : AppTextSize.bodyLarge;
+  static double popupMenuInset([TargetPlatform? platform]) =>
+      isDesktopTargetPlatform(platform) ? AppSpacing.lg : AppSpacing.xxl;
   static const double splashPenguinSize = 192;
   static const double splashSpinnerSize = 24;
   static const double divider = 0.5;
@@ -315,12 +365,19 @@ class AppColors extends ThemeExtension<AppColors> {
     required this.panelBackground,
     required this.bubbleIncoming,
     required this.bubbleIncomingText,
+    required this.bubbleOutgoingText,
     required this.textPrimary,
     required this.textSecondary,
     required this.textTertiary,
     required this.divider,
     required this.linkBlue,
     required this.onAccent,
+    required this.dialogButton,
+    required this.dialogText,
+    required this.badgeBackground,
+    required this.badgeText,
+    required this.accentButton,
+    required this.accentButtonText,
   });
 
   final Color background; // list row background
@@ -335,12 +392,34 @@ class AppColors extends ThemeExtension<AppColors> {
   final Color panelBackground;
   final Color bubbleIncoming;
   final Color bubbleIncomingText;
+
+  /// Ink on an outgoing bubble, for themes that name no chat_messageTextOut.
+  /// Stored per brightness rather than measured off the fill.
+  final Color bubbleOutgoingText;
   final Color textPrimary;
   final Color textSecondary;
   final Color textTertiary;
   final Color divider;
   final Color linkBlue;
   final Color onAccent;
+
+  /// Dialog action label. Telegram's dialog buttons are flat text, so this is
+  /// a text colour (key_dialogButton), not a fill.
+  final Color dialogButton;
+
+  /// Primary text inside a dialog (key_dialogTextBlack). Separate from
+  /// [textPrimary] because a theme may tint the dialog surface on its own.
+  final Color dialogText;
+
+  /// Unread counter pill (key_chats_unreadCounter / ...unreadCounterText).
+  final Color badgeBackground;
+  final Color badgeText;
+
+  /// Filled accent button and its label. Telegram keys the pair separately
+  /// (key_featuredStickers_addButton / ...buttonText) — the fill is the accent
+  /// and the label defaults to white, but a theme may move either alone.
+  final Color accentButton;
+  final Color accentButtonText;
 
   static final AppColors light = AppColors(
     background: _hex(0xFFFFFF),
@@ -355,12 +434,19 @@ class AppColors extends ThemeExtension<AppColors> {
     panelBackground: _hex(0xF2F3F5),
     bubbleIncoming: _hex(0xFFFFFF),
     bubbleIncomingText: _hex(0x1A1A1A),
+    bubbleOutgoingText: _hex(0xFFFFFF),
     textPrimary: _hex(0x1A1A1A),
     textSecondary: _hex(0x8A8A8F),
     textTertiary: _hex(0xB0B3B8),
     divider: _hex(0xECECEC),
     linkBlue: _hex(0x4B8DEE),
     onAccent: _hex(0xFFFFFF),
+    dialogButton: _hex(0x4B8DEE),
+    dialogText: _hex(0x1A1D21),
+    badgeBackground: _hex(0x4B8DEE),
+    badgeText: _hex(0xFFFFFF),
+    accentButton: _hex(0x4B8DEE),
+    accentButtonText: _hex(0xFFFFFF),
   );
 
   static final AppColors dark = AppColors(
@@ -376,12 +462,19 @@ class AppColors extends ThemeExtension<AppColors> {
     panelBackground: _hex(0x151718),
     bubbleIncoming: _hex(0x292D30),
     bubbleIncomingText: _hex(0xEDEDED),
+    bubbleOutgoingText: _hex(0xFFFFFF),
     textPrimary: _hex(0xEDEDED),
     textSecondary: _hex(0x9A9A9A),
     textTertiary: _hex(0x707276),
     divider: _hex(0x303234),
     linkBlue: _hex(0x5EA0FF),
     onAccent: _hex(0xFFFFFF),
+    dialogButton: _hex(0x5EA0FF),
+    dialogText: _hex(0xEDEDED),
+    badgeBackground: _hex(0x5EA0FF),
+    badgeText: _hex(0xFFFFFF),
+    accentButton: _hex(0x5EA0FF),
+    accentButtonText: _hex(0xFFFFFF),
   );
 
   @override
@@ -398,12 +491,19 @@ class AppColors extends ThemeExtension<AppColors> {
     Color? panelBackground,
     Color? bubbleIncoming,
     Color? bubbleIncomingText,
+    Color? bubbleOutgoingText,
     Color? textPrimary,
     Color? textSecondary,
     Color? textTertiary,
     Color? divider,
     Color? linkBlue,
     Color? onAccent,
+    Color? dialogButton,
+    Color? dialogText,
+    Color? badgeBackground,
+    Color? badgeText,
+    Color? accentButton,
+    Color? accentButtonText,
   }) {
     return AppColors(
       background: background ?? this.background,
@@ -418,12 +518,19 @@ class AppColors extends ThemeExtension<AppColors> {
       panelBackground: panelBackground ?? this.panelBackground,
       bubbleIncoming: bubbleIncoming ?? this.bubbleIncoming,
       bubbleIncomingText: bubbleIncomingText ?? this.bubbleIncomingText,
+      bubbleOutgoingText: bubbleOutgoingText ?? this.bubbleOutgoingText,
       textPrimary: textPrimary ?? this.textPrimary,
       textSecondary: textSecondary ?? this.textSecondary,
       textTertiary: textTertiary ?? this.textTertiary,
       divider: divider ?? this.divider,
       linkBlue: linkBlue ?? this.linkBlue,
       onAccent: onAccent ?? this.onAccent,
+      dialogButton: dialogButton ?? this.dialogButton,
+      dialogText: dialogText ?? this.dialogText,
+      badgeBackground: badgeBackground ?? this.badgeBackground,
+      badgeText: badgeText ?? this.badgeText,
+      accentButton: accentButton ?? this.accentButton,
+      accentButtonText: accentButtonText ?? this.accentButtonText,
     );
   }
 
@@ -455,17 +562,37 @@ class AppColors extends ThemeExtension<AppColors> {
         other.bubbleIncomingText,
         t,
       )!,
+      bubbleOutgoingText: Color.lerp(
+        bubbleOutgoingText,
+        other.bubbleOutgoingText,
+        t,
+      )!,
       textPrimary: Color.lerp(textPrimary, other.textPrimary, t)!,
       textSecondary: Color.lerp(textSecondary, other.textSecondary, t)!,
       textTertiary: Color.lerp(textTertiary, other.textTertiary, t)!,
       divider: Color.lerp(divider, other.divider, t)!,
       linkBlue: Color.lerp(linkBlue, other.linkBlue, t)!,
       onAccent: Color.lerp(onAccent, other.onAccent, t)!,
+      dialogButton: Color.lerp(dialogButton, other.dialogButton, t)!,
+      dialogText: Color.lerp(dialogText, other.dialogText, t)!,
+      badgeBackground: Color.lerp(badgeBackground, other.badgeBackground, t)!,
+      badgeText: Color.lerp(badgeText, other.badgeText, t)!,
+      accentButton: Color.lerp(accentButton, other.accentButton, t)!,
+      accentButtonText: Color.lerp(
+        accentButtonText,
+        other.accentButtonText,
+        t,
+      )!,
     );
   }
 }
 
 /// Returns whichever neutral text color has the stronger WCAG contrast.
+///
+/// Do not reach for this to decide what sits on an accent fill — use the
+/// stored [AppColors.onAccent] token. Maximising the raw ratio flips to near
+/// black on any saturated mid-tone, which is how a green accent once came out
+/// black-on-green where every other client draws white.
 Color readableForeground(Color background) {
   const dark = Color(0xFF171717);
   const light = Color(0xFFFFFFFF);

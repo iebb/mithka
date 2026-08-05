@@ -322,7 +322,7 @@ class _AddPeopleViewState extends State<AddPeopleView> {
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
           decoration: BoxDecoration(
             color: on ? c.textPrimary : Colors.transparent,
-            borderRadius: BorderRadius.circular(7),
+            borderRadius: BorderRadius.circular(AppRadius.md),
           ),
           child: Text(
             label,
@@ -340,7 +340,7 @@ class _AddPeopleViewState extends State<AddPeopleView> {
       padding: const EdgeInsets.all(2),
       decoration: BoxDecoration(
         color: c.searchFill,
-        borderRadius: BorderRadius.circular(9),
+        borderRadius: BorderRadius.circular(AppRadius.control),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -362,7 +362,7 @@ class _AddPeopleViewState extends State<AddPeopleView> {
         padding: const EdgeInsets.symmetric(horizontal: 10),
         decoration: BoxDecoration(
           color: c.searchFill,
-          borderRadius: BorderRadius.circular(9),
+          borderRadius: BorderRadius.circular(AppRadius.control),
         ),
         child: Row(
           children: [
@@ -419,7 +419,7 @@ class _AddPeopleViewState extends State<AddPeopleView> {
         margin: const EdgeInsets.fromLTRB(12, 14, 12, 0),
         decoration: BoxDecoration(
           color: c.card,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(AppRadius.card),
         ),
         padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
         child: IconGrid(

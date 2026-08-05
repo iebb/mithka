@@ -13,7 +13,6 @@ import 'package:mithka/l10n/app_localizations.dart';
 import '../app/primary_chat_launcher.dart';
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
-import '../l10n/telegram_language_controller.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -143,7 +142,7 @@ class _PinnedMessagesViewState extends State<PinnedMessagesView> {
               ),
             ),
             Text(
-              telegramText(AppStringKeys.chatInfoPinnedHighlights),
+              AppStrings.t(AppStringKeys.chatInfoPinnedHighlights),
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
@@ -170,7 +169,7 @@ class _PinnedMessagesViewState extends State<PinnedMessagesView> {
     if (_items.isEmpty) {
       return Center(
         child: Text(
-          telegramText(AppStringKeys.pinnedMessagesEmpty),
+          AppStrings.t(AppStringKeys.pinnedMessagesEmpty),
           style: TextStyle(fontSize: 14, color: c.textSecondary),
         ),
       );
@@ -208,7 +207,7 @@ class _PinnedMessagesViewState extends State<PinnedMessagesView> {
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
         decoration: BoxDecoration(
           color: c.card,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(AppRadius.control),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -233,7 +232,7 @@ class _PinnedMessagesViewState extends State<PinnedMessagesView> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        telegramText(AppStringKeys.pinnedMessagesSentBy, {
+                        AppStrings.t(AppStringKeys.pinnedMessagesSentBy, {
                           'value1': DateText.listLabel(message.date),
                         }),
                         style: TextStyle(fontSize: 13, color: c.textTertiary),
@@ -306,7 +305,7 @@ class _PinnedMessagesViewState extends State<PinnedMessagesView> {
     }
 
     final text = message.text.trim().isEmpty
-        ? telegramText(AppStringKeys.chatSearchMessageResultLabel)
+        ? AppStrings.t(AppStringKeys.chatSearchMessageResultLabel)
         : message.text.replaceAll('\n', ' ');
     return Text(
       text,

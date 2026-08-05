@@ -222,7 +222,7 @@ class _GlobalThemeViewState extends State<GlobalThemeView> {
       padding: const EdgeInsets.all(2),
       decoration: BoxDecoration(
         color: c.panelBackground,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(AppRadius.control),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -263,7 +263,7 @@ class _GlobalThemeViewState extends State<GlobalThemeView> {
           color: selected
               ? c.linkBlue.withValues(alpha: 0.15)
               : const Color(0x00000000),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(AppRadius.control),
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -417,7 +417,7 @@ class _GlobalThemeViewState extends State<GlobalThemeView> {
               clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(
                 color: selected ? c.linkBlue : c.divider,
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(AppRadius.card),
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(selected ? 11.5 : 13),
@@ -495,7 +495,7 @@ class _GlobalThemeViewState extends State<GlobalThemeView> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: c.card,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -511,7 +511,7 @@ class _GlobalThemeViewState extends State<GlobalThemeView> {
                           AppStringKeys.globalThemeDefault.l10n(context),
                       style: TextStyle(
                         fontSize: 17,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w600,
                         color: c.textPrimary,
                       ),
                     ),

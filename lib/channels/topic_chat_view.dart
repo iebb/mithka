@@ -28,7 +28,6 @@ import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
-import '../l10n/telegram_language_controller.dart';
 import '../notifications/notification_settings_payload.dart';
 import '../settings/topic_group_display_mode.dart';
 import '../tdlib/json_helpers.dart';
@@ -336,9 +335,10 @@ class _TopicChatViewState extends State<TopicChatView> {
         final info = topic.obj('info') ?? topic;
         final last = topic.obj('last_message');
         final message = last == null ? null : TDParse.message(last);
-        if (message?.isService == true) continue;
         final id = _topicId(topic, info) ?? message?.id;
         if (id == null || id == 0) continue;
+        final isServiceLast = message?.isService == true;
+        final fallbackDate = last?.integer('date');
         next.add(
           _ForumTopic(
             id: id,
@@ -346,7 +346,14 @@ class _TopicChatViewState extends State<TopicChatView> {
                 info.str('name') ??
                 topic.str('name') ??
                 AppStringKeys.topicChatTopicTitle,
-            lastMessage: message ?? _fallbackTopicMessage(id, info, topic),
+            lastMessage:
+                message ??
+                _fallbackTopicMessage(
+                  id,
+                  info,
+                  topic,
+                  fallbackDate: fallbackDate,
+                ),
             isPinned: topic.boolean('is_pinned') ?? false,
             isMuted:
                 (topic.obj('notification_settings')?.integer('mute_for') ?? 0) >
@@ -354,7 +361,7 @@ class _TopicChatViewState extends State<TopicChatView> {
             unreadCount: _topicUnreadCount(topic, info),
             iconCustomEmojiId: _topicCustomEmojiId(topic, info),
             iconColor: _topicIconColor(topic, info),
-            lastMessageIsSynthetic: message == null,
+            lastMessageIsSynthetic: message == null || isServiceLast,
           ),
         );
       }
@@ -401,7 +408,11 @@ class _TopicChatViewState extends State<TopicChatView> {
               .map(TDParse.message)
               .whereType<ChatMessage>()
               .where((message) => !message.isService)
-              .where((message) => message.replyToMessageId == null)
+              .where(
+                (message) =>
+                    message.replyToMessageId == null ||
+                    message.replyToMessageId == topic.id,
+              )
               .toList()
             ..sort((a, b) => b.date.compareTo(a.date));
       _topicMessages[topic.id] = messages.isEmpty
@@ -466,8 +477,9 @@ class _TopicChatViewState extends State<TopicChatView> {
   ChatMessage _fallbackTopicMessage(
     int id,
     Map<String, dynamic> info,
-    Map<String, dynamic> topic,
-  ) {
+    Map<String, dynamic> topic, {
+    int? fallbackDate,
+  }) {
     final created =
         info.integer('creation_date') ?? topic.integer('creation_date') ?? 0;
     return ChatMessage(
@@ -476,7 +488,7 @@ class _TopicChatViewState extends State<TopicChatView> {
           info.str('name') ??
           topic.str('name') ??
           AppStrings.t(AppStringKeys.topicChatTopicTitle),
-      date: created,
+      date: fallbackDate ?? created,
       isOutgoing: false,
       chatId: widget.chat.id,
     );
@@ -985,7 +997,7 @@ class _TopicChatViewState extends State<TopicChatView> {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
               color: c.card,
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(AppRadius.lg),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -1211,7 +1223,7 @@ class _TopicChatViewState extends State<TopicChatView> {
                     height: 4,
                     decoration: BoxDecoration(
                       color: selected ? AppTheme.brand : Colors.transparent,
-                      borderRadius: BorderRadius.circular(4),
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
                     ),
                   ),
                 ],
@@ -1237,7 +1249,7 @@ class _TopicChatViewState extends State<TopicChatView> {
       child: Row(
         children: [
           Text(
-            telegramText(AppStringKeys.topicChatPinnedPrefix),
+            AppStrings.t(AppStringKeys.topicChatPinnedPrefix),
             style: TextStyle(fontSize: 15, color: c.textSecondary),
           ),
           Expanded(
@@ -1323,7 +1335,7 @@ class _TopicChatViewState extends State<TopicChatView> {
                     alignment: Alignment.centerLeft,
                     decoration: BoxDecoration(
                       color: c.searchFill,
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(AppRadius.control),
                     ),
                     child: Text(
                       _input.text.trim().isEmpty
@@ -1594,7 +1606,7 @@ class _ExtraReactions extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
                 color: c.searchFill,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(AppRadius.card),
               ),
               child: Text(
                 '${reaction.emoji ?? '⭐'} ${reaction.count}',
@@ -1720,7 +1732,7 @@ class _TopicSearchViewState extends State<_TopicSearchView> {
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       decoration: BoxDecoration(
                         color: c.searchFill,
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(AppRadius.control),
                       ),
                       child: TextField(
                         controller: _controller,
@@ -1956,7 +1968,7 @@ class _SearchResultRow extends StatelessWidget {
                 if (message.image != null) ...[
                   const SizedBox(height: 8),
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(6),
+                    borderRadius: BorderRadius.circular(AppRadius.md),
                     child: SizedBox(
                       width: 160,
                       height: 92,

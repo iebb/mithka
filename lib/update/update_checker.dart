@@ -18,6 +18,12 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../components/confirm_dialog.dart';
 
+/// What a manual check from About found.
+///
+/// [maybePrompt] fails silently because it runs unasked on launch. A check the
+/// user pressed has to say something either way.
+enum UpdateCheckOutcome { upToDate, updateAvailable, unavailable }
+
 class UpdateChecker {
   UpdateChecker._();
 
@@ -56,17 +62,7 @@ class UpdateChecker {
       final remote = release.version;
       if (_compareSemver(remote, current) <= 0) return; // not newer
 
-      // Pick the asset for this device's preferred ABI (first match wins).
-      String? url;
-      for (final abi in abis) {
-        for (final a in release.assets) {
-          if (a.name.endsWith('.apk') && a.name.contains(abi)) {
-            url = a.url;
-            break;
-          }
-        }
-        if (url != null) break;
-      }
+      final url = _apkFor(release, abis);
       if (url == null) return; // no APK for this architecture
 
       if (!context.mounted) return;
@@ -86,6 +82,73 @@ class UpdateChecker {
     } catch (_) {
       // Offline, rate-limited, or no release yet — silently skip.
     }
+  }
+
+  /// Whether About shows a manual "check for updates" row.
+  ///
+  /// Same rule as the automatic check: Android only, and never on a Play build,
+  /// where the store owns updates and shipping an APK would be wrong.
+  static bool get supportsManualCheck =>
+      Platform.isAndroid && automaticChecksEnabled();
+
+  /// Runs a check the user asked for and reports what happened.
+  ///
+  /// Prompts to download exactly as the launch check does when a newer build
+  /// exists for this device's ABI, but a missing APK or a failed request is an
+  /// answer here rather than something to swallow.
+  static Future<UpdateCheckOutcome> checkNow(BuildContext context) async {
+    if (!supportsManualCheck) return UpdateCheckOutcome.unavailable;
+    try {
+      final info = await _channel.invokeMethod<Map<dynamic, dynamic>>('info');
+      final current = (info?['version'] as String?) ?? '';
+      final abis = ((info?['abis'] as List?) ?? const [])
+          .whereType<String>()
+          .toList();
+      if (current.isEmpty || abis.isEmpty) {
+        return UpdateCheckOutcome.unavailable;
+      }
+
+      final release = await _fetchLatest();
+      if (release == null) return UpdateCheckOutcome.unavailable;
+      if (_compareSemver(release.version, current) <= 0) {
+        return UpdateCheckOutcome.upToDate;
+      }
+
+      final url = _apkFor(release, abis);
+      // A newer release with no APK for this architecture is not something the
+      // user can act on, so it is not reported as available.
+      if (url == null) return UpdateCheckOutcome.unavailable;
+      if (!context.mounted) return UpdateCheckOutcome.updateAvailable;
+
+      final ok = await confirmDialog(
+        context,
+        title: AppStrings.t(AppStringKeys.updateNewVersionFound),
+        message: AppStrings.t(AppStringKeys.updateVersionPrompt, {
+          'value1': current,
+          'value2': release.version,
+        }),
+        confirmText: AppStrings.t(AppStringKeys.updateAction),
+        cancelText: AppStrings.t(AppStringKeys.updateLater),
+      );
+      if (ok && context.mounted) {
+        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      }
+      return UpdateCheckOutcome.updateAvailable;
+    } catch (_) {
+      return UpdateCheckOutcome.unavailable;
+    }
+  }
+
+  /// The release's APK for the device's preferred ABI, first match wins.
+  static String? _apkFor(_Release release, List<String> abis) {
+    for (final abi in abis) {
+      for (final asset in release.assets) {
+        if (asset.name.endsWith('.apk') && asset.name.contains(abi)) {
+          return asset.url;
+        }
+      }
+    }
+    return null;
   }
 
   static Future<_Release?> _fetchLatest() async {

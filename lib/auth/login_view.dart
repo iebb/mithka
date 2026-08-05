@@ -19,6 +19,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
+import '../components/country_flag.dart';
 import '../components/desktop_content_constraint.dart';
 import '../components/ui_components.dart';
 import '../settings/account_backup_view.dart';
@@ -243,7 +244,7 @@ class _LoginViewState extends State<LoginView> {
                       : accounts.hasPendingAdd && showingPhone
                       ? accounts.cancelAddAccount(auth)
                       : _showBackOptions(auth),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                   child: Padding(
                     padding: const EdgeInsets.all(10),
                     child: AppIcon(
@@ -273,12 +274,12 @@ class _LoginViewState extends State<LoginView> {
     return AppInteractiveSurface(
       checked: _backupConsent,
       onTap: () => unawaited(_setBackupConsent(!_backupConsent)),
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(AppRadius.card),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
         decoration: BoxDecoration(
           color: c.card,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(AppRadius.card),
           border: Border.all(color: c.divider, width: 0.7),
         ),
         child: Row(
@@ -452,7 +453,7 @@ class _LoginViewState extends State<LoginView> {
             height: 88,
             decoration: BoxDecoration(
               gradient: AppTheme.brandGradient,
-              borderRadius: BorderRadius.circular(22),
+              borderRadius: BorderRadius.circular(AppRadius.xl),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.18),
@@ -474,7 +475,7 @@ class _LoginViewState extends State<LoginView> {
             'Mithka',
             style: TextStyle(
               fontSize: 26,
-              fontWeight: FontWeight.bold,
+              fontWeight: FontWeight.w600,
               color: c.textPrimary,
             ),
           ),
@@ -500,7 +501,7 @@ class _LoginViewState extends State<LoginView> {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           decoration: BoxDecoration(
             color: c.card,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
           ),
           child: Row(
             children: [
@@ -513,16 +514,13 @@ class _LoginViewState extends State<LoginView> {
                       context,
                     ),
                 onTap: _showCountrySheet,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(AppRadius.card),
                 child: SizedBox(
                   width: 42,
                   height: 42,
                   child: Center(
                     child: _detectedCountry != null
-                        ? Text(
-                            _detectedCountry!.flag,
-                            style: const TextStyle(fontSize: 30),
-                          )
+                        ? CountryFlag(iso: _detectedCountry!.iso, size: 30)
                         : AppIcon(
                             HeroAppIcons.globe,
                             size: 26,
@@ -604,7 +602,7 @@ class _LoginViewState extends State<LoginView> {
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 22,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w600,
             color: c.textPrimary,
           ),
         ),
@@ -622,7 +620,7 @@ class _LoginViewState extends State<LoginView> {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           decoration: BoxDecoration(
             color: c.card,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
           ),
           child: Row(
             children: [
@@ -673,7 +671,7 @@ class _LoginViewState extends State<LoginView> {
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 22,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w600,
             color: c.textPrimary,
           ),
         ),
@@ -691,7 +689,7 @@ class _LoginViewState extends State<LoginView> {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           decoration: BoxDecoration(
             color: c.card,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
           ),
           child: Row(
             children: [
@@ -783,7 +781,7 @@ class _LoginViewState extends State<LoginView> {
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 22,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w600,
             color: c.textPrimary,
           ),
         ),
@@ -951,7 +949,7 @@ class _LoginViewState extends State<LoginView> {
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
                       color: AppTheme.unreadBadge,
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(AppRadius.control),
                       border: Border.all(color: c.background, width: 1.2),
                     ),
                     child: Text(
@@ -959,7 +957,7 @@ class _LoginViewState extends State<LoginView> {
                       style: const TextStyle(
                         color: Color(0xFFFFFFFF),
                         fontSize: 10,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w600,
                         height: 1,
                         decoration: TextDecoration.none,
                       ),
@@ -1005,7 +1003,7 @@ class _LoginViewState extends State<LoginView> {
         semanticLabel: AppStrings.t(AppStringKeys.proxyTitle),
         onTap: _openProxySetup,
         onLongPress: enabled ? _disableProxy : null,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         child: Padding(
           padding: const EdgeInsets.all(10),
           child: Stack(
@@ -1090,7 +1088,7 @@ class _LoginViewState extends State<LoginView> {
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(22),
+              borderRadius: BorderRadius.circular(AppRadius.xl),
             ),
             child: link.isEmpty
                 ? const Center(
@@ -1110,7 +1108,7 @@ class _LoginViewState extends State<LoginView> {
             minimumSize: const Size.fromHeight(44),
             side: BorderSide(color: AppTheme.brand.withValues(alpha: 0.45)),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(AppRadius.card),
             ),
           ),
           child: Text(
@@ -1686,7 +1684,7 @@ class _VerificationCodeBox extends StatelessWidget {
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: c.card,
-        borderRadius: BorderRadius.circular(13),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(
           color: focused ? AppTheme.brand : c.divider,
           width: focused ? 1.8 : 1,
@@ -1707,7 +1705,7 @@ class _VerificationCodeBox extends StatelessWidget {
         style: TextStyle(
           color: c.textPrimary,
           fontSize: 24,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w600,
           height: 1,
           decoration: TextDecoration.none,
         ),

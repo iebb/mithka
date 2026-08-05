@@ -12,6 +12,7 @@ import 'package:flutter/foundation.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/notifications/scope_notification_settings.dart';
 
+import '../chat/chat_members_cache.dart';
 import '../config/secrets.dart';
 import '../settings/api_credentials_config.dart';
 import '../tdlib/json_helpers.dart';
@@ -301,6 +302,10 @@ class AuthManager extends ChangeNotifier {
         _set(const AuthReady());
         unawaited(AccountBackupService.shared.backupActiveAccountIfEnabled());
       case 'authorizationStateLoggingOut':
+        // Slots are reused by whoever signs in next, and the cache is keyed by
+        // slot — drop every strip rather than risk painting one account's
+        // members under another's chat.
+        ChatMembersCache.shared.clear();
         _set(const AuthLoggingOut());
       case 'authorizationStateClosing':
         break;

@@ -2,79 +2,119 @@
 //  l10n_completeness_test.dart
 //
 //  Guards the "every string is localized in every supported language"
-//  invariant. A key missing from any per-locale table would silently fall
+//  invariant. A key missing from any locale catalogue would silently fall
 //  back to English (or render the raw key name) in the UI, so this test
 //  fails the build instead.
 //
+//  The catalogues under test are the generated assets the app ships, so a
+//  stale `assets/l10n` is caught here too.
+//
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/l10n/app_localizations.dart';
-import 'package:mithka/l10n/country_names.dart';
-import 'package:mithka/l10n/messages/de.dart';
-import 'package:mithka/l10n/messages/en.dart';
-import 'package:mithka/l10n/messages/es.dart';
-import 'package:mithka/l10n/messages/fr.dart';
-import 'package:mithka/l10n/messages/ja.dart';
-import 'package:mithka/l10n/messages/ko.dart';
-import 'package:mithka/l10n/messages/zh_hans.dart';
-import 'package:mithka/l10n/messages/zh_hant.dart';
+import 'package:mithka/l10n/locale_catalogue.dart';
 
-const localeTables = <String, Map<String, String>>{
-  'zhHans': zhHansMessages,
-  'zhHant': zhHantMessages,
-  'ja': jaMessages,
-  'ko': koMessages,
-  'en': enMessages,
-  'fr': frMessages,
-  'es': esMessages,
-  'de': deMessages,
-};
+import 'support/l10n_fixtures.dart';
 
-final placeholderPattern = RegExp(r'\{value\d\}');
+final fixtures = L10nFixtures.load();
+
+final placeholderPattern = RegExp(r'\{(?:value\d|count)\}');
 
 Set<String> placeholdersOf(String value) =>
     placeholderPattern.allMatches(value).map((m) => m.group(0)!).toSet();
 
+/// Every form of a key, so plural sets are checked the same way as strings.
+Iterable<String> formsOf(LocaleCatalogue catalogue, String key) sync* {
+  final plain = catalogue.strings[key];
+  if (plain != null) yield plain;
+  final plural = catalogue.plurals[key];
+  if (plural != null) yield* plural.values;
+}
+
 void main() {
-  test('every supported locale resolves to a message table', () {
+  setUp(fixtures.install);
+  tearDown(LocaleCatalogues.reset);
+
+  test('every supported locale resolves to a catalogue', () {
     for (final locale in AppLocalizations.supportedLocales) {
       final key = AppLocalizations.localeKeyFor(locale);
       expect(
-        localeTables.containsKey(key),
+        fixtures.catalogues.containsKey(key),
         isTrue,
-        reason: 'locale $locale resolves to "$key" which has no table',
+        reason: 'locale $locale resolves to "$key" which has no catalogue',
       );
     }
   });
 
-  test('all locale tables share the exact key set', () {
-    final reference = enMessages.keys.toSet();
-    for (final entry in localeTables.entries) {
-      final keys = entry.value.keys.toSet();
+  test('the asset manifest and supportedLocales agree', () {
+    final manifest =
+        jsonDecode(File('assets/l10n/manifest.json').readAsStringSync())
+            as Map<String, dynamic>;
+    final tags = (manifest['locales'] as List)
+        .cast<Map<String, dynamic>>()
+        .map((entry) => entry['appKey'] as String)
+        .toSet();
+    final supported = AppLocalizations.supportedLocales
+        .map(AppLocalizations.localeKeyFor)
+        .toSet();
+    expect(tags, supported);
+  });
+
+  test('all catalogues share the exact key set', () {
+    final reference = fixtures.en.strings.keys.toSet();
+    for (final appKey in L10nFixtures.appKeys) {
+      final keys = fixtures.messages(appKey).keys.toSet();
       expect(
         reference.difference(keys),
         isEmpty,
-        reason: '${entry.key} is missing keys present in en',
+        reason: '$appKey is missing keys present in en',
       );
       expect(
         keys.difference(reference),
         isEmpty,
-        reason: '${entry.key} has keys that en lacks',
+        reason: '$appKey has keys that en lacks',
       );
     }
   });
 
-  test('no locale table contains an empty value', () {
-    for (final entry in localeTables.entries) {
-      for (final kv in entry.value.entries) {
+  test('a counted key is a plural set in every locale', () {
+    final counted = fixtures.en.plurals.keys.toSet();
+    for (final appKey in L10nFixtures.appKeys) {
+      expect(
+        fixtures[appKey].plurals.keys.toSet(),
+        counted,
+        reason: '$appKey disagrees with en about which keys are counted',
+      );
+    }
+  });
+
+  test('a plural set declares exactly its locale plural categories', () {
+    for (final appKey in L10nFixtures.appKeys) {
+      final catalogue = fixtures[appKey];
+      final expected = catalogue.pluralCategories.toSet();
+      for (final entry in catalogue.plurals.entries) {
         expect(
-          kv.value.trim(),
-          isNotEmpty,
-          reason: '${entry.key}.${kv.key} is empty',
+          entry.value.keys.toSet(),
+          expected,
+          reason: '$appKey.${entry.key} plural categories differ',
         );
+      }
+    }
+  });
+
+  test('no catalogue contains an empty value', () {
+    for (final appKey in L10nFixtures.appKeys) {
+      final catalogue = fixtures[appKey];
+      for (final key in catalogue.strings.keys.followedBy(
+        catalogue.plurals.keys,
+      )) {
+        for (final form in formsOf(catalogue, key)) {
+          expect(form.trim(), isNotEmpty, reason: '$appKey.$key is empty');
+        }
       }
     }
   });
@@ -93,47 +133,54 @@ void main() {
 
     for (final entry in expected.entries) {
       expect(
-        localeTables[entry.key]?[AppStringKeys.appearanceShowNameColors],
+        fixtures.messages(entry.key)[AppStringKeys.appearanceShowNameColors],
         entry.value,
       );
     }
   });
 
   test('Simplified Chinese AI model routing uses feature-specific labels', () {
-    expect(zhHansMessages[AppStringKeys.aiTranslateUsing], '翻译使用');
-    expect(zhHansMessages[AppStringKeys.aiSummarizeUsing], '总结使用');
-    expect(zhHansMessages[AppStringKeys.aiProviders], '服务商');
-    expect(zhHansMessages[AppStringKeys.aiAddProvider], '添加服务商');
+    final zhHans = fixtures.messages('zhHans');
+    expect(zhHans[AppStringKeys.aiTranslateUsing], '翻译使用');
+    expect(zhHans[AppStringKeys.aiSummarizeUsing], '总结使用');
+    expect(zhHans[AppStringKeys.aiProviders], '服务商');
+    expect(zhHans[AppStringKeys.aiAddProvider], '添加服务商');
   });
 
   test('placeholders match the English source in every locale', () {
-    for (final entry in localeTables.entries) {
-      for (final kv in entry.value.entries) {
-        final expected = placeholdersOf(enMessages[kv.key] ?? '');
-        expect(
-          placeholdersOf(kv.value),
-          expected,
-          reason: '${entry.key}.${kv.key} placeholder mismatch',
-        );
+    final english = fixtures.en;
+    for (final appKey in L10nFixtures.appKeys) {
+      final catalogue = fixtures[appKey];
+      for (final key in catalogue.strings.keys.followedBy(
+        catalogue.plurals.keys,
+      )) {
+        final expected = placeholdersOf(formsOf(english, key).first);
+        for (final form in formsOf(catalogue, key)) {
+          expect(
+            placeholdersOf(form),
+            expected,
+            reason: '$appKey.$key placeholder mismatch',
+          );
+        }
       }
     }
   });
 
   test('country names cover every locale with the same key set', () {
-    final locales = localeTables.keys.toSet();
-    expect(countryNames.keys.toSet(), locales);
-    final reference = countryNames['en']!.keys.toSet();
-    for (final entry in countryNames.entries) {
+    final reference = fixtures.countries('en').keys.toSet();
+    expect(reference, isNotEmpty);
+    for (final appKey in L10nFixtures.appKeys) {
+      final countries = fixtures.countries(appKey);
       expect(
-        entry.value.keys.toSet(),
+        countries.keys.toSet(),
         reference,
-        reason: 'countryNames[${entry.key}] key set differs from en',
+        reason: 'countries[$appKey] key set differs from en',
       );
-      for (final kv in entry.value.entries) {
+      for (final entry in countries.entries) {
         expect(
-          kv.value.trim(),
+          entry.value.trim(),
           isNotEmpty,
-          reason: 'countryNames[${entry.key}].${kv.key} is empty',
+          reason: 'countries[$appKey].${entry.key} is empty',
         );
       }
     }
@@ -146,19 +193,37 @@ void main() {
       r"static const \w+ =\s*'([^']+)';",
     ).allMatches(source).map((m) => m.group(1)!).toSet();
     expect(declared, isNotEmpty);
-    final countries = countryNames['en']!.keys.toSet();
+    final countries = fixtures.countries('en').keys.toSet();
     for (final key in declared) {
-      final resolvable = enMessages.containsKey(key) || countries.contains(key);
-      expect(resolvable, isTrue, reason: 'key "$key" has no en entry');
-      for (final entry in localeTables.entries) {
-        if (countries.contains(key)) break;
+      if (countries.contains(key)) continue;
+      for (final appKey in L10nFixtures.appKeys) {
+        final catalogue = fixtures[appKey];
         expect(
-          entry.value.containsKey(key),
+          catalogue.strings.containsKey(key) ||
+              catalogue.plurals.containsKey(key),
           isTrue,
-          reason: 'key "$key" missing from ${entry.key}',
+          reason: 'key "$key" missing from $appKey',
         );
       }
     }
+  });
+
+  test('every catalogue key is declared in AppStringKeys', () {
+    final source = File('lib/l10n/app_localizations.dart').readAsStringSync();
+    final declared = RegExp(
+      r"static const \w+ =\s*'([^']+)';",
+    ).allMatches(source).map((m) => m.group(1)!).toSet();
+    final orphans =
+        fixtures.en.strings.keys
+            .followedBy(fixtures.en.plurals.keys)
+            .where((key) => !declared.contains(key))
+            .toList()
+          ..sort();
+    expect(
+      orphans,
+      isEmpty,
+      reason: 'catalogue keys with no AppStringKeys constant: $orphans',
+    );
   });
 
   test('tForLocale renders localized text, never the raw key', () {
@@ -179,38 +244,18 @@ void main() {
     );
   });
 
-  test('tForLocale resolves country keys through countryNames', () {
-    for (final localeKey in localeTables.keys) {
-      final value = AppStrings.tForLocale(localeKey, 'countryJP');
-      expect(value, countryNames[localeKey]!['countryJP']);
+  test('tForLocale resolves country keys through the country map', () {
+    for (final appKey in L10nFixtures.appKeys) {
+      final value = AppStrings.tForLocale(appKey, 'countryJP');
+      expect(value, fixtures.countries(appKey)['countryJP']);
       expect(value, isNot('countryJP'));
     }
   });
 
-  test('Telegram printf placeholders are interpolated for counted strings', () {
-    AppStrings.telegramStringResolver = (_, _) => '%1\$d 条新消息';
-    addTearDown(() => AppStrings.telegramStringResolver = null);
-
+  test('an unknown locale falls back to English rather than the key', () {
     expect(
-      AppStrings.tForLocaleWithTelegram(
-        'zhHans',
-        AppStringKeys.chatNewMessagesCount,
-        {'value1': 3},
-      ),
-      '3 条新消息',
-    );
-  });
-
-  test('unresolved Telegram placeholders fall back to app strings', () {
-    AppStrings.telegramStringResolver = (_, _) => '%1\$d 条新消息';
-    addTearDown(() => AppStrings.telegramStringResolver = null);
-
-    expect(
-      AppStrings.tForLocaleWithTelegram(
-        'zhHans',
-        AppStringKeys.chatNewMessagesDivider,
-      ),
-      zhHansMessages[AppStringKeys.chatNewMessagesDivider],
+      AppStrings.tForLocale('xx', AppStringKeys.aboutTitle),
+      fixtures.messages('en')[AppStringKeys.aboutTitle],
     );
   });
 
@@ -234,48 +279,56 @@ void main() {
         reason: '$tag resolves to unsupported $resolved',
       );
       expect(
-        localeTables.containsKey(AppLocalizations.localeKeyFor(resolved)),
+        fixtures.catalogues.containsKey(
+          AppLocalizations.localeKeyFor(resolved),
+        ),
         isTrue,
-        reason: '$tag has no message table',
+        reason: '$tag has no catalogue',
       );
     }
   });
 
-  test('per-locale tables carry translated (non-English) text', () {
+  test('per-locale catalogues carry translated (non-English) text', () {
     // Spot keys that must differ from English in CJK locales — guards against
-    // wholesale copies of the English table masquerading as translations.
+    // wholesale copies of the English catalogue masquerading as translations.
     const probes = [AppStringKeys.chatMeLabel, AppStringKeys.aboutTitle];
-    for (final localeKey in ['zhHans', 'zhHant', 'ja', 'ko']) {
+    for (final appKey in ['zhHans', 'zhHant', 'ja', 'ko']) {
       for (final probe in probes) {
         expect(
-          localeTables[localeKey]![probe],
-          isNot(enMessages[probe]),
-          reason: '$localeKey.$probe is identical to English',
+          fixtures.messages(appKey)[probe],
+          isNot(fixtures.messages('en')[probe]),
+          reason: '$appKey.$probe is identical to English',
         );
       }
     }
   });
 
-  test('effective locale table is used by AppLocalizations.t', () {
+  test('effective catalogue is used by AppLocalizations.t', () {
     const l10n = AppLocalizations(Locale('ja'));
-    expect(l10n.t(AppStringKeys.aboutTitle), jaMessages['aboutTitle']);
+    expect(
+      l10n.t(AppStringKeys.aboutTitle),
+      fixtures.messages('ja')['aboutTitle'],
+    );
   });
 
   test('profile tools strings are translated and interpolate chat IDs', () {
-    for (final localeKey in localeTables.keys) {
+    for (final appKey in L10nFixtures.appKeys) {
       final title = AppStrings.tForLocale(
-        localeKey,
+        appKey,
         AppStringKeys.profileToolsTitle,
       );
       final chatId = AppStrings.tForLocale(
-        localeKey,
+        appKey,
         AppStringKeys.profileToolsProfileChatId,
         {'value1': 42},
       );
 
       expect(title.trim(), isNotEmpty);
-      if (localeKey != 'en') {
-        expect(title, isNot(enMessages[AppStringKeys.profileToolsTitle]));
+      if (appKey != 'en') {
+        expect(
+          title,
+          isNot(fixtures.messages('en')[AppStringKeys.profileToolsTitle]),
+        );
       }
       expect(chatId, contains('42'));
       expect(chatId, isNot(contains('{value1}')));

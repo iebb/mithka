@@ -348,21 +348,13 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
                     key: const ValueKey('notification-section-telegram'),
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      _sectionTitle(
-                        AppStrings.t(
-                          AppStringKeys.notificationMessageNotifications,
-                        ),
+                      const SettingsSectionHeader(
+                        AppStringKeys.notificationMessageNotifications,
                       ),
                       if (_loading)
-                        Container(
-                          key: const ValueKey('notification-telegram-loading'),
-                          height: 88,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: c.card,
-                            borderRadius: BorderRadius.circular(18),
-                          ),
-                          child: const SizedBox(
+                        const SettingsPanel(
+                          key: ValueKey('notification-telegram-loading'),
+                          child: SizedBox(
                             width: 24,
                             height: 24,
                             child: CircularProgressIndicator.adaptive(
@@ -457,8 +449,8 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
                     key: const ValueKey('notification-section-device'),
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      _NotificationSectionTitle(
-                        AppStrings.t(AppStringKeys.notificationOnDeviceTitle),
+                      const SettingsSectionHeader(
+                        AppStringKeys.notificationOnDeviceTitle,
                       ),
                       SettingsCard(
                         children: [
@@ -553,27 +545,7 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
     );
   }
 
-  Widget _sectionTitle(String text) => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 20, 12, 8),
-    child: Text(
-      text.toUpperCase(),
-      style: TextStyle(
-        color: context.colors.textSecondary,
-        fontSize: 12,
-        fontWeight: FontWeight.w500,
-        letterSpacing: 0.2,
-      ),
-    ),
-  );
-
-  Widget _card(List<Widget> children) => Container(
-    decoration: BoxDecoration(
-      color: context.colors.card,
-      borderRadius: BorderRadius.circular(18),
-    ),
-    clipBehavior: Clip.antiAlias,
-    child: Column(children: children),
-  );
+  Widget _card(List<Widget> children) => SettingsCard(children: children);
 
   Widget _navigationRow({
     required AppIconData icon,
@@ -746,13 +718,11 @@ class _AccountNotificationSelectionViewState
           ],
         ),
         if (mode == NotificationAccountMode.selected) ...[
-          _NotificationSectionTitle(
-            AppStrings.t(AppStringKeys.notificationAccounts),
-          ),
+          const SettingsSectionHeader(AppStringKeys.notificationAccounts),
           _NotificationCard(
             children: [
               for (var index = 0; index < widget.accounts.length; index++) ...[
-                _NotificationSwitchRow(
+                SettingsSwitchRow(
                   title: widget.accounts[index].name,
                   subtitle: widget.accounts[index].phone,
                   value: _preferences.selectedAccountIds.contains(
@@ -823,7 +793,7 @@ class _ScopeNotificationSettingsViewState
       children: [
         _NotificationCard(
           children: [
-            _NotificationSwitchRow(
+            SettingsSwitchRow(
               title: AppStrings.t(AppStringKeys.notificationNotifications),
               value: enabled,
               onChanged: (value) => _set('mute_for', value ? 0 : _muteForever),
@@ -831,19 +801,17 @@ class _ScopeNotificationSettingsViewState
           ],
         ),
         if (hasNotifications) ...[
-          _NotificationSectionTitle(
-            AppStrings.t(AppStringKeys.notificationOptions),
-          ),
+          const SettingsSectionHeader(AppStringKeys.notificationOptions),
           _NotificationCard(
             children: [
-              _NotificationSwitchRow(
+              SettingsSwitchRow(
                 title: AppStrings.t(AppStringKeys.notificationPreview),
                 value: _settings.boolean('show_preview') ?? true,
                 enabled: hasNotifications,
                 onChanged: (value) => _set('show_preview', value),
               ),
               const InsetDivider(leadingInset: 16),
-              _NotificationSwitchRow(
+              SettingsSwitchRow(
                 title: AppStrings.t(AppStringKeys.notificationSound),
                 value: (_settings.int64('sound_id') ?? 0) > 0,
                 enabled:
@@ -930,14 +898,14 @@ class _StoryNotificationSettingsViewState
       children: [
         _NotificationCard(
           children: [
-            _NotificationSwitchRow(
+            SettingsSwitchRow(
               title: AppStrings.t(AppStringKeys.notificationAllStories),
               value: mode == StoryNotificationMode.all,
               onChanged: _setAllStories,
             ),
             if (mode != StoryNotificationMode.all) ...[
               const InsetDivider(leadingInset: 16),
-              _NotificationSwitchRow(
+              SettingsSwitchRow(
                 title: AppStrings.t(AppStringKeys.notificationTopFive),
                 subtitle: AppStrings.t(
                   AppStringKeys.notificationTopFiveDescription,
@@ -949,12 +917,10 @@ class _StoryNotificationSettingsViewState
           ],
         ),
         if (hasNotifications) ...[
-          _NotificationSectionTitle(
-            AppStrings.t(AppStringKeys.notificationOptions),
-          ),
+          const SettingsSectionHeader(AppStringKeys.notificationOptions),
           _NotificationCard(
             children: [
-              _NotificationSwitchRow(
+              SettingsSwitchRow(
                 title: AppStrings.t(AppStringKeys.notificationStoryPoster),
                 value:
                     _settings.boolean('show_story_poster') ??
@@ -964,7 +930,7 @@ class _StoryNotificationSettingsViewState
                 onChanged: (value) => _set('show_story_poster', value),
               ),
               const InsetDivider(leadingInset: 16),
-              _NotificationSwitchRow(
+              SettingsSwitchRow(
                 title: AppStrings.t(AppStringKeys.notificationSound),
                 value: (_settings.int64('story_sound_id') ?? 0) > 0,
                 enabled:
@@ -1078,18 +1044,16 @@ class _ReactionNotificationSettingsViewState
           ],
         ),
         if (enabled) ...[
-          _NotificationSectionTitle(
-            AppStrings.t(AppStringKeys.notificationOptions),
-          ),
+          const SettingsSectionHeader(AppStringKeys.notificationOptions),
           _NotificationCard(
             children: [
-              _NotificationSwitchRow(
+              SettingsSwitchRow(
                 title: AppStrings.t(AppStringKeys.notificationPreview),
                 value: _settings.boolean('show_preview') ?? true,
                 onChanged: (value) => _set('show_preview', value),
               ),
               const InsetDivider(leadingInset: 16),
-              _NotificationSwitchRow(
+              SettingsSwitchRow(
                 title: AppStrings.t(AppStringKeys.notificationSound),
                 value: (_settings.int64('sound_id') ?? 0) > 0,
                 enabled:
@@ -1171,104 +1135,7 @@ class _NotificationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: context.colors.card,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(children: children),
-    );
-  }
-}
-
-class _NotificationSectionTitle extends StatelessWidget {
-  const _NotificationSectionTitle(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 20, 12, 8),
-      child: Text(
-        text.toUpperCase(),
-        style: TextStyle(
-          color: context.colors.textSecondary,
-          fontSize: 12,
-          fontWeight: FontWeight.w500,
-          letterSpacing: 0.2,
-        ),
-      ),
-    );
-  }
-}
-
-class _NotificationSwitchRow extends StatelessWidget {
-  const _NotificationSwitchRow({
-    required this.title,
-    required this.value,
-    required this.onChanged,
-    this.enabled = true,
-    this.subtitle,
-  });
-
-  final String title;
-  final bool value;
-  final ValueChanged<bool> onChanged;
-  final bool enabled;
-  final String? subtitle;
-
-  @override
-  Widget build(BuildContext context) {
-    return ConstrainedBox(
-      constraints: BoxConstraints(minHeight: subtitle == null ? 58 : 72),
-      child: Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: subtitle == null ? 0 : 9,
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      color: enabled
-                          ? context.colors.textPrimary
-                          : context.colors.textTertiary,
-                      fontSize: 16,
-                    ),
-                  ),
-                  if (subtitle != null) ...[
-                    const SizedBox(height: 3),
-                    Text(
-                      subtitle!,
-                      style: TextStyle(
-                        color: enabled
-                            ? context.colors.textSecondary
-                            : context.colors.textTertiary,
-                        fontSize: 12.5,
-                        height: 1.25,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            _NotificationToggle(
-              value: value,
-              enabled: enabled,
-              onChanged: onChanged,
-            ),
-          ],
-        ),
-      ),
-    );
+    return SettingsCard(children: children);
   }
 }
 
@@ -1317,69 +1184,8 @@ class _ReactionSourceRow extends StatelessWidget {
                 ),
               ),
             ),
-            _NotificationToggle(value: value, onChanged: onChanged),
+            AppSwitch(value: value, onChanged: onChanged),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _NotificationToggle extends StatelessWidget {
-  const _NotificationToggle({
-    required this.value,
-    required this.onChanged,
-    this.enabled = true,
-  });
-
-  final bool value;
-  final ValueChanged<bool> onChanged;
-  final bool enabled;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    return Semantics(
-      button: true,
-      enabled: enabled,
-      toggled: value,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: enabled ? () => onChanged(!value) : null,
-        child: AnimatedOpacity(
-          duration: const Duration(milliseconds: 160),
-          opacity: enabled ? 1 : 0.45,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
-            curve: Curves.easeOut,
-            width: 50,
-            height: 30,
-            padding: const EdgeInsets.all(2),
-            decoration: BoxDecoration(
-              color: value ? c.linkBlue : c.textTertiary,
-              borderRadius: BorderRadius.circular(15),
-            ),
-            child: AnimatedAlign(
-              duration: const Duration(milliseconds: 160),
-              curve: Curves.easeOut,
-              alignment: value ? Alignment.centerRight : Alignment.centerLeft,
-              child: Container(
-                width: 26,
-                height: 26,
-                decoration: const BoxDecoration(
-                  color: Color(0xFFFFFFFF),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Color(0x30000000),
-                      blurRadius: 3,
-                      offset: Offset(0, 1),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
         ),
       ),
     );

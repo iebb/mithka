@@ -35,7 +35,6 @@ import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
-import '../l10n/telegram_language_controller.dart';
 import '../media/app_asset_picker.dart';
 import '../platform/adaptive_platform.dart';
 import '../profile/adaptive_profile_launcher.dart';
@@ -347,7 +346,7 @@ class _MomentsViewState extends State<MomentsView> {
     _openDetail(
       SharedMediaView(
         chatId: 0,
-        title: telegramText(AppStringKeys.sharedMediaVideos),
+        title: AppStrings.t(AppStringKeys.sharedMediaVideos),
         initialTab: 4,
         displayTitle: AppStringKeys.sharedMediaVideos,
         lockedTab: true,
@@ -407,7 +406,7 @@ class _MomentsViewState extends State<MomentsView> {
                       _menuRow(
                         icon: HeroAppIcons.video.data,
                         iconColor: const Color(0xFF7B61FF),
-                        title: telegramText(AppStringKeys.sharedMediaVideos),
+                        title: AppStrings.t(AppStringKeys.sharedMediaVideos),
                         onTap: _openVideos,
                       ),
                     ],
@@ -458,7 +457,7 @@ class _MomentsViewState extends State<MomentsView> {
               style: TextStyle(
                 color: c.textPrimary,
                 fontSize: 19,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
@@ -467,7 +466,7 @@ class _MomentsViewState extends State<MomentsView> {
               padding: const EdgeInsets.all(AppSpacing.md),
               children: [
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                   child: StoryShelf(
                     model: _stories,
                     canPublish: _canPublishStories,
@@ -500,7 +499,7 @@ class _MomentsViewState extends State<MomentsView> {
                     key: const ValueKey('desktop-moments-videos'),
                     icon: HeroAppIcons.video,
                     iconColor: const Color(0xFF7B61FF),
-                    title: telegramText(
+                    title: AppStrings.t(
                       AppStringKeys.sharedMediaVideos,
                     ).l10n(context),
                     onTap: _openVideos,
@@ -520,7 +519,7 @@ class _MomentsViewState extends State<MomentsView> {
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: c.background,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: c.divider, width: AppMetric.divider),
       ),
       child: Column(mainAxisSize: MainAxisSize.min, children: children),
@@ -540,7 +539,7 @@ class _MomentsViewState extends State<MomentsView> {
       key: key,
       semanticLabel: title,
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(AppRadius.card),
       child: SizedBox(
         height: 58,
         child: Row(
@@ -1311,13 +1310,13 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
       });
     }
     if (message.voice != null) {
-      return telegramText(AppStringKeys.composerVoicePreview);
+      return AppStrings.t(AppStringKeys.composerVoicePreview);
     }
     if (message.location != null) {
-      return telegramText(AppStringKeys.composerLocationPreview);
+      return AppStrings.t(AppStringKeys.composerLocationPreview);
     }
     if (message.animatedSticker != null) {
-      return telegramText(AppStringKeys.composerAnimatedEmojiPreview);
+      return AppStrings.t(AppStringKeys.composerAnimatedEmojiPreview);
     }
     if (message.video != null) {
       return message.text;
@@ -1327,7 +1326,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
     }
     final text = message.text.trim();
     return text.isEmpty
-        ? telegramText(AppStringKeys.chatSearchMessageResultLabel)
+        ? AppStrings.t(AppStringKeys.chatSearchMessageResultLabel)
         : text;
   }
 
@@ -1801,7 +1800,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: c.background,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(AppRadius.card),
           border: Border.all(color: c.divider, width: AppMetric.divider),
           boxShadow: [
             BoxShadow(
@@ -1877,7 +1876,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
                 padding: const EdgeInsets.symmetric(horizontal: 10),
                 decoration: BoxDecoration(
                   color: c.searchFill,
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
                 ),
                 child: Row(
                   children: [
@@ -2041,7 +2040,7 @@ class _MomentsComposerHeader extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: c.background,
                   border: Border.all(color: c.divider),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                 ),
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
@@ -2433,7 +2432,9 @@ Future<void> showChannelPostMenu(BuildContext context, ChannelPost post) {
     position: RelativeRect.fromRect(anchorRect, Offset.zero & overlay.size),
     color: context.colors.card,
     elevation: 8,
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(AppRadius.card),
+    ),
     items: [
       PopupMenuItem<_ChannelPostMenuAction>(
         value: _ChannelPostMenuAction.openOriginal,
@@ -2897,7 +2898,7 @@ class _ChannelPostDetailViewState extends State<ChannelPostDetailView> {
               padding: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
                 color: _momentQuoteFill(c),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(AppRadius.card),
               ),
               child: Row(
                 children: [
@@ -3906,7 +3907,7 @@ class _PostReplyQuote extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(13, 10, 13, 10),
       decoration: BoxDecoration(
         color: _momentQuoteFill(c),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       child: RichText(
         maxLines: 4,
@@ -3952,7 +3953,7 @@ class _InlineQuickReply extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 10),
         decoration: BoxDecoration(
           color: _momentQuoteFill(c),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(AppRadius.card),
         ),
         child: Row(
           children: [
@@ -3980,9 +3981,10 @@ class _InlineComments extends StatelessWidget {
     final comments = post.comments ?? const <ChannelPostComment>[];
     if (comments.isEmpty) {
       return Text(
-        AppStrings.t(AppStringKeys.momentsCommentCount, {
-          'value1': post.message.commentCount,
-        }),
+        AppStrings.plural(
+          AppStringKeys.momentsCommentCount,
+          post.message.commentCount,
+        ),
         style: TextStyle(fontSize: 13, color: c.linkBlue),
       );
     }
@@ -4230,7 +4232,7 @@ class _PostImageTile extends StatelessWidget {
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 24,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
@@ -4431,7 +4433,7 @@ class StoryShelf extends StatelessWidget {
                   style: TextStyle(
                     color: c.textPrimary,
                     fontSize: 17,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
@@ -4578,7 +4580,9 @@ class _StoryActionTile extends StatelessWidget {
                             alignment: Alignment.center,
                             decoration: BoxDecoration(
                               color: AppTheme.brand,
-                              borderRadius: BorderRadius.circular(11),
+                              borderRadius: BorderRadius.circular(
+                                AppRadius.card,
+                              ),
                               border: Border.all(color: c.background, width: 2),
                             ),
                             child: const AppIcon(
@@ -4840,7 +4844,7 @@ class _StoriesViewState extends State<StoriesView> {
               style: TextStyle(
                 color: c.textPrimary,
                 fontSize: 16,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w600,
               ),
             ),
             const Spacer(),
@@ -4881,7 +4885,7 @@ class _StoriesViewState extends State<StoriesView> {
           decoration: BoxDecoration(
             gradient: prominent ? AppTheme.brandGradient : null,
             color: prominent ? null : c.background,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
             border: prominent ? null : Border.all(color: c.divider),
           ),
           child: Row(
@@ -4915,7 +4919,7 @@ class _StoriesViewState extends State<StoriesView> {
                       style: TextStyle(
                         color: prominent ? Colors.white : c.textPrimary,
                         fontSize: 14,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                     const SizedBox(height: 3),
@@ -4950,7 +4954,7 @@ class _StoriesViewState extends State<StoriesView> {
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
           color: AppTheme.brand.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(AppRadius.card),
           border: Border.all(color: AppTheme.brand.withValues(alpha: 0.22)),
         ),
         child: Row(
@@ -4971,7 +4975,7 @@ class _StoriesViewState extends State<StoriesView> {
                     style: TextStyle(
                       color: c.textPrimary,
                       fontSize: 14,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -4996,7 +5000,7 @@ class _StoriesViewState extends State<StoriesView> {
     alignment: Alignment.center,
     decoration: BoxDecoration(
       color: context.colors.background,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(AppRadius.lg),
     ),
     child: const AppActivityIndicator(size: 30),
   );
@@ -5007,7 +5011,7 @@ class _StoriesViewState extends State<StoriesView> {
       padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
       decoration: BoxDecoration(
         color: c.background,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
       ),
       child: Column(
         children: [
@@ -5031,7 +5035,7 @@ class _StoriesViewState extends State<StoriesView> {
             style: TextStyle(
               color: c.textPrimary,
               fontSize: 16,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(height: 6),
@@ -5055,14 +5059,14 @@ class _StoriesViewState extends State<StoriesView> {
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 decoration: BoxDecoration(
                   color: AppTheme.brand,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                 ),
                 child: Text(
                   AppStringKeys.storiesCreate.l10n(context),
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 14,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
@@ -5082,12 +5086,12 @@ class _StoriesViewState extends State<StoriesView> {
         height: 78,
         padding: const EdgeInsets.symmetric(horizontal: 12),
         foregroundDecoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(15),
+          borderRadius: BorderRadius.circular(AppRadius.lg),
           border: Border.all(color: c.divider),
         ),
         decoration: BoxDecoration(
           color: c.background,
-          borderRadius: BorderRadius.circular(15),
+          borderRadius: BorderRadius.circular(AppRadius.lg),
         ),
         child: Row(
           children: [

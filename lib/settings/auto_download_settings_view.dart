@@ -188,12 +188,8 @@ class _AutoDownloadSettingsViewState extends State<AutoDownloadSettingsView> {
 
   Widget _networkSelector() {
     final c = context.colors;
-    return Container(
+    return SettingsPanel(
       padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: c.card,
-        borderRadius: BorderRadius.circular(12),
-      ),
       child: Row(
         children: [
           for (final entry in const {
@@ -213,7 +209,7 @@ class _AutoDownloadSettingsViewState extends State<AutoDownloadSettingsView> {
                     color: _network == entry.key
                         ? AppTheme.brand.withValues(alpha: 0.14)
                         : Colors.transparent,
-                    borderRadius: BorderRadius.circular(9),
+                    borderRadius: BorderRadius.circular(AppRadius.control),
                   ),
                   child: Text(
                     entry.value,
@@ -235,15 +231,7 @@ class _AutoDownloadSettingsViewState extends State<AutoDownloadSettingsView> {
   }
 
   Widget _card(List<Widget> children) {
-    final c = context.colors;
-    return Container(
-      decoration: BoxDecoration(
-        color: c.card,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(children: children),
-    );
+    return SettingsCard(children: children);
   }
 
   Widget _sizeRow(
@@ -274,31 +262,23 @@ class _AutoDownloadSettingsViewState extends State<AutoDownloadSettingsView> {
         final c = sheetContext.colors;
         return SafeArea(
           top: false,
-          child: Container(
+          child: SettingsCard(
             margin: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: c.card,
-              borderRadius: BorderRadius.circular(18),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (var index = 0; index < _sizes.length; index++) ...[
-                  if (index > 0) Divider(height: 1, color: c.divider),
-                  SettingsRow(
-                    title: _sizes.values.elementAt(index),
-                    showChevron: false,
-                    trailing: _sizes.keys.elementAt(index) == selected
-                        ? const AppIcon(HeroAppIcons.check, size: 20)
-                        : null,
-                    onTap: () => Navigator.of(
-                      sheetContext,
-                    ).pop(_sizes.keys.elementAt(index)),
-                  ),
-                ],
+            children: [
+              for (var index = 0; index < _sizes.length; index++) ...[
+                if (index > 0) Divider(height: 1, color: c.divider),
+                SettingsRow(
+                  title: _sizes.values.elementAt(index),
+                  showChevron: false,
+                  trailing: _sizes.keys.elementAt(index) == selected
+                      ? const AppIcon(HeroAppIcons.check, size: 20)
+                      : null,
+                  onTap: () => Navigator.of(
+                    sheetContext,
+                  ).pop(_sizes.keys.elementAt(index)),
+                ),
               ],
-            ),
+            ],
           ),
         );
       },

@@ -166,7 +166,7 @@ class _QRCodeViewState extends State<QRCodeView> {
     return Container(
       decoration: BoxDecoration(
         color: c.card,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.10),
@@ -212,7 +212,7 @@ class _QRCodeViewState extends State<QRCodeView> {
             decoration: BoxDecoration(
               shape: squareGroupAvatar ? BoxShape.rectangle : BoxShape.circle,
               borderRadius: squareGroupAvatar
-                  ? BorderRadius.circular(12)
+                  ? BorderRadius.circular(AppRadius.card)
                   : null,
               border: Border.all(
                 color: Colors.white.withValues(alpha: 0.9),
@@ -308,7 +308,7 @@ class _QRCodeViewState extends State<QRCodeView> {
             decoration: BoxDecoration(
               shape: squareGroupAvatar ? BoxShape.rectangle : BoxShape.circle,
               borderRadius: squareGroupAvatar
-                  ? BorderRadius.circular(10)
+                  ? BorderRadius.circular(AppRadius.control)
                   : null,
               border: Border.all(color: Colors.white, width: 3),
             ),

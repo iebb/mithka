@@ -206,7 +206,9 @@ class _MessageBubbleRepositoryViewState
                             padding: const EdgeInsets.all(5),
                             decoration: BoxDecoration(
                               color: Colors.transparent,
-                              borderRadius: BorderRadius.circular(10),
+                              borderRadius: BorderRadius.circular(
+                                AppRadius.control,
+                              ),
                               border: Border.all(
                                 color: selected
                                     ? AppTheme.brand

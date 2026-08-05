@@ -112,7 +112,7 @@ class _TelegramStorePurchaseProgressViewState
                     padding: const EdgeInsets.fromLTRB(24, 28, 24, 22),
                     decoration: BoxDecoration(
                       color: c.card,
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(AppRadius.xl),
                       border: Border.all(color: c.divider),
                       boxShadow: const [
                         BoxShadow(
@@ -131,7 +131,7 @@ class _TelegramStorePurchaseProgressViewState
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
                             color: color.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(21),
+                            borderRadius: BorderRadius.circular(AppRadius.xl),
                           ),
                           child: RotationTransition(
                             turns: _state == _StoreProgressState.processing
@@ -217,7 +217,7 @@ class _OwnedStoreAction extends StatelessWidget {
           color: secondary
               ? context.colors.groupedBackground
               : context.colors.linkBlue,
-          borderRadius: BorderRadius.circular(13),
+          borderRadius: BorderRadius.circular(AppRadius.card),
           border: secondary ? Border.all(color: context.colors.divider) : null,
         ),
         child: Text(
@@ -269,7 +269,7 @@ class TelegramStoreProductPickerView extends StatelessWidget {
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: c.linkBlue.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(AppRadius.lg),
                     border: Border.all(
                       color: c.linkBlue.withValues(alpha: 0.22),
                     ),
@@ -307,7 +307,7 @@ class TelegramStoreProductPickerView extends StatelessWidget {
                 Container(
                   decoration: BoxDecoration(
                     color: c.card,
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(AppRadius.lg),
                     border: Border.all(color: c.divider),
                   ),
                   clipBehavior: Clip.antiAlias,
@@ -402,7 +402,7 @@ class _StoreProductRow extends StatelessWidget {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: c.linkBlue.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                 ),
                 child: AppIcon(
                   HeroAppIcons.solidStar,

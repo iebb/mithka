@@ -32,6 +32,7 @@ import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
+import '../theme/app_theme.dart';
 import 'chat_picker_view.dart';
 import 'forward_options.dart';
 import 'media_library_saver.dart';
@@ -806,6 +807,8 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   Future<bool>? _systemPiPStartOperation;
   int _lastSystemPiPSyncMs = -1;
   bool _wakelockActive = false;
+  bool _landscapePlayback = false;
+  bool _orientationChangeInFlight = false;
   _PlayerGesture? _activeGesture;
   _PlayerGestureSide? _activeGestureSide;
   Offset? _gestureOrigin;
@@ -1602,6 +1605,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   }
 
   void _close() {
+    _releaseVideoOrientation();
     unawaited(_restorePlayerBrightness());
     if (_wakelockActive) {
       _wakelockActive = false;
@@ -1618,6 +1622,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
 
   @override
   void dispose() {
+    _releaseVideoOrientation();
     unawaited(_restorePlayerBrightness());
     if (_wakelockActive) {
       _wakelockActive = false;
@@ -2194,7 +2199,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           decoration: BoxDecoration(
             color: Colors.black.withValues(alpha: 0.72),
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(AppRadius.card),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -2238,7 +2243,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
             padding: const EdgeInsets.fromLTRB(10, 13, 10, 11),
             decoration: BoxDecoration(
               color: Colors.black.withValues(alpha: 0.72),
-              borderRadius: BorderRadius.circular(26),
+              borderRadius: BorderRadius.circular(AppRadius.xxl),
               border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
             ),
             child: Column(
@@ -2332,7 +2337,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: compact ? 20 : 26,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                     if (next != null) ...[
@@ -2341,7 +2346,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                         behavior: HitTestBehavior.opaque,
                         onTap: _playNextVideo,
                         child: ClipRRect(
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(AppRadius.card),
                           child: AspectRatio(
                             aspectRatio: _itemAspectRatio(next),
                             child: Stack(
@@ -2388,7 +2393,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 16,
-                                      fontWeight: FontWeight.w700,
+                                      fontWeight: FontWeight.w600,
                                       shadows: [Shadow(blurRadius: 8)],
                                     ),
                                   ),
@@ -2738,7 +2743,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                 key: const ValueKey('video-more-menu-surface'),
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(AppRadius.card),
                     border: Border.all(
                       color: Colors.white.withValues(alpha: 0.13),
                     ),
@@ -2753,7 +2758,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                   child: Padding(
                     padding: const EdgeInsets.all(1),
                     child: ClipRRect(
-                      borderRadius: BorderRadius.circular(13),
+                      borderRadius: BorderRadius.circular(AppRadius.card),
                       child: ColoredBox(
                         color: const Color(0xF21F1F21),
                         child: Padding(
@@ -2914,7 +2919,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       color: const Color(0xF21F1F21),
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(AppRadius.card),
                       border: Border.all(
                         color: Colors.white.withValues(alpha: 0.13),
                       ),
@@ -3155,7 +3160,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 11,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
                 if (_showsDisplayModeButton) ...[
@@ -3334,6 +3339,9 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
         if (!compact || width >= 220) {
           addAction(_speedMenu(compact: compact));
         }
+        if (_showsOrientationButton && (!compact || width >= 272)) {
+          addAction(_orientationButton(size: layout.actionButtonSize));
+        }
         final displayModeMinimumWidth = compact && _showsNavigationControls
             ? 252.0
             : 240.0;
@@ -3390,7 +3398,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 11,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 if (_showsDisplayModeButton) ...[
@@ -3662,7 +3670,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: const Color(0xFF111113),
-            borderRadius: BorderRadius.circular(9),
+            borderRadius: BorderRadius.circular(AppRadius.control),
             border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
             boxShadow: const [
               BoxShadow(
@@ -3673,7 +3681,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
             ],
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(AppRadius.control),
             child: Stack(
               fit: StackFit.expand,
               children: [
@@ -3705,7 +3713,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 11,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
@@ -3806,6 +3814,67 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
       label: _volumeButtonLabel,
       size: size,
     );
+  }
+
+  bool get _showsOrientationButton =>
+      widget.presentation == VideoPlayerPresentation.fullscreen &&
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS);
+
+  Widget _orientationButton({required double size}) {
+    final label =
+        (_landscapePlayback
+                ? AppStringKeys.videoPlayerUseSystemOrientation
+                : AppStringKeys.videoPlayerPlayHorizontally)
+            .l10n(context);
+    return _FocusableVideoIconButton(
+      icon: HeroAppIcons.rotate,
+      label: label,
+      enabled: !_orientationChangeInFlight,
+      onPressed: _toggleVideoOrientation,
+      size: Size.square(size),
+      iconSize: math.max(18, size * 0.44),
+      opacity: _orientationChangeInFlight ? 0.48 : 0.92,
+      backgroundColor: _landscapePlayback
+          ? const Color(0xE238383A)
+          : const Color(0xB82C2C2E),
+      borderColor: Colors.white.withValues(
+        alpha: _landscapePlayback ? 0.28 : 0.12,
+      ),
+      cornerRadius: math.max(22, size / 2),
+    );
+  }
+
+  Future<void> _toggleVideoOrientation() async {
+    if (_orientationChangeInFlight) return;
+    final forceLandscape = !_landscapePlayback;
+    setState(() => _orientationChangeInFlight = true);
+    try {
+      await SystemChrome.setPreferredOrientations(
+        forceLandscape
+            ? const [
+                DeviceOrientation.landscapeLeft,
+                DeviceOrientation.landscapeRight,
+              ]
+            : DeviceOrientation.values,
+      );
+      if (mounted) setState(() => _landscapePlayback = forceLandscape);
+    } catch (_) {
+      if (mounted) {
+        showToast(context, AppStringKeys.videoPlayerOrientationChangeFailed);
+      }
+    } finally {
+      if (mounted) setState(() => _orientationChangeInFlight = false);
+    }
+    _scheduleHide();
+  }
+
+  void _releaseVideoOrientation() {
+    if (!_landscapePlayback && !_orientationChangeInFlight) return;
+    _landscapePlayback = false;
+    _orientationChangeInFlight = false;
+    unawaited(SystemChrome.setPreferredOrientations(DeviceOrientation.values));
   }
 
   bool get _canOfferPictureInPicture =>
@@ -4209,7 +4278,7 @@ class _FocusableVideoTextButtonState extends State<_FocusableVideoTextButton> {
               border: _focused
                   ? Border.all(color: Colors.white, width: 2)
                   : null,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(AppRadius.control),
             ),
             child: SizedBox(
               width: widget.size.width,
@@ -4220,7 +4289,7 @@ class _FocusableVideoTextButtonState extends State<_FocusableVideoTextButton> {
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: widget.fontSize,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w600,
                     fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
@@ -4426,7 +4495,7 @@ class _FocusableVideoActionButtonState
                       width: 2,
                     )
                   : null,
-              borderRadius: BorderRadius.circular(22),
+              borderRadius: BorderRadius.circular(AppRadius.xl),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -4438,7 +4507,7 @@ class _FocusableVideoActionButtonState
                   style: TextStyle(
                     color: foreground,
                     fontSize: 15,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
@@ -4552,7 +4621,7 @@ class _FocusableVideoMenuItemState extends State<_FocusableVideoMenuItem> {
                     : Colors.transparent,
                 width: 2,
               ),
-              borderRadius: BorderRadius.circular(9),
+              borderRadius: BorderRadius.circular(AppRadius.control),
             ),
             child: Row(
               children: [

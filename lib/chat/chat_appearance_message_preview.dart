@@ -113,7 +113,7 @@ class ChatAppearancePreviewCard extends StatelessWidget {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 300),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(AppRadius.lg),
               child: SizedBox(
                 key: const ValueKey('appearance-preview-card-surface'),
                 height: 220,
@@ -150,7 +150,9 @@ class ChatAppearancePreviewCard extends StatelessWidget {
                           child: DecoratedBox(
                             decoration: BoxDecoration(
                               color: plate,
-                              borderRadius: BorderRadius.circular(10),
+                              borderRadius: BorderRadius.circular(
+                                AppRadius.control,
+                              ),
                               boxShadow: const [
                                 BoxShadow(
                                   color: Color(0x26000000),

@@ -171,7 +171,11 @@ enum StatusEmojiDisplayMode {
   bool get animate => this == StatusEmojiDisplayMode.animated;
 }
 
-enum SenderNameReadabilityMode { background, shadow, none }
+/// How a sender's name is kept legible over a wallpaper.
+///
+/// [blend] pulls the sender colour halfway to the bubble's text colour, which
+/// holds contrast without the halo a shadow leaves around the glyphs.
+enum SenderNameReadabilityMode { background, blend, none }
 
 enum AppFontChoice {
   system(
@@ -957,9 +961,15 @@ class ThemeController extends ChangeNotifier {
     );
     _customMonospaceFontFamily =
         _prefs.getString(_customMonospaceFontFamilyKey)?.trim() ?? '';
+    final storedEmojiFontKey = _prefs.getString(_emojiFontChoiceKey);
     final emojiFontKey = _normalizeEmojiFontKey(
-      _prefs.getString(_emojiFontChoiceKey),
+      storedEmojiFontKey,
+      migrated: _emojiFontKeysAreMigrated,
     );
+    if (emojiFontKey != storedEmojiFontKey?.trim()) {
+      unawaited(_prefs.setString(_emojiFontChoiceKey, emojiFontKey));
+    }
+    unawaited(_prefs.setInt(_emojiFontSchemaKey, _emojiFontSchemaVersion));
     _emojiFontChoice = EmojiFontChoice(
       key: emojiFontKey,
       label: emojiFontKey == EmojiFontChoice.system.key
@@ -1050,14 +1060,15 @@ class ThemeController extends ChangeNotifier {
     );
     _senderNameReadabilityMode = SenderNameReadabilityMode.values.firstWhere(
       (mode) => mode.name == storedSenderNameReadability,
-      orElse: () {
-        final legacy = _prefs.getBool(_senderNameReadabilityPlateKey);
-        return legacy == true
-            ? SenderNameReadabilityMode.background
-            : legacy == false
-            ? SenderNameReadabilityMode.none
-            : SenderNameReadabilityMode.shadow;
-      },
+      // 'shadow' is what this mode was called before it became a colour blend;
+      // a stored preference still names it.
+      orElse: () => storedSenderNameReadability == 'shadow'
+          ? SenderNameReadabilityMode.blend
+          : switch (_prefs.getBool(_senderNameReadabilityPlateKey)) {
+              true => SenderNameReadabilityMode.background,
+              false => SenderNameReadabilityMode.none,
+              null => SenderNameReadabilityMode.blend,
+            },
     );
     _showMessageMetaIndicators =
         _prefs.getBool(_messageMetaIndicatorsKey) ?? false;
@@ -1131,6 +1142,7 @@ class ThemeController extends ChangeNotifier {
   static const _emojiFontChoiceKey = 'emojiFontChoice';
   static const _emojiFontLabelKey = 'emojiFontLabel';
   static const _emojiFontLicenseKey = 'emojiFontLicense';
+  static const _emojiFontSchemaKey = 'emojiFontChoiceSchema';
   static const _fontFallbackChainKey = 'fontFallbackChain';
   static const _fontKey = 'fontScale';
   static const _interfaceScaleKey = 'interfaceScale';
@@ -1225,7 +1237,7 @@ class ThemeController extends ChangeNotifier {
       StatusEmojiDisplayMode.static;
   StatusEmojiDisplayMode _chatStatusEmojiMode = StatusEmojiDisplayMode.static;
   SenderNameReadabilityMode _senderNameReadabilityMode =
-      SenderNameReadabilityMode.shadow;
+      SenderNameReadabilityMode.blend;
   bool _showMessageMetaIndicators = false;
   bool _alwaysShowMessageTime = false;
   bool _enterToSend = false;
@@ -1290,7 +1302,10 @@ class ThemeController extends ChangeNotifier {
   MessageBubbleBackgroundSpec effectiveMessageBubbleBackgroundSpecFor({
     required bool outgoing,
   }) {
-    if (!_themingEnabled ||
+    // Turning the preference off drops the custom image and falls back to the
+    // theme's own bubble; the selection is kept so re-enabling restores it.
+    if (!_messageBubblesEnabled ||
+        !_themingEnabled ||
         (!outgoing &&
             _messageBubbleApplicationScope ==
                 MessageBubbleApplicationScope.ownMessages)) {
@@ -1304,13 +1319,12 @@ class ThemeController extends ChangeNotifier {
     required Brightness brightness,
     bool hasCustomChatTheme = false,
   }) {
-    final cloudTheme = cloudThemeFor(brightness);
-    return _messageBubblesEnabled ||
-        effectiveMessageBubbleBackgroundSpecFor(
-          outgoing: outgoing,
-        ).isDecorative ||
-        (cloudTheme != null && !cloudTheme.isBuiltIn) ||
-        (_themingEnabled && hasCustomChatTheme);
+    // Messages always sit on a bubble. The preference chooses whether that
+    // bubble is the custom image or the theme's own default fill — see
+    // [effectiveMessageBubbleBackgroundSpecFor] — it does not remove the
+    // surface. Dropping it left incoming messages as bare text on the
+    // wallpaper while outgoing kept a bubble.
+    return true;
   }
 
   MessageBubbleBackgroundSpec messageBubbleBackgroundSpecFor(
@@ -2075,21 +2089,31 @@ class ThemeController extends ChangeNotifier {
     notifyListeners();
   }
 
-  static String _normalizeEmojiFontKey(String? value) {
-    return switch (value?.trim()) {
-      null || '' || 'system' => EmojiFontChoice.system.key,
-      'notoColor' => 'noto',
-      'noto' => 'noto-mono',
-      'blobmoji' => 'blobmoji',
-      'fluent' => 'fluent',
-      'fluentMono' => 'fluent-mono',
-      'fluentFlat' => 'fluent-flat',
-      'twemoji' => 'twemoji',
-      'openMoji' => 'openmoji',
-      'emojiTwo' => 'emojitwo',
-      'tossFace' => 'tossface',
-      final key => key,
-    };
+  /// Bumped when stored emoji font keys need another one-shot migration.
+  static const _emojiFontSchemaVersion = 1;
+
+  /// Names of the pre-catalog `EmojiFontChoice` enum mapped onto catalog keys.
+  /// `noto` meant the monochrome font back then and means the color one in the
+  /// catalog, so this may only ever be applied to a pre-catalog preference —
+  /// see [_emojiFontKeysAreMigrated].
+  static const _legacyEmojiFontKeys = {
+    'notoColor': 'noto',
+    'noto': 'noto-mono',
+  };
+
+  /// Whether the stored emoji font key already uses catalog keys. Only the
+  /// catalog writes a label alongside the key, so its presence identifies a
+  /// preference that must be left alone even before the schema was stamped.
+  bool get _emojiFontKeysAreMigrated =>
+      (_prefs.getInt(_emojiFontSchemaKey) ?? 0) >= _emojiFontSchemaVersion ||
+      _prefs.getString(_emojiFontLabelKey) != null;
+
+  static String _normalizeEmojiFontKey(String? value, {bool migrated = true}) {
+    final key = value?.trim() ?? '';
+    if (key.isEmpty || key == EmojiFontChoice.system.key) {
+      return EmojiFontChoice.system.key;
+    }
+    return migrated ? key : _legacyEmojiFontKeys[key] ?? key;
   }
 
   void setFontFallbackChain(List<String> value) {

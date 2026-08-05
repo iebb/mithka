@@ -47,9 +47,10 @@ class CommunityChatListRow extends StatelessWidget {
       id: -entry.community.id.abs(),
       title: entry.community.name,
       lastMessage: latest.lastMessage.trim().isEmpty
-          ? AppStrings.t(AppStringKeys.communityChatCount, {
-              'value1': entry.chats.length,
-            })
+          ? AppStrings.plural(
+              AppStringKeys.communityChatCount,
+              entry.chats.length,
+            )
           : latest.lastMessage,
       lastMessageId: latest.lastMessageId,
       date: latest.date,
@@ -315,7 +316,7 @@ class _CommunityViewState extends State<CommunityView> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         color: c.card,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       child: Row(
         children: [
@@ -338,18 +339,19 @@ class _CommunityViewState extends State<CommunityView> {
                   textAlign: TextAlign.left,
                   style: TextStyle(
                     fontSize: AppTextSize.title,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w600,
                     color: c.textPrimary,
                   ),
                 ),
                 const SizedBox(height: 5),
                 Text(
-                  AppStrings.t(AppStringKeys.communityChatCount, {
-                    'value1': {
+                  AppStrings.plural(
+                    AppStringKeys.communityChatCount,
+                    {
                       ..._currentChats.map((chat) => chat.id),
                       ..._currentViewableChats.map((chat) => chat.id),
                     }.length,
-                  }),
+                  ),
                   textAlign: TextAlign.left,
                   style: TextStyle(
                     fontSize: AppTextSize.callout,
@@ -376,7 +378,7 @@ class _CommunityViewState extends State<CommunityView> {
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 38),
         decoration: BoxDecoration(
           color: c.card,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(AppRadius.card),
         ),
         child: Column(
           children: [
@@ -395,7 +397,7 @@ class _CommunityViewState extends State<CommunityView> {
       );
     }
     return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(AppRadius.card),
       child: ColoredBox(
         color: c.card,
         child: Column(

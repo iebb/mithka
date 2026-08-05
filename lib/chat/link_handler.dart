@@ -381,7 +381,7 @@ class _EnableThemingDialog extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
           decoration: BoxDecoration(
             color: c.card,
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
             boxShadow: const [
               BoxShadow(
                 color: Color(0x30000000),
@@ -402,7 +402,7 @@ class _EnableThemingDialog extends StatelessWidget {
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
                       color: c.linkBlue.withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(11),
+                      borderRadius: BorderRadius.circular(AppRadius.card),
                     ),
                     child: AppIcon(
                       HeroAppIcons.palette,
@@ -511,7 +511,7 @@ Future<bool> _openSettingsLink(
     'settingsSectionDataAndStorage' => const GeneralSettingsView(),
     'settingsSectionDevices' => const ActiveSessionsView(),
     'settingsSectionEditProfile' => const EditProfileView(),
-    'settingsSectionLanguage' => const TelegramLanguageSettingsView(),
+    'settingsSectionLanguage' => const AppLanguageSettingsView(),
     'settingsSectionNotifications' => const NotificationSettingsView(),
     'settingsSectionPrivacyAndSecurity' => const PrivacySecurityView(),
     'settingsSectionQrCode' => const QRCodeView(),
@@ -548,6 +548,12 @@ String? _normalizeTelegramLink(String raw) {
   if (trimmed.isEmpty) return null;
   final lower = trimmed.toLowerCase();
   if (lower.startsWith('tg:')) return trimmed;
+  // The app's own schemes carry tg:// grammar — rewrite so TDLib's
+  // getInternalLinkType (which only knows tg:) can classify them. Without
+  // this they fell through to the external launcher, which bounced them
+  // right back to us via LaunchServices as a no-op activation.
+  if (lower.startsWith('mk:')) return 'tg:${trimmed.substring(3)}';
+  if (lower.startsWith('mithka:')) return 'tg:${trimmed.substring(7)}';
 
   var candidate = trimmed;
   if (!candidate.contains('://')) candidate = 'https://$candidate';
@@ -1056,7 +1062,7 @@ Future<void> _openChatBoost(
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: AppTheme.brand,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                 ),
                 child: Text(
                   AppStrings.t(AppStringKeys.linkHandlerOpenChat),
@@ -1798,7 +1804,7 @@ Future<void> _openUnboundGroupCall(
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: AppTheme.brand,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(AppRadius.card),
                   ),
                   child: Text(
                     AppStrings.t(AppStringKeys.linkHandlerJoinCall),

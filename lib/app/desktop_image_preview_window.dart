@@ -369,7 +369,7 @@ class _DesktopImagePreviewState extends State<_DesktopImagePreview> {
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     color: const Color(0xB816171A),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(AppRadius.card),
                   ),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
@@ -653,7 +653,7 @@ class _PreviewToolbarButton extends StatelessWidget {
         child: AppInteractiveSurface(
           semanticLabel: label,
           onTap: enabled ? onTap : null,
-          borderRadius: BorderRadius.circular(7),
+          borderRadius: BorderRadius.circular(AppRadius.md),
           child: SizedBox(
             width: 34,
             height: 38,
@@ -687,7 +687,7 @@ class _PreviewTextButton extends StatelessWidget {
   Widget build(BuildContext context) => AppInteractiveSurface(
     semanticLabel: label,
     onTap: onTap,
-    borderRadius: BorderRadius.circular(7),
+    borderRadius: BorderRadius.circular(AppRadius.md),
     child: SizedBox(
       width: 36,
       height: 38,
@@ -697,7 +697,7 @@ class _PreviewTextButton extends StatelessWidget {
           style: TextStyle(
             color: foreground,
             fontSize: 12,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w600,
             decoration: TextDecoration.none,
           ),
         ),
@@ -739,7 +739,7 @@ class _PreviewMoreMenu extends StatelessWidget {
     padding: const EdgeInsets.symmetric(vertical: 5),
     decoration: BoxDecoration(
       color: dark ? const Color(0xF5222327) : const Color(0xFAFCFCFD),
-      borderRadius: BorderRadius.circular(9),
+      borderRadius: BorderRadius.circular(AppRadius.control),
       border: Border.all(
         color: dark ? const Color(0xFF3B3D42) : const Color(0xFFD7D9DE),
       ),
@@ -825,7 +825,7 @@ class _PreviewStatus extends StatelessWidget {
   Widget build(BuildContext context) => DecoratedBox(
     decoration: BoxDecoration(
       color: dark ? const Color(0xE6222327) : const Color(0xF2FFFFFF),
-      borderRadius: BorderRadius.circular(9),
+      borderRadius: BorderRadius.circular(AppRadius.control),
     ),
     child: Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),

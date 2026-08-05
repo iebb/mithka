@@ -466,7 +466,7 @@ class _PollComposerViewState extends State<PollComposerView> {
           ],
           if (option.mediaPath != null) ...[
             ClipRRect(
-              borderRadius: BorderRadius.circular(7),
+              borderRadius: BorderRadius.circular(AppRadius.md),
               child: Image.file(
                 File(option.mediaPath!),
                 width: 38,
@@ -629,7 +629,7 @@ class _PollComposerViewState extends State<PollComposerView> {
               padding: const EdgeInsets.symmetric(horizontal: 11),
               decoration: BoxDecoration(
                 color: c.searchFill,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(AppRadius.control),
                 border: Border.all(color: c.divider, width: 0.5),
               ),
               child: Row(
@@ -667,7 +667,7 @@ class _PollComposerViewState extends State<PollComposerView> {
               padding: const EdgeInsets.fromLTRB(12, 14, 12, 10),
               decoration: BoxDecoration(
                 color: c.card,
-                borderRadius: BorderRadius.circular(18),
+                borderRadius: BorderRadius.circular(AppRadius.lg),
                 boxShadow: const [
                   BoxShadow(
                     color: Color(0x33000000),
@@ -688,7 +688,7 @@ class _PollComposerViewState extends State<PollComposerView> {
                       ),
                       style: TextStyle(
                         fontSize: 17,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w600,
                         color: c.textPrimary,
                       ),
                     ),
@@ -745,7 +745,7 @@ class _PollComposerViewState extends State<PollComposerView> {
           children: [
             if (path != null) ...[
               ClipRRect(
-                borderRadius: BorderRadius.circular(7),
+                borderRadius: BorderRadius.circular(AppRadius.md),
                 child: Image.file(
                   File(path),
                   width: 38,

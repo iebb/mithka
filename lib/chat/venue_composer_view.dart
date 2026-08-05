@@ -85,7 +85,7 @@ class _VenueComposerViewState extends State<VenueComposerView> {
                 padding: const EdgeInsets.symmetric(horizontal: 14),
                 decoration: BoxDecoration(
                   color: enabled ? AppTheme.brand : c.divider,
-                  borderRadius: BorderRadius.circular(17),
+                  borderRadius: BorderRadius.circular(AppRadius.lg),
                 ),
                 child: Text(
                   AppStringKeys.composerSend.l10n(context),
@@ -109,7 +109,7 @@ class _VenueComposerViewState extends State<VenueComposerView> {
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: AppTheme.brand.withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(13),
+                    borderRadius: BorderRadius.circular(AppRadius.card),
                   ),
                   child: AppIcon(
                     HeroAppIcons.venue,

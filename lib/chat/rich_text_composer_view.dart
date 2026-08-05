@@ -1545,7 +1545,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: AppTheme.brand.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(7),
+            borderRadius: BorderRadius.circular(AppRadius.md),
           ),
           child: IntrinsicHeight(
             child: Row(
@@ -1565,7 +1565,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
                             style: TextStyle(
                               color: AppTheme.brand,
                               fontSize: 22,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w600,
                               height: 1,
                             ),
                           ),
@@ -1584,7 +1584,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: c.searchFill,
-            borderRadius: BorderRadius.circular(7),
+            borderRadius: BorderRadius.circular(AppRadius.md),
             border: Border.all(color: c.divider, width: 0.5),
           ),
           child: editor,
@@ -1640,7 +1640,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
                 color: selected
                     ? AppTheme.brand.withValues(alpha: 0.14)
                     : c.searchFill,
-                borderRadius: BorderRadius.circular(7),
+                borderRadius: BorderRadius.circular(AppRadius.md),
                 border: Border.all(
                   color: selected ? AppTheme.brand : c.divider,
                   width: selected ? 1 : 0.5,
@@ -1830,7 +1830,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
         padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
         decoration: BoxDecoration(
           color: c.card,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(AppRadius.control),
           border: Border.all(color: c.divider, width: 0.5),
         ),
         child: Column(
@@ -1941,7 +1941,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
             color: c.card,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(AppRadius.control),
             border: Border.all(color: c.divider, width: 0.5),
           ),
           child: Row(
@@ -1952,7 +1952,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: AppTheme.brand.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(AppRadius.control),
                 ),
                 child: AppIcon(
                   HeroAppIcons.locationPin,
@@ -2007,7 +2007,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
     return Container(
       decoration: BoxDecoration(
         color: c.searchFill,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(AppRadius.md),
       ),
       child: TextField(
         controller: controller,
@@ -2036,7 +2036,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           color: c.card,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(AppRadius.control),
           border: Border.all(color: c.divider, width: 0.5),
         ),
         child: Column(
@@ -2093,7 +2093,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
                       child: Padding(
                         padding: const EdgeInsets.only(right: 6),
                         child: ClipRRect(
-                          borderRadius: BorderRadius.circular(6),
+                          borderRadius: BorderRadius.circular(AppRadius.md),
                           child: _attachmentPreview(
                             c,
                             item,
@@ -2144,7 +2144,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: c.card,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(AppRadius.control),
           border: Border.all(color: c.divider),
         ),
         child: Column(
@@ -2231,7 +2231,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
     return Container(
       decoration: BoxDecoration(
         color: c.card,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: c.divider),
       ),
       child: Column(
@@ -2604,7 +2604,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
             color: selected
                 ? AppTheme.brand.withValues(alpha: 0.14)
                 : c.searchFill,
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: BorderRadius.circular(AppRadius.md),
             border: Border.all(
               color: selected
                   ? AppTheme.brand.withValues(alpha: 0.54)
@@ -2751,7 +2751,9 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
           width: 32,
           height: 32,
           alignment: Alignment.center,
-          decoration: BoxDecoration(borderRadius: BorderRadius.circular(6)),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadius.md),
+          ),
           child: AppIcon(icon, size: 17, color: color),
         ),
       ),
@@ -2768,7 +2770,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
         padding: const EdgeInsets.symmetric(horizontal: 7),
         decoration: BoxDecoration(
           color: c.searchFill,
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(AppRadius.md),
         ),
         child: Text(
           label,
@@ -2854,7 +2856,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: c.searchFill,
-            borderRadius: BorderRadius.circular(7),
+            borderRadius: BorderRadius.circular(AppRadius.md),
           ),
           child: AppIcon(HeroAppIcons.ellipsis, size: 23, color: c.textPrimary),
         ),
@@ -2965,7 +2967,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
           height: 190,
           decoration: BoxDecoration(
             color: c.searchFill,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(AppRadius.control),
             border: Border.all(color: c.divider),
           ),
           clipBehavior: Clip.antiAlias,
@@ -2989,7 +2991,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     color: const Color(0xB8000000),
-                    borderRadius: BorderRadius.circular(7),
+                    borderRadius: BorderRadius.circular(AppRadius.md),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -3032,7 +3034,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           color: c.searchFill,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(AppRadius.control),
           border: Border.all(color: c.divider),
         ),
         child: Row(
@@ -3041,7 +3043,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
               behavior: HitTestBehavior.opaque,
               onTap: isPhoto ? () => _editAttachment(blockIndex) : null,
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: BorderRadius.circular(AppRadius.md),
                 child: _attachmentIcon(c, item, size: 70),
               ),
             ),
@@ -3392,7 +3394,9 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
         width: 34,
         height: 34,
         alignment: Alignment.center,
-        decoration: BoxDecoration(borderRadius: BorderRadius.circular(6)),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+        ),
         child: Text(
           label,
           style: AppTextStyle.callout(
@@ -3420,7 +3424,9 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
           width: 34,
           height: 34,
           alignment: Alignment.center,
-          decoration: BoxDecoration(borderRadius: BorderRadius.circular(6)),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadius.md),
+          ),
           child: AppIcon(icon, size: 18, color: c.textPrimary),
         ),
       ),
@@ -3622,7 +3628,7 @@ class _RichContextMenuSurface extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: c.card,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: c.divider, width: 0.5),
         boxShadow: [
           BoxShadow(
@@ -3942,7 +3948,7 @@ class _RichAnchoredMenu extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 6),
               decoration: BoxDecoration(
                 color: c.card,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(AppRadius.card),
                 border: Border.all(color: c.divider, width: 0.5),
                 boxShadow: [
                   BoxShadow(
@@ -4057,7 +4063,7 @@ class _RichValueDialogState extends State<_RichValueDialog> {
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
           color: c.card,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(AppRadius.card),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,

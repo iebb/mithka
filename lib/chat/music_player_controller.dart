@@ -866,7 +866,7 @@ class _CollapsedMusicPlayer extends StatelessWidget {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: _musicBlack.withValues(alpha: 0.22),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                 ),
                 child: AppIcon(
                   controller.isPlaying ? HeroAppIcons.pause : HeroAppIcons.play,
@@ -1104,15 +1104,16 @@ void _showMusicQueue(BuildContext context, MusicPlayerController controller) {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 16,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w600,
                           color: c.textPrimary,
                         ),
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        AppStrings.t(AppStringKeys.musicPlayerTrackCount, {
-                          'value1': queue.length,
-                        }),
+                        AppStrings.plural(
+                          AppStringKeys.musicPlayerTrackCount,
+                          queue.length,
+                        ),
                         style: TextStyle(fontSize: 12, color: c.textTertiary),
                       ),
                       const SizedBox(height: 12),
@@ -1385,7 +1386,7 @@ class _MusicPlaylistsSheet extends StatelessWidget {
                         AppStrings.t(AppStringKeys.musicPlayerPlaylists),
                         style: TextStyle(
                           fontSize: 19,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w600,
                           color: c.textPrimary,
                         ),
                       ),
@@ -1426,7 +1427,7 @@ class _MusicPlaylistsSheet extends StatelessWidget {
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
                             color: musicPlayerAccent,
-                            borderRadius: BorderRadius.circular(21),
+                            borderRadius: BorderRadius.circular(AppRadius.xl),
                           ),
                           child: Text(
                             AppStrings.t(
@@ -1497,9 +1498,9 @@ class _MusicPlaylistsSheet extends StatelessWidget {
                                     ),
                                     const SizedBox(height: 3),
                                     Text(
-                                      AppStrings.t(
+                                      AppStrings.plural(
                                         AppStringKeys.musicPlayerTrackCount,
-                                        {'value1': playlist.tracks.length},
+                                        playlist.tracks.length,
                                       ),
                                       style: TextStyle(
                                         fontSize: 12,
@@ -1575,7 +1576,7 @@ class _CreatePlaylistDialogState extends State<_CreatePlaylistDialog> {
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
           decoration: BoxDecoration(
             color: c.card,
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
             boxShadow: [
               BoxShadow(
                 color: _musicBlack.withValues(alpha: 0.18),
@@ -1593,7 +1594,7 @@ class _CreatePlaylistDialogState extends State<_CreatePlaylistDialog> {
                 style: TextStyle(
                   color: c.textPrimary,
                   fontSize: 19,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
               const SizedBox(height: 16),
@@ -1603,7 +1604,7 @@ class _CreatePlaylistDialogState extends State<_CreatePlaylistDialog> {
                 padding: const EdgeInsets.symmetric(horizontal: 14),
                 decoration: BoxDecoration(
                   color: c.searchFill,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                 ),
                 child: Stack(
                   alignment: Alignment.centerLeft,
@@ -1789,14 +1790,14 @@ class _PlaylistTracksSheet extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 fontSize: 19,
-                                fontWeight: FontWeight.w700,
+                                fontWeight: FontWeight.w600,
                                 color: c.textPrimary,
                               ),
                             ),
                             Text(
-                              AppStrings.t(
+                              AppStrings.plural(
                                 AppStringKeys.musicPlayerTrackCount,
-                                {'value1': playlist.tracks.length},
+                                playlist.tracks.length,
                               ),
                               style: TextStyle(
                                 fontSize: 12,
@@ -1898,14 +1899,15 @@ class _PlayedChatTracksSheet extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 19,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w600,
                             color: c.textPrimary,
                           ),
                         ),
                         Text(
-                          AppStrings.t(AppStringKeys.musicPlayerTrackCount, {
-                            'value1': tracks.length,
-                          }),
+                          AppStrings.plural(
+                            AppStringKeys.musicPlayerTrackCount,
+                            tracks.length,
+                          ),
                           style: TextStyle(fontSize: 12, color: c.textTertiary),
                         ),
                       ],
@@ -2186,7 +2188,7 @@ class _RepeatOneGlyph extends StatelessWidget {
                 inherit: false,
                 fontSize: size * 0.44,
                 height: 1,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w600,
                 color: color,
               ),
             ),

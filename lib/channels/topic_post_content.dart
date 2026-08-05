@@ -10,7 +10,6 @@ import '../chat/telegram_rich_text.dart';
 import '../components/document_file_icon.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
-import '../l10n/telegram_language_controller.dart';
 import '../profile/adaptive_profile_launcher.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -101,7 +100,7 @@ class _TopicContentImage extends StatelessWidget {
     final width = MediaQuery.of(context).size.width - 28;
     final height = _imageHeight(width);
     return ClipRRect(
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: BorderRadius.circular(AppRadius.md),
       child: SizedBox(
         width: width,
         height: height,
@@ -151,7 +150,7 @@ class _TopicFileCard extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: c.card,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(AppRadius.control),
           border: Border.all(color: c.divider, width: 0.5),
         ),
         child: Column(
@@ -211,7 +210,7 @@ class _TopicFileCard extends StatelessWidget {
 
   String _byteString(int bytes) {
     if (bytes <= 0) {
-      return telegramText(AppStringKeys.topicPostContentFile);
+      return AppStrings.t(AppStringKeys.topicPostContentFile);
     }
     const units = ['B', 'KB', 'MB', 'GB'];
     var value = bytes.toDouble();
@@ -256,7 +255,7 @@ class _TopicButtonRows extends StatelessWidget {
                       ),
                       decoration: BoxDecoration(
                         color: c.searchFill,
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(AppRadius.control),
                         border: Border.all(color: c.divider, width: 0.5),
                       ),
                       child: Text(

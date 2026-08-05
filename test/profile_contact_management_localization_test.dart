@@ -2,14 +2,10 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/l10n/app_localizations.dart';
-import 'package:mithka/l10n/messages/de.dart';
-import 'package:mithka/l10n/messages/en.dart';
-import 'package:mithka/l10n/messages/es.dart';
-import 'package:mithka/l10n/messages/fr.dart';
-import 'package:mithka/l10n/messages/ja.dart';
-import 'package:mithka/l10n/messages/ko.dart';
-import 'package:mithka/l10n/messages/zh_hans.dart';
-import 'package:mithka/l10n/messages/zh_hant.dart';
+
+import 'support/l10n_fixtures.dart';
+
+final fixtures = L10nFixtures.load();
 
 void main() {
   const contactManagementKeys = <String>{
@@ -61,15 +57,15 @@ void main() {
   };
 
   test('contact management has a fallback in every supported locale', () {
-    const localeTables = <String, Map<String, String>>{
-      'en': enMessages,
-      'de': deMessages,
-      'es': esMessages,
-      'fr': frMessages,
-      'ja': jaMessages,
-      'ko': koMessages,
-      'zhHans': zhHansMessages,
-      'zhHant': zhHantMessages,
+    final localeTables = <String, Map<String, String>>{
+      'en': fixtures.messages('en'),
+      'de': fixtures.messages('de'),
+      'es': fixtures.messages('es'),
+      'fr': fixtures.messages('fr'),
+      'ja': fixtures.messages('ja'),
+      'ko': fixtures.messages('ko'),
+      'zhHans': fixtures.messages('zhHans'),
+      'zhHant': fixtures.messages('zhHant'),
     };
 
     for (final locale in localeTables.entries) {
@@ -89,15 +85,15 @@ void main() {
   });
 
   test('contact management placeholder contracts match every locale', () {
-    const localeTables = <Map<String, String>>[
-      enMessages,
-      deMessages,
-      esMessages,
-      frMessages,
-      jaMessages,
-      koMessages,
-      zhHansMessages,
-      zhHantMessages,
+    final localeTables = <Map<String, String>>[
+      fixtures.messages('en'),
+      fixtures.messages('de'),
+      fixtures.messages('es'),
+      fixtures.messages('fr'),
+      fixtures.messages('ja'),
+      fixtures.messages('ko'),
+      fixtures.messages('zhHans'),
+      fixtures.messages('zhHant'),
     ];
     final placeholderKeys = contactManagementKeys.where(
       (key) => key.endsWith('Value1'),

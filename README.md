@@ -117,7 +117,8 @@ archives and external TestFlight delivery. At 00:00 UTC each day, GitHub Actions
 merges new `master` commits into `nightly` and increments the app's patch
 version once; `nightly` publishes dated Android, Windows, macOS, and Linux
 GitHub prereleases and submits the signed AAB to Google Play Open testing.
-Xcode Cloud keeps the same major/minor version but forces the iOS patch to `0`.
+Xcode Cloud keeps the same major/minor version but forces the iOS and macOS
+patch to `0`.
 Pushes to `release` publish dated stable multi-platform GitHub releases and
 submit the production AAB to Google Play through the same channel-aware
 workflow.
