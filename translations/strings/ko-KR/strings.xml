@@ -2282,6 +2282,11 @@
     <string name="searchTabMiniApps">미니 앱</string>
     <string name="searchTabMusic">음악</string>
     <string name="searchTabVoiceMessages">음성 메시지</string>
+    <string name="searchTokenFromTitle">특정 사용자가 보낸</string>
+    <string name="searchTokenHasExample">링크, 파일, 사진, 음성</string>
+    <string name="searchTokenHasTitle">특정 종류 포함</string>
+    <string name="searchTokenHintsTitle">필터</string>
+    <string name="searchTokenInTitle">특정 대화에서 보낸</string>
     <string name="secretChatClosed">이 비밀 대화는 종료되었습니다.</string>
     <string name="secretChatStart">시작</string>
     <string name="secretChatStartFailed">비밀 대화를 만들 수 없음: {value1}</string>

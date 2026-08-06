@@ -186,7 +186,71 @@ void main() {
       (request) => request['@type'] == 'createChatFolder',
     );
     final folder = createRequest['folder'] as Map<String, dynamic>;
-    expect(folder['title'], 'Work');
+    expect(folder['name']['text']['text'], 'Work');
     expect(folder['included_chat_ids'], [42]);
+  });
+
+  testWidgets('folder membership toggle sends a valid chatFolder request', (
+    tester,
+  ) async {
+    final requests = <Map<String, dynamic>>[];
+    await tester.pumpWidget(
+      await testApp(
+        ChatFolderMembershipView(
+          chatId: 42,
+          title: 'Test chat',
+          query: (request) async {
+            requests.add(request);
+            switch (request['@type']) {
+              case 'getChat':
+                return {'@type': 'chat', 'positions': <Object>[]};
+              case 'getChatFolder':
+                return {
+                  '@type': 'chatFolder',
+                  'name': {
+                    '@type': 'chatFolderName',
+                    'text': {
+                      '@type': 'formattedText',
+                      'text': 'Friends',
+                      'entities': <Object>[],
+                    },
+                    'animate_custom_emoji': true,
+                  },
+                  'icon': {'@type': 'chatFolderIcon', 'name': 'Custom'},
+                  'color_id': 3,
+                  'is_shareable': true,
+                  'included_chat_ids': <int>[],
+                  'excluded_chat_ids': <int>[],
+                };
+              case 'editChatFolder':
+                return {'@type': 'chatFolderInfo', 'id': 7};
+              default:
+                return {'@type': 'ok'};
+            }
+          },
+          folderUpdate: () => {
+            '@type': 'updateChatFolders',
+            'chat_folders': [
+              {'@type': 'chatFolderInfo', 'id': 7, 'title': 'Friends'},
+            ],
+          },
+          updates: const Stream.empty(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('chat-folder-toggle-7')));
+    await tester.pumpAndSettle();
+
+    final editRequest = requests.singleWhere(
+      (request) => request['@type'] == 'editChatFolder',
+    );
+    final folder = editRequest['folder'] as Map<String, dynamic>;
+    expect(folder['name']['text']['text'], 'Friends');
+    expect(folder.containsKey('title'), isFalse);
+    expect(folder['color_id'], 3);
+    expect(folder['included_chat_ids'], [42]);
+    expect(folder['excluded_chat_ids'], isEmpty);
   });
 }

@@ -15,6 +15,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import '../app/adaptive_split_layout.dart';
+import '../chats/search_token_suggestions.dart';
 import '../l10n/app_localizations.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -121,9 +122,13 @@ class ChatMessageSearchController extends ChangeNotifier {
   final int chatId;
   final TdClient _client;
 
-  /// Called whenever the cursor lands on a hit — including the automatic
-  /// landing on the newest hit of a freshly typed query.
-  final ValueChanged<ChatMessage>? onActivateResult;
+  /// Called whenever the cursor lands on a hit.
+  ///
+  /// `automatic` marks the landing a fresh query performs on its own, which a
+  /// caller must treat differently from a deliberate step: it happens on every
+  /// keystroke's worth of results.
+  final void Function(ChatMessage message, {required bool automatic})?
+  onActivateResult;
 
   /// Whether a fresh query moves the cursor to its newest hit.
   ///
@@ -150,6 +155,16 @@ class ChatMessageSearchController extends ChangeNotifier {
   ChatSearchFilter _filter = ChatSearchFilter.all;
   ChatSearchTokens _tokens = const ChatSearchTokens(text: '');
   _SearchSenderFilter? _senderFilter;
+  late final ChatSearchTokenSuggester _suggester = ChatSearchTokenSuggester(
+    client: _client,
+  );
+  ChatSearchActiveToken? _activeToken;
+
+  /// Picked from the suggestion list rather than typed; it outlives the text,
+  /// because its token has been taken out of it.
+  _SearchSenderFilter? _committedSender;
+  List<ChatSearchTokenSuggestion> _suggestions = const [];
+  int _suggestRunId = 0;
 
   bool get isActive => _active;
   String get query => _query;
@@ -166,11 +181,15 @@ class ChatMessageSearchController extends ChangeNotifier {
   ChatSearchFilter get filter => _tokens.filter ?? _filter;
 
   /// The resolved `from:` sender, once a member matched the token.
-  int? get senderUserId => _senderFilter?.userId;
-  String? get senderName => _senderFilter?.name;
+  int? get senderUserId => (_committedSender ?? _senderFilter)?.userId;
+  String? get senderName => (_committedSender ?? _senderFilter)?.name;
 
   /// The `from:` text as typed, resolved or not.
   String? get senderQuery => _tokens.fromQuery;
+
+  /// The token the caret is in, if it is one that offers suggestions.
+  ChatSearchActiveToken? get activeToken => _activeToken;
+  List<ChatSearchTokenSuggestion> get suggestions => _suggestions;
 
   /// A run is in flight, or one is queued behind the debounce.
   bool get isLoading => _loading || _debounce?.isActive == true;
@@ -228,6 +247,10 @@ class ChatMessageSearchController extends ChangeNotifier {
     _filter = ChatSearchFilter.all;
     _tokens = const ChatSearchTokens(text: '');
     _senderFilter = null;
+    _activeToken = null;
+    _committedSender = null;
+    _suggestions = const [];
+    _suggestRunId++;
     textController.clear();
     focusNode.unfocus();
     notifyListeners();
@@ -237,9 +260,71 @@ class ChatMessageSearchController extends ChangeNotifier {
     if (_disposed) return;
     _query = value;
     _tokens = parseChatSearchQuery(value);
+    final caret = textController.selection.baseOffset;
+    // `in:` means nothing inside one chat — the chat is already decided — so
+    // only a sender token offers suggestions here.
+    final token = activeChatSearchToken(
+      value,
+      caret < 0 ? value.length : caret,
+    );
+    _activeToken = token?.kind == ChatSearchTokenKind.from ? token : null;
     // A sender resolved for a different token no longer applies.
     if (_senderFilter?.query != _tokens.fromQuery) _senderFilter = null;
+    _startSuggestions();
     _restart();
+  }
+
+  void _startSuggestions() {
+    final token = _activeToken;
+    final runId = ++_suggestRunId;
+    if (token == null) {
+      _suggestions = const [];
+      return;
+    }
+    unawaited(() async {
+      final results = await _suggester.suggest(token, scopeChatId: chatId);
+      if (_disposed || runId != _suggestRunId) return;
+      _suggestions = results;
+      notifyListeners();
+    }());
+  }
+
+  /// Whether the field is asking to be taught its syntax: focused, empty, and
+  /// carrying no filter yet.
+  bool get showsTokenHints =>
+      focusNode.hasFocus && !hasSearch && _senderFilter == null;
+
+  /// Starts a token in the field from the hint list.
+  void startToken(String token) {
+    if (_disposed) return;
+    final text = _query.isEmpty || _query.endsWith(' ')
+        ? '$_query$token'
+        : '$_query $token';
+    textController.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+    focusNode.requestFocus();
+    updateQuery(text);
+  }
+
+  /// Commits a picked suggestion to a badge and takes its text out of the
+  /// field, so the filter is stated once rather than twice.
+  void applySuggestion(ChatSearchTokenSuggestion suggestion) {
+    final token = _activeToken;
+    if (_disposed || token == null) return;
+    _committedSender = _SearchSenderFilter(
+      query: suggestion.token,
+      userId: suggestion.id,
+      name: suggestion.title,
+    );
+    final applied = removeChatSearchToken(_query, token);
+    textController.value = TextEditingValue(
+      text: applied.text,
+      selection: TextSelection.collapsed(offset: applied.caret),
+    );
+    focusNode.requestFocus();
+    updateQuery(applied.text);
   }
 
   /// Narrows the search to one kind of message, keeping whatever is typed.
@@ -270,6 +355,14 @@ class ChatMessageSearchController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Drops the committed `from:` badge.
+  void clearSender() {
+    if (_disposed || _committedSender == null) return;
+    _committedSender = null;
+    focusNode.requestFocus();
+    _restart();
+  }
+
   void clear() {
     if (_disposed) return;
     textController.clear();
@@ -279,11 +372,11 @@ class ChatMessageSearchController extends ChangeNotifier {
 
   /// Moves the cursor to [index] and announces the hit. Out-of-range indexes
   /// are ignored so callers can step without bounds-checking twice.
-  void selectIndex(int index) {
+  void selectIndex(int index, {bool automatic = false}) {
     if (_disposed || index < 0 || index >= _results.length) return;
     _activeIndex = index;
     notifyListeners();
-    onActivateResult?.call(_results[index]);
+    onActivateResult?.call(_results[index], automatic: automatic);
   }
 
   void selectResult(ChatMessage message) {
@@ -363,7 +456,7 @@ class ChatMessageSearchController extends ChangeNotifier {
     // Typing lands on the newest hit so the transcript follows the query
     // without a second gesture; later pages never move the cursor.
     if (activateFirst && autoActivateFirstResult && _results.isNotEmpty) {
-      selectIndex(0);
+      selectIndex(0, automatic: true);
     }
   }
 
@@ -410,6 +503,7 @@ class ChatMessageSearchController extends ChangeNotifier {
   /// member picker rather than an exact-name match. An unresolvable name
   /// leaves the filter off — the search still runs on the remaining words.
   Future<void> _resolveSenderFilter(int runId) async {
+    if (_committedSender != null) return;
     final query = _tokens.fromQuery;
     if (query == null) {
       _senderFilter = null;

@@ -34,6 +34,7 @@ import 'chat_row_view.dart';
 import 'mini_apps_page.dart';
 import 'public_discovery_view.dart';
 import 'search_token_suggestions.dart';
+import 'search_token_views.dart';
 
 /// Shared state for the compact desktop title-bar search field and its
 /// anchored result panel.
@@ -82,6 +83,11 @@ class DesktopInlineSearchController extends ChangeNotifier {
   int _suggestRunId = 0;
   ChatSearchTokenSuggestion? _resolvedSender;
   ChatSearchTokenSuggestion? _resolvedChat;
+
+  /// Picked from the suggestion list rather than typed — these outlive the
+  /// text, because their token has been taken out of it.
+  ChatSearchTokenSuggestion? _committedChat;
+  ChatSearchTokenSuggestion? _committedSender;
   bool _scopeFromToken = false;
 
   String get query => _query;
@@ -94,8 +100,17 @@ class DesktopInlineSearchController extends ChangeNotifier {
   ChatSearchActiveToken? get activeToken => _activeToken;
   List<ChatSearchTokenSuggestion> get suggestions => _suggestions;
 
-  /// The person a `from:` token resolved to, shown as a chip.
-  ChatSearchTokenSuggestion? get resolvedSender => _resolvedSender;
+  /// The person a `from:` token resolved to, shown as a badge.
+  ChatSearchTokenSuggestion? get resolvedSender =>
+      _committedSender ?? _resolvedSender;
+
+  /// Whether the field is asking to be taught its syntax: focused, empty, and
+  /// carrying no filters yet.
+  bool get showsTokenHints =>
+      focusNode.hasFocus &&
+      _query.trim().isEmpty &&
+      _scope == null &&
+      resolvedSender == null;
   bool get panelVisible => _panelVisible && _query.trim().isNotEmpty;
   bool get isLoading =>
       _debouncing || _miniAppsLoading || _activeTabs.any(_model.isLoading);
@@ -170,10 +185,11 @@ class DesktopInlineSearchController extends ChangeNotifier {
       value,
       caret < 0 ? value.length : caret,
     );
-    // A resolved token that no longer matches what is typed is stale.
+    // A resolved token that no longer matches what is typed is stale. A
+    // committed one has no text to match — it lives in its badge.
     if (_resolvedChat?.title != _tokens.inQuery) _resolvedChat = null;
     if (_resolvedSender?.token != _tokens.fromQuery) _resolvedSender = null;
-    _panelVisible = _hasSearch;
+    _panelVisible = _hasSearch || showsTokenHints;
     _debounce?.cancel();
     // Invalidate every in-flight category as soon as the text changes. The
     // next network fan-out remains debounced, but an older query can never
@@ -195,7 +211,9 @@ class DesktopInlineSearchController extends ChangeNotifier {
   bool get _hasSearch =>
       _tokens.text.trim().isNotEmpty ||
       _tokens.inQuery != null ||
-      _tokens.fromQuery != null;
+      _tokens.fromQuery != null ||
+      _committedChat != null ||
+      _committedSender != null;
 
   Future<void> _runSearch() async {
     final query = _tokens.text.trim();
@@ -214,6 +232,17 @@ class DesktopInlineSearchController extends ChangeNotifier {
   /// `in:` wins over a scope inherited from an open chat, since typing it is
   /// the more deliberate act.
   Future<void> _resolveTokens() async {
+    final committedChat = _committedChat;
+    if (committedChat != null) {
+      _scope = ActiveConversationScope(
+        chatId: committedChat.id,
+        title: committedChat.title,
+      );
+      _model.scopeChatId = committedChat.id;
+    }
+    final committedSender = _committedSender;
+    if (committedSender != null) _model.senderUserId = committedSender.id;
+
     final inQuery = _tokens.inQuery;
     if (inQuery != null && _resolvedChat == null) {
       final matches = await _suggester.suggest(
@@ -233,10 +262,11 @@ class DesktopInlineSearchController extends ChangeNotifier {
         chatId: resolvedChat.id,
         title: resolvedChat.title,
       );
-    } else if (inQuery == null && _scopeFromToken) {
+    } else if (inQuery == null && _scopeFromToken && committedChat == null) {
       _scope = null;
+      _scopeFromToken = false;
     }
-    _scopeFromToken = inQuery != null;
+    if (inQuery != null) _scopeFromToken = true;
     _model.scopeChatId = _scope?.chatId;
 
     final fromQuery = _tokens.fromQuery;
@@ -253,7 +283,9 @@ class DesktopInlineSearchController extends ChangeNotifier {
       if (_disposed) return;
       _resolvedSender = matches.firstOrNull;
     }
-    _model.senderUserId = fromQuery == null ? null : _resolvedSender?.id;
+    if (committedSender == null) {
+      _model.senderUserId = fromQuery == null ? null : _resolvedSender?.id;
+    }
   }
 
   void _startSuggestions() {
@@ -274,22 +306,66 @@ class DesktopInlineSearchController extends ChangeNotifier {
     }());
   }
 
-  /// Replaces the token the caret is in with a picked suggestion.
+  /// Commits a picked suggestion to a badge and takes its text out of the
+  /// field, so the filter is stated once rather than twice.
   void applySuggestion(ChatSearchTokenSuggestion suggestion) {
     final token = _activeToken;
     if (_disposed || token == null) return;
     if (token.kind == ChatSearchTokenKind.chat) {
-      _resolvedChat = suggestion;
+      _committedChat = suggestion;
+      _scope = ActiveConversationScope(
+        chatId: suggestion.id,
+        title: suggestion.title,
+      );
+      _scopeFromToken = true;
     } else {
-      _resolvedSender = suggestion;
+      _committedSender = suggestion;
     }
-    final applied = applyChatSearchToken(_query, token, suggestion.token);
+    final applied = removeChatSearchToken(_query, token);
     textController.value = TextEditingValue(
       text: applied.text,
       selection: TextSelection.collapsed(offset: applied.caret),
     );
     focusNode.requestFocus();
     updateQuery(applied.text);
+  }
+
+  /// Starts a token in the field from the hint list.
+  void startToken(String token) {
+    if (_disposed) return;
+    final text = _query.isEmpty || _query.endsWith(' ')
+        ? '$_query$token'
+        : '$_query $token';
+    textController.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+    focusNode.requestFocus();
+    updateQuery(text);
+  }
+
+  /// Drops the committed `from:` badge.
+  void clearSender() {
+    if (_disposed || _committedSender == null) return;
+    _committedSender = null;
+    _resolvedSender = null;
+    _model.senderUserId = null;
+    focusNode.requestFocus();
+    _restartSearch();
+  }
+
+  void _restartSearch() {
+    _debounce?.cancel();
+    _model.clearTabs(_searchTabs);
+    _invalidateMiniApps();
+    _debouncing = _hasSearch;
+    if (_hasSearch) {
+      _debounce = Timer(
+        const Duration(milliseconds: 240),
+        () => _disposed ? null : unawaited(_runSearch()),
+      );
+    }
+    notifyListeners();
   }
 
   void clear() {
@@ -303,6 +379,8 @@ class DesktopInlineSearchController extends ChangeNotifier {
     _suggestRunId++;
     _resolvedChat = null;
     _resolvedSender = null;
+    _committedChat = null;
+    _committedSender = null;
     _model.senderUserId = null;
     _panelVisible = false;
     _debouncing = false;
@@ -325,6 +403,8 @@ class DesktopInlineSearchController extends ChangeNotifier {
     _suggestRunId++;
     _resolvedChat = null;
     _resolvedSender = null;
+    _committedChat = null;
+    _committedSender = null;
     _model.scopeChatId = null;
     _model.senderUserId = null;
     focusNode.unfocus();
@@ -407,8 +487,12 @@ class DesktopInlineSearchField extends StatelessWidget {
   static const double scopedWidth = 348;
   static const double height = 28;
 
-  static double widthFor(DesktopInlineSearchController controller) =>
-      controller.scope == null ? width : scopedWidth;
+  static double widthFor(DesktopInlineSearchController controller) {
+    final chips =
+        (controller.scope == null ? 0 : 1) +
+        (controller.resolvedSender == null ? 0 : 1);
+    return chips == 0 ? width : width + chips * (scopedWidth - width);
+  }
 
   final DesktopInlineSearchController controller;
   final FutureOr<void> Function(String query) onSearchAll;
@@ -464,9 +548,28 @@ class DesktopInlineSearchField extends StatelessWidget {
               const SizedBox(width: 6),
               if (scope != null) ...[
                 Flexible(
-                  child: _DesktopInlineSearchScopeChip(
-                    scope: scope,
+                  child: _DesktopInlineSearchTokenChip(
+                    key: const ValueKey('desktop-title-bar-search-scope'),
+                    labelKey: AppStringKeys.desktopSearchScopeIn,
+                    value: scope.title,
                     onRemove: controller.clearScope,
+                    removeKey: const ValueKey(
+                      'desktop-title-bar-search-scope-remove',
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+              ],
+              if (controller.resolvedSender case final sender?) ...[
+                Flexible(
+                  child: _DesktopInlineSearchTokenChip(
+                    key: const ValueKey('desktop-title-bar-search-from'),
+                    labelKey: AppStringKeys.chatSearchTokenFrom,
+                    value: sender.title,
+                    onRemove: controller.clearSender,
+                    removeKey: const ValueKey(
+                      'desktop-title-bar-search-from-remove',
+                    ),
                   ),
                 ),
                 const SizedBox(width: 6),
@@ -525,102 +628,25 @@ class DesktopInlineSearchField extends StatelessWidget {
   );
 }
 
-/// Chats or people offered while an `in:` or `from:` token is being typed.
-class _TokenSuggestionList extends StatelessWidget {
-  const _TokenSuggestionList({required this.controller});
-
-  final DesktopInlineSearchController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    final suggestions = controller.suggestions;
-    if (suggestions.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
-        child: Text(
-          AppStringKeys.chatsSearchNoResults.l10n(context),
-          style: TextStyle(fontSize: 13, color: c.textTertiary),
-        ),
-      );
-    }
-    return ListView.builder(
-      key: const ValueKey('desktop-inline-search-token-suggestions'),
-      shrinkWrap: true,
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      itemCount: suggestions.length,
-      itemBuilder: (context, index) {
-        final suggestion = suggestions[index];
-        return AppInteractiveSurface(
-          key: ValueKey('desktop-inline-search-token-${suggestion.id}'),
-          semanticLabel: suggestion.title,
-          onTap: () => controller.applySuggestion(suggestion),
-          child: SizedBox(
-            height: 48,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Row(
-                children: [
-                  PhotoAvatar(
-                    title: suggestion.title,
-                    photo: suggestion.photo,
-                    size: 32,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          suggestion.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: c.textPrimary,
-                          ),
-                        ),
-                        if (suggestion.subtitle case final subtitle?) ...[
-                          const SizedBox(height: 2),
-                          Text(
-                            subtitle,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: c.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-/// The `in: <chat>` token inside the search field.
+/// A committed token inside the search field.
 ///
 /// It reads as one filter rather than typed text: the whole chip is tinted,
 /// and its own control removes it without disturbing the query beside it.
-class _DesktopInlineSearchScopeChip extends StatelessWidget {
-  const _DesktopInlineSearchScopeChip({
-    required this.scope,
+class _DesktopInlineSearchTokenChip extends StatelessWidget {
+  const _DesktopInlineSearchTokenChip({
+    super.key,
+    required this.labelKey,
+    required this.value,
     required this.onRemove,
+    this.removeKey,
   });
 
-  static const double maxTitleWidth = 132;
+  static const double maxValueWidth = 132;
 
-  final ActiveConversationScope scope;
+  final String labelKey;
+  final String value;
   final VoidCallback onRemove;
+  final Key? removeKey;
 
   @override
   Widget build(BuildContext context) {
@@ -630,7 +656,6 @@ class _DesktopInlineSearchScopeChip extends StatelessWidget {
       color: AppTheme.brand,
     );
     return Container(
-      key: const ValueKey('desktop-title-bar-search-scope'),
       height: 20,
       padding: const EdgeInsets.only(left: 6, right: 2),
       decoration: BoxDecoration(
@@ -641,20 +666,19 @@ class _DesktopInlineSearchScopeChip extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            AppStringKeys.desktopSearchScopeIn.l10n(context),
+            labelKey.l10n(context),
             style: labelStyle.copyWith(
               color: AppTheme.brand.withValues(alpha: 0.75),
             ),
           ),
           const SizedBox(width: 3),
-          // Flexible as well as bounded: a chat name gets at most
-          // [maxTitleWidth], and still gives way if the field itself is
-          // squeezed narrower than that.
+          // Flexible as well as bounded: a name gets at most [maxValueWidth],
+          // and still gives way if the field itself is squeezed narrower.
           Flexible(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: maxTitleWidth),
+              constraints: const BoxConstraints(maxWidth: maxValueWidth),
               child: Text(
-                scope.title,
+                value,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: labelStyle,
@@ -662,7 +686,7 @@ class _DesktopInlineSearchScopeChip extends StatelessWidget {
             ),
           ),
           AppInteractiveSurface(
-            key: const ValueKey('desktop-title-bar-search-scope-remove'),
+            key: removeKey,
             semanticLabel: AppStringKeys.desktopSearchScopeRemove.l10n(context),
             onTap: onRemove,
             borderRadius: BorderRadius.circular(AppRadius.sm),
@@ -782,7 +806,23 @@ class DesktopInlineSearchPanel extends StatelessWidget {
       if (token != null) {
         return _panelShell(
           context,
-          child: _TokenSuggestionList(controller: controller),
+          child: SearchTokenSuggestionList(
+            suggestions: controller.suggestions,
+            onPick: controller.applySuggestion,
+          ),
+        );
+      }
+      if (controller.showsTokenHints) {
+        return _panelShell(
+          context,
+          child: SearchTokenHints(
+            hints: const [
+              searchTokenFromHint,
+              searchTokenInHint,
+              searchTokenHasHint,
+            ],
+            onPick: controller.startToken,
+          ),
         );
       }
       return _panelShell(

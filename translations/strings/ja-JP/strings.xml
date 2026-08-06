@@ -2282,6 +2282,11 @@
     <string name="searchTabMiniApps">ミニアプリ</string>
     <string name="searchTabMusic">音楽</string>
     <string name="searchTabVoiceMessages">ボイスメッセージ</string>
+    <string name="searchTokenFromTitle">特定の人から</string>
+    <string name="searchTokenHasExample">リンク、ファイル、写真、ボイス</string>
+    <string name="searchTokenHasTitle">特定の種類を含む</string>
+    <string name="searchTokenHintsTitle">フィルター</string>
+    <string name="searchTokenInTitle">特定のチャット内</string>
     <string name="secretChatClosed">このシークレットチャットは終了しました。</string>
     <string name="secretChatStart">開始</string>
     <string name="secretChatStartFailed">シークレットチャットを作成できませんでした: {value1}</string>

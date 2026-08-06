@@ -204,6 +204,27 @@ class ChatRestoredPositionGuard {
   }
 }
 
+/// An around-message history window may include the latest loaded message
+/// without containing the current latest messages. Once a user has finished
+/// dragging toward that edge, replace the anchored window with the latest
+/// history. The guards keep this from interrupting an active gesture,
+/// explicit target, or restored-position protection.
+bool shouldRequestAutomaticReturnToLatest({
+  required bool anchoredHistory,
+  required bool restoredPositionProtected,
+  required bool pointerDown,
+  required bool hasScrollTarget,
+  required bool hasScrollClients,
+  required bool isNearLatestEdge,
+}) {
+  return anchoredHistory &&
+      !restoredPositionProtected &&
+      !pointerDown &&
+      !hasScrollTarget &&
+      hasScrollClients &&
+      isNearLatestEdge;
+}
+
 /// Session restoration must distinguish an exact latest-edge position from a
 /// viewport that merely happens to be close to it. A generous "near bottom"
 /// threshold is useful for read markers and UI affordances, but using it here

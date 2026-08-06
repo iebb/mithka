@@ -194,7 +194,8 @@ void main() {
       final activated = <int>[];
       final controller = ChatMessageSearchController(
         chatId: _chatId,
-        onActivateResult: (message) => activated.add(message.id),
+        onActivateResult: (message, {required automatic}) =>
+            activated.add(message.id),
       );
       addTearDown(controller.dispose);
 
@@ -222,7 +223,8 @@ void main() {
       final activated = <int>[];
       final controller = ChatMessageSearchController(
         chatId: _chatId,
-        onActivateResult: (message) => activated.add(message.id),
+        onActivateResult: (message, {required automatic}) =>
+            activated.add(message.id),
       );
       addTearDown(controller.dispose);
 
@@ -298,6 +300,27 @@ void main() {
       await pumpEventQueue();
       expect(controller.results, hasLength(2));
       expect(controller.hasMore, isFalse);
+    });
+
+    test('a query lands on its own; a step is deliberate', () async {
+      final activations = <bool>[];
+      final controller = ChatMessageSearchController(
+        chatId: _chatId,
+        onActivateResult: (message, {required automatic}) =>
+            activations.add(automatic),
+      );
+      addTearDown(controller.dispose);
+
+      controller.open();
+      controller.updateQuery('needle');
+      await Future<void>.delayed(_debounce);
+      await pumpEventQueue();
+      // The landing a fresh query performs happens on every pause in typing.
+      expect(activations, [true]);
+
+      await controller.stepOlder();
+      controller.stepNewer();
+      expect(activations, [true, false, false]);
     });
 
     test('a filter narrows the search to one kind of message', () async {

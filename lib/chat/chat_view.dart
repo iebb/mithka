@@ -25,6 +25,7 @@ import '../app/video_split_controller.dart';
 import '../auth/telegram_country_names.dart';
 import '../call/call_manager.dart';
 import '../channels/topic_chat_view.dart';
+import '../chats/search_token_views.dart';
 import '../components/app_dialog.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
@@ -846,6 +847,10 @@ class _ChatViewState extends State<ChatView> {
   bool _showEntryUnreadBanner = false;
   late final ChatMessageSearchController _search;
 
+  /// Whether the last layout had room for the results pane. Read by callbacks
+  /// that run outside build, where the constraints are no longer at hand.
+  bool _searchResultsPaneVisible = false;
+
   /// The hit the search cursor is sitting on. Unlike [_scrollTargetId] this
   /// survives the jump that put it there, so the bubble stays marked while the
   /// user steps through the rest of the results.
@@ -875,6 +880,7 @@ class _ChatViewState extends State<ChatView> {
   int? _selectionAnchorId;
   bool _selectionScrollingUp = false;
   double _lastScrollPixels = 0;
+  ScrollDirection _lastTranscriptUserScrollDirection = ScrollDirection.idle;
   bool _backSwipePopping = false;
   bool _loadingOlderFromScroll = false;
   final OldestHistoryPullController _olderHistoryPull =
@@ -1228,9 +1234,17 @@ class _ChatViewState extends State<ChatView> {
 
   bool _onTranscriptUserScroll(UserScrollNotification notification) {
     if (notification.direction == ScrollDirection.idle) {
-      _restoredPositionGuard.finishUserScroll();
+      final endedTowardLatest =
+          _lastTranscriptUserScrollDirection == ScrollDirection.reverse;
+      _lastTranscriptUserScrollDirection = ScrollDirection.idle;
+      final protectedRestoredPosition =
+          _restoredPositionGuard.finishUserScroll();
       _returnToLatestCoordinator.userDragEnded();
+      if (endedTowardLatest && !protectedRestoredPosition) {
+        _requestAutomaticReturnToLatestIfNearLatest();
+      }
     } else if (_initialTranscriptReady) {
+      _lastTranscriptUserScrollDirection = notification.direction;
       _restoredPositionGuard.noteUserScroll();
       _claimTranscriptViewport();
     }
@@ -1787,6 +1801,21 @@ class _ChatViewState extends State<ChatView> {
           ? ChatReturnToLatestSource.user
           : ChatReturnToLatestSource.automatic,
     );
+  }
+
+  void _requestAutomaticReturnToLatestIfNearLatest() {
+    if (!shouldRequestAutomaticReturnToLatest(
+      anchoredHistory: _vm.anchoredHistory,
+      restoredPositionProtected: _restoredPositionGuard.blocksAutomaticReturn,
+      pointerDown: _hasTranscriptPointerDown,
+      hasScrollTarget: _scrollTargetId != null,
+      hasScrollClients: _scroll.hasClients,
+      isNearLatestEdge:
+          _scroll.hasClients && isNearLatest(_scroll.position, threshold: 36),
+    )) {
+      return;
+    }
+    _requestReturnToLatest();
   }
 
   void _markReadAtBottomIfNeeded() {
@@ -5141,6 +5170,7 @@ class _ChatViewState extends State<ChatView> {
                           final searchPane = _searchUsesResultsPane(
                             constraints.maxWidth,
                           );
+                          _searchResultsPaneVisible = searchPane;
                           final searching = _search.isActive;
                           return ChatHeaderTrailingPaneLayout(
                             header: showPeerRestrictionBlock
@@ -5154,7 +5184,11 @@ class _ChatViewState extends State<ChatView> {
                                 ? _restrictedPeerBlockPage()
                                 : Column(
                                     children: [
-                                      Expanded(child: _transcriptLayer()),
+                                      Expanded(
+                                        child: _transcriptLayer(
+                                          searchPane: searchPane,
+                                        ),
+                                      ),
                                       _chatMusicPlayer(),
                                       // A narrow chat trades the composer for
                                       // the hit navigator; a wide one keeps
@@ -5298,7 +5332,7 @@ class _ChatViewState extends State<ChatView> {
     }
   }
 
-  Widget _transcriptLayer() {
+  Widget _transcriptLayer({required bool searchPane}) {
     final aiSettings = context.watch<AiSettingsController?>();
     final transcriptReady = _initialTranscriptReady;
     final newMessagesPlacement = chatNewMessagesControlPlacement(
@@ -5314,6 +5348,9 @@ class _ChatViewState extends State<ChatView> {
     final showPinnedTodo =
         transcriptReady &&
         !_isSelecting &&
+        // The pinned bar and the suggestion card want the same corner, and a
+        // pinned message is not what is being looked for mid-search.
+        !_search.isActive &&
         _vm.pinnedMessage != null &&
         !_vm.pinnedDismissed;
     return Stack(
@@ -5376,7 +5413,58 @@ class _ChatViewState extends State<ChatView> {
         if (transcriptReady &&
             bottomIndicator == ChatBottomIndicator.jumpToBottom)
           Positioned(right: 16, bottom: 12, child: _jumpToBottomButton()),
+        // Without a pane to hold them, suggestions float over the transcript
+        // rather than replacing it — the conversation stays in view while a
+        // sender is picked.
+        if (!searchPane && _searchOverlay != null)
+          Positioned(
+            top: AppSpacing.md,
+            left: AppSpacing.lg,
+            right: AppSpacing.lg,
+            child: _searchOverlay!,
+          ),
       ],
+    );
+  }
+
+  /// The floating suggestion or hint card, or null when neither applies.
+  Widget? get _searchOverlay {
+    if (!_search.isActive) return null;
+    final showsSuggestions = _search.activeToken != null;
+    if (!showsSuggestions && !_search.showsTokenHints) return null;
+    final c = context.colors;
+    return Material(
+      type: MaterialType.transparency,
+      child: Container(
+        key: const ValueKey('chatSearchFloatingSuggestions'),
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.42,
+        ),
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: c.card,
+          borderRadius: BorderRadius.circular(AppRadius.card),
+          border: Border.all(color: c.divider, width: 0.75),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.18),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: showsSuggestions
+            ? SearchTokenSuggestionList(
+                suggestions: _search.suggestions,
+                onPick: _search.applySuggestion,
+              )
+            : SingleChildScrollView(
+                child: SearchTokenHints(
+                  hints: const [searchTokenFromHint, searchTokenHasHint],
+                  onPick: _search.startToken,
+                ),
+              ),
+      ),
     );
   }
 
@@ -6934,8 +7022,16 @@ class _ChatViewState extends State<ChatView> {
   ///
   /// The alignment sits the message just above centre so the messages around
   /// it — the reason the user searched — are on screen too.
-  Future<void> _openSearchResult(ChatMessage result) async {
+  Future<void> _openSearchResult(
+    ChatMessage result, {
+    required bool automatic,
+  }) async {
     setState(() => _searchHighlightId = result.id);
+    // A phone gives up most of its height to the keyboard, so a deliberate
+    // jump puts it away — the message asked for should be the thing on screen.
+    // A query's own landing must not, or typing would close the keyboard on
+    // every pause.
+    if (!automatic && !_searchResultsPaneVisible) _search.focusNode.unfocus();
     await _scrollToMessage(result.id, alignment: 0.38, forceAlignment: true);
   }
 

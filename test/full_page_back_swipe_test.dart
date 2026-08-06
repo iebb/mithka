@@ -145,6 +145,29 @@ void main() {
     expect(backCount, 1);
   });
 
+  testWidgets('short horizontal drags do not trigger back', (tester) async {
+    var backCount = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: FullPageBackSwipe(
+            enabled: true,
+            onBack: () => backCount++,
+            child: const SizedBox.expand(),
+          ),
+        ),
+      ),
+    );
+
+    final center = tester.getCenter(find.byType(FullPageBackSwipe));
+    final gesture = await tester.startGesture(center);
+    await gesture.moveBy(const Offset(80, 0));
+    await gesture.up();
+    await tester.pump();
+
+    expect(backCount, 0);
+  });
+
   testWidgets('vertical and disabled swipes do not navigate back', (
     tester,
   ) async {

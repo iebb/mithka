@@ -119,6 +119,42 @@ void main() {
     expect(guard.blocksAutomaticReturn, isFalse);
   });
 
+  test('automatic latest return only runs at the end of an anchored window', () {
+    bool decide({
+      bool protected = false,
+      bool pointerDown = false,
+      bool hasScrollTarget = false,
+      bool hasScrollClients = true,
+      bool isNearLatestEdge = true,
+    }) =>
+        shouldRequestAutomaticReturnToLatest(
+          anchoredHistory: true,
+          restoredPositionProtected: protected,
+          pointerDown: pointerDown,
+          hasScrollTarget: hasScrollTarget,
+          hasScrollClients: hasScrollClients,
+          isNearLatestEdge: isNearLatestEdge,
+        );
+
+    expect(decide(), isTrue);
+    expect(decide(protected: true), isFalse);
+    expect(decide(pointerDown: true), isFalse);
+    expect(decide(hasScrollTarget: true), isFalse);
+    expect(decide(hasScrollClients: false), isFalse);
+    expect(decide(isNearLatestEdge: false), isFalse);
+    expect(
+      shouldRequestAutomaticReturnToLatest(
+        anchoredHistory: false,
+        restoredPositionProtected: false,
+        pointerDown: false,
+        hasScrollTarget: false,
+        hasScrollClients: true,
+        isNearLatestEdge: true,
+      ),
+      isFalse,
+    );
+  });
+
   test('session snapshots only round an exact latest position to bottom', () {
     bool decide(double distance, {bool anchored = false}) =>
         isChatSessionAtLoadedBottom(

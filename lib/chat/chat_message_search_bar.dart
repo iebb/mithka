@@ -13,6 +13,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../chats/search_token_views.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
 import '../components/photo_avatar.dart';
@@ -114,9 +115,10 @@ class ChatSearchHeaderBar extends StatelessWidget {
 /// A resolved `from:` token, shown so the narrowed search is visible rather
 /// than implied by a shrinking result list.
 class _ChatSearchSenderChip extends StatelessWidget {
-  const _ChatSearchSenderChip({required this.name});
+  const _ChatSearchSenderChip({required this.name, required this.onRemove});
 
   final String name;
+  final VoidCallback onRemove;
 
   @override
   Widget build(BuildContext context) {
@@ -142,13 +144,31 @@ class _ChatSearchSenderChip extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 3),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 110),
-            child: Text(
-              name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: style,
+          Flexible(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 110),
+              child: Text(
+                name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: style,
+              ),
+            ),
+          ),
+          AppInteractiveSurface(
+            key: const ValueKey('chatSearchSenderChipRemove'),
+            semanticLabel: AppStringKeys.desktopSearchScopeRemove.l10n(context),
+            onTap: onRemove,
+            borderRadius: BorderRadius.circular(AppRadius.sm),
+            child: SizedBox.square(
+              dimension: 16,
+              child: Center(
+                child: AppIcon(
+                  HeroAppIcons.xmark,
+                  size: 10,
+                  color: AppTheme.brand,
+                ),
+              ),
             ),
           ),
         ],
@@ -260,7 +280,10 @@ class _ChatSearchField extends StatelessWidget {
           ),
           const SizedBox(width: AppSpacing.sm),
           if (controller.senderName case final sender?) ...[
-            _ChatSearchSenderChip(name: sender),
+            _ChatSearchSenderChip(
+              name: sender,
+              onRemove: controller.clearSender,
+            ),
             const SizedBox(width: AppSpacing.sm),
           ],
           Expanded(
@@ -527,6 +550,30 @@ class ChatSearchResultsPane extends StatelessWidget {
 
   Widget _build(BuildContext context) {
     final c = context.colors;
+    // A token being typed is a question about who, so the surface answers that
+    // instead of listing hits for a half-written filter.
+    final token = controller.activeToken;
+    if (token != null) {
+      return ColoredBox(
+        color: backgroundColor ?? c.panelBackground,
+        child: SearchTokenSuggestionList(
+          suggestions: controller.suggestions,
+          onPick: controller.applySuggestion,
+          shrinkWrap: false,
+        ),
+      );
+    }
+    if (controller.showsTokenHints) {
+      return ColoredBox(
+        color: backgroundColor ?? c.panelBackground,
+        child: SingleChildScrollView(
+          child: SearchTokenHints(
+            hints: const [searchTokenFromHint, searchTokenHasHint],
+            onPick: controller.startToken,
+          ),
+        ),
+      );
+    }
     return ColoredBox(
       key: const ValueKey('chatSearchResultsPane'),
       color: backgroundColor ?? c.panelBackground,

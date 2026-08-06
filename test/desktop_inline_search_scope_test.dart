@@ -227,17 +227,21 @@ void main() {
 
     expect(controller.activeToken?.kind, ChatSearchTokenKind.chat);
     expect(
-      find.byKey(const ValueKey('desktop-inline-search-token-suggestions')),
+      find.byKey(const ValueKey('searchTokenSuggestions')),
       findsOneWidget,
     );
-    await tester.tap(
-      find.byKey(const ValueKey('desktop-inline-search-token-100')),
-    );
+    await tester.tap(find.byKey(const ValueKey('searchTokenSuggestion-100')));
     await tester.pumpAndSettle();
 
-    // Picking rewrites the token, and the search narrows to that chat.
-    expect(controller.textController.text, startsWith('in:"Needle chat"'));
+    // Picking commits the token to a badge and takes its text out of the
+    // field, so the filter is stated once rather than twice.
+    expect(controller.textController.text, isEmpty);
     expect(controller.activeToken, isNull);
+    expect(controller.scope?.chatId, 100);
+    expect(
+      find.byKey(const ValueKey('desktop-title-bar-search-scope')),
+      findsOneWidget,
+    );
   });
 }
 

@@ -133,42 +133,52 @@ class _QuickReactionSettingsViewState extends State<QuickReactionSettingsView> {
         horizontal: AppSpacing.md,
         vertical: AppSpacing.sm,
       ),
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.md,
-          vertical: AppSpacing.sm,
-        ),
-        itemCount: selected.length,
-        separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.xs),
-        itemBuilder: (context, index) {
-          final reaction = selected[index];
-          return DragTarget<QuickReactionChoice>(
-            onWillAcceptWithDetails: (details) => details.data != reaction,
-            onAcceptWithDetails: (details) => _move(details.data, index),
-            builder: (context, candidates, _) => LongPressDraggable(
-              data: reaction,
-              axis: Axis.horizontal,
-              feedback: Directionality(
-                textDirection: Directionality.of(context),
-                child: _reactionTile(reaction, selected: true, elevated: true),
-              ),
-              childWhenDragging: Opacity(
-                opacity: 0.25,
-                child: _reactionTile(reaction, selected: true),
-              ),
-              child: AnimatedScale(
-                duration: const Duration(milliseconds: 120),
-                scale: candidates.isEmpty ? 1 : 1.08,
-                child: _reactionTile(
-                  reaction,
-                  selected: true,
-                  onTap: () => _toggle(reaction),
+      child: SizedBox(
+        // A horizontal viewport must have a bounded cross-axis extent. The
+        // unbounded list used to collapse the selected strip (and hide the
+        // picker) on Android.
+        height: 62,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.sm,
+          ),
+          itemCount: selected.length,
+          separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.xs),
+          itemBuilder: (context, index) {
+            final reaction = selected[index];
+            return DragTarget<QuickReactionChoice>(
+              onWillAcceptWithDetails: (details) => details.data != reaction,
+              onAcceptWithDetails: (details) => _move(details.data, index),
+              builder: (context, candidates, _) => LongPressDraggable(
+                data: reaction,
+                axis: Axis.horizontal,
+                feedback: Directionality(
+                  textDirection: Directionality.of(context),
+                  child: _reactionTile(
+                    reaction,
+                    selected: true,
+                    elevated: true,
+                  ),
+                ),
+                childWhenDragging: Opacity(
+                  opacity: 0.25,
+                  child: _reactionTile(reaction, selected: true),
+                ),
+                child: AnimatedScale(
+                  duration: const Duration(milliseconds: 120),
+                  scale: candidates.isEmpty ? 1 : 1.08,
+                  child: _reactionTile(
+                    reaction,
+                    selected: true,
+                    onTap: () => _toggle(reaction),
+                  ),
                 ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }

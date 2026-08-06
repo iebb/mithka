@@ -2334,6 +2334,11 @@ abstract final class AppStringKeys {
       'sensitiveContentUnblockMessage';
   static const sensitiveContentUnblockTitle = 'sensitiveContentUnblockTitle';
   static const searchTabChats = 'searchTabChats';
+  static const searchTokenFromTitle = 'searchTokenFromTitle';
+  static const searchTokenHasExample = 'searchTokenHasExample';
+  static const searchTokenHasTitle = 'searchTokenHasTitle';
+  static const searchTokenHintsTitle = 'searchTokenHintsTitle';
+  static const searchTokenInTitle = 'searchTokenInTitle';
   static const searchTabFiles = 'searchTabFiles';
   static const searchTabLinks = 'searchTabLinks';
   static const searchTabMedia = 'searchTabMedia';

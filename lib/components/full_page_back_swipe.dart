@@ -42,6 +42,15 @@ class FullPageBackSwipe extends StatefulWidget {
 }
 
 class _FullPageBackSwipeState extends State<FullPageBackSwipe> {
+  // Keep a small horizontal drift from taking over the page. The back
+  // gesture is available across the conversation surface, so the intent and
+  // commit thresholds need to be high enough that ordinary diagonal/short
+  // drags remain with the control under the finger.
+  static const _intentDistance = 18.0;
+  static const _commitDistance = 96.0;
+  static const _longCommitDistance = 128.0;
+  static const _fastCommitVelocity = 760.0;
+
   int? _pointer;
   double _dx = 0;
   double _dy = 0;
@@ -75,7 +84,9 @@ class _FullPageBackSwipeState extends State<FullPageBackSwipe> {
     _dx += event.delta.dx;
     _dy += event.delta.dy;
     tracker.addPosition(event.timeStamp, event.position);
-    if (!_horizontalIntent && _dx > 7 && _dx.abs() > _dy.abs() * 1.35) {
+    if (!_horizontalIntent &&
+        _dx > _intentDistance &&
+        _dx.abs() > _dy.abs() * 1.45) {
       _horizontalIntent = true;
       final route = ModalRoute.of(context);
       final driver = route is FullPageBackSwipeDriver
@@ -102,8 +113,8 @@ class _FullPageBackSwipeState extends State<FullPageBackSwipe> {
     final shouldPop =
         widget.enabled &&
         horizontal &&
-        _dx > 72 &&
-        (velocity > 520 || _dx > 118);
+        _dx > _commitDistance &&
+        (velocity > _fastCommitVelocity || _dx > _longCommitDistance);
     final driver = _driver;
     final routeDriverDetected = _routeDriverDetected;
     _reset();

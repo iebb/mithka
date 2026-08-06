@@ -27,6 +27,7 @@ import '../components/ui_components.dart';
 import '../moments/story_management_view.dart';
 import '../notifications/notification_settings_payload.dart';
 import '../profile/qr_code_view.dart';
+import '../settings/chat_folder_service.dart';
 import '../settings/edit_field_view.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -1447,27 +1448,12 @@ class _ChatFolderMembershipViewState extends State<ChatFolderMembershipView> {
     Map<String, dynamic> folder, {
     required Set<int> includedChatIds,
     required Set<int> excludedChatIds,
-  }) {
-    return {
-      '@type': 'chatFolder',
-      'title':
-          folder.str('title') ??
-          _folderTitle(folder, const <String, dynamic>{}, 0),
-      if (folder.obj('icon') != null) 'icon': folder.obj('icon'),
-      'is_shareable': folder.boolean('is_shareable') ?? false,
-      'pinned_chat_ids': folder.int64Array('pinned_chat_ids') ?? const <int>[],
-      'included_chat_ids': includedChatIds.toList()..sort(),
-      'excluded_chat_ids': excludedChatIds.toList()..sort(),
-      'exclude_muted': folder.boolean('exclude_muted') ?? false,
-      'exclude_read': folder.boolean('exclude_read') ?? false,
-      'exclude_archived': folder.boolean('exclude_archived') ?? false,
-      'include_contacts': folder.boolean('include_contacts') ?? false,
-      'include_non_contacts': folder.boolean('include_non_contacts') ?? false,
-      'include_bots': folder.boolean('include_bots') ?? false,
-      'include_groups': folder.boolean('include_groups') ?? false,
-      'include_channels': folder.boolean('include_channels') ?? false,
-    };
-  }
+  }) => ChatFolderDraft.fromRaw(folder)
+      .copyWith(
+        includedChatIds: includedChatIds,
+        excludedChatIds: excludedChatIds,
+      )
+      .toRequest();
 
   void _openCreateFolderPrompt() {
     if (_showCreatePrompt) return;
@@ -1637,6 +1623,7 @@ class _ChatFolderMembershipViewState extends State<ChatFolderMembershipView> {
               Opacity(
                 opacity: item.editable ? 1 : 0.45,
                 child: _ChatFolderToggle(
+                  key: ValueKey('chat-folder-toggle-${item.id}'),
                   value: item.selected,
                   onChanged: item.editable
                       ? (value) => _toggle(item, value)
@@ -1691,7 +1678,11 @@ class _ChatFolderAction extends StatelessWidget {
 }
 
 class _ChatFolderToggle extends StatelessWidget {
-  const _ChatFolderToggle({required this.value, required this.onChanged});
+  const _ChatFolderToggle({
+    super.key,
+    required this.value,
+    required this.onChanged,
+  });
 
   final bool value;
   final ValueChanged<bool>? onChanged;

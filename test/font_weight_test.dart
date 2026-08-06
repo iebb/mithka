@@ -23,12 +23,33 @@ const _allowedNames = {'w300', 'w400', 'w500', 'w600', 'normal'};
 /// The accessibility ladder is the one place heavier weights are correct.
 const _exempt = 'lib/theme/app_theme.dart';
 
+/// Generated and vendored trees this rule does not govern.
+///
+/// A desktop build materializes `.plugin_symlinks` under `ephemeral/`, pointing
+/// at the pub cache — including other packages' example apps, whose styling is
+/// not ours to hold to this range. Their presence depends on whether anyone has
+/// built for Linux or Windows locally, so scanning them makes the test's result
+/// depend on the machine it runs on.
+const _generatedSegments = [
+  '/ephemeral/',
+  '/.plugin_symlinks/',
+  '/build/',
+  '/.dart_tool/',
+];
+
 Iterable<File> dartSources() sync* {
   for (final directory in [Directory('lib'), Directory('packages')]) {
     if (!directory.existsSync()) continue;
-    for (final entity in directory.listSync(recursive: true)) {
+    // Symlinks lead out of the repository entirely; the rule covers checked-in
+    // source, so the walk stays inside it.
+    for (final entity in directory.listSync(
+      recursive: true,
+      followLinks: false,
+    )) {
       if (entity is! File || !entity.path.endsWith('.dart')) continue;
       if (entity.path.endsWith(_exempt)) continue;
+      final path = '/${entity.path}';
+      if (_generatedSegments.any(path.contains)) continue;
       yield entity;
     }
   }

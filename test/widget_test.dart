@@ -2857,9 +2857,11 @@ void main() {
           ),
           const PasteTextIntent(SelectionChangedCause.keyboard),
         );
-        await Future<void>.delayed(const Duration(milliseconds: 100));
       });
-      await tester.pumpAndSettle();
+      await _settleUntilFound(
+        tester,
+        find.byKey(const ValueKey('clipboardAttachment-0')),
+      );
       expect(
         find.byKey(const ValueKey('clipboardAttachmentStrip')),
         findsOneWidget,
@@ -2879,9 +2881,11 @@ void main() {
           ),
           const PasteTextIntent(SelectionChangedCause.keyboard),
         );
-        await Future<void>.delayed(const Duration(milliseconds: 100));
       });
-      await tester.pumpAndSettle();
+      await _settleUntilFound(
+        tester,
+        find.byKey(const ValueKey('clipboardAttachment-1')),
+      );
       expect(
         find.byKey(const ValueKey('clipboardAttachment-1')),
         findsOneWidget,
@@ -2894,9 +2898,11 @@ void main() {
             uri: 'content://mithka/pasted-image',
           ),
         );
-        await Future<void>.delayed(const Duration(milliseconds: 100));
       });
-      await tester.pumpAndSettle();
+      await _settleUntilFound(
+        tester,
+        find.byKey(const ValueKey('clipboardAttachment-2')),
+      );
       expect(
         find.byKey(const ValueKey('clipboardAttachment-2')),
         findsOneWidget,
@@ -5838,4 +5844,29 @@ void main() {
       expect(find.text('企业资料'), findsNothing);
     });
   });
+}
+
+/// Pumps until [finder] matches, or gives up and lets the caller's expectation
+/// report the failure.
+///
+/// A paste crosses a platform channel and writes a temp file, so how long it
+/// takes depends on the machine and on whatever else the suite is running in
+/// parallel. Waiting a fixed span passes on an idle box and fails on a loaded
+/// one; waiting for the outcome is true on both.
+Future<void> _settleUntilFound(
+  WidgetTester tester,
+  Finder finder, {
+  Duration timeout = const Duration(seconds: 10),
+}) async {
+  final deadline = DateTime.now().add(timeout);
+  while (true) {
+    await tester.pumpAndSettle();
+    if (finder.evaluate().isNotEmpty) return;
+    if (!DateTime.now().isBefore(deadline)) return;
+    // Real time has to pass for the platform channel reply to arrive, which
+    // only runAsync allows.
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 25)),
+    );
+  }
 }

@@ -2282,6 +2282,11 @@
     <string name="searchTabMiniApps">迷你應用程式</string>
     <string name="searchTabMusic">音樂</string>
     <string name="searchTabVoiceMessages">語音訊息</string>
+    <string name="searchTokenFromTitle">來自某個人</string>
+    <string name="searchTokenHasExample">連結、檔案、相片、語音</string>
+    <string name="searchTokenHasTitle">包含某類內容</string>
+    <string name="searchTokenHintsTitle">篩選</string>
+    <string name="searchTokenInTitle">傳送於某個聊天</string>
     <string name="secretChatClosed">此私密聊天已關閉。</string>
     <string name="secretChatStart">開始</string>
     <string name="secretChatStartFailed">無法建立私密聊天：{value1}</string>

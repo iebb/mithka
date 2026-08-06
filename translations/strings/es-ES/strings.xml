@@ -2288,6 +2288,11 @@
     <string name="searchTabMiniApps">Miniapps</string>
     <string name="searchTabMusic">Música</string>
     <string name="searchTabVoiceMessages">Mensajes de voz</string>
+    <string name="searchTokenFromTitle">De una persona concreta</string>
+    <string name="searchTokenHasExample">enlace, archivo, foto, voz</string>
+    <string name="searchTokenHasTitle">Incluye un tipo de contenido</string>
+    <string name="searchTokenHintsTitle">Filtros</string>
+    <string name="searchTokenInTitle">Enviado en un chat concreto</string>
     <string name="secretChatClosed">Este chat secreto está cerrado.</string>
     <string name="secretChatStart">Iniciar</string>
     <string name="secretChatStartFailed">No se pudo crear el chat secreto: {value1}</string>

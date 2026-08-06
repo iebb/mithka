@@ -142,6 +142,22 @@ ChatSearchActiveToken? activeChatSearchToken(String raw, int caretOffset) {
   return (text: text, caret: caret);
 }
 
+/// Takes the token at [token] out of the text entirely.
+///
+/// A token that has been resolved to a chat or a person is shown as a badge
+/// beside the field, so leaving its text behind would state the same filter
+/// twice and invite the two to disagree.
+({String text, int caret}) removeChatSearchToken(
+  String raw,
+  ChatSearchActiveToken token,
+) {
+  var end = token.end;
+  // Take the separator with it, so removing a token from the middle does not
+  // leave a double space behind.
+  if (end < raw.length && raw[end].trim().isEmpty) end += 1;
+  return (text: raw.replaceRange(token.start, end, ''), caret: token.start);
+}
+
 /// Splits a raw field value into its search text and its tokens.
 ///
 /// An unfinished token (`from:` with nothing after it) is dropped from the
