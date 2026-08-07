@@ -456,6 +456,13 @@ import UserNotifications
         }
         UIScreen.main.brightness = CGFloat(max(0.01, min(1, value.doubleValue)))
         result(nil)
+      case "restore":
+        guard let value = call.arguments as? NSNumber else {
+          result(FlutterError(code: "invalid_brightness", message: "Expected a numeric value", details: nil))
+          return
+        }
+        UIScreen.main.brightness = CGFloat(max(0.01, min(1, value.doubleValue)))
+        result(nil)
       default:
         result(FlutterMethodNotImplemented)
       }

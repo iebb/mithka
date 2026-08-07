@@ -25,14 +25,14 @@ void main() {
         .setMockMethodCallHandler(channel, null);
   });
 
-  test('video brightness session restores the opening brightness', () async {
+  test('video brightness session releases the player override', () async {
     final session = await PlayerBrightnessSession.capture();
 
     expect(session, isNotNull);
     await session!.set(0.24);
     await session.restore();
 
-    expect(calls.map((call) => call.method), ['get', 'set', 'set']);
+    expect(calls.map((call) => call.method), ['get', 'set', 'restore']);
     expect(calls[1].arguments, 0.24);
     expect(calls[2].arguments, 0.72);
   });
@@ -69,7 +69,7 @@ void main() {
     releaseFirstWrite.complete();
     await Future.wait([write, restore, lateWrite]);
 
-    expect(calls.map((call) => call.method), ['get', 'set', 'set']);
+    expect(calls.map((call) => call.method), ['get', 'set', 'restore']);
     expect(calls.last.arguments, 0.72);
   });
 }

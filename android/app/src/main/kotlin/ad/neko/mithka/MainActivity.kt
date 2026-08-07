@@ -207,6 +207,17 @@ class MainActivity : FlutterFragmentActivity() {
                             result.success(null)
                         }
                     }
+                    "restore" -> {
+                        runOnUiThread {
+                            val attributes = window.attributes
+                            // -1 relinquishes the per-window override and lets
+                            // Android apply the user's system brightness.
+                            attributes.screenBrightness =
+                                WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                            window.attributes = attributes
+                        }
+                        result.success(null)
+                    }
                     else -> result.notImplemented()
                 }
             }

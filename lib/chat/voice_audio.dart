@@ -17,9 +17,31 @@ import 'package:logger/logger.dart' show Level;
 import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
 
-class VoicePlayer extends ChangeNotifier {
-  static Future<void>? _audioSessionFuture;
+/// Keeps track of whether an active player should resume after an audio
+/// interruption. iOS reports the equivalent of AVAudioSession's
+/// `shouldResume` option as a pause interruption ending event; Android's
+/// transient audio-focus loss uses the same event shape.
+@visibleForTesting
+class AudioInterruptionResumePolicy {
+  bool _resumeAfterInterruption = false;
 
+  void onBegin(AudioInterruptionEvent event, {required bool wasPlaying}) {
+    if (event.type == AudioInterruptionType.duck) return;
+    _resumeAfterInterruption = wasPlaying;
+  }
+
+  bool onEnd(AudioInterruptionEvent event) {
+    if (event.begin) return false;
+    final shouldResume =
+        event.type == AudioInterruptionType.pause && _resumeAfterInterruption;
+    _resumeAfterInterruption = false;
+    return shouldResume;
+  }
+
+  void clear() => _resumeAfterInterruption = false;
+}
+
+class VoicePlayer extends ChangeNotifier {
   FlutterSoundPlayer? _player;
   bool isPlaying = false;
   bool isLoading = false;
@@ -33,15 +55,26 @@ class VoicePlayer extends ChangeNotifier {
   bool _opened = false;
   bool _disposed = false;
   StreamSubscription<PlaybackDisposition>? _progress;
+  StreamSubscription<AudioInterruptionEvent>? _interruption;
+  StreamSubscription<void>? _becomingNoisy;
+  final _interruptionPolicy = AudioInterruptionResumePolicy();
 
   FlutterSoundPlayer get _sound =>
       _player ??= FlutterSoundPlayer(logLevel: Level.warning);
 
-  static Future<void> _configureAudioSession() {
-    return _audioSessionFuture ??= (() async {
-      final session = await AudioSession.instance;
-      await session.configure(const AudioSessionConfiguration.music());
-    })();
+  Future<AudioSession> _prepareAudioSession() async {
+    // Re-apply the music category before every new track. Calls and other
+    // audio plugins may temporarily change the shared AVAudioSession; the
+    // official Telegram client restores its playback holder before resuming.
+    final session = await AudioSession.instance;
+    await session.configure(const AudioSessionConfiguration.music());
+    _interruption ??= session.interruptionEventStream.listen((event) {
+      unawaited(_handleInterruption(event));
+    });
+    _becomingNoisy ??= session.becomingNoisyEventStream.listen((_) {
+      unawaited(_pauseForBecomingNoisy());
+    });
+    return session;
   }
 
   /// True when this player is the one bound to [file] (playing or paused).
@@ -49,7 +82,6 @@ class VoicePlayer extends ChangeNotifier {
 
   Future<void> _ensureOpen() async {
     if (_opened) return;
-    await _configureAudioSession();
     final player = _sound;
     await player.openPlayer();
     await player.setSubscriptionDuration(const Duration(milliseconds: 60));
@@ -63,6 +95,7 @@ class VoicePlayer extends ChangeNotifier {
       _toggle(file, codec: Codec.defaultCodec);
 
   Future<void> stop() async {
+    _interruptionPolicy.clear();
     final player = _player;
     if (player != null && (player.isPlaying || player.isPaused)) {
       try {
@@ -89,9 +122,11 @@ class VoicePlayer extends ChangeNotifier {
         player != null &&
         (player.isPlaying || player.isPaused)) {
       if (player.isPlaying) {
+        _interruptionPolicy.clear();
         await player.pausePlayer();
         isPlaying = false;
       } else {
+        _interruptionPolicy.clear();
         await player.resumePlayer();
         isPlaying = true;
       }
@@ -100,6 +135,7 @@ class VoicePlayer extends ChangeNotifier {
     }
 
     if (player != null && (player.isPlaying || player.isPaused)) {
+      _interruptionPolicy.clear();
       try {
         await player.stopPlayer();
       } catch (_) {}
@@ -129,7 +165,8 @@ class VoicePlayer extends ChangeNotifier {
   Future<void> _start(int fromMs, {required Codec codec}) async {
     try {
       await _ensureOpen();
-      final session = await AudioSession.instance;
+      final session = await _prepareAudioSession();
+      if (_disposed) return;
       await session.setActive(true);
       final player = _sound;
       unawaited(_progress?.cancel());
@@ -181,6 +218,58 @@ class VoicePlayer extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> _handleInterruption(AudioInterruptionEvent event) async {
+    if (_disposed) return;
+    final player = _player;
+    if (event.begin) {
+      final wasPlaying = player?.isPlaying == true;
+      _interruptionPolicy.onBegin(event, wasPlaying: wasPlaying);
+      if (!wasPlaying || event.type == AudioInterruptionType.duck) return;
+      try {
+        await player!.pausePlayer();
+      } catch (_) {
+        _interruptionPolicy.clear();
+        return;
+      }
+      if (_disposed) return;
+      isPlaying = false;
+      notifyListeners();
+      return;
+    }
+
+    if (!_interruptionPolicy.onEnd(event) || _disposed) return;
+    final current = _player;
+    if (_fileId == null ||
+        _path == null ||
+        current == null ||
+        !current.isPaused) {
+      return;
+    }
+    try {
+      final session = await _prepareAudioSession();
+      if (_disposed) return;
+      await session.setActive(true);
+      await current.resumePlayer();
+      isPlaying = true;
+      notifyListeners();
+    } catch (_) {
+      if (_disposed) return;
+      isPlaying = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _pauseForBecomingNoisy() async {
+    _interruptionPolicy.clear();
+    if (_disposed || _player?.isPlaying != true) return;
+    try {
+      await _player!.pausePlayer();
+    } catch (_) {}
+    if (_disposed) return;
+    isPlaying = false;
+    notifyListeners();
+  }
+
   /// Drag-to-seek. [fraction] in 0..1; [fallbackSeconds] is the note's known
   /// duration (used before playback has reported a duration).
   Future<void> seekFraction(double fraction, int fallbackSeconds) async {
@@ -202,7 +291,10 @@ class VoicePlayer extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _interruptionPolicy.clear();
     _progress?.cancel();
+    _interruption?.cancel();
+    _becomingNoisy?.cancel();
     if (_opened) _player?.closePlayer();
     super.dispose();
   }

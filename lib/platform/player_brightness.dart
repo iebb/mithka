@@ -21,6 +21,19 @@ class PlayerBrightness {
       // Brightness gestures are best-effort on unsupported platforms.
     }
   }
+
+  /// Restores the opening brightness without leaving a player-owned override.
+  ///
+  /// Android treats a window brightness of `-1` as "use the system setting";
+  /// the native implementation clears its window override while iOS restores
+  /// the captured screen value passed here.
+  static Future<void> restore(double value) async {
+    try {
+      await _channel.invokeMethod<void>('restore', value.clamp(0.01, 1.0));
+    } catch (_) {
+      // Brightness gestures are best-effort on unsupported platforms.
+    }
+  }
 }
 
 /// A video-scoped brightness override that restores the level present when the
@@ -54,6 +67,6 @@ class PlayerBrightnessSession {
   Future<void> _restore() async {
     _restoreRequested = true;
     await _pendingWrite;
-    if (_changed) await PlayerBrightness.set(initialBrightness);
+    if (_changed) await PlayerBrightness.restore(initialBrightness);
   }
 }
