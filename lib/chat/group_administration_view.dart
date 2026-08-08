@@ -959,7 +959,12 @@ class _DiscussionGroupPickerViewState extends State<DiscussionGroupPickerView> {
                   ),
                   for (final id in _ids)
                     _AdminChoiceRow(
-                      title: _titles[id] ?? 'Chat $id',
+                      title:
+                          _titles[id] ??
+                          AppStrings.t(
+                            AppStringKeys.groupAdministrationChatValue1,
+                            {'value1': id},
+                          ),
                       selected: widget.selectedChatId == id,
                       onTap: () => _select(id),
                     ),
@@ -1351,7 +1356,11 @@ class _ChatInviteLinkEditorViewState extends State<ChatInviteLinkEditorView> {
 
   @override
   Widget build(BuildContext context) => _AdminPage(
-    title: widget.existing == null ? 'New invite link' : 'Edit invite link',
+    title: AppStrings.t(
+      widget.existing == null
+          ? AppStringKeys.groupAdministrationNewInviteLink
+          : AppStringKeys.groupAdministrationEditInviteLink,
+    ),
     trailing: _AdminSaveButton(onTap: _save, saving: _saving),
     child: ListView(
       padding: const EdgeInsets.all(14),
@@ -1376,7 +1385,9 @@ class _ChatInviteLinkEditorViewState extends State<ChatInviteLinkEditorView> {
             _AdminNavRow(
               title: AppStrings.t(AppStringKeys.groupAdministrationExpiration),
               value: _expiration == 0
-                  ? 'Never'
+                  ? AppStrings.t(
+                      AppStringKeys.groupAdministrationExpirationNever,
+                    )
                   : DateTime.fromMillisecondsSinceEpoch(
                       _expiration * 1000,
                     ).toLocal().toString().substring(0, 16),
@@ -1452,7 +1463,10 @@ class _InviteLinkAnalyticsViewState extends State<InviteLinkAnalyticsView> {
                 .getUser(id)
                 .then(
                   (user) => _names[id] = _userName(user, id),
-                  onError: (_) => _names[id] = 'User $id',
+                  onError: (_) => _names[id] = AppStrings.t(
+                    AppStringKeys.groupAdministrationUserValue1,
+                    {'value1': id},
+                  ),
                 ),
       ]);
       if (mounted) {
@@ -1505,7 +1519,10 @@ class _InviteLinkAnalyticsViewState extends State<InviteLinkAnalyticsView> {
                             value:
                                 member.boolean('via_chat_folder_invite_link') ==
                                     true
-                                ? 'Via shared folder'
+                                ? AppStrings.t(
+                                    AppStringKeys
+                                        .groupAdministrationViaSharedFolder,
+                                  )
                                 : _dateLabel(
                                     member.integer('joined_chat_date') ?? 0,
                                   ),
@@ -1550,7 +1567,10 @@ class _ChatJoinRequestsAdministrationViewState
                 .getUser(id)
                 .then(
                   (user) => _names[id] = _userName(user, id),
-                  onError: (_) => _names[id] = 'User $id',
+                  onError: (_) => _names[id] = AppStrings.t(
+                    AppStringKeys.groupAdministrationUserValue1,
+                    {'value1': id},
+                  ),
                 ),
       ]);
       if (mounted) {
@@ -1682,7 +1702,11 @@ class _ChatJoinRequestsAdministrationViewState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _names[id] ?? 'User $id',
+                  _names[id] ??
+                      AppStrings.t(
+                        AppStringKeys.groupAdministrationUserValue1,
+                        {'value1': id},
+                      ),
                   style: AppTextStyle.bodyLarge(context.colors.textPrimary),
                 ),
                 if ((request.str('bio') ?? '').isNotEmpty)
@@ -1788,7 +1812,7 @@ class _ForumTopicsAdministrationViewState
     final value = await showGeneralDialog<_ForumTopicDraft>(
       context: context,
       barrierDismissible: true,
-      barrierLabel: 'Cancel',
+      barrierLabel: AppStrings.t(AppStringKeys.confirmCancel),
       barrierColor: const Color(0x99000000),
       pageBuilder: (dialogContext, _, _) => StatefulBuilder(
         builder: (dialogContext, setDialogState) => _AdminDialog(
@@ -1895,7 +1919,7 @@ class _ForumTopicsAdministrationViewState
 
   Future<void> _create() async {
     final draft = await _askTopic(
-      'New topic',
+      AppStrings.t(AppStringKeys.groupAdministrationNewTopic),
       initialName: '',
       initialColor: _colors[_topics.length % _colors.length],
       initialCustomEmojiId: 0,
@@ -1929,7 +1953,7 @@ class _ForumTopicsAdministrationViewState
     if (id == null || info?.boolean('is_general') == true) return;
     final icon = info?.obj('icon');
     final draft = await _askTopic(
-      'Edit topic',
+      AppStrings.t(AppStringKeys.groupAdministrationEditTopic),
       initialName: info?.str('name') ?? '',
       initialColor: icon?.integer('color') ?? _colors.first,
       initialCustomEmojiId: icon?.int64('custom_emoji_id') ?? 0,
@@ -2278,21 +2302,49 @@ class _ChatStatisticsAdministrationViewState
 
     if (value.type == 'chatStatisticsChannel') {
       return [
-        ('Members', current('member_count')),
-        ('Average message views', current('mean_message_view_count')),
-        ('Average shares', current('mean_message_share_count')),
-        ('Average reactions', current('mean_message_reaction_count')),
         (
-          'Notifications enabled',
+          AppStrings.t(AppStringKeys.groupAdministrationStatMembers),
+          current('member_count'),
+        ),
+        (
+          AppStrings.t(
+            AppStringKeys.groupAdministrationStatAverageMessageViews,
+          ),
+          current('mean_message_view_count'),
+        ),
+        (
+          AppStrings.t(AppStringKeys.groupAdministrationStatAverageShares),
+          current('mean_message_share_count'),
+        ),
+        (
+          AppStrings.t(AppStringKeys.groupAdministrationStatAverageReactions),
+          current('mean_message_reaction_count'),
+        ),
+        (
+          AppStrings.t(
+            AppStringKeys.groupAdministrationStatNotificationsEnabled,
+          ),
           '${value.dbl('enabled_notifications_percentage')?.toStringAsFixed(1) ?? '—'}%',
         ),
       ];
     }
     return [
-      ('Members', current('member_count')),
-      ('Messages', current('message_count')),
-      ('Viewers', current('viewer_count')),
-      ('Senders', current('sender_count')),
+      (
+        AppStrings.t(AppStringKeys.groupAdministrationStatMembers),
+        current('member_count'),
+      ),
+      (
+        AppStrings.t(AppStringKeys.groupAdministrationStatMessages),
+        current('message_count'),
+      ),
+      (
+        AppStrings.t(AppStringKeys.groupAdministrationStatViewers),
+        current('viewer_count'),
+      ),
+      (
+        AppStrings.t(AppStringKeys.groupAdministrationStatSenders),
+        current('sender_count'),
+      ),
     ];
   }
 }
@@ -2926,5 +2978,9 @@ String _dateLabel(int unix) {
 String _userName(Map<String, dynamic> user, int id) {
   final name = '${user.str('first_name') ?? ''} ${user.str('last_name') ?? ''}'
       .trim();
-  return name.isEmpty ? 'User $id' : name;
+  return name.isEmpty
+      ? AppStrings.t(AppStringKeys.groupAdministrationUserValue1, {
+          'value1': id,
+        })
+      : name;
 }

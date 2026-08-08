@@ -12,6 +12,16 @@ class IOSCommunicationNotificationBridge {
 
   final MethodChannel channel;
 
+  /// Publishes which slot each signed-in user id occupies.
+  ///
+  /// The notification service extension stamps the slot onto a push as it is
+  /// delivered, and it cannot ask the app at that moment — so the app tells it
+  /// in advance, whenever the set of accounts changes.
+  Future<void> setAccountSlots(Map<int, int> slotsByUserId) =>
+      channel.invokeMethod<void>('setAccountSlots', {
+        for (final entry in slotsByUserId.entries) '${entry.key}': entry.value,
+      });
+
   Future<void> show({
     required int id,
     required String title,

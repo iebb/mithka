@@ -1,5 +1,7 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
+import '../l10n/app_localizations.dart';
+
 NotificationDetails systemNotificationDetailsForChatIcon(
   String? chatIconPath, {
   String? conversationTitle,
@@ -16,7 +18,10 @@ NotificationDetails systemNotificationDetailsForChatIcon(
   );
   final messagingStyle = conversationTitle != null && messageBody != null
       ? MessagingStyleInformation(
-          const Person(name: 'You', key: 'self'),
+          Person(
+            name: AppStrings.t(AppStringKeys.notificationSelfSenderName),
+            key: 'self',
+          ),
           conversationTitle: conversationTitle,
           groupConversation: groupConversation,
           messages: [Message(messageBody, DateTime.now(), sender)],
@@ -25,8 +30,10 @@ NotificationDetails systemNotificationDetailsForChatIcon(
   return NotificationDetails(
     android: AndroidNotificationDetails(
       'messages',
-      'Messages',
-      channelDescription: 'Incoming Mithka messages',
+      AppStrings.t(AppStringKeys.notificationChannelMessagesName),
+      channelDescription: AppStrings.t(
+        AppStringKeys.notificationChannelMessagesDescription,
+      ),
       importance: Importance.high,
       priority: Priority.high,
       category: AndroidNotificationCategory.message,

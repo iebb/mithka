@@ -613,8 +613,14 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
     late final _RichTextBlock block;
     void onTextChanged() {
       if (controller.text == block.lastText) return;
+      final wasEmpty = block.lastText.trim().isEmpty;
       block.lastText = controller.text;
-      if (mounted) setState(() {});
+      // The field repaints itself off its controller; the only thing this page
+      // builds from block text is `_hasAnyText`, so rebuild it only when this
+      // block crosses empty/non-empty instead of on every keystroke.
+      if (wasEmpty != controller.text.trim().isEmpty && mounted) {
+        setState(() {});
+      }
     }
 
     block = _RichTextBlock(controller, focusNode, onTextChanged, kind: kind);
@@ -3118,6 +3124,12 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
     required double height,
     BoxFit fit = BoxFit.cover,
   }) {
+    // A camera-roll original otherwise decodes at full resolution into a
+    // thumbnail box; the oversized allocation evicts the rest of the image
+    // cache. One axis only, so the aspect ratio survives.
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final cacheWidth = width.isFinite ? (width * dpr).ceil() : null;
+    final cacheHeight = width.isFinite ? null : (height * dpr).ceil();
     final previewBytes = attachment.previewBytes;
     if (previewBytes != null && previewBytes.isNotEmpty) {
       return Image.memory(
@@ -3125,6 +3137,8 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
         width: width,
         height: height,
         fit: fit,
+        cacheWidth: cacheWidth,
+        cacheHeight: cacheHeight,
         errorBuilder: (_, _, _) => _attachmentIcon(c, attachment, size: height),
       );
     }
@@ -3133,6 +3147,8 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
       width: width,
       height: height,
       fit: fit,
+      cacheWidth: cacheWidth,
+      cacheHeight: cacheHeight,
       errorBuilder: (_, _, _) => _attachmentIcon(c, attachment, size: height),
     );
   }

@@ -149,10 +149,14 @@ class _ChatAdministratorEditViewState extends State<ChatAdministratorEditView> {
     final password = await showAppTextEntryDialog(
       context,
       title: AppStrings.t(AppStringKeys.chatAdministratorEditTransferOwnership),
-      description:
-          '${widget.name} will become the owner. Enter your two-step verification password to continue.',
+      description: AppStrings.t(
+        AppStringKeys.chatAdministratorEditTransferPasswordPromptValue1,
+        {'value1': widget.name},
+      ),
       label: AppStrings.t(AppStringKeys.proxyPassword),
-      actionLabel: 'Transfer',
+      actionLabel: AppStrings.t(
+        AppStringKeys.chatAdministratorEditTransferAction,
+      ),
       obscureText: true,
       allowEmpty: false,
     );
@@ -168,14 +172,21 @@ class _ChatAdministratorEditViewState extends State<ChatAdministratorEditView> {
       if (!mounted) return;
       if (availability.type != 'canTransferOwnershipResultOk') {
         final retryAfter = availability.integer('retry_after');
+        final retry = retryAfter == null
+            ? ''
+            : AppStrings.t(
+                AppStringKeys.chatAdministratorEditTryAgainInValue1Seconds,
+                {'value1': retryAfter},
+              );
         final reason = switch (availability.type) {
-          'canTransferOwnershipResultPasswordNeeded' =>
-            'Set up two-step verification before transferring ownership.',
+          'canTransferOwnershipResultPasswordNeeded' => AppStrings.t(
+            AppStringKeys.chatAdministratorEditSetUpTwoStepFirst,
+          ),
           'canTransferOwnershipResultPasswordTooFresh' =>
-            'Your two-step verification password is too new.${retryAfter == null ? '' : ' Try again in $retryAfter seconds.'}',
+            '${AppStrings.t(AppStringKeys.chatAdministratorEditPasswordTooFresh)}$retry',
           'canTransferOwnershipResultSessionTooFresh' =>
-            'This session is too new.${retryAfter == null ? '' : ' Try again in $retryAfter seconds.'}',
-          _ => 'Ownership can’t be transferred from this session.',
+            '${AppStrings.t(AppStringKeys.chatAdministratorEditSessionTooFresh)}$retry',
+          _ => AppStrings.t(AppStringKeys.chatAdministratorEditTransferBlocked),
         };
         showToast(context, reason);
         return;

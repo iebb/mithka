@@ -199,8 +199,10 @@ class _ChecklistComposerViewState extends State<ChecklistComposerView> {
                     title: AppStrings.t(
                       AppStringKeys.checklistComposerAllowOthersToAddTasks,
                     ),
-                    subtitle:
-                        'Members can append new tasks after the checklist is sent.',
+                    subtitle: AppStrings.t(
+                      AppStringKeys
+                          .checklistComposerAllowOthersToAddTasksDetail,
+                    ),
                     value: _othersCanAddTasks,
                     onChanged: (value) =>
                         setState(() => _othersCanAddTasks = value),
@@ -210,8 +212,10 @@ class _ChecklistComposerViewState extends State<ChecklistComposerView> {
                     title: AppStrings.t(
                       AppStringKeys.checklistComposerAllowOthersToMarkTasks,
                     ),
-                    subtitle:
-                        'Members can complete tasks or mark them as not done.',
+                    subtitle: AppStrings.t(
+                      AppStringKeys
+                          .checklistComposerAllowOthersToMarkTasksDetail,
+                    ),
                     value: _othersCanMarkTasksAsDone,
                     onChanged: (value) =>
                         setState(() => _othersCanMarkTasksAsDone = value),

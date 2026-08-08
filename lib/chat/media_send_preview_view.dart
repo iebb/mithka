@@ -159,6 +159,8 @@ class _MediaSendPreviewViewState extends State<MediaSendPreviewView> {
       builder: (sheetContext) => StatefulBuilder(
         builder: (context, setSheetState) {
           final c = context.colors;
+          final coverCachePx = (40 * MediaQuery.devicePixelRatioOf(context))
+              .ceil();
           return SafeArea(
             top: false,
             child: Container(
@@ -211,6 +213,7 @@ class _MediaSendPreviewViewState extends State<MediaSendPreviewView> {
                                 width: 40,
                                 height: 40,
                                 fit: BoxFit.cover,
+                                cacheWidth: coverCachePx,
                               ),
                             )
                           else
@@ -411,6 +414,8 @@ class _MediaSendPreviewViewState extends State<MediaSendPreviewView> {
 
   Widget _selectedMedia(AppColors c) {
     final attachment = _attachments[_selectedIndex];
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final cachePx = (MediaQuery.sizeOf(context).width * dpr).ceil();
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Stack(
@@ -426,7 +431,12 @@ class _MediaSendPreviewViewState extends State<MediaSendPreviewView> {
               child: Center(
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(AppRadius.control),
-                  child: _preview(c, attachment, fit: BoxFit.contain),
+                  child: _preview(
+                    c,
+                    attachment,
+                    fit: BoxFit.contain,
+                    cacheWidth: cachePx,
+                  ),
                 ),
               ),
             ),
@@ -556,6 +566,7 @@ class _MediaSendPreviewViewState extends State<MediaSendPreviewView> {
   }
 
   Widget _thumbnailStrip(AppColors c) {
+    final tileCachePx = (72 * MediaQuery.devicePixelRatioOf(context)).ceil();
     return SizedBox(
       height: 88,
       child: ReorderableListView.builder(
@@ -601,7 +612,12 @@ class _MediaSendPreviewViewState extends State<MediaSendPreviewView> {
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(AppRadius.sm),
-                    child: _preview(c, attachment, fit: BoxFit.cover),
+                    child: _preview(
+                      c,
+                      attachment,
+                      fit: BoxFit.cover,
+                      cacheWidth: tileCachePx,
+                    ),
                   ),
                 ),
               ),
@@ -722,10 +738,14 @@ class _MediaSendPreviewViewState extends State<MediaSendPreviewView> {
     );
   }
 
+  /// [cacheWidth] is the display box in device pixels — a camera-roll original
+  /// otherwise decodes at full sensor resolution into a 72px filmstrip tile.
+  /// Width only, so the decode keeps the source aspect ratio.
   Widget _preview(
     AppColors c,
     OutgoingAttachment attachment, {
     required BoxFit fit,
+    required int cacheWidth,
   }) {
     final bytes = attachment.previewBytes;
     final image = bytes != null && bytes.isNotEmpty
@@ -734,12 +754,14 @@ class _MediaSendPreviewViewState extends State<MediaSendPreviewView> {
             fit: fit,
             width: double.infinity,
             height: double.infinity,
+            cacheWidth: cacheWidth,
           )
         : Image.file(
             File(attachment.path),
             fit: fit,
             width: double.infinity,
             height: double.infinity,
+            cacheWidth: cacheWidth,
             errorBuilder: (_, _, _) => _fallback(c, attachment),
           );
     if (attachment.kind != OutgoingAttachmentKind.video) return image;

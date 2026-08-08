@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/app_localizations.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 
@@ -128,7 +129,7 @@ Future<String?> showAppTextEntryDialog(
   BuildContext context, {
   required String title,
   required String actionLabel,
-  String cancelLabel = 'Cancel',
+  String? cancelLabel,
   String hint = '',
   String label = '',
   String? description,
@@ -139,14 +140,18 @@ Future<String?> showAppTextEntryDialog(
   TextInputType? keyboardType,
   bool obscureText = false,
   bool allowEmpty = true,
-  String emptyError = 'Required',
+  String? emptyError,
 }) async {
+  // Callers pass already-resolved copy; only the two defaults resolve here.
+  final cancel = cancelLabel ?? AppStrings.t(AppStringKeys.confirmCancel);
+  final required =
+      emptyError ?? AppStrings.t(AppStringKeys.appDialogRequiredField);
   final controller = TextEditingController(text: initial);
   String? validationMessage;
   final value = await showGeneralDialog<String>(
     context: context,
     barrierDismissible: true,
-    barrierLabel: cancelLabel,
+    barrierLabel: cancel,
     barrierColor: Colors.black.withValues(alpha: 0.52),
     transitionDuration: AppMotion.duration(context, AppMotion.responsive),
     transitionBuilder: AppMotion.dialogTransition,
@@ -155,7 +160,7 @@ Future<String?> showAppTextEntryDialog(
         void submit() {
           final text = controller.text.trim();
           if (!allowEmpty && text.isEmpty) {
-            setDialogState(() => validationMessage = emptyError);
+            setDialogState(() => validationMessage = required);
             return;
           }
           Navigator.of(dialogContext).pop(text);
@@ -217,7 +222,7 @@ Future<String?> showAppTextEntryDialog(
           ),
           actions: [
             AppDialogAction(
-              label: cancelLabel,
+              label: cancel,
               onTap: () => Navigator.of(dialogContext).pop(),
             ),
             AppDialogAction(label: actionLabel, primary: true, onTap: submit),

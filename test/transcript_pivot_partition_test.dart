@@ -312,6 +312,19 @@ void main() {
         isFalse,
       );
     });
+
+    test('keeps an explicit message target on a short latest arm', () {
+      expect(
+        shouldRebaseParkedShortTranscriptPivot(
+          pivotCutoffMessageId: 900,
+          latestArmIsShort: true,
+          hasMessageOlderThanPivot: true,
+          followingLatest: true,
+          hasExplicitMessageTarget: true,
+        ),
+        isFalse,
+      );
+    });
   });
 
   group('shouldRebaseForExpandedInitialWindow', () {

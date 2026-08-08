@@ -1968,27 +1968,21 @@ class ChatWallpaperController extends ChangeNotifier {
         break;
       }
     }
-    final bytes = await source.readAsBytes();
-    final isGzip = bytes.length >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b;
-    final decoded = isGzip ? const GZipDecoder().decodeBytes(bytes) : bytes;
-    final isPng =
-        decoded.length >= 8 &&
-        decoded[0] == 0x89 &&
-        decoded[1] == 0x50 &&
-        decoded[2] == 0x4e &&
-        decoded[3] == 0x47;
     // Telegram's pattern documents are authored as the final alpha mask. In
     // particular, the official Paris asset already contains fine, rounded
     // `fill:none` strokes. flutter_svg does not resolve the Illustrator CSS
     // class blocks used by these files, so preserve the authored declarations
     // by moving them onto each element instead of inventing new fill/stroke
     // rules. PNG payloads are already directly renderable.
-    if (isPng) {
-      await destination.writeAsBytes(decoded, flush: true);
+    final document = await compute(
+      _inflatePatternDocument,
+      await source.readAsBytes(),
+    );
+    if (document is Uint8List) {
+      await destination.writeAsBytes(document, flush: true);
     } else {
-      final sourceSvg = utf8.decode(decoded, allowMalformed: true);
       await destination.writeAsBytes(
-        await _rasterizePatternSvg(inlineTelegramPatternSvgStyles(sourceSvg)),
+        await _rasterizePatternSvg(document as String),
         flush: true,
       );
     }
@@ -2295,51 +2289,64 @@ class ChatWallpaperBackground extends StatelessWidget {
     final dimming = dark
         ? (value.darkThemeDimming.clamp(0, 100) / 100).toDouble()
         : 0.0;
-    return DecoratedBox(
-      decoration: invertedPattern
-          ? const BoxDecoration(color: Color(0xFF000000))
-          : fill ?? BoxDecoration(color: fallbackColor),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          if (!invertedPattern && hasFreeformGradient)
-            _TelegramFreeformGradient(colors: value.colors),
-          if (value.remoteType == 'wallpaper' && hasFile)
-            _wallpaperEffects(
-              value,
-              RepaintBoundary(
-                child: Image.file(
-                  File(path),
-                  fit: value.isTiled ? BoxFit.none : BoxFit.cover,
-                  repeat: value.isTiled
-                      ? ImageRepeat.repeat
-                      : ImageRepeat.noRepeat,
-                  gaplessPlayback: true,
-                  errorBuilder: (_, _, _) => const SizedBox.shrink(),
-                ),
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // The backdrop is a sibling layer, not the chat UI's parent. Sharing a
+        // layer meant a composer caret blink, a music-bar tick or the
+        // jump-to-bottom spinner re-shaded the full-screen fill and the three
+        // freeform radial gradients behind them.
+        RepaintBoundary(
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              DecoratedBox(
+                decoration: invertedPattern
+                    ? const BoxDecoration(color: Color(0xFF000000))
+                    : fill ?? BoxDecoration(color: fallbackColor),
               ),
-            ),
-          if (hasPreparedPattern)
-            _wallpaperEffects(
-              value,
-              RepaintBoundary(
-                child: Opacity(
-                  opacity: (value.intensity.abs().clamp(0, 100) / 100)
-                      .toDouble(),
-                  child: _patternDocument(
-                    path,
-                    color: invertedPattern
-                        ? _representativeFillColor(value.colors)
-                        : const Color(0xFF000000),
+              if (!invertedPattern && hasFreeformGradient)
+                _TelegramFreeformGradient(colors: value.colors),
+              if (value.remoteType == 'wallpaper' && hasFile)
+                _wallpaperEffects(
+                  value,
+                  RepaintBoundary(
+                    child: Image.file(
+                      File(path),
+                      fit: value.isTiled ? BoxFit.none : BoxFit.cover,
+                      repeat: value.isTiled
+                          ? ImageRepeat.repeat
+                          : ImageRepeat.noRepeat,
+                      gaplessPlayback: true,
+                      errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                    ),
                   ),
                 ),
-              ),
-            ),
-          if (dimming > 0) ColoredBox(color: Color.fromRGBO(0, 0, 0, dimming)),
-          if (value.remoteType == 'wallpaper') ColoredBox(color: imageScrim),
-          ?child,
-        ],
-      ),
+              if (hasPreparedPattern)
+                _wallpaperEffects(
+                  value,
+                  RepaintBoundary(
+                    child: Opacity(
+                      opacity: (value.intensity.abs().clamp(0, 100) / 100)
+                          .toDouble(),
+                      child: _patternDocument(
+                        path,
+                        color: invertedPattern
+                            ? _representativeFillColor(value.colors)
+                            : const Color(0xFF000000),
+                      ),
+                    ),
+                  ),
+                ),
+              if (dimming > 0)
+                ColoredBox(color: Color.fromRGBO(0, 0, 0, dimming)),
+              if (value.remoteType == 'wallpaper')
+                ColoredBox(color: imageScrim),
+            ],
+          ),
+        ),
+        ?child,
+      ],
     );
   }
 
@@ -2377,6 +2384,7 @@ class ChatWallpaperBackground extends StatelessWidget {
   }
 
   Widget _wallpaperEffects(ChatWallpaper value, Widget image) {
+    if (!value.isBlurred && !value.isMoving) return ClipRect(child: image);
     Widget result = image;
     if (value.isBlurred) {
       result = ImageFiltered(
@@ -2384,11 +2392,16 @@ class ChatWallpaperBackground extends StatelessWidget {
         child: result,
       );
     }
-    if (value.isBlurred || value.isMoving) {
-      result = Transform.scale(scale: 1.08, child: result);
+    result = Transform.scale(scale: 1.08, child: result);
+    // The parallax offset changes up to 30x a second. Retain the blurred,
+    // scaled result so a sample only re-composites it instead of re-running
+    // the sigma-12 gaussian over the whole viewport.
+    if (value.isMoving) {
+      result = _WallpaperMotion(child: RepaintBoundary(child: result));
     }
-    if (value.isMoving) result = _WallpaperMotion(child: result);
-    return ClipRect(child: result);
+    // The outer boundary keeps those samples from marking the backdrop layer
+    // — and everything painted with it — dirty.
+    return ClipRect(child: RepaintBoundary(child: result));
   }
 }
 
@@ -2417,16 +2430,33 @@ class _WallpaperMotionState extends State<_WallpaperMotion>
   double? _baselineY;
   int _calibrationSamples = 0;
   bool _sensorFailed = false;
+  bool _tickerEnabled = true;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _startListening();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // A covered route keeps this element mounted. Without the ticker gate the
+    // sensor kept repainting a wallpaper nobody can see, at 30 Hz.
+    _tickerEnabled = TickerMode.valuesOf(context).enabled;
+    if (_tickerEnabled) {
+      _startListening();
+    } else {
+      _stopListening();
+      _resetCalibration();
+    }
   }
 
   void _startListening() {
-    if (_subscription != null || _sensorFailed || !_supportsWallpaperTilt) {
+    if (_subscription != null ||
+        _sensorFailed ||
+        !_tickerEnabled ||
+        !_supportsWallpaperTilt) {
       return;
     }
     _resetCalibration();
@@ -2597,6 +2627,9 @@ class _TelegramFreeformGradient extends StatelessWidget {
   Widget build(BuildContext context) => CustomPaint(
     painter: _TelegramFreeformGradientPainter(colors),
     size: Size.infinite,
+    // One full-screen radial shader per extra colour, and the colours never
+    // change while a chat is open: worth a raster-cache entry.
+    isComplex: true,
   );
 }
 
@@ -2651,6 +2684,26 @@ Color _representativeFillColor(List<int> colors) {
     color = Color.lerp(color, _rgbColor(colors[index]), 1 / (index + 1))!;
   }
   return color;
+}
+
+/// Inflating a pattern document and inlining its CSS are pure-Dart passes over
+/// hundreds of KB, and they run while the chat-open transition is animating.
+/// Keep them off the UI isolate; returns PNG bytes or the normalized SVG.
+Object _inflatePatternDocument(Uint8List bytes) {
+  final isGzip = bytes.length >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b;
+  final decoded = isGzip
+      ? Uint8List.fromList(const GZipDecoder().decodeBytes(bytes))
+      : bytes;
+  final isPng =
+      decoded.length >= 8 &&
+      decoded[0] == 0x89 &&
+      decoded[1] == 0x50 &&
+      decoded[2] == 0x4e &&
+      decoded[3] == 0x47;
+  if (isPng) return decoded;
+  return inlineTelegramPatternSvgStyles(
+    utf8.decode(decoded, allowMalformed: true),
+  );
 }
 
 Future<List<int>> _rasterizePatternSvg(String source) async {
@@ -2742,21 +2795,28 @@ String inlineTelegramPatternSvgStyles(String source) {
     r'''\bclass\s*=\s*(["'])(.*?)\1''',
     caseSensitive: false,
   );
+  final classSeparator = RegExp(r'\s+');
+  // Compiling these per matched element per declaration was thousands of
+  // RegExp compiles per document; there are only a handful of property names.
+  final attributePatterns = <String, RegExp>{};
   return withoutStyles.replaceAllMapped(element, (match) {
     final attributes = match.group(2) ?? '';
     final classMatch = classAttribute.firstMatch(attributes);
     if (classMatch == null) return match.group(0)!;
     final declarations = <String, String>{};
-    for (final name in (classMatch.group(2) ?? '').split(RegExp(r'\s+'))) {
+    for (final name in (classMatch.group(2) ?? '').split(classSeparator)) {
       declarations.addAll(rules[name] ?? const <String, String>{});
     }
     if (declarations.isEmpty) return match.group(0)!;
 
     var resultAttributes = attributes;
     for (final entry in declarations.entries) {
-      final existing = RegExp(
-        '\\s${RegExp.escape(entry.key)}\\s*=\\s*(["\']).*?\\1',
-        caseSensitive: false,
+      final existing = attributePatterns.putIfAbsent(
+        entry.key,
+        () => RegExp(
+          '\\s${RegExp.escape(entry.key)}\\s*=\\s*(["\']).*?\\1',
+          caseSensitive: false,
+        ),
       );
       final escaped = entry.value
           .replaceAll('&', '&amp;')

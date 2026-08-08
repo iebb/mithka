@@ -29,6 +29,9 @@ class MediaAlbumLayout {
   final List<Rect> tiles;
 }
 
+/// [maxHeight] bounds the whole album the way a single preview is bounded: an
+/// album that lays out taller is scaled down as a unit, keeping its
+/// arrangement and every tile's aspect ratio.
 MediaAlbumLayout buildTelegramMediaAlbumLayout({
   required List<MediaAlbumItem> items,
   required double maxWidth,
@@ -38,21 +41,26 @@ MediaAlbumLayout buildTelegramMediaAlbumLayout({
   double maxSingleHeight = 360,
   double minRowHeight = 84,
   double maxRowHeight = 260,
+  double? maxHeight,
 }) {
   final visible = items.take(maxItems).toList(growable: false);
   if (visible.isEmpty || maxWidth <= 0) {
     return const MediaAlbumLayout(width: 0, height: 0, tiles: []);
   }
+  final heightCap = maxHeight != null && maxHeight > 0 ? maxHeight : null;
 
   if (visible.length == 1) {
     final aspect = visible.first.aspectRatio.clamp(0.35, 3.0).toDouble();
+    final singleCap = heightCap == null
+        ? maxSingleHeight
+        : math.min(maxSingleHeight, heightCap);
     var width = maxWidth;
     var height = width / aspect;
-    if (height > maxSingleHeight) {
-      height = maxSingleHeight;
+    if (height > singleCap) {
+      height = singleCap;
       width = math.min(maxWidth, height * aspect);
     } else if (height < minSingleHeight) {
-      height = minSingleHeight;
+      height = math.min(minSingleHeight, singleCap);
       width = math.min(maxWidth, height * aspect);
     }
     return MediaAlbumLayout(
@@ -93,10 +101,31 @@ MediaAlbumLayout buildTelegramMediaAlbumLayout({
   }
 
   if (best == null) {
+    final fallbackHeight = heightCap == null
+        ? maxWidth
+        : math.min(maxWidth, heightCap);
     return MediaAlbumLayout(
       width: maxWidth,
-      height: maxWidth,
-      tiles: [for (final _ in visible) Rect.fromLTWH(0, 0, maxWidth, maxWidth)],
+      height: fallbackHeight,
+      tiles: [
+        for (final _ in visible) Rect.fromLTWH(0, 0, maxWidth, fallbackHeight),
+      ],
+    );
+  }
+  if (heightCap != null && best.height > heightCap) {
+    final scale = heightCap / best.height;
+    return MediaAlbumLayout(
+      width: maxWidth * scale,
+      height: heightCap,
+      tiles: [
+        for (final tile in best.tiles)
+          Rect.fromLTWH(
+            tile.left * scale,
+            tile.top * scale,
+            tile.width * scale,
+            tile.height * scale,
+          ),
+      ],
     );
   }
   return MediaAlbumLayout(

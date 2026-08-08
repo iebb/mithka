@@ -98,6 +98,11 @@ class ChannelPost {
   TdFileRef? authorPhoto;
   List<String>? likeNames;
   List<ChannelPostComment>? comments;
+
+  /// Bumped when metadata hydration fills this post in place. The feed row
+  /// listens to it, so a resolved author/like/comment rebuilds that one row
+  /// instead of every visible row through a feed-wide setState.
+  final ValueNotifier<int> revision = ValueNotifier<int>(0);
 }
 
 class ChannelPostThreadTarget {
@@ -793,6 +798,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
       case 'updateDeleteMessages':
         if (!_touchesMomentsFeed(update)) return;
         _invalidateCachedInteractions(update);
+        _markChatDirty(update);
         _scheduleLiveRefresh();
 
       // Membership changed: the joined/exhausted caches for that chat are
@@ -849,23 +855,65 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
     }
   }
 
+  // Which chats changed during the debounce window. A single incoming message
+  // used to refetch 30 messages of history for EVERY joined channel and
+  // re-parse them all; only the chats that actually moved need a refetch.
+  final Set<int> _dirtyChatIds = {};
+  bool _dirtyAllChannels = false;
+
+  void _markChatDirty(Map<String, dynamic> update) {
+    final chatId =
+        update.int64('chat_id') ?? update.obj('message')?.int64('chat_id');
+    if (chatId == null) {
+      _dirtyAllChannels = true;
+      return;
+    }
+    _dirtyChatIds.add(chatId);
+  }
+
   void _scheduleLiveRefresh() {
     _refreshTimer?.cancel();
     _refreshTimer = Timer(const Duration(milliseconds: 450), _refreshFeedNow);
   }
 
   Future<void> _refreshFeedNow() async {
-    if (_refreshingLiveUpdates || !mounted) return;
+    if (!mounted) return;
+    if (_refreshingLiveUpdates) {
+      // A refresh now only covers the chats it drained, so dropping this tick
+      // would strand whatever was marked dirty while it was in flight.
+      if (_dirtyAllChannels || _dirtyChatIds.isNotEmpty) _scheduleLiveRefresh();
+      return;
+    }
     final channels = _channels;
     if (channels.isEmpty) return;
+    final List<ChatSummary> targets;
+    if (_dirtyAllChannels) {
+      targets = channels;
+    } else {
+      final dirty = Set<int>.of(_dirtyChatIds);
+      targets = channels
+          .where((channel) => dirty.contains(channel.id))
+          .toList(growable: false);
+    }
+    _dirtyChatIds.clear();
+    _dirtyAllChannels = false;
+    if (targets.isEmpty) {
+      // The update landed in a discussion chat, not a feed channel: the cached
+      // likes/comments were already dropped, so a rehydrate is the whole job.
+      _schedulePostMetadataHydration();
+      if (mounted) setState(() {});
+      return;
+    }
     _refreshingLiveUpdates = true;
     _loadingPosts = true;
     if (mounted) setState(() {});
     final futures = <Future<void>>[];
-    for (final channel in channels) {
+    for (final channel in targets) {
       if (!await _isJoinedChannel(channel)) continue;
       if (!_loadingChannels.add(channel.id)) continue;
-      futures.add(_loadPostsForChannel(channel, fromMessageId: 0));
+      futures.add(
+        _loadPostsForChannel(channel, fromMessageId: 0, notify: false),
+      );
     }
     try {
       await Future.wait(futures);
@@ -1051,7 +1099,11 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
         ),
       );
     }
-    _loadingPosts = _loadingChannels.isNotEmpty;
+    // Near the bottom of the feed the scroll listener calls this on every
+    // tick; only a changed spinner state is worth a rebuild.
+    final loading = _loadingChannels.isNotEmpty;
+    if (loading == _loadingPosts) return;
+    _loadingPosts = loading;
     if (mounted) setState(() {});
   }
 
@@ -1076,6 +1128,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
     ChatSummary channel, {
     required int fromMessageId,
     int? generation,
+    bool notify = true,
   }) async {
     try {
       final response = await TdClient.shared.query({
@@ -1107,7 +1160,8 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
       if (generation == null || generation == _feedLoadGeneration) {
         _loadingChannels.remove(channel.id);
         _loadingPosts = _loadingChannels.isNotEmpty;
-        if (mounted) setState(() {});
+        // A batched refresh rebuilds once when the whole batch lands.
+        if (notify && mounted) setState(() {});
       }
     }
   }
@@ -1127,6 +1181,14 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
     });
     _loadChannelPosts();
     _loadPostableChannels();
+  }
+
+  // Hydration resolves one post at a time; a setState here rebuilt every
+  // visible row (each one re-laying out its rich text) on nearly every frame
+  // of the settle window. Bumping the revision repaints just that row.
+  void _notifyPost(ChannelPost post) {
+    if (!mounted) return;
+    post.revision.value++;
   }
 
   void _schedulePostMetadataHydration() {
@@ -1181,7 +1243,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
       message.replyToSender ??= post.channel.title;
     } finally {
       _loadingReplyQuotes.remove(key);
-      if (mounted) setState(() {});
+      _notifyPost(post);
     }
   }
 
@@ -1240,7 +1302,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
       return null;
     } finally {
       _loadingThreadTargets.remove(key);
-      if (shouldNotify && mounted) setState(() {});
+      if (shouldNotify) _notifyPost(post);
     }
   }
 
@@ -1295,7 +1357,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
       post.comments = const [];
     } finally {
       _loadingComments.remove(key);
-      if (mounted) setState(() {});
+      _notifyPost(post);
     }
   }
 
@@ -1408,6 +1470,8 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
       return;
     }
     final senderId = post.message.senderId;
+    final previousName = post.authorName;
+    final previousPhoto = post.authorPhoto;
     try {
       if (senderId != null && senderId > 0) {
         final user = await TdClient.shared.query({
@@ -1432,7 +1496,11 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
         }
       }
     } catch (_) {}
-    if (mounted) setState(() {});
+    // Anonymous channel posts resolve to the same nothing they started with.
+    if (post.authorName == previousName && post.authorPhoto == previousPhoto) {
+      return;
+    }
+    _notifyPost(post);
   }
 
   Future<void> _loadLikeNamesForPost(ChannelPost post, String key) async {
@@ -1459,7 +1527,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
       post.likeNames = const [];
     } finally {
       _loadingLikeNames.remove(key);
-      if (mounted) setState(() {});
+      _notifyPost(post);
     }
   }
 
@@ -1759,12 +1827,17 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
           return useDesktopLayout ? _desktopFeedCard(empty) : empty;
         }
         final post = posts[i - 1];
-        final row = ChannelPostRow(
-          post: post,
-          meName: _meName,
-          mePhoto: _mePhoto,
-          onOpenPost: _openPostDetail,
-          onComment: _beginReplyFromInline,
+        // Listening to the post's own revision keeps metadata hydration from
+        // rebuilding (and re-laying out the rich text of) every other row.
+        final row = ValueListenableBuilder<int>(
+          valueListenable: post.revision,
+          builder: (context, _, _) => ChannelPostRow(
+            post: post,
+            meName: _meName,
+            mePhoto: _mePhoto,
+            onOpenPost: _openPostDetail,
+            onComment: _beginReplyFromInline,
+          ),
         );
         return KeyedSubtree(
           key: _postKey(post),
@@ -2612,7 +2685,7 @@ class _ChannelPostDetailViewState extends State<ChannelPostDetailView> {
       });
       final rawMessages =
           response.objects('messages') ?? const <Map<String, dynamic>>[];
-      final comments = <ChannelPostComment>[];
+      final kept = <_LoadedPostComment>[];
       for (final raw in rawMessages) {
         final message = TDParse.message(raw);
         if (message == null ||
@@ -2622,10 +2695,37 @@ class _ChannelPostDetailViewState extends State<ChannelPostDetailView> {
             _commentText(message).isEmpty) {
           continue;
         }
-        final sender = await _commentSender(message);
+        kept.add(
+          _LoadedPostComment(
+            chatId: raw.int64('chat_id') ?? target.chatId,
+            message: message,
+          ),
+        );
+      }
+      // One query per distinct sender, in parallel. Resolving inline below
+      // serialized up to 120 getUser/getChat round-trips, mostly repeats.
+      final firstBySender = <int, ChatMessage>{};
+      for (final entry in kept) {
+        final senderId = entry.message.senderId;
+        if (senderId != null) {
+          firstBySender.putIfAbsent(senderId, () => entry.message);
+        }
+      }
+      final senders = <int, _CommentSender>{};
+      await Future.wait(
+        firstBySender.entries.map((entry) async {
+          senders[entry.key] = await _commentSender(entry.value);
+        }),
+      );
+      final comments = <ChannelPostComment>[];
+      for (final entry in kept) {
+        final message = entry.message;
+        final senderId = message.senderId;
+        final cached = senderId == null ? null : senders[senderId];
+        final sender = cached ?? await _commentSender(message);
         comments.add(
           ChannelPostComment(
-            chatId: raw.int64('chat_id') ?? target.chatId,
+            chatId: entry.chatId,
             messageId: message.id,
             senderName: sender.name,
             senderPhoto: sender.photo,
@@ -2820,20 +2920,25 @@ class _ChannelPostDetailViewState extends State<ChannelPostDetailView> {
             ),
           ),
           Expanded(
-            child: ListView(
-              padding: EdgeInsets.zero,
-              children: [
-                ChannelPostRow(
-                  post: post,
-                  meName: '',
-                  showInlineReply: false,
-                  showInlineComments: false,
+            // Slivers, not a Column of every comment: a thread of 120 rebuilt
+            // and laid out all of its tiles on each incoming-comment refresh.
+            child: CustomScrollView(
+              slivers: [
+                SliverToBoxAdapter(
+                  child: ChannelPostRow(
+                    post: post,
+                    meName: '',
+                    showInlineReply: false,
+                    showInlineComments: false,
+                  ),
                 ),
-                const InsetDivider(leadingInset: 14),
+                const SliverToBoxAdapter(child: InsetDivider(leadingInset: 14)),
                 if (_loading && _comments.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 32),
-                    child: Center(child: CircularProgressIndicator()),
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 32),
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
                   )
                 else
                   _CommentThreadList(
@@ -2960,6 +3065,24 @@ class _CommentSender {
   final TdFileRef? photo;
 }
 
+/// One flattened row of the comment thread: a root or one of its replies.
+class _ThreadEntry {
+  const _ThreadEntry({
+    required this.comment,
+    required this.endsGroup,
+    this.prefix,
+    this.nested = false,
+  });
+
+  final ChannelPostComment comment;
+  final String? prefix;
+  final bool nested;
+
+  /// Last tile of a root-plus-replies group — carries the gap that used to be
+  /// a SizedBox between groups.
+  final bool endsGroup;
+}
+
 class _CommentThreadList extends StatelessWidget {
   const _CommentThreadList({
     required this.post,
@@ -2976,12 +3099,17 @@ class _CommentThreadList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (comments.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 28),
-        child: Center(
-          child: Text(
-            AppStringKeys.momentsNoComments.l10n(context),
-            style: TextStyle(fontSize: 14, color: context.colors.textTertiary),
+      return SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 28),
+          child: Center(
+            child: Text(
+              AppStringKeys.momentsNoComments.l10n(context),
+              style: TextStyle(
+                fontSize: 14,
+                color: context.colors.textTertiary,
+              ),
+            ),
           ),
         ),
       );
@@ -2994,25 +3122,42 @@ class _CommentThreadList extends StatelessWidget {
       final rootId = _rootId(comment, byId);
       childrenByRoot.putIfAbsent(rootId, () => []).add(comment);
     }
-    return Padding(
+    // Flattened once per build so the tiles themselves can be built lazily.
+    final entries = <_ThreadEntry>[];
+    for (final root in roots) {
+      final children =
+          childrenByRoot[root.messageId] ?? const <ChannelPostComment>[];
+      entries.add(_ThreadEntry(comment: root, endsGroup: children.isEmpty));
+      for (var i = 0; i < children.length; i++) {
+        entries.add(
+          _ThreadEntry(
+            comment: children[i],
+            prefix: _replyPrefix(children[i], root, byId),
+            nested: true,
+            endsGroup: i == children.length - 1,
+          ),
+        );
+      }
+    }
+    return SliverPadding(
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 96),
-      child: Column(
-        children: [
-          for (final root in roots) ...[
-            _DetailCommentTile(comment: root, onReply: onReply, onLike: onLike),
-            for (final child
-                in childrenByRoot[root.messageId] ??
-                    const <ChannelPostComment>[])
-              _DetailCommentTile(
-                comment: child,
-                prefix: _replyPrefix(child, root, byId),
-                nested: true,
-                onReply: onReply,
-                onLike: onLike,
-              ),
-            const SizedBox(height: 14),
-          ],
-        ],
+      sliver: SliverList.builder(
+        itemCount: entries.length,
+        itemBuilder: (context, index) {
+          final entry = entries[index];
+          final tile = _DetailCommentTile(
+            comment: entry.comment,
+            prefix: entry.prefix,
+            nested: entry.nested,
+            onReply: onReply,
+            onLike: onLike,
+          );
+          if (!entry.endsGroup) return tile;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: tile,
+          );
+        },
       ),
     );
   }
@@ -3746,6 +3891,7 @@ class ChannelPostRow extends StatelessWidget {
                   photo: channel.photo,
                   size: 48,
                   square: true,
+                  allowAnimation: false,
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -3776,6 +3922,7 @@ class ChannelPostRow extends StatelessWidget {
                               title: post.authorName!,
                               photo: post.authorPhoto,
                               size: 16,
+                              allowAnimation: false,
                             ),
                             const SizedBox(width: 5),
                             Flexible(
@@ -3957,7 +4104,12 @@ class _InlineQuickReply extends StatelessWidget {
         ),
         child: Row(
           children: [
-            PhotoAvatar(title: meName, photo: mePhoto, size: 26),
+            PhotoAvatar(
+              title: meName,
+              photo: mePhoto,
+              size: 26,
+              allowAnimation: false,
+            ),
             const SizedBox(width: 9),
             Text(
               AppStringKeys.momentsCommentPlaceholder.l10n(context),
@@ -4063,7 +4215,9 @@ class _PostImageGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final width = MediaQuery.of(context).size.width - 28;
+    // sizeOf, not of: depending on the whole MediaQueryData rebuilt every
+    // album in the viewport on each frame of the keyboard animation.
+    final width = MediaQuery.sizeOf(context).width - 28;
     final visible = messages.take(9).toList();
     if (visible.isEmpty) return const SizedBox.shrink();
     final layout = buildTelegramMediaAlbumLayout(
@@ -4190,6 +4344,7 @@ class _PostImageTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final pixelRatio = MediaQuery.devicePixelRatioOf(context);
     return ClipRRect(
       borderRadius: BorderRadius.circular(3),
       child: SizedBox(
@@ -4201,10 +4356,8 @@ class _PostImageTile extends StatelessWidget {
             TDImage(
               photo: message.image,
               cornerRadius: 3,
-              cacheWidth: (width * MediaQuery.of(context).devicePixelRatio)
-                  .round(),
-              cacheHeight: (height * MediaQuery.of(context).devicePixelRatio)
-                  .round(),
+              cacheWidth: (width * pixelRatio).round(),
+              cacheHeight: (height * pixelRatio).round(),
             ),
             if (message.video != null)
               Center(
@@ -4418,6 +4571,8 @@ class StoryShelf extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final groups = model.groups;
+    final showLoader = model.loading && groups.isEmpty;
     return Container(
       color: c.background,
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -4442,34 +4597,41 @@ class StoryShelf extends StatelessWidget {
           const SizedBox(height: 4),
           SizedBox(
             height: 91,
-            child: ListView(
+            // Lazy: the eager children form built a tile per friend with active
+            // stories on every rebuild, and paging emits one update per friend.
+            child: ListView.builder(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 12),
-              children: [
-                _StoryActionTile(
-                  key: const ValueKey('my-story-action'),
-                  label: AppStringKeys.storiesMy.l10n(context),
-                  icon: HeroAppIcons.inbox,
-                  photo: model.selfPhoto,
-                  photoTitle: model.selfName,
-                  onTap: model.ownGroup == null
-                      ? onManage
-                      : () => _openStory(context, model.ownGroup!),
-                  onBadgeTap: canPublish ? onCreate : null,
-                  showBadge: canPublish,
-                  prominent: model.ownGroup == null && canPublish,
-                ),
-                for (final group in model.groups)
-                  _StoryGroupTile(
-                    group: group,
-                    onTap: () => _openStory(context, group),
-                  ),
-                if (model.loading && model.groups.isEmpty)
-                  const SizedBox(
+              itemCount: 1 + groups.length + (showLoader ? 1 : 0),
+              itemBuilder: (context, i) {
+                if (i == 0) {
+                  return _StoryActionTile(
+                    key: const ValueKey('my-story-action'),
+                    label: AppStringKeys.storiesMy.l10n(context),
+                    icon: HeroAppIcons.inbox,
+                    photo: model.selfPhoto,
+                    photoTitle: model.selfName,
+                    onTap: model.ownGroup == null
+                        ? onManage
+                        : () => _openStory(context, model.ownGroup!),
+                    onBadgeTap: canPublish ? onCreate : null,
+                    showBadge: canPublish,
+                    prominent: model.ownGroup == null && canPublish,
+                  );
+                }
+                if (i > groups.length) {
+                  return const SizedBox(
                     width: 66,
                     child: Center(child: AppActivityIndicator(size: 24)),
-                  ),
-              ],
+                  );
+                }
+                final group = groups[i - 1];
+                return _StoryGroupTile(
+                  key: ValueKey('story-group-${group.chatId}'),
+                  group: group,
+                  onTap: () => _openStory(context, group),
+                );
+              },
             ),
           ),
         ],
@@ -4545,6 +4707,7 @@ class _StoryActionTile extends StatelessWidget {
                               title: photoTitle,
                               photo: photo,
                               size: 57,
+                              allowAnimation: false,
                             )
                           : DecoratedBox(
                               decoration: BoxDecoration(
@@ -4613,7 +4776,7 @@ class _StoryActionTile extends StatelessWidget {
 }
 
 class _StoryGroupTile extends StatelessWidget {
-  const _StoryGroupTile({required this.group, required this.onTap});
+  const _StoryGroupTile({super.key, required this.group, required this.onTap});
 
   final StoryGroup group;
   final VoidCallback onTap;
@@ -4653,6 +4816,7 @@ class _StoryGroupTile extends StatelessWidget {
                     title: group.name,
                     photo: group.photo,
                     size: 53,
+                    allowAnimation: false,
                   ),
                 ),
               ),
@@ -5110,7 +5274,11 @@ class _StoriesViewState extends State<StoriesView> {
                   color: c.background,
                   shape: BoxShape.circle,
                 ),
-                child: PhotoAvatar(title: group.name, photo: group.photo),
+                child: PhotoAvatar(
+                  title: group.name,
+                  photo: group.photo,
+                  allowAnimation: false,
+                ),
               ),
             ),
             const SizedBox(width: 12),

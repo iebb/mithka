@@ -1,5 +1,11 @@
 import 'dart:convert';
 
+/// Keys the iOS notification service extension stamps onto a delivered push so
+/// the tap that follows knows which account it belongs to. Kept in step with
+/// `accountSlotUserInfoKey` in NotificationCommunicationContent.swift.
+const _accountSlotKey = 'mithka_account_slot';
+const _accountUserIdKey = 'mithka_account_user_id';
+
 /// A Telegram notification destination expressed with TDLib identifiers.
 class NotificationTarget {
   const NotificationTarget({
@@ -15,6 +21,19 @@ class NotificationTarget {
   final String? title;
   final int? accountUserId;
   final int? accountSlot;
+
+  /// The same target, told which account slot it belongs to.
+  ///
+  /// A remote payload names its account by user id; the slot is Mithka's own
+  /// numbering, so it can only be attached once the client registry is at
+  /// hand.
+  NotificationTarget withAccountSlot(int slot) => NotificationTarget(
+    chatId: chatId,
+    messageId: messageId,
+    title: title,
+    accountUserId: accountUserId,
+    accountSlot: slot,
+  );
 
   /// Decodes the payload attached to a notification created by Mithka.
   static NotificationTarget? fromLocalPayload(String? payload) {
@@ -72,7 +91,15 @@ class NotificationTarget {
       chatId: chatId,
       messageId: messageId,
       title: _notificationTitle(root, data),
-      accountUserId: _integer(data['user_id']) ?? _integer(root['user_id']),
+      accountUserId:
+          _integer(data['user_id']) ??
+          _integer(root['user_id']) ??
+          _integer(data[_accountUserIdKey]) ??
+          _integer(root[_accountUserIdKey]),
+      // Stamped by the notification service extension as the push was
+      // delivered, when the account map was still readable.
+      accountSlot:
+          _integer(data[_accountSlotKey]) ?? _integer(root[_accountSlotKey]),
     );
   }
 

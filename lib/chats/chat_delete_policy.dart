@@ -47,3 +47,8 @@ bool shouldLeaveBeforeDeletingChat(ChatKind kind, ChatDeleteScope scope) {
   return scope == ChatDeleteScope.self &&
       (kind == ChatKind.group || kind == ChatKind.channel);
 }
+
+Map<String, dynamic> chatLeftLocalUpdate(int chatId) => {
+  '@type': 'mithkaChatLeft',
+  'chat_id': chatId,
+};

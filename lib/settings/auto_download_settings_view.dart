@@ -19,14 +19,25 @@ class AutoDownloadSettingsView extends StatefulWidget {
 }
 
 class _AutoDownloadSettingsViewState extends State<AutoDownloadSettingsView> {
-  static const _sizes = <int, String>{
-    0: 'Never',
-    1048576: '1 MB',
-    5242880: '5 MB',
-    20971520: '20 MB',
-    104857600: '100 MB',
-    524288000: '500 MB',
-    2147483647: '2 GB',
+  static const _sizes = <int>[
+    0,
+    1048576,
+    5242880,
+    20971520,
+    104857600,
+    524288000,
+    2147483647,
+  ];
+
+  // Byte units are written the same way in every locale; only "Never" is copy.
+  static String _sizeLabel(int bytes) => switch (bytes) {
+    0 => AppStrings.t(AppStringKeys.autoDownloadSettingsSizeNever),
+    1048576 => '1 MB',
+    5242880 => '5 MB',
+    20971520 => '20 MB',
+    104857600 => '100 MB',
+    524288000 => '500 MB',
+    _ => '2 GB',
   };
   final _controller = AutoDownloadMediaController.shared;
   String _network = 'networkTypeMobile';
@@ -112,21 +123,23 @@ class _AutoDownloadSettingsViewState extends State<AutoDownloadSettingsView> {
                 _card([
                   _sizeRow(
                     HeroAppIcons.image,
-                    'Photos',
+                    AppStrings.t(AppStringKeys.autoDownloadSettingsPhotos),
                     profile.maxPhotoBytes,
                     (value) => _save(profile.copyWith(maxPhotoBytes: value)),
                   ),
                   const Divider(height: 1),
                   _sizeRow(
                     HeroAppIcons.video,
-                    'Videos',
+                    AppStrings.t(AppStringKeys.autoDownloadSettingsVideos),
                     profile.maxVideoBytes,
                     (value) => _save(profile.copyWith(maxVideoBytes: value)),
                   ),
                   const Divider(height: 1),
                   _sizeRow(
                     HeroAppIcons.solidFolder,
-                    'Files and music',
+                    AppStrings.t(
+                      AppStringKeys.autoDownloadSettingsFilesAndMusic,
+                    ),
                     profile.maxOtherBytes,
                     (value) => _save(profile.copyWith(maxOtherBytes: value)),
                   ),
@@ -141,26 +154,34 @@ class _AutoDownloadSettingsViewState extends State<AutoDownloadSettingsView> {
                 const SizedBox(height: 6),
                 _card([
                   _toggle(
-                    'Preload large videos for streaming',
+                    AppStrings.t(
+                      AppStringKeys.autoDownloadSettingsPreloadLargeVideos,
+                    ),
                     profile.preloadLargeVideos,
                     (value) =>
                         _save(profile.copyWith(preloadLargeVideos: value)),
                   ),
                   const Divider(height: 1),
                   _toggle(
-                    'Preload the next audio track',
+                    AppStrings.t(
+                      AppStringKeys.autoDownloadSettingsPreloadNextAudio,
+                    ),
                     profile.preloadNextAudio,
                     (value) => _save(profile.copyWith(preloadNextAudio: value)),
                   ),
                   const Divider(height: 1),
                   _toggle(
-                    'Preload stories',
+                    AppStrings.t(
+                      AppStringKeys.autoDownloadSettingsPreloadStories,
+                    ),
                     profile.preloadStories,
                     (value) => _save(profile.copyWith(preloadStories: value)),
                   ),
                   const Divider(height: 1),
                   _toggle(
-                    'Use less data for calls',
+                    AppStrings.t(
+                      AppStringKeys.autoDownloadSettingsUseLessDataForCalls,
+                    ),
                     profile.useLessDataForCalls,
                     (value) =>
                         _save(profile.copyWith(useLessDataForCalls: value)),
@@ -193,9 +214,11 @@ class _AutoDownloadSettingsViewState extends State<AutoDownloadSettingsView> {
       child: Row(
         children: [
           for (final entry in const {
-            'networkTypeMobile': 'Mobile',
-            'networkTypeWiFi': 'Wi-Fi',
-            'networkTypeMobileRoaming': 'Roaming',
+            'networkTypeMobile':
+                AppStringKeys.autoDownloadSettingsNetworkMobile,
+            'networkTypeWiFi': AppStringKeys.autoDownloadSettingsNetworkWiFi,
+            'networkTypeMobileRoaming':
+                AppStringKeys.autoDownloadSettingsNetworkRoaming,
           }.entries)
             Expanded(
               child: GestureDetector(
@@ -212,7 +235,7 @@ class _AutoDownloadSettingsViewState extends State<AutoDownloadSettingsView> {
                     borderRadius: BorderRadius.circular(AppRadius.control),
                   ),
                   child: Text(
-                    entry.value,
+                    AppStrings.t(entry.value),
                     style: TextStyle(
                       color: _network == entry.key
                           ? AppTheme.brand
@@ -240,11 +263,11 @@ class _AutoDownloadSettingsViewState extends State<AutoDownloadSettingsView> {
     int value,
     Future<void> Function(int value) onChanged,
   ) {
-    final selected = _sizes.containsKey(value) ? value : _closestSize(value);
+    final selected = _sizes.contains(value) ? value : _closestSize(value);
     return SettingsRow(
       leading: AppIcon(icon, size: 21, color: AppTheme.brand),
       title: title,
-      value: _sizes[selected] ?? '',
+      value: _sizeLabel(selected),
       onTap: _controller.isApplying
           ? null
           : () => unawaited(_chooseSize(selected, onChanged)),
@@ -268,14 +291,12 @@ class _AutoDownloadSettingsViewState extends State<AutoDownloadSettingsView> {
               for (var index = 0; index < _sizes.length; index++) ...[
                 if (index > 0) Divider(height: 1, color: c.divider),
                 SettingsRow(
-                  title: _sizes.values.elementAt(index),
+                  title: _sizeLabel(_sizes[index]),
                   showChevron: false,
-                  trailing: _sizes.keys.elementAt(index) == selected
+                  trailing: _sizes[index] == selected
                       ? const AppIcon(HeroAppIcons.check, size: 20)
                       : null,
-                  onTap: () => Navigator.of(
-                    sheetContext,
-                  ).pop(_sizes.keys.elementAt(index)),
+                  onTap: () => Navigator.of(sheetContext).pop(_sizes[index]),
                 ),
               ],
             ],
@@ -299,9 +320,9 @@ class _AutoDownloadSettingsViewState extends State<AutoDownloadSettingsView> {
   );
 
   int _closestSize(int value) {
-    var closest = _sizes.keys.first;
+    var closest = _sizes.first;
     var distance = (value - closest).abs();
-    for (final candidate in _sizes.keys.skip(1)) {
+    for (final candidate in _sizes.skip(1)) {
       final next = (value - candidate).abs();
       if (next < distance) {
         closest = candidate;
@@ -312,8 +333,12 @@ class _AutoDownloadSettingsViewState extends State<AutoDownloadSettingsView> {
   }
 
   static String _networkLabel(String type) => switch (type) {
-    'networkTypeWiFi' => 'When connected to Wi-Fi',
-    'networkTypeMobileRoaming' => 'While roaming',
-    _ => 'When using mobile data',
+    'networkTypeWiFi' => AppStrings.t(
+      AppStringKeys.autoDownloadSettingsWhenConnectedToWiFi,
+    ),
+    'networkTypeMobileRoaming' => AppStrings.t(
+      AppStringKeys.autoDownloadSettingsWhileRoaming,
+    ),
+    _ => AppStrings.t(AppStringKeys.autoDownloadSettingsWhenUsingMobileData),
   };
 }

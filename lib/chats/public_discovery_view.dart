@@ -201,7 +201,10 @@ class _PublicDiscoveryViewState extends State<PublicDiscoveryView> {
       _loading = true;
       _error = null;
       _similar = const [];
-      _similarTitle = 'Similar to ${source.title}';
+      _similarTitle = AppStrings.t(
+        AppStringKeys.publicDiscoverySimilarToValue1,
+        {'value1': source.title},
+      );
       _similarSourceChatId = source.isBot ? null : source.chatId;
       _similarSourceBotUserId = source.isBot ? source.botUserId : null;
     });
@@ -238,7 +241,9 @@ class _PublicDiscoveryViewState extends State<PublicDiscoveryView> {
       return;
     }
     if (page.limitsExceeded) {
-      _error = 'The public-post search limit has been reached.';
+      _error = AppStrings.t(
+        AppStringKeys.publicDiscoveryPostSearchLimitReached,
+      );
     }
     final hits = await _hydrateMessages(page.messages);
     if (!mounted || generation != _generation) return;
@@ -410,7 +415,7 @@ class _PublicDiscoveryViewState extends State<PublicDiscoveryView> {
                     Expanded(
                       child: Center(
                         child: Text(
-                          tab.label,
+                          AppStrings.t(tab.labelKey),
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: _tab == tab
@@ -471,9 +476,15 @@ class _PublicDiscoveryViewState extends State<PublicDiscoveryView> {
                   border: InputBorder.none,
                   isDense: true,
                   hintText: switch (_tab) {
-                    _DiscoveryTab.channels => 'Search channels and bots',
-                    _DiscoveryTab.posts => 'Search public posts or #hashtag',
-                    _DiscoveryTab.media => 'Search all chats',
+                    _DiscoveryTab.channels => AppStrings.t(
+                      AppStringKeys.publicDiscoverySearchChannelsAndBots,
+                    ),
+                    _DiscoveryTab.posts => AppStrings.t(
+                      AppStringKeys.publicDiscoverySearchPublicPostsOrHashtag,
+                    ),
+                    _DiscoveryTab.media => AppStrings.t(
+                      AppStringKeys.publicDiscoverySearchAllChats,
+                    ),
                   },
                   hintStyle: TextStyle(fontSize: 15, color: c.textTertiary),
                 ),
@@ -531,7 +542,7 @@ class _PublicDiscoveryViewState extends State<PublicDiscoveryView> {
                 ),
               ),
               child: Text(
-                filter.label,
+                AppStrings.t(filter.labelKey),
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
@@ -557,7 +568,10 @@ class _PublicDiscoveryViewState extends State<PublicDiscoveryView> {
         (_tab == _DiscoveryTab.channels
             ? _channels.isEmpty && _bots.isEmpty
             : _hits.isEmpty)) {
-      return _status(HeroAppIcons.triangleExclamation, 'Search failed');
+      return _status(
+        HeroAppIcons.triangleExclamation,
+        AppStrings.t(AppStringKeys.publicDiscoverySearchFailed),
+      );
     }
     return switch (_tab) {
       _DiscoveryTab.channels => _channelContent(),
@@ -571,7 +585,11 @@ class _PublicDiscoveryViewState extends State<PublicDiscoveryView> {
     if (_channels.isEmpty && _bots.isEmpty) {
       return _status(
         HeroAppIcons.towerBroadcast,
-        searching ? 'No public channels or bots found' : 'No recommendations',
+        AppStrings.t(
+          searching
+              ? AppStringKeys.publicDiscoveryNoChannelsFound
+              : AppStringKeys.publicDiscoveryNoRecommendations,
+        ),
       );
     }
     return ListView(
@@ -579,12 +597,19 @@ class _PublicDiscoveryViewState extends State<PublicDiscoveryView> {
       children: [
         if (_channels.isNotEmpty)
           _peerSection(
-            searching ? 'Public channels' : 'Recommended channels',
+            AppStrings.t(
+              searching
+                  ? AppStringKeys.publicDiscoveryPublicChannels
+                  : AppStringKeys.publicDiscoveryRecommendedChannels,
+            ),
             _channels,
           ),
         if (_bots.isNotEmpty) ...[
           const SizedBox(height: 14),
-          _peerSection('Bots', _bots),
+          _peerSection(
+            AppStrings.t(AppStringKeys.publicDiscoveryBotsSection),
+            _bots,
+          ),
         ],
         if (_similarTitle.isNotEmpty) ...[
           const SizedBox(height: 14),
@@ -624,7 +649,11 @@ class _PublicDiscoveryViewState extends State<PublicDiscoveryView> {
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
               child: Text(
-                _loading ? 'Loading…' : 'No similar results',
+                AppStrings.t(
+                  _loading
+                      ? AppStringKeys.publicDiscoveryLoading
+                      : AppStringKeys.publicDiscoveryNoSimilarResults,
+                ),
                 style: TextStyle(fontSize: 14, color: c.textTertiary),
               ),
             ),
@@ -692,7 +721,7 @@ class _PublicDiscoveryViewState extends State<PublicDiscoveryView> {
     if (publicPosts && query.isEmpty) {
       return _status(
         HeroAppIcons.magnifyingGlass,
-        'Search public posts by text, #hashtag, or cashtag',
+        AppStrings.t(AppStringKeys.publicDiscoveryPostSearchHint),
       );
     }
     if (_requiredStarCount > 0) {
@@ -746,7 +775,11 @@ class _PublicDiscoveryViewState extends State<PublicDiscoveryView> {
     if (_hits.isEmpty) {
       return _status(
         publicPosts ? HeroAppIcons.message : _mediaFilter.icon,
-        publicPosts ? 'No public posts found' : 'No matching media found',
+        AppStrings.t(
+          publicPosts
+              ? AppStringKeys.publicDiscoveryNoPublicPostsFound
+              : AppStringKeys.publicDiscoveryNoMatchingMedia,
+        ),
       );
     }
     return ListView.separated(
@@ -887,32 +920,72 @@ class _PublicDiscoveryViewState extends State<PublicDiscoveryView> {
 }
 
 enum _DiscoveryTab {
-  channels('Channels'),
-  posts('Public posts'),
-  media('Global media');
+  channels(AppStringKeys.publicDiscoveryTabChannels),
+  posts(AppStringKeys.publicDiscoveryTabPosts),
+  media(AppStringKeys.publicDiscoveryTabMedia);
 
-  const _DiscoveryTab(this.label);
-  final String label;
+  const _DiscoveryTab(this.labelKey);
+
+  /// Resolved at the render boundary, never stored translated.
+  final String labelKey;
 }
 
 enum _GlobalMediaFilter {
   photoAndVideo(
-    'Photos & videos',
+    AppStringKeys.publicDiscoveryFilterAll,
     'searchMessagesFilterPhotoAndVideo',
     HeroAppIcons.image,
   ),
-  photo('Photos', 'searchMessagesFilterPhoto', HeroAppIcons.image),
-  video('Videos', 'searchMessagesFilterVideo', HeroAppIcons.video),
-  animation('GIFs', 'searchMessagesFilterAnimation', HeroAppIcons.gif),
-  document('Files', 'searchMessagesFilterDocument', HeroAppIcons.file),
-  audio('Music', 'searchMessagesFilterAudio', HeroAppIcons.music),
-  link('Links', 'searchMessagesFilterUrl', HeroAppIcons.link),
-  voice('Voice', 'searchMessagesFilterVoiceNote', HeroAppIcons.microphone),
-  videoNote('Video notes', 'searchMessagesFilterVideoNote', HeroAppIcons.video),
-  poll('Polls', 'searchMessagesFilterPoll', HeroAppIcons.listCheck);
+  photo(
+    AppStringKeys.publicDiscoveryFilterPhoto,
+    'searchMessagesFilterPhoto',
+    HeroAppIcons.image,
+  ),
+  video(
+    AppStringKeys.publicDiscoveryFilterVideo,
+    'searchMessagesFilterVideo',
+    HeroAppIcons.video,
+  ),
+  animation(
+    AppStringKeys.publicDiscoveryFilterAnimation,
+    'searchMessagesFilterAnimation',
+    HeroAppIcons.gif,
+  ),
+  document(
+    AppStringKeys.publicDiscoveryFilterDocument,
+    'searchMessagesFilterDocument',
+    HeroAppIcons.file,
+  ),
+  audio(
+    AppStringKeys.publicDiscoveryFilterAudio,
+    'searchMessagesFilterAudio',
+    HeroAppIcons.music,
+  ),
+  link(
+    AppStringKeys.publicDiscoveryFilterLink,
+    'searchMessagesFilterUrl',
+    HeroAppIcons.link,
+  ),
+  voice(
+    AppStringKeys.publicDiscoveryFilterVoice,
+    'searchMessagesFilterVoiceNote',
+    HeroAppIcons.microphone,
+  ),
+  videoNote(
+    AppStringKeys.publicDiscoveryFilterVideoNote,
+    'searchMessagesFilterVideoNote',
+    HeroAppIcons.video,
+  ),
+  poll(
+    AppStringKeys.publicDiscoveryFilterPoll,
+    'searchMessagesFilterPoll',
+    HeroAppIcons.listCheck,
+  );
 
-  const _GlobalMediaFilter(this.label, this.apiType, this.icon);
-  final String label;
+  const _GlobalMediaFilter(this.labelKey, this.apiType, this.icon);
+
+  /// Resolved at the render boundary, never stored translated.
+  final String labelKey;
   final String apiType;
   final AppIconData icon;
 }

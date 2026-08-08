@@ -1,5 +1,7 @@
 import 'package:flutter/services.dart';
 
+import '../l10n/app_localizations.dart';
+
 abstract final class VideoTrimService {
   static const _channel = MethodChannel('mithka/media_editor');
 
@@ -19,7 +21,7 @@ abstract final class VideoTrimService {
     if (output == null || output.isEmpty) {
       throw PlatformException(
         code: 'video_trim_failed',
-        message: 'The trimmed video was not created.',
+        message: AppStrings.t(AppStringKeys.videoTrimFailed),
       );
     }
     return output;

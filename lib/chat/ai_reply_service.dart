@@ -4,6 +4,7 @@ import 'dart:math' as math;
 
 import 'package:http/http.dart' as http;
 
+import '../l10n/app_localizations.dart';
 import '../settings/ai_endpoint_style.dart';
 import '../settings/ai_stdout_logger.dart';
 import '../settings/apple_pcc_api.dart';
@@ -277,8 +278,8 @@ class AiReplyRequest {
 
   AiReplyMessage get target => messages.firstWhere(
     (message) => message.id == targetMessageId,
-    orElse: () => throw const AiReplyException(
-      'The message being replied to is no longer available.',
+    orElse: () => throw AiReplyException(
+      AppStrings.t(AppStringKeys.aiReplyTargetUnavailable),
     ),
   );
 
@@ -338,8 +339,8 @@ class AiReplyRequest {
     if (target.isService ||
         target.isContentRestricted ||
         target.blockedByUser) {
-      throw const AiReplyException(
-        'AI Reply is unavailable for this protected message.',
+      throw AiReplyException(
+        AppStrings.t(AppStringKeys.aiReplyProtectedMessage),
       );
     }
 
@@ -362,8 +363,8 @@ class AiReplyRequest {
         .where((message) => message.id == target.id)
         .firstOrNull;
     if (targetInCandidates == null) {
-      throw const AiReplyException(
-        'The message being replied to has no text that can be shared with AI.',
+      throw AiReplyException(
+        AppStrings.t(AppStringKeys.aiReplyTargetHasNoSharableText),
       );
     }
     final boundedDraft = _boundedText(currentDraft.trim(), 2000);
@@ -456,8 +457,8 @@ class AiReplyRequest {
           page.blockedSenderKeys.contains(message.senderKey),
     );
     if (!byId.containsKey(targetMessageId)) {
-      throw const AiReplyPrivacyException(
-        'AI Reply is unavailable for this blocked message.',
+      throw AiReplyPrivacyException(
+        AppStrings.t(AppStringKeys.aiReplyBlockedMessage),
       );
     }
     return copyWith(
@@ -893,16 +894,10 @@ class AiReplyStructuredStreamDecoder {
     try {
       decoded = jsonDecode(normalized);
     } on FormatException {
-      throw const AiReplyException(
-        'The reply model did not return a send-ready reply. Try again or '
-        'select another model.',
-      );
+      throw AiReplyException(AppStrings.t(AppStringKeys.aiReplyNotSendReady));
     }
     if (decoded is! Map || decoded['reply'] is! String) {
-      throw const AiReplyException(
-        'The reply model did not return a send-ready reply. Try again or '
-        'select another model.',
-      );
+      throw AiReplyException(AppStrings.t(AppStringKeys.aiReplyNotSendReady));
     }
     return _normalizedReply(decoded['reply'] as String);
   }
@@ -1098,12 +1093,17 @@ class HostedAiReplyProvider
         response = await _send(body, onDraft: onDraft, onProgress: onProgress);
       } on TimeoutException {
         throw AiReplyException(
-          'The reply model did not start within '
-          '${requestTimeout.inSeconds} seconds or stopped streaming for '
-          '${streamIdleTimeout.inSeconds} seconds.',
+          AppStrings.t(AppStringKeys.aiReplyTimedOutValue1Value2, {
+            'value1': requestTimeout.inSeconds,
+            'value2': streamIdleTimeout.inSeconds,
+          }),
         );
       } on http.ClientException catch (error) {
-        throw AiReplyException('The reply request failed: $error');
+        throw AiReplyException(
+          AppStrings.t(AppStringKeys.aiReplyRequestFailedValue1, {
+            'value1': error,
+          }),
+        );
       }
       if (response.statusCode < 200 || response.statusCode >= 300) {
         final error = _errorMessage(response.body);
@@ -1123,7 +1123,11 @@ class HostedAiReplyProvider
       try {
         decoded = response.envelope ?? _decodeResponseEnvelope(response.body);
       } on FormatException catch (error) {
-        throw AiReplyException('The reply model returned invalid JSON: $error');
+        throw AiReplyException(
+          AppStrings.t(AppStringKeys.aiReplyInvalidJsonValue1, {
+            'value1': error,
+          }),
+        );
       }
       if (decoded is! Map) {
         throw const AiReplyException(
@@ -1134,8 +1138,8 @@ class HostedAiReplyProvider
       final toolCalls = endpointStyle.functionToolCalls(decoded);
       if (toolCalls.isNotEmpty) {
         if (toolRounds >= 3) {
-          throw const AiReplyException(
-            'The reply model requested too much chat context.',
+          throw AiReplyException(
+            AppStrings.t(AppStringKeys.aiReplyTooMuchContext),
           );
         }
         final results = <AiFunctionToolResult>[];
@@ -1169,17 +1173,20 @@ class HostedAiReplyProvider
 
       final refusal = endpointStyle.refusalText(decoded);
       if (refusal != null && refusal.trim().isNotEmpty) {
-        throw AiReplyException('The reply model refused: ${refusal.trim()}');
+        throw AiReplyException(
+          AppStrings.t(AppStringKeys.aiReplyRefusedValue1, {
+            'value1': refusal.trim(),
+          }),
+        );
       }
       final text = endpointStyle.responseText(decoded);
       if (text == null) {
         if (endpointStyle.outputLimitReached(decoded)) {
-          throw const AiReplyException(
-            'The reply model used its entire output budget before returning '
-            'reply text. Try again or select a faster model.',
+          throw AiReplyException(
+            AppStrings.t(AppStringKeys.aiReplyOutputBudgetExhausted),
           );
         }
-        throw const AiReplyException('The reply model returned no text.');
+        throw AiReplyException(AppStrings.t(AppStringKeys.aiReplyNoText));
       }
       final result = AiReplyStructuredStreamDecoder().finish(text);
       onDraft(result);
@@ -1298,8 +1305,8 @@ class HostedAiReplyProvider
         if (accumulated == lastReportedText) return;
         if (telegramUtf8CharacterCount(accumulated) >
             telegramRichMessageMaxCharacters) {
-          throw const AiReplyException(
-            'The generated reply is too long to send.',
+          throw AiReplyException(
+            AppStrings.t(AppStringKeys.aiReplyTooLongToSend),
           );
         }
         lastReportedText = accumulated;
@@ -1431,9 +1438,8 @@ class HostedAiReplyProvider
         secrets: [apiKey],
       );
       if (isSuccessful && recognizedStream && !accumulator.isComplete) {
-        throw const AiReplyException(
-          'The reply stream ended before completion. The unverified partial '
-          'draft was removed.',
+        throw AiReplyException(
+          AppStrings.t(AppStringKeys.aiReplyStreamEndedEarly),
         );
       }
       return _AiReplyHttpResponse(
@@ -1843,10 +1849,10 @@ TelegramAiFormattedText _normalizedReply(String value) {
     }
   }
   if (text.isEmpty) {
-    throw const AiReplyException('The reply model returned an empty reply.');
+    throw AiReplyException(AppStrings.t(AppStringKeys.aiReplyEmptyReply));
   }
   if (telegramUtf8CharacterCount(text) > telegramRichMessageMaxCharacters) {
-    throw const AiReplyException('The generated reply is too long to send.');
+    throw AiReplyException(AppStrings.t(AppStringKeys.aiReplyTooLongToSend));
   }
   return TelegramAiFormattedText(text: text);
 }

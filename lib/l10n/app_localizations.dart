@@ -3966,6 +3966,549 @@ abstract final class AppStringKeys {
   static const aboutUpdateCheckFailed = 'aboutUpdateCheckFailed';
   static const aboutDownloadUpdate = 'aboutDownloadUpdate';
   static const settingsChooseSection = 'settingsChooseSection';
+  static const chatFolderManagementFolders = 'chatFolderManagementFolders';
+  static const chatFolderManagementFolderTags =
+      'chatFolderManagementFolderTags';
+  static const chatFolderManagementShowFolderTagsInChatList =
+      'chatFolderManagementShowFolderTagsInChatList';
+  static const chatFolderManagementRecommended =
+      'chatFolderManagementRecommended';
+  static const chatFolderManagementChatValue1 =
+      'chatFolderManagementChatValue1';
+  static const chatFolderManagementAddIncludedChat =
+      'chatFolderManagementAddIncludedChat';
+  static const chatFolderManagementAddExcludedChat =
+      'chatFolderManagementAddExcludedChat';
+  static const chatFolderManagementNewFolder = 'chatFolderManagementNewFolder';
+  static const chatFolderManagementEditFolder =
+      'chatFolderManagementEditFolder';
+  static const chatFolderManagementSectionName =
+      'chatFolderManagementSectionName';
+  static const chatFolderManagementSectionIcon =
+      'chatFolderManagementSectionIcon';
+  static const chatFolderManagementSectionTagColor =
+      'chatFolderManagementSectionTagColor';
+  static const chatFolderManagementSectionInclude =
+      'chatFolderManagementSectionInclude';
+  static const chatFolderManagementSectionExclude =
+      'chatFolderManagementSectionExclude';
+  static const chatFolderManagementSectionSharing =
+      'chatFolderManagementSectionSharing';
+  static const chatFolderManagementIncludeContacts =
+      'chatFolderManagementIncludeContacts';
+  static const chatFolderManagementIncludeNonContacts =
+      'chatFolderManagementIncludeNonContacts';
+  static const chatFolderManagementIncludeGroups =
+      'chatFolderManagementIncludeGroups';
+  static const chatFolderManagementIncludeChannels =
+      'chatFolderManagementIncludeChannels';
+  static const chatFolderManagementIncludeBots =
+      'chatFolderManagementIncludeBots';
+  static const chatFolderManagementExcludeMutedChats =
+      'chatFolderManagementExcludeMutedChats';
+  static const chatFolderManagementExcludeReadChats =
+      'chatFolderManagementExcludeReadChats';
+  static const chatFolderManagementExcludeArchivedChats =
+      'chatFolderManagementExcludeArchivedChats';
+  static const chatFolderManagementAddChat = 'chatFolderManagementAddChat';
+  static const chatFolderManagementInviteLinksRow =
+      'chatFolderManagementInviteLinksRow';
+  static const chatFolderManagementNewInviteLink =
+      'chatFolderManagementNewInviteLink';
+  static const chatFolderManagementEditInviteLink =
+      'chatFolderManagementEditInviteLink';
+  static const chatFolderManagementSectionIncludedGroupsAndChannels =
+      'chatFolderManagementSectionIncludedGroupsAndChannels';
+  static const accountSecurityTwoStepPasswordRemoved =
+      'accountSecurityTwoStepPasswordRemoved';
+  static const accountSecurityTwoStepPasswordSaved =
+      'accountSecurityTwoStepPasswordSaved';
+  static const accountSecurityRemoveTwoStepPasswordMessage =
+      'accountSecurityRemoveTwoStepPasswordMessage';
+  static const accountSecurityNewPasswordField =
+      'accountSecurityNewPasswordField';
+  static const accountSecurityCreatePassword = 'accountSecurityCreatePassword';
+  static const accountSecurityChangePassword = 'accountSecurityChangePassword';
+  static const accountSecurityChangeRecoveryEmail =
+      'accountSecurityChangeRecoveryEmail';
+  static const accountSecurityAddRecoveryEmail =
+      'accountSecurityAddRecoveryEmail';
+  static const accountSecurityEnterCodeSentToRecoveryEmail =
+      'accountSecurityEnterCodeSentToRecoveryEmail';
+  static const accountSecurityEnterCodeSentToValue1 =
+      'accountSecurityEnterCodeSentToValue1';
+  static const accountSecurityRecoveryCodeSentToValue1 =
+      'accountSecurityRecoveryCodeSentToValue1';
+  static const accountSecurityTelegramWillSendCodeToRecoveryEmail =
+      'accountSecurityTelegramWillSendCodeToRecoveryEmail';
+  static const accountSecurityAccountAndContactsWillMove =
+      'accountSecurityAccountAndContactsWillMove';
+  static const accountSecurityConfirmNewNumber =
+      'accountSecurityConfirmNewNumber';
+  static const accountSecuritySendCode = 'accountSecuritySendCode';
+  static const accountSecurityInactivityOneMonth =
+      'accountSecurityInactivityOneMonth';
+  static const accountSecurityInactivityThreeMonths =
+      'accountSecurityInactivityThreeMonths';
+  static const accountSecurityInactivitySixMonths =
+      'accountSecurityInactivitySixMonths';
+  static const accountSecurityInactivityOneYear =
+      'accountSecurityInactivityOneYear';
+  static const accountSecurityInactivityEighteenMonths =
+      'accountSecurityInactivityEighteenMonths';
+  static const accountSecurityInactivityTwoYears =
+      'accountSecurityInactivityTwoYears';
+  static const accountSecurityInactivityDaysValue1 =
+      'accountSecurityInactivityDaysValue1';
+  static const accountSecurityAccountInactivityDescription =
+      'accountSecurityAccountInactivityDescription';
+  static const accountSecurityDeleteAccountConfirmMessage =
+      'accountSecurityDeleteAccountConfirmMessage';
+  static const accountSecurityDeleteAccountDescription =
+      'accountSecurityDeleteAccountDescription';
+  static const networkUsageResetMessage = 'networkUsageResetMessage';
+  static const networkUsageSent = 'networkUsageSent';
+  static const networkUsageCalls = 'networkUsageCalls';
+  static const networkUsageNetworkWiFi = 'networkUsageNetworkWiFi';
+  static const networkUsageNetworkMobileData = 'networkUsageNetworkMobileData';
+  static const networkUsageNetworkRoaming = 'networkUsageNetworkRoaming';
+  static const networkUsageNetworkOffline = 'networkUsageNetworkOffline';
+  static const networkUsageNetworkOther = 'networkUsageNetworkOther';
+  static const networkUsageFileTypePhotos = 'networkUsageFileTypePhotos';
+  static const networkUsageFileTypeVideos = 'networkUsageFileTypeVideos';
+  static const networkUsageFileTypeVoiceMessages =
+      'networkUsageFileTypeVoiceMessages';
+  static const networkUsageFileTypeVideoMessages =
+      'networkUsageFileTypeVideoMessages';
+  static const networkUsageFileTypeMusic = 'networkUsageFileTypeMusic';
+  static const networkUsageFileTypeFiles = 'networkUsageFileTypeFiles';
+  static const networkUsageFileTypeGifs = 'networkUsageFileTypeGifs';
+  static const networkUsageFileTypeStories = 'networkUsageFileTypeStories';
+  static const networkUsageFileTypeOther = 'networkUsageFileTypeOther';
+  static const autoDownloadSettingsSizeNever = 'autoDownloadSettingsSizeNever';
+  static const autoDownloadSettingsPhotos = 'autoDownloadSettingsPhotos';
+  static const autoDownloadSettingsVideos = 'autoDownloadSettingsVideos';
+  static const autoDownloadSettingsFilesAndMusic =
+      'autoDownloadSettingsFilesAndMusic';
+  static const autoDownloadSettingsPreloadLargeVideos =
+      'autoDownloadSettingsPreloadLargeVideos';
+  static const autoDownloadSettingsPreloadNextAudio =
+      'autoDownloadSettingsPreloadNextAudio';
+  static const autoDownloadSettingsPreloadStories =
+      'autoDownloadSettingsPreloadStories';
+  static const autoDownloadSettingsUseLessDataForCalls =
+      'autoDownloadSettingsUseLessDataForCalls';
+  static const autoDownloadSettingsNetworkMobile =
+      'autoDownloadSettingsNetworkMobile';
+  static const autoDownloadSettingsNetworkWiFi =
+      'autoDownloadSettingsNetworkWiFi';
+  static const autoDownloadSettingsNetworkRoaming =
+      'autoDownloadSettingsNetworkRoaming';
+  static const autoDownloadSettingsWhenConnectedToWiFi =
+      'autoDownloadSettingsWhenConnectedToWiFi';
+  static const autoDownloadSettingsWhileRoaming =
+      'autoDownloadSettingsWhileRoaming';
+  static const autoDownloadSettingsWhenUsingMobileData =
+      'autoDownloadSettingsWhenUsingMobileData';
+  static const notificationChannelMessagesName =
+      'notificationChannelMessagesName';
+  static const notificationChannelMessagesDescription =
+      'notificationChannelMessagesDescription';
+  static const notificationSelfSenderName = 'notificationSelfSenderName';
+  static const appearancePreviewAlbumSenderName =
+      'appearancePreviewAlbumSenderName';
+  static const appearancePreviewAlbumSenderTitle =
+      'appearancePreviewAlbumSenderTitle';
+  static const appearancePreviewAlbumCaption = 'appearancePreviewAlbumCaption';
+  static const appearancePreviewGroupTitle = 'appearancePreviewGroupTitle';
+  static const messageBubblePreviewRepositoryLong =
+      'messageBubblePreviewRepositoryLong';
+  static const messageBubblePreviewCenterStretch =
+      'messageBubblePreviewCenterStretch';
+  static const groupManagementAdministrationSection =
+      'groupManagementAdministrationSection';
+  static const groupManagementInviteLinks = 'groupManagementInviteLinks';
+  static const groupManagementJoinRequests = 'groupManagementJoinRequests';
+  static const groupManagementAdvancedControls =
+      'groupManagementAdvancedControls';
+  static const groupManagementForumTopics = 'groupManagementForumTopics';
+  static const groupManagementStatistics = 'groupManagementStatistics';
+  static const groupManagementBoostsAndGiveaways =
+      'groupManagementBoostsAndGiveaways';
+  static const pollComposerDescriptionOptional =
+      'pollComposerDescriptionOptional';
+  static const pollComposerAddPollMedia = 'pollComposerAddPollMedia';
+  static const pollComposerPollMediaAttached = 'pollComposerPollMediaAttached';
+  static const pollComposerQuizMode = 'pollComposerQuizMode';
+  static const pollComposerMultipleAnswersToggle =
+      'pollComposerMultipleAnswersToggle';
+  static const pollComposerAnonymousVoting = 'pollComposerAnonymousVoting';
+  static const pollComposerAllowRevoting = 'pollComposerAllowRevoting';
+  static const pollComposerAllowAddingOptions =
+      'pollComposerAllowAddingOptions';
+  static const pollComposerShuffleOptions = 'pollComposerShuffleOptions';
+  static const pollComposerHideResultsUntilClosed =
+      'pollComposerHideResultsUntilClosed';
+  static const pollComposerExplanationAfterIncorrectAnswer =
+      'pollComposerExplanationAfterIncorrectAnswer';
+  static const pollComposerTimerNone = 'pollComposerTimerNone';
+  static const pollComposerTimerFiveMinutes = 'pollComposerTimerFiveMinutes';
+  static const pollComposerTimerOneHour = 'pollComposerTimerOneHour';
+  static const pollComposerTimerOneDay = 'pollComposerTimerOneDay';
+  static const pollComposerTimerOneWeek = 'pollComposerTimerOneWeek';
+  static const checklistComposerAllowOthersToAddTasksDetail =
+      'checklistComposerAllowOthersToAddTasksDetail';
+  static const checklistComposerAllowOthersToMarkTasksDetail =
+      'checklistComposerAllowOthersToMarkTasksDetail';
+  static const chatInfoStories = 'chatInfoStories';
+  static const groupAppearanceAutomaticTranslation =
+      'groupAppearanceAutomaticTranslation';
+  static const chatAddPollOptionHint = 'chatAddPollOptionHint';
+  static const chatBusinessBotPaused = 'chatBusinessBotPaused';
+  static const chatBusinessBotCanReply = 'chatBusinessBotCanReply';
+  static const chatBusinessBotReadOnly = 'chatBusinessBotReadOnly';
+  static const chatConnectedBusinessBot = 'chatConnectedBusinessBot';
+  static const chatInputBarCreateBotTopicDetail =
+      'chatInputBarCreateBotTopicDetail';
+  static const chatInputBarCreateManagedBotDetailValue1 =
+      'chatInputBarCreateManagedBotDetailValue1';
+  static const chatInputBarAutomationStatusDetail =
+      'chatInputBarAutomationStatusDetail';
+  static const chatInputBarCreateAction = 'chatInputBarCreateAction';
+  static const chatInputBarNextAction = 'chatInputBarNextAction';
+  static const chatInputBarSendAction = 'chatInputBarSendAction';
+  static const chatInputBarReportAction = 'chatInputBarReportAction';
+  static const chatInputBarActionFailed = 'chatInputBarActionFailed';
+  static const chatInputBarGuestQueryValue1 = 'chatInputBarGuestQueryValue1';
+  static const chatInputBarGuestQueriesWaiting =
+      'chatInputBarGuestQueriesWaiting';
+  static const telegramInvoiceCheckoutInvoiceLinkEmpty =
+      'telegramInvoiceCheckoutInvoiceLinkEmpty';
+  static const telegramInvoiceCheckoutLinkNotInvoice =
+      'telegramInvoiceCheckoutLinkNotInvoice';
+  static const telegramInvoiceCheckoutOrderInformation =
+      'telegramInvoiceCheckoutOrderInformation';
+  static const telegramInvoiceCheckoutShippingSection =
+      'telegramInvoiceCheckoutShippingSection';
+  static const telegramInvoiceCheckoutTipSection =
+      'telegramInvoiceCheckoutTipSection';
+  static const telegramInvoiceCheckoutPaymentMethodSection =
+      'telegramInvoiceCheckoutPaymentMethodSection';
+  static const telegramInvoiceCheckoutSetPasswordBeforeSaving =
+      'telegramInvoiceCheckoutSetPasswordBeforeSaving';
+  static const telegramInvoiceCheckoutProcessing =
+      'telegramInvoiceCheckoutProcessing';
+  static const telegramInvoiceCheckoutPayValue1 =
+      'telegramInvoiceCheckoutPayValue1';
+  static const telegramInvoiceCheckoutSavedByTelegram =
+      'telegramInvoiceCheckoutSavedByTelegram';
+  static const telegramInvoiceCheckoutTokenizedByStripe =
+      'telegramInvoiceCheckoutTokenizedByStripe';
+  static const telegramInvoiceCheckoutProviderSdkMissing =
+      'telegramInvoiceCheckoutProviderSdkMissing';
+  static const telegramInvoiceCheckoutReadTerms =
+      'telegramInvoiceCheckoutReadTerms';
+  static const telegramInvoiceCheckoutAcceptTerms =
+      'telegramInvoiceCheckoutAcceptTerms';
+  static const telegramInvoiceCheckoutAcceptRecurringTerms =
+      'telegramInvoiceCheckoutAcceptRecurringTerms';
+  static const telegramInvoiceCheckoutNoShippingOption =
+      'telegramInvoiceCheckoutNoShippingOption';
+  static const telegramInvoiceCheckoutPayValue1Question =
+      'telegramInvoiceCheckoutPayValue1Question';
+  static const telegramInvoiceCheckoutUnsafeVerificationUrl =
+      'telegramInvoiceCheckoutUnsafeVerificationUrl';
+  static const telegramInvoiceCheckoutPaymentNotCompleted =
+      'telegramInvoiceCheckoutPaymentNotCompleted';
+  static const telegramInvoiceCheckoutNoSupportedPaymentMethod =
+      'telegramInvoiceCheckoutNoSupportedPaymentMethod';
+  static const telegramInvoiceCheckoutTokenizing =
+      'telegramInvoiceCheckoutTokenizing';
+  static const telegramInvoiceCheckoutContinueAction =
+      'telegramInvoiceCheckoutContinueAction';
+  static const scheduledMessagesMessageHint = 'scheduledMessagesMessageHint';
+  static const scheduledMessagesSaveAction = 'scheduledMessagesSaveAction';
+  static const scheduledMessagesDeleteMessage =
+      'scheduledMessagesDeleteMessage';
+  static const scheduledMessagesTitle = 'scheduledMessagesTitle';
+  static const scheduledMessagesTitleForChatValue1 =
+      'scheduledMessagesTitleForChatValue1';
+  static const scheduledMessagesEditAction = 'scheduledMessagesEditAction';
+  static const scheduledMessagesRescheduleAction =
+      'scheduledMessagesRescheduleAction';
+  static const scheduledMessagesSendNowAction =
+      'scheduledMessagesSendNowAction';
+  static const scheduledMessagesDeleteAction = 'scheduledMessagesDeleteAction';
+  static const scheduledMessagesSendWhenOnline =
+      'scheduledMessagesSendWhenOnline';
+  static const scheduledMessagesScheduled = 'scheduledMessagesScheduled';
+  static const scheduledMessagesContentPhoto = 'scheduledMessagesContentPhoto';
+  static const scheduledMessagesContentVideo = 'scheduledMessagesContentVideo';
+  static const scheduledMessagesContentVoiceNote =
+      'scheduledMessagesContentVoiceNote';
+  static const scheduledMessagesContentVideoNote =
+      'scheduledMessagesContentVideoNote';
+  static const scheduledMessagesContentDocument =
+      'scheduledMessagesContentDocument';
+  static const scheduledMessagesContentDefault =
+      'scheduledMessagesContentDefault';
+  static const chatAdministratorEditTransferAction =
+      'chatAdministratorEditTransferAction';
+  static const chatAdministratorEditTransferPasswordPromptValue1 =
+      'chatAdministratorEditTransferPasswordPromptValue1';
+  static const chatAdministratorEditSetUpTwoStepFirst =
+      'chatAdministratorEditSetUpTwoStepFirst';
+  static const chatAdministratorEditTransferBlocked =
+      'chatAdministratorEditTransferBlocked';
+  static const groupAdministrationChatValue1 = 'groupAdministrationChatValue1';
+  static const groupAdministrationUserValue1 = 'groupAdministrationUserValue1';
+  static const groupAdministrationNewInviteLink =
+      'groupAdministrationNewInviteLink';
+  static const groupAdministrationEditInviteLink =
+      'groupAdministrationEditInviteLink';
+  static const groupAdministrationExpirationNever =
+      'groupAdministrationExpirationNever';
+  static const groupAdministrationViaSharedFolder =
+      'groupAdministrationViaSharedFolder';
+  static const groupAdministrationNewTopic = 'groupAdministrationNewTopic';
+  static const groupAdministrationEditTopic = 'groupAdministrationEditTopic';
+  static const groupAdministrationStatMembers =
+      'groupAdministrationStatMembers';
+  static const groupAdministrationStatAverageMessageViews =
+      'groupAdministrationStatAverageMessageViews';
+  static const groupAdministrationStatAverageShares =
+      'groupAdministrationStatAverageShares';
+  static const groupAdministrationStatAverageReactions =
+      'groupAdministrationStatAverageReactions';
+  static const groupAdministrationStatNotificationsEnabled =
+      'groupAdministrationStatNotificationsEnabled';
+  static const groupAdministrationStatMessages =
+      'groupAdministrationStatMessages';
+  static const groupAdministrationStatViewers =
+      'groupAdministrationStatViewers';
+  static const groupAdministrationStatSenders =
+      'groupAdministrationStatSenders';
+  static const videoTrimFailed = 'videoTrimFailed';
+  static const telegramInvoiceCheckoutPaymentCouldNotBeCompleted =
+      'telegramInvoiceCheckoutPaymentCouldNotBeCompleted';
+  static const telegramInvoiceCheckoutPlatformPaymentFailed =
+      'telegramInvoiceCheckoutPlatformPaymentFailed';
+  static const scheduledMessagesRepeatsDailyValue1 =
+      'scheduledMessagesRepeatsDailyValue1';
+  static const scheduledMessagesRepeatsWeeklyValue1 =
+      'scheduledMessagesRepeatsWeeklyValue1';
+  static const scheduledMessagesRepeatsMonthlyValue1 =
+      'scheduledMessagesRepeatsMonthlyValue1';
+  static const scheduledMessagesContentAnimation =
+      'scheduledMessagesContentAnimation';
+  static const chatAdministratorEditPasswordTooFresh =
+      'chatAdministratorEditPasswordTooFresh';
+  static const chatAdministratorEditSessionTooFresh =
+      'chatAdministratorEditSessionTooFresh';
+  static const chatAdministratorEditTryAgainInValue1Seconds =
+      'chatAdministratorEditTryAgainInValue1Seconds';
+  static const linkHandlerAddBotAsAdministratorValue1Value2 =
+      'linkHandlerAddBotAsAdministratorValue1Value2';
+  static const linkHandlerBoostChat = 'linkHandlerBoostChat';
+  static const linkHandlerPublicBoostLink = 'linkHandlerPublicBoostLink';
+  static const linkHandlerPrivateBoostLink = 'linkHandlerPrivateBoostLink';
+  static const linkHandlerDetailChat = 'linkHandlerDetailChat';
+  static const linkHandlerEnterMatchingCode = 'linkHandlerEnterMatchingCode';
+  static const linkHandlerPassportSubtitle = 'linkHandlerPassportSubtitle';
+  static const linkHandlerDetailRequestedGroups =
+      'linkHandlerDetailRequestedGroups';
+  static const linkHandlerDetailPrivacyPolicy =
+      'linkHandlerDetailPrivacyPolicy';
+  static const linkHandlerPremiumGiftPickerSubtitleValue1 =
+      'linkHandlerPremiumGiftPickerSubtitleValue1';
+  static const linkHandlerOperationPremiumGiftPurchase =
+      'linkHandlerOperationPremiumGiftPurchase';
+  static const linkHandlerOperationRestorePurchases =
+      'linkHandlerOperationRestorePurchases';
+  static const linkHandlerOperationStarsPurchase =
+      'linkHandlerOperationStarsPurchase';
+  static const linkHandlerConfirmPremiumGiftMessageValue1Value2 =
+      'linkHandlerConfirmPremiumGiftMessageValue1Value2';
+  static const linkHandlerRestoreMessage = 'linkHandlerRestoreMessage';
+  static const linkHandlerStarsPickerSubtitleWithPurposeValue1Value2 =
+      'linkHandlerStarsPickerSubtitleWithPurposeValue1Value2';
+  static const linkHandlerStarsPickerSubtitleValue1 =
+      'linkHandlerStarsPickerSubtitleValue1';
+  static const linkHandlerStarsPickerSubtitleAny =
+      'linkHandlerStarsPickerSubtitleAny';
+  static const linkHandlerConfirmStarsMessageValue1 =
+      'linkHandlerConfirmStarsMessageValue1';
+  static const linkHandlerStoreDependencySubtitleValue1 =
+      'linkHandlerStoreDependencySubtitleValue1';
+  static const linkHandlerDetailChargeState = 'linkHandlerDetailChargeState';
+  static const linkHandlerNoStoreChargeStarted =
+      'linkHandlerNoStoreChargeStarted';
+  static const linkHandlerDetailAuthorization =
+      'linkHandlerDetailAuthorization';
+  static const linkHandlerDetailTelegramResponse =
+      'linkHandlerDetailTelegramResponse';
+  static const linkHandlerCallSubtitle = 'linkHandlerCallSubtitle';
+  static const linkHandlerDetailParticipants = 'linkHandlerDetailParticipants';
+  static const linkHandlerDetailCollection = 'linkHandlerDetailCollection';
+  static const linkHandlerDetailGifts = 'linkHandlerDetailGifts';
+  static const linkHandlerDetailGiftValue1 = 'linkHandlerDetailGiftValue1';
+  static const linkHandlerDetailModel = 'linkHandlerDetailModel';
+  static const linkHandlerDetailSymbol = 'linkHandlerDetailSymbol';
+  static const linkHandlerDetailBackdrop = 'linkHandlerDetailBackdrop';
+  static const linkHandlerDetailEstimatedValue =
+      'linkHandlerDetailEstimatedValue';
+  static const linkHandlerDetailGift = 'linkHandlerDetailGift';
+  static const linkHandlerDetailStatus = 'linkHandlerDetailStatus';
+  static const linkHandlerDetailMinimumBid = 'linkHandlerDetailMinimumBid';
+  static const linkHandlerPremiumFeaturesSubtitle =
+      'linkHandlerPremiumFeaturesSubtitle';
+  static const linkHandlerDetailFeatures = 'linkHandlerDetailFeatures';
+  static const linkHandlerDetailHigherLimits = 'linkHandlerDetailHigherLimits';
+  static const linkHandlerDetailPurchaseOption =
+      'linkHandlerDetailPurchaseOption';
+  static const linkHandlerWritingStyle = 'linkHandlerWritingStyle';
+  static const linkHandlerCreateManagedBotMessageValue1Value2Value3 =
+      'linkHandlerCreateManagedBotMessageValue1Value2Value3';
+  static const aiReplyTargetUnavailable = 'aiReplyTargetUnavailable';
+  static const aiReplyProtectedMessage = 'aiReplyProtectedMessage';
+  static const aiReplyTargetHasNoSharableText =
+      'aiReplyTargetHasNoSharableText';
+  static const aiReplyBlockedMessage = 'aiReplyBlockedMessage';
+  static const aiReplyNotSendReady = 'aiReplyNotSendReady';
+  static const aiReplyTimedOutValue1Value2 = 'aiReplyTimedOutValue1Value2';
+  static const aiReplyRequestFailedValue1 = 'aiReplyRequestFailedValue1';
+  static const aiReplyInvalidJsonValue1 = 'aiReplyInvalidJsonValue1';
+  static const aiReplyInvalidResponse = 'aiReplyInvalidResponse';
+  static const aiReplyTooMuchContext = 'aiReplyTooMuchContext';
+  static const aiReplyRefusedValue1 = 'aiReplyRefusedValue1';
+  static const aiReplyOutputBudgetExhausted = 'aiReplyOutputBudgetExhausted';
+  static const aiReplyNoText = 'aiReplyNoText';
+  static const aiReplyTooLongToSend = 'aiReplyTooLongToSend';
+  static const aiReplyStreamEndedEarly = 'aiReplyStreamEndedEarly';
+  static const aiReplyEmptyReply = 'aiReplyEmptyReply';
+  static const aiReplyContextUnavailable = 'aiReplyContextUnavailable';
+  static const aiReplyBlockedListTooLarge = 'aiReplyBlockedListTooLarge';
+  static const aiReplyBlockedCheckFailed = 'aiReplyBlockedCheckFailed';
+  static const storyManagementEditCaption = 'storyManagementEditCaption';
+  static const storyManagementReplaceMedia = 'storyManagementReplaceMedia';
+  static const storyManagementChangePrivacy = 'storyManagementChangePrivacy';
+  static const storyManagementRemoveFromProfile =
+      'storyManagementRemoveFromProfile';
+  static const storyManagementKeepOnProfile = 'storyManagementKeepOnProfile';
+  static const storyManagementUnpinFromProfile =
+      'storyManagementUnpinFromProfile';
+  static const storyManagementPinToProfile = 'storyManagementPinToProfile';
+  static const storyManagementViewInteractions =
+      'storyManagementViewInteractions';
+  static const storyManagementDeleteStory = 'storyManagementDeleteStory';
+  static const storyManagementCaptionHint = 'storyManagementCaptionHint';
+  static const storyManagementReplaceNeedsShortVideo =
+      'storyManagementReplaceNeedsShortVideo';
+  static const storyManagementPrivacyEveryone =
+      'storyManagementPrivacyEveryone';
+  static const storyManagementPrivacyMyContacts =
+      'storyManagementPrivacyMyContacts';
+  static const storyManagementPrivacyCloseFriends =
+      'storyManagementPrivacyCloseFriends';
+  static const storyManagementStoryValue1 = 'storyManagementStoryValue1';
+  static const storyManagementAlbumNameHint = 'storyManagementAlbumNameHint';
+  static const storyManagementAddStories = 'storyManagementAddStories';
+  static const storyManagementRemoveStories = 'storyManagementRemoveStories';
+  static const storyManagementReorderStories = 'storyManagementReorderStories';
+  static const storyManagementMoveDown = 'storyManagementMoveDown';
+  static const storyManagementDeleteAlbum = 'storyManagementDeleteAlbum';
+  static const storyManagementRenameAlbum = 'storyManagementRenameAlbum';
+  static const storyManagementStoryOrder = 'storyManagementStoryOrder';
+  static const storyManagementStarting = 'storyManagementStarting';
+  static const storyManagementStartLiveStory = 'storyManagementStartLiveStory';
+  static const storyManagementEndLiveStory = 'storyManagementEndLiveStory';
+  static const storyAuthoringMyStory = 'storyAuthoringMyStory';
+  static const storyAuthoringChatValue1 = 'storyAuthoringChatValue1';
+  static const storyAuthoringSecondsFromStart =
+      'storyAuthoringSecondsFromStart';
+  static const storyAuthoringContentPhoto = 'storyAuthoringContentPhoto';
+  static const storyAuthoringContentVideo = 'storyAuthoringContentVideo';
+  static const storyAuthoringContentDocument = 'storyAuthoringContentDocument';
+  static const storyAuthoringContentPoll = 'storyAuthoringContentPoll';
+  static const storyAuthoringContentMessage = 'storyAuthoringContentMessage';
+  static const storyAuthoringPreparingMedia = 'storyAuthoringPreparingMedia';
+  static const storyAuthoringPreparingValue1OfValue2 =
+      'storyAuthoringPreparingValue1OfValue2';
+  static const storyAuthoringEncodingValue1OfValue2 =
+      'storyAuthoringEncodingValue1OfValue2';
+  static const storyAuthoringPublishingValue1OfValue2 =
+      'storyAuthoringPublishingValue1OfValue2';
+  static const storyAuthoringPublishFailedValue1 =
+      'storyAuthoringPublishFailedValue1';
+  static const storyAuthoringPremiumRequired = 'storyAuthoringPremiumRequired';
+  static const storyAuthoringBoostsNeeded = 'storyAuthoringBoostsNeeded';
+  static const storyAuthoringActiveLimitReached =
+      'storyAuthoringActiveLimitReached';
+  static const storyAuthoringWeeklyLimitReached =
+      'storyAuthoringWeeklyLimitReached';
+  static const storyAuthoringMonthlyLimitReached =
+      'storyAuthoringMonthlyLimitReached';
+  static const storyAuthoringLiveAlreadyActive =
+      'storyAuthoringLiveAlreadyActive';
+  static const storyAuthoringPostingUnavailable =
+      'storyAuthoringPostingUnavailable';
+  static const publicDiscoverySimilarToValue1 =
+      'publicDiscoverySimilarToValue1';
+  static const publicDiscoveryPostSearchLimitReached =
+      'publicDiscoveryPostSearchLimitReached';
+  static const publicDiscoverySearchChannelsAndBots =
+      'publicDiscoverySearchChannelsAndBots';
+  static const publicDiscoverySearchPublicPostsOrHashtag =
+      'publicDiscoverySearchPublicPostsOrHashtag';
+  static const publicDiscoverySearchAllChats = 'publicDiscoverySearchAllChats';
+  static const publicDiscoverySearchFailed = 'publicDiscoverySearchFailed';
+  static const publicDiscoveryNoChannelsFound =
+      'publicDiscoveryNoChannelsFound';
+  static const publicDiscoveryNoRecommendations =
+      'publicDiscoveryNoRecommendations';
+  static const publicDiscoveryPublicChannels = 'publicDiscoveryPublicChannels';
+  static const publicDiscoveryRecommendedChannels =
+      'publicDiscoveryRecommendedChannels';
+  static const publicDiscoveryBotsSection = 'publicDiscoveryBotsSection';
+  static const publicDiscoveryLoading = 'publicDiscoveryLoading';
+  static const publicDiscoveryNoSimilarResults =
+      'publicDiscoveryNoSimilarResults';
+  static const publicDiscoveryPostSearchHint = 'publicDiscoveryPostSearchHint';
+  static const publicDiscoveryNoPublicPostsFound =
+      'publicDiscoveryNoPublicPostsFound';
+  static const publicDiscoveryNoMatchingMedia =
+      'publicDiscoveryNoMatchingMedia';
+  static const publicDiscoveryTabChannels = 'publicDiscoveryTabChannels';
+  static const publicDiscoveryTabPosts = 'publicDiscoveryTabPosts';
+  static const publicDiscoveryTabMedia = 'publicDiscoveryTabMedia';
+  static const publicDiscoveryFilterAll = 'publicDiscoveryFilterAll';
+  static const publicDiscoveryFilterPhoto = 'publicDiscoveryFilterPhoto';
+  static const publicDiscoveryFilterVideo = 'publicDiscoveryFilterVideo';
+  static const publicDiscoveryFilterAnimation =
+      'publicDiscoveryFilterAnimation';
+  static const publicDiscoveryFilterDocument = 'publicDiscoveryFilterDocument';
+  static const publicDiscoveryFilterAudio = 'publicDiscoveryFilterAudio';
+  static const publicDiscoveryFilterLink = 'publicDiscoveryFilterLink';
+  static const publicDiscoveryFilterVoice = 'publicDiscoveryFilterVoice';
+  static const publicDiscoveryFilterVideoNote =
+      'publicDiscoveryFilterVideoNote';
+  static const publicDiscoveryFilterPoll = 'publicDiscoveryFilterPoll';
+  static const storyManagementRename = 'storyManagementRename';
+  static const storyManagementMoveUp = 'storyManagementMoveUp';
+  static const appDialogRequiredField = 'appDialogRequiredField';
+  static const linkHandlerStarsCountValue1 = 'linkHandlerStarsCountValue1';
+  static const telegramMiniAppDialogLabel = 'telegramMiniAppDialogLabel';
+  static const pollResultsUnableToLoadVoters = 'pollResultsUnableToLoadVoters';
+  static const storyAuthoringAreaLink = 'storyAuthoringAreaLink';
+  static const storyAuthoringAreaSuggestedReaction =
+      'storyAuthoringAreaSuggestedReaction';
+  static const storyAuthoringAreaMessage = 'storyAuthoringAreaMessage';
+  static const storyAuthoringAreaLocation = 'storyAuthoringAreaLocation';
+  static const storyAuthoringAreaWeather = 'storyAuthoringAreaWeather';
+  static const storyAuthoringAreaUpgradedGift =
+      'storyAuthoringAreaUpgradedGift';
+  static const profilePhotoBadgeCurrent = 'profilePhotoBadgeCurrent';
+  static const profilePhotoBadgePublic = 'profilePhotoBadgePublic';
 }
 
 abstract final class AppStrings {
@@ -4108,8 +4651,7 @@ class _AppLocalizationsDelegate
     // here would leave Localizations — and therefore the whole app — blank for
     // a frame on every locale change.
     final appKey = AppLocalizations.localeKeyFor(resolved);
-    if (LocaleCatalogues.isReady &&
-        LocaleCatalogues.forAppKey(appKey) != null) {
+    if (LocaleCatalogues.isLoaded(appKey)) {
       return SynchronousFuture(AppLocalizations(resolved));
     }
     return LocaleCatalogues.ensureLoaded(

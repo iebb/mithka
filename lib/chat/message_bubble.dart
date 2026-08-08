@@ -193,10 +193,12 @@ class _MessageBubbleState extends State<MessageBubble>
   bool _videoStickerReady = false;
   bool _musicPressed = false;
   bool _showTappedTimestamp = false;
-  bool _hoveringTimestamp = false;
+  // Hover feeds nothing but the 10px detail timestamp, so it rides a notifier:
+  // a setState here rebuilt the entire bubble on every pointer crossing, and on
+  // desktop the cursor crosses a bubble boundary on most scroll frames.
+  final ValueNotifier<bool> _hoveringTimestamp = ValueNotifier(false);
   DateTime? _lastTapAt;
   bool _skipNextTap = false;
-  double _swipeX = 0;
   double? _layoutWidth;
   final Set<String> _expandedQuotes = {};
   final Set<String> _revealedSpoilers = {};
@@ -316,39 +318,49 @@ class _MessageBubbleState extends State<MessageBubble>
     }
   }
 
-  void _setTimestampHover(bool hovering) {
-    if (_hoveringTimestamp == hovering) return;
-    setState(() => _hoveringTimestamp = hovering);
-  }
+  void _setTimestampHover(bool hovering) => _hoveringTimestamp.value = hovering;
 
   ChatMessage get message => widget.message;
 
-  MessageBubbleBackgroundSpec get _bubbleBackgroundStyle {
-    return context
-        .watch<ThemeController>()
-        .effectiveMessageBubbleBackgroundSpecFor(outgoing: message.isOutgoing);
-  }
+  // Theme state resolved once per build by [_resolveTheme]. The colour helpers
+  // below are read dozens of times while one bubble builds, and each read used
+  // to run its own context.watch + Theme.of chain for the same answer.
+  late ThemeController _theme;
+  late AppColors _colors;
+  late Brightness _brightness;
+  late MessageBubbleBackgroundSpec _bubbleBackgroundStyle;
+  late bool _showsMessageBubbleSurface;
+  late TelegramCloudTheme? _activeCloudTheme;
+  late TelegramMessageColors? _messageColors;
 
-  bool get _showsMessageBubbleSurface {
-    final theme = context.watch<ThemeController>();
-    return theme.shouldRenderMessageBubbleSurface(
+  void _resolveTheme() {
+    _theme = context.watch<ThemeController>();
+    _colors = context.colors;
+    _brightness = Theme.of(context).brightness;
+    _bubbleBackgroundStyle = _theme.effectiveMessageBubbleBackgroundSpecFor(
       outgoing: message.isOutgoing,
-      brightness: Theme.of(context).brightness,
+    );
+    _showsMessageBubbleSurface = _theme.shouldRenderMessageBubbleSurface(
+      outgoing: message.isOutgoing,
+      brightness: _brightness,
       hasCustomChatTheme: widget.hasCustomChatTheme,
     );
+    _activeCloudTheme = _theme.themingEnabled
+        ? _theme.cloudThemeFor(_brightness)
+        : null;
+    _messageColors =
+        !_showsMessageBubbleSurface ||
+            !_theme.themingEnabled ||
+            _usesDecorativeBubbleBackground
+        ? null
+        : widget.messageColors ?? _activeCloudTheme?.messageColors;
   }
 
   bool get _usesDecorativeBubbleBackground =>
       _showsMessageBubbleSurface && _bubbleBackgroundStyle.isDecorative;
 
-  TelegramCloudTheme? get _activeCloudTheme {
-    final theme = context.watch<ThemeController>();
-    if (!theme.themingEnabled) return null;
-    return theme.cloudThemeFor(Theme.of(context).brightness);
-  }
-
   Color get _outgoingBubbleColor {
-    if (!_showsMessageBubbleSurface) return context.colors.card;
+    if (!_showsMessageBubbleSurface) return _colors.card;
     final base =
         _bubbleBackgroundStyle.backgroundColor ??
         widget.outgoingBubbleColor ??
@@ -362,11 +374,11 @@ class _MessageBubbleState extends State<MessageBubble>
   /// are a wash over the base fill, and the base here can be a gradient or a
   /// user-picked colour, so there is nothing fixed to store instead.
   Color _selectionWash(Color base) =>
-      Color.alphaBlend(context.colors.linkBlue.withValues(alpha: 0.22), base);
+      Color.alphaBlend(_colors.linkBlue.withValues(alpha: 0.22), base);
 
   Color get _outgoingTextColor {
-    if (!_showsMessageBubbleSurface) return context.colors.textPrimary;
-    if (!context.watch<ThemeController>().themingEnabled) {
+    if (!_showsMessageBubbleSurface) return _colors.textPrimary;
+    if (!_theme.themingEnabled) {
       return AppTheme.bubbleOutgoingText;
     }
     // Last resort is the palette's own outgoing ink, not a measurement of the
@@ -375,60 +387,47 @@ class _MessageBubbleState extends State<MessageBubble>
     return _bubbleBackgroundStyle.foregroundColor ??
         widget.outgoingBubbleTextColor ??
         _activeCloudTheme?.outgoingTextColor ??
-        context.colors.bubbleOutgoingText;
+        _colors.bubbleOutgoingText;
   }
 
   Color get _incomingThemeBubbleColor {
     if (!_showsMessageBubbleSurface) {
-      return widget.selected
-          ? _selectionWash(context.colors.card)
-          : context.colors.card;
+      return widget.selected ? _selectionWash(_colors.card) : _colors.card;
     }
     final base =
         widget.incomingBubbleColor ??
         _activeCloudTheme?.incomingColor ??
-        context.colors.bubbleIncoming;
+        _colors.bubbleIncoming;
     if (!widget.selected) return base;
     return _activeCloudTheme?.incomingSelectedColor ?? _selectionWash(base);
   }
 
   Color get _incomingBubbleColor {
-    if (!_showsMessageBubbleSurface) return context.colors.card;
+    if (!_showsMessageBubbleSurface) return _colors.card;
     return _bubbleBackgroundStyle.backgroundColor ?? _incomingThemeBubbleColor;
   }
 
   Color get _incomingTextColor {
-    if (!_showsMessageBubbleSurface) return context.colors.textPrimary;
+    if (!_showsMessageBubbleSurface) return _colors.textPrimary;
     return _bubbleBackgroundStyle.foregroundColor ??
         widget.incomingBubbleTextColor ??
         _activeCloudTheme?.incomingTextColor ??
-        context.colors.bubbleIncomingText;
-  }
-
-  TelegramMessageColors? get _messageColors {
-    final theme = context.watch<ThemeController>();
-    if (!_showsMessageBubbleSurface ||
-        !theme.themingEnabled ||
-        _usesDecorativeBubbleBackground) {
-      return null;
-    }
-    return widget.messageColors ??
-        theme.cloudThemeFor(Theme.of(context).brightness)?.messageColors;
+        _colors.bubbleIncomingText;
   }
 
   double get _messageAccentFillOpacity =>
-      Theme.of(context).brightness == Brightness.dark ? 0.12 : 0.10;
+      _brightness == Brightness.dark ? 0.12 : 0.10;
 
   Color _messageAccentFill(Color color) =>
       color.withValues(alpha: color.a * _messageAccentFillOpacity);
 
   Color _messageLinkColor(bool outgoing) {
-    if (!_showsMessageBubbleSurface) return context.colors.linkBlue;
+    if (!_showsMessageBubbleSurface) return _colors.linkBlue;
     final base = outgoing ? _outgoingTextColor : _incomingTextColor;
     if (_usesDecorativeBubbleBackground) return base;
     final colors = _messageColors;
     if (colors == null) {
-      return outgoing ? _outgoingTextColor : context.colors.linkBlue;
+      return outgoing ? _outgoingTextColor : _colors.linkBlue;
     }
     return outgoing ? colors.outgoingLink : colors.incomingLink;
   }
@@ -459,7 +458,7 @@ class _MessageBubbleState extends State<MessageBubble>
     }
     final colors = _messageColors;
     if (colors == null) {
-      return outgoing ? _outgoingTextColor : context.colors.textPrimary;
+      return outgoing ? _outgoingTextColor : _colors.textPrimary;
     }
     return outgoing ? colors.outgoingReplyName : colors.incomingReplyName;
   }
@@ -473,7 +472,7 @@ class _MessageBubbleState extends State<MessageBubble>
     if (colors == null) {
       return outgoing
           ? _outgoingTextColor.withValues(alpha: 0.72)
-          : context.colors.textSecondary;
+          : _colors.textSecondary;
     }
     if (message.replyToImage != null &&
         (message.replyToPreview?.trim().isEmpty ?? true)) {
@@ -490,7 +489,7 @@ class _MessageBubbleState extends State<MessageBubble>
     }
     final colors = _messageColors;
     if (colors == null) {
-      return outgoing ? _outgoingTextColor : context.colors.textSecondary;
+      return outgoing ? _outgoingTextColor : _colors.textSecondary;
     }
     return outgoing
         ? colors.outgoingForwardedName
@@ -524,7 +523,7 @@ class _MessageBubbleState extends State<MessageBubble>
     if (colors == null) {
       return outgoing
           ? _outgoingTextColor.withValues(alpha: 0.65)
-          : context.colors.textTertiary;
+          : _colors.textTertiary;
     }
     return outgoing ? colors.outgoingTime : colors.incomingTime;
   }
@@ -577,7 +576,7 @@ class _MessageBubbleState extends State<MessageBubble>
       fallbackPadding: padding,
       fallbackBorder: outgoing || _messageColors != null
           ? null
-          : Border.all(color: context.colors.divider, width: 0.5),
+          : Border.all(color: _colors.divider, width: 0.5),
       constraints: constraints,
       child: child,
     );
@@ -594,17 +593,13 @@ class _MessageBubbleState extends State<MessageBubble>
   double _mediaMaxWidth() =>
       math.min(_bubbleMaxWidth(), telegramDesktopMediaPreviewMaxSide);
 
-  double _chatFontSize(double base) =>
-      context.watch<ThemeController>().chatTextSize(base);
+  double _chatFontSize(double base) => _theme.chatTextSize(base);
 
   @override
   void initState() {
     super.initState();
     _sensitiveContentController.addListener(_handleSensitiveContentChange);
-    _swipeController = AnimationController.unbounded(vsync: this)
-      ..addListener(() {
-        if (mounted) setState(() => _swipeX = _swipeController.value);
-      });
+    _swipeController = AnimationController.unbounded(vsync: this);
   }
 
   @override
@@ -626,6 +621,7 @@ class _MessageBubbleState extends State<MessageBubble>
   void dispose() {
     _sensitiveContentController.removeListener(_handleSensitiveContentChange);
     _swipeController.dispose();
+    _hoveringTimestamp.dispose();
     _voice.dispose();
     for (final r in _linkRecognizers) {
       r.dispose();
@@ -636,35 +632,53 @@ class _MessageBubbleState extends State<MessageBubble>
   @override
   Widget build(BuildContext context) {
     if (message.isService) return const SizedBox.shrink();
+    _resolveTheme();
+    final outgoing = widget.meId != null
+        ? message.senderId == widget.meId
+        : message.isOutgoing;
     return LayoutBuilder(
       builder: (context, constraints) {
         _layoutWidth = constraints.maxWidth.isFinite
             ? constraints.maxWidth
             : MediaQuery.sizeOf(context).width;
-        return Stack(
-          alignment: Alignment.centerRight,
-          clipBehavior: Clip.none,
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(right: 16),
-              child: Opacity(
-                opacity: (math.min(1, math.max(0, -_swipeX) / 50)).toDouble(),
-                child: AppIcon(
-                  HeroAppIcons.reply,
-                  size: 18,
-                  color: AppTheme.brand,
-                ),
-              ),
-            ),
-            Transform.translate(
-              offset: Offset(_swipeX, 0),
-              child: _row(
-                widget.meId != null
-                    ? message.senderId == widget.meId
-                    : message.isOutgoing,
-              ),
-            ),
-          ],
+        // The swipe offset only moves this Stack, so it drives an
+        // AnimatedBuilder instead of setState: every drag update and every
+        // frame of the settle animation used to rebuild the whole bubble —
+        // spans, recognizers, colour chains and all — to shift it sideways.
+        return AnimatedBuilder(
+          animation: _swipeController,
+          child: _row(outgoing),
+          builder: (context, child) {
+            final swipeX = _swipeController.value;
+            return Stack(
+              alignment: Alignment.centerRight,
+              clipBehavior: Clip.none,
+              children: [
+                // Every mounted bubble paid for this icon — an Icon is a glyph
+                // layout, and at rest it is invisible behind opacity 0. Swap in
+                // a const placeholder until a swipe actually starts. The child
+                // count stays the same so the sibling below keeps its element.
+                if (swipeX == 0)
+                  const SizedBox.shrink()
+                else
+                  Padding(
+                    padding: const EdgeInsets.only(right: 16),
+                    child: Opacity(
+                      opacity: (math.min(
+                        1,
+                        math.max(0, -swipeX) / 50,
+                      )).toDouble(),
+                      child: AppIcon(
+                        HeroAppIcons.reply,
+                        size: 18,
+                        color: AppTheme.brand,
+                      ),
+                    ),
+                  ),
+                Transform.translate(offset: Offset(swipeX, 0), child: child),
+              ],
+            );
+          },
         );
       },
     );
@@ -681,12 +695,12 @@ class _MessageBubbleState extends State<MessageBubble>
 
   void _onDragUpdate(DragUpdateDetails d) {
     _swipeController.stop();
-    final next = _rubberBandSwipe(_swipeX + d.delta.dx);
+    final next = _rubberBandSwipe(_swipeController.value + d.delta.dx);
     _swipeController.value = next;
   }
 
   void _onDragEnd(DragEndDetails d) {
-    if (_swipeX < -_replyTrigger ||
+    if (_swipeController.value < -_replyTrigger ||
         d.primaryVelocity != null && d.primaryVelocity! < -650) {
       widget.onReply?.call(message);
     }
@@ -698,39 +712,9 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   Widget _row(bool outgoing) {
-    final c = context.colors;
-    final theme = context.watch<ThemeController>();
-    final showMemberTags = theme.showMemberTags;
-    final showSenderRole = switch (message.senderRole) {
-      null => false,
-      MemberRole.member =>
-        theme.showPlainMemberRoleTags ||
-            (showMemberTags &&
-                (message.senderTitle?.trim().isNotEmpty ?? false)),
-      _ => true,
-    };
-    final cloudTheme = theme.cloudThemeFor(Theme.of(context).brightness);
-    final senderNameColor = messageNameColorForSender(
-      theme: cloudTheme,
-      accentColorId: message.senderAccentColorId,
-      showNameColors: theme.chatNameColorAudience.shows(
-        isPremium: message.senderIsPremium,
-      ),
-      nameColorsDisabledFallback: cloudTheme?.senderNameColor ?? c.linkBlue,
-    );
-    final showStatus =
-        theme.chatStatusEmojiMode.visible && message.senderEmojiStatusId != 0;
-    final senderTitle = message.senderTitle?.trim();
-    final outgoingAvatarTitle = message.senderIsChat
-        ? (message.senderName ?? widget.meName)
-        : widget.meName.l10n(context);
-    final outgoingAvatarPhoto = message.senderIsChat
-        ? message.senderPhoto
-        : widget.mePhoto;
     final alwaysShowTime =
-        widget.forceShowTimestamp || theme.alwaysShowMessageTime;
-    final showDetailTime =
-        alwaysShowTime || _showTappedTimestamp || _hoveringTimestamp;
+        widget.forceShowTimestamp || _theme.alwaysShowMessageTime;
+    final showDetailTime = alwaysShowTime || _showTappedTimestamp;
     final timeInSenderHeader =
         widget.isGroup && !outgoing && message.senderName != null;
     final body = GestureDetector(
@@ -798,11 +782,12 @@ class _MessageBubbleState extends State<MessageBubble>
                             ],
                           ),
                         )
-                      : Row(
+                      : widget.showRepeat
+                      ? Row(
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
-                            if (widget.showRepeat) _repeatBadge(),
-                            if (widget.showRepeat) const SizedBox(width: 6),
+                            _repeatBadge(),
+                            const SizedBox(width: 6),
                             Flexible(
                               child: Align(
                                 alignment: Alignment.centerRight,
@@ -810,25 +795,32 @@ class _MessageBubbleState extends State<MessageBubble>
                               ),
                             ),
                           ],
-                        ),
+                        )
+                      // Without a badge the Row and Flexible are pure overhead:
+                      // the Align already fills the Expanded and puts the
+                      // bubble on the right.
+                      : Align(alignment: Alignment.centerRight, child: content),
                 ),
                 const SizedBox(width: 8),
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => widget.onAvatarTap?.call(message),
-                  child: PhotoAvatar(
-                    title: outgoingAvatarTitle,
-                    photo: outgoingAvatarPhoto,
+                _avatarTapTarget(
+                  PhotoAvatar(
+                    // Resolved here rather than up front: an incoming message
+                    // never needs it, and the fallback runs a localisation
+                    // lookup.
+                    title: message.senderIsChat
+                        ? (message.senderName ?? widget.meName)
+                        : widget.meName.l10n(context),
+                    photo: message.senderIsChat
+                        ? message.senderPhoto
+                        : widget.mePhoto,
                     size: 38,
                   ),
+                  withLongPress: false,
                 ),
               ]
             : [
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => widget.onAvatarTap?.call(message),
-                  onLongPress: () => widget.onAvatarLongPress?.call(message),
-                  child: PhotoAvatar(
+                _avatarTapTarget(
+                  PhotoAvatar(
                     title: widget.isGroup
                         ? (message.senderName ?? widget.peerTitle)
                         : widget.peerTitle,
@@ -837,6 +829,7 @@ class _MessageBubbleState extends State<MessageBubble>
                         : widget.peerPhoto,
                     size: 38,
                   ),
+                  withLongPress: true,
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -844,68 +837,30 @@ class _MessageBubbleState extends State<MessageBubble>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       if (widget.isGroup && message.senderName != null)
-                        Padding(
-                          key: ValueKey('messageSenderHeader-${message.id}'),
-                          padding: const EdgeInsets.only(left: 4, bottom: 3),
-                          child: Row(
-                            children: [
-                              Flexible(
-                                child: SenderIdentityPills(
-                                  readabilityMode:
-                                      theme.senderNameReadabilityMode,
-                                  bubbleColor: _incomingBubbleColor,
-                                  textColor: _incomingTextColor,
-                                  name: message.senderName!,
-                                  nameStyle: TextStyle(
-                                    fontSize: 12,
-                                    color: senderNameColor,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                  role: showSenderRole
-                                      ? message.senderRole
-                                      : null,
-                                  roleTitle: showSenderRole && showMemberTags
-                                      ? senderTitle
-                                      : null,
-                                  roleAfterName: isDesktopTargetPlatform(),
-                                  trailing: showStatus
-                                      ? StatusEmojiView(
-                                          id: message.senderEmojiStatusId,
-                                          size: 14,
-                                          color: senderNameColor,
-                                          animate:
-                                              theme.chatStatusEmojiMode.animate,
-                                        )
-                                      : null,
-                                ),
-                              ),
-                              const SizedBox(width: 5),
-                              SizedBox(
-                                width: 96,
-                                height: 14,
-                                child: showDetailTime
-                                    ? Align(
-                                        alignment: Alignment.centerLeft,
-                                        child: _messageDetailTimestamp(),
-                                      )
-                                    : null,
-                              ),
-                            ],
-                          ),
-                        ),
-                      Row(
-                        children: [
-                          Flexible(child: content),
-                          if (widget.showRepeat) const SizedBox(width: 6),
-                          if (widget.showRepeat) _repeatBadge(),
-                        ],
-                      ),
+                        _senderHeader(showDetailTime: showDetailTime),
+                      // The badge Row is a no-op wrapper without a badge, and
+                      // the Column already left-aligns the bubble.
+                      if (widget.showRepeat)
+                        Row(
+                          children: [
+                            Flexible(child: content),
+                            const SizedBox(width: 6),
+                            _repeatBadge(),
+                          ],
+                        )
+                      else
+                        content,
                     ],
                   ),
                 ),
               ],
       ),
     );
+    // The Stack and the Positioned stay put whatever the timestamp does: a tap
+    // toggles _showTappedTimestamp and a late sender name flips
+    // timeInSenderHeader, and dropping either wrapper would re-parent the whole
+    // bubble and re-inflate every child element (spoilers, inline video, map
+    // thumbnails). Hover therefore only ever swaps the Positioned's child.
     return MouseRegion(
       onEnter: (_) => _setTimestampHover(true),
       onExit: (_) => _setTimestampHover(false),
@@ -913,15 +868,120 @@ class _MessageBubbleState extends State<MessageBubble>
         clipBehavior: Clip.none,
         children: [
           messageRow,
-          if (showDetailTime && !timeInSenderHeader)
-            Positioned(
-              left: outgoing ? null : 58,
-              right: outgoing ? 58 : null,
-              bottom: -5,
-              child: IgnorePointer(child: _messageDetailTimestamp()),
+          if (!timeInSenderHeader)
+            _detailTimestampOverlay(
+              outgoing,
+              showDetailTime
+                  ? IgnorePointer(child: _messageDetailTimestamp())
+                  : ValueListenableBuilder<bool>(
+                      valueListenable: _hoveringTimestamp,
+                      builder: (context, hovering, _) => hovering
+                          ? IgnorePointer(child: _messageDetailTimestamp())
+                          : const SizedBox.shrink(),
+                    ),
             ),
         ],
       ),
+    );
+  }
+
+  Widget _detailTimestampOverlay(bool outgoing, Widget child) => Positioned(
+    left: outgoing ? null : 58,
+    right: outgoing ? 58 : null,
+    bottom: -5,
+    child: child,
+  );
+
+  /// Only an incoming group message reads any of this — a 1:1 chat used to pay
+  /// for the name-colour resolution and the role switch on every message.
+  Widget _senderHeader({required bool showDetailTime}) {
+    final theme = _theme;
+    final showMemberTags = theme.showMemberTags;
+    final showSenderRole = switch (message.senderRole) {
+      null => false,
+      MemberRole.member =>
+        theme.showPlainMemberRoleTags ||
+            (showMemberTags &&
+                (message.senderTitle?.trim().isNotEmpty ?? false)),
+      _ => true,
+    };
+    final cloudTheme = theme.cloudThemeFor(_brightness);
+    final senderNameColor = messageNameColorForSender(
+      theme: cloudTheme,
+      accentColorId: message.senderAccentColorId,
+      showNameColors: theme.chatNameColorAudience.shows(
+        isPremium: message.senderIsPremium,
+      ),
+      nameColorsDisabledFallback:
+          cloudTheme?.senderNameColor ?? _colors.linkBlue,
+    );
+    final showStatus =
+        theme.chatStatusEmojiMode.visible && message.senderEmojiStatusId != 0;
+    final senderTitle = message.senderTitle?.trim();
+    return Padding(
+      key: ValueKey('messageSenderHeader-${message.id}'),
+      padding: const EdgeInsets.only(left: 4, bottom: 3),
+      child: Row(
+        children: [
+          Flexible(
+            child: SenderIdentityPills(
+              readabilityMode: theme.senderNameReadabilityMode,
+              bubbleColor: _incomingBubbleColor,
+              textColor: _incomingTextColor,
+              name: message.senderName!,
+              nameStyle: TextStyle(
+                fontSize: 12,
+                color: senderNameColor,
+                fontWeight: FontWeight.w500,
+              ),
+              role: showSenderRole ? message.senderRole : null,
+              roleTitle: showSenderRole && showMemberTags ? senderTitle : null,
+              roleAfterName: isDesktopTargetPlatform(),
+              trailing: showStatus
+                  ? StatusEmojiView(
+                      id: message.senderEmojiStatusId,
+                      size: 14,
+                      color: senderNameColor,
+                      animate: theme.chatStatusEmojiMode.animate,
+                    )
+                  : null,
+            ),
+          ),
+          const SizedBox(width: 5),
+          SizedBox(
+            width: 96,
+            height: 14,
+            child: showDetailTime
+                ? Align(
+                    alignment: Alignment.centerLeft,
+                    child: _messageDetailTimestamp(),
+                  )
+                : ValueListenableBuilder<bool>(
+                    valueListenable: _hoveringTimestamp,
+                    builder: (context, hovering, _) => hovering
+                        ? Align(
+                            alignment: Alignment.centerLeft,
+                            child: _messageDetailTimestamp(),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The avatar only needs a recognizer when a caller actually wants the taps;
+  /// previews and tests pass neither.
+  Widget _avatarTapTarget(Widget avatar, {required bool withLongPress}) {
+    final onTap = widget.onAvatarTap;
+    final onLongPress = withLongPress ? widget.onAvatarLongPress : null;
+    if (onTap == null && onLongPress == null) return avatar;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap == null ? null : () => onTap(message),
+      onLongPress: onLongPress == null ? null : () => onLongPress(message),
+      child: avatar,
     );
   }
 
@@ -930,15 +990,11 @@ class _MessageBubbleState extends State<MessageBubble>
     key: const ValueKey('messageTappedTimestamp'),
     maxLines: 1,
     textScaler: TextScaler.noScaling,
-    style: TextStyle(
-      fontSize: 10,
-      height: 1.2,
-      color: context.colors.textTertiary,
-    ),
+    style: TextStyle(fontSize: 10, height: 1.2, color: _colors.textTertiary),
   );
 
   Widget _reactionChips(bool outgoing) {
-    final c = context.colors;
+    final c = _colors;
     return Wrap(
       spacing: 5,
       runSpacing: 5,
@@ -1014,6 +1070,13 @@ class _MessageBubbleState extends State<MessageBubble>
   // MARK: - Content router
 
   Widget _contentBody(bool outgoing) {
+    // Every build allocates a fresh recognizer per link span. Drain them here,
+    // once per build, instead of inside _textBubble: the grouped-caption and
+    // file-album paths never reach it and used to grow the list until dispose.
+    for (final r in _linkRecognizers) {
+      r.dispose();
+    }
+    _linkRecognizers.clear();
     late final Widget body;
     if (message.isContentRestricted && !_revealsRestrictedContent) {
       body = _textBubble(message.text, outgoing);
@@ -1023,13 +1086,15 @@ class _MessageBubbleState extends State<MessageBubble>
       body = _callBubble(outgoing);
       return _withCommentsOnly(_withFloatingMeta(body, outgoing), outgoing);
     }
-    final specialBackground = outgoing
+    // Only the card-shaped contents below read these; text, media, sticker and
+    // voice messages would otherwise resolve three colour chains and drop them.
+    late final specialBackground = outgoing
         ? _outgoingBubbleColor
         : _incomingBubbleColor;
-    final specialForeground = outgoing
+    late final specialForeground = outgoing
         ? _outgoingTextColor
         : _incomingTextColor;
-    final specialSecondary = specialForeground.withValues(alpha: 0.68);
+    late final specialSecondary = specialForeground.withValues(alpha: 0.68);
     if (message.contact != null) {
       body = MessageContactCardContent(
         contact: message.contact!,
@@ -1209,7 +1274,7 @@ class _MessageBubbleState extends State<MessageBubble>
         widget.onTranscribeVoice != null;
     final transcriptionColor = message.isOutgoing
         ? _outgoingTextColor.withValues(alpha: 0.88)
-        : context.colors.textSecondary;
+        : _colors.textSecondary;
     final inline = _autoplaysVideoInline && message.video != null;
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -1381,45 +1446,54 @@ class _MessageBubbleState extends State<MessageBubble>
         ? _messageTimeColor(outgoing)
         : outgoing
         ? _outgoingTextColor.withValues(alpha: 0.72)
-        : context.colors.textTertiary;
+        : _colors.textTertiary;
     final content = Padding(
       padding: outgoing
           ? EdgeInsets.zero
           : const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (message.isEdited)
-            AppIcon(
+      // One glyph wide either way, so it needs no flex row to hold it.
+      child: message.isEdited
+          ? AppIcon(
               HeroAppIcons.penToSquare,
               key: const ValueKey('messageDeliveryEdited'),
               size: 10,
               color: faint,
             )
-          else if (outgoing)
-            _MessageDeliveryIndicator(
-              isSending: message.isSending && !message.isSendAcknowledged,
-              isRead: widget.isRead,
-              pendingColor: _outgoingTextColor,
-              // The tick is ink on the bubble like the text is, so it follows
-              // the same colour. Hardcoding white lost it entirely on a light
-              // outgoing fill.
-              sentColor: _outgoingTextColor,
-              size: 10,
-            ),
-        ],
-      ),
+          : outgoing
+          ? _deliveryTick()
+          : const SizedBox.shrink(),
     );
     return IgnorePointer(
       child: outgoing
           ? content
           : DecoratedBox(
               decoration: BoxDecoration(
-                color: context.colors.card.withValues(alpha: 0.72),
+                color: _colors.card.withValues(alpha: 0.72),
                 borderRadius: BorderRadius.circular(AppRadius.control),
               ),
               child: content,
             ),
+    );
+  }
+
+  /// The in-flight spinner is the only delivery state that needs a ticker, so
+  /// the settled tick gets a plain painter instead of an AnimationController
+  /// per outgoing bubble.
+  Widget _deliveryTick({Color? sentColor}) {
+    if (message.isSending && !message.isSendAcknowledged) {
+      return _MessageDeliveryIndicator(
+        pendingColor: _outgoingTextColor,
+        size: 10,
+      );
+    }
+    return _MessageDeliverySettled(
+      isRead: widget.isRead,
+      // The tick is ink on the bubble like the text is, so it follows the same
+      // colour. Hardcoding white lost it entirely on a light outgoing fill.
+      color: widget.isRead
+          ? const Color(0xFF34C759)
+          : (sentColor ?? _outgoingTextColor),
+      size: 10,
     );
   }
 
@@ -1486,7 +1560,7 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   Widget _commentThreadRow(bool outgoing) {
-    final c = context.colors;
+    final c = _colors;
     final count = message.commentCount;
     final label = count == 0
         ? AppStrings.t(AppStringKeys.messageLeaveAComment)
@@ -1562,7 +1636,7 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   Widget _buttonCell(MessageButton button, bool outgoing) {
-    final c = context.colors;
+    final c = _colors;
     final colors = botButtonPalette(
       button.style,
       primary: AppTheme.brand,
@@ -1613,7 +1687,7 @@ class _MessageBubbleState extends State<MessageBubble>
   // MARK: - Text bubble
 
   Widget _diceBubble(bool outgoing) {
-    final c = context.colors;
+    final c = _colors;
     final value = message.diceValue;
     return _bubbleBackground(
       outgoing: outgoing,
@@ -1667,10 +1741,6 @@ class _MessageBubbleState extends State<MessageBubble>
   }) {
     final baseColor = outgoing ? _outgoingTextColor : _incomingTextColor;
     final linkColor = _messageLinkColor(outgoing);
-    for (final r in _linkRecognizers) {
-      r.dispose();
-    }
-    _linkRecognizers.clear();
     final emojiOnly = _isEmojiOnlyText(text);
     final textFontSize = emojiOnly ? 34.0 : AppTextSize.messageBody();
     final bubblePadding = emojiOnly
@@ -1686,116 +1756,149 @@ class _MessageBubbleState extends State<MessageBubble>
       1.0,
       _bubbleMaxWidth() - effectivePadding.horizontal,
     );
+    final parts = <Widget>[
+      if (includeForwardHeader && (message.forwardOrigin ?? '').isNotEmpty) ...[
+        _forwardHeader(outgoing),
+        const SizedBox(height: 3),
+      ],
+      if (includeReplyQuote && message.replyToPreview != null) ...[
+        _replyQuote(outgoing),
+        const SizedBox(height: 5),
+      ],
+      if (_activeLinkPreview?.showAboveText ?? false) ...[
+        _linkPreviewCard(
+          _activeLinkPreview!,
+          outgoing,
+          maxWidth: previewMaxWidth,
+        ),
+        if (text.isNotEmpty) const SizedBox(height: 6),
+      ],
+      ..._richTextWidgets(
+        text,
+        baseColor,
+        linkColor,
+        outgoing,
+        false,
+        _activeTextEntities,
+        textFontSize,
+      ),
+      if (_activeRichBlocks.isNotEmpty) ...[
+        if (text.isNotEmpty) const SizedBox(height: 8),
+        ..._richBlockWidgets(_activeRichBlocks, outgoing),
+      ],
+      if (_activeLinkPreview != null && !_activeLinkPreview!.showAboveText) ...[
+        if (text.isNotEmpty || _activeRichBlocks.isNotEmpty)
+          const SizedBox(height: 7),
+        _linkPreviewCard(
+          _activeLinkPreview!,
+          outgoing,
+          maxWidth: previewMaxWidth,
+        ),
+      ],
+      if (_showsTranslation) ...[
+        const SizedBox(height: 7),
+        _translationBlock(outgoing),
+      ],
+      if (_showsAiSummary) ...[
+        const SizedBox(height: 7),
+        _aiSummaryBlock(outgoing),
+      ] else if (message.summaryLanguageCode.isNotEmpty &&
+          widget.onSummarizeMessage != null) ...[
+        const SizedBox(height: 7),
+        GestureDetector(
+          key: const ValueKey('messageSummarizeAction'),
+          behavior: HitTestBehavior.opaque,
+          onTap: () => widget.onSummarizeMessage?.call(message),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: AppTheme.brand.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(AppRadius.control),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AppIcon(
+                  HeroAppIcons.wandMagicSparkles,
+                  size: 15,
+                  color: AppTheme.brand,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  AppStrings.t(AppStringKeys.messageBubbleSummarize),
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.brand,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    ];
     return _bubbleBackground(
       key: ValueKey('messageTextBubble-${message.id}'),
       outgoing: outgoing,
       constraints: BoxConstraints(maxWidth: _bubbleMaxWidth()),
       padding: bubblePadding,
       borderRadius: _messageBorderRadius(6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (includeForwardHeader &&
-              (message.forwardOrigin ?? '').isNotEmpty) ...[
-            _forwardHeader(outgoing),
-            const SizedBox(height: 3),
-          ],
-          if (includeReplyQuote && message.replyToPreview != null) ...[
-            _replyQuote(outgoing),
-            const SizedBox(height: 5),
-          ],
-          if (_activeLinkPreview?.showAboveText ?? false) ...[
-            _linkPreviewCard(
-              _activeLinkPreview!,
-              outgoing,
-              maxWidth: previewMaxWidth,
+      // A plain text message is one span block; the column around it would
+      // only re-derive the size the child already has.
+      child: parts.length == 1
+          ? parts.first
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: parts,
             ),
-            if (text.isNotEmpty) const SizedBox(height: 6),
-          ],
-          ..._richTextWidgets(
-            text,
-            baseColor,
-            linkColor,
-            outgoing,
-            false,
-            _activeTextEntities,
-            textFontSize,
-          ),
-          if (_activeRichBlocks.isNotEmpty) ...[
-            if (text.isNotEmpty) const SizedBox(height: 8),
-            ..._richBlockWidgets(_activeRichBlocks, outgoing),
-          ],
-          if (_activeLinkPreview != null &&
-              !_activeLinkPreview!.showAboveText) ...[
-            if (text.isNotEmpty || _activeRichBlocks.isNotEmpty)
-              const SizedBox(height: 7),
-            _linkPreviewCard(
-              _activeLinkPreview!,
-              outgoing,
-              maxWidth: previewMaxWidth,
-            ),
-          ],
-          if (_showsTranslation) ...[
-            const SizedBox(height: 7),
-            _translationBlock(outgoing),
-          ],
-          if (_showsAiSummary) ...[
-            const SizedBox(height: 7),
-            _aiSummaryBlock(outgoing),
-          ] else if (message.summaryLanguageCode.isNotEmpty &&
-              widget.onSummarizeMessage != null) ...[
-            const SizedBox(height: 7),
-            GestureDetector(
-              key: const ValueKey('messageSummarizeAction'),
-              behavior: HitTestBehavior.opaque,
-              onTap: () => widget.onSummarizeMessage?.call(message),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: AppTheme.brand.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(AppRadius.control),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    AppIcon(
-                      HeroAppIcons.wandMagicSparkles,
-                      size: 15,
-                      color: AppTheme.brand,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      AppStrings.t(AppStringKeys.messageBubbleSummarize),
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.brand,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
     );
   }
 
+  String? _emojiOnlyKey;
+  bool _emojiOnlyValue = false;
+
+  /// The answer is nearly always "no" and never changes for a given message, so
+  /// it is memoised; the scan itself walks the source lazily and quits on the
+  /// first ordinary character instead of building a stripped copy first.
   bool _isEmojiOnlyText(String text) {
-    final stripped = text.replaceAll(RegExp(r'\s+'), '');
-    if (stripped.isEmpty) return false;
+    if (_emojiOnlyKey == text) return _emojiOnlyValue;
+    _emojiOnlyKey = text;
+    _emojiOnlyValue = _computeIsEmojiOnlyText(text);
+    return _emojiOnlyValue;
+  }
+
+  bool _computeIsEmojiOnlyText(String text) {
     var count = 0;
-    for (final cluster in stripped.characters) {
+    for (final cluster in text.characters) {
+      if (_isWhitespaceCluster(cluster)) continue;
       if (!_isEmojiCluster(cluster)) return false;
       count++;
     }
     return count > 1;
   }
+
+  bool _isWhitespaceCluster(String cluster) {
+    for (final rune in cluster.runes) {
+      if (!_isWhitespaceRune(rune)) return false;
+    }
+    return true;
+  }
+
+  /// The set `RegExp(r'\s')` matches, which is what this check used to strip.
+  bool _isWhitespaceRune(int rune) =>
+      rune == 0x20 ||
+      (rune >= 0x09 && rune <= 0x0D) ||
+      rune == 0xA0 ||
+      rune == 0x1680 ||
+      (rune >= 0x2000 && rune <= 0x200A) ||
+      rune == 0x2028 ||
+      rune == 0x2029 ||
+      rune == 0x202F ||
+      rune == 0x205F ||
+      rune == 0x3000 ||
+      rune == 0xFEFF;
 
   bool _isEmojiCluster(String cluster) {
     final runes = cluster.runes.toList();
@@ -1878,7 +1981,7 @@ class _MessageBubbleState extends State<MessageBubble>
       ),
       RichMessageBlockKind.divider => Divider(
         height: 12,
-        color: context.colors.divider,
+        color: _colors.divider,
       ),
       RichMessageBlockKind.math => _richMathBlock(
         block.mathExpression ?? '',
@@ -1906,7 +2009,7 @@ class _MessageBubbleState extends State<MessageBubble>
     bool outgoing, {
     Color? linkColor,
   }) {
-    final c = context.colors;
+    final c = _colors;
     final base = block.kind == RichMessageBlockKind.footer
         ? c.textSecondary
         : (outgoing ? _outgoingTextColor : _incomingTextColor);
@@ -1969,7 +2072,7 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   Widget _richListBlock(RichMessageBlock block, bool outgoing) {
-    final c = context.colors;
+    final c = _colors;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -2139,7 +2242,7 @@ class _MessageBubbleState extends State<MessageBubble>
       ),
     );
     if (block.hasSpoiler) {
-      media = _RichSpoiler(color: context.colors.card, child: media);
+      media = _RichSpoiler(color: _colors.card, child: media);
     }
     return _richMediaWithCaption(media, block, outgoing);
   }
@@ -2166,7 +2269,7 @@ class _MessageBubbleState extends State<MessageBubble>
             ClipRRect(
               borderRadius: BorderRadius.circular(AppRadius.control),
               child: block.image == null
-                  ? ColoredBox(color: context.colors.searchFill)
+                  ? ColoredBox(color: _colors.searchFill)
                   : TDImage(
                       photo: block.image,
                       cacheWidth: _cachePx(size.width),
@@ -2195,7 +2298,7 @@ class _MessageBubbleState extends State<MessageBubble>
       ),
     );
     if (block.hasSpoiler) {
-      media = _RichSpoiler(color: context.colors.card, child: media);
+      media = _RichSpoiler(color: _colors.card, child: media);
     }
     return _richMediaWithCaption(media, block, outgoing);
   }
@@ -2207,63 +2310,62 @@ class _MessageBubbleState extends State<MessageBubble>
     final player = MusicPlayerController.shared;
     final canPlay = music.file != null && widget.onPlayMusic != null;
     return _richMediaWithCaption(
-      AnimatedBuilder(
-        animation: player,
-        builder: (context, _) {
-          final active = player.isActive(music.file);
-          return GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: canPlay ? () => widget.onPlayMusic!(synthetic) : null,
-            child: Container(
-              width: math.min(_mediaMaxWidth(), 300),
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: context.colors.card,
-                borderRadius: BorderRadius.circular(AppRadius.control),
-                border: Border.all(color: context.colors.divider, width: 0.5),
+      GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: canPlay ? () => widget.onPlayMusic!(synthetic) : null,
+        child: Container(
+          width: math.min(_mediaMaxWidth(), 300),
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: _colors.card,
+            borderRadius: BorderRadius.circular(AppRadius.control),
+            border: Border.all(color: _colors.divider, width: 0.5),
+          ),
+          child: Row(
+            children: [
+              // Only the glyph depends on the player, and the player is a
+              // global that notifies ~17 times a second while anything plays.
+              AnimatedBuilder(
+                animation: player,
+                builder: (context, _) => AppIcon(
+                  player.isActive(music.file) && player.isPlaying
+                      ? HeroAppIcons.pause
+                      : HeroAppIcons.play,
+                  size: 22,
+                  color: outgoing ? _outgoingTextColor : AppTheme.brand,
+                ),
               ),
-              child: Row(
-                children: [
-                  AppIcon(
-                    active && player.isPlaying
-                        ? HeroAppIcons.pause
-                        : HeroAppIcons.play,
-                    size: 22,
-                    color: outgoing ? _outgoingTextColor : AppTheme.brand,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          music.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: context.colors.textPrimary,
-                          ),
-                        ),
-                        if ((music.performer ?? '').trim().isNotEmpty)
-                          Text(
-                            music.performer!,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: context.colors.textSecondary,
-                            ),
-                          ),
-                      ],
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      music.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: _colors.textPrimary,
+                      ),
                     ),
-                  ),
-                ],
+                    if ((music.performer ?? '').trim().isNotEmpty)
+                      Text(
+                        music.performer!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: _colors.textSecondary,
+                        ),
+                      ),
+                  ],
+                ),
               ),
-            ),
-          );
-        },
+            ],
+          ),
+        ),
       ),
       block,
       outgoing,
@@ -2287,9 +2389,9 @@ class _MessageBubbleState extends State<MessageBubble>
               width: math.min(_mediaMaxWidth(), 250),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
-                color: context.colors.card,
+                color: _colors.card,
                 borderRadius: BorderRadius.circular(AppRadius.control),
-                border: Border.all(color: context.colors.divider, width: 0.5),
+                border: Border.all(color: _colors.divider, width: 0.5),
               ),
               child: Row(
                 children: [
@@ -2311,7 +2413,7 @@ class _MessageBubbleState extends State<MessageBubble>
                           : 0,
                       minHeight: 3,
                       color: outgoing ? _outgoingTextColor : AppTheme.brand,
-                      backgroundColor: context.colors.divider,
+                      backgroundColor: _colors.divider,
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -2319,7 +2421,7 @@ class _MessageBubbleState extends State<MessageBubble>
                     _durationString(voice.duration),
                     style: TextStyle(
                       fontSize: 12,
-                      color: context.colors.textSecondary,
+                      color: _colors.textSecondary,
                     ),
                   ),
                 ],
@@ -2447,13 +2549,13 @@ class _MessageBubbleState extends State<MessageBubble>
       height: 72,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: context.colors.searchFill,
+        color: _colors.searchFill,
         borderRadius: BorderRadius.circular(AppRadius.control),
       ),
       child: AppIcon(
         icon,
         size: 24,
-        color: outgoing ? _outgoingTextColor : context.colors.textSecondary,
+        color: outgoing ? _outgoingTextColor : _colors.textSecondary,
       ),
     );
   }
@@ -2485,7 +2587,7 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   Widget _richMathBlock(String expression, bool outgoing) {
-    final c = context.colors;
+    final c = _colors;
     final base = outgoing ? _outgoingTextColor : _incomingTextColor;
     final fill = outgoing
         ? _outgoingTextColor.withValues(alpha: 0.14)
@@ -2515,7 +2617,7 @@ class _MessageBubbleState extends State<MessageBubble>
 
   Widget _richMapBlock(RichMessageBlock block, bool outgoing) {
     final location = block.mapLocation!;
-    final c = context.colors;
+    final c = _colors;
     final base = outgoing ? _outgoingTextColor : _incomingTextColor;
     final link = _messageLinkColor(outgoing);
     final sourceWidth = math.max(block.mapWidth, 1);
@@ -2579,7 +2681,7 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   Widget _richTableBlock(RichMessageBlock block, bool outgoing) {
-    final c = context.colors;
+    final c = _colors;
     final base = outgoing ? _outgoingTextColor : _incomingTextColor;
     final secondary = outgoing
         ? _outgoingTextColor.withValues(alpha: 0.72)
@@ -2723,7 +2825,7 @@ class _MessageBubbleState extends State<MessageBubble>
       (message.aiSummaryText?.trim().isNotEmpty ?? false);
 
   Widget _aiSummaryBlock(bool outgoing, {double? width}) {
-    final c = context.colors;
+    final c = _colors;
     final base = outgoing ? _outgoingTextColor : _incomingTextColor;
     final secondary = outgoing
         ? _outgoingTextColor.withValues(alpha: 0.70)
@@ -2797,7 +2899,7 @@ class _MessageBubbleState extends State<MessageBubble>
     ChatMessage? source,
   }) {
     source ??= message;
-    final c = context.colors;
+    final c = _colors;
     final base = outgoing ? _outgoingTextColor : _incomingTextColor;
     final secondary = outgoing
         ? _outgoingTextColor.withValues(alpha: 0.70)
@@ -2864,7 +2966,7 @@ class _MessageBubbleState extends State<MessageBubble>
     bool outgoing, {
     required double maxWidth,
   }) {
-    final c = context.colors;
+    final c = _colors;
     final base = outgoing ? _outgoingTextColor : _incomingTextColor;
     final secondary = outgoing
         ? _outgoingTextColor.withValues(alpha: 0.75)
@@ -3022,78 +3124,72 @@ class _MessageBubbleState extends State<MessageBubble>
   // MARK: - Music
 
   Widget _musicCard(MessageMusic music, bool outgoing) {
-    final c = context.colors;
+    final c = _colors;
     final maxWidth = math.min(MediaQuery.sizeOf(context).width * 0.70, 300.0);
     final caption = _caption();
     final performer = (music.performer ?? '').trim();
     final player = MusicPlayerController.shared;
     final canPlay = music.file != null && widget.onPlayMusic != null;
     final toggle = canPlay ? () => widget.onPlayMusic!(message) : null;
-    final card = AnimatedBuilder(
-      animation: player,
-      builder: (context, _) {
-        final active = player.isActive(music.file);
-        final playing = active && player.isPlaying;
-        final loading = active && player.isLoading;
-        final total = active && player.total.inMilliseconds > 0
-            ? player.total
-            : Duration(seconds: music.duration);
-        final position = active ? player.position : Duration.zero;
-        final totalMs = math.max(1, total.inMilliseconds);
-        final value = (position.inMilliseconds / totalMs).clamp(0.0, 1.0);
-
-        return Container(
-          width: maxWidth,
-          decoration: BoxDecoration(
-            color: c.card,
-            borderRadius: _messageBorderRadius(10),
-            border: Border.all(color: c.divider, width: 0.5),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(14, 13, 14, 12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            music.title,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 18,
-                              height: 1.25,
-                              fontWeight: FontWeight.w500,
-                              color: c.textPrimary,
-                            ),
-                          ),
-                          if (performer.isNotEmpty) ...[
-                            const SizedBox(height: 10),
-                            Text(
-                              performer,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 16,
-                                height: 1.25,
-                                color: c.textSecondary,
-                              ),
-                            ),
-                          ],
-                        ],
+    // The player notifies ~17 times a second while any track plays, and it is a
+    // global singleton — so the card chrome, title and performer stay outside
+    // the builders. Only the cover art and the progress row read the position.
+    final card = Container(
+      width: maxWidth,
+      decoration: BoxDecoration(
+        color: c.card,
+        borderRadius: _messageBorderRadius(10),
+        border: Border.all(color: c.divider, width: 0.5),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 13, 14, 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        music.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 18,
+                          height: 1.25,
+                          fontWeight: FontWeight.w500,
+                          color: c.textPrimary,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    _musicCover(
+                      if (performer.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          performer,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 16,
+                            height: 1.25,
+                            color: c.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                AnimatedBuilder(
+                  animation: player,
+                  builder: (context, _) {
+                    final active = player.isActive(music.file);
+                    return _musicCover(
                       music.cover,
-                      loading: loading,
-                      playing: playing,
+                      loading: active && player.isLoading,
+                      playing: active && player.isPlaying,
                       onTap: toggle,
                       pressed: _musicPressed,
                       onTapDown: canPlay
@@ -3102,25 +3198,35 @@ class _MessageBubbleState extends State<MessageBubble>
                       onTapEnd: canPlay
                           ? () => setState(() => _musicPressed = false)
                           : null,
-                    ),
-                  ],
+                    );
+                  },
                 ),
-              ),
-              Divider(height: 1, thickness: 0.5, color: c.divider),
-              active || loading
-                  ? _musicProgressBar(
-                      value: value.toDouble(),
-                      position: position,
-                      total: total,
-                      canPlay: canPlay,
-                      onChanged: player.seekFraction,
-                      onChangeEnd: player.seekFraction,
-                    )
-                  : _musicProviderBar(),
-            ],
+              ],
+            ),
           ),
-        );
-      },
+          Divider(height: 1, thickness: 0.5, color: c.divider),
+          AnimatedBuilder(
+            animation: player,
+            builder: (context, _) {
+              if (!player.isActive(music.file)) return _musicProviderBar();
+              final total = player.total.inMilliseconds > 0
+                  ? player.total
+                  : Duration(seconds: music.duration);
+              final position = player.position;
+              final totalMs = math.max(1, total.inMilliseconds);
+              final value = (position.inMilliseconds / totalMs).clamp(0.0, 1.0);
+              return _musicProgressBar(
+                value: value.toDouble(),
+                position: position,
+                total: total,
+                canPlay: canPlay,
+                onChanged: player.seekFraction,
+                onChangeEnd: player.seekFraction,
+              );
+            },
+          ),
+        ],
+      ),
     );
     return _attachmentWithCaption(card, outgoing, caption: caption);
   }
@@ -3146,7 +3252,7 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   Widget _musicProviderBar() {
-    final c = context.colors;
+    final c = _colors;
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 7, 14, 8),
       child: Row(
@@ -3183,7 +3289,7 @@ class _MessageBubbleState extends State<MessageBubble>
     required ValueChanged<double> onChanged,
     required ValueChanged<double> onChangeEnd,
   }) {
-    final c = context.colors;
+    final c = _colors;
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 0, 14, 0),
       child: Row(
@@ -3230,7 +3336,7 @@ class _MessageBubbleState extends State<MessageBubble>
     VoidCallback? onTapDown,
     VoidCallback? onTapEnd,
   }) {
-    final c = context.colors;
+    final c = _colors;
     const size = 58.0;
     final art = cover != null
         ? TDImage(
@@ -3501,7 +3607,7 @@ class _MessageBubbleState extends State<MessageBubble>
       return _messageAccentFill(_messageReplyLineColor(outgoing));
     }
     final base = outgoing ? _outgoingBubbleColor : _incomingBubbleColor;
-    final dark = Theme.of(context).brightness == Brightness.dark;
+    final dark = _brightness == Brightness.dark;
     return Color.lerp(base, dark ? Colors.white : Colors.black, 0.10)!;
   }
 
@@ -3517,31 +3623,28 @@ class _MessageBubbleState extends State<MessageBubble>
   /// Trailing inline meta: delivery progress, replaced by edit status.
   InlineSpan _metaSpan(bool outgoing) {
     final faint = _messageTimeColor(outgoing);
+    // At most one glyph, so it needs no flex row to hold it.
+    final Widget glyph;
+    if (widget.message.isEdited) {
+      glyph = AppIcon(
+        HeroAppIcons.penToSquare,
+        key: const ValueKey('messageDeliveryEdited'),
+        size: 10,
+        color: faint,
+      );
+    } else if (outgoing) {
+      glyph = _deliveryTick(
+        sentColor: _showsMessageBubbleSurface
+            ? Colors.white
+            : _outgoingTextColor,
+      );
+    } else {
+      glyph = const SizedBox.shrink();
+    }
     return WidgetSpan(
       child: Padding(
         padding: const EdgeInsets.only(left: 6, top: 2),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (widget.message.isEdited)
-              AppIcon(
-                HeroAppIcons.penToSquare,
-                key: const ValueKey('messageDeliveryEdited'),
-                size: 10,
-                color: faint,
-              )
-            else if (outgoing)
-              _MessageDeliveryIndicator(
-                isSending: message.isSending && !message.isSendAcknowledged,
-                isRead: widget.isRead,
-                pendingColor: _outgoingTextColor,
-                sentColor: _showsMessageBubbleSurface
-                    ? Colors.white
-                    : _outgoingTextColor,
-                size: 10,
-              ),
-          ],
-        ),
+        child: glyph,
       ),
     );
   }
@@ -3774,7 +3877,7 @@ class _MessageBubbleState extends State<MessageBubble>
     List<MessageTextEntity> entities,
     double fontSize,
   ) {
-    final c = context.colors;
+    final c = _colors;
     final language = (pre.language ?? '').trim();
     final codeBackground = _codeBackgroundColor;
     return GestureDetector(
@@ -3798,7 +3901,7 @@ class _MessageBubbleState extends State<MessageBubble>
                 width: double.infinity,
                 padding: const EdgeInsets.fromLTRB(10, 5, 10, 4),
                 color:
-                    (Theme.of(context).brightness == Brightness.dark
+                    (_brightness == Brightness.dark
                             ? Colors.white
                             : Colors.black)
                         .withValues(alpha: 0.045),
@@ -3835,9 +3938,7 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   Color get _codeBackgroundColor {
-    return (Theme.of(context).brightness == Brightness.dark
-            ? Colors.white
-            : Colors.black)
+    return (_brightness == Brightness.dark ? Colors.white : Colors.black)
         .withValues(alpha: 0.05);
   }
 
@@ -4109,9 +4210,7 @@ class _MessageBubbleState extends State<MessageBubble>
       decorationColor: color,
       fontFeatures: fontFeatures.isEmpty ? null : fontFeatures,
     );
-    return useCodeFont
-        ? context.watch<ThemeController>().codeTextStyle(style)
-        : style;
+    return useCodeFont ? _theme.codeTextStyle(style) : style;
   }
 
   String? _entityTapTarget(String segment, List<MessageTextEntity> active) {
@@ -4329,15 +4428,20 @@ class _MessageBubbleState extends State<MessageBubble>
       child: Stack(
         fit: StackFit.expand,
         children: [
-          ImageFiltered(
-            imageFilter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-            child: Transform.scale(
-              scale: 1.08,
-              child: TDImage(
-                photo: blurredSource,
-                cornerRadius: 0,
-                cacheWidth: blurredCacheWidth,
-                cacheHeight: blurredCacheHeight,
+          // Its own layer, so the letterbox gaussian is rastered once and
+          // composited afterwards instead of re-running whenever a sibling
+          // (the photo's download progress) dirties the bubble.
+          RepaintBoundary(
+            child: ImageFiltered(
+              imageFilter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+              child: Transform.scale(
+                scale: 1.08,
+                child: TDImage(
+                  photo: blurredSource,
+                  cornerRadius: 0,
+                  cacheWidth: blurredCacheWidth,
+                  cacheHeight: blurredCacheHeight,
+                ),
               ),
             ),
           ),
@@ -4362,7 +4466,7 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   bool _groupsMediaCaption(String? caption) =>
-      caption != null && context.watch<ThemeController>().groupImageMessages;
+      caption != null && _theme.groupImageMessages;
 
   Widget _mediaWithCaption({
     required Widget media,
@@ -4427,7 +4531,7 @@ class _MessageBubbleState extends State<MessageBubble>
       );
     }
 
-    final c = context.colors;
+    final c = _colors;
     final baseColor = outgoing ? _outgoingTextColor : _incomingTextColor;
     final linkColor = _messageLinkColor(outgoing);
     return Container(
@@ -4713,7 +4817,7 @@ class _MessageBubbleState extends State<MessageBubble>
   // MARK: - Voice
 
   Widget _voiceBubble(MessageVoice voice, bool outgoing) {
-    final c = context.colors;
+    final c = _colors;
     final decorative = _usesDecorativeBubbleBackground;
     final fg = outgoing
         ? _outgoingTextColor
@@ -4899,7 +5003,7 @@ class _MessageBubbleState extends State<MessageBubble>
   // MARK: - Location
 
   Widget _locationBubble(MessageLocation location) {
-    final c = context.colors;
+    final c = _colors;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => Navigator.of(context).push(
@@ -4963,7 +5067,7 @@ class _MessageBubbleState extends State<MessageBubble>
       _fileAlbumCard(<ChatMessage>[message], outgoing);
 
   Widget _fileAlbumCard(List<ChatMessage> sources, bool outgoing) {
-    final c = context.colors;
+    final c = _colors;
     final themed = _messageColors != null;
     final messageSurface = outgoing
         ? _outgoingBubbleColor
@@ -5194,7 +5298,7 @@ class _MessageBubbleState extends State<MessageBubble>
     );
   }
 
-  AppColors get c => context.colors;
+  AppColors get c => _colors;
 
   static String _byteString(int bytes) {
     if (bytes < 1024) return '$bytes B';
@@ -5414,19 +5518,36 @@ class _LatexView extends StatelessWidget {
   }
 }
 
-class _MessageDeliveryIndicator extends StatefulWidget {
-  const _MessageDeliveryIndicator({
-    required this.isSending,
+/// The settled tick: no controller, no ticker. Only the in-flight spinner needs
+/// an animation, and every outgoing bubble used to mount one to draw a circle.
+class _MessageDeliverySettled extends StatelessWidget {
+  const _MessageDeliverySettled({
     required this.isRead,
-    required this.pendingColor,
-    required this.sentColor,
+    required this.color,
     required this.size,
   });
 
-  final bool isSending;
   final bool isRead;
+  final Color color;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => SizedBox.square(
+    key: ValueKey(isRead ? 'messageDeliveryRead' : 'messageDeliverySent'),
+    dimension: size,
+    child: CustomPaint(
+      painter: _MessageDeliveryPainter(isSending: false, color: color),
+    ),
+  );
+}
+
+class _MessageDeliveryIndicator extends StatefulWidget {
+  const _MessageDeliveryIndicator({
+    required this.pendingColor,
+    required this.size,
+  });
+
   final Color pendingColor;
-  final Color sentColor;
   final double size;
 
   @override
@@ -5445,19 +5566,7 @@ class _MessageDeliveryIndicatorState extends State<_MessageDeliveryIndicator>
       vsync: this,
       duration: const Duration(milliseconds: 900),
     );
-    if (widget.isSending) _controller.repeat();
-  }
-
-  @override
-  void didUpdateWidget(_MessageDeliveryIndicator oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.isSending == oldWidget.isSending) return;
-    if (widget.isSending) {
-      _controller.repeat();
-    } else {
-      _controller.stop();
-      _controller.value = 0;
-    }
+    _controller.repeat();
   }
 
   @override
@@ -5468,23 +5577,18 @@ class _MessageDeliveryIndicatorState extends State<_MessageDeliveryIndicator>
 
   @override
   Widget build(BuildContext context) => SizedBox.square(
-    key: ValueKey(
-      widget.isSending
-          ? 'messageDeliverySending'
-          : widget.isRead
-          ? 'messageDeliveryRead'
-          : 'messageDeliverySent',
-    ),
+    key: const ValueKey('messageDeliverySending'),
     dimension: widget.size,
-    child: CustomPaint(
-      painter: _MessageDeliveryPainter(
-        rotation: _controller,
-        isSending: widget.isSending,
-        color: widget.isSending
-            ? widget.pendingColor.withValues(alpha: 0.72)
-            : widget.isRead
-            ? const Color(0xFF34C759)
-            : widget.sentColor,
+    // Its own layer: the painter repaints on every tick, and without a
+    // boundary that re-records the whole outgoing bubble at 60fps for the
+    // entire send.
+    child: RepaintBoundary(
+      child: CustomPaint(
+        painter: _MessageDeliveryPainter(
+          rotation: _controller,
+          isSending: true,
+          color: widget.pendingColor.withValues(alpha: 0.72),
+        ),
       ),
     ),
   );
@@ -5492,13 +5596,13 @@ class _MessageDeliveryIndicatorState extends State<_MessageDeliveryIndicator>
 
 class _MessageDeliveryPainter extends CustomPainter {
   _MessageDeliveryPainter({
-    required Animation<double> rotation,
+    Animation<double>? rotation,
     required this.isSending,
     required this.color,
   }) : _rotation = rotation,
        super(repaint: rotation);
 
-  final Animation<double> _rotation;
+  final Animation<double>? _rotation;
   final bool isSending;
   final Color color;
 
@@ -5518,7 +5622,7 @@ class _MessageDeliveryPainter extends CustomPainter {
     if (isSending) {
       canvas.drawArc(
         rect,
-        _rotation.value * math.pi * 2 - math.pi / 2,
+        (_rotation?.value ?? 0.0) * math.pi * 2 - math.pi / 2,
         math.pi * 1.35,
         false,
         paint,

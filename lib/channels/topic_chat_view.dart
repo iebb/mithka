@@ -317,7 +317,12 @@ class _TopicChatViewState extends State<TopicChatView> {
   }
 
   Future<void> _loadTopics() async {
-    setState(() => _loading = true);
+    // Callers clear _topicMessages immediately before this; refresh the posts
+    // here so the reload frame never renders against the stale list.
+    setState(() {
+      _loading = true;
+      _rebuildPosts();
+    });
     try {
       final response = await _query({
         '@type': 'getForumTopics',
@@ -373,6 +378,7 @@ class _TopicChatViewState extends State<TopicChatView> {
           !_topics.any((topic) => topic.id == _selectedThreadId)) {
         _selectedThreadId = null;
       }
+      _rebuildPosts();
       await _loadVisibleThreads();
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -419,6 +425,7 @@ class _TopicChatViewState extends State<TopicChatView> {
       unawaited(_resolveSenders(_topicMessages[topic.id]!));
     } finally {
       _loadingThreads.remove(topic.id);
+      _rebuildPosts();
       if (mounted) setState(() {});
     }
   }
@@ -441,6 +448,7 @@ class _TopicChatViewState extends State<TopicChatView> {
     setState(() {
       _pendingInitialMessageId = null;
       _selectedThreadId = threadId;
+      _rebuildPosts();
     });
     _loadVisibleThreads();
     if (_scroll.hasClients) {
@@ -513,7 +521,12 @@ class _TopicChatViewState extends State<TopicChatView> {
     return Color(0xFF000000 | (raw & 0xFFFFFF));
   }
 
-  List<_TopicPost> get _posts {
+  // Materialized rather than recomputed: as a getter this allocated a
+  // _TopicPost per loaded message and re-sorted the whole list on every scroll
+  // frame (_updateVisibleMessages) as well as on every build.
+  List<_TopicPost> _posts = const <_TopicPost>[];
+
+  void _rebuildPosts() {
     final selected = _selectedThreadId;
     final posts = <_TopicPost>[];
     for (final topic in _topics) {
@@ -534,7 +547,7 @@ class _TopicChatViewState extends State<TopicChatView> {
       }
     }
     posts.sort((a, b) => b.message.date.compareTo(a.message.date));
-    return posts;
+    _posts = posts;
   }
 
   void _scheduleInitialMessagePosition(List<_TopicPost> posts) {
@@ -621,8 +634,9 @@ class _TopicChatViewState extends State<TopicChatView> {
     if (viewportRenderObject is! RenderBox || !viewportRenderObject.attached) {
       return;
     }
-    final viewportOrigin = viewportRenderObject.localToGlobal(Offset.zero);
-    final viewport = viewportOrigin & viewportRenderObject.size;
+    // Viewport-local coordinates: stopping the transform walk at the list keeps
+    // it off the whole ancestor chain, once per row per scroll frame.
+    final viewport = Offset.zero & viewportRenderObject.size;
     final bounds = <int, Rect>{};
     for (final post in _posts) {
       if (!isReportableForumTopicMessage(
@@ -636,7 +650,10 @@ class _TopicChatViewState extends State<TopicChatView> {
       if (itemRenderObject is! RenderBox || !itemRenderObject.attached) {
         continue;
       }
-      final origin = itemRenderObject.localToGlobal(Offset.zero);
+      final origin = itemRenderObject.localToGlobal(
+        Offset.zero,
+        ancestor: viewportRenderObject,
+      );
       bounds[post.message.id] = origin & itemRenderObject.size;
     }
     final visible = takeNewlyVisibleForumTopicMessageIds(

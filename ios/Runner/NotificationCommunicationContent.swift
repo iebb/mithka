@@ -5,6 +5,11 @@ import UserNotifications
 
 let mithkaNotificationAppGroup = "group.ad.neko.mithka.notifications"
 
+/// Keys the service extension stamps onto a delivered notification so the tap
+/// that follows knows which account it belongs to.
+let accountSlotUserInfoKey = "mithka_account_slot"
+let accountUserIdUserInfoKey = "mithka_account_user_id"
+
 @available(iOS 15.0, *)
 struct CommunicationNotificationInformation {
   let title: String
@@ -61,6 +66,34 @@ struct CommunicationNotificationInformation {
     // produce the communication avatar if donation is temporarily unavailable.
     try? await interaction.donate()
     return try content.updating(from: intent)
+  }
+}
+
+/// The account each signed-in user id occupies, shared with the notification
+/// service extension.
+///
+/// A Telegram push names its account by user id; the slot is Mithka's own
+/// numbering and only the app knows it. Recording the map here lets the
+/// extension stamp the slot onto a notification as it is delivered, so a tap
+/// that cold-starts the app already knows which account the chat id belongs
+/// to — the app's own registry is empty at that point.
+enum NotificationAccountStore {
+  private static let key = "accountSlotsByUserId"
+
+  private static var defaults: UserDefaults? {
+    UserDefaults(suiteName: mithkaNotificationAppGroup)
+  }
+
+  static func setSlots(_ slotsByUserId: [String: Int]) {
+    defaults?.set(slotsByUserId, forKey: key)
+  }
+
+  static func slot(forUserId userId: Int64) -> Int? {
+    guard let stored = defaults?.dictionary(forKey: key) else { return nil }
+    guard let value = stored["\(userId)"] else { return nil }
+    if let slot = value as? Int { return slot }
+    if let slot = value as? NSNumber { return slot.intValue }
+    return nil
   }
 }
 

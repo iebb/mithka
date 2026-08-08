@@ -17,7 +17,7 @@ Future<String?> showStoryTextEntry(
   final value = await showGeneralDialog<String>(
     context: context,
     barrierDismissible: true,
-    barrierLabel: 'Close',
+    barrierLabel: AppStrings.t(AppStringKeys.musicPlayerClose),
     barrierColor: Colors.black.withValues(alpha: 0.52),
     transitionDuration: const Duration(milliseconds: 180),
     transitionBuilder: (context, animation, secondaryAnimation, child) =>

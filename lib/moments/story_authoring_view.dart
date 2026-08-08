@@ -93,7 +93,9 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
       final saved = await _service.savedMessagesChatId();
       final ids = await _service.postableChatIds(savedMessagesId: saved);
       for (final id in ids) {
-        final title = id == saved ? 'My Story' : await _chatTitle(id);
+        final title = id == saved
+            ? AppStrings.t(AppStringKeys.storyAuthoringMyStory)
+            : await _chatTitle(id);
         _targets.add(_StoryTarget(id, title));
       }
       _targetChatId =
@@ -114,7 +116,11 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
     // service query through TDLib's public client without leaking it into the
     // request builders.
     final raw = await StoryServiceTitleLoader.load(chatId);
-    return raw.isEmpty ? 'Chat $chatId' : raw;
+    return raw.isEmpty
+        ? AppStrings.t(AppStringKeys.storyAuthoringChatValue1, {
+            'value1': chatId,
+          })
+        : raw;
   }
 
   Future<void> _loadAlbums() async {
@@ -231,7 +237,7 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
     if (item.isVideo) {
       final value = await _numberDialog(
         title: AppStrings.t(AppStringKeys.storyAuthoringCoverFrame),
-        hint: 'Seconds from the start',
+        hint: AppStrings.t(AppStringKeys.storyAuthoringSecondsFromStart),
         initial: item.coverFrameTimestamp.toStringAsFixed(1),
       );
       if (value == null || !mounted) return;
@@ -284,12 +290,37 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (_isPremium) _sheetAction('Link', HeroAppIcons.link, 'link'),
-            _sheetAction('Suggested reaction', HeroAppIcons.heart, 'reaction'),
-            _sheetAction('Message', HeroAppIcons.message, 'message'),
-            _sheetAction('Location', HeroAppIcons.locationDot, 'location'),
-            _sheetAction('Weather', HeroAppIcons.sun, 'weather'),
-            _sheetAction('Upgraded gift', HeroAppIcons.star, 'gift'),
+            if (_isPremium)
+              _sheetAction(
+                AppStrings.t(AppStringKeys.storyAuthoringAreaLink),
+                HeroAppIcons.link,
+                'link',
+              ),
+            _sheetAction(
+              AppStrings.t(AppStringKeys.storyAuthoringAreaSuggestedReaction),
+              HeroAppIcons.heart,
+              'reaction',
+            ),
+            _sheetAction(
+              AppStrings.t(AppStringKeys.storyAuthoringAreaMessage),
+              HeroAppIcons.message,
+              'message',
+            ),
+            _sheetAction(
+              AppStrings.t(AppStringKeys.storyAuthoringAreaLocation),
+              HeroAppIcons.locationDot,
+              'location',
+            ),
+            _sheetAction(
+              AppStrings.t(AppStringKeys.storyAuthoringAreaWeather),
+              HeroAppIcons.sun,
+              'weather',
+            ),
+            _sheetAction(
+              AppStrings.t(AppStringKeys.storyAuthoringAreaUpgradedGift),
+              HeroAppIcons.star,
+              'gift',
+            ),
           ],
         ),
       ),
@@ -496,12 +527,14 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
         '';
     if (text.trim().isNotEmpty) return text.trim();
     return switch (content?.type) {
-      'messagePhoto' => 'Photo',
-      'messageVideo' => 'Video',
+      'messagePhoto' => AppStrings.t(AppStringKeys.storyAuthoringContentPhoto),
+      'messageVideo' => AppStrings.t(AppStringKeys.storyAuthoringContentVideo),
       'messageAnimation' => 'GIF',
-      'messageDocument' => 'Document',
-      'messagePoll' => 'Poll',
-      _ => 'Message',
+      'messageDocument' => AppStrings.t(
+        AppStringKeys.storyAuthoringContentDocument,
+      ),
+      'messagePoll' => AppStrings.t(AppStringKeys.storyAuthoringContentPoll),
+      _ => AppStrings.t(AppStringKeys.storyAuthoringContentMessage),
     };
   }
 
@@ -731,7 +764,7 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
     if (chatId == null || _media.isEmpty || _publishing) return;
     setState(() {
       _publishing = true;
-      _progress = 'Preparing media…';
+      _progress = AppStrings.t(AppStringKeys.storyAuthoringPreparingMedia);
     });
     var posted = 0;
     try {
@@ -744,7 +777,12 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
       for (var i = 0; i < _media.length; i++) {
         final item = _media[i];
         if (mounted) {
-          setState(() => _progress = 'Preparing ${i + 1} of ${_media.length}…');
+          setState(
+            () => _progress = AppStrings.t(
+              AppStringKeys.storyAuthoringPreparingValue1OfValue2,
+              {'value1': i + 1, 'value2': _media.length},
+            ),
+          );
         }
         if (item.isVideo) {
           final segments = await widget.mediaPreparer.prepareVideo(
@@ -753,7 +791,10 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
             onProgress: (completed, total) {
               if (mounted) {
                 setState(
-                  () => _progress = 'Encoding segment $completed of $total…',
+                  () => _progress = AppStrings.t(
+                    AppStringKeys.storyAuthoringEncodingValue1OfValue2,
+                    {'value1': completed, 'value2': total},
+                  ),
                 );
               }
             },
@@ -783,7 +824,10 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
       for (var i = 0; i < prepared.length; i++) {
         if (mounted) {
           setState(
-            () => _progress = 'Publishing ${i + 1} of ${prepared.length}…',
+            () => _progress = AppStrings.t(
+              AppStringKeys.storyAuthoringPublishingValue1OfValue2,
+              {'value1': i + 1, 'value2': prepared.length},
+            ),
           );
         }
         await _service.post(
@@ -812,7 +856,9 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
         showToast(
           context,
           posted == 0
-              ? 'Story could not be published: $error'
+              ? AppStrings.t(AppStringKeys.storyAuthoringPublishFailedValue1, {
+                  'value1': error,
+                })
               : '$posted stories published before an error: $error',
         );
       }
@@ -828,17 +874,27 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
 
   String _capabilityMessage(Map<String, dynamic> result) =>
       switch (result.type) {
-        'canPostStoryResultPremiumNeeded' => 'Telegram Premium is required',
-        'canPostStoryResultBoostNeeded' => 'This chat needs more boosts',
-        'canPostStoryResultActiveStoryLimitExceeded' =>
-          'The active story limit is reached',
-        'canPostStoryResultWeeklyLimitExceeded' =>
-          'The weekly story limit is reached',
-        'canPostStoryResultMonthlyLimitExceeded' =>
-          'The monthly story limit is reached',
-        'canPostStoryResultLiveStoryIsActive' =>
-          'A live story is already active',
-        _ => result.type ?? 'Story posting is unavailable',
+        'canPostStoryResultPremiumNeeded' => AppStrings.t(
+          AppStringKeys.storyAuthoringPremiumRequired,
+        ),
+        'canPostStoryResultBoostNeeded' => AppStrings.t(
+          AppStringKeys.storyAuthoringBoostsNeeded,
+        ),
+        'canPostStoryResultActiveStoryLimitExceeded' => AppStrings.t(
+          AppStringKeys.storyAuthoringActiveLimitReached,
+        ),
+        'canPostStoryResultWeeklyLimitExceeded' => AppStrings.t(
+          AppStringKeys.storyAuthoringWeeklyLimitReached,
+        ),
+        'canPostStoryResultMonthlyLimitExceeded' => AppStrings.t(
+          AppStringKeys.storyAuthoringMonthlyLimitReached,
+        ),
+        'canPostStoryResultLiveStoryIsActive' => AppStrings.t(
+          AppStringKeys.storyAuthoringLiveAlreadyActive,
+        ),
+        _ =>
+          result.type ??
+              AppStrings.t(AppStringKeys.storyAuthoringPostingUnavailable),
       };
 
   @override

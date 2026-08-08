@@ -7,6 +7,7 @@
 //  used the Compression framework + lottie-ios).
 //
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
@@ -52,6 +53,44 @@ Future<Uint8List?> _loadInflatedTgsSticker(String cacheKey, String path) {
     _inflatedTgsCache.remove(_inflatedTgsCache.keys.first);
   }
   return future;
+}
+
+/// Lottie parses the inflated JSON on whichever isolate asks for it, so a
+/// composition that first loads inside `build` costs that frame a 50 KB–1 MB
+/// JSON parse. We warm it off the UI isolate instead — capped, because
+/// `compute` spawns an isolate per call and an emoji grid mounts dozens of
+/// distinct stickers at once.
+const int _maxConcurrentTgsParses = 2;
+int _activeTgsParses = 0;
+final List<Completer<void>> _tgsParseQueue = <Completer<void>>[];
+
+Future<void> _prewarmTgsComposition(
+  Uint8List bytes,
+  bool Function() stillWanted,
+) async {
+  if (_activeTgsParses >= _maxConcurrentTgsParses) {
+    final turn = Completer<void>();
+    _tgsParseQueue.add(turn);
+    await turn.future;
+    // A flick through a sticker pack queues every cell it passes. Parsing the
+    // ones already recycled would push the cells still on screen behind them,
+    // so hand the slot straight on instead.
+    if (!stillWanted()) {
+      if (_tgsParseQueue.isNotEmpty) _tgsParseQueue.removeAt(0).complete();
+      return;
+    }
+  }
+  _activeTgsParses++;
+  try {
+    // Lands in lottie's own `sharedLottieCache`, keyed on the byte buffer, so
+    // the `Lottie.memory` in build resolves without parsing again.
+    await MemoryLottie(bytes, backgroundLoading: true).load();
+  } catch (_) {
+    // Let the Lottie widget surface a broken composition on its own.
+  } finally {
+    _activeTgsParses--;
+    if (_tgsParseQueue.isNotEmpty) _tgsParseQueue.removeAt(0).complete();
+  }
 }
 
 class AnimatedStickerView extends StatefulWidget {
@@ -105,6 +144,11 @@ class _AnimatedStickerViewState extends State<AnimatedStickerView> {
     // decoded bytes across recycled chat rows / emoji-grid cells.
     final inflated = await _loadInflatedTgsSticker('$slot:${ref.id}', path);
     if (!mounted || _loadedId != ref.id || inflated == null) return;
+    await _prewarmTgsComposition(
+      inflated,
+      () => mounted && _loadedId == ref.id,
+    );
+    if (!mounted || _loadedId != ref.id) return;
     setState(() => _bytes = inflated);
     widget.onReady?.call();
   }
@@ -115,6 +159,7 @@ class _AnimatedStickerViewState extends State<AnimatedStickerView> {
     if (bytes == null) return const SizedBox.expand();
     return Lottie.memory(
       bytes,
+      backgroundLoading: true,
       fit: BoxFit.contain,
       animate: widget.animate,
       repeat: widget.animate,

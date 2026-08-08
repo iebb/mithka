@@ -272,10 +272,13 @@ class _ViewerPageState extends State<_ViewerPage> {
     if (_file == null) {
       if (widget.ref.miniThumb != null) {
         return Center(
-          child: Image.memory(
-            widget.ref.miniThumb!,
-            cacheWidth: cacheWidth,
-            cacheHeight: cacheHeight,
+          child: Image(
+            image: ResizeImage(
+              MemoryImage(widget.ref.miniThumb!),
+              width: cacheWidth,
+              height: cacheHeight,
+              policy: ResizeImagePolicy.fit,
+            ),
           ),
         );
       }
@@ -288,11 +291,17 @@ class _ViewerPageState extends State<_ViewerPage> {
       minScale: 1,
       maxScale: 5,
       child: Center(
-        child: Image.file(
-          _file!,
+        // Both dimensions come from the screen, and the default `exact` policy
+        // decodes to literally that box: a 4:3 photo decoded ~3x the pixels
+        // BoxFit.contain paints, stretched. `fit` keeps the source aspect.
+        child: Image(
+          image: ResizeImage(
+            FileImage(_file!),
+            width: cacheWidth,
+            height: cacheHeight,
+            policy: ResizeImagePolicy.fit,
+          ),
           fit: BoxFit.contain,
-          cacheWidth: cacheWidth,
-          cacheHeight: cacheHeight,
         ),
       ),
     );

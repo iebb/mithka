@@ -52,6 +52,14 @@ class _TelegramRichTextState extends State<TelegramRichText> {
   final _recognizers = <GestureRecognizer>[];
   final Set<String> _revealedSpoilers = {};
 
+  List<InlineSpan>? _spanCache;
+  String? _spanCacheText;
+  List<MessageTextEntity>? _spanCacheEntities;
+  TextStyle? _spanCacheBaseStyle;
+  Color? _spanCacheLinkColor;
+  bool _spanCacheHashtagTap = false;
+  bool _spanCacheMentionTap = false;
+
   @override
   void dispose() {
     _disposeRecognizers();
@@ -59,6 +67,8 @@ class _TelegramRichTextState extends State<TelegramRichText> {
   }
 
   void _disposeRecognizers() {
+    // The cached spans hold these, so they die together.
+    _spanCache = null;
     for (final recognizer in _recognizers) {
       recognizer.dispose();
     }
@@ -67,7 +77,6 @@ class _TelegramRichTextState extends State<TelegramRichText> {
 
   @override
   Widget build(BuildContext context) {
-    _disposeRecognizers();
     final baseStyle =
         widget.style ??
         DefaultTextStyle.of(
@@ -75,6 +84,7 @@ class _TelegramRichTextState extends State<TelegramRichText> {
         ).style.copyWith(color: context.colors.textPrimary);
     final linkColor = widget.linkColor ?? context.colors.linkBlue;
     if (widget.quoteBackgroundColor != null && _hasBlockQuote()) {
+      _disposeRecognizers();
       return _richTextWithQuoteBlocks(context, baseStyle, linkColor);
     }
     return RichText(
@@ -82,13 +92,64 @@ class _TelegramRichTextState extends State<TelegramRichText> {
       overflow: widget.overflow,
       text: TextSpan(
         style: baseStyle,
-        children: _spans(context, baseStyle, linkColor),
+        children: _memoizedSpans(context, baseStyle, linkColor),
       ),
     );
   }
 
-  bool _hasBlockQuote() =>
-      _validEntities(widget.text.length).any((entity) => entity.isBlockQuote);
+  /// Every rebuild otherwise mints fresh `TapGestureRecognizer`s, and
+  /// `TextSpan.==` folds in the recognizer — so the paragraph never compares
+  /// equal and `RenderParagraph` lays the whole thing out again.
+  List<InlineSpan> _memoizedSpans(
+    BuildContext context,
+    TextStyle baseStyle,
+    Color linkColor,
+  ) {
+    final hashtagTap = widget.onHashtagTap != null;
+    final mentionTap = widget.onMentionTap != null;
+    // A code span resolves the monospace family and the inline-code fill from
+    // the ambient theme, which no key below can see — leave those uncached.
+    final cacheable = !widget.entities.any(_isCodeEntity);
+    if (cacheable &&
+        _spanCache != null &&
+        _spanCacheText == widget.text &&
+        identical(_spanCacheEntities, widget.entities) &&
+        _spanCacheBaseStyle == baseStyle &&
+        _spanCacheLinkColor == linkColor &&
+        _spanCacheHashtagTap == hashtagTap &&
+        _spanCacheMentionTap == mentionTap) {
+      return _spanCache!;
+    }
+    _disposeRecognizers();
+    final spans = _spans(context, baseStyle, linkColor);
+    if (!cacheable) return spans;
+    _spanCache = spans;
+    _spanCacheText = widget.text;
+    _spanCacheEntities = widget.entities;
+    _spanCacheBaseStyle = baseStyle;
+    _spanCacheLinkColor = linkColor;
+    _spanCacheHashtagTap = hashtagTap;
+    _spanCacheMentionTap = mentionTap;
+    return spans;
+  }
+
+  static bool _isCodeEntity(MessageTextEntity entity) =>
+      entity.type == 'textEntityTypeCode' ||
+      entity.type == 'textEntityTypePre' ||
+      entity.type == 'textEntityTypePreCode';
+
+  static bool _isEntityInRange(MessageTextEntity entity, int textLength) =>
+      entity.length > 0 &&
+      entity.offset >= 0 &&
+      entity.offset < textLength &&
+      entity.end <= textLength;
+
+  bool _hasBlockQuote() {
+    final textLength = widget.text.length;
+    return widget.entities.any(
+      (entity) => entity.isBlockQuote && _isEntityInRange(entity, textLength),
+    );
+  }
 
   Widget _richTextWithQuoteBlocks(
     BuildContext context,
@@ -242,13 +303,7 @@ class _TelegramRichTextState extends State<TelegramRichText> {
 
   List<MessageTextEntity> _validEntities(int textLength) {
     return widget.entities
-        .where(
-          (entity) =>
-              entity.length > 0 &&
-              entity.offset >= 0 &&
-              entity.offset < textLength &&
-              entity.end <= textLength,
-        )
+        .where((entity) => _isEntityInRange(entity, textLength))
         .toList()
       ..sort((a, b) {
         final start = a.offset.compareTo(b.offset);
@@ -267,7 +322,11 @@ class _TelegramRichTextState extends State<TelegramRichText> {
     if (spoilerKey != null && !_revealedSpoilers.contains(spoilerKey)) {
       final recognizer = TapGestureRecognizer()
         ..onTap = () {
-          if (mounted) setState(() => _revealedSpoilers.add(spoilerKey));
+          if (!mounted) return;
+          setState(() {
+            _revealedSpoilers.add(spoilerKey);
+            _spanCache = null;
+          });
         };
       _recognizers.add(recognizer);
       return [
@@ -302,14 +361,15 @@ class _TelegramRichTextState extends State<TelegramRichText> {
 
     final mentionUserId = _mentionUserId(effectiveActive);
     if (mentionUserId != null) {
-      final onTap = widget.onMentionTap;
-      if (onTap != null) {
-        final recognizer = TapGestureRecognizer()
-          ..onTap = () => onTap(mentionUserId, segment);
-        _recognizers.add(recognizer);
-        return [TextSpan(text: segment, style: style, recognizer: recognizer)];
+      if (widget.onMentionTap == null) {
+        return [TextSpan(text: segment, style: style)];
       }
-      return [TextSpan(text: segment, style: style)];
+      // Read through `widget` at tap time, so a memoized span still reaches the
+      // current callback.
+      final recognizer = TapGestureRecognizer()
+        ..onTap = () => widget.onMentionTap?.call(mentionUserId, segment);
+      _recognizers.add(recognizer);
+      return [TextSpan(text: segment, style: style, recognizer: recognizer)];
     }
 
     final target = _entityTapTarget(segment, effectiveActive);

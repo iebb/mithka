@@ -51,8 +51,7 @@ class _NetworkUsageViewState extends State<NetworkUsageView> {
     final confirmed = await confirmDialog(
       context,
       title: AppStrings.t(AppStringKeys.networkUsageResetNetworkStatistics),
-      message:
-          'Sent, received and call-duration counters will restart at zero.',
+      message: AppStrings.t(AppStringKeys.networkUsageResetMessage),
       confirmText: AppStrings.t(AppStringKeys.networkUsageReset),
       destructive: true,
     );
@@ -121,11 +120,15 @@ class _NetworkUsageViewState extends State<NetworkUsageView> {
                         padding: const EdgeInsets.all(18),
                         child: Row(
                           children: [
-                            _metric(HeroAppIcons.arrowUp, 'Sent', _bytes(sent)),
+                            _metric(
+                              HeroAppIcons.arrowUp,
+                              AppStrings.t(AppStringKeys.networkUsageSent),
+                              _bytes(sent),
+                            ),
                             Container(width: 1, height: 48, color: c.divider),
                             _metric(
                               HeroAppIcons.arrowDown,
-                              'Received',
+                              AppStrings.t(AppStringKeys.networkUsageReceived),
                               _bytes(received),
                             ),
                           ],
@@ -217,7 +220,7 @@ class _NetworkUsageViewState extends State<NetworkUsageView> {
     final totals = <String, (int, int)>{};
     for (final entry in _entries) {
       final type = entry.type == 'networkStatisticsEntryCall'
-          ? 'Calls'
+          ? AppStrings.t(AppStringKeys.networkUsageCalls)
           : _fileType(entry.obj('file_type')?.type);
       final old = totals[type] ?? (0, 0);
       totals[type] = (
@@ -253,23 +256,31 @@ class _NetworkUsageViewState extends State<NetworkUsageView> {
   }
 
   static String _networkName(String type) => switch (type) {
-    'networkTypeWiFi' => 'Wi-Fi',
-    'networkTypeMobile' => 'Mobile data',
-    'networkTypeMobileRoaming' => 'Roaming',
-    'networkTypeNone' => 'Offline',
-    _ => 'Other network',
+    'networkTypeWiFi' => AppStrings.t(AppStringKeys.networkUsageNetworkWiFi),
+    'networkTypeMobile' => AppStrings.t(
+      AppStringKeys.networkUsageNetworkMobileData,
+    ),
+    'networkTypeMobileRoaming' => AppStrings.t(
+      AppStringKeys.networkUsageNetworkRoaming,
+    ),
+    'networkTypeNone' => AppStrings.t(AppStringKeys.networkUsageNetworkOffline),
+    _ => AppStrings.t(AppStringKeys.networkUsageNetworkOther),
   };
 
   static String _fileType(String? type) => switch (type) {
-    'fileTypePhoto' => 'Photos',
-    'fileTypeVideo' => 'Videos',
-    'fileTypeVoiceNote' => 'Voice messages',
-    'fileTypeVideoNote' => 'Video messages',
-    'fileTypeAudio' => 'Music',
-    'fileTypeDocument' => 'Files',
-    'fileTypeAnimation' => 'GIFs',
-    'fileTypeStory' => 'Stories',
-    _ => 'Other',
+    'fileTypePhoto' => AppStrings.t(AppStringKeys.networkUsageFileTypePhotos),
+    'fileTypeVideo' => AppStrings.t(AppStringKeys.networkUsageFileTypeVideos),
+    'fileTypeVoiceNote' => AppStrings.t(
+      AppStringKeys.networkUsageFileTypeVoiceMessages,
+    ),
+    'fileTypeVideoNote' => AppStrings.t(
+      AppStringKeys.networkUsageFileTypeVideoMessages,
+    ),
+    'fileTypeAudio' => AppStrings.t(AppStringKeys.networkUsageFileTypeMusic),
+    'fileTypeDocument' => AppStrings.t(AppStringKeys.networkUsageFileTypeFiles),
+    'fileTypeAnimation' => AppStrings.t(AppStringKeys.networkUsageFileTypeGifs),
+    'fileTypeStory' => AppStrings.t(AppStringKeys.networkUsageFileTypeStories),
+    _ => AppStrings.t(AppStringKeys.networkUsageFileTypeOther),
   };
 
   static String _duration(int seconds) =>

@@ -68,6 +68,7 @@ class DesktopInlineSearchController extends ChangeNotifier {
   final DesktopMiniAppSearch _miniAppSearch;
   final _SearchViewModel _model = _SearchViewModel();
   Timer? _debounce;
+  Timer? _suggestDebounce;
   String _query = '';
   bool _panelVisible = false;
   bool _debouncing = false;
@@ -289,12 +290,28 @@ class DesktopInlineSearchController extends ChangeNotifier {
   }
 
   void _startSuggestions() {
+    _suggestDebounce?.cancel();
     final token = _activeToken;
     final runId = ++_suggestRunId;
     if (token == null) {
       _suggestions = const [];
       return;
     }
+    // Every keystroke inside an `in:`/`from:` token fans out into a search plus
+    // one round trip per candidate id, so coalesce it the way _runSearch is.
+    // An empty token is the affordance shown the moment `in:` is typed, and it
+    // has nothing to coalesce, so it stays immediate.
+    if (token.value.isEmpty) {
+      _fetchSuggestions(token, runId);
+      return;
+    }
+    _suggestDebounce = Timer(const Duration(milliseconds: 240), () {
+      if (_disposed || runId != _suggestRunId) return;
+      _fetchSuggestions(token, runId);
+    });
+  }
+
+  void _fetchSuggestions(ChatSearchActiveToken token, int runId) {
     unawaited(() async {
       final results = await _suggester.suggest(
         token,
@@ -453,6 +470,7 @@ class DesktopInlineSearchController extends ChangeNotifier {
     if (_disposed) return;
     _disposed = true;
     _debounce?.cancel();
+    _suggestDebounce?.cancel();
     _miniAppRunId += 1;
     _miniAppsLoading = false;
     _model.removeListener(_handleModelChanged);
@@ -1405,6 +1423,7 @@ class _SearchViewState extends State<SearchView> {
   final _vm = _SearchViewModel();
   late SearchTab _tab = widget.initialTab ?? SearchTab.chats;
   late String _query;
+  Timer? _searchDebounce;
 
   @override
   void initState() {
@@ -1422,10 +1441,26 @@ class _SearchViewState extends State<SearchView> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _controller.dispose();
     _focus.dispose();
     _vm.dispose();
     super.dispose();
+  }
+
+  /// A keystroke fans out into searchChats + searchContacts + searchPublicChats
+  /// and up to 60 per-result round trips each, so coalesce a burst of typing
+  /// the way the desktop controller already does.
+  void _scheduleSearch(String q) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 240), () {
+      if (mounted) _vm.search(q, _tab);
+    });
+  }
+
+  void _searchNow(String q, SearchTab tab) {
+    _searchDebounce?.cancel();
+    _vm.search(q, tab);
   }
 
   @override
@@ -1510,7 +1545,7 @@ class _SearchViewState extends State<SearchView> {
                               decoration: null,
                               onChanged: (q) {
                                 setState(() => _query = q);
-                                _vm.search(q, _tab);
+                                _scheduleSearch(q);
                               },
                             ),
                           ),
@@ -1519,7 +1554,7 @@ class _SearchViewState extends State<SearchView> {
                               onTap: () {
                                 _controller.clear();
                                 setState(() => _query = '');
-                                _vm.search('', _tab);
+                                _searchNow('', _tab);
                               },
                               child: AppIcon(
                                 HeroAppIcons.xmark,
@@ -1750,7 +1785,7 @@ class _SearchViewState extends State<SearchView> {
       onTap: () {
         if (_tab == tab) return;
         setState(() => _tab = tab);
-        _vm.search(_query, tab);
+        _searchNow(_query, tab);
       },
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -1942,6 +1977,16 @@ class _SearchViewModel extends ChangeNotifier {
     }
   }
 
+  Future<ChatSummary?> _fetchChat(int id) async {
+    try {
+      return TDParse.chat(
+        await TdClient.shared.query({'@type': 'getChat', 'chat_id': id}),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> _runChats(
     String trimmed,
     SearchTab tab,
@@ -1978,12 +2023,25 @@ class _SearchViewModel extends ChangeNotifier {
         'type_filter': null,
         'limit': resultLimit,
       });
-      for (final id in (local.int64Array('chat_ids') ?? const <int>[]).take(
-        resultLimit,
-      )) {
-        await addChat(id);
-      }
       if (!_isCurrent(tab, runId, trimmed)) return;
+      // The local ids always fit inside resultLimit, so every one of them would
+      // be fetched anyway — do it concurrently instead of paying up to 60
+      // sequential round trips before the first result can paint. Future.wait
+      // keeps index order, so the hit order is unchanged.
+      final localIds = <int>[
+        for (final id in (local.int64Array('chat_ids') ?? const <int>[]).take(
+          resultLimit,
+        ))
+          if (seenChats.add(id)) id,
+      ];
+      final localChats = await Future.wait(localIds.map(_fetchChat));
+      if (!_isCurrent(tab, runId, trimmed)) return;
+      for (final s in localChats) {
+        if (s == null || out.length >= resultLimit) continue;
+        out.add(_SearchHit.chat(s));
+        final uid = s.peerUserId;
+        if (uid != null) seenUsers.add(uid);
+      }
 
       try {
         final contacts = await TdClient.shared.query({
@@ -2232,15 +2290,18 @@ class _SearchViewModel extends ChangeNotifier {
     super.dispose();
   }
 
+  static final RegExp _handleLink = RegExp(
+    r'(?:https?://)?(?:t\.me|telegram\.me)/(@?[A-Za-z0-9_]+)',
+    caseSensitive: false,
+  );
+  static final RegExp _handleShape = RegExp(r'^[A-Za-z0-9_]{3,32}$');
+
   String? _usernameOf(String q) {
     var s = q.trim();
-    final link = RegExp(
-      r'(?:https?://)?(?:t\.me|telegram\.me)/(@?[A-Za-z0-9_]+)',
-      caseSensitive: false,
-    ).firstMatch(s);
+    final link = _handleLink.firstMatch(s);
     if (link != null) s = link.group(1)!;
     if (s.startsWith('@')) s = s.substring(1);
-    return RegExp(r'^[A-Za-z0-9_]{3,32}$').hasMatch(s) ? s : null;
+    return _handleShape.hasMatch(s) ? s : null;
   }
 }
 

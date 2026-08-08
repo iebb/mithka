@@ -26,7 +26,11 @@ void main() {
 
     await AppStrings.ensureLoaded(const Locale('de'));
 
-    expect(LocaleCatalogues.isReady, isTrue, reason: 'English is the fallback');
+    expect(
+      LocaleCatalogues.isLoaded('de'),
+      isTrue,
+      reason: 'the active catalogue is awaited',
+    );
     final german = LocaleCatalogues.forAppKey('de');
     expect(german, isNotNull);
     expect(german!.tag, 'de-DE');
@@ -76,6 +80,21 @@ void main() {
 
     expect(LocaleCatalogues.forAppKey('fr'), isNotNull);
     expect(LocaleCatalogues.forAppKey('ja'), isNotNull);
+  });
+
+  test('the English fallback lands without being awaited', () async {
+    await AppStrings.ensureLoaded(const Locale('ja'));
+
+    expect(
+      LocaleCatalogues.forAppKey('en'),
+      isNull,
+      reason: 'the fallback must not block the first frame',
+    );
+
+    // It was scheduled, so it arrives on its own within a few event loops.
+    for (var turn = 0; turn < 20 && !LocaleCatalogues.isLoaded('en'); turn++) {
+      await Future<void>.delayed(Duration.zero);
+    }
     expect(LocaleCatalogues.forAppKey('en'), isNotNull);
   });
 }

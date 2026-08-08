@@ -1025,9 +1025,11 @@ class _ChatViewSettingsPreviewState extends State<_ChatViewSettingsPreview> {
       text: '',
       date: 1785862260,
       senderId: 42,
-      senderName: 'Mira Chen',
+      senderName: AppStrings.t(AppStringKeys.appearancePreviewAlbumSenderName),
       senderRole: MemberRole.member,
-      senderTitle: 'Album Curator',
+      senderTitle: AppStrings.t(
+        AppStringKeys.appearancePreviewAlbumSenderTitle,
+      ),
       senderAccentColorId: 3,
       contentType: 'messagePhoto',
       mediaAlbumId: 91,
@@ -1043,12 +1045,14 @@ class _ChatViewSettingsPreviewState extends State<_ChatViewSettingsPreview> {
     ChatMessage(
       id: -9102,
       isOutgoing: false,
-      text: 'Two moments from the group album.',
+      text: AppStrings.t(AppStringKeys.appearancePreviewAlbumCaption),
       date: 1785862260,
       senderId: 42,
-      senderName: 'Mira Chen',
+      senderName: AppStrings.t(AppStringKeys.appearancePreviewAlbumSenderName),
       senderRole: MemberRole.member,
-      senderTitle: 'Album Curator',
+      senderTitle: AppStrings.t(
+        AppStringKeys.appearancePreviewAlbumSenderTitle,
+      ),
       senderAccentColorId: 3,
       contentType: 'messagePhoto',
       mediaAlbumId: 91,
@@ -1088,7 +1092,9 @@ class _ChatViewSettingsPreviewState extends State<_ChatViewSettingsPreview> {
                     ? ImageMediaAlbumBubble(
                         key: const ValueKey('chat-view-preview-album'),
                         messages: _albumMessages,
-                        peerTitle: 'Design Circle',
+                        peerTitle: AppStrings.t(
+                          AppStringKeys.appearancePreviewGroupTitle,
+                        ),
                         isGroup: true,
                         meName: 'You',
                         imageBuilder: _previewAlbumImage,
@@ -1102,7 +1108,9 @@ class _ChatViewSettingsPreviewState extends State<_ChatViewSettingsPreview> {
                                 'chat-view-preview-message-${message.id}',
                               ),
                               message: message,
-                              peerTitle: 'Design Circle',
+                              peerTitle: AppStrings.t(
+                                AppStringKeys.appearancePreviewGroupTitle,
+                              ),
                               isGroup: true,
                               meName: 'You',
                               onLongPress: _showQuickReactions,

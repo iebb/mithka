@@ -356,8 +356,12 @@ class _ProfilePhotoManagementViewState
 
   Widget _photoTile(ProfilePhotoEntry entry) {
     final badges = <Widget>[];
-    if (entry.id == _currentPhotoId) badges.add(_badge('Current'));
-    if (entry.id == _publicPhotoId) badges.add(_badge('Public'));
+    if (entry.id == _currentPhotoId) {
+      badges.add(_badge(AppStrings.t(AppStringKeys.profilePhotoBadgeCurrent)));
+    }
+    if (entry.id == _publicPhotoId) {
+      badges.add(_badge(AppStrings.t(AppStringKeys.profilePhotoBadgePublic)));
+    }
     return GestureDetector(
       onTap: () => _showActions(entry),
       onLongPress: () => _showActions(entry),

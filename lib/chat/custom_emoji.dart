@@ -213,6 +213,10 @@ class _CustomEmojiViewState extends State<CustomEmojiView> {
   Widget build(BuildContext context) {
     final s = CustomEmojiCenter.shared.get(widget.id);
     if (s == null) return SizedBox(width: widget.size, height: widget.size);
+    // The glyph box is square and tight, so the decode size is known here —
+    // handing it to TDImage keeps inline emoji off its LayoutBuilder path.
+    final cacheSize = (widget.size * MediaQuery.devicePixelRatioOf(context))
+        .ceil();
     // tgs → animate via Lottie. webm is a video Image.file can't decode, so use
     // its static thumbnail. webp/other → the sticker file (falls back to thumb).
     Widget child;
@@ -220,7 +224,13 @@ class _CustomEmojiViewState extends State<CustomEmojiView> {
       case CustomEmojiPresentation.staticThumbnail:
         // Status emoji can stay entirely on their static TDLib thumbnail when
         // animation is disabled, avoiding Lottie work and video decoders.
-        child = TDImage(photo: s.thumb!, cornerRadius: 0, fit: BoxFit.contain);
+        child = TDImage(
+          photo: s.thumb!,
+          cornerRadius: 0,
+          fit: BoxFit.contain,
+          cacheWidth: cacheSize,
+          cacheHeight: cacheSize,
+        );
         break;
       case CustomEmojiPresentation.tgs:
         // Inline emoji render at text size; 30 fps is indistinguishable there
@@ -239,7 +249,13 @@ class _CustomEmojiViewState extends State<CustomEmojiView> {
         if (img == null) {
           return SizedBox(width: widget.size, height: widget.size);
         }
-        child = TDImage(photo: img, cornerRadius: 0, fit: BoxFit.contain);
+        child = TDImage(
+          photo: img,
+          cornerRadius: 0,
+          fit: BoxFit.contain,
+          cacheWidth: cacheSize,
+          cacheHeight: cacheSize,
+        );
         break;
     }
     // Monochrome (needs_repainting) emoji are white glyphs — tint to the

@@ -97,12 +97,17 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
   NotificationController._();
   static final NotificationController shared = NotificationController._();
 
-  static const _androidChannel = AndroidNotificationChannel(
-    'messages',
-    'Messages',
-    description: 'Incoming Mithka messages',
-    importance: Importance.high,
-  );
+  // Built per call rather than held as a const: the channel name and
+  // description are shown in Android's own settings and follow the app locale.
+  static AndroidNotificationChannel get _androidChannel =>
+      AndroidNotificationChannel(
+        'messages',
+        AppStrings.t(AppStringKeys.notificationChannelMessagesName),
+        description: AppStrings.t(
+          AppStringKeys.notificationChannelMessagesDescription,
+        ),
+        importance: Importance.high,
+      );
   static const _notificationTapChannel = MethodChannel(
     'mithka/notification_tap',
   );
@@ -180,7 +185,7 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
       try {
         final initial = await _notificationTapChannel
             .invokeMapMethod<String, dynamic>('getInitialNotification');
-        if (initial != null) _openRemoteNotification(initial);
+        if (initial != null) await _openRemoteNotification(initial);
       } on PlatformException catch (error) {
         debugPrint('Initial notification tap lookup failed: $error');
       }
@@ -1112,12 +1117,47 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
 
   Future<dynamic> _handleNativeTap(MethodCall call) async {
     if (call.method != 'notificationTap') return;
-    _openRemoteNotification(call.arguments);
+    await _openRemoteNotification(call.arguments);
   }
 
-  void _openRemoteNotification(Object? userInfo) {
+  Future<void> _openRemoteNotification(Object? userInfo) async {
     final target = NotificationTarget.fromRemoteUserInfo(userInfo);
-    if (target != null) _openTarget(target);
+    if (target == null) return;
+    _openTarget(await _withAccountSlot(target));
+  }
+
+  /// Tags a remote target with the slot its account occupies.
+  ///
+  /// Telegram's push payload names the account by user id; the slot is
+  /// Mithka's own numbering and only resolvable here, where the client
+  /// registry lives. Without it the tap reaches navigation carrying a chat id
+  /// and no way to say which account it belongs to.
+  Future<NotificationTarget> _withAccountSlot(NotificationTarget target) async {
+    final userId = target.accountUserId;
+    if (target.accountSlot != null || userId == null) return target;
+    final slot = await _slotForAccountUserId(userId);
+    return slot == null ? target : target.withAccountSlot(slot);
+  }
+
+  Future<int?> _slotForAccountUserId(int userId) async {
+    for (final entry in _accountUserIdsByClient.entries) {
+      if (entry.value == userId) return _client.slotForClient(entry.key);
+    }
+    // The cache only fills as notifications are filtered, so a tap that wakes
+    // the app finds it empty. Ask each signed-in client who it is.
+    for (final clientId in _client.registeredClientIds.toList()) {
+      if (_accountUserIdsByClient.containsKey(clientId)) continue;
+      try {
+        final me = await _query({'@type': 'getMe'}, clientId);
+        final id = me.int64('id');
+        if (id == null) continue;
+        _accountUserIdsByClient[clientId] = id;
+        if (id == userId) return _client.slotForClient(clientId);
+      } catch (_) {
+        // An account that cannot answer cannot be the destination either.
+      }
+    }
+    return null;
   }
 
   void _openTarget(NotificationTarget target) {

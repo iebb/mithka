@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
 /// One locale's strings, loaded from `assets/l10n/<tag>.json`.
@@ -102,18 +104,44 @@ abstract final class LocaleCatalogues {
 
   static LocaleCatalogue? get fallback => _loaded[fallbackAppKey];
 
-  /// True once the English catalogue is available, which is the point at which
-  /// every key is guaranteed to resolve to real text.
-  static bool get isReady => _loaded.containsKey(fallbackAppKey);
+  /// True once at least one catalogue is available, which is the point at
+  /// which a key resolves to real text rather than to itself.
+  static bool get isReady => _loaded.isNotEmpty;
 
-  /// Loads [appKey] and the English fallback, if they are not already in
-  /// memory. Safe to call repeatedly and concurrently.
-  static Future<void> ensureLoaded(String appKey) async {
-    await Future.wait([
-      if (appKey != fallbackAppKey) _load(appKey),
-      _load(fallbackAppKey),
-    ]);
+  /// True once [appKey] itself is in memory.
+  static bool isLoaded(String appKey) => _loaded.containsKey(appKey);
+
+  /// Loads [appKey], and queues the English fallback for an idle moment.
+  ///
+  /// Only [appKey] is awaited. `check.py` and `l10n_completeness_test.dart`
+  /// both enforce that every locale declares the same keys as English, so the
+  /// active catalogue alone resolves every lookup and the fallback is a net
+  /// for a broken invariant, not part of the normal path. Awaiting it here
+  /// doubled the JSON the first frame waits on for seven of the eight locales
+  /// — and starting it right away merely moved that 180-220 KB decode onto an
+  /// arbitrary frame in the first seconds of the session, so it waits for a gap
+  /// in the scheduler instead.
+  ///
+  /// Safe to call repeatedly and concurrently.
+  static Future<void> ensureLoaded(String appKey) {
+    if (appKey == fallbackAppKey) return _load(appKey);
+    final active = _load(appKey);
+    unawaited(
+      SchedulerBinding.instance.scheduleTask(
+        () => _load(fallbackAppKey),
+        Priority.idle,
+      ),
+    );
+    return active;
   }
+
+  /// Awaits the English fallback as well. Tests and tooling that assert on
+  /// fallback behaviour need it present rather than merely scheduled.
+  @visibleForTesting
+  static Future<void> ensureLoadedWithFallback(String appKey) => Future.wait([
+    if (appKey != fallbackAppKey) _load(appKey),
+    _load(fallbackAppKey),
+  ]);
 
   static Future<void> _load(String appKey) {
     if (_loaded.containsKey(appKey)) return SynchronousFuture(null);

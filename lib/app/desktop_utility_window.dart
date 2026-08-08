@@ -43,9 +43,11 @@ import '../settings/ai_settings_controller.dart';
 import '../settings/app_icon_controller.dart';
 import '../settings/auto_download_media_controller.dart';
 import '../settings/blocked_user_service.dart';
+import '../settings/business_settings_view.dart';
 import '../settings/country_message_filter.dart';
 import '../settings/desktop_hotkey_controller.dart';
 import '../settings/developer_mode_controller.dart';
+import '../settings/edit_profile_view.dart';
 import '../settings/keyword_blocker.dart';
 import '../settings/rich_message_relay_config.dart';
 import '../settings/safety_notice_controller.dart';
@@ -66,8 +68,6 @@ import 'desktop_utility_window_stub.dart'
     if (dart.library.io) 'desktop_utility_window_io.dart'
     as implementation;
 import 'global_video_split_host.dart';
-import '../settings/edit_profile_view.dart';
-import '../settings/business_settings_view.dart';
 
 export 'desktop_utility_window_models.dart';
 

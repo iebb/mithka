@@ -116,8 +116,17 @@ bool shouldRebaseParkedShortTranscriptPivot({
   required bool latestArmIsShort,
   required bool hasMessageOlderThanPivot,
   required bool followingLatest,
+  bool hasExplicitMessageTarget = false,
 }) {
-  if (!followingLatest || pivotCutoffMessageId == null) return false;
+  // An explicit message target (for example, "open original" from the
+  // shared-files view) owns the initial viewport. Re-basing a short arm in
+  // that case would immediately discard the target and return to the latest
+  // messages before the user can inspect it.
+  if (hasExplicitMessageTarget ||
+      !followingLatest ||
+      pivotCutoffMessageId == null) {
+    return false;
+  }
   return latestArmIsShort && hasMessageOlderThanPivot;
 }
 

@@ -3,10 +3,11 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../components/photo_avatar.dart';
+import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 import '../theme/message_bubble_background.dart';
-import 'stretchable_message_bubble_background.dart';
 import 'chat_wallpaper.dart';
+import 'stretchable_message_bubble_background.dart';
 
 class MessageBubbleChatPreview extends StatelessWidget {
   const MessageBubbleChatPreview({
@@ -90,8 +91,9 @@ class MessageBubbleChatPreview extends StatelessWidget {
                         showSurface: showIncomingSurface,
                         surfaceColor: incomingSurfaceColor,
                         textColor: incomingTextColor,
-                        text:
-                            'Repository bubble preview with a longer message.',
+                        text: AppStrings.t(
+                          AppStringKeys.messageBubblePreviewRepositoryLong,
+                        ),
                       ),
                     ),
                   ],
@@ -106,7 +108,9 @@ class MessageBubbleChatPreview extends StatelessWidget {
                     showSurface: showOutgoingSurface,
                     surfaceColor: outgoingSurfaceColor,
                     textColor: outgoingTextColor,
-                    text: 'The center stretches with longer messages.',
+                    text: AppStrings.t(
+                      AppStringKeys.messageBubblePreviewCenterStretch,
+                    ),
                   ),
                 ),
               ],

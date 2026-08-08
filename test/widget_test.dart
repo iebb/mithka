@@ -4276,6 +4276,71 @@ void main() {
         }
       }
     });
+
+    test('a tall album is scaled as a unit into the height cap', () {
+      const items = [
+        MediaAlbumItem(width: 900, height: 1600),
+        MediaAlbumItem(width: 768, height: 1024),
+        MediaAlbumItem(width: 900, height: 1600),
+        MediaAlbumItem(width: 768, height: 1024),
+        MediaAlbumItem(width: 900, height: 1600),
+        MediaAlbumItem(width: 768, height: 1024),
+      ];
+      final uncapped = buildTelegramMediaAlbumLayout(
+        items: items,
+        maxWidth: 430,
+      );
+      final capped = buildTelegramMediaAlbumLayout(
+        items: items,
+        maxWidth: 430,
+        maxHeight: 320,
+      );
+
+      expect(uncapped.height, greaterThan(320));
+      expect(capped.height, closeTo(320, 0.01));
+      expect(capped.width, lessThan(uncapped.width));
+      expect(capped.tiles, hasLength(uncapped.tiles.length));
+      // Scaling the album as a unit keeps every tile's aspect ratio.
+      for (var i = 0; i < capped.tiles.length; i++) {
+        expect(
+          capped.tiles[i].width / capped.tiles[i].height,
+          closeTo(uncapped.tiles[i].width / uncapped.tiles[i].height, 0.001),
+        );
+        expect(capped.tiles[i].right, lessThanOrEqualTo(capped.width + 0.01));
+        expect(capped.tiles[i].bottom, lessThanOrEqualTo(capped.height + 0.01));
+      }
+    });
+
+    test('a short album keeps the layout it already had', () {
+      const items = [
+        MediaAlbumItem(width: 1600, height: 900),
+        MediaAlbumItem(width: 1600, height: 900),
+      ];
+      final uncapped = buildTelegramMediaAlbumLayout(
+        items: items,
+        maxWidth: 430,
+      );
+      final capped = buildTelegramMediaAlbumLayout(
+        items: items,
+        maxWidth: 430,
+        maxHeight: 320,
+      );
+
+      expect(uncapped.height, lessThanOrEqualTo(320));
+      expect(capped.height, uncapped.height);
+      expect(capped.width, uncapped.width);
+    });
+
+    test('a single portrait album obeys the height cap', () {
+      final layout = buildTelegramMediaAlbumLayout(
+        items: const [MediaAlbumItem(width: 1080, height: 1920)],
+        maxWidth: 430,
+        maxHeight: 320,
+      );
+
+      expect(layout.height, closeTo(320, 0.01));
+      expect(layout.width, closeTo(180, 0.01));
+    });
   });
 
   group('ThemeController archived chats', () {

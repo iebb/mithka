@@ -4,6 +4,7 @@ import android.content.ClipboardManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.ClipDescription
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.MediaCodec
 import android.media.MediaExtractor
@@ -13,6 +14,7 @@ import android.media.MediaMuxer
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.OpenableColumns
 import android.provider.Settings
 import android.util.Log
 import android.view.DragEvent
@@ -33,7 +35,9 @@ import io.flutter.plugin.common.MethodChannel
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
+import java.io.IOException
 import java.nio.ByteBuffer
+import java.util.LinkedHashSet
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
 
@@ -43,6 +47,8 @@ class MainActivity : FlutterFragmentActivity() {
     private var accountBackup: AccountBackupPlugin? = null
     private var mithkaPro: MithkaProPlugin? = null
     private var mediaDropChannel: MethodChannel? = null
+    private var shareIntentChannel: MethodChannel? = null
+    private var pendingSharePayload: Map<String, Any?>? = null
     private var acceptingImageDrop = false
     private val translators = mutableMapOf<String, Translator>()
     private val languageIdentifierDelegate = lazy<LanguageIdentifier> {
@@ -54,10 +60,12 @@ class MainActivity : FlutterFragmentActivity() {
         // Let Flutter paint under the status bar and gesture/nav bar.
         WindowCompat.setDecorFitsSystemWindows(window, false)
         super.onCreate(savedInstanceState)
+        pendingSharePayload = parseIncomingShareIntent(intent)
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         registerPlugins(flutterEngine)
+        configureShareIntentChannel(flutterEngine)
         telegramPasskeys = TelegramPasskeyPlugin(
             this,
             flutterEngine.dartExecutor.binaryMessenger,
@@ -309,6 +317,173 @@ class MainActivity : FlutterFragmentActivity() {
             "mithka/media_drop",
         )
         window.decorView.setOnDragListener { _, event -> handleMediaDragEvent(event) }
+    }
+
+    /**
+     * Exposes Android's inbound share contract to Dart without handing Dart a
+     * provider URI that may stop being readable after the activity is resumed.
+     * Files are copied into the app cache on a worker thread and are deleted by
+     * Dart once the send flow finishes or is cancelled.
+     */
+    private fun configureShareIntentChannel(flutterEngine: FlutterEngine) {
+        shareIntentChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "mithka/share_intent",
+        )
+        shareIntentChannel?.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "initial" -> {
+                    val payload = pendingSharePayload
+                    pendingSharePayload = null
+                    result.success(payload)
+                }
+                "copyFiles" -> {
+                    val uris = (call.arguments as? List<*>)
+                        ?.filterIsInstance<String>()
+                        ?.filter { it.isNotBlank() }
+                        ?.take(MAX_SHARED_FILES)
+                        ?: emptyList()
+                    Thread {
+                        val files = copySharedFiles(uris)
+                        runOnUiThread { result.success(files) }
+                    }.start()
+                }
+                "deleteFiles" -> {
+                    val paths = (call.arguments as? List<*>)
+                        ?.filterIsInstance<String>()
+                        ?: emptyList()
+                    deleteSharedFiles(paths)
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val payload = parseIncomingShareIntent(intent) ?: return
+        // Keep a copy for the initial() handshake as well. The payload id lets
+        // Dart de-duplicate it if both paths race during a warm start.
+        pendingSharePayload = payload
+        runOnUiThread {
+            shareIntentChannel?.invokeMethod("share", payload)
+        }
+    }
+
+    private fun parseIncomingShareIntent(intent: Intent?): Map<String, Any?>? {
+        val action = intent?.action ?: return null
+        if (action != Intent.ACTION_SEND && action != Intent.ACTION_SEND_MULTIPLE) {
+            return null
+        }
+        val uris = LinkedHashSet<Uri>()
+        intent.data
+            ?.takeIf { it.scheme == "content" || it.scheme == "file" }
+            ?.let(uris::add)
+        intent.clipData?.let { clip ->
+            for (index in 0 until minOf(clip.itemCount, MAX_SHARED_FILES)) {
+                clip.getItemAt(index).uri?.let(uris::add)
+            }
+        }
+        when (val stream = intent.extras?.get(Intent.EXTRA_STREAM)) {
+            is Uri -> uris.add(stream)
+            is ArrayList<*> -> stream.filterIsInstance<Uri>().forEach(uris::add)
+        }
+        val text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)
+            ?.toString()
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+        if (text == null && uris.isEmpty()) return null
+        return mapOf(
+            "id" to "share-${System.nanoTime()}",
+            "text" to text,
+            "mimeType" to intent.type,
+            "uris" to uris.take(MAX_SHARED_FILES).map(Uri::toString),
+        )
+    }
+
+    private fun copySharedFiles(uriStrings: List<String>): List<Map<String, Any?>> {
+        val copied = mutableListOf<Map<String, Any?>>()
+        for (uriString in uriStrings) {
+            val uri = runCatching { Uri.parse(uriString) }.getOrNull() ?: continue
+            val mimeType = contentResolver.getType(uri)
+                ?: "application/octet-stream"
+            val displayName = contentResolver.query(
+                uri,
+                arrayOf(OpenableColumns.DISPLAY_NAME),
+                null,
+                null,
+                null,
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            }
+            val fileName = sharedFileName(displayName, mimeType)
+            val destination = File(
+                cacheDir,
+                "mithka-share-${System.nanoTime()}-$fileName",
+            )
+            try {
+                val input = contentResolver.openInputStream(uri)
+                if (input == null) continue
+                input.use {
+                    destination.outputStream().use { output ->
+                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                        var copiedBytes = 0L
+                        while (true) {
+                            val count = it.read(buffer)
+                            if (count < 0) break
+                            copiedBytes += count
+                            if (copiedBytes > MAX_SHARED_FILE_BYTES) {
+                                throw IOException("Shared file is too large")
+                            }
+                            output.write(buffer, 0, count)
+                        }
+                    }
+                }
+                copied += mapOf(
+                    "path" to destination.absolutePath,
+                    "fileName" to fileName,
+                    "mimeType" to mimeType,
+                )
+            } catch (error: Exception) {
+                destination.delete()
+                Log.w("Mithka", "Unable to copy shared file", error)
+            }
+        }
+        return copied
+    }
+
+    private fun sharedFileName(displayName: String?, mimeType: String): String {
+        val raw = displayName
+            ?.substringAfterLast('/')
+            ?.replace(Regex("[^A-Za-z0-9._ -]"), "_")
+            ?.trim()
+            ?.take(120)
+            ?.takeIf { it.isNotEmpty() }
+            ?: "shared-file"
+        if (raw.contains('.')) return raw
+        val extension = MimeTypeMap.getSingleton()
+            .getExtensionFromMimeType(mimeType)
+            ?.replace(Regex("[^A-Za-z0-9]"), "")
+            ?.take(8)
+            ?.takeIf { it.isNotEmpty() }
+        return if (extension == null) raw else "$raw.$extension"
+    }
+
+    private fun deleteSharedFiles(paths: List<String>) {
+        val cacheRoot = runCatching { cacheDir.canonicalFile }.getOrNull() ?: return
+        for (path in paths) {
+            val file = runCatching { File(path).canonicalFile }.getOrNull() ?: continue
+            if (file.parentFile == cacheRoot && file.name.startsWith("mithka-share-")) {
+                file.delete()
+            }
+        }
+    }
+
+    companion object {
+        private const val MAX_SHARED_FILES = 10
+        private const val MAX_SHARED_FILE_BYTES = 512L * 1024L * 1024L
     }
 
     private fun handleMediaDragEvent(event: DragEvent): Boolean {

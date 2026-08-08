@@ -222,21 +222,33 @@ class _UnreadBadgeState extends State<UnreadBadge> {
     );
   }
 
+  // The badge width needs a text measurement, and every unread row asks for one
+  // on every rebuild. The label set is tiny ('1'..'99+') and the painter does no
+  // scaling, so the layout result is bit-identical per (label, direction).
+  static final Map<(String, TextDirection), Size> _sizeCache = {};
+
   Size _visualSize(BuildContext context, String label) {
+    final key = (label, Directionality.of(context));
+    final cached = _sizeCache[key];
+    if (cached != null) return cached;
     const style = TextStyle(
       fontSize: AppTextSize.caption,
       fontWeight: AppTextWeight.semibold,
     );
     final painter = TextPainter(
       text: TextSpan(text: label, style: style),
-      textDirection: Directionality.of(context),
+      textDirection: key.$2,
       maxLines: 1,
     )..layout();
     final horizontalPadding = label.length > 1 ? (AppSpacing.xs + 1) * 2 : 0.0;
-    return Size(
+    final size = Size(
       math.max(AppMetric.unreadBadgeMin, painter.width + horizontalPadding),
       AppMetric.unreadBadgeMin,
     );
+    painter.dispose();
+    if (_sizeCache.length >= 256) _sizeCache.clear();
+    _sizeCache[key] = size;
+    return size;
   }
 }
 
@@ -1051,16 +1063,19 @@ class _AppActivityIndicatorState extends State<AppActivityIndicator>
   @override
   Widget build(BuildContext context) => Semantics(
     label: AppStrings.t(AppStringKeys.topicChatLoading),
-    child: AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) => Transform.rotate(
-        angle: _controller.value * math.pi * 2,
-        child: child,
-      ),
-      child: AppIcon(
-        HeroAppIcons.arrowsRotate,
-        size: widget.size,
-        color: widget.color ?? context.colors.linkBlue,
+    // Own layer, or the 60 Hz spin repaints whatever list or button hosts it.
+    child: RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) => Transform.rotate(
+          angle: _controller.value * math.pi * 2,
+          child: child,
+        ),
+        child: AppIcon(
+          HeroAppIcons.arrowsRotate,
+          size: widget.size,
+          color: widget.color ?? context.colors.linkBlue,
+        ),
       ),
     ),
   );

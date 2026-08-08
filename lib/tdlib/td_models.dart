@@ -3886,11 +3886,24 @@ abstract final class TDParse {
     return width * height;
   }
 
+  /// MemoryImage's cache key is the byte list's identity, so a fresh decode per
+  /// parse re-decodes the same thumbnail and burns an ImageCache slot that then
+  /// evicts a genuinely expensive photo. Same base64 in, same instance out.
+  static final Map<String, Uint8List> _miniThumbs = {};
+  static const _maxMiniThumbs = 128;
+
   static Uint8List? decodeMiniThumb(Map<String, dynamic>? mini) {
     final b64 = mini?.str('data');
     if (b64 == null) return null;
+    final interned = _miniThumbs[b64];
+    if (interned != null) return interned;
     try {
-      return base64Decode(b64);
+      final bytes = base64Decode(b64);
+      if (_miniThumbs.length >= _maxMiniThumbs) {
+        _miniThumbs.remove(_miniThumbs.keys.first);
+      }
+      _miniThumbs[b64] = bytes;
+      return bytes;
     } catch (_) {
       return null;
     }

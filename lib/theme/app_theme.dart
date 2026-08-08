@@ -84,7 +84,9 @@ extension AppTextWeightContext on BuildContext {
   FontWeight appFontWeight(FontWeight weight) =>
       AppTextWeight.forSystemBoldText(
         weight,
-        boldText: MediaQuery.of(this).boldText,
+        // Aspect-scoped: MediaQuery.of would rebuild every caller on each
+        // keyboard-inset and window-resize frame to read one bool.
+        boldText: MediaQuery.boldTextOf(this),
       );
 }
 
@@ -585,6 +587,69 @@ class AppColors extends ThemeExtension<AppColors> {
       )!,
     );
   }
+
+  // A cloud theme rebuilds its palette on every read, so without value equality
+  // two byte-identical palettes compare unequal, ThemeData.== fails on its
+  // extensions map, and every `context.colors` dependent in the tree rebuilds.
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is AppColors &&
+        other.background == background &&
+        other.pinnedRow == pinnedRow &&
+        other.listHeaderTint == listHeaderTint &&
+        other.card == card &&
+        other.navBar == navBar &&
+        other.groupedBackground == groupedBackground &&
+        other.chatBackground == chatBackground &&
+        other.searchFill == searchFill &&
+        other.inputBarBackground == inputBarBackground &&
+        other.panelBackground == panelBackground &&
+        other.bubbleIncoming == bubbleIncoming &&
+        other.bubbleIncomingText == bubbleIncomingText &&
+        other.bubbleOutgoingText == bubbleOutgoingText &&
+        other.textPrimary == textPrimary &&
+        other.textSecondary == textSecondary &&
+        other.textTertiary == textTertiary &&
+        other.divider == divider &&
+        other.linkBlue == linkBlue &&
+        other.onAccent == onAccent &&
+        other.dialogButton == dialogButton &&
+        other.dialogText == dialogText &&
+        other.badgeBackground == badgeBackground &&
+        other.badgeText == badgeText &&
+        other.accentButton == accentButton &&
+        other.accentButtonText == accentButtonText;
+  }
+
+  @override
+  int get hashCode => Object.hashAll([
+    background,
+    pinnedRow,
+    listHeaderTint,
+    card,
+    navBar,
+    groupedBackground,
+    chatBackground,
+    searchFill,
+    inputBarBackground,
+    panelBackground,
+    bubbleIncoming,
+    bubbleIncomingText,
+    bubbleOutgoingText,
+    textPrimary,
+    textSecondary,
+    textTertiary,
+    divider,
+    linkBlue,
+    onAccent,
+    dialogButton,
+    dialogText,
+    badgeBackground,
+    badgeText,
+    accentButton,
+    accentButtonText,
+  ]);
 }
 
 /// Returns whichever neutral text color has the stronger WCAG contrast.

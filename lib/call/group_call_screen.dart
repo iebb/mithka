@@ -83,11 +83,16 @@ class _GroupCallScreenState extends State<GroupCallScreen> {
       fit: StackFit.expand,
       children: [
         if (photo != null)
-          ImageFiltered(
-            imageFilter: ImageFilter.blur(sigmaX: 42, sigmaY: 42),
-            child: Transform.scale(
-              scale: 1.18,
-              child: TDImage(photo: photo, cornerRadius: 0),
+          // Boundary outside the filter: the 1 Hz duration tick repaints this
+          // screen, and without it the full-viewport gaussian is rastered
+          // again every second instead of being re-composited.
+          RepaintBoundary(
+            child: ImageFiltered(
+              imageFilter: ImageFilter.blur(sigmaX: 42, sigmaY: 42),
+              child: Transform.scale(
+                scale: 1.18,
+                child: TDImage(photo: photo, cornerRadius: 0),
+              ),
             ),
           )
         else

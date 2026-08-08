@@ -1087,8 +1087,9 @@ class _ChatListViewState extends State<ChatListView>
       final renderBox = ctx.findRenderObject() as RenderBox?;
       if (renderBox == null) return;
 
+      // Scrollable.of asserts rather than returning null, so the row is either
+      // inside a scrollable or this is a programming error worth surfacing.
       final scrollableState = Scrollable.of(ctx);
-      if (scrollableState == null) return;
       final viewportBox =
           scrollableState.context.findRenderObject() as RenderBox?;
       if (viewportBox == null) return;
@@ -2005,17 +2006,17 @@ class _ChatListViewState extends State<ChatListView>
         child: child,
         builder: (context, child) {
           final progress = _folderTransition.value;
-          return Opacity(
-            opacity: 0.78 + 0.22 * progress,
-            child: Transform.translate(
-              offset: Offset(
-                _folderTransitionDirection *
-                    _folderTransitionDistance *
-                    (1 - progress),
-                0,
-              ),
-              child: child,
+          // Slide only: a fractional opacity here saveLayers the whole list
+          // every frame of the switch, and the fade it bought was imperceptible
+          // next to the 22px travel.
+          return Transform.translate(
+            offset: Offset(
+              _folderTransitionDirection *
+                  _folderTransitionDistance *
+                  (1 - progress),
+              0,
             ),
+            child: child,
           );
         },
       ),
@@ -3351,44 +3352,49 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
           : (details) => _settle(details.primaryVelocity ?? 0),
       child: widget.child,
     );
+    // At rest the row covers the blocks completely, so building them costs one
+    // text layout + one paint per action on every row of every list rebuild.
+    final actionsRevealed = _offset != 0 || widget.openRowId == widget.rowId;
     return ClipRect(
       child: Stack(
         children: [
           // Revealed action blocks behind the row.
           Positioned.fill(
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: SizedBox(
-                width: _totalWidth,
-                child: Row(
-                  children: [
-                    for (final item in widget.actions)
-                      GestureDetector(
-                        onTap: () {
-                          item.onTap();
-                          setState(() => _offset = 0);
-                          if (widget.openRowId == widget.rowId) {
-                            widget.onOpenChanged(null);
-                          }
-                        },
-                        child: Container(
-                          width: _buttonWidth,
-                          color: item.color,
-                          alignment: Alignment.center,
-                          child: Text(
-                            item.title.l10n(context),
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontSize: AppTextSize.body,
-                              color: Colors.white,
+            child: !actionsRevealed
+                ? const SizedBox.shrink()
+                : Align(
+                    alignment: Alignment.centerRight,
+                    child: SizedBox(
+                      width: _totalWidth,
+                      child: Row(
+                        children: [
+                          for (final item in widget.actions)
+                            GestureDetector(
+                              onTap: () {
+                                item.onTap();
+                                setState(() => _offset = 0);
+                                if (widget.openRowId == widget.rowId) {
+                                  widget.onOpenChanged(null);
+                                }
+                              },
+                              child: Container(
+                                width: _buttonWidth,
+                                color: item.color,
+                                alignment: Alignment.center,
+                                child: Text(
+                                  item.title.l10n(context),
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    fontSize: AppTextSize.body,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
+                        ],
                       ),
-                  ],
-                ),
-              ),
-            ),
+                    ),
+                  ),
           ),
           // The row, sliding left to uncover the blocks.
           Transform.translate(

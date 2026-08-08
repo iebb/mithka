@@ -75,6 +75,7 @@
             android:exported="true"
             android:launchMode="singleTop"
             android:taskAffinity=""
+            android:grantUriPermissions="true"
             android:theme="@style/LaunchTheme"
             android:screenOrientation="fullUser"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
@@ -99,6 +100,19 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="mk"/>
                 <data android:scheme="mithka"/>
+            </intent-filter>
+            <!-- Receive text and files shared from other Android apps. The
+                 payload is copied into Mithka's private cache before it is
+                 shown in the existing chat picker/composer flow. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
             </intent-filter>
         </activity>
         <activity-alias

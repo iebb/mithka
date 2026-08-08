@@ -252,17 +252,22 @@ class AppPerformanceController extends ChangeNotifier
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final foregrounded = state == AppLifecycleState.resumed;
-    if (_foregrounded == foregrounded) return;
-    _foregrounded = foregrounded;
-    if (foregrounded) {
-      if (_profilingEnabled) _startSampling();
-      return;
+    if (_foregrounded != foregrounded) {
+      _foregrounded = foregrounded;
+      if (foregrounded) {
+        if (_profilingEnabled) _startSampling();
+      } else {
+        _stopSampling();
+      }
     }
-
-    _stopSampling();
     // Keep live images needed by mounted widgets, but release completed cached
-    // images while the app is in the background.
-    _imageCache.clear();
+    // images once the app is actually backgrounded. `inactive` is the app
+    // switcher, Control Center or a system alert — dropping the cache there
+    // costs a re-decode of every off-screen thumbnail for a glance away.
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _imageCache.clear();
+    }
   }
 
   @override

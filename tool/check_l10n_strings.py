@@ -14,18 +14,37 @@ ROOT = Path(__file__).resolve().parents[1]
 RANDOM_L10N_KEY = re.compile(r"^[A-Za-z][A-Za-z0-9]*Text\d{3}[A-Fa-f0-9]{5,6}$")
 COUNTRY_NAME_L10N_KEY = re.compile(r"^country(?!Picker)(?![A-Z]{2}$)[A-Z][A-Za-z0-9]*$")
 VISIBLE_NAMED_ARGS = {
+    "actionLabel",
+    "barrierLabel",
+    "cancelLabel",
     "cancelText",
+    "caption",
+    "channelDescription",
+    "confirmLabel",
     "confirmText",
+    "description",
+    "emptyError",
+    "errorText",
     "helperText",
+    "hint",
     "hintText",
     "label",
     "labelText",
+    "linkLabel",
+    "message",
+    "note",
     "placeholder",
     "semanticLabel",
     "submitText",
+    "subtitle",
     "title",
     "tooltip",
     "value",
+}
+NON_UI_CALLS = {
+    "AiFunctionToolDefinition",
+    "PlatformException",
+    "UnreadChatSummaryFailureCause",
 }
 ALLOWED_VISIBLE_VALUES = {
     "",
@@ -103,6 +122,21 @@ def line_for(text: str, offset: int) -> int:
     return text.count("\n", 0, offset) + 1
 
 
+def in_non_ui_call(text: str, offset: int) -> bool:
+    # A named argument only counts as copy when the surrounding call renders it.
+    # These three carry machine-facing text: an LLM tool schema, and the two
+    # diagnostic payloads the summary sheet prints under "technical details".
+    prefix = text[max(0, offset - 2000) : offset]
+    opened = prefix.rfind("(")
+    while opened >= 0:
+        head = prefix[:opened]
+        name = re.search(r"([A-Za-z_][A-Za-z0-9_]*)\s*$", head)
+        if name and name.group(1) in NON_UI_CALLS:
+            return prefix.count("(", opened) > prefix.count(")", opened)
+        opened = prefix.rfind("(", 0, opened)
+    return False
+
+
 def is_visible_ui_literal(text: str, offset: int) -> bool:
     prefix = text[max(0, offset - 240) : offset]
     if re.search(r"\bText\s*\(\s*$", prefix):
@@ -110,7 +144,9 @@ def is_visible_ui_literal(text: str, offset: int) -> bool:
     if re.search(r"\bshowToast\s*\(\s*[^,\n]+,\s*$", prefix):
         return True
     named_arg = re.search(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*:\s*$", prefix)
-    return named_arg is not None and named_arg.group(1) in VISIBLE_NAMED_ARGS
+    if named_arg is None or named_arg.group(1) not in VISIBLE_NAMED_ARGS:
+        return False
+    return not in_non_ui_call(text, offset)
 
 
 def is_nonlocalized_token(value: str) -> bool:
@@ -126,6 +162,8 @@ def is_nonlocalized_token(value: str) -> bool:
         "",
         value,
     )
+    # `\n` and friends are two source characters; the `n` is not copy.
+    visible_value = re.sub(r"\\[nrtvbf0]|\\u\{?[0-9A-Fa-f]+\}?", "", visible_value)
     semantic_value = visible_value.replace("x", "").replace("X", "")
     if "$" in value and not any(ch.isalpha() for ch in semantic_value):
         return True

@@ -314,9 +314,11 @@ class _DesktopUtilityMainBridge with WindowListener {
   final Map<int, DesktopUtilityWindowArguments> _argumentsByWindow = {};
   final Map<int, int> _clientIdByWindow = {};
   final Set<int> _subscribedWindows = {};
+  final Map<int, List<Map<String, dynamic>>> _pendingUpdatesByWindow = {};
   StreamSubscription<Map<String, dynamic>>? _tdUpdates;
   Future<void> Function()? _onSettingsChanged;
   int? Function(int accountSlot)? _accountUserIdForSlot;
+  Timer? _pendingUpdateFlush;
   Timer? _presentationChangedDebounce;
   bool _attached = false;
 
@@ -355,6 +357,9 @@ class _DesktopUtilityMainBridge with WindowListener {
     );
     unawaited(_tdUpdates?.cancel());
     _tdUpdates = null;
+    _pendingUpdateFlush?.cancel();
+    _pendingUpdateFlush = null;
+    _pendingUpdatesByWindow.clear();
     _presentationChangedDebounce?.cancel();
     _presentationChangedDebounce = null;
     _argumentsByWindow.clear();
@@ -671,6 +676,8 @@ class _DesktopUtilityMainBridge with WindowListener {
   }
 
   void _handleTdUpdate(Map<String, dynamic> source) {
+    // No popped-out window is the common case; do not pay the sanitize copy.
+    if (_subscribedWindows.isEmpty) return;
     final clientId = source.integer('@client_id');
     if (clientId == null) return;
     if (TdClient.shared.slotForClient(clientId) == null) return;
@@ -684,16 +691,61 @@ class _DesktopUtilityMainBridge with WindowListener {
         _rejectStaleWindow(entry.key);
         continue;
       }
-      unawaited(_pushUpdate(entry.key, update));
+      _enqueueUpdate(entry.key, update);
     }
   }
 
-  Future<void> _pushUpdate(int windowId, Map<String, dynamic> update) async {
+  /// Buffers one frame's worth of updates per window.
+  ///
+  /// Every push is a StandardMessageCodec encode of the whole nested update
+  /// plus a platform-thread hop, and a parallel download burst emits hundreds
+  /// of `updateFile` per second — one hop per frame instead of one per update.
+  void _enqueueUpdate(int windowId, Map<String, dynamic> update) {
+    final pending = _pendingUpdatesByWindow.putIfAbsent(
+      windowId,
+      () => <Map<String, dynamic>>[],
+    );
+    final fileId = _progressFileId(update);
+    if (fileId != null &&
+        pending.isNotEmpty &&
+        _progressFileId(pending.last) == fileId) {
+      // updateFile is pure progress state, so a run of them for one file can
+      // collapse to the last without the child missing anything.
+      pending[pending.length - 1] = update;
+    } else {
+      pending.add(update);
+    }
+    _pendingUpdateFlush ??= Timer(
+      const Duration(milliseconds: 16),
+      _flushPendingUpdates,
+    );
+  }
+
+  static int? _progressFileId(Map<String, dynamic> update) {
+    if (update['@type'] != 'updateFile') return null;
+    final file = update['file'];
+    return file is Map ? (file['id'] as num?)?.toInt() : null;
+  }
+
+  void _flushPendingUpdates() {
+    _pendingUpdateFlush = null;
+    if (_pendingUpdatesByWindow.isEmpty) return;
+    final batches = _pendingUpdatesByWindow.entries.toList(growable: false);
+    _pendingUpdatesByWindow.clear();
+    for (final batch in batches) {
+      unawaited(_pushUpdate(batch.key, batch.value));
+    }
+  }
+
+  Future<void> _pushUpdate(
+    int windowId,
+    List<Map<String, dynamic>> updates,
+  ) async {
     try {
       await MultiWindowManager.current.invokeMethodToWindow(
         windowId,
         _updateMethod,
-        update,
+        updates,
       );
     } on Object {
       _removeWindow(windowId);
@@ -712,6 +764,7 @@ class _DesktopUtilityMainBridge with WindowListener {
     _argumentsByWindow.remove(windowId);
     _clientIdByWindow.remove(windowId);
     _subscribedWindows.remove(windowId);
+    _pendingUpdatesByWindow.remove(windowId);
     _registry.removeWindow(windowId);
   }
 
@@ -801,8 +854,14 @@ class _DesktopUtilityChildProxy with WindowListener {
   ) async {
     if (fromWindowId != 0) return null;
     if (eventName == _updateMethod) {
-      final update = desktopUtilityNormalizeIpcMap(eventArguments);
-      if (!_closed && update != null) _updates.add(update);
+      // The primary coalesces a frame's updates into one hop. A lone map is
+      // still accepted: silently dropping one would stop the window updating
+      // with nothing to show for it.
+      final batch = eventArguments is List ? eventArguments : [eventArguments];
+      for (final entry in batch) {
+        final update = desktopUtilityNormalizeIpcMap(entry);
+        if (!_closed && update != null) _updates.add(update);
+      }
       return const {'ok': true};
     }
     if (eventName == _presentationChangedMethod) {

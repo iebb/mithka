@@ -54,6 +54,10 @@ void main() {
       shouldLeaveBeforeDeletingChat(ChatKind.group, ChatDeleteScope.allUsers),
       isFalse,
     );
+    expect(
+      chatLeftLocalUpdate(7),
+      equals({'@type': 'mithkaChatLeft', 'chat_id': 7}),
+    );
   });
 
   test('delete scope copy exists in every supported locale', () {

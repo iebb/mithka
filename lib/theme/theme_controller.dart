@@ -980,6 +980,7 @@ class ThemeController extends ChangeNotifier {
     _fontFallbackChain = dedupeFontFamilies(
       _prefs.getStringList(_fontFallbackChainKey) ?? const <String>[],
     );
+    _invalidateFontCaches();
     unawaited(_normalizeStoredPlatformFontFamilies());
     _fontScale = _prefs.getDouble(_fontKey) ?? 1.0;
     _interfaceScale = _prefs.getDouble(_interfaceScaleKey) ?? 1.0;
@@ -1220,6 +1221,14 @@ class ThemeController extends ChangeNotifier {
   late String _customMonospaceFontFamily;
   late EmojiFontChoice _emojiFontChoice;
   late List<String> _fontFallbackChain;
+
+  // The font chain is rebuilt from scratch on every applyAppTextStyle call
+  // (three dedupe passes each), and applyAppTextTheme runs 15 of those per
+  // TextTheme. Nothing here changes between builds, so memoize until a font
+  // preference actually moves — see _invalidateFontCaches.
+  List<String>? _normalFontFamilyChainCache;
+  List<String>? _effectiveFontFamilyChainCache;
+  final Map<(TextStyle, bool), TextStyle> _appTextStyleCache = {};
   late double _fontScale;
   late double _interfaceScale;
   late bool _circularGroupAvatars;
@@ -1755,19 +1764,31 @@ class ThemeController extends ChangeNotifier {
   double get avatarSize => AppMetric.avatarSize;
   double get navHeaderHeight => AppMetric.navHeaderHeight;
   double scaled(double base) => base;
+
+  /// Drops every derived font cache. Called from anywhere a font preference is
+  /// assigned, including the preference reload — a setter-only sweep would
+  /// serve a stale TextTheme after an account switch.
+  void _invalidateFontCaches() {
+    _normalFontFamilyChainCache = null;
+    _effectiveFontFamilyChainCache = null;
+    _appTextStyleCache.clear();
+  }
+
+  /// The cached chains are shared with every caller; treat them as read-only.
   List<String> _normalFontFamilyChain([TextStyle? base]) {
-    final textFamilies = _fontFallbackChain.isNotEmpty
-        ? _fontFallbackChain
-        : [AppFontChoice._platformFontFamily()];
-    return dedupeFontFamilies([
-      ...textFamilies,
+    return _normalFontFamilyChainCache ??= dedupeFontFamilies([
+      ...(_fontFallbackChain.isNotEmpty
+          ? _fontFallbackChain
+          : [AppFontChoice._platformFontFamily()]),
       ...AppFontChoice._platformFontFallback(),
     ]);
   }
 
   List<String> effectiveFontFamilyChain([TextStyle? base]) {
+    final cached = _effectiveFontFamilyChainCache;
+    if (cached != null) return cached;
     final textFamilies = _normalFontFamilyChain(base);
-    return dedupeFontFamilies([
+    return _effectiveFontFamilyChainCache = dedupeFontFamilies([
       textFamilies.first,
       ..._emojiFontChoice.fontFamilies,
       ...textFamilies.skip(1),
@@ -1775,6 +1796,19 @@ class ThemeController extends ChangeNotifier {
   }
 
   TextStyle applyAppTextStyle(TextStyle base, {bool boldText = false}) {
+    final cacheKey = (base, boldText);
+    final cached = _appTextStyleCache[cacheKey];
+    if (cached != null) return cached;
+    final styled = _computeAppTextStyle(base, boldText: boldText);
+    // The distinct base styles are the ~30 entries of two TextThemes plus the
+    // root body style; the guard only exists so an unexpected caller cannot
+    // grow this without bound.
+    if (_appTextStyleCache.length >= 128) _appTextStyleCache.clear();
+    _appTextStyleCache[cacheKey] = styled;
+    return styled;
+  }
+
+  TextStyle _computeAppTextStyle(TextStyle base, {bool boldText = false}) {
     final families = effectiveFontFamilyChain(base);
     final weightedBase = base.copyWith(
       fontWeight: AppTextWeight.forSystemBoldText(
@@ -1833,20 +1867,30 @@ class ThemeController extends ChangeNotifier {
     );
   }
 
+  /// Google-hosted families indexed by every name they answer to. The linear
+  /// scan this replaces walked 60 enum entries and evaluated `fontFamily` on
+  /// each, allocating a `replaceAll` String per Google entry.
+  ///
+  /// Only Google entries are indexed: a non-Google entry resolved to its own
+  /// null `googleFamily`, which is what a miss returns anyway, and no
+  /// non-Google family name collides with a Google one.
+  static final Map<String, String> _googleFamilyByFamilyName = {
+    for (final font in AppFontChoice.values)
+      if (font.googleFamily case final google?) ...{
+        google: google,
+        font.fontFamily: google,
+      },
+    for (final font in AppMonospaceFontChoice.values)
+      if (font.googleFamily case final google?) ...{
+        google: google,
+        font.fontFamily: google,
+      },
+  };
+
   static String? _googleFamilyFor(String family) {
     final storedGoogleFamily = decodeGoogleFontFamily(family);
     if (storedGoogleFamily != null) return storedGoogleFamily;
-    for (final font in AppFontChoice.values) {
-      if (font.googleFamily == family || font.fontFamily == family) {
-        return font.googleFamily;
-      }
-    }
-    for (final font in AppMonospaceFontChoice.values) {
-      if (font.googleFamily == family || font.fontFamily == family) {
-        return font.googleFamily;
-      }
-    }
-    return null;
+    return _googleFamilyByFamilyName[family];
   }
 
   set mode(AppearanceMode value) {
@@ -2018,6 +2062,7 @@ class ThemeController extends ChangeNotifier {
 
   set fontChoice(AppFontChoice value) {
     _fontChoice = value;
+    _invalidateFontCaches();
     _prefs.setString(_fontChoiceKey, value.name);
     notifyListeners();
   }
@@ -2025,36 +2070,42 @@ class ThemeController extends ChangeNotifier {
   set cjkFontChoice(AppFontChoice value) {
     if (!value.isCjk) return;
     _cjkFontChoice = value;
+    _invalidateFontCaches();
     _prefs.setString(_cjkFontChoiceKey, value.name);
     notifyListeners();
   }
 
   set customPrimaryFontFamily(String value) {
     _customPrimaryFontFamily = value.trim();
+    _invalidateFontCaches();
     _prefs.setString(_customPrimaryFontFamilyKey, _customPrimaryFontFamily);
     notifyListeners();
   }
 
   set customCjkFontFamily(String value) {
     _customCjkFontFamily = value.trim();
+    _invalidateFontCaches();
     _prefs.setString(_customCjkFontFamilyKey, _customCjkFontFamily);
     notifyListeners();
   }
 
   set monospaceFontChoice(AppMonospaceFontChoice value) {
     _monospaceFontChoice = value;
+    _invalidateFontCaches();
     _prefs.setString(_monospaceFontChoiceKey, value.name);
     notifyListeners();
   }
 
   set customMonospaceFontFamily(String value) {
     _customMonospaceFontFamily = value.trim();
+    _invalidateFontCaches();
     _prefs.setString(_customMonospaceFontFamilyKey, _customMonospaceFontFamily);
     notifyListeners();
   }
 
   void useSystemEmojiFont() {
     _emojiFontChoice = EmojiFontChoice.system;
+    _invalidateFontCaches();
     _prefs.setString(_emojiFontChoiceKey, EmojiFontChoice.system.key);
     _prefs.remove(_emojiFontLabelKey);
     _prefs.remove(_emojiFontLicenseKey);
@@ -2072,6 +2123,7 @@ class ThemeController extends ChangeNotifier {
       license: _emojiFontChoice.license,
       fontFamily: family,
     );
+    _invalidateFontCaches();
     notifyListeners();
   }
 
@@ -2083,6 +2135,7 @@ class ThemeController extends ChangeNotifier {
       license: entry.license,
       fontFamily: family,
     );
+    _invalidateFontCaches();
     unawaited(_prefs.setString(_emojiFontChoiceKey, entry.key));
     unawaited(_prefs.setString(_emojiFontLabelKey, entry.label));
     unawaited(_prefs.setString(_emojiFontLicenseKey, entry.license));
@@ -2118,6 +2171,7 @@ class ThemeController extends ChangeNotifier {
 
   void setFontFallbackChain(List<String> value) {
     _fontFallbackChain = dedupeFontFamilies(value);
+    _invalidateFontCaches();
     _prefs.setStringList(_fontFallbackChainKey, _fontFallbackChain);
     notifyListeners();
   }
@@ -2166,7 +2220,10 @@ class ThemeController extends ChangeNotifier {
       unawaited(_prefs.setStringList(_fontFallbackChainKey, nextChain));
       changed = true;
     }
-    if (changed) notifyListeners();
+    if (changed) {
+      _invalidateFontCaches();
+      notifyListeners();
+    }
   }
 
   void addFontToFallbackChain(String family) {

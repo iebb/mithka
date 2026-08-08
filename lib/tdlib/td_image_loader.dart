@@ -77,6 +77,15 @@ class TdFileCenter {
     return path(ref.id);
   }
 
+  /// The already-resolved path for [ref], or null when nothing is cached.
+  ///
+  /// [pathFor] is async even on a pure cache hit, so a reader that awaits it
+  /// always paints one placeholder frame first. This lets a widget skip that
+  /// frame. It deliberately ignores `ref.localPath` — [pathFor] gates that
+  /// behind an `exists()` check, and a source file picked for an outgoing
+  /// message can be gone.
+  String? cachedPath(TdFileRef ref) => _cache[_key(_client.activeSlot, ref.id)];
+
   void _startIfNeeded() {
     if (_started) return;
     _started = true;

@@ -289,7 +289,9 @@ class _PollResultsViewState extends State<PollResultsView> {
                       child: Center(child: AppActivityIndicator(size: 22)),
                     )
                   else if (_error != null)
-                    _empty('Unable to load voters')
+                    _empty(
+                      AppStrings.t(AppStringKeys.pollResultsUnableToLoadVoters),
+                    )
                   else if (voters.isEmpty)
                     _empty(query.isEmpty ? 'No visible voters' : 'No matches')
                   else

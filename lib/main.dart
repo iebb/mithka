@@ -588,9 +588,25 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
     }
   }
 
+  /// Last [_themeData] result per brightness, with the inputs it was built
+  /// from. `ColorScheme.fromSeed` is uncached HCT colour science and both
+  /// brightnesses are rebuilt on every ThemeController notification, almost
+  /// all of which (a toggle, a slider step) change nothing the theme reads.
+  final Map<Brightness, _ThemeDataMemo> _themeDataMemo = {};
+
   ThemeData _themeData(Brightness brightness, ThemeController theme) {
     final colors = theme.uiColorsFor(brightness);
     final families = theme.effectiveFontFamilyChain();
+    final seedColor = theme.usesCloudThemeForUi(brightness)
+        ? colors.linkBlue
+        : theme.brandColor;
+    final memo = _themeDataMemo[brightness];
+    if (memo != null &&
+        memo.colors == colors &&
+        memo.seedColor == seedColor &&
+        listEquals(memo.families, families)) {
+      return memo.data;
+    }
     final base = ThemeData(
       brightness: brightness,
       useMaterial3: true,
@@ -600,9 +616,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
           : null,
       scaffoldBackgroundColor: colors.background,
       colorScheme: ColorScheme.fromSeed(
-        seedColor: theme.usesCloudThemeForUi(brightness)
-            ? colors.linkBlue
-            : theme.brandColor,
+        seedColor: seedColor,
         brightness: brightness,
       ),
       pageTransitionsTheme: const PageTransitionsTheme(
@@ -619,10 +633,17 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
       splashFactory: NoSplash.splashFactory,
       highlightColor: Colors.transparent,
     );
-    return base.copyWith(
+    final data = base.copyWith(
       textTheme: theme.applyAppTextTheme(base.textTheme),
       primaryTextTheme: theme.applyAppTextTheme(base.primaryTextTheme),
     );
+    _themeDataMemo[brightness] = _ThemeDataMemo(
+      colors: colors,
+      families: families,
+      seedColor: seedColor,
+      data: data,
+    );
+    return data;
   }
 
   @override
@@ -674,7 +695,10 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
             themeMode: theme.themeMode,
             // Apply the user's chosen font size app-wide (设置 › 通用 › 字体大小).
             builder: (context, child) {
-              final media = MediaQuery.of(context);
+              // Aspect-scoped: MediaQuery.of would re-run this whole closure on
+              // every keyboard-inset and window-resize frame just to read
+              // boldText.
+              final boldText = MediaQuery.boldTextOf(context);
               final currentTheme = Theme.of(context);
               AppTheme.applyBrand(
                 theme.usesCloudThemeForUi(currentTheme.brightness)
@@ -685,11 +709,11 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
                 data: currentTheme.copyWith(
                   textTheme: theme.applyAppTextTheme(
                     currentTheme.textTheme,
-                    boldText: media.boldText,
+                    boldText: boldText,
                   ),
                   primaryTextTheme: theme.applyAppTextTheme(
                     currentTheme.primaryTextTheme,
-                    boldText: media.boldText,
+                    boldText: boldText,
                   ),
                 ),
                 // Cupertino-rooted screens (SearchView and friends) sit under no
@@ -758,7 +782,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
                   child: DefaultTextStyle(
                     style: theme.applyAppTextStyle(
                       AppTextStyle.body(context.colors.textPrimary),
-                      boldText: media.boldText,
+                      boldText: boldText,
                     ),
                     child: hotkeyChild,
                   ),
@@ -775,6 +799,23 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
       ),
     );
   }
+}
+
+/// A built [ThemeData] together with everything [_MithkaAppState._themeData]
+/// read to build it. Font scale and interface scale are deliberately absent:
+/// they are applied downstream by `_ScaledAppView`, never by the theme.
+class _ThemeDataMemo {
+  const _ThemeDataMemo({
+    required this.colors,
+    required this.families,
+    required this.seedColor,
+    required this.data,
+  });
+
+  final AppColors colors;
+  final List<String> families;
+  final Color seedColor;
+  final ThemeData data;
 }
 
 NavigatorObserver? _buildSentryNavigatorObserver() =>

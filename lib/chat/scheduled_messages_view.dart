@@ -105,11 +105,11 @@ class _ScheduledMessagesViewState extends State<ScheduledMessagesView> {
     final text = await showAppTextEntryDialog(
       context,
       title: AppStrings.t(AppStringKeys.scheduledMessagesEditScheduledMessage),
-      hint: 'Message',
+      hint: AppStrings.t(AppStringKeys.scheduledMessagesMessageHint),
       initial: entry.message.text,
       minLines: 2,
       maxLines: 8,
-      actionLabel: 'Save',
+      actionLabel: AppStrings.t(AppStringKeys.scheduledMessagesSaveAction),
     );
     if (!mounted || text == null || text.isEmpty) return;
     try {
@@ -187,7 +187,7 @@ class _ScheduledMessagesViewState extends State<ScheduledMessagesView> {
       title: AppStrings.t(
         AppStringKeys.scheduledMessagesDeleteScheduledMessage,
       ),
-      message: 'This scheduled message will not be sent.',
+      message: AppStrings.t(AppStringKeys.scheduledMessagesDeleteMessage),
       confirmText: AppStrings.t(AppStringKeys.chatDelete),
       destructive: true,
     );
@@ -214,8 +214,11 @@ class _ScheduledMessagesViewState extends State<ScheduledMessagesView> {
         children: [
           NavHeader(
             title: widget.chatTitle.isEmpty
-                ? 'Scheduled messages'
-                : 'Scheduled · ${widget.chatTitle}',
+                ? AppStrings.t(AppStringKeys.scheduledMessagesTitle)
+                : AppStrings.t(
+                    AppStringKeys.scheduledMessagesTitleForChatValue1,
+                    {'value1': widget.chatTitle},
+                  ),
             onBack: widget.showBackButton
                 ? () => Navigator.of(context).pop()
                 : null,
@@ -319,19 +322,23 @@ class _ScheduledMessagesViewState extends State<ScheduledMessagesView> {
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              _action('Edit', HeroAppIcons.pen, () => _edit(entry)),
               _action(
-                'Reschedule',
+                AppStrings.t(AppStringKeys.scheduledMessagesEditAction),
+                HeroAppIcons.pen,
+                () => _edit(entry),
+              ),
+              _action(
+                AppStrings.t(AppStringKeys.scheduledMessagesRescheduleAction),
                 HeroAppIcons.clock,
                 () => _reschedule(entry),
               ),
               _action(
-                'Send now',
+                AppStrings.t(AppStringKeys.scheduledMessagesSendNowAction),
                 HeroAppIcons.paperPlane,
                 () => _sendNow(entry),
               ),
               _action(
-                'Delete',
+                AppStrings.t(AppStringKeys.scheduledMessagesDeleteAction),
                 HeroAppIcons.trash,
                 () => _delete(entry),
                 destructive: true,
@@ -414,24 +421,29 @@ class _ScheduledMessagesViewState extends State<ScheduledMessagesView> {
   );
 
   String _scheduleLabel(_ScheduledMessage entry) {
-    if (entry.whenOnline) return 'Send when online';
-    if (entry.sendDate <= 0) return 'Scheduled';
-    final repeat = switch (entry.repeatPeriod) {
-      86400 => ' · repeats daily',
-      604800 => ' · repeats weekly',
-      2592000 => ' · repeats monthly',
-      _ => '',
+    if (entry.whenOnline) {
+      return AppStrings.t(AppStringKeys.scheduledMessagesSendWhenOnline);
+    }
+    if (entry.sendDate <= 0) {
+      return AppStrings.t(AppStringKeys.scheduledMessagesScheduled);
+    }
+    final when = DateText.messageDetailLabel(entry.sendDate);
+    final repeated = switch (entry.repeatPeriod) {
+      86400 => AppStringKeys.scheduledMessagesRepeatsDailyValue1,
+      604800 => AppStringKeys.scheduledMessagesRepeatsWeeklyValue1,
+      2592000 => AppStringKeys.scheduledMessagesRepeatsMonthlyValue1,
+      _ => null,
     };
-    return '${DateText.messageDetailLabel(entry.sendDate)}$repeat';
+    return repeated == null ? when : AppStrings.t(repeated, {'value1': when});
   }
 
-  String _contentLabel(String type) => switch (type) {
-    'messagePhoto' => 'Photo',
-    'messageVideo' => 'Video',
-    'messageAnimation' => 'GIF',
-    'messageVoiceNote' => 'Voice message',
-    'messageVideoNote' => 'Video message',
-    'messageDocument' => 'File',
-    _ => 'Scheduled message',
-  };
+  String _contentLabel(String type) => AppStrings.t(switch (type) {
+    'messagePhoto' => AppStringKeys.scheduledMessagesContentPhoto,
+    'messageVideo' => AppStringKeys.scheduledMessagesContentVideo,
+    'messageAnimation' => AppStringKeys.scheduledMessagesContentAnimation,
+    'messageVoiceNote' => AppStringKeys.scheduledMessagesContentVoiceNote,
+    'messageVideoNote' => AppStringKeys.scheduledMessagesContentVideoNote,
+    'messageDocument' => AppStringKeys.scheduledMessagesContentDocument,
+    _ => AppStringKeys.scheduledMessagesContentDefault,
+  });
 }

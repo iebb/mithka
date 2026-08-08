@@ -110,8 +110,8 @@ class _TwoStepPasswordViewState extends State<TwoStepPasswordView> {
       showToast(
         context,
         next.isEmpty
-            ? 'Two-step password removed.'
-            : 'Two-step password saved.',
+            ? AppStrings.t(AppStringKeys.accountSecurityTwoStepPasswordRemoved)
+            : AppStrings.t(AppStringKeys.accountSecurityTwoStepPasswordSaved),
       );
       Navigator.of(context).pop(true);
     } catch (error) {
@@ -125,7 +125,9 @@ class _TwoStepPasswordViewState extends State<TwoStepPasswordView> {
     final confirmed = await confirmDialog(
       context,
       title: AppStrings.t(AppStringKeys.accountSecurityRemoveTwoStepPassword),
-      message: 'Your account will no longer require this extra password.',
+      message: AppStrings.t(
+        AppStringKeys.accountSecurityRemoveTwoStepPasswordMessage,
+      ),
       confirmText: AppStrings.t(AppStringKeys.chatInfoRemove),
       destructive: true,
     );
@@ -167,9 +169,12 @@ class _TwoStepPasswordViewState extends State<TwoStepPasswordView> {
                             ),
                           _SecurityField(
                             controller: _newPassword,
-                            label: _hasPassword
-                                ? 'New password'
-                                : 'Create password',
+                            label: AppStrings.t(
+                              _hasPassword
+                                  ? AppStringKeys
+                                        .accountSecurityNewPasswordField
+                                  : AppStringKeys.accountSecurityCreatePassword,
+                            ),
                             icon: HeroAppIcons.key,
                             obscureText: true,
                           ),
@@ -202,9 +207,11 @@ class _TwoStepPasswordViewState extends State<TwoStepPasswordView> {
                       ),
                       const SizedBox(height: 14),
                       _PrimarySecurityButton(
-                        label: _hasPassword
-                            ? 'Change password'
-                            : 'Create password',
+                        label: AppStrings.t(
+                          _hasPassword
+                              ? AppStringKeys.accountSecurityChangePassword
+                              : AppStringKeys.accountSecurityCreatePassword,
+                        ),
                         working: _working,
                         onTap: _save,
                       ),
@@ -214,9 +221,13 @@ class _TwoStepPasswordViewState extends State<TwoStepPasswordView> {
                           children: [
                             _SecurityActionRow(
                               icon: HeroAppIcons.at,
-                              title: _hasRecoveryEmail
-                                  ? 'Change recovery email'
-                                  : 'Add recovery email',
+                              title: AppStrings.t(
+                                _hasRecoveryEmail
+                                    ? AppStringKeys
+                                          .accountSecurityChangeRecoveryEmail
+                                    : AppStringKeys
+                                          .accountSecurityAddRecoveryEmail,
+                              ),
                               subtitle: _loginEmailPattern,
                               onTap: () => Navigator.of(context)
                                   .push<void>(
@@ -379,8 +390,12 @@ class _RecoveryEmailCodeViewState extends State<RecoveryEmailCodeView> {
   Widget build(BuildContext context) => _SecurityFormPage(
     title: AppStrings.t(AppStringKeys.accountSecurityVerifyRecoveryEmail),
     description: widget.emailPattern.isEmpty
-        ? 'Enter the code sent to your recovery email.'
-        : 'Enter the code sent to ${widget.emailPattern}.',
+        ? AppStrings.t(
+            AppStringKeys.accountSecurityEnterCodeSentToRecoveryEmail,
+          )
+        : AppStrings.t(AppStringKeys.accountSecurityEnterCodeSentToValue1, {
+            'value1': widget.emailPattern,
+          }),
     children: [
       _SecurityCard(
         children: [
@@ -508,8 +523,12 @@ class _PasswordRecoveryViewState extends State<PasswordRecoveryView> {
   Widget build(BuildContext context) => _SecurityFormPage(
     title: AppStrings.t(AppStringKeys.accountSecurityPasswordRecovery),
     description: _sent
-        ? 'A recovery code was sent to $_emailPattern.'
-        : 'Telegram will send a code to your recovery email.',
+        ? AppStrings.t(AppStringKeys.accountSecurityRecoveryCodeSentToValue1, {
+            'value1': _emailPattern,
+          })
+        : AppStrings.t(
+            AppStringKeys.accountSecurityTelegramWillSendCodeToRecoveryEmail,
+          ),
     children: [
       if (!_sent)
         _PrimarySecurityButton(
@@ -620,8 +639,10 @@ class _ChangePhoneNumberViewState extends State<ChangePhoneNumberView> {
   Widget build(BuildContext context) => _SecurityFormPage(
     title: AppStrings.t(AppStringKeys.accountSecurityChangePhoneNumber),
     description: _sent
-        ? 'Enter the code sent to $_destination.'
-        : 'Your Telegram account and contacts will move to the new number.',
+        ? AppStrings.t(AppStringKeys.accountSecurityEnterCodeSentToValue1, {
+            'value1': _destination,
+          })
+        : AppStrings.t(AppStringKeys.accountSecurityAccountAndContactsWillMove),
     children: [
       _SecurityCard(
         children: [
@@ -643,7 +664,11 @@ class _ChangePhoneNumberViewState extends State<ChangePhoneNumberView> {
       ),
       const SizedBox(height: 14),
       _PrimarySecurityButton(
-        label: _sent ? 'Confirm new number' : 'Send code',
+        label: AppStrings.t(
+          _sent
+              ? AppStringKeys.accountSecurityConfirmNewNumber
+              : AppStringKeys.accountSecuritySendCode,
+        ),
         working: _working,
         onTap: _sent ? _verify : _send,
       ),
@@ -718,21 +743,24 @@ class _AccountInactivityViewState extends State<AccountInactivityView> {
     }
   }
 
-  String _label(int days) {
-    if (days == 30) return '1 month';
-    if (days == 90) return '3 months';
-    if (days == 180) return '6 months';
-    if (days == 365) return '1 year';
-    if (days == 548) return '18 months';
-    if (days == 730) return '2 years';
-    return '$days days';
-  }
+  String _label(int days) => switch (days) {
+    30 => AppStrings.t(AppStringKeys.accountSecurityInactivityOneMonth),
+    90 => AppStrings.t(AppStringKeys.accountSecurityInactivityThreeMonths),
+    180 => AppStrings.t(AppStringKeys.accountSecurityInactivitySixMonths),
+    365 => AppStrings.t(AppStringKeys.accountSecurityInactivityOneYear),
+    548 => AppStrings.t(AppStringKeys.accountSecurityInactivityEighteenMonths),
+    730 => AppStrings.t(AppStringKeys.accountSecurityInactivityTwoYears),
+    _ => AppStrings.t(AppStringKeys.accountSecurityInactivityDaysValue1, {
+      'value1': days,
+    }),
+  };
 
   @override
   Widget build(BuildContext context) => _SecurityFormPage(
     title: AppStrings.t(AppStringKeys.accountSecurityAccountInactivity),
-    description:
-        'If you do not come online during this period, Telegram will delete your account and cloud data.',
+    description: AppStrings.t(
+      AppStringKeys.accountSecurityAccountInactivityDescription,
+    ),
     children: [
       _SecurityCard(
         children: [
@@ -778,8 +806,9 @@ class _DeleteTelegramAccountViewState extends State<DeleteTelegramAccountView> {
       title: AppStrings.t(
         AppStringKeys.accountSecurityPermanentlyDeleteTelegramAccount,
       ),
-      message:
-          'This deletes your cloud messages, contacts, media, and account data. This cannot be undone.',
+      message: AppStrings.t(
+        AppStringKeys.accountSecurityDeleteAccountConfirmMessage,
+      ),
       confirmText: AppStrings.t(
         AppStringKeys.accountSecurityDeleteAccountVariant2,
       ),
@@ -802,8 +831,9 @@ class _DeleteTelegramAccountViewState extends State<DeleteTelegramAccountView> {
   @override
   Widget build(BuildContext context) => _SecurityFormPage(
     title: AppStrings.t(AppStringKeys.accountSecurityDeleteAccount),
-    description:
-        'Deletion happens through Telegram directly. Enter your two-step password if one is enabled.',
+    description: AppStrings.t(
+      AppStringKeys.accountSecurityDeleteAccountDescription,
+    ),
     children: [
       _SecurityCard(
         children: [

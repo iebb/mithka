@@ -281,82 +281,99 @@ class _GroupManagementViewState extends State<GroupManagementView> {
                         ),
                       ],
                       _gap(),
-                      _section('Administration', [
-                        _navRow(
-                          'Invite links',
-                          onTap: () => Navigator.of(context).push(
-                            _pageRoute(
-                              ChatInviteLinksAdministrationView(
-                                chatId: widget.chatId,
-                              ),
-                            ),
-                          ),
+                      _section(
+                        AppStrings.t(
+                          AppStringKeys.groupManagementAdministrationSection,
                         ),
-                        _divider(),
-                        _navRow(
-                          'Join requests',
-                          onTap: () => Navigator.of(context).push(
-                            _pageRoute(
-                              ChatJoinRequestsAdministrationView(
-                                chatId: widget.chatId,
-                              ),
-                            ),
-                          ),
-                        ),
-                        if (_supergroupId != null) ...[
-                          _divider(),
+                        [
                           _navRow(
-                            'Advanced controls',
+                            AppStrings.t(
+                              AppStringKeys.groupManagementInviteLinks,
+                            ),
                             onTap: () => Navigator.of(context).push(
                               _pageRoute(
-                                GroupAdvancedAdministrationView(
-                                  chatId: widget.chatId,
-                                  supergroupId: _supergroupId!,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                        if (_isForum) ...[
-                          _divider(),
-                          _navRow(
-                            'Forum topics',
-                            onTap: () => Navigator.of(context).push(
-                              _pageRoute(
-                                ForumTopicsAdministrationView(
+                                ChatInviteLinksAdministrationView(
                                   chatId: widget.chatId,
                                 ),
                               ),
                             ),
                           ),
-                        ],
-                        if (_canGetStatistics) ...[
                           _divider(),
                           _navRow(
-                            'Statistics',
+                            AppStrings.t(
+                              AppStringKeys.groupManagementJoinRequests,
+                            ),
                             onTap: () => Navigator.of(context).push(
                               _pageRoute(
-                                ChatStatisticsAdministrationView(
+                                ChatJoinRequestsAdministrationView(
                                   chatId: widget.chatId,
                                 ),
                               ),
                             ),
                           ),
-                        ],
-                        if (_supergroupId != null) ...[
-                          _divider(),
-                          _navRow(
-                            'Boosts and giveaways',
-                            onTap: () => Navigator.of(context).push(
-                              _pageRoute(
-                                ChatBoostsAdministrationView(
-                                  chatId: widget.chatId,
+                          if (_supergroupId != null) ...[
+                            _divider(),
+                            _navRow(
+                              AppStrings.t(
+                                AppStringKeys.groupManagementAdvancedControls,
+                              ),
+                              onTap: () => Navigator.of(context).push(
+                                _pageRoute(
+                                  GroupAdvancedAdministrationView(
+                                    chatId: widget.chatId,
+                                    supergroupId: _supergroupId!,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
+                          ],
+                          if (_isForum) ...[
+                            _divider(),
+                            _navRow(
+                              AppStrings.t(
+                                AppStringKeys.groupManagementForumTopics,
+                              ),
+                              onTap: () => Navigator.of(context).push(
+                                _pageRoute(
+                                  ForumTopicsAdministrationView(
+                                    chatId: widget.chatId,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                          if (_canGetStatistics) ...[
+                            _divider(),
+                            _navRow(
+                              AppStrings.t(
+                                AppStringKeys.groupManagementStatistics,
+                              ),
+                              onTap: () => Navigator.of(context).push(
+                                _pageRoute(
+                                  ChatStatisticsAdministrationView(
+                                    chatId: widget.chatId,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                          if (_supergroupId != null) ...[
+                            _divider(),
+                            _navRow(
+                              AppStrings.t(
+                                AppStringKeys.groupManagementBoostsAndGiveaways,
+                              ),
+                              onTap: () => Navigator.of(context).push(
+                                _pageRoute(
+                                  ChatBoostsAdministrationView(
+                                    chatId: widget.chatId,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ],
-                      ]),
+                      ),
                       _gap(),
                       _section(
                         AppStrings.t(

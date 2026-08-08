@@ -829,7 +829,7 @@ class _ChatInfoViewState extends State<ChatInfoView> {
           if (_vm.isGroup && _vm.canManageGroup) ...[
             const InsetDivider(leadingInset: 14),
             _infoRow(
-              'Stories',
+              AppStrings.t(AppStringKeys.chatInfoStories),
               () => Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (_) => StoryManagementView(

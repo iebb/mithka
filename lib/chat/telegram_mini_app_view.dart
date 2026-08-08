@@ -184,7 +184,7 @@ Future<bool> openTelegramMiniApp(
     isContextMounted: () => context.mounted,
     present: () => showGeneralDialog<void>(
       context: context,
-      barrierLabel: 'Mini app',
+      barrierLabel: AppStrings.t(AppStringKeys.telegramMiniAppDialogLabel),
       barrierColor: Colors.black.withValues(alpha: 0.32),
       transitionDuration: const Duration(milliseconds: 240),
       pageBuilder: (_, _, _) => _MiniAppDialogHost(launch: launch),

@@ -69,14 +69,19 @@ class ChatSearchTokenSuggester {
                 'limit': _limit,
               },
       );
-      final ids = response.int64Array('chat_ids') ?? const <int>[];
+      final ids = (response.int64Array('chat_ids') ?? const <int>[])
+          .take(_limit)
+          .toList(growable: false);
+      // One round trip per id, but all in flight at once — Future.wait keeps
+      // index order, so the suggestion order is still the server's.
+      final chats = await Future.wait(ids.map(_chatSummary));
       final out = <ChatSearchTokenSuggestion>[];
-      for (final id in ids.take(_limit)) {
-        final chat = await _chatSummary(id);
+      for (var i = 0; i < ids.length; i++) {
+        final chat = chats[i];
         if (chat == null) continue;
         out.add(
           ChatSearchTokenSuggestion(
-            id: id,
+            id: ids[i],
             title: chat.title,
             token: chat.title,
             photo: chat.photo,
@@ -155,16 +160,16 @@ class ChatSearchTokenSuggester {
         'filter': null,
       });
       final members = response.objects('members') ?? const [];
-      final out = <ChatSearchTokenSuggestion>[];
+      final userIds = <int>[];
       for (final member in members) {
         final sender = member.obj('member_id');
         if (sender?.type != 'messageSenderUser') continue;
         final userId = sender?.int64('user_id');
         if (userId == null || userId == 0) continue;
-        final suggestion = await _user(userId);
-        if (suggestion != null) out.add(suggestion);
+        userIds.add(userId);
       }
-      return out;
+      final resolved = await Future.wait(userIds.map(_user));
+      return resolved.whereType<ChatSearchTokenSuggestion>().toList();
     } catch (_) {
       return const [];
     }
@@ -192,15 +197,21 @@ class ChatSearchTokenSuggester {
       });
       final messages = response.objects('messages') ?? const [];
       final seen = <int>{};
-      final out = <ChatSearchTokenSuggestion>[];
-      final needle = query.toLowerCase();
+      final senderIds = <int>[];
       for (final raw in messages) {
-        if (out.length >= _limit) break;
         final sender = raw.obj('sender_id');
         if (sender?.type != 'messageSenderUser') continue;
         final userId = sender?.int64('user_id');
         if (userId == null || userId == 0 || !seen.add(userId)) continue;
-        final suggestion = await _user(userId);
+        senderIds.add(userId);
+      }
+      // The needle is matched against the resolved name, so every distinct
+      // sender has to be fetched anyway — fetch them concurrently.
+      final resolved = await Future.wait(senderIds.map(_user));
+      final out = <ChatSearchTokenSuggestion>[];
+      final needle = query.toLowerCase();
+      for (final suggestion in resolved) {
+        if (out.length >= _limit) break;
         if (suggestion == null) continue;
         if (needle.isNotEmpty &&
             !suggestion.title.toLowerCase().contains(needle) &&
@@ -223,12 +234,8 @@ class ChatSearchTokenSuggester {
         'limit': _limit,
       });
       final ids = response.int64Array('user_ids') ?? const <int>[];
-      final out = <ChatSearchTokenSuggestion>[];
-      for (final id in ids.take(_limit)) {
-        final suggestion = await _user(id);
-        if (suggestion != null) out.add(suggestion);
-      }
-      return out;
+      final resolved = await Future.wait(ids.take(_limit).map(_user));
+      return resolved.whereType<ChatSearchTokenSuggestion>().toList();
     } catch (_) {
       return const [];
     }

@@ -221,9 +221,14 @@ class _CallScreenState extends State<CallScreen> {
       fit: StackFit.expand,
       children: [
         if (hasPhoto)
-          ImageFiltered(
-            imageFilter: ImageFilter.blur(sigmaX: 32, sigmaY: 32),
-            child: TDImage(photo: call.peerPhoto, cornerRadius: 0),
+          // Boundary outside the filter: the 1 Hz duration tick repaints this
+          // screen, and without it the full-viewport gaussian is rastered
+          // again every second instead of being re-composited.
+          RepaintBoundary(
+            child: ImageFiltered(
+              imageFilter: ImageFilter.blur(sigmaX: 32, sigmaY: 32),
+              child: TDImage(photo: call.peerPhoto, cornerRadius: 0),
+            ),
           )
         else
           const DecoratedBox(

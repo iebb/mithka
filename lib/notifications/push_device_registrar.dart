@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
+import 'ios_communication_notification.dart';
 import 'notification_preferences.dart';
 
 class PushDeviceRegistrar {
@@ -112,11 +113,30 @@ class PushDeviceRegistrar {
             .timeout(const Duration(seconds: 8));
       }
       _lastRegistrationSignature = signature;
+      // The service extension stamps the slot onto a delivered push, so it
+      // needs the mapping before the next one arrives rather than at tap time.
+      await _publishAccountSlots(usersByClient);
       debugPrint('Registered APNs device token with TDLib');
     } catch (error) {
       debugPrint('TDLib APNs device registration failed: $error');
     } finally {
       _registering = false;
+    }
+  }
+
+  Future<void> _publishAccountSlots(Map<int, int> usersByClient) async {
+    if (!Platform.isIOS) return;
+    final slotsByUserId = <int, int>{};
+    for (final entry in usersByClient.entries) {
+      final slot = _client.slotForClient(entry.key);
+      if (slot != null) slotsByUserId[entry.value] = slot;
+    }
+    try {
+      await const IOSCommunicationNotificationBridge().setAccountSlots(
+        slotsByUserId,
+      );
+    } catch (error) {
+      debugPrint('Publishing notification account slots failed: $error');
     }
   }
 

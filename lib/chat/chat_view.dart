@@ -790,6 +790,26 @@ class _ChatScrollSnapshot {
   final double? anchorViewportOffset;
 }
 
+/// Reads the keyboard inset in an element of its own.
+///
+/// The chat screen only uses the inset for scroll bookkeeping, but reading it
+/// from `build()` put `_ChatViewState` on the viewInsets aspect — which the
+/// keyboard animates every frame, rebuilding the header, composer and every
+/// materialized bubble. Rebuilding this wrapper hands back the very same child
+/// widget, so `Element.updateChild` short-circuits the whole subtree.
+class _KeyboardInsetProbe extends StatelessWidget {
+  const _KeyboardInsetProbe({required this.onInset, required this.child});
+
+  final ValueChanged<double> onInset;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    onInset(MediaQuery.viewInsetsOf(context).bottom);
+    return child;
+  }
+}
+
 class _ChatViewState extends State<ChatView> {
   late final bool _openAtLatest;
   late final ({int accountSlot, int chatId}) _sessionKey;
@@ -856,6 +876,12 @@ class _ChatViewState extends State<ChatView> {
   /// user steps through the rest of the results.
   int? _searchHighlightId;
   double _keyboardInset = 0;
+  // Bumped once per ChatView build; the shell LayoutBuilder reuses its subtree
+  // whenever the generation and the available width are both unchanged.
+  int _shellLayoutGeneration = 0;
+  int _cachedShellLayoutGeneration = -1;
+  double _cachedShellLayoutWidth = double.nan;
+  Widget? _cachedShellLayout;
   bool _shortTranscriptFillScheduled = false;
   bool _isFillingShortTranscript = false;
   int _shortTranscriptFillGeneration = 0;
@@ -1237,8 +1263,8 @@ class _ChatViewState extends State<ChatView> {
       final endedTowardLatest =
           _lastTranscriptUserScrollDirection == ScrollDirection.reverse;
       _lastTranscriptUserScrollDirection = ScrollDirection.idle;
-      final protectedRestoredPosition =
-          _restoredPositionGuard.finishUserScroll();
+      final protectedRestoredPosition = _restoredPositionGuard
+          .finishUserScroll();
       _returnToLatestCoordinator.userDragEnded();
       if (endedTowardLatest && !protectedRestoredPosition) {
         _requestAutomaticReturnToLatestIfNearLatest();
@@ -1498,8 +1524,10 @@ class _ChatViewState extends State<ChatView> {
     if (viewportRenderObject is! RenderBox || !viewportRenderObject.attached) {
       return null;
     }
-    final viewportTop = viewportRenderObject.localToGlobal(Offset.zero).dy;
-    final viewportBottom = viewportTop + viewportRenderObject.size.height;
+    // Viewport-local coordinates: the offset is already relative to the
+    // viewport top, and stopping the transform walk at the viewport avoids the
+    // full ancestor chain per row.
+    final viewportBottom = viewportRenderObject.size.height;
     int? visibleAnchorMessageId;
     double? visibleAnchorTop;
     int? partialAnchorMessageId;
@@ -1510,10 +1538,12 @@ class _ChatViewState extends State<ChatView> {
       if (itemRenderObject is! RenderBox || !itemRenderObject.attached) {
         continue;
       }
-      final itemTop = itemRenderObject.localToGlobal(Offset.zero).dy;
+      final itemTop = itemRenderObject
+          .localToGlobal(Offset.zero, ancestor: viewportRenderObject)
+          .dy;
       final itemBottom = itemTop + itemRenderObject.size.height;
-      if (itemBottom <= viewportTop || itemTop >= viewportBottom) continue;
-      if (itemTop >= viewportTop) {
+      if (itemBottom <= 0 || itemTop >= viewportBottom) continue;
+      if (itemTop >= 0) {
         if (visibleAnchorTop == null || itemTop < visibleAnchorTop) {
           visibleAnchorMessageId = entry.key;
           visibleAnchorTop = itemTop;
@@ -1526,10 +1556,7 @@ class _ChatViewState extends State<ChatView> {
     final anchorMessageId = visibleAnchorMessageId ?? partialAnchorMessageId;
     final anchorTop = visibleAnchorTop ?? partialAnchorTop;
     if (anchorMessageId == null || anchorTop == null) return null;
-    return (
-      messageId: anchorMessageId,
-      viewportOffset: anchorTop - viewportTop,
-    );
+    return (messageId: anchorMessageId, viewportOffset: anchorTop);
   }
 
   void _scheduleUnreadProgressUpdate() {
@@ -1551,8 +1578,10 @@ class _ChatViewState extends State<ChatView> {
     if (viewportRenderObject is! RenderBox || !viewportRenderObject.attached) {
       return;
     }
-    final viewportOrigin = viewportRenderObject.localToGlobal(Offset.zero);
-    final viewportRect = viewportOrigin & viewportRenderObject.size;
+    // Measured in the viewport's own space: a root-relative localToGlobal walks
+    // and multiplies the whole ancestor transform chain for every mounted row,
+    // once per scroll frame.
+    final viewportRect = Offset.zero & viewportRenderObject.size;
     var changed = false;
     final newlyVisible = <ChatMessage>[];
 
@@ -1562,7 +1591,10 @@ class _ChatViewState extends State<ChatView> {
       if (itemRenderObject is! RenderBox || !itemRenderObject.attached) {
         continue;
       }
-      final itemOrigin = itemRenderObject.localToGlobal(Offset.zero);
+      final itemOrigin = itemRenderObject.localToGlobal(
+        Offset.zero,
+        ancestor: viewportRenderObject,
+      );
       final itemRect = itemOrigin & itemRenderObject.size;
       if (!itemRect.overlaps(viewportRect)) continue;
 
@@ -1661,6 +1693,12 @@ class _ChatViewState extends State<ChatView> {
         _scrollTargetId == null) {
       _scheduleScrollToBottom(animated: false);
     }
+    // The keyboard changes the viewport height without rebuilding the shell
+    // any more, so the viewport-measuring sweeps _transcript() used to schedule
+    // on every keyboard frame have to be asked for here instead.
+    _scheduleTranscriptPivotFreeze();
+    _scheduleUnreadProgressUpdate();
+    _scheduleShortFirstContactReveal();
   }
 
   void _scheduleScrollToBottom({bool animated = true}) {
@@ -2171,9 +2209,12 @@ class _ChatViewState extends State<ChatView> {
         oldest != null &&
         previousOldestId != null &&
         oldest.id < previousOldestId;
+    // _isTranscriptShort walks every cached entry; nothing below moves the
+    // scroll position or the pivot, so one measurement serves all three tests.
+    final latestArmIsShort = _isTranscriptShort();
     final hydratedShortTranscript = shouldRebaseForHydratedOlderPage(
       prependedOlder: prependedOlder,
-      latestArmWasShort: _isTranscriptShort(),
+      latestArmWasShort: latestArmIsShort,
       historyFillInFlight: _isFillingShortTranscript || _loadingOlderFromScroll,
       revealRequested: _revealLoadedOlderPage,
     );
@@ -2187,13 +2228,13 @@ class _ChatViewState extends State<ChatView> {
         );
     final expandedInitialWindow = shouldRebaseForExpandedInitialWindow(
       transcriptChanged: !identical(_transcriptCacheMessages, _vm.messages),
-      latestArmIsShort: _isTranscriptShort(),
+      latestArmIsShort: latestArmIsShort,
       hasMessageOlderThanPivot: hasMessageOlderThanPivot,
       followingLatest: followingLatest,
     );
     final parkedShortArm = shouldRebaseParkedShortTranscriptPivot(
       pivotCutoffMessageId: _transcriptPivot?.cutoffMessageId,
-      latestArmIsShort: _isTranscriptShort(),
+      latestArmIsShort: latestArmIsShort,
       hasMessageOlderThanPivot: hasMessageOlderThanPivot,
       followingLatest: followingLatest,
     );
@@ -2233,13 +2274,16 @@ class _ChatViewState extends State<ChatView> {
         _olderHistoryExhaustedHint = false;
       }
     }
-    if (shouldRebasePendingTranscriptPivot(
-      pivot: _transcriptPivot,
-      pendingOrderId: _pendingTranscriptOrderId,
-      hasServerMessage: _vm.messages.any(
-        (message) => !isPendingChatMessage(message) && message.id > 0,
-      ),
-    )) {
+    // The server-message scan only matters for a pending cutoff; as an argument
+    // it ran on every notification.
+    if (_transcriptPivot?.cutoffMessageId == _pendingTranscriptOrderId &&
+        shouldRebasePendingTranscriptPivot(
+          pivot: _transcriptPivot,
+          pendingOrderId: _pendingTranscriptOrderId,
+          hasServerMessage: _vm.messages.any(
+            (message) => !isPendingChatMessage(message) && message.id > 0,
+          ),
+        )) {
       _resetTranscriptPivot();
     }
     final shouldResetParkedPivot =
@@ -2892,6 +2936,7 @@ class _ChatViewState extends State<ChatView> {
       latestArmIsShort: _isTranscriptShort(),
       hasMessageOlderThanPivot: hasOlder,
       followingLatest: true,
+      hasExplicitMessageTarget: widget.initialMessageId != null,
     )) {
       return false;
     }
@@ -3107,8 +3152,9 @@ class _ChatViewState extends State<ChatView> {
     final viewportContext = _transcriptViewportKey.currentContext;
     final viewportRenderObject = viewportContext?.findRenderObject();
     if (viewportRenderObject is RenderBox && viewportRenderObject.attached) {
-      final viewportTop = viewportRenderObject.localToGlobal(Offset.zero).dy;
-      final viewportBottom = viewportTop + viewportRenderObject.size.height;
+      // Viewport-local coordinates keep the transform walk off the ancestor
+      // chain above the scrollable.
+      final viewportBottom = viewportRenderObject.size.height;
       var bestDistance = double.infinity;
       int? bestIndex;
       for (final trackedEntry in _trackedTranscriptEntries.entries) {
@@ -3118,11 +3164,13 @@ class _ChatViewState extends State<ChatView> {
         if (itemRenderObject is! RenderBox || !itemRenderObject.attached) {
           continue;
         }
-        final itemTop = itemRenderObject.localToGlobal(Offset.zero).dy;
+        final itemTop = itemRenderObject
+            .localToGlobal(Offset.zero, ancestor: viewportRenderObject)
+            .dy;
         final itemBottom = itemTop + itemRenderObject.size.height;
-        if (itemBottom <= viewportTop || itemTop >= viewportBottom) continue;
+        if (itemBottom <= 0 || itemTop >= viewportBottom) continue;
         final distance = topEdge
-            ? (itemTop <= viewportTop ? 0.0 : itemTop - viewportTop)
+            ? (itemTop <= 0 ? 0.0 : itemTop)
             : (itemBottom >= viewportBottom
                   ? 0.0
                   : viewportBottom - itemBottom);
@@ -3488,7 +3536,7 @@ class _ChatViewState extends State<ChatView> {
   Future<void> _addPollOption(ChatMessage message) async {
     final value = await _promptChecklistTask(
       title: AppStrings.t(AppStringKeys.chatAddPollOption),
-      hint: 'New option',
+      hint: AppStrings.t(AppStringKeys.chatAddPollOptionHint),
     );
     if (value == null || value.trim().isEmpty || !mounted) return;
     try {
@@ -5050,8 +5098,10 @@ class _ChatViewState extends State<ChatView> {
         : _wallpaperController.resolvedWallpaper(globalChatWallpaper);
   }
 
+  // Both run once per bubble; build() already resolved themingEnabled into the
+  // field, so re-subscribing to ThemeController per row is pure overhead.
   Color? _effectiveOutgoingColor() {
-    if (!context.watch<ThemeController>().themingEnabled) {
+    if (!_themingEnabled) {
       return AppTheme.bubbleOutgoing;
     }
     final chatColor = _resolvedChatThemeStyle?.outgoingColor;
@@ -5059,7 +5109,7 @@ class _ChatViewState extends State<ChatView> {
   }
 
   Color? _effectiveOutgoingTextColor() {
-    if (!context.watch<ThemeController>().themingEnabled) {
+    if (!_themingEnabled) {
       return AppTheme.bubbleOutgoingText;
     }
     return _resolvedChatThemeStyle?.outgoingTextColor ??
@@ -5092,6 +5142,7 @@ class _ChatViewState extends State<ChatView> {
       child: child,
     );
 
+    _shellLayoutGeneration++;
     final c = context.colors;
     final themeController = context.watch<ThemeController>();
     _themingEnabled = themeController.themingEnabled;
@@ -5129,91 +5180,111 @@ class _ChatViewState extends State<ChatView> {
     }
     final showPeerRestrictionBlock =
         _vm.isPeerRestricted && _vm.messages.isEmpty;
-    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
-    _syncKeyboardInset(keyboardInset);
+    Widget withKeyboardInsetProbe(Widget child) =>
+        _KeyboardInsetProbe(onInset: _syncKeyboardInset, child: child);
     // Not a member, joinable, and nothing to preview → a custom join screen
     // (header + centered card) instead of the transcript + composer.
     if (!_vm.isMember && _vm.canJoin && _vm.messages.isEmpty) {
-      return withInternalLinkRouting(
-        _withExitState(
-          _withBackSwipe(
-            Scaffold(
-              backgroundColor: c.groupedBackground,
-              body: _joinScreenBody(),
+      return withKeyboardInsetProbe(
+        withInternalLinkRouting(
+          _withExitState(
+            _withBackSwipe(
+              Scaffold(
+                backgroundColor: c.groupedBackground,
+                body: _joinScreenBody(),
+              ),
             ),
           ),
         ),
       );
     }
-    return withInternalLinkRouting(
-      _withExitState(
-        _withBackSwipe(
-          Scaffold(
-            backgroundColor: c.inputBarBackground,
-            resizeToAvoidBottomInset: true,
-            body: ChatWallpaperBackground(
-              wallpaper: _effectiveWallpaper(),
-              fallbackColor: c.chatBackground,
-              brightness: Theme.of(context).brightness,
-              child: ChatMediaDropRegion(
-                enabled:
-                    _vm.canSendMessages &&
-                    !_isSelecting &&
-                    !showPeerRestrictionBlock,
-                onImagesDropped: _previewAndSendDroppedImages,
-                child: Stack(
-                  key: _actionOverlayKey,
-                  children: [
-                    Positioned.fill(
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          final searchPane = _searchUsesResultsPane(
-                            constraints.maxWidth,
-                          );
-                          _searchResultsPaneVisible = searchPane;
-                          final searching = _search.isActive;
-                          return ChatHeaderTrailingPaneLayout(
-                            header: showPeerRestrictionBlock
-                                ? _header()
-                                : searching
-                                ? _searchHeader(showSteppers: searchPane)
-                                : (_isSelecting
-                                      ? _selectionHeader()
-                                      : _header()),
-                            body: showPeerRestrictionBlock
-                                ? _restrictedPeerBlockPage()
-                                : Column(
-                                    children: [
-                                      Expanded(
-                                        child: _transcriptLayer(
-                                          searchPane: searchPane,
+    return withKeyboardInsetProbe(
+      withInternalLinkRouting(
+        _withExitState(
+          _withBackSwipe(
+            Scaffold(
+              backgroundColor: c.inputBarBackground,
+              resizeToAvoidBottomInset: true,
+              body: ChatWallpaperBackground(
+                wallpaper: _effectiveWallpaper(),
+                fallbackColor: c.chatBackground,
+                brightness: Theme.of(context).brightness,
+                child: ChatMediaDropRegion(
+                  enabled:
+                      _vm.canSendMessages &&
+                      !_isSelecting &&
+                      !showPeerRestrictionBlock,
+                  onImagesDropped: _previewAndSendDroppedImages,
+                  child: Stack(
+                    key: _actionOverlayKey,
+                    children: [
+                      Positioned.fill(
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            // Scaffold shrinks its body as the keyboard slides,
+                            // so this builder re-runs every animation frame
+                            // even though only the width matters. Handing back
+                            // the same widget lets Element.updateChild skip the
+                            // header, transcript and composer entirely.
+                            final width = constraints.maxWidth;
+                            final cached = _cachedShellLayout;
+                            if (cached != null &&
+                                _cachedShellLayoutGeneration ==
+                                    _shellLayoutGeneration &&
+                                _cachedShellLayoutWidth == width) {
+                              return cached;
+                            }
+                            final searchPane = _searchUsesResultsPane(width);
+                            _searchResultsPaneVisible = searchPane;
+                            final searching = _search.isActive;
+                            final shell = ChatHeaderTrailingPaneLayout(
+                              header: showPeerRestrictionBlock
+                                  ? _header()
+                                  : searching
+                                  ? _searchHeader(showSteppers: searchPane)
+                                  : (_isSelecting
+                                        ? _selectionHeader()
+                                        : _header()),
+                              body: showPeerRestrictionBlock
+                                  ? _restrictedPeerBlockPage()
+                                  : Column(
+                                      children: [
+                                        Expanded(
+                                          child: _transcriptLayer(
+                                            searchPane: searchPane,
+                                          ),
                                         ),
-                                      ),
-                                      _chatMusicPlayer(),
-                                      // A narrow chat trades the composer for
-                                      // the hit navigator; a wide one keeps
-                                      // composing available beside the results.
-                                      if (searching && !searchPane)
-                                        _searchNavigator()
-                                      else if (_isSelecting)
-                                        _selectionActionBar()
-                                      else
-                                        _composerArea(),
-                                    ],
-                                  ),
-                            trailingPane: searchPane
-                                ? _searchResultsPane()
-                                : widget.trailingPane,
-                            trailingPaneWidth: searchPane
-                                ? chatSearchResultsPaneWidth
-                                : widget.trailingPaneWidth,
-                          );
-                        },
+                                        _chatMusicPlayer(),
+                                        // A narrow chat trades the composer
+                                        // for the hit navigator; a wide one
+                                        // keeps composing beside the results.
+                                        if (searching && !searchPane)
+                                          _searchNavigator()
+                                        else if (_isSelecting)
+                                          _selectionActionBar()
+                                        else
+                                          _composerArea(),
+                                      ],
+                                    ),
+                              trailingPane: searchPane
+                                  ? _searchResultsPane()
+                                  : widget.trailingPane,
+                              trailingPaneWidth: searchPane
+                                  ? chatSearchResultsPaneWidth
+                                  : widget.trailingPaneWidth,
+                            );
+                            _cachedShellLayout = shell;
+                            _cachedShellLayoutGeneration =
+                                _shellLayoutGeneration;
+                            _cachedShellLayoutWidth = width;
+                            return shell;
+                          },
+                        ),
                       ),
-                    ),
-                    if (_actionTarget != null && !_isSelecting)
-                      _actionMenuOverlay(),
-                  ],
+                      if (_actionTarget != null && !_isSelecting)
+                        _actionMenuOverlay(),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -6041,20 +6112,7 @@ class _ChatViewState extends State<ChatView> {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (_vm.businessBotUserId != 0) _businessBotManageBar(),
-          ChatInputBar(
-            vm: _vm,
-            requestInitialFocus: widget.requestComposerFocusOnReady,
-            enterToSend: context.watch<ThemeController>().enterToSend,
-            quickRepliesEnabled: context
-                .watch<ThemeController>()
-                .quickRepliesEnabled,
-            showCallAction: !_usesWideGroupHeader,
-            onStartCall: _startCall,
-            onMessageSent: _onComposerMessageSent,
-            onPanelGeometryChanged: _onComposerPanelGeometryChanged,
-            onMediaSendTapped: _onComposerMediaSendTapped,
-            onBotTopicCreated: _openTopicMode,
-          ),
+          _chatInputBar(),
         ],
       );
     }
@@ -6062,6 +6120,48 @@ class _ChatViewState extends State<ChatView> {
     // Subscribed to a channel you can't post in → mute/unmute (like official).
     if (_vm.isChannel && _vm.isMember) return _channelMuteBar();
     return _disabledComposer(_vm.sendDisabledReason);
+  }
+
+  // ChatInputBar subscribes to the view model itself, so the parent's
+  // notification-driven rebuilds only re-run its build for nothing. Every other
+  // constructor argument is either the (final) view model or a method tear-off,
+  // so these four flags are the whole input set.
+  Widget? _composerBarCache;
+  bool _composerBarRequestInitialFocus = false;
+  bool _composerBarEnterToSend = false;
+  bool _composerBarQuickRepliesEnabled = false;
+  bool _composerBarShowCallAction = false;
+
+  Widget _chatInputBar() {
+    final themeController = context.watch<ThemeController>();
+    final requestInitialFocus = widget.requestComposerFocusOnReady;
+    final enterToSend = themeController.enterToSend;
+    final quickRepliesEnabled = themeController.quickRepliesEnabled;
+    final showCallAction = !_usesWideGroupHeader;
+    final cached = _composerBarCache;
+    if (cached != null &&
+        _composerBarRequestInitialFocus == requestInitialFocus &&
+        _composerBarEnterToSend == enterToSend &&
+        _composerBarQuickRepliesEnabled == quickRepliesEnabled &&
+        _composerBarShowCallAction == showCallAction) {
+      return cached;
+    }
+    _composerBarRequestInitialFocus = requestInitialFocus;
+    _composerBarEnterToSend = enterToSend;
+    _composerBarQuickRepliesEnabled = quickRepliesEnabled;
+    _composerBarShowCallAction = showCallAction;
+    return _composerBarCache = ChatInputBar(
+      vm: _vm,
+      requestInitialFocus: requestInitialFocus,
+      enterToSend: enterToSend,
+      quickRepliesEnabled: quickRepliesEnabled,
+      showCallAction: showCallAction,
+      onStartCall: _startCall,
+      onMessageSent: _onComposerMessageSent,
+      onPanelGeometryChanged: _onComposerPanelGeometryChanged,
+      onMediaSendTapped: _onComposerMediaSendTapped,
+      onBotTopicCreated: _openTopicMode,
+    );
   }
 
   Widget _businessBotManageBar() {
@@ -6087,11 +6187,13 @@ class _ChatViewState extends State<ChatView> {
               behavior: HitTestBehavior.opaque,
               onTap: _showBusinessBotControls,
               child: Text(
-                paused
-                    ? 'Business bot paused in this chat'
-                    : _vm.businessBotCanReply
-                    ? 'Business bot can reply in this chat'
-                    : 'Business bot has read-only access',
+                AppStrings.t(
+                  paused
+                      ? AppStringKeys.chatBusinessBotPaused
+                      : _vm.businessBotCanReply
+                      ? AppStringKeys.chatBusinessBotCanReply
+                      : AppStringKeys.chatBusinessBotReadOnly,
+                ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 13, color: c.textSecondary),
@@ -6123,7 +6225,7 @@ class _ChatViewState extends State<ChatView> {
       backgroundColor: Colors.transparent,
       builder: (_) => BusinessBotChatControlSheet(
         chatId: widget.chatId,
-        botName: 'Connected Business Bot',
+        botName: AppStrings.t(AppStringKeys.chatConnectedBusinessBot),
         paused: _vm.businessBotPaused,
       ),
     );
@@ -6137,7 +6239,7 @@ class _ChatViewState extends State<ChatView> {
         16,
         10,
         16,
-        10 + MediaQuery.of(context).padding.bottom,
+        10 + MediaQuery.paddingOf(context).bottom,
       ),
       decoration: BoxDecoration(
         color: c.navBar,
@@ -6178,7 +6280,7 @@ class _ChatViewState extends State<ChatView> {
           16,
           14,
           16,
-          14 + MediaQuery.of(context).padding.bottom,
+          14 + MediaQuery.paddingOf(context).bottom,
         ),
         decoration: BoxDecoration(
           color: c.navBar,
@@ -6216,7 +6318,7 @@ class _ChatViewState extends State<ChatView> {
         16,
         10,
         16,
-        10 + MediaQuery.of(context).padding.bottom,
+        10 + MediaQuery.paddingOf(context).bottom,
       ),
       decoration: BoxDecoration(
         color: c.navBar,
@@ -6254,7 +6356,7 @@ class _ChatViewState extends State<ChatView> {
         16,
         14,
         16,
-        14 + MediaQuery.of(context).padding.bottom,
+        14 + MediaQuery.paddingOf(context).bottom,
       ),
       decoration: BoxDecoration(
         color: c.navBar,
@@ -6353,7 +6455,7 @@ class _ChatViewState extends State<ChatView> {
     final actionActive = _vm.hasActiveChatAction;
     final wideGroupHeader = _usesWideGroupHeader;
     return Container(
-      padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
+      padding: EdgeInsets.only(top: MediaQuery.paddingOf(context).top),
       decoration: BoxDecoration(
         color: widget.headerColor ?? c.navBar,
         border: widget.showHeaderDivider
@@ -6646,7 +6748,7 @@ class _ChatViewState extends State<ChatView> {
     final c = context.colors;
     final count = _selectedMessageIds.length;
     return Container(
-      padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
+      padding: EdgeInsets.only(top: MediaQuery.paddingOf(context).top),
       decoration: BoxDecoration(
         color: c.navBar,
         border: Border(bottom: BorderSide(color: c.divider, width: 0.5)),
@@ -6772,7 +6874,7 @@ class _ChatViewState extends State<ChatView> {
     }
 
     return Container(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
+      padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
       decoration: BoxDecoration(
         color: c.navBar,
         border: Border(top: BorderSide(color: c.divider, width: 0.5)),
@@ -7174,32 +7276,58 @@ class _ChatViewState extends State<ChatView> {
     if (ctx == null) return false;
     final renderObject = ctx.findRenderObject();
     if (renderObject is! RenderBox || !renderObject.attached) return false;
-    final media = MediaQuery.of(context);
+    final padding = MediaQuery.paddingOf(context);
     final origin = renderObject.localToGlobal(Offset.zero);
     final rect = origin & renderObject.size;
     // Search replaces the whole header, translation panel and header bottom
     // included, with the field plus its filter strip.
     final viewportTop =
-        media.padding.top +
+        padding.top +
         widget.headerHeight +
         (_search.isActive
             ? ChatSearchFilterStrip.height
             : (widget.headerBottom == null ? 0 : widget.headerBottomHeight)) +
         (widget.showHeaderDivider ? 1 : 0);
+    // _keyboardInset mirrors MediaQuery.viewInsetsOf; reading the field keeps
+    // this state element off the viewInsets aspect, which the keyboard
+    // animates every frame.
     final viewportBottom =
-        media.size.height - media.viewInsets.bottom - media.padding.bottom - 72;
+        MediaQuery.sizeOf(context).height -
+        _keyboardInset -
+        padding.bottom -
+        72;
     return rect.top >= viewportTop - 24 && rect.bottom <= viewportBottom + 24;
   }
 
   Widget _transcript() {
     final groupImages = context.watch<ThemeController>().groupImageMessages;
     final entries = _transcriptEntries(groupImages);
-    final partition = _partitionTranscript(entries);
+    // Partitioning copies every entry three times over and the index maps hash
+    // every row; both are pure functions of the memoized entry list plus the
+    // pivot inputs, so they are cached beside it rather than redone per build.
+    List<_TranscriptEntry> olderEntries;
+    List<_TranscriptEntry> newerEntries;
+    if (identical(entries, _sliverCacheEntries) &&
+        identical(_transcriptPivot, _sliverCachePivot) &&
+        _sliverCacheInitialLoaded == _vm.initialLoaded) {
+      olderEntries = _sliverCacheOlderEntries!;
+      newerEntries = _sliverCacheNewerEntries!;
+    } else {
+      final partition = _partitionTranscript(entries);
+      // Slivers before `center` grow away from it. Delegate index zero is the
+      // child nearest the center, so the chronological older half is reversed.
+      olderEntries = partition.beforePivot.reversed.toList(growable: false);
+      newerEntries = partition.pivotAndAfter;
+      _sliverCacheEntries = entries;
+      _sliverCachePivot = _transcriptPivot;
+      _sliverCacheInitialLoaded = _vm.initialLoaded;
+      _sliverCacheOlderEntries = olderEntries;
+      _sliverCacheNewerEntries = newerEntries;
+      // No valid leading-item count can be negative, so this forces the index
+      // maps below to be rebuilt against the new arms.
+      _sliverCacheLeadingItemCount = -1;
+    }
     _scheduleTranscriptPivotFreeze();
-    // Slivers before `center` grow away from it. Delegate index zero is the
-    // child nearest the center, so the chronological older half is reversed.
-    final olderEntries = partition.beforePivot.reversed.toList(growable: false);
-    final newerEntries = partition.pivotAndAfter;
     final messages = _transcriptCacheMessages ?? _vm.messages;
     final firstContactInfo = _vm.firstContactInfo;
     final firstContactAtCenter =
@@ -7216,123 +7344,135 @@ class _ChatViewState extends State<ChatView> {
         (firstContactBeforeCenter ? 1 : 0) +
         olderLoadingItemCount;
     final newerLeadingItemCount = firstContactAtCenter ? 1 : 0;
-    final olderIndexByKey = <Key, int>{
-      for (var i = 0; i < olderEntries.length; i++) olderEntries[i].key: i,
-    };
-    final newerIndexByKey = <Key, int>{
-      for (var i = 0; i < newerEntries.length; i++)
-        newerEntries[i].key: i + newerLeadingItemCount,
-    };
+    if (_sliverCacheLeadingItemCount != newerLeadingItemCount) {
+      _sliverCacheLeadingItemCount = newerLeadingItemCount;
+      _sliverCacheOlderIndexByKey = <Key, int>{
+        for (var i = 0; i < olderEntries.length; i++) olderEntries[i].key: i,
+      };
+      _sliverCacheNewerIndexByKey = <Key, int>{
+        for (var i = 0; i < newerEntries.length; i++)
+          newerEntries[i].key: i + newerLeadingItemCount,
+      };
+    }
+    final olderIndexByKey = _sliverCacheOlderIndexByKey!;
+    final newerIndexByKey = _sliverCacheNewerIndexByKey!;
     _scheduleUnreadProgressUpdate();
     _scheduleShortFirstContactReveal();
-    return Container(
-      color: _effectiveWallpaper() == null
-          ? context.colors.chatBackground
-          : const Color(0x00000000),
-      child: NotificationListener<ScrollNotification>(
-        onNotification: _onTranscriptScrollNotification,
-        child: Listener(
-          behavior: HitTestBehavior.translucent,
-          onPointerDown: _onTranscriptPointerDown,
-          onPointerUp: _onTranscriptPointerEnd,
-          onPointerCancel: _onTranscriptPointerEnd,
-          child: CustomScrollView(
-            key: _transcriptViewportKey,
-            controller: _scroll,
-            center: _newerTranscriptSliverKey,
-            physics: const ClampingScrollPhysics(
-              parent: AlwaysScrollableScrollPhysics(),
-            ),
-            scrollCacheExtent: ScrollCacheExtent.pixels(
-              defaultTargetPlatform == TargetPlatform.android ? 260 : 420,
-            ),
-            semanticChildCount:
-                entries.length + (firstContactInfo == null ? 0 : 1),
-            slivers: [
-              const SliverToBoxAdapter(child: SizedBox(height: 8)),
-              SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    if (index < olderEntries.length) {
-                      return _buildTranscriptEntry(
-                        olderEntries[index],
-                        messages,
-                      );
-                    }
-                    if (firstContactBeforeCenter &&
-                        index == olderEntries.length) {
-                      return _buildFirstContactCard(firstContactInfo);
-                    }
-                    if (showOlderLoadingGap) {
-                      return _historyLoadingGap('chat-older-history-gap');
-                    }
-                    return _buildFirstContactCard(firstContactInfo!);
-                  },
-                  childCount: olderChildCount,
-                  findChildIndexCallback: (key) {
-                    if (key == const ValueKey('chat-first-contact-card')) {
-                      return firstContactBeforeCenter
-                          ? olderEntries.length
-                          : null;
-                    }
-                    return olderIndexByKey[key];
-                  },
-                  semanticIndexCallback: (_, localIndex) =>
-                      olderChildCount - localIndex - 1,
-                ),
-              ),
-              SliverList(
-                key: _newerTranscriptSliverKey,
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    if (firstContactAtCenter && index == 0) {
-                      return _buildFirstContactCard(firstContactInfo);
-                    }
-                    return _buildTranscriptEntry(
-                      newerEntries[index - newerLeadingItemCount],
-                      messages,
-                    );
-                  },
-                  childCount: newerEntries.length + newerLeadingItemCount,
-                  findChildIndexCallback: (key) {
-                    if (key == const ValueKey('chat-first-contact-card')) {
-                      return firstContactAtCenter ? 0 : null;
-                    }
-                    return newerIndexByKey[key];
-                  },
-                  semanticIndexOffset: olderChildCount,
-                ),
-              ),
-              if (_vm.isLoadingLatest)
-                SliverToBoxAdapter(
-                  child: _historyLoadingGap('chat-latest-history-gap'),
-                ),
-              const SliverToBoxAdapter(child: SizedBox(height: 8)),
-            ],
+    // No fill of its own: ChatWallpaperBackground already covers this region
+    // with the same chatBackground when no wallpaper is set, and a transparent
+    // ColoredBox still issues a full-viewport drawRect.
+    return NotificationListener<ScrollNotification>(
+      onNotification: _onTranscriptScrollNotification,
+      child: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: _onTranscriptPointerDown,
+        onPointerUp: _onTranscriptPointerEnd,
+        onPointerCancel: _onTranscriptPointerEnd,
+        child: CustomScrollView(
+          key: _transcriptViewportKey,
+          controller: _scroll,
+          center: _newerTranscriptSliverKey,
+          physics: const ClampingScrollPhysics(
+            parent: AlwaysScrollableScrollPhysics(),
           ),
+          scrollCacheExtent: ScrollCacheExtent.pixels(
+            defaultTargetPlatform == TargetPlatform.android ? 260 : 420,
+          ),
+          semanticChildCount:
+              entries.length + (firstContactInfo == null ? 0 : 1),
+          slivers: [
+            const SliverToBoxAdapter(child: SizedBox(height: 8)),
+            SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  if (index < olderEntries.length) {
+                    return _buildTranscriptEntry(olderEntries[index], messages);
+                  }
+                  if (firstContactBeforeCenter &&
+                      index == olderEntries.length) {
+                    return _buildFirstContactCard(firstContactInfo);
+                  }
+                  if (showOlderLoadingGap) {
+                    return _historyLoadingGap('chat-older-history-gap');
+                  }
+                  return _buildFirstContactCard(firstContactInfo!);
+                },
+                childCount: olderChildCount,
+                // Nothing in the transcript keeps itself alive and there is
+                // no SelectableRegion, so the two keep-alive wrappers are
+                // dead weight; every row already carries its own
+                // RepaintBoundary.
+                addAutomaticKeepAlives: false,
+                addRepaintBoundaries: false,
+                findChildIndexCallback: (key) {
+                  if (key == const ValueKey('chat-first-contact-card')) {
+                    return firstContactBeforeCenter
+                        ? olderEntries.length
+                        : null;
+                  }
+                  return olderIndexByKey[key];
+                },
+                semanticIndexCallback: (_, localIndex) =>
+                    olderChildCount - localIndex - 1,
+              ),
+            ),
+            SliverList(
+              key: _newerTranscriptSliverKey,
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  if (firstContactAtCenter && index == 0) {
+                    return _buildFirstContactCard(firstContactInfo);
+                  }
+                  return _buildTranscriptEntry(
+                    newerEntries[index - newerLeadingItemCount],
+                    messages,
+                  );
+                },
+                childCount: newerEntries.length + newerLeadingItemCount,
+                addAutomaticKeepAlives: false,
+                addRepaintBoundaries: false,
+                findChildIndexCallback: (key) {
+                  if (key == const ValueKey('chat-first-contact-card')) {
+                    return firstContactAtCenter ? 0 : null;
+                  }
+                  return newerIndexByKey[key];
+                },
+                semanticIndexOffset: olderChildCount,
+              ),
+            ),
+            if (_vm.isLoadingLatest)
+              SliverToBoxAdapter(
+                child: _historyLoadingGap('chat-latest-history-gap'),
+              ),
+            const SliverToBoxAdapter(child: SizedBox(height: 8)),
+          ],
         ),
       ),
     );
   }
 
   Widget _historyLoadingGap(String key) {
-    return AnimatedSize(
+    // The transcript slivers no longer add repaint boundaries, and the spinner
+    // repaints continuously — keep it off the sliver's layer.
+    return RepaintBoundary(
       key: ValueKey(key),
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOutCubic,
-      child: SizedBox(
-        height: 54,
-        child: Center(
-          child: Container(
-            width: 34,
-            height: 34,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: context.colors.card.withValues(alpha: 0.94),
-              shape: BoxShape.circle,
-              border: Border.all(color: context.colors.divider, width: 0.5),
+      child: AnimatedSize(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        child: SizedBox(
+          height: 54,
+          child: Center(
+            child: Container(
+              width: 34,
+              height: 34,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: context.colors.card.withValues(alpha: 0.94),
+                shape: BoxShape.circle,
+                border: Border.all(color: context.colors.divider, width: 0.5),
+              ),
+              child: const AppActivityIndicator(size: 17),
             ),
-            child: const AppActivityIndicator(size: 17),
           ),
         ),
       ),
@@ -7488,11 +7628,13 @@ class _ChatViewState extends State<ChatView> {
       entry.last.id,
       GlobalKey.new,
     );
+    // The visibility key resolved to this RepaintBoundary's render object
+    // already; hanging it here drops one wrapper element per row.
     return KeyedSubtree(
       key: entry.key,
-      child: KeyedSubtree(
+      child: RepaintBoundary(
         key: visibilityKey,
-        child: RepaintBoundary(child: _searchHighlight(entry, content)),
+        child: _searchHighlight(entry, content),
       ),
     );
   }
@@ -7587,6 +7729,18 @@ class _ChatViewState extends State<ChatView> {
   bool _transcriptCacheGrouped = false;
   int _transcriptCacheUnreadCount = -1;
   int _transcriptCacheLastReadInboxId = -1;
+
+  // Downstream of the grouping memo: the pivot partition and the two sliver
+  // key→index maps. Keyed on the entry-list identity plus everything
+  // _partitionTranscript reads, so a cache hit leaves _transcriptPivot correct.
+  List<_TranscriptEntry>? _sliverCacheEntries;
+  TranscriptPivot? _sliverCachePivot;
+  bool _sliverCacheInitialLoaded = false;
+  List<_TranscriptEntry>? _sliverCacheOlderEntries;
+  List<_TranscriptEntry>? _sliverCacheNewerEntries;
+  int _sliverCacheLeadingItemCount = -1;
+  Map<Key, int>? _sliverCacheOlderIndexByKey;
+  Map<Key, int>? _sliverCacheNewerIndexByKey;
 
   List<_TranscriptEntry> _transcriptEntries(bool groupImages) {
     final messages = _vm.messages;
@@ -7874,11 +8028,12 @@ class _ChatViewState extends State<ChatView> {
   }
 
   Widget _actionMenuOverlay() {
-    final media = MediaQuery.of(context);
-    final screenW = media.size.width;
-    final screenH = media.size.height;
-    final topSafe = media.padding.top + 8;
-    final bottomSafe = screenH - media.padding.bottom - 8;
+    final screenSize = MediaQuery.sizeOf(context);
+    final safeArea = MediaQuery.paddingOf(context);
+    final screenW = screenSize.width;
+    final screenH = screenSize.height;
+    final topSafe = safeArea.top + 8;
+    final bottomSafe = screenH - safeArea.bottom - 8;
     final outgoing = _actionTarget!.isOutgoing;
     final rect = _actionRect;
     final showActionMenu = !_reactionExpanded;
@@ -7934,7 +8089,7 @@ class _ChatViewState extends State<ChatView> {
     final pointerMenuOrigin = pointerAnchored
         ? MessageActionMenu.desktopOriginForPointer(
             pointer: rect.topLeft,
-            viewport: media.size,
+            viewport: screenSize,
             menuSize: Size(desktopMenuWidth, menuH),
             topSafe: topSafe,
             bottomSafe: bottomSafe,

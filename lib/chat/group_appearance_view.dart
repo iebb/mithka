@@ -527,7 +527,7 @@ class _GroupAppearanceViewState extends State<GroupAppearanceView> {
       _row(AppStringKeys.groupAppearanceWallpaper, onTap: _openWallpaper),
       if (widget.isChannel)
         _switchRow(
-          'Automatic translation',
+          AppStrings.t(AppStringKeys.groupAppearanceAutomaticTranslation),
           value: _automaticTranslation,
           requiredLevel: _isPremium ? 0 : _automaticTranslationLevel,
           onChanged: _setAutomaticTranslation,

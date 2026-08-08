@@ -103,7 +103,11 @@ class SearchTokenHints extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  AppIcon(hint.icon, size: AppIconSize.lg, color: c.textTertiary),
+                  AppIcon(
+                    hint.icon,
+                    size: AppIconSize.lg,
+                    color: c.textTertiary,
+                  ),
                   const SizedBox(width: AppSpacing.lg),
                   Expanded(
                     child: Column(

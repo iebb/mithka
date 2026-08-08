@@ -128,6 +128,20 @@ final class CommunicationNotificationBridge {
       result(NotificationAvatarStore.cacheAvatar(at: path, chatId: chatId.int64Value) != nil)
       return
     }
+    if call.method == "setAccountSlots" {
+      // The extension cannot ask the app which account a user id belongs to,
+      // so the app publishes the map whenever its accounts change.
+      let arguments = call.arguments as? [String: Any] ?? [:]
+      var slots: [String: Int] = [:]
+      for (userId, slot) in arguments {
+        if let value = slot as? NSNumber {
+          slots[userId] = value.intValue
+        }
+      }
+      NotificationAccountStore.setSlots(slots)
+      result(true)
+      return
+    }
     guard call.method == "show" else {
       result(FlutterMethodNotImplemented)
       return

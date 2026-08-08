@@ -377,8 +377,9 @@ class _StoryViewerViewState extends State<StoryViewerView>
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // Full-bleed media fills the screen behind the chrome.
-          Positioned.fill(child: _media()),
+          // Full-bleed media fills the screen behind the chrome. Its own layer,
+          // so the per-frame progress bar never re-records the media.
+          Positioned.fill(child: RepaintBoundary(child: _media())),
           // Top scrim so the white progress bars + name stay legible over
           // bright media.
           Positioned(
@@ -404,35 +405,38 @@ class _StoryViewerViewState extends State<StoryViewerView>
           Column(
             children: [
               SizedBox(height: top + 12),
-              // Progress bars
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                child: AnimatedBuilder(
-                  animation: _progress,
-                  builder: (context, child) => Row(
-                    children: [
-                      for (var i = 0; i < widget.storyIds.length; i++)
-                        Expanded(
-                          child: Container(
-                            height: 3,
-                            margin: const EdgeInsets.symmetric(horizontal: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.3),
-                              borderRadius: BorderRadius.circular(2),
-                            ),
-                            child: FractionallySizedBox(
-                              alignment: Alignment.centerLeft,
-                              widthFactor: _fill(i),
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(2),
+              // Progress bars — boundaried so the 60fps fill does not drag the
+              // scrims, header, caption and action bar into every repaint.
+              RepaintBoundary(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: AnimatedBuilder(
+                    animation: _progress,
+                    builder: (context, child) => Row(
+                      children: [
+                        for (var i = 0; i < widget.storyIds.length; i++)
+                          Expanded(
+                            child: Container(
+                              height: 3,
+                              margin: const EdgeInsets.symmetric(horizontal: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.3),
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                              child: FractionallySizedBox(
+                                alignment: Alignment.centerLeft,
+                                widthFactor: _fill(i),
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(2),
+                                  ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),

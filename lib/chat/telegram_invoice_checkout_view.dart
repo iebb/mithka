@@ -51,9 +51,11 @@ Future<TelegramInvoiceOutcome> openTelegramInvoiceSlug(
 ) async {
   final trimmed = slug.trim();
   if (trimmed.isEmpty) {
-    return const TelegramInvoiceOutcome(
+    return TelegramInvoiceOutcome(
       TelegramInvoiceStatus.failed,
-      message: 'The invoice link is empty.',
+      message: AppStrings.t(
+        AppStringKeys.telegramInvoiceCheckoutInvoiceLinkEmpty,
+      ),
     );
   }
   var name = trimmed;
@@ -64,9 +66,11 @@ Future<TelegramInvoiceOutcome> openTelegramInvoiceSlug(
         'link': trimmed,
       });
       if (type.type != 'internalLinkTypeInvoice') {
-        return const TelegramInvoiceOutcome(
+        return TelegramInvoiceOutcome(
           TelegramInvoiceStatus.failed,
-          message: 'The link is not a Telegram invoice.',
+          message: AppStrings.t(
+            AppStringKeys.telegramInvoiceCheckoutLinkNotInvoice,
+          ),
         );
       }
       name = type.str('invoice_name') ?? '';
@@ -211,7 +215,11 @@ class _TelegramInvoiceCheckoutViewState
                   ),
                   if (!_isStarPayment && _needsOrderInfo) ...[
                     const SizedBox(height: 16),
-                    _sectionTitle('Order information'),
+                    _sectionTitle(
+                      AppStrings.t(
+                        AppStringKeys.telegramInvoiceCheckoutOrderInformation,
+                      ),
+                    ),
                     _CheckoutCard(children: _orderFields()),
                     const SizedBox(height: 8),
                     _ToggleRow(
@@ -225,7 +233,11 @@ class _TelegramInvoiceCheckoutViewState
                   ],
                   if (_shippingOptions.isNotEmpty) ...[
                     const SizedBox(height: 16),
-                    _sectionTitle('Shipping'),
+                    _sectionTitle(
+                      AppStrings.t(
+                        AppStringKeys.telegramInvoiceCheckoutShippingSection,
+                      ),
+                    ),
                     _CheckoutCard(
                       children: [
                         for (final option in _shippingOptions)
@@ -247,7 +259,11 @@ class _TelegramInvoiceCheckoutViewState
                   if (!_isStarPayment &&
                       (invoice?.int64('max_tip_amount') ?? 0) > 0) ...[
                     const SizedBox(height: 16),
-                    _sectionTitle('Tip'),
+                    _sectionTitle(
+                      AppStrings.t(
+                        AppStringKeys.telegramInvoiceCheckoutTipSection,
+                      ),
+                    ),
                     _CheckoutCard(children: [_tipField(currency)]),
                     if ((invoice?.int64Array('suggested_tip_amounts') ??
                             const [])
@@ -276,7 +292,12 @@ class _TelegramInvoiceCheckoutViewState
                   ],
                   if (!_isStarPayment) ...[
                     const SizedBox(height: 16),
-                    _sectionTitle('Payment method'),
+                    _sectionTitle(
+                      AppStrings.t(
+                        AppStringKeys
+                            .telegramInvoiceCheckoutPaymentMethodSection,
+                      ),
+                    ),
                     _paymentMethods(),
                     if (_formType?.boolean('can_save_credentials') ?? false)
                       Padding(
@@ -294,7 +315,10 @@ class _TelegramInvoiceCheckoutViewState
                                       !_allowSaveCredentials,
                                 ),
                           note: (_formType?.boolean('need_password') ?? false)
-                              ? 'Set a two-step verification password before saving payment methods.'
+                              ? AppStrings.t(
+                                  AppStringKeys
+                                      .telegramInvoiceCheckoutSetPasswordBeforeSaving,
+                                )
                               : null,
                         ),
                       ),
@@ -333,7 +357,14 @@ class _TelegramInvoiceCheckoutViewState
                   ],
                   const SizedBox(height: 18),
                   _PrimaryPaymentAction(
-                    label: _busy ? 'Processing…' : 'Pay ${_displayTotal()}',
+                    label: _busy
+                        ? AppStrings.t(
+                            AppStringKeys.telegramInvoiceCheckoutProcessing,
+                          )
+                        : AppStrings.t(
+                            AppStringKeys.telegramInvoiceCheckoutPayValue1,
+                            {'value1': _displayTotal()},
+                          ),
                     busy: _busy,
                     onTap: _busy ? null : _pay,
                   ),
@@ -439,7 +470,9 @@ class _TelegramInvoiceCheckoutViewState
       for (final item in saved)
         _ChoiceRow(
           title: item.str('title') ?? 'Saved payment method',
-          subtitle: 'Saved by Telegram',
+          subtitle: AppStrings.t(
+            AppStringKeys.telegramInvoiceCheckoutSavedByTelegram,
+          ),
           selected: _paymentMethod == 'saved:${item.str('id') ?? ''}',
           onTap: () =>
               setState(() => _paymentMethod = 'saved:${item.str('id') ?? ''}'),
@@ -449,7 +482,9 @@ class _TelegramInvoiceCheckoutViewState
           title: AppStrings.t(
             AppStringKeys.telegramInvoiceCheckoutCreditOrDebitCard,
           ),
-          subtitle: 'Tokenized securely by Stripe',
+          subtitle: AppStrings.t(
+            AppStringKeys.telegramInvoiceCheckoutTokenizedByStripe,
+          ),
           selected: _paymentMethod == 'stripe',
           onTap: () => setState(() => _paymentMethod = 'stripe'),
         ),
@@ -465,10 +500,11 @@ class _TelegramInvoiceCheckoutViewState
           ),
         ),
       if (provider?.type == 'paymentProviderSmartGlocal')
-        const _UnavailablePaymentRow(
+        _UnavailablePaymentRow(
           title: 'Smart Glocal',
-          note:
-              'This provider requires its native tokenization SDK, which is not bundled in this build.',
+          note: AppStrings.t(
+            AppStringKeys.telegramInvoiceCheckoutProviderSdkMissing,
+          ),
         ),
       for (final option in additional)
         _ChoiceRow(
@@ -493,7 +529,7 @@ class _TelegramInvoiceCheckoutViewState
       label: label,
       value: value,
       onTap: onTap,
-      linkLabel: 'Read terms',
+      linkLabel: AppStrings.t(AppStringKeys.telegramInvoiceCheckoutReadTerms),
       onLinkTap: () =>
           launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
     ),
@@ -514,14 +550,20 @@ class _TelegramInvoiceCheckoutViewState
     final invoice = _invoice;
     if ((invoice?.str('terms_of_service_url') ?? '').isNotEmpty &&
         !_termsAccepted) {
-      setState(() => _error = 'Accept the payment terms to continue.');
+      setState(
+        () => _error = AppStrings.t(
+          AppStringKeys.telegramInvoiceCheckoutAcceptTerms,
+        ),
+      );
       return;
     }
     if ((invoice?.str('recurring_payment_terms_of_service_url') ?? '')
             .isNotEmpty &&
         !_recurringTermsAccepted) {
       setState(
-        () => _error = 'Accept the recurring payment terms to continue.',
+        () => _error = AppStrings.t(
+          AppStringKeys.telegramInvoiceCheckoutAcceptRecurringTerms,
+        ),
       );
       return;
     }
@@ -543,9 +585,9 @@ class _TelegramInvoiceCheckoutViewState
         }
         if (invoice?.boolean('is_flexible') == true &&
             _shippingOptionId.isEmpty) {
-          throw const TelegramPaymentException(
+          throw TelegramPaymentException(
             'shipping_unavailable',
-            'The seller did not return an available shipping option.',
+            AppStrings.t(AppStringKeys.telegramInvoiceCheckoutNoShippingOption),
           );
         }
       }
@@ -568,7 +610,10 @@ class _TelegramInvoiceCheckoutViewState
         title: AppStrings.t(
           AppStringKeys.telegramInvoiceCheckoutConfirmPayment,
         ),
-        message: 'Pay ${_displayTotal(tipAmount: tipAmount)}?',
+        message: AppStrings.t(
+          AppStringKeys.telegramInvoiceCheckoutPayValue1Question,
+          {'value1': _displayTotal(tipAmount: tipAmount)},
+        ),
         confirmText: AppStrings.t(AppStringKeys.telegramInvoiceCheckoutPay),
       );
       if (!accepted) {
@@ -594,9 +639,11 @@ class _TelegramInvoiceCheckoutViewState
       if (verificationUrl.isNotEmpty) {
         final uri = Uri.tryParse(verificationUrl);
         if (uri == null || uri.scheme != 'https') {
-          throw const TelegramPaymentException(
+          throw TelegramPaymentException(
             'verification_url_invalid',
-            'The provider returned an unsafe verification URL.',
+            AppStrings.t(
+              AppStringKeys.telegramInvoiceCheckoutUnsafeVerificationUrl,
+            ),
           );
         }
         await Navigator.of(context).push<void>(
@@ -616,9 +663,9 @@ class _TelegramInvoiceCheckoutViewState
         ).pop(const TelegramInvoiceOutcome(TelegramInvoiceStatus.pending));
         return;
       }
-      throw const TelegramPaymentException(
+      throw TelegramPaymentException(
         'payment_not_completed',
-        'The payment was not completed.',
+        AppStrings.t(AppStringKeys.telegramInvoiceCheckoutPaymentNotCompleted),
       );
     } catch (error) {
       if (!mounted) return;
@@ -697,9 +744,11 @@ class _TelegramInvoiceCheckoutViewState
               allowSave: _allowSaveCredentials,
             );
     }
-    throw const TelegramPaymentException(
+    throw TelegramPaymentException(
       'payment_provider_unavailable',
-      'No supported payment method is available for this invoice.',
+      AppStrings.t(
+        AppStringKeys.telegramInvoiceCheckoutNoSupportedPaymentMethod,
+      ),
     );
   }
 
@@ -980,7 +1029,11 @@ class _StripeCardEntryViewState extends State<StripeCardEntryView> {
                 ],
                 const SizedBox(height: 18),
                 _PrimaryPaymentAction(
-                  label: _busy ? 'Tokenizing…' : 'Continue',
+                  label: AppStrings.t(
+                    _busy
+                        ? AppStringKeys.telegramInvoiceCheckoutTokenizing
+                        : AppStringKeys.telegramInvoiceCheckoutContinueAction,
+                  ),
                   busy: _busy,
                   onTap: _busy ? null : _tokenize,
                 ),
@@ -1032,7 +1085,7 @@ Future<String?> showPaymentPasswordDialog(BuildContext context) async {
   final result = await showGeneralDialog<String>(
     context: context,
     barrierDismissible: true,
-    barrierLabel: 'Cancel',
+    barrierLabel: AppStrings.t(AppStringKeys.confirmCancel),
     barrierColor: const Color(0x99000000),
     transitionDuration: const Duration(milliseconds: 160),
     pageBuilder: (dialogContext, _, _) => _PaymentPasswordDialog(
@@ -1720,11 +1773,19 @@ int _pow10(int value) {
 
 String _safePaymentError(Object error) {
   if (error is TelegramPaymentException) {
-    return error.message ?? 'The payment could not be completed.';
+    return error.message ??
+        AppStrings.t(
+          AppStringKeys.telegramInvoiceCheckoutPaymentCouldNotBeCompleted,
+        );
   }
   if (error is TdError) return error.message;
   if (error is PlatformException) {
-    return error.message ?? 'The platform payment failed.';
+    return error.message ??
+        AppStrings.t(
+          AppStringKeys.telegramInvoiceCheckoutPlatformPaymentFailed,
+        );
   }
-  return 'The payment could not be completed.';
+  return AppStrings.t(
+    AppStringKeys.telegramInvoiceCheckoutPaymentCouldNotBeCompleted,
+  );
 }

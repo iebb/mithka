@@ -15,6 +15,7 @@ import '../theme/telegram_cloud_theme.dart';
 import '../theme/theme_controller.dart';
 import 'chat_appearance_preview.dart';
 import 'media_album_layout.dart';
+import 'media_preview_geometry.dart';
 import 'message_action_menu.dart';
 import 'telegram_rich_text.dart';
 
@@ -130,7 +131,12 @@ class ImageMediaAlbumBubble extends StatelessWidget {
           context,
           outgoing: outgoing,
           captionMessage: captionMessage,
-          maxWidth: math.max(1, chatWidth * 0.75),
+          // An album is chat media like any other: a wide transcript must not
+          // stretch it past the box a single photo would get.
+          maxWidth: math.max(
+            1.0,
+            math.min(chatWidth * 0.75, telegramDesktopMediaPreviewMaxSide),
+          ),
         );
         final body = outgoing
             ? gallery
@@ -290,20 +296,7 @@ class ImageMediaAlbumBubble extends StatelessWidget {
         : null;
     final visible = messages.take(9).toList(growable: false);
     const padding = 4.0;
-    final layout = buildTelegramMediaAlbumLayout(
-      items: [
-        for (final message in visible)
-          MediaAlbumItem(
-            width: message.imageWidth,
-            height: message.imageHeight,
-          ),
-      ],
-      maxWidth: math.max(1, maxWidth - padding * 2),
-      gap: 4,
-      maxSingleHeight: 300,
-      minRowHeight: 82,
-      maxRowHeight: 230,
-    );
+    final layout = _albumLayout(visible, math.max(1, maxWidth - padding * 2));
     final width = layout.width + padding * 2;
     final interactionOwner = selectMediaAlbumInteractionOwner(messages);
     final showComments =
@@ -406,98 +399,106 @@ class ImageMediaAlbumBubble extends StatelessWidget {
     required double height,
     required int extraCount,
   }) {
-    final tileKey = GlobalKey();
-    void showActions({Offset? pointerPosition}) {
-      final box = tileKey.currentContext?.findRenderObject() as RenderBox?;
-      final bounds = pointerPosition != null
-          ? Rect.fromLTWH(pointerPosition.dx, pointerPosition.dy, 0, 0)
-          : box != null && box.hasSize
-          ? box.localToGlobal(Offset.zero) & box.size
-          : null;
-      onLongPress?.call(
-        message,
-        bounds,
-        message.video != null
-            ? MessageActionSource.video
-            : MessageActionSource.normal,
-      );
-    }
-
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () {
-        if (selecting) {
-          onToggleSelection?.call(message);
-        } else if (message.video != null) {
-          onPlayVideo?.call(message);
-        } else {
-          onOpenImage?.call(message);
+    // A GlobalKey minted here would change identity every build, so Flutter
+    // could not match the old element: the whole tile — TDImage state and its
+    // in-flight file lookup included — was deactivated and re-inflated on every
+    // album rebuild. The key only ever resolved a RenderBox, which the tile's
+    // own context gives for free.
+    return Builder(
+      builder: (tileContext) {
+        void showActions({Offset? pointerPosition}) {
+          final box = tileContext.findRenderObject() as RenderBox?;
+          final bounds = pointerPosition != null
+              ? Rect.fromLTWH(pointerPosition.dx, pointerPosition.dy, 0, 0)
+              : box != null && box.hasSize
+              ? box.localToGlobal(Offset.zero) & box.size
+              : null;
+          onLongPress?.call(
+            message,
+            bounds,
+            message.video != null
+                ? MessageActionSource.video
+                : MessageActionSource.normal,
+          );
         }
+
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            if (selecting) {
+              onToggleSelection?.call(message);
+            } else if (message.video != null) {
+              onPlayVideo?.call(message);
+            } else {
+              onOpenImage?.call(message);
+            }
+          },
+          onLongPress: selecting ? null : showActions,
+          onSecondaryTapUp: selecting
+              ? null
+              : (details) =>
+                    showActions(pointerPosition: details.globalPosition),
+          child: SizedBox(
+            key: ValueKey('messageImageAlbumTile-${message.id}'),
+            width: width,
+            height: height,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                imageBuilder?.call(context, message, width, height) ??
+                    TDImage(
+                      photo: message.image,
+                      cornerRadius: 5,
+                      cacheWidth: _cachePx(context, width),
+                      cacheHeight: _cachePx(context, height),
+                      showProgress: true,
+                    ),
+                if (message.video != null)
+                  Center(
+                    child: Container(
+                      width: 42,
+                      height: 42,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.45),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const AppIcon(
+                        HeroAppIcons.play,
+                        color: Colors.white,
+                        size: 21,
+                      ),
+                    ),
+                  ),
+                if (extraCount > 0)
+                  Container(
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.45),
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                    ),
+                    child: Text(
+                      '+$extraCount',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                if (selecting)
+                  Positioned(
+                    top: 6,
+                    right: 6,
+                    child: IgnorePointer(
+                      child: _selectionIndicator(context, message),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
       },
-      onLongPress: selecting ? null : showActions,
-      onSecondaryTapUp: selecting
-          ? null
-          : (details) => showActions(pointerPosition: details.globalPosition),
-      child: SizedBox(
-        key: ValueKey('messageImageAlbumTile-${message.id}'),
-        width: width,
-        height: height,
-        child: Stack(
-          key: tileKey,
-          fit: StackFit.expand,
-          children: [
-            imageBuilder?.call(context, message, width, height) ??
-                TDImage(
-                  photo: message.image,
-                  cornerRadius: 5,
-                  cacheWidth: _cachePx(context, width),
-                  cacheHeight: _cachePx(context, height),
-                  showProgress: true,
-                ),
-            if (message.video != null)
-              Center(
-                child: Container(
-                  width: 42,
-                  height: 42,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.45),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const AppIcon(
-                    HeroAppIcons.play,
-                    color: Colors.white,
-                    size: 21,
-                  ),
-                ),
-              ),
-            if (extraCount > 0)
-              Container(
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.45),
-                  borderRadius: BorderRadius.circular(AppRadius.sm),
-                ),
-                child: Text(
-                  '+$extraCount',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            if (selecting)
-              Positioned(
-                top: 6,
-                right: 6,
-                child: IgnorePointer(
-                  child: _selectionIndicator(context, message),
-                ),
-              ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -583,6 +584,45 @@ class ImageMediaAlbumBubble extends StatelessWidget {
 
   int _cachePx(BuildContext context, double logical) =>
       (logical * MediaQuery.devicePixelRatioOf(context)).ceil();
+}
+
+/// Album geometry is a search over every row plan, each allocating a list and a
+/// Rect per tile. The inputs only move when TDLib replaces a message, so memoize
+/// it rather than re-running the search on every transcript rebuild.
+final Map<String, MediaAlbumLayout> _albumLayouts = {};
+const _maxMemoizedAlbumLayouts = 32;
+
+MediaAlbumLayout _albumLayout(List<ChatMessage> visible, double maxWidth) {
+  final signature = StringBuffer()..write(maxWidth.toStringAsFixed(2));
+  for (final message in visible) {
+    signature
+      ..write('|')
+      ..write(message.id)
+      ..write(':')
+      ..write(message.imageWidth)
+      ..write('x')
+      ..write(message.imageHeight);
+  }
+  final key = signature.toString();
+  final cached = _albumLayouts[key];
+  if (cached != null) return cached;
+  final layout = buildTelegramMediaAlbumLayout(
+    items: [
+      for (final message in visible)
+        MediaAlbumItem(width: message.imageWidth, height: message.imageHeight),
+    ],
+    maxWidth: maxWidth,
+    gap: 4,
+    maxSingleHeight: 300,
+    minRowHeight: 82,
+    maxRowHeight: 230,
+    maxHeight: telegramChatMediaPreviewMaxHeight,
+  );
+  if (_albumLayouts.length >= _maxMemoizedAlbumLayouts) {
+    _albumLayouts.remove(_albumLayouts.keys.first);
+  }
+  _albumLayouts[key] = layout;
+  return layout;
 }
 
 ChatMessage selectMediaAlbumInteractionOwner(List<ChatMessage> group) {

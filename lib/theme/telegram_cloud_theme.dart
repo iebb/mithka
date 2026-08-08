@@ -28,6 +28,18 @@ typedef TelegramThemeQuery =
 typedef TelegramThemeFilePath = Future<String?> Function(int fileId);
 typedef TelegramThemeSupportDirectory = Future<Directory> Function();
 
+// Deriving these three costs a few hundred palette probes plus HSL and
+// alpha-blend work, and they are read once per message row and twice per
+// ThemeData build. TelegramCloudTheme is const-constructible so the memo
+// cannot be an instance field; a weak side table keyed on the (immutable)
+// theme instance does the same job without retaining it.
+final Expando<AppColors> _uiColorsCache = Expando<AppColors>('uiColors');
+final Expando<TelegramMessageColors> _messageColorsCache =
+    Expando<TelegramMessageColors>('messageColors');
+final Expando<List<Color>> _senderNameColorsCache = Expando<List<Color>>(
+  'senderNameColors',
+);
+
 Color _distinctPinnedRowColor({
   required Color background,
   required Color candidate,
@@ -375,6 +387,14 @@ class TelegramCloudTheme {
       _paletteColor(const ['chat_outBubbleSelected', 'msgOutBgSelected']);
 
   TelegramMessageColors get messageColors {
+    final cached = _messageColorsCache[this];
+    if (cached != null) return cached;
+    final computed = _computeMessageColors();
+    _messageColorsCache[this] = computed;
+    return computed;
+  }
+
+  TelegramMessageColors _computeMessageColors() {
     final ui = uiColors;
     final incomingText = incomingTextColor ?? ui.bubbleIncomingText;
     final outgoingText =
@@ -755,51 +775,116 @@ class TelegramCloudTheme {
   /// fallback samples are reached only when an imported theme has no variable
   /// for that slot.
   List<Color> get senderNameColors {
-    const names = <String>[
-      'Red',
-      'Orange',
-      'Violet',
-      'Green',
-      'Cyan',
-      'Blue',
-      'Pink',
-    ];
-    const lowerNames = <String>[
-      'red',
-      'orange',
-      'violet',
-      'green',
-      'cyan',
-      'blue',
-      'pink',
-    ];
-    const fallback = <Color>[
-      Color(0xFFE2B4B4),
-      Color(0xFFE5EAA8),
-      Color(0xFFB39DC8),
-      Color(0xFFBAE2B4),
-      Color(0xFFA5E1DE),
-      Color(0xFFB4C4E2),
-      Color(0xFFD59EBB),
-    ];
-    return <Color>[
-      for (var index = 0; index < names.length; index++)
-        _paletteColor(<String>[
-              'avatar_nameInMessage${names[index]}',
-              'chat.message.incoming.authorName.${lowerNames[index]}',
-              'chat.message.incoming.authorName${names[index]}',
-              'chat.peerName.${lowerNames[index]}',
-              'chat_messageName${names[index]}',
-              'chat_messageAuthor${names[index]}',
-              'groupPeerName${names[index]}',
-              if (index == 5) 'groupPeerNameLightBlue',
-              'historyPeer${index + 1}NameFg',
-              'avatar_background${names[index]}',
-              'avatar_backgroundInProfile${names[index]}',
-            ]) ??
-            fallback[index],
-    ];
+    final cached = _senderNameColorsCache[this];
+    if (cached != null) return cached;
+    final computed = List<Color>.unmodifiable(<Color>[
+      for (var index = 0; index < _senderNameKeys.length; index++)
+        _paletteColor(_senderNameKeys[index]) ?? _senderNameFallback[index],
+    ]);
+    _senderNameColorsCache[this] = computed;
+    return computed;
   }
+
+  /// Per-slot lookup keys, spelled out rather than interpolated: this runs for
+  /// every incoming group message and the interpolated form allocated ~70
+  /// throwaway Strings per call.
+  static const List<List<String>> _senderNameKeys = [
+    [
+      'avatar_nameInMessageRed',
+      'chat.message.incoming.authorName.red',
+      'chat.message.incoming.authorNameRed',
+      'chat.peerName.red',
+      'chat_messageNameRed',
+      'chat_messageAuthorRed',
+      'groupPeerNameRed',
+      'historyPeer1NameFg',
+      'avatar_backgroundRed',
+      'avatar_backgroundInProfileRed',
+    ],
+    [
+      'avatar_nameInMessageOrange',
+      'chat.message.incoming.authorName.orange',
+      'chat.message.incoming.authorNameOrange',
+      'chat.peerName.orange',
+      'chat_messageNameOrange',
+      'chat_messageAuthorOrange',
+      'groupPeerNameOrange',
+      'historyPeer2NameFg',
+      'avatar_backgroundOrange',
+      'avatar_backgroundInProfileOrange',
+    ],
+    [
+      'avatar_nameInMessageViolet',
+      'chat.message.incoming.authorName.violet',
+      'chat.message.incoming.authorNameViolet',
+      'chat.peerName.violet',
+      'chat_messageNameViolet',
+      'chat_messageAuthorViolet',
+      'groupPeerNameViolet',
+      'historyPeer3NameFg',
+      'avatar_backgroundViolet',
+      'avatar_backgroundInProfileViolet',
+    ],
+    [
+      'avatar_nameInMessageGreen',
+      'chat.message.incoming.authorName.green',
+      'chat.message.incoming.authorNameGreen',
+      'chat.peerName.green',
+      'chat_messageNameGreen',
+      'chat_messageAuthorGreen',
+      'groupPeerNameGreen',
+      'historyPeer4NameFg',
+      'avatar_backgroundGreen',
+      'avatar_backgroundInProfileGreen',
+    ],
+    [
+      'avatar_nameInMessageCyan',
+      'chat.message.incoming.authorName.cyan',
+      'chat.message.incoming.authorNameCyan',
+      'chat.peerName.cyan',
+      'chat_messageNameCyan',
+      'chat_messageAuthorCyan',
+      'groupPeerNameCyan',
+      'historyPeer5NameFg',
+      'avatar_backgroundCyan',
+      'avatar_backgroundInProfileCyan',
+    ],
+    [
+      'avatar_nameInMessageBlue',
+      'chat.message.incoming.authorName.blue',
+      'chat.message.incoming.authorNameBlue',
+      'chat.peerName.blue',
+      'chat_messageNameBlue',
+      'chat_messageAuthorBlue',
+      'groupPeerNameBlue',
+      'groupPeerNameLightBlue',
+      'historyPeer6NameFg',
+      'avatar_backgroundBlue',
+      'avatar_backgroundInProfileBlue',
+    ],
+    [
+      'avatar_nameInMessagePink',
+      'chat.message.incoming.authorName.pink',
+      'chat.message.incoming.authorNamePink',
+      'chat.peerName.pink',
+      'chat_messageNamePink',
+      'chat_messageAuthorPink',
+      'groupPeerNamePink',
+      'historyPeer7NameFg',
+      'avatar_backgroundPink',
+      'avatar_backgroundInProfilePink',
+    ],
+  ];
+
+  static const List<Color> _senderNameFallback = [
+    Color(0xFFE2B4B4),
+    Color(0xFFE5EAA8),
+    Color(0xFFB39DC8),
+    Color(0xFFBAE2B4),
+    Color(0xFFA5E1DE),
+    Color(0xFFB4C4E2),
+    Color(0xFFD59EBB),
+  ];
 
   Color senderNameColorForAccentId(int accentColorId) {
     final colors = senderNameColors;
@@ -810,6 +895,14 @@ class TelegramCloudTheme {
   /// Semantic UI variables derived from Telegram's platform-specific keys.
   /// Consumers should use these tokens instead of reading raw palette keys.
   AppColors get uiColors {
+    final cached = _uiColorsCache[this];
+    if (cached != null) return cached;
+    final computed = _computeUiColors();
+    _uiColorsCache[this] = computed;
+    return computed;
+  }
+
+  AppColors _computeUiColors() {
     final base = isDark ? AppColors.dark : AppColors.light;
     Color value(TelegramThemeSemanticColor semantic, Color fallback) =>
         semanticColor(semantic) ?? fallback;
