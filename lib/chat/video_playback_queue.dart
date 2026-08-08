@@ -5,6 +5,7 @@ import '../tdlib/td_models.dart';
 class VideoPlaybackItem {
   const VideoPlaybackItem({
     required this.video,
+    this.accountSlot,
     this.thumb,
     this.width,
     this.height,
@@ -14,6 +15,7 @@ class VideoPlaybackItem {
   });
 
   final TdFileRef video;
+  final int? accountSlot;
   final TdFileRef? thumb;
   final int? width;
   final int? height;
@@ -79,6 +81,7 @@ class VideoPlaybackQueue {
 class _VideoPlaybackItemSnapshot {
   _VideoPlaybackItemSnapshot(VideoPlaybackItem item)
     : video = _TdFileSnapshot(item.video),
+      accountSlot = item.accountSlot,
       thumb = item.thumb == null ? null : _TdFileSnapshot(item.thumb!),
       width = item.width,
       height = item.height,
@@ -87,6 +90,7 @@ class _VideoPlaybackItemSnapshot {
       title = item.title;
 
   final _TdFileSnapshot video;
+  final int? accountSlot;
   final _TdFileSnapshot? thumb;
   final int? width;
   final int? height;
@@ -99,6 +103,7 @@ class _VideoPlaybackItemSnapshot {
       identical(this, other) ||
       other is _VideoPlaybackItemSnapshot &&
           video == other.video &&
+          accountSlot == other.accountSlot &&
           thumb == other.thumb &&
           width == other.width &&
           height == other.height &&
@@ -107,8 +112,16 @@ class _VideoPlaybackItemSnapshot {
           title == other.title;
 
   @override
-  int get hashCode =>
-      Object.hash(video, thumb, width, height, sourceChatId, messageId, title);
+  int get hashCode => Object.hash(
+    video,
+    accountSlot,
+    thumb,
+    width,
+    height,
+    sourceChatId,
+    messageId,
+    title,
+  );
 }
 
 @immutable

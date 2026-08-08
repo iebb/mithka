@@ -117,6 +117,93 @@ Map<String, dynamic> quickAckTdlibOptionRequest() => <String, dynamic>{
   'value': <String, dynamic>{'@type': 'optionValueBoolean', 'value': true},
 };
 
+@visibleForTesting
+final class TdAccountLeaseReleasePlan {
+  const TdAccountLeaseReleasePlan({
+    this.closeClient = false,
+    this.deleteData = false,
+  });
+
+  final bool closeClient;
+  final bool deleteData;
+}
+
+/// Pure reference-count bookkeeping for long-lived account users.
+///
+/// Switching the foreground account never closes another slot, but desktop
+/// windows and in-flight file work can outlive an explicit account cleanup or
+/// session replacement. A requested close/delete is therefore held until the
+/// last owner releases its lease.
+@visibleForTesting
+final class TdAccountLeaseBook {
+  final Map<int, int> _counts = {};
+  final Set<int> _pendingCloses = {};
+  final Set<int> _pendingDeletes = {};
+
+  int countFor(int accountSlot) => _counts[accountSlot] ?? 0;
+
+  void retain(int accountSlot) {
+    _counts.update(accountSlot, (count) => count + 1, ifAbsent: () => 1);
+  }
+
+  bool requestClose(int accountSlot) {
+    if (countFor(accountSlot) == 0) return true;
+    _pendingCloses.add(accountSlot);
+    return false;
+  }
+
+  bool requestDelete(int accountSlot) {
+    if (countFor(accountSlot) == 0 && !_pendingCloses.contains(accountSlot)) {
+      return true;
+    }
+    _pendingDeletes.add(accountSlot);
+    return false;
+  }
+
+  TdAccountLeaseReleasePlan release(int accountSlot) {
+    final count = countFor(accountSlot);
+    if (count <= 0) return const TdAccountLeaseReleasePlan();
+    if (count > 1) {
+      _counts[accountSlot] = count - 1;
+      return const TdAccountLeaseReleasePlan();
+    }
+    _counts.remove(accountSlot);
+    return TdAccountLeaseReleasePlan(
+      closeClient: _pendingCloses.remove(accountSlot),
+      deleteData: _pendingDeletes.remove(accountSlot),
+    );
+  }
+}
+
+/// Pins one concrete TDLib client for a long-lived video/file owner.
+///
+/// Queries never consult the current foreground account. Releasing is
+/// idempotent so native window close/failure races cannot underflow the lease.
+final class TdAccountLease {
+  TdAccountLease._(this.accountSlot, this.clientId, this._query, this._release);
+
+  final int accountSlot;
+  final int clientId;
+  final Future<Map<String, dynamic>> Function(Map<String, dynamic>) _query;
+  final Future<void> Function() _release;
+  bool _released = false;
+
+  bool get isReleased => _released;
+
+  Future<Map<String, dynamic>> query(Map<String, dynamic> request) {
+    if (_released) {
+      throw StateError('TDLib account lease for slot $accountSlot is released');
+    }
+    return _query(request);
+  }
+
+  Future<void> release() {
+    if (_released) return Future<void>.value();
+    _released = true;
+    return _release();
+  }
+}
+
 class TdClient {
   TdClient._();
   static final TdClient shared = TdClient._();
@@ -158,6 +245,8 @@ class TdClient {
   // Accounts
   final Map<int, int> _clientForSlot = {};
   final Map<int, int> _slotForClient = {};
+  final TdAccountLeaseBook _accountLeases = TdAccountLeaseBook();
+  final Map<int, Future<void>> _closingSlots = {};
   final Set<int> _proxyAppliedClients = {};
   int _activeClientId = 0;
   int _activeSlot = 0;
@@ -512,7 +601,7 @@ class TdClient {
       _persist();
       return newSlot;
     } catch (error) {
-      _closeAndForgetSlot(newSlot);
+      await _closeAndForgetSlot(newSlot);
       await _deleteDirectoryIfPresent(dbDir);
       await Future<void>.delayed(const Duration(milliseconds: 300));
       await _deleteDirectoryIfPresent(dbDir);
@@ -563,7 +652,7 @@ class TdClient {
       _persist();
       return TdFreshSessionResult(slot: newSlot, needsInteractiveLogin: !ready);
     } catch (error) {
-      _closeAndForgetSlot(newSlot);
+      await _closeAndForgetSlot(newSlot);
       await _deleteDirectoryIfPresent(dbDir);
       await Future<void>.delayed(const Duration(milliseconds: 300));
       await _deleteDirectoryIfPresent(dbDir);
@@ -929,7 +1018,7 @@ class TdClient {
   /// Routes future query/send/broadcast to the given account slot.
   void setActive(int slot) {
     final cid = _clientForSlot[slot];
-    if (cid == null) return;
+    if (cid == null || !_slots.contains(slot)) return;
     final changed = slot != _activeSlot;
     _activeSlot = slot;
     _activeClientId = cid;
@@ -944,7 +1033,7 @@ class TdClient {
   /// first) to avoid leaving the UI pointed at a dead client.
   void removeSlot(int slot) {
     if (slot == _activeSlot || !_slots.contains(slot)) return;
-    _closeAndForgetSlot(slot);
+    unawaited(_closeAndForgetSlot(slot));
     _persist();
     if (kDebugMode) unawaited(_persistDebugLiveClientIds());
   }
@@ -953,6 +1042,13 @@ class TdClient {
   /// Telegram. Slot 0 is the legacy base directory, so keep account-* child
   /// directories for other slots while removing slot-0 files.
   Future<void> deleteSlotData(int slot) async {
+    if (!_accountLeases.requestDelete(slot)) return;
+    final closing = _closingSlots[slot];
+    if (closing != null) await closing;
+    await _deleteSlotDataNow(slot);
+  }
+
+  Future<void> _deleteSlotDataNow(int slot) async {
     final dbDir = Directory(_databaseDirectory(slot));
     if (!await dbDir.exists()) return;
     if (slot != 0) {
@@ -983,28 +1079,67 @@ class TdClient {
     final newSlot = addSlot();
     setActive(newSlot);
     if (_slots.contains(oldSlot)) {
-      _closeAndForgetSlot(oldSlot);
+      unawaited(_closeAndForgetSlot(oldSlot));
       _persist();
       if (kDebugMode) unawaited(_persistDebugLiveClientIds());
     }
     return newSlot;
   }
 
-  void _closeAndForgetSlot(int slot) {
-    _closeClientForSlot(slot);
+  Future<void> _closeAndForgetSlot(int slot) {
     _slots.remove(slot);
+    if (_accountLeases.requestClose(slot)) {
+      return _startClosingSlot(slot);
+    }
+    return Future<void>.value();
   }
 
-  void _closeClientForSlot(int slot) {
+  Future<void> _startClosingSlot(int slot) {
+    final existing = _closingSlots[slot];
+    if (existing != null) return existing;
+    late final Future<void> closing;
+    closing = _closeClientForSlot(slot).whenComplete(() {
+      if (identical(_closingSlots[slot], closing)) {
+        _closingSlots.remove(slot);
+      }
+    });
+    _closingSlots[slot] = closing;
+    return closing;
+  }
+
+  Future<void> _closeClientForSlot(int slot) async {
     final cid = _clientForSlot.remove(slot);
-    if (cid != null) {
-      _bindings.send(cid, jsonEncode({'@type': 'close'}));
+    if (cid == null) return;
+    final closed = Completer<void>();
+    _clientClosedWaiters[cid] = closed;
+    _bindings.send(cid, jsonEncode({'@type': 'close'}));
+    try {
+      await closed.future.timeout(const Duration(seconds: 15));
+    } on TimeoutException {
+      // Continue cleanup if a broken client never emits its terminal update.
+    } finally {
+      if (identical(_clientClosedWaiters[cid], closed)) {
+        _clientClosedWaiters.remove(cid);
+      }
       _slotForClient.remove(cid);
       TdUserIndex.shared.clearSlot(slot);
       _latestChatFoldersByClient.remove(cid);
       _latestEmojiChatThemesByClient.remove(cid);
+      _latestTextCompositionStylesByClient.remove(cid);
       _latestCommunitiesByClient.remove(cid);
       _proxyAppliedClients.remove(cid);
+      if (kDebugMode) unawaited(_persistDebugLiveClientIds());
+    }
+  }
+
+  Future<void> _releaseAccountLease(int slot) async {
+    final plan = _accountLeases.release(slot);
+    Future<void>? closing;
+    if (plan.closeClient) closing = _startClosingSlot(slot);
+    if (plan.deleteData && !_slots.contains(slot)) {
+      closing ??= _closingSlots[slot];
+      if (closing != null) await closing;
+      await _deleteSlotDataNow(slot);
     }
   }
 
@@ -1013,8 +1148,11 @@ class TdClient {
     _prefs.setInt(_activeKey, _activeSlot);
   }
 
-  int _nextSlot() =>
-      (_slots.isEmpty ? -1 : _slots.reduce((a, b) => a > b ? a : b)) + 1;
+  int _nextSlot() {
+    final occupied = <int>{..._slots, ..._clientForSlot.keys};
+    return (occupied.isEmpty ? -1 : occupied.reduce((a, b) => a > b ? a : b)) +
+        1;
+  }
 
   /// The database directory for a slot. Slot 0 keeps the legacy path so an
   /// existing single-account login is preserved.
@@ -1298,6 +1436,39 @@ class TdClient {
   /// Sends a request to the active account and awaits its response.
   Future<Map<String, dynamic>> query(Map<String, dynamic> request) {
     return queryTo(request, _activeClientId);
+  }
+
+  /// Sends a request to the client that owns [accountSlot].
+  ///
+  /// File ids and chat ids are account-scoped. Long-lived views must keep
+  /// using the account that supplied those ids even if the user switches the
+  /// app's active account while the request is in flight.
+  Future<Map<String, dynamic>> queryForSlot(
+    Map<String, dynamic> request,
+    int accountSlot,
+  ) {
+    final clientId = _clientForSlot[accountSlot];
+    if (clientId == null) {
+      throw StateError('No TDLib client for account slot $accountSlot');
+    }
+    return queryTo(request, clientId);
+  }
+
+  /// Retains the concrete client currently registered for [accountSlot].
+  ///
+  /// The returned query stays pinned to that client when another account is
+  /// selected. Explicit slot removal and local-data deletion are deferred
+  /// until every detached window/file owner releases its lease.
+  TdAccountLease? retainAccountSlot(int accountSlot) {
+    final clientId = _clientForSlot[accountSlot];
+    if (clientId == null || !_slots.contains(accountSlot)) return null;
+    _accountLeases.retain(accountSlot);
+    return TdAccountLease._(
+      accountSlot,
+      clientId,
+      (request) => queryTo(request, clientId),
+      () => _releaseAccountLease(accountSlot),
+    );
   }
 
   /// Sends a request to a SPECIFIC client and awaits its response (used to read

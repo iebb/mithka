@@ -121,6 +121,19 @@ void main() {
 
       expect(queue.moveBy(1)?.revision, 9);
     });
+
+    test('account ownership participates in queue identity', () {
+      final firstAccount = VideoPlaybackQueue.single(
+        VideoPlaybackItem(video: TdFileRef(id: 2), accountSlot: 0),
+      );
+      final secondAccount = VideoPlaybackQueue.single(
+        VideoPlaybackItem(video: TdFileRef(id: 2), accountSlot: 1),
+      );
+
+      expect(secondAccount, isNot(firstAccount));
+      expect(firstAccount.current.accountSlot, 0);
+      expect(secondAccount.current.accountSlot, 1);
+    });
   });
 }
 

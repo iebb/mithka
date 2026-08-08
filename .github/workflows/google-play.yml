@@ -264,6 +264,9 @@ jobs:
           storeFile=upload-keystore.jks
           EOF
 
+      - name: Remove direct APK install permission from Play build
+        run: bash scripts/prepare-google-play-manifest.sh
+
       - name: Build signed release AAB
         env:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}

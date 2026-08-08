@@ -153,6 +153,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
   ];
 
   final TdClient _client = TdClient.shared;
+  late final int _accountSlot;
   late int _tab = widget.initialTab;
   _MusicHubTab _musicHubTab = _MusicHubTab.music;
   final Map<int, List<ChatMessage>> _cache = {};
@@ -211,11 +212,20 @@ class _SharedMediaViewState extends State<SharedMediaView> {
   @override
   void initState() {
     super.initState();
+    _accountSlot = _client.activeSlot;
     unawaited(_loadMinVideoDuration());
-    _fileSub = _client.updatesOf('updateFile').listen((update) {
-      final file = update.obj('file');
-      if (file != null) _applyFile(file);
-    });
+    _fileSub = _client
+        .subscribeAll()
+        .where((update) {
+          if (update.type != 'updateFile') return false;
+          final clientId = update.integer('@client_id');
+          return clientId != null &&
+              _client.slotForClient(clientId) == _accountSlot;
+        })
+        .listen((update) {
+          final file = update.obj('file');
+          if (file != null) _applyFile(file);
+        });
     _load(_tab);
     if (_isMusicHub) {
       unawaited(_refreshMusicHubSources());
@@ -260,7 +270,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
         await _loadGlobalMessages(tab, query);
         return;
       }
-      final res = await _client.query({
+      final res = await _client.queryForSlot({
         '@type': 'searchChatMessages',
         'chat_id': widget.chatId,
         'query': query,
@@ -269,7 +279,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
         'offset': 0,
         'limit': 80,
         'filter': {'@type': _tabs[tab].filter},
-      });
+      }, _accountSlot);
       final list = res.objects('messages') ?? const <Map<String, dynamic>>[];
       final parsed = list
           .map(TDParse.message)
@@ -333,7 +343,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
     required Map<String, dynamic> chatList,
   }) async {
     try {
-      final res = await _client.query({
+      final res = await _client.queryForSlot({
         '@type': 'searchMessages',
         'chat_list': chatList,
         'query': query,
@@ -344,7 +354,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
         'filter': {'@type': filter},
         'min_date': 0,
         'max_date': 0,
-      });
+      }, _accountSlot);
       return res.objects('messages') ?? const <Map<String, dynamic>>[];
     } catch (_) {
       return const <Map<String, dynamic>>[];
@@ -354,7 +364,10 @@ class _SharedMediaViewState extends State<SharedMediaView> {
   Future<void> _resolveSourceTitle(int chatId) async {
     if (_sourceTitles.containsKey(chatId)) return;
     try {
-      final chat = await _client.query({'@type': 'getChat', 'chat_id': chatId});
+      final chat = await _client.queryForSlot({
+        '@type': 'getChat',
+        'chat_id': chatId,
+      }, _accountSlot);
       final title = chat.str('title');
       if (!mounted || title == null || title.isEmpty) return;
       setState(() => _sourceTitles[chatId] = title);
@@ -423,7 +436,10 @@ class _SharedMediaViewState extends State<SharedMediaView> {
 
   Future<void> _loadFileState(int fileId) async {
     try {
-      final file = await _client.query({'@type': 'getFile', 'file_id': fileId});
+      final file = await _client.queryForSlot({
+        '@type': 'getFile',
+        'file_id': fileId,
+      }, _accountSlot);
       _applyFile(file);
     } catch (_) {}
   }
@@ -432,7 +448,10 @@ class _SharedMediaViewState extends State<SharedMediaView> {
     final id = _fileId(message);
     if (id == null) return;
     try {
-      await _client.query({'@type': 'deleteFile', 'file_id': id});
+      await _client.queryForSlot({
+        '@type': 'deleteFile',
+        'file_id': id,
+      }, _accountSlot);
       if (!mounted) return;
       setState(() {
         final previous = _files[id];
@@ -2302,6 +2321,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
         for (final message in videos)
           VideoPlaybackItem(
             video: message.video!,
+            accountSlot: _accountSlot,
             thumb: message.image,
             width: message.imageWidth,
             height: message.imageHeight,
