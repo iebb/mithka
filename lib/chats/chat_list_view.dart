@@ -1075,17 +1075,43 @@ class _ChatListViewState extends State<ChatListView>
     } else {
       _folderTransitionController.forward(from: 0);
     }
-    _ensureFolderTabVisible(filter.folderId);
+    _ensureFolderTabVisible(filter.folderId, direction);
   }
 
-  void _ensureFolderTabVisible(int? folderId) {
+  void _ensureFolderTabVisible(int? folderId, double direction) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final key = _folderTabKeys[folderId];
       final ctx = key?.currentContext;
       if (ctx == null) return;
+      final renderBox = ctx.findRenderObject() as RenderBox?;
+      if (renderBox == null) return;
+
+      final scrollableState = Scrollable.of(ctx);
+      if (scrollableState == null) return;
+      final viewportBox =
+          scrollableState.context.findRenderObject() as RenderBox?;
+      if (viewportBox == null) return;
+
+      final tabPos = renderBox.localToGlobal(Offset.zero);
+      final viewPos = viewportBox.localToGlobal(Offset.zero);
+      final tabLeft = tabPos.dx;
+      final tabRight = tabPos.dx + renderBox.size.width;
+      final viewLeft = viewPos.dx;
+      final viewRight = viewPos.dx + viewportBox.size.width;
+
+      double? alignment;
+      if (direction > 0 && tabRight > viewRight) {
+        alignment = 1.0;
+      } else if (direction < 0 && tabLeft < viewLeft) {
+        alignment = 0.0;
+      } else {
+        return;
+      }
+
       Scrollable.ensureVisible(
         ctx,
+        alignment: alignment,
         duration: const Duration(milliseconds: 250),
         curve: Curves.easeOutCubic,
       );

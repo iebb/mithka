@@ -635,6 +635,7 @@ class ChatMessage {
     this.videoSticker,
     this.video,
     this.videoDuration,
+    this.videoFileSize,
     this.videoNoteTranscription = '',
     this.videoNoteTranscriptionPending = false,
     this.videoNoteTranscriptionError,
@@ -724,6 +725,7 @@ class ChatMessage {
   TdFileRef? videoSticker; // .webm video sticker file
   TdFileRef? video; // playable video file (messageVideo)
   int? videoDuration; // seconds, for the duration badge
+  int? videoFileSize; // bytes, for the inline autoplay budget
   String videoNoteTranscription;
   bool videoNoteTranscriptionPending;
   String? videoNoteTranscriptionError;
@@ -860,6 +862,9 @@ class ChatMessage {
     }
     if ((videoDuration ?? 0) <= 0) {
       videoDuration = previous.videoDuration;
+    }
+    if ((videoFileSize ?? 0) <= 0) {
+      videoFileSize = previous.videoFileSize;
     }
     video = video?.inheritLocalPathFrom(previous.video) ?? previous.video;
     animatedSticker =
@@ -1524,6 +1529,7 @@ abstract final class TDParse {
         videoSticker: media.videoSticker,
         video: media.video,
         videoDuration: media.videoDuration,
+        videoFileSize: media.videoFileSize,
         videoNoteTranscription: videoNoteSpeech(content).$1,
         videoNoteTranscriptionPending: videoNoteSpeech(content).$2,
         videoNoteTranscriptionError: videoNoteSpeech(content).$3,
@@ -3361,6 +3367,7 @@ abstract final class TDParse {
             image: thumb,
             video: animation,
             videoDuration: anim.integer('duration'),
+            videoFileSize: _fileSize(anim.obj('animation')),
             width: anim.integer('width'),
             height: anim.integer('height'),
           );
@@ -3376,6 +3383,7 @@ abstract final class TDParse {
             ),
             video: fileRef(video.obj('video')),
             videoDuration: video.integer('duration'),
+            videoFileSize: _fileSize(video.obj('video')),
             width: video.integer('width'),
             height: video.integer('height'),
           );
@@ -3389,6 +3397,7 @@ abstract final class TDParse {
             image: fileRef(note.obj('thumbnail')?.obj('file'), miniThumb: mini),
             video: fileRef(note.obj('video')),
             videoDuration: note.integer('duration'),
+            videoFileSize: _fileSize(note.obj('video')),
             width: length,
             height: length,
           );
@@ -3831,6 +3840,15 @@ abstract final class TDParse {
     );
   }
 
+  /// The byte size TDLib knows for a file: `size` once the real value is known,
+  /// otherwise the server's estimate.
+  static int? _fileSize(Map<String, dynamic>? file) {
+    final size = file?.integer('size') ?? 0;
+    if (size > 0) return size;
+    final expected = file?.integer('expected_size') ?? 0;
+    return expected > 0 ? expected : null;
+  }
+
   static Map<String, dynamic> bestPhotoSize(List<Map<String, dynamic>> sizes) {
     return sizes.reduce((a, b) => _photoArea(a) >= _photoArea(b) ? a : b);
   }
@@ -4017,6 +4035,7 @@ class MediaAttachment {
     this.videoSticker,
     this.video,
     this.videoDuration,
+    this.videoFileSize,
     this.stickerFileId,
     this.stickerSetId,
     this.isAnimatedEmoji = false,
@@ -4030,6 +4049,7 @@ class MediaAttachment {
   final TdFileRef? videoSticker; // .webm video sticker
   final TdFileRef? video; // playable video file (messageVideo)
   final int? videoDuration; // seconds
+  final int? videoFileSize; // bytes, for the inline autoplay budget
   final int? stickerFileId; // any sticker's file id (for "add to favorites")
   final int? stickerSetId; // the sticker's set id (for 表情详情)
   final bool isAnimatedEmoji; // single-emoji message (messageAnimatedEmoji)

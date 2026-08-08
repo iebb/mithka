@@ -6,6 +6,13 @@ import 'dart:ui';
 const double telegramDesktopMediaPreviewMaxSide = 430;
 const double telegramDesktopMediaPreviewMinSide = 100;
 
+/// Telegram's macOS client fits chat media into a 320 x 320 box and only lets a
+/// landscape video grow wider than that (`ChatLayoutUtils.contentSize`). Height
+/// therefore stops short of the square media box: at the full 430 a portrait
+/// photo or clip becomes a strip that pushes the rest of the message off
+/// screen, taller than any official client shows it.
+const double telegramChatMediaPreviewMaxHeight = 320;
+
 class MediaPreviewGeometry {
   const MediaPreviewGeometry({
     required this.contentSize,
@@ -27,19 +34,30 @@ class MediaPreviewGeometry {
 /// Mirrors Telegram Desktop's photo-preview geometry at Flutter logical-pixel
 /// scale: downscale into the fixed media box, downscale again for a narrow chat
 /// pane, never upscale the source, then enforce a small stable layout box.
+///
+/// [maxHeight] lets a caller keep tall media shorter than the square media box
+/// — see [telegramChatMediaPreviewMaxHeight].
 MediaPreviewGeometry telegramDesktopMediaPreviewGeometry({
   required int? sourceWidth,
   required int? sourceHeight,
   required double availableWidth,
+  double maxHeight = telegramDesktopMediaPreviewMaxSide,
 }) {
   final available = availableWidth.isFinite && availableWidth > 0
       ? math.min(availableWidth, telegramDesktopMediaPreviewMaxSide)
       : telegramDesktopMediaPreviewMaxSide;
   final boundedAvailable = math.max(1.0, available);
+  final boundedMaxHeight = math.max(
+    1.0,
+    math.min(maxHeight, telegramDesktopMediaPreviewMaxSide),
+  );
   final width = sourceWidth ?? 0;
   final height = sourceHeight ?? 0;
   if (width <= 0 || height <= 0) {
-    final fallback = Size.square(boundedAvailable);
+    final fallback = Size(
+      boundedAvailable,
+      math.min(boundedAvailable, boundedMaxHeight),
+    );
     return MediaPreviewGeometry(contentSize: fallback, frameSize: fallback);
   }
 
@@ -47,7 +65,7 @@ MediaPreviewGeometry telegramDesktopMediaPreviewGeometry({
     1.0,
     math.min(
       telegramDesktopMediaPreviewMaxSide / width,
-      telegramDesktopMediaPreviewMaxSide / height,
+      boundedMaxHeight / height,
     ),
   );
   var contentWidth = width * downscale;
@@ -66,7 +84,7 @@ MediaPreviewGeometry telegramDesktopMediaPreviewGeometry({
   final content = Size(contentWidth, contentHeight);
   final frame = Size(
     math.max(contentWidth, minimum),
-    math.max(contentHeight, minimum),
+    math.max(contentHeight, math.min(minimum, boundedMaxHeight)),
   );
   return MediaPreviewGeometry(contentSize: content, frameSize: frame);
 }

@@ -74,6 +74,7 @@ class TdVideoStreamServer {
   bool _closed = false;
   bool _backgroundDownloadRequested = false;
   int _playbackPreparationCount = 0;
+  Future<bool>? _pendingPreparation;
   int? _continuousDownloadOffset;
   Future<void> _downloadQueue = Future<void>.value();
   final Map<(int, int), Future<Map<String, dynamic>?>> _rangeDownloads = {};
@@ -141,6 +142,28 @@ class TdVideoStreamServer {
         unawaited(_startContinuousDownload(0));
       }
     }
+  }
+
+  /// Serves nothing until [preparation] settles.
+  ///
+  /// A caller that hands the URL to a player before [prepareForPlayback] has
+  /// finished — the desktop window opens right away so the user is not left
+  /// waiting on an idle chat — uses this so the first probe waits for the
+  /// bootstrap ranges instead of reading a transient range miss as an
+  /// unsupported file.
+  void holdRequestsUntilPrepared(Future<bool> preparation) {
+    // A failed preparation must release the gate rather than fail the request:
+    // the per-range download is still the authority on what can be served.
+    final gate = preparation.then<bool>(
+      (prepared) => prepared,
+      onError: (_, _) => false,
+    );
+    _pendingPreparation = gate;
+    unawaited(
+      gate.whenComplete(() {
+        if (identical(_pendingPreparation, gate)) _pendingPreparation = null;
+      }),
+    );
   }
 
   void startBackgroundDownload() {
@@ -237,6 +260,12 @@ class TdVideoStreamServer {
       request.response.headers
         ..set(HttpHeaders.acceptRangesHeader, 'bytes')
         ..contentType = ContentType('video', 'mp4');
+
+      final preparation = _pendingPreparation;
+      if (preparation != null) {
+        await preparation;
+        if (requestFinished || _closed) return;
+      }
 
       if (_total <= 0) {
         request.response.statusCode = HttpStatus.notFound;

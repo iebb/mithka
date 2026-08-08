@@ -61,6 +61,43 @@ void main() {
       expect(geometry.frameSize, geometry.contentSize);
     });
 
+    test('portrait media stays inside the shorter media height', () {
+      final portrait = telegramDesktopMediaPreviewGeometry(
+        sourceWidth: 1080,
+        sourceHeight: 1920,
+        availableWidth: 1200,
+        maxHeight: telegramChatMediaPreviewMaxHeight,
+      );
+
+      expect(portrait.contentSize.height, 320);
+      expect(portrait.contentSize.width, closeTo(180, 0.001));
+      expect(portrait.frameSize, portrait.contentSize);
+    });
+
+    test('landscape media keeps the full width of the media box', () {
+      final landscape = telegramDesktopMediaPreviewGeometry(
+        sourceWidth: 1920,
+        sourceHeight: 1080,
+        availableWidth: 1200,
+        maxHeight: telegramChatMediaPreviewMaxHeight,
+      );
+
+      expect(landscape.contentSize.width, 430);
+      expect(landscape.contentSize.height, closeTo(241.875, 0.001));
+    });
+
+    test('the height cap also bounds an unknown-size placeholder', () {
+      final geometry = telegramDesktopMediaPreviewGeometry(
+        sourceWidth: null,
+        sourceHeight: null,
+        availableWidth: double.infinity,
+        maxHeight: telegramChatMediaPreviewMaxHeight,
+      );
+
+      expect(geometry.contentSize.width, 430);
+      expect(geometry.contentSize.height, 320);
+    });
+
     test('unknown dimensions use one bounded square placeholder', () {
       final geometry = telegramDesktopMediaPreviewGeometry(
         sourceWidth: null,

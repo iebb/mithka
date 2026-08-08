@@ -68,6 +68,56 @@ void main() {
     }
   });
 
+  test('an edited attachment is re-read instead of merged in place', () {
+    // The in-place merge keeps the previous attachment, so a message whose
+    // media was replaced kept stale dimensions and a deleted thumbnail path.
+    expect(
+      mediaContentUpdateNeedsRefresh(
+        contentType: 'messagePhoto',
+        isSending: false,
+      ),
+      isTrue,
+    );
+    expect(
+      mediaContentUpdateNeedsRefresh(
+        contentType: 'messageVideo',
+        isSending: false,
+      ),
+      isTrue,
+    );
+    expect(
+      mediaContentUpdateNeedsRefresh(
+        contentType: 'messageVideoNote',
+        isSending: false,
+      ),
+      isTrue,
+    );
+  });
+
+  test('an uploading video keeps its local source instead', () {
+    expect(
+      mediaContentUpdateNeedsRefresh(
+        contentType: 'messageVideo',
+        isSending: true,
+      ),
+      isFalse,
+    );
+  });
+
+  test('a non-media content update needs no re-read', () {
+    expect(
+      mediaContentUpdateNeedsRefresh(
+        contentType: 'messageText',
+        isSending: false,
+      ),
+      isFalse,
+    );
+    expect(
+      mediaContentUpdateNeedsRefresh(contentType: null, isSending: false),
+      isFalse,
+    );
+  });
+
   test('live video update hydrates the outgoing preview media', () {
     final pending = ChatMessage(
       id: 77,

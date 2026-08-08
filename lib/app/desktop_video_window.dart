@@ -6,6 +6,7 @@ import 'package:mithka_video_player/mithka_video_player.dart';
 
 import '../chat/video_player_view.dart';
 import '../l10n/app_localizations.dart';
+import 'desktop_media_window_registry.dart';
 import 'video_split_controller.dart';
 
 bool get supportsDesktopVideoWindows => mithkaSupportsDesktopVideoWindows;
@@ -30,17 +31,33 @@ class DesktopVideoWindowService {
   static final DesktopVideoWindowService instance =
       DesktopVideoWindowService._();
 
+  /// Keeps one window per video: a repeat play raises the window that already
+  /// has it instead of stacking a second copy of the same video.
+  final DesktopMediaWindowRegistry _windows = DesktopMediaWindowRegistry();
+
   Future<bool> open(VideoSplitSession session, {bool muted = false}) async {
     if (!supportsDesktopVideoWindows) return false;
-    final stream = TdVideoStreamServer(session.video.id);
+    final videoId = session.video.id;
+    if (_windows.isOpening(videoId)) return true;
+    final existing = _windows.windowFor(videoId);
+    if (existing != null) {
+      if (await MithkaDesktopVideoWindows.instance.focus(existing)) return true;
+      _windows.forget(videoId);
+    }
+    _windows.beginOpening(videoId);
+    final stream = TdVideoStreamServer(videoId);
     var handedOffToWindow = false;
+    int? openedWindowId;
     try {
       final uri = await stream.start();
       if (uri == null) return false;
-      final prepared = await prepareDesktopVideoPlayback(
-        stream.prepareForPlayback,
+      // Binding the loopback server is quick; filling its bootstrap ranges is
+      // not. Start that in the background and open the window immediately so
+      // the player's own loading state stands in for the wait — waiting here
+      // would leave the chat looking like the tap did nothing.
+      stream.holdRequestsUntilPrepared(
+        prepareDesktopVideoPlayback(stream.prepareForPlayback),
       );
-      if (!prepared) return false;
       final windowId = await MithkaDesktopVideoWindows.instance.open(
         DesktopVideoWindowArguments(
           uri: uri,
@@ -49,14 +66,19 @@ class DesktopVideoWindowService {
           height: session.height,
           muted: muted,
         ),
-        onClosed: stream.close,
+        onClosed: () {
+          _windows.forget(videoId);
+          return stream.close();
+        },
       );
       if (windowId == null) throw StateError('Window creation failed');
+      openedWindowId = windowId;
       handedOffToWindow = true;
       return true;
     } catch (_) {
       return false;
     } finally {
+      _windows.finishOpening(videoId, windowId: openedWindowId);
       if (!handedOffToWindow) await stream.close();
     }
   }

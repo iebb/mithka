@@ -15,6 +15,8 @@ Future<int?> openDesktopImagePreviewWindow(
   DesktopImagePreviewWindowArguments arguments,
 ) async => null;
 
+Future<bool> focusDesktopImagePreviewWindow(int windowId) async => false;
+
 Future<void> publishDesktopImagePreviewPath(
   int windowId,
   int index,

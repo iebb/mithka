@@ -403,6 +403,53 @@ void main() {
       await fixture.close();
     }
   });
+
+  test('a held server answers only once its preparation settles', () async {
+    final fixture = await _VideoServerFixture.create(
+      bytes: List<int>.generate(64, (index) => index),
+      totalBytes: 64,
+      maxResponseBytes: 16,
+    );
+    final preparation = Completer<bool>();
+    try {
+      fixture.server.holdRequestsUntilPrepared(preparation.future);
+
+      var answered = false;
+      final response = fixture.get(range: 'bytes=0-15')
+        ..then((_) => answered = true).ignore();
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(
+        answered,
+        isFalse,
+        reason: 'the window opens first, so early probes must wait',
+      );
+
+      preparation.complete(true);
+      final resolved = await response.timeout(const Duration(seconds: 2));
+      expect(resolved.statusCode, HttpStatus.partialContent);
+      expect(await _readBody(resolved), fixture.bytes.sublist(0, 16));
+    } finally {
+      if (!preparation.isCompleted) preparation.complete(false);
+      await fixture.close();
+    }
+  });
+
+  test('a failed preparation still serves the range it can read', () async {
+    final fixture = await _VideoServerFixture.create(
+      bytes: List<int>.generate(64, (index) => index),
+      totalBytes: 64,
+      maxResponseBytes: 16,
+    );
+    try {
+      fixture.server.holdRequestsUntilPrepared(Future<bool>.value(false));
+
+      final response = await fixture.get(range: 'bytes=0-15');
+      expect(response.statusCode, HttpStatus.partialContent);
+      expect(await _readBody(response), fixture.bytes.sublist(0, 16));
+    } finally {
+      await fixture.close();
+    }
+  });
 }
 
 Future<List<int>> _readBody(HttpClientResponse response) =>

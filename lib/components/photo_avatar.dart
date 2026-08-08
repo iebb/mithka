@@ -457,6 +457,9 @@ class _TDImageState extends State<TDImage> {
   TdFileProgress? _progress;
   StreamSubscription<TdFileProgress>? _progressSub;
   DateTime? _lastProgressPaint;
+  int _missingFileRecoveries = 0;
+
+  static const _maxMissingFileRecoveries = 2;
 
   @override
   void initState() {
@@ -503,6 +506,7 @@ class _TDImageState extends State<TDImage> {
         oldProgressModeUnchanged()) {
       return;
     }
+    if (_loadedId != ref.id || _loadedSlot != slot) _missingFileRecoveries = 0;
     _loadedId = ref.id;
     _loadedThumbnailId = thumbnailId;
     _loadedSlot = slot;
@@ -554,6 +558,58 @@ class _TDImageState extends State<TDImage> {
     return _progressSub == null;
   }
 
+  /// Replaces an unreadable local file with the placeholder and fetches it
+  /// again. TDLib deletes cached media behind the app's back, and a path that
+  /// resolved earlier then makes `Image.file` throw — which used to paint
+  /// Flutter's broken-image box across the whole media frame.
+  Widget _recoverFromUnreadableFile(File file, {required bool isThumbnail}) {
+    final ref = widget.photo;
+    final target = isThumbnail ? ref?.thumbnail : ref;
+    if (target != null && _missingFileRecoveries < _maxMissingFileRecoveries) {
+      _missingFileRecoveries++;
+      TdFileCenter.shared.forget(target.id);
+      // errorBuilder runs inside build, so the state change waits for the frame.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        unawaited(_reresolveMissingFile(file, target, isThumbnail: isThumbnail));
+      });
+    }
+    final miniThumb = ref?.miniThumb;
+    if (miniThumb != null) {
+      return Image.memory(miniThumb, fit: widget.fit, gaplessPlayback: true);
+    }
+    return ColoredBox(color: context.colors.groupedBackground);
+  }
+
+  Future<void> _reresolveMissingFile(
+    File missing,
+    TdFileRef target, {
+    required bool isThumbnail,
+  }) async {
+    final slot = _loadedSlot;
+    final owned = isThumbnail
+        ? _thumbnailFile?.path == missing.path
+        : _file?.path == missing.path;
+    if (!owned) return;
+    setState(() {
+      if (isThumbnail) {
+        _thumbnailFile = null;
+      } else {
+        _file = null;
+      }
+    });
+    final path = await TdFileCenter.shared.pathFor(target);
+    if (!mounted || path == null || _loadedSlot != slot) return;
+    if (isThumbnail ? _thumbnailFile != null : _file != null) return;
+    setState(() {
+      if (isThumbnail) {
+        _thumbnailFile = File(path);
+      } else {
+        _file = File(path);
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
@@ -576,6 +632,8 @@ class _TDImageState extends State<TDImage> {
               cacheWidth: cacheWidth,
               cacheHeight: cacheHeight,
               gaplessPlayback: true,
+              errorBuilder: (context, _, _) =>
+                  _recoverFromUnreadableFile(_file!, isThumbnail: false),
             );
           } else if (_thumbnailFile != null) {
             child = Image.file(
@@ -584,6 +642,8 @@ class _TDImageState extends State<TDImage> {
               cacheWidth: cacheWidth,
               cacheHeight: cacheHeight,
               gaplessPlayback: true,
+              errorBuilder: (context, _, _) =>
+                  _recoverFromUnreadableFile(_thumbnailFile!, isThumbnail: true),
             );
           } else if (widget.photo?.miniThumb != null) {
             child = Image.memory(

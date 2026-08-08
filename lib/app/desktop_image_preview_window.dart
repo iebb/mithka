@@ -19,6 +19,7 @@ import 'desktop_image_preview_window_models.dart';
 import 'desktop_image_preview_window_stub.dart'
     if (dart.library.io) 'desktop_image_preview_window_io.dart'
     as implementation;
+import 'desktop_media_window_registry.dart';
 
 export 'desktop_image_preview_window_models.dart';
 
@@ -29,6 +30,10 @@ class DesktopImagePreviewWindowService {
       DesktopImagePreviewWindowService._();
 
   bool get isSupported => implementation.supportsDesktopImagePreviewWindows;
+
+  /// Keeps one window per image, so opening the same one again raises that
+  /// window instead of stacking a duplicate on top of it.
+  final DesktopMediaWindowRegistry _windows = DesktopMediaWindowRegistry();
 
   Future<void> broadcastBrightness(bool dark) =>
       implementation.broadcastDesktopImagePreviewBrightness(dark);
@@ -41,6 +46,15 @@ class DesktopImagePreviewWindowService {
     if (!isSupported || images.isEmpty) return false;
     final safeImages = images.take(64).toList(growable: false);
     final initialIndex = startIndex.clamp(0, safeImages.length - 1);
+    final imageId = safeImages[initialIndex].id;
+    if (_windows.isOpening(imageId)) return true;
+    final existing = _windows.windowFor(imageId);
+    if (existing != null) {
+      if (await implementation.focusDesktopImagePreviewWindow(existing)) {
+        return true;
+      }
+      _windows.forget(imageId);
+    }
     final arguments = DesktopImagePreviewWindowArguments(
       title: AppStrings.t(AppStringKeys.imagePreviewTitle),
       localeTag: Intl.getCurrentLocale(),
@@ -57,9 +71,13 @@ class DesktopImagePreviewWindowService {
           ),
       ],
     );
-    final windowId = await implementation.openDesktopImagePreviewWindow(
-      arguments,
-    );
+    _windows.beginOpening(imageId);
+    int? windowId;
+    try {
+      windowId = await implementation.openDesktopImagePreviewWindow(arguments);
+    } finally {
+      _windows.finishOpening(imageId, windowId: windowId);
+    }
     if (windowId == null) return false;
     unawaited(_resolveAndPublish(windowId, safeImages));
     return true;

@@ -366,6 +366,16 @@ class TdFileCenter {
     });
   }
 
+  /// Drops the remembered local path for a file id.
+  ///
+  /// TDLib deletes cached files on its own (storage optimizer, "clear cache",
+  /// media replaced by a message edit). A path handed out before that keeps
+  /// resolving to a file that no longer exists, so a reader that finds one
+  /// missing reports it here and the next [path] call downloads it again.
+  void forget(int fileId) {
+    _cache.remove(_key(_client.activeSlot, fileId));
+  }
+
   /// Returns a local path for the file id, downloading if needed.
   Future<String?> path(int fileId) async {
     _startIfNeeded();

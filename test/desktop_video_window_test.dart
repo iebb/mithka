@@ -89,6 +89,10 @@ void main() {
         window.indexOf('stream.prepareForPlayback'),
         lessThan(window.indexOf('MithkaDesktopVideoWindows.instance.open')),
       );
+      // The window must appear while the bootstrap ranges are still filling:
+      // awaiting preparation here is what made a tapped video look ignored.
+      expect(window, contains('stream.holdRequestsUntilPrepared('));
+      expect(window, isNot(contains('await prepareDesktopVideoPlayback(')));
       expect(
         window,
         isNot(

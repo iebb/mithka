@@ -71,6 +71,36 @@ int unreadMentionCountAfterReading(int currentCount, int readCount) =>
 int? messageSendUpdateChatId(Map<String, dynamic> update) =>
     update.int64('chat_id') ?? update.obj('message')?.int64('chat_id');
 
+/// Message contents whose attachment a live update can replace outright.
+const _mediaContentTypes = {
+  'messagePhoto',
+  'messageVideo',
+  'messageAnimation',
+  'messageVideoNote',
+  'messageVoiceNote',
+  'messageAudio',
+  'messageDocument',
+  'messageSticker',
+};
+
+/// Whether a live content update has to re-read the message from TDLib.
+///
+/// Editing a message can swap its media for a different kind entirely, and the
+/// in-place merge only ever hydrated an outgoing video — an edited message kept
+/// whatever attachment it had before, including a thumbnail path whose file
+/// TDLib had already deleted. A message that is still uploading keeps that
+/// merge instead, because only the local copy knows where its source file is.
+@visibleForTesting
+bool mediaContentUpdateNeedsRefresh({
+  required String? contentType,
+  required bool isSending,
+}) {
+  if (contentType == null || !_mediaContentTypes.contains(contentType)) {
+    return false;
+  }
+  return !(isSending && contentType == 'messageVideo');
+}
+
 class _MessageSendResult {
   const _MessageSendResult.success() : error = null;
   const _MessageSendResult.failure(this.error);
@@ -4478,7 +4508,12 @@ class ChatViewModel extends ChangeNotifier {
               content.boolean('new_has_protected_content') ??
               hasProtectedContent;
         }
-        if (content.type == 'messageVideo') {
+        if (mediaContentUpdateNeedsRefresh(
+          contentType: content.type,
+          isSending: _isSending(messageId),
+        )) {
+          unawaited(_refreshMessage(messageId));
+        } else if (content.type == 'messageVideo') {
           _replaceVideoMedia(messageId, content);
         }
         if (content.type == 'messageChatSetBackground' ||
@@ -4503,10 +4538,6 @@ class ChatViewModel extends ChangeNotifier {
           _replaceRichMessageContent(messageId, content);
           final target = _messageRefs(messageId);
           _resolveRichMessagesIfNeeded(target);
-        }
-        if (content.type == 'messageVoiceNote' ||
-            content.type == 'messageVideoNote') {
-          unawaited(_refreshMessage(messageId));
         }
 
       case 'updateMessageSuggestedPostInfo':
@@ -5466,6 +5497,9 @@ class ChatViewModel extends ChangeNotifier {
     _applyKeywordFilter();
   }
 
+  bool _isSending(int messageId) =>
+      _messageRefs(messageId).any((message) => message.isSending);
+
   void _replaceVideoMedia(int messageId, Map<String, dynamic> content) {
     final media = TDParse.mediaAttachment(content);
     for (final target in _messageRefs(messageId)) {
@@ -5478,6 +5512,9 @@ class ChatViewModel extends ChangeNotifier {
       if ((media.height ?? 0) > 0) target.imageHeight = media.height;
       if ((media.videoDuration ?? 0) > 0) {
         target.videoDuration = media.videoDuration;
+      }
+      if ((media.videoFileSize ?? 0) > 0) {
+        target.videoFileSize = media.videoFileSize;
       }
     }
   }

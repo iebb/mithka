@@ -59,6 +59,9 @@ class _UnsupportedDesktopVideoWindows
   }) async {}
 
   @override
+  Future<bool> focus(int windowId) async => false;
+
+  @override
   Future<void> closeCurrentWindow() async {}
 
   @override

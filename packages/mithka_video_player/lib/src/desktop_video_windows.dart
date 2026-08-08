@@ -81,6 +81,12 @@ class MithkaDesktopVideoWindows {
     videoHeight: videoHeight,
   );
 
+  /// Brings a window owned by this host to the front.
+  ///
+  /// Returns false when the window is unknown or already gone, which is the
+  /// caller's signal that the media needs a new window.
+  Future<bool> focus(int windowId) => _platform.focus(windowId);
+
   /// Requests a graceful close of the current independent window.
   static Future<void> closeCurrentWindow() =>
       instance._platform.closeCurrentWindow();

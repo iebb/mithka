@@ -89,6 +89,23 @@ Future<int?> openDesktopImagePreviewWindow(
   }
 }
 
+/// Raises an open preview window. Returns false when it is already gone, which
+/// tells the caller the image needs a new window.
+Future<bool> focusDesktopImagePreviewWindow(int windowId) async {
+  if (!supportsDesktopImagePreviewWindows || windowId <= 0) return false;
+  try {
+    final active = await MultiWindowManager.current.getActiveWindowIds();
+    if (!active.contains(windowId)) return false;
+    final window = MultiWindowManager.fromWindowId(windowId);
+    if (!await window.isVisible()) await window.show();
+    if (await window.isMinimized()) await window.restore();
+    await window.focus();
+    return true;
+  } on Object {
+    return false;
+  }
+}
+
 Future<void> publishDesktopImagePreviewPath(
   int windowId,
   int index,

@@ -41,6 +41,7 @@ import 'bot_button_presentation.dart';
 import 'chat_appearance_preview.dart';
 import 'custom_emoji.dart';
 import 'file_detail_view.dart';
+import 'inline_video_autoplay.dart';
 import 'link_handler.dart';
 import 'location_detail_view.dart';
 import 'looping_video_view.dart';
@@ -1209,6 +1210,7 @@ class _MessageBubbleState extends State<MessageBubble>
     final transcriptionColor = message.isOutgoing
         ? _outgoingTextColor.withValues(alpha: 0.88)
         : context.colors.textSecondary;
+    final inline = _autoplaysVideoInline && message.video != null;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -1223,7 +1225,15 @@ class _MessageBubbleState extends State<MessageBubble>
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  if (message.image != null)
+                  if (inline)
+                    LoopingVideoView(
+                      key: ValueKey('message-inline-video-note-${message.id}'),
+                      file: message.video!,
+                      fallback: message.image,
+                      fit: BoxFit.cover,
+                      showDownloadProgress: true,
+                    )
+                  else if (message.image != null)
                     TDImage(
                       photo: message.image,
                       cornerRadius: 0,
@@ -1232,22 +1242,23 @@ class _MessageBubbleState extends State<MessageBubble>
                     )
                   else
                     ColoredBox(color: AppTheme.brand.withValues(alpha: 0.16)),
-                  Center(
-                    child: Container(
-                      width: 48,
-                      height: 48,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.42),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const AppIcon(
-                        HeroAppIcons.play,
-                        size: 23,
-                        color: Colors.white,
+                  if (!inline)
+                    Center(
+                      child: Container(
+                        width: 48,
+                        height: 48,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.42),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const AppIcon(
+                          HeroAppIcons.play,
+                          size: 23,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
-                  ),
                   if (duration > 0)
                     Positioned(
                       left: 76,
@@ -2110,7 +2121,7 @@ class _MessageBubbleState extends State<MessageBubble>
       width: block.imageWidth,
       height: block.imageHeight,
       maxWidth: maxWidth,
-      maxHeight: maxWidth,
+      maxHeight: _richMediaMaxHeight(maxWidth),
       fallback: Size(maxWidth, maxWidth * 0.72),
     );
     Widget media = GestureDetector(
@@ -2139,7 +2150,7 @@ class _MessageBubbleState extends State<MessageBubble>
       width: block.imageWidth,
       height: block.imageHeight,
       maxWidth: maxWidth,
-      maxHeight: maxWidth,
+      maxHeight: _richMediaMaxHeight(maxWidth),
       fallback: Size(maxWidth, maxWidth * 0.62),
     );
     Widget media = GestureDetector(
@@ -4486,20 +4497,32 @@ class _MessageBubbleState extends State<MessageBubble>
     );
   }
 
-  /// A video message: its thumbnail with a play button + duration badge.
-  /// Tapping opens the fullscreen player (which downloads + plays the file).
+  /// Whether this message's video plays inside the bubble, the way official
+  /// clients autoplay GIFs, video messages and short videos.
+  bool get _autoplaysVideoInline => shouldAutoplayVideoInline(
+    contentType: message.contentType,
+    fileSizeBytes: message.videoFileSize,
+    width: message.imageWidth,
+    height: message.imageHeight,
+  );
+
+  /// A video message: a muted looping preview when it is small enough to play
+  /// in place, otherwise its thumbnail with a play button. Both carry the
+  /// duration badge, and tapping either opens the full player with sound.
   Widget _videoContent(bool outgoing) {
     final size = _imageDisplaySize();
     final caption = _caption();
     final dur = message.videoDuration ?? 0;
     final grouped = _groupsMediaCaption(caption);
     final mediaRadius = grouped && _showsMessageBubbleSurface ? 0.0 : 10.0;
+    final inline = _autoplaysVideoInline && message.video != null;
     final media = GestureDetector(
       onTap: () => widget.onPlayVideo?.call(message),
       onLongPress: () => _handleLongPress(MessageActionSource.video),
       onSecondaryTapUp: (details) =>
           _handleSecondaryTapUp(details, MessageActionSource.video),
       child: SizedBox(
+        key: inline ? ValueKey('message-inline-video-${message.id}') : null,
         width: size.width,
         height: size.height,
         child: Stack(
@@ -4507,7 +4530,14 @@ class _MessageBubbleState extends State<MessageBubble>
           children: [
             ClipRRect(
               borderRadius: _messageBorderRadius(mediaRadius),
-              child: message.image != null
+              child: inline
+                  ? LoopingVideoView(
+                      file: message.video!,
+                      fallback: message.image,
+                      fit: BoxFit.cover,
+                      showDownloadProgress: true,
+                    )
+                  : message.image != null
                   ? TDImage(
                       photo: message.image,
                       cornerRadius: 0,
@@ -4518,23 +4548,24 @@ class _MessageBubbleState extends State<MessageBubble>
                   : Container(color: Colors.black26),
             ),
             // Play button.
-            Center(
-              child: Container(
-                width: 48,
-                height: 48,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.45),
-                  shape: BoxShape.circle,
-                ),
-                child: const AppIcon(
-                  HeroAppIcons.play,
-                  color: Colors.white,
-                  size: 24,
+            if (!inline)
+              Center(
+                child: Container(
+                  width: 48,
+                  height: 48,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.45),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const AppIcon(
+                    HeroAppIcons.play,
+                    color: Colors.white,
+                    size: 24,
+                  ),
                 ),
               ),
-            ),
-            // Duration badge.
+            // Duration badge, with the muted marker an inline preview needs.
             if (dur > 0)
               Positioned(
                 left: 6,
@@ -4548,9 +4579,25 @@ class _MessageBubbleState extends State<MessageBubble>
                     color: Colors.black.withValues(alpha: 0.5),
                     borderRadius: BorderRadius.circular(AppRadius.sm),
                   ),
-                  child: Text(
-                    _durationString(dur),
-                    style: const TextStyle(color: Colors.white, fontSize: 11),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _durationString(dur),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                        ),
+                      ),
+                      if (inline) ...[
+                        const SizedBox(width: 4),
+                        const AppIcon(
+                          HeroAppIcons.volumeXmark,
+                          color: Colors.white,
+                          size: 12,
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               ),
@@ -4612,6 +4659,7 @@ class _MessageBubbleState extends State<MessageBubble>
       sourceWidth: message.imageWidth,
       sourceHeight: message.imageHeight,
       availableWidth: _mediaMaxWidth(),
+      maxHeight: telegramChatMediaPreviewMaxHeight,
     );
   }
 
@@ -4623,6 +4671,11 @@ class _MessageBubbleState extends State<MessageBubble>
     final sourceAspect = w / h;
     return sourceAspect <= 0.68 && imageSize.width < maxWidth * 0.78;
   }
+
+  /// The height budget a rich block's media shares with ordinary chat media:
+  /// the 320 pixel box, and never taller than a narrow pane is wide.
+  double _richMediaMaxHeight(double maxWidth) =>
+      math.min(maxWidth, telegramChatMediaPreviewMaxHeight);
 
   Size _fitSize({
     required int? width,

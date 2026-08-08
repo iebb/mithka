@@ -199,6 +199,24 @@ class _IoDesktopVideoWindows
   }
 
   @override
+  Future<bool> focus(int windowId) async {
+    if (!isSupported || windowId <= 0) return false;
+    final controller = _controllers[windowId];
+    if (controller == null || !_activeWindowIds.contains(windowId)) {
+      return false;
+    }
+    try {
+      if (!await controller.isVisible()) await controller.show();
+      if (await controller.isMinimized()) await controller.restore();
+      await controller.focus();
+      return true;
+    } on Object catch (error, stackTrace) {
+      _report('focus', error, stackTrace);
+      return false;
+    }
+  }
+
+  @override
   Future<void> closeCurrentWindow() async {
     if (!isSupported || _currentWindowId == null || _currentWindowId == 0) {
       return;
