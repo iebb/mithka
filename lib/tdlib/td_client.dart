@@ -1300,6 +1300,22 @@ class TdClient {
     return queryTo(request, _activeClientId);
   }
 
+  /// Sends a request to the client that owns [accountSlot].
+  ///
+  /// File ids and chat ids are account-scoped. Long-lived views must keep
+  /// using the account that supplied those ids even if the user switches the
+  /// app's active account while the request is in flight.
+  Future<Map<String, dynamic>> queryForSlot(
+    Map<String, dynamic> request,
+    int accountSlot,
+  ) {
+    final clientId = _clientForSlot[accountSlot];
+    if (clientId == null) {
+      throw StateError('No TDLib client for account slot $accountSlot');
+    }
+    return queryTo(request, clientId);
+  }
+
   /// Sends a request to a SPECIFIC client and awaits its response (used to read
   /// each account's identity for the switcher).
   Future<Map<String, dynamic>> queryTo(

@@ -6,6 +6,7 @@ import 'package:mithka_video_player/mithka_video_player.dart';
 
 import '../chat/video_player_view.dart';
 import '../l10n/app_localizations.dart';
+import '../tdlib/td_client.dart';
 import 'desktop_media_window_registry.dart';
 import 'video_split_controller.dart';
 
@@ -38,14 +39,19 @@ class DesktopVideoWindowService {
   Future<bool> open(VideoSplitSession session, {bool muted = false}) async {
     if (!supportsDesktopVideoWindows) return false;
     final videoId = session.video.id;
-    if (_windows.isOpening(videoId)) return true;
-    final existing = _windows.windowFor(videoId);
+    final accountSlot = session.accountSlot ?? TdClient.shared.activeSlot;
+    final mediaKey = (accountSlot: accountSlot, videoId: videoId);
+    if (_windows.isOpening(mediaKey)) return true;
+    final existing = _windows.windowFor(mediaKey);
     if (existing != null) {
       if (await MithkaDesktopVideoWindows.instance.focus(existing)) return true;
-      _windows.forget(videoId);
+      _windows.forget(mediaKey);
     }
-    _windows.beginOpening(videoId);
-    final stream = TdVideoStreamServer(videoId);
+    _windows.beginOpening(mediaKey);
+    final stream = TdVideoStreamServer(
+      videoId,
+      query: tdVideoStreamQueryForAccount(accountSlot),
+    );
     var handedOffToWindow = false;
     int? openedWindowId;
     try {
@@ -67,7 +73,7 @@ class DesktopVideoWindowService {
           muted: muted,
         ),
         onClosed: () {
-          _windows.forget(videoId);
+          _windows.forget(mediaKey);
           return stream.close();
         },
       );
@@ -78,7 +84,7 @@ class DesktopVideoWindowService {
     } catch (_) {
       return false;
     } finally {
-      _windows.finishOpening(videoId, windowId: openedWindowId);
+      _windows.finishOpening(mediaKey, windowId: openedWindowId);
       if (!handedOffToWindow) await stream.close();
     }
   }

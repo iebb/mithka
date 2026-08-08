@@ -3826,6 +3826,7 @@ class _ChatViewState extends State<ChatView> {
       for (final candidate in videoMessages)
         VideoPlaybackItem(
           video: candidate.video!,
+          accountSlot: _sessionKey.accountSlot,
           thumb: candidate.image,
           width: candidate.imageWidth,
           height: candidate.imageHeight,

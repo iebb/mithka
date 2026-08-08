@@ -44,6 +44,11 @@ typedef TdVideoStreamQuery =
 typedef VideoPictureInPictureRestoreCallback =
     FutureOr<bool> Function(SystemPictureInPictureSnapshot snapshot);
 
+TdVideoStreamQuery tdVideoStreamQueryForAccount(int? accountSlot) {
+  if (accountSlot == null) return TdClient.shared.query;
+  return (request) => TdClient.shared.queryForSlot(request, accountSlot);
+}
+
 /// A loopback range server for partially downloaded TDLib videos.
 ///
 /// The class is public only so its HTTP behavior can be exercised without a
@@ -649,6 +654,7 @@ class VideoPlayerView extends StatefulWidget {
   const VideoPlayerView({
     super.key,
     required this.video,
+    this.accountSlot,
     this.thumb,
     this.width,
     this.height,
@@ -672,6 +678,7 @@ class VideoPlayerView extends StatefulWidget {
   });
 
   final TdFileRef video;
+  final int? accountSlot;
   final TdFileRef? thumb;
   final int? width;
   final int? height;
@@ -774,8 +781,11 @@ class _VideoPlaylistPlayerViewState extends State<VideoPlaylistPlayerView> {
   Widget build(BuildContext context) {
     final item = _queue.current;
     return VideoPlayerView(
-      key: ValueKey('${item.video.id}:${item.messageId ?? 0}'),
+      key: ValueKey(
+        '${item.accountSlot ?? 'active'}:${item.video.id}:${item.messageId ?? 0}',
+      ),
       video: item.video,
+      accountSlot: item.accountSlot,
       thumb: item.thumb,
       width: item.width,
       height: item.height,
@@ -807,6 +817,8 @@ class _VideoPlaylistPlayerViewState extends State<VideoPlaylistPlayerView> {
 }
 
 class _VideoPlayerViewState extends State<VideoPlayerView> {
+  late final TdVideoStreamQuery _streamQuery =
+      widget.streamQuery ?? tdVideoStreamQueryForAccount(widget.accountSlot);
   VideoPlayerController? _controller;
   bool _failed = false;
   bool _controlsVisible = true;
@@ -911,20 +923,23 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   }
 
   Future<void> _load() async {
-    _progressSub = TdFileCenter.shared.progress(widget.video.id).listen((
-      progress,
-    ) {
-      if (!mounted) return;
-      _progress = progress;
-      if (_usesReusableMobileFullscreenPlayer) {
-        _progressRebuildTimer ??= Timer(const Duration(milliseconds: 250), () {
-          _progressRebuildTimer = null;
-          if (mounted) setState(() {});
+    _progressSub = TdFileCenter.shared
+        .progress(widget.video.id, accountSlot: widget.accountSlot)
+        .listen((progress) {
+          if (!mounted) return;
+          _progress = progress;
+          if (_usesReusableMobileFullscreenPlayer) {
+            _progressRebuildTimer ??= Timer(
+              const Duration(milliseconds: 250),
+              () {
+                _progressRebuildTimer = null;
+                if (mounted) setState(() {});
+              },
+            );
+          } else {
+            setState(() {});
+          }
         });
-      } else {
-        setState(() {});
-      }
-    });
     final completedPath = await _completedLocalVideoPath();
     if (!mounted) return;
     if (completedPath != null) {
@@ -934,10 +949,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
       if (initialized || !mounted) return;
       _openedCompletedLocalFile = false;
     }
-    final server = TdVideoStreamServer(
-      widget.video.id,
-      query: widget.streamQuery,
-    );
+    final server = TdVideoStreamServer(widget.video.id, query: _streamQuery);
     _streamServer = server;
     final uri = await server.start();
     if (!mounted) {
@@ -971,8 +983,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
 
   Future<String?> _completedLocalVideoPath() async {
     try {
-      final query = widget.streamQuery ?? TdClient.shared.query;
-      final file = await query({
+      final file = await _streamQuery({
         '@type': 'getFile',
         'file_id': widget.video.id,
       });
@@ -1315,12 +1326,16 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   }
 
   String get _resumeKey {
+    final accountScope = switch (widget.accountSlot) {
+      null || 0 => '',
+      final slot => '$slot.',
+    };
     final chatId = widget.sourceChatId;
     final messageId = widget.messageId;
     if (chatId != null && messageId != null) {
-      return '$_resumePrefix$chatId.$messageId';
+      return '$_resumePrefix$accountScope$chatId.$messageId';
     }
-    return '$_resumePrefix${widget.video.id}';
+    return '$_resumePrefix$accountScope${widget.video.id}';
   }
 
   Future<Duration> _loadResumePosition(Duration duration) async {
@@ -1390,6 +1405,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   VideoPlaybackQueue _pictureInPictureRestoreQueue() {
     final current = VideoPlaybackItem(
       video: widget.video,
+      accountSlot: widget.accountSlot,
       thumb: widget.thumb,
       width: widget.width,
       height: widget.height,
@@ -1690,13 +1706,8 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   }
 
   Future<void> _cancelIncompleteDownload() async {
-    final query = widget.streamQuery;
-    if (query == null) {
-      TdFileCenter.shared.cancelDownload(widget.video.id);
-      return;
-    }
     try {
-      await query({
+      await _streamQuery({
         '@type': 'cancelDownloadFile',
         'file_id': widget.video.id,
         'only_if_pending': false,
@@ -4092,7 +4103,10 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
       AppStringKeys.videoPlayerStreamingWhileDownloading,
       visibleFor: const Duration(milliseconds: 1200),
     );
-    final path = await TdFileCenter.shared.path(widget.video.id);
+    final path = await TdFileCenter.shared.path(
+      widget.video.id,
+      accountSlot: widget.accountSlot,
+    );
     if (!mounted) return;
     showToast(
       context,
@@ -4109,7 +4123,10 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
       AppStringKeys.chatSavingToPhotos,
       visibleFor: const Duration(milliseconds: 1200),
     );
-    final path = await TdFileCenter.shared.path(widget.video.id);
+    final path = await TdFileCenter.shared.path(
+      widget.video.id,
+      accountSlot: widget.accountSlot,
+    );
     final result = path == null
         ? MediaLibrarySaveResult.failed
         : await MediaLibrarySaver.savePreparedFile(File(path), isVideo: true);

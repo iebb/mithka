@@ -145,17 +145,18 @@ class _ShortVideoViewState extends State<ShortVideoView> {
   static const _maximumMaxSeconds = 600;
 
   final _pageController = PageController();
+  late final int _accountSlot;
   List<ChatMessage> _videos = const [];
   bool _loading = true;
   int _currentPage = 0;
   int _maxSeconds = _defaultMaxSeconds;
 
-  String get _preferenceKey =>
-      'shortVideo.maxDurationSeconds.${TdClient.shared.activeSlot}';
+  String get _preferenceKey => 'shortVideo.maxDurationSeconds.$_accountSlot';
 
   @override
   void initState() {
     super.initState();
+    _accountSlot = TdClient.shared.activeSlot;
     unawaited(_initialize());
   }
 
@@ -175,7 +176,7 @@ class _ShortVideoViewState extends State<ShortVideoView> {
   Future<void> _loadVideos() async {
     if (mounted) setState(() => _loading = true);
     try {
-      final response = await TdClient.shared.query({
+      final response = await TdClient.shared.queryForSlot({
         '@type': 'searchChatMessages',
         'chat_id': widget.chat.id,
         'query': '',
@@ -184,7 +185,7 @@ class _ShortVideoViewState extends State<ShortVideoView> {
         'offset': 0,
         'limit': 100,
         'filter': {'@type': 'searchMessagesFilterVideo'},
-      });
+      }, _accountSlot);
       final videos = (response.objects('messages') ?? const [])
           .map(TDParse.message)
           .whereType<ChatMessage>()
@@ -342,8 +343,9 @@ class _ShortVideoViewState extends State<ShortVideoView> {
       children: [
         if (active)
           VideoPlayerView(
-            key: ValueKey('short-video-${message.video!.id}'),
+            key: ValueKey('short-video-$_accountSlot-${message.video!.id}'),
             video: message.video!,
+            accountSlot: _accountSlot,
             thumb: message.image,
             width: message.imageWidth,
             height: message.imageHeight,
@@ -375,7 +377,7 @@ class _ShortVideoViewState extends State<ShortVideoView> {
     if (nextPage >= _videos.length) return;
     final next = _videos[nextPage].video;
     if (next == null) return;
-    unawaited(TdFileCenter.shared.path(next.id));
+    unawaited(TdFileCenter.shared.path(next.id, accountSlot: _accountSlot));
   }
 
   Widget _engagementActions(ChatMessage message) {
@@ -446,7 +448,7 @@ class _ShortVideoViewState extends State<ShortVideoView> {
     }
     setState(() {});
     try {
-      await TdClient.shared.query({
+      await TdClient.shared.queryForSlot({
         '@type': chosen == null
             ? 'addMessageReaction'
             : 'removeMessageReaction',
@@ -455,7 +457,7 @@ class _ShortVideoViewState extends State<ShortVideoView> {
         'reaction_type': type,
         if (chosen == null) 'is_big': false,
         if (chosen == null) 'update_recent_reactions': true,
-      });
+      }, _accountSlot);
     } catch (_) {
       message.reactions = previous;
       if (mounted) setState(() {});

@@ -55,5 +55,18 @@ void main() {
       expect(registry.windowFor(7), 21);
       expect(registry.windowFor(8), 22);
     });
+
+    test('the same file id in separate accounts keeps separate windows', () {
+      const natuVideo = (accountSlot: 1, videoId: 7);
+      const otherAccountVideo = (accountSlot: 2, videoId: 7);
+      final registry = DesktopMediaWindowRegistry()
+        ..beginOpening(natuVideo)
+        ..finishOpening(natuVideo, windowId: 21)
+        ..beginOpening(otherAccountVideo)
+        ..finishOpening(otherAccountVideo, windowId: 22);
+
+      expect(registry.windowFor(natuVideo), 21);
+      expect(registry.windowFor(otherAccountVideo), 22);
+    });
   });
 }

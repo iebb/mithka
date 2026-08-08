@@ -115,8 +115,11 @@ class _GlobalVideoSplitHostState extends State<GlobalVideoSplitHost> {
     return ColoredBox(
       color: Colors.black,
       child: VideoPlayerView(
-        key: ValueKey('${session.video.id}:${session.messageId ?? 0}'),
+        key: ValueKey(
+          '${session.accountSlot ?? 'active'}:${session.video.id}:${session.messageId ?? 0}',
+        ),
         video: session.video,
+        accountSlot: session.accountSlot,
         thumb: session.thumb,
         width: session.width,
         height: session.height,

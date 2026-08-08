@@ -7,26 +7,26 @@
 //
 
 class DesktopMediaWindowRegistry {
-  final Map<int, int> _windowsByMedia = {};
-  final Set<int> _opening = {};
+  final Map<Object, int> _windowsByMedia = {};
+  final Set<Object> _opening = {};
 
-  /// The window recorded for [mediaId], if one was opened and not forgotten.
+  /// The window recorded for [mediaKey], if one was opened and not forgotten.
   /// A recorded window can still have been closed natively, so a caller treats
   /// this as a candidate to raise and falls back to opening a new one.
-  int? windowFor(int mediaId) => _windowsByMedia[mediaId];
+  int? windowFor(Object mediaKey) => _windowsByMedia[mediaKey];
 
-  /// Whether a window for [mediaId] is being created right now. A repeat click
+  /// Whether a window for [mediaKey] is being created right now. A repeat click
   /// arrives long before the native window exists, and without this it would
   /// open its own.
-  bool isOpening(int mediaId) => _opening.contains(mediaId);
+  bool isOpening(Object mediaKey) => _opening.contains(mediaKey);
 
-  void beginOpening(int mediaId) => _opening.add(mediaId);
+  void beginOpening(Object mediaKey) => _opening.add(mediaKey);
 
   /// Ends the in-flight state, recording [windowId] when one was created.
-  void finishOpening(int mediaId, {int? windowId}) {
-    _opening.remove(mediaId);
-    if (windowId != null) _windowsByMedia[mediaId] = windowId;
+  void finishOpening(Object mediaKey, {int? windowId}) {
+    _opening.remove(mediaKey);
+    if (windowId != null) _windowsByMedia[mediaKey] = windowId;
   }
 
-  void forget(int mediaId) => _windowsByMedia.remove(mediaId);
+  void forget(Object mediaKey) => _windowsByMedia.remove(mediaKey);
 }

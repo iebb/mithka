@@ -38,6 +38,7 @@ class PinnedMessagesView extends StatefulWidget {
 
 class _PinnedMessagesViewState extends State<PinnedMessagesView> {
   final TdClient _client = TdClient.shared;
+  late final int _accountSlot;
   final Map<int, String> _names = {};
   final Map<int, TdFileRef?> _photos = {};
   bool _loading = true;
@@ -46,13 +47,14 @@ class _PinnedMessagesViewState extends State<PinnedMessagesView> {
   @override
   void initState() {
     super.initState();
+    _accountSlot = _client.activeSlot;
     _load();
   }
 
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final res = await _client.query({
+      final res = await _client.queryForSlot({
         '@type': 'searchChatMessages',
         'chat_id': widget.chatId,
         'query': '',
@@ -61,7 +63,7 @@ class _PinnedMessagesViewState extends State<PinnedMessagesView> {
         'offset': 0,
         'limit': 100,
         'filter': {'@type': 'searchMessagesFilterPinned'},
-      });
+      }, _accountSlot);
       final list = res.objects('messages') ?? const <Map<String, dynamic>>[];
       final parsed = list
           .map(TDParse.message)
@@ -85,11 +87,17 @@ class _PinnedMessagesViewState extends State<PinnedMessagesView> {
     if (id == null || _names.containsKey(id)) return;
     try {
       if (id > 0) {
-        final user = await _client.query({'@type': 'getUser', 'user_id': id});
+        final user = await _client.queryForSlot({
+          '@type': 'getUser',
+          'user_id': id,
+        }, _accountSlot);
         _names[id] = TDParse.userName(user);
         _photos[id] = TDParse.smallPhoto(user.obj('profile_photo'));
       } else {
-        final chat = await _client.query({'@type': 'getChat', 'chat_id': id});
+        final chat = await _client.queryForSlot({
+          '@type': 'getChat',
+          'chat_id': id,
+        }, _accountSlot);
         _names[id] = chat.str('title') ?? widget.title;
         _photos[id] = TDParse.smallPhoto(chat.obj('photo'));
       }
@@ -363,6 +371,7 @@ class _PinnedMessagesViewState extends State<PinnedMessagesView> {
         for (final message in videos)
           VideoPlaybackItem(
             video: message.video!,
+            accountSlot: _accountSlot,
             thumb: message.image,
             width: message.imageWidth,
             height: message.imageHeight,

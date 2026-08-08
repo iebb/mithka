@@ -82,6 +82,7 @@ class ChannelPost {
   ChannelPost({
     required this.channel,
     required this.message,
+    required this.accountSlot,
     this.threadTarget,
     this.authorName,
     this.authorPhoto,
@@ -92,6 +93,7 @@ class ChannelPost {
 
   final ChatSummary channel;
   final ChatMessage message;
+  final int accountSlot;
   final List<ChatMessage> messages;
   ChannelPostThreadTarget? threadTarget;
   String? authorName;
@@ -1016,6 +1018,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
         ChannelPost(
           channel: primary.channel,
           message: primary.message,
+          accountSlot: primary.accountSlot,
           threadTarget: primary.threadTarget,
           authorName: primary.authorName,
           authorPhoto: primary.authorPhoto,
@@ -1130,21 +1133,28 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
     int? generation,
     bool notify = true,
   }) async {
+    final accountSlot = TdClient.shared.activeSlot;
     try {
-      final response = await TdClient.shared.query({
+      final response = await TdClient.shared.queryForSlot({
         '@type': 'getChatHistory',
         'chat_id': channel.id,
         'from_message_id': fromMessageId,
         'offset': 0,
         'limit': _perChannelPageSize,
         'only_local': false,
-      });
+      }, accountSlot);
       final messages =
           (response.objects('messages') ?? const <Map<String, dynamic>>[])
               .map(TDParse.message)
               .whereType<ChatMessage>()
               .where((message) => !message.isService)
-              .map((message) => ChannelPost(channel: channel, message: message))
+              .map(
+                (message) => ChannelPost(
+                  channel: channel,
+                  message: message,
+                  accountSlot: accountSlot,
+                ),
+              )
               .toList();
       if (generation != null && generation != _feedLoadGeneration) return;
       if (messages.isEmpty) {
@@ -2229,8 +2239,9 @@ class _ChannelMomentsSearchViewState extends State<ChannelMomentsSearchView> {
     ChatSummary channel,
     String query,
   ) async {
+    final accountSlot = TdClient.shared.activeSlot;
     try {
-      final response = await TdClient.shared.query({
+      final response = await TdClient.shared.queryForSlot({
         '@type': 'searchChatMessages',
         'chat_id': channel.id,
         'query': query,
@@ -2239,7 +2250,7 @@ class _ChannelMomentsSearchViewState extends State<ChannelMomentsSearchView> {
         'offset': 0,
         'limit': 30,
         'filter': {'@type': 'searchMessagesFilterEmpty'},
-      });
+      }, accountSlot);
       final rawMessages =
           response.objects('messages') ?? const <Map<String, dynamic>>[];
       return [
@@ -2247,7 +2258,11 @@ class _ChannelMomentsSearchViewState extends State<ChannelMomentsSearchView> {
           if ((raw.int64('chat_id') ?? channel.id) == channel.id)
             if (TDParse.message(raw) case final message?)
               if (!message.isService)
-                ChannelPost(channel: channel, message: message),
+                ChannelPost(
+                  channel: channel,
+                  message: message,
+                  accountSlot: accountSlot,
+                ),
       ];
     } catch (_) {
       return const [];
@@ -3983,6 +3998,7 @@ class ChannelPostRow extends StatelessWidget {
               _PostImageGroup(
                 messages: _imageMessages,
                 sourceChatId: channel.id,
+                accountSlot: post.accountSlot,
               ),
             ],
             const SizedBox(height: 12),
@@ -4208,10 +4224,15 @@ class _InlineComments extends StatelessWidget {
 }
 
 class _PostImageGroup extends StatelessWidget {
-  const _PostImageGroup({required this.messages, required this.sourceChatId});
+  const _PostImageGroup({
+    required this.messages,
+    required this.sourceChatId,
+    required this.accountSlot,
+  });
 
   final List<ChatMessage> messages;
   final int sourceChatId;
+  final int accountSlot;
 
   @override
   Widget build(BuildContext context) {
@@ -4298,6 +4319,7 @@ class _PostImageGroup extends StatelessWidget {
         for (final message in videos)
           VideoPlaybackItem(
             video: message.video!,
+            accountSlot: accountSlot,
             thumb: message.image,
             width: message.imageWidth,
             height: message.imageHeight,
